@@ -10,6 +10,9 @@ The Auto-MCS scripting API (amscript) is available to create universal plugins f
 > Note: Every parameter with a * in the table is required for assignment, but doesn't need to be used
 
 
+
+## @server events
+
 ### @server.on_start
 
 Fired upon process execution by Auto-MCS, not when a player can connect.
@@ -73,14 +76,15 @@ Following the above example when a player with the `anyone` privilege executes `
 - Auto-MCS will determine that the player doesn't meet the minimum permission and will fail
 - Permission tree is `server` > `op` > `anyone`
 
-Following the above example when a player with `op` or `server` privilege executes `!test foo bar`:
+Following the above example when a player with the `op` or `server` privilege executes `!test foo bar`:
 
 - `arguments` will be converted to `{'arg1': 'foo', 'arg2': 'bar'}` after execution, and can be acccessed in the function as such
 - Calling `arguments['arg1']` will return the value of `'foo'`
 
 
 
---------------------------------------------
+## @player events
+
 ### @player.on_join
 
 Fired upon player successfully connecting to the server.
