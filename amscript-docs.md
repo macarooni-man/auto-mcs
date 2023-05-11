@@ -93,7 +93,7 @@ Accepted parameters:
 
 ```
 @player.on_join(player, data):
-    server.execute(f'/say Welcome to the server {user.name}!')
+    server.execute(f'/say Welcome to the server {player.name}!')
 ```
 
 
@@ -111,7 +111,7 @@ Accepted parameters:
 
 ```
 @player.on_leave(player, data):
-    server.execute(f'/say Goodbye, {user.name}!')
+    server.execute(f'/say Goodbye, {player.name}!')
 ```
 
 
@@ -129,5 +129,5 @@ Accepted parameters:
 
 ```
 @player.on_message(player, data):
-    server.execute(f'/say Goodbye, {user.name}!')
+    server.execute(f'/say Goodbye, {player.name}!')
 ```
