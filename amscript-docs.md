@@ -63,7 +63,7 @@ Accepted parameters:
 | `hidden` | `bool`, defaults to `False`. Hides command from all users (they can still be executed) and disables the wrapper functionality described below. Useful for augmenting existing commands |
 
 ```
-@server.alias(player, command='!test', arguments={'arg': True, 'arg2': False}, permission='op', description='Test command'):
+@server.alias(player, command='test', arguments={'arg': True, 'arg2': False}, permission='op', description='Test command'):
     server.execute(f'/say {player.name} executed {command} with the following arguments: {arguments}')
 ```
 
