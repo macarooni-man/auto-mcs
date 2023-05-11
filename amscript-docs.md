@@ -50,7 +50,7 @@ Accepted parameters:
 
 Used for registering custom commands and augmenting existing ones.
 
-> Note: Commands that start with '/' don't work in Vanilla servers, instead use a different special character
+> Note: Commands that start with '/' don't work outside of the console in Vanilla servers, instead use a different special character
 
 Accepted parameters:
 | Parameter | Description |
