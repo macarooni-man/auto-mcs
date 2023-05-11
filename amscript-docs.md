@@ -90,6 +90,7 @@ Accepted parameters:
 | --- | --- |
 | `player*` | **PlayerScriptObject** sent at execution |
 | `data*` | `dict` of login data, currently `{'ip': ip address, 'date': datetime, 'logged-in': True}` |
+| `delay` | Waits a specified amount of time in seconds before running |
 
 ```
 @player.on_join(player, data):
@@ -108,6 +109,7 @@ Accepted parameters:
 | --- | --- |
 | `player*` | **PlayerScriptObject** sent at execution |
 | `data*` | `dict` of logout data, currently `{'ip': ip address, 'date': datetime, 'logged-in': False}` |
+| `delay` | Waits a specified amount of time in seconds before running |
 
 ```
 @player.on_leave(player, data):
@@ -126,6 +128,7 @@ Accepted parameters:
 | --- | --- |
 | `player*` | **PlayerScriptObject** sent at execution |
 | `data*` | `dict` of login data, currently `{'ip': ip address, 'date': datetime, 'logged-in': True}` |
+| `delay` | Waits a specified amount of time in seconds before running |
 
 ```
 @player.on_message(player, data):
