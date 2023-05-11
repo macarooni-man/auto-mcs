@@ -56,7 +56,7 @@ Accepted parameters:
 | Parameter | Description |
 | --- | --- |
 | `player*` | **PlayerScriptObject** sent at execution |
-| `command*` | `str` with a special character in the beginning, ie `!MyCommand` |
+| `command*` | `str` with a special character in the beginning, ie `!MyCommand`. If no special character is used, it will default to `!` |
 | `arguments` | `dict` specifying requirement for execution `{'arg1': True}` where `True` denotes a required argument. Only the last argument can be optional |
 | `permission`| Can be `'anyone'`, `'op'`, or `'server'`. Defaults to `'anyone'`|
 | `description` | `str` for `!help` menu. Commands will be shown to users with the minimum permission level |
