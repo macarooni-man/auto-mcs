@@ -125,16 +125,17 @@ Accepted parameters:
 --------------------------------------------
 ### @player.on_message
 
-Fired upon player disconnecting from the server.
+Fired upon player sending a message in the chat, excluding commands.
 
 Accepted parameters:
 | Parameter | Description |
 | --- | --- |
 | `player*` | **PlayerScriptObject** sent at execution |
-| `data*` | `dict` of login data, currently `{'ip': ip address, 'date': datetime, 'logged-in': True}` |
+| `message*` | `str` of the message |
 | `delay` | Waits a specified amount of time in seconds before running |
 
 ```
-@player.on_message(player, data):
-    server.execute(f'/say Goodbye, {player.name}!')
+@player.on_message(player, message):
+    if "hi" in message:
+        server.execute(f'/say Hey there {player.name}!')
 ```
