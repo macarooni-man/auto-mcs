@@ -1,0 +1,9937 @@
+from PIL.ImageFilter import GaussianBlur
+from datetime import datetime as dt
+from PIL import Image as PILImage
+from ctypes import ArgumentError
+from plyer import filechooser
+import simpleaudio as sa
+from pathlib import Path
+from glob import glob
+import webbrowser
+import functools
+import threading
+import inspect
+import time
+import sys
+import os
+import re
+import gc
+
+
+# Local imports
+import constants
+import addons
+import backup
+import acl
+
+
+if constants.os_name == "windows":
+    import tkinter as tk
+    from tkinter import filedialog
+
+# Disable Kivy logging if debug is off and app is compiled
+if constants.app_compiled and constants.debug is False:
+    os.environ["KIVY_NO_CONSOLELOG"] = "1"
+    os.environ['KIVY_HOME'] = os.path.join(constants.executable_folder, ".kivy")
+
+
+os.environ["KCFG_KIVY_LOG_LEVEL"] = "info"
+os.environ["KIVY_IMAGE"] = "pil,sdl2"
+
+from kivy.config import Config
+Config.set('graphics', 'maxfps', '240')
+Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
+Config.set('graphics', 'window_state', 'hidden')
+Config.set('kivy', 'exit_on_escape', '0')
+
+# Import kivy elements
+from kivy.clock import Clock
+from kivy.loader import Loader
+from kivy.uix.label import Label
+from kivy.uix.widget import Widget
+from kivy.utils import escape_markup
+from kivy.animation import Animation
+from kivy.uix.textinput import TextInput
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.recycleview import RecycleView
+from kivy.uix.anchorlayout import AnchorLayout
+from kivy.uix.togglebutton import ToggleButton
+from kivy.graphics import Canvas, Color, Rectangle
+from kivy.uix.relativelayout import RelativeLayout
+from kivy.input.providers.mouse import MouseMotionEvent
+from kivy.uix.recyclegridlayout import RecycleGridLayout
+from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition, FadeTransition
+
+
+import kivy
+kivy.require('2.0.0')
+from kivy.app import App
+from kivy.metrics import sp, dp
+from kivy.uix.button import Button
+from kivy.core.window import Window
+from kivy.uix.dropdown import DropDown
+from kivy.core.clipboard import Clipboard
+from kivy.uix.image import Image, AsyncImage
+from kivy.uix.floatlayout import FloatLayout
+from kivy.properties import BooleanProperty, ObjectProperty, NumericProperty, ListProperty
+
+
+def icon_path(name):
+    return os.path.join(constants.gui_assets, 'icons', name)
+
+
+# Custom widget attributes
+class HoverBehavior(object):
+    """Hover behavior.
+    :Events:
+        `on_enter`
+            Fired when mouse enter the bbox of the widget.
+        `on_leave`
+            Fired when the mouse exit the widget
+    """
+
+    hovered = BooleanProperty(False)
+    border_point = ObjectProperty(None)
+    '''Contains the last relevant point received by the Hoverable. This can
+    be used in `on_enter` or `on_leave` in order to know where was dispatched the event.
+    '''
+
+    def __init__(self, *args, **kwargs):
+        self.register_event_type('on_enter')
+        self.register_event_type('on_leave')
+        Window.bind(mouse_pos=self.on_mouse_pos)
+        super(HoverBehavior, self).__init__(**kwargs)
+
+    def on_mouse_pos(self, *args):
+        if not self.get_root_window() or self.disabled:
+            return # do proceed if I'm not displayed <=> If there's no parent
+        pos = args[1]
+        #Next line to_widget allow to compensate for relative layout
+        inside = self.collide_point(*self.to_widget(*pos))
+
+        if self.hovered == inside:
+            #We have already done what was needed
+            return
+        self.border_point = pos
+        self.hovered = inside
+        if inside:
+            self.dispatch('on_enter')
+        else:
+            self.dispatch('on_leave')
+
+    def on_enter(self):
+        pass
+
+    def on_leave(self):
+        pass
+
+from kivy.lang import Builder
+from kivy.factory import Factory
+Factory.register('HoverBehavior', HoverBehavior)
+
+
+def animate_button(self, image, color, **kwargs):
+    image_animate = Animation(**kwargs, duration=0.05)
+
+    def f(w):
+        w.background_normal = image
+
+    for child in self.parent.children:
+        if child.id == 'text':
+            Animation(color=color, duration=0.06).start(child)
+        if child.id == 'icon':
+            Animation(color=color, duration=0.06).start(child)
+
+    a = Animation(duration=0.0)
+    a.on_complete = functools.partial(f)
+
+    image_animate += a
+
+    image_animate.start(self)
+
+
+
+def animate_icon(self, image, colors, hover_action, **kwargs):
+    image_animate = Animation(**kwargs, duration=0.05)
+
+    def f(w):
+        w.background_normal = image
+
+    for child in self.parent.children:
+        if child.id == 'text':
+            if hover_action:
+                Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=0.12).start(child)
+            else:
+                Animation(color=(0, 0, 0, 0), duration=0.12).start(child)
+
+        if child.id == 'icon':
+            if hover_action:
+                Animation(color=colors[0], duration=0.06).start(child)
+            else:
+                Animation(color=colors[1], duration=0.06).start(child)
+
+    a = Animation(duration=0.0)
+    a.on_complete = functools.partial(f)
+
+    image_animate += a
+
+    image_animate.start(self)
+
+
+
+class HoverButton(Button, HoverBehavior):
+
+    # self.id references image patterns
+    # self.color_id references text/image color [hovered, un-hovered]
+
+    color_id = [(0, 0, 0, 0), (0, 0, 0, 0)]
+    alt_color = ''
+    ignore_hover = False
+
+    # Ignore touch events when popup is present
+    def on_touch_down(self, touch):
+        popup_widget = screen_manager.current_screen.popup_widget
+        if popup_widget:
+            return
+        else:
+            return super().on_touch_down(touch)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(on_touch_down=self.onPressed)
+        self.button_pressed = None
+        self.selected = False
+
+    def onPressed(self, instance, touch):
+        if touch.device == "wm_touch":
+            touch.button = "left"
+
+        self.button_pressed = touch.button
+
+    def on_enter(self, *args):
+        if not self.ignore_hover:
+
+            if 'icon_button' in self.id:
+                if self.selected:
+                    animate_icon(self, image=os.path.join(constants.gui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=True)
+                else:
+                    animate_icon(self, image=os.path.join(constants.gui_assets, f'{self.id}_hover{self.alt_color}.png'), colors=self.color_id, hover_action=True)
+            else:
+                animate_button(self, image=os.path.join(constants.gui_assets, f'{self.id}_hover.png'), color=self.color_id[0])
+
+    def on_leave(self, *args):
+        if not self.ignore_hover:
+
+            if 'icon_button' in self.id:
+                if self.selected:
+                    animate_icon(self, image=os.path.join(constants.gui_assets, f'{self.id}_selected.png'), colors=[(0.05, 0.05, 0.1, 1), (0.05, 0.05, 0.1, 1)], hover_action=False)
+                else:
+                    animate_icon(self, image=os.path.join(constants.gui_assets, f'{self.id}.png'), colors=self.color_id, hover_action=False)
+            else:
+                animate_button(self, image=os.path.join(constants.gui_assets, f'{self.id}.png'), color=self.color_id[1])
+
+    def on_press(self):
+        self.on_mouse_pos(self, Window.mouse_pos)
+
+    def force_click(self, *args):
+        touch = MouseMotionEvent("mouse", "mouse", Window.center)
+        touch.button = 'left'
+        touch.pos = Window.center
+        self.dispatch('on_touch_down', touch)
+
+        screen_manager.current_screen._keyboard.release()
+        self.on_enter()
+        self.trigger_action(0.1)
+
+
+# -----------------------------------------------------  Labels  -------------------------------------------------------
+class InputLabel(RelativeLayout):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.id = 'InputLabel'
+        self.text_size = sp(21)
+
+        text = Label()
+        text.id = 'text'
+        text.text = "Invalid input"
+        text.font_size = self.text_size
+        self.text_x = text.x
+        text.x += dp(15)
+        text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        text.color = (1, 0.53, 0.58, 0)
+
+        icon = Image()
+        icon.id = 'icon'
+        icon.source = os.path.join(constants.gui_assets, 'icons', 'alert-circle-outline.png')
+        icon.color = (1, 0.53, 0.58, 0) # make alpha 0 eventually
+        self.icon_x = icon.x
+        icon.x -= dp((len(text.text) * (self.text_size - 8)) / 3) - dp(20)
+
+        self.add_widget(text)
+        self.add_widget(icon)
+
+
+    def disable_text(self, disable):
+
+        break_loop = False
+        for child in self.parent.children:
+            if break_loop:
+                break
+
+            elif child.__class__.__name__ == 'FloatLayout':
+                for item in child.children:
+                    try:
+                        if item.id == 'next_button':
+                            item.disable(disable)
+                            break_loop = True
+                            break
+
+                    except AttributeError:
+                        pass
+
+
+    def update_text(self, text, warning=False):
+
+        chosen_color = (0.3, 0.75, 1, 1) if warning else (1, 0.53, 0.58, 1)
+        start_color = (0.3, 0.75, 1, 0) if warning else (1, 0.53, 0.58, 0)
+
+        for child in self.children:
+            if child.id == 'text':
+                child.text = text
+                child.x = self.text_x + dp(15)
+                child.color = start_color
+                Animation(color=chosen_color, duration=0.12).start(child)
+            else:
+                child.source = os.path.join(constants.gui_assets, 'icons', 'alert-circle-outline.png')
+                child.x = self.icon_x - dp((len(text) * (self.text_size - 8)) / 3) - dp(20)
+                child.color = start_color
+                Animation(color=chosen_color, duration=0.12).start(child)
+
+
+    def clear_text(self):
+        for child in self.children:
+            new_color = (child.color[0], child.color[1], child.color[2], 0)
+            Animation(color=new_color, duration=0.12).start(child)
+
+            def reset_color(item, *args):
+                item.color = (1, 0.53, 0.58, 0)
+
+            Clock.schedule_once(functools.partial(reset_color, child), 0.2)
+
+
+
+class BaseInput(TextInput):
+
+    def _on_focus(self, instance, value, *largs):
+        super()._on_focus(instance, value, *largs)
+
+        # Update screen focus value on next frame
+        def update_focus(*args):
+            screen_manager.current_screen._input_focused = self.focus
+        Clock.schedule_once(update_focus, 0)
+
+
+    def grab_focus(self):
+        def focus_later(*args):
+            self.focus = True
+        Clock.schedule_once(focus_later, 0)
+
+
+    def fix_overscroll(self, *args):
+
+        if self.cursor_pos[0] < (self.x):
+            self.scroll_x = 0
+
+
+    def update_rect(self, *args):
+        self.rect.source = os.path.join(constants.gui_assets, f'text_input_cover{"" if self.focused else "_fade"}.png')
+
+        self.title.text = self.title_text
+        self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
+        if self.width > 500:
+            self.rect.width += (self.width - 500)
+        self.rect.pos = self.pos[0] + (self.size[0] / 2) - (self.rect.size[0] / 2) - 1, self.pos[1] + 45
+        self.title.pos = self.pos[0] + (self.size[0] / 2) - (self.title.size[0] / 2), self.pos[1] + 4
+        Animation(opacity=(0.85 if self.text and self.title_text else 0), color=self.foreground_color, duration=0.06).start(self.title)
+        Animation(opacity=(1 if self.text and self.title_text else 0), duration=0.08).start(self.rect)
+
+        # Auto position cursor at end if typing
+        if self.cursor_index() == len(self.text) - 1:
+            self.do_cursor_movement('cursor_end', True)
+            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.title_text = "InputTitle"
+
+        self.multiline = False
+        self.size_hint_max = (500, 54)
+        self.border = (-15, -15, -15, -15)
+        self.background_normal = os.path.join(constants.gui_assets, f'text_input.png')
+        self.background_active = os.path.join(constants.gui_assets, f'text_input_selected.png')
+
+        self.halign = "center"
+        self.hint_text_color = (0.6, 0.6, 1, 0.4)
+        self.foreground_color = (0.6, 0.6, 1, 1)
+        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.font_size = sp(22)
+        self.padding_y = (12, 12)
+        self.cursor_color = (0.55, 0.55, 1, 1)
+        self.cursor_width = dp(3)
+        self.selection_color = (0.5, 0.5, 1, 0.4)
+
+        with self.canvas.after:
+            self.rect = Image(size=(100, 15), color=constants.background_color, opacity=0, allow_stretch=True, keep_ratio=False)
+            self.title = AlignLabel(halign="center", text=self.title_text, color=self.foreground_color, opacity=0, font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
+            self.bind(pos=self.update_rect)
+            self.bind(size=self.update_rect)
+            self.bind(text=self.update_rect)
+            self.bind(foreground_color=self.update_rect)
+            self.bind(focused=self.update_rect)
+
+        self.bind(cursor_pos=self.fix_overscroll)
+
+
+    def valid_text(self, boolean_value, text):
+        pass
+
+    #               if error       visible text
+    def valid(self, boolean_value, text=True):
+
+        if boolean_value:
+
+            # Hide text
+            self.valid_text(boolean_value, text)
+
+            self.background_normal = os.path.join(constants.gui_assets, f'text_input.png')
+            self.background_active = os.path.join(constants.gui_assets, f'text_input_selected.png')
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.foreground_color = (0.6, 0.6, 1, 1)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
+
+        else:
+
+            # Show error
+            self.valid_text(boolean_value, text)
+
+            self.background_normal = os.path.join(constants.gui_assets, f'text_input_invalid.png')
+            self.background_active = os.path.join(constants.gui_assets, f'text_input_invalid_selected.png')
+            self.hint_text_color = (1, 0.6, 0.6, 0.4)
+            self.foreground_color = (1, 0.56, 0.6, 1)
+            self.cursor_color = (1, 0.52, 0.55, 1)
+            self.selection_color = (1, 0.5, 0.5, 0.4)
+
+    # Ignore touch events when popup is present
+    def on_touch_down(self, touch):
+        popup_widget = screen_manager.current_screen.popup_widget
+        if popup_widget:
+            return
+        else:
+            return super().on_touch_down(touch)
+
+
+
+class SearchButton(HoverButton):
+
+    # Execute search on click
+    def on_touch_down(self, touch):
+        if self.collide_point(touch.x, touch.y):
+            for child in self.parent.children:
+                if child.id == "search_input":
+                    child.focus = False
+                    if child.text and self.parent.previous_search != child.text:
+                        self.parent.execute_search(child.text)
+                    return True
+
+        return super().on_touch_down(touch)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.icon = os.path.join(constants.gui_assets, 'icons', 'search-sharp.png')
+        self.id = "search_button"
+        self.border = (0, 0, 0, 0)
+        self.background_normal = self.icon
+        self.background_down = self.icon
+        self.color_id = [(0.341, 0.353, 0.596, 1), (0.542, 0.577, 0.918, 1)]
+        self.background_color = self.color_id[0]
+
+    def on_enter(self, *args):
+        if not self.ignore_hover:
+            Animation(background_color=self.color_id[1], duration=0.12).start(self)
+
+    def on_leave(self, *args):
+        if not self.ignore_hover:
+            Animation(background_color=self.color_id[0], duration=0.12).start(self)
+
+class SearchInput(BaseInput):
+
+    def __init__(self, return_function, **kwargs):
+        super().__init__(**kwargs)
+        self.id = "search_input"
+        self.title_text = ""
+        self.hint_text = "enter a query..."
+        self.halign = "left"
+        self.padding_x = 24
+        self.background_normal = os.path.join(constants.gui_assets, f'search_input.png')
+        self.background_active = os.path.join(constants.gui_assets, f'search_input_selected.png')
+        self.bind(on_text_validate=self.on_enter)
+
+
+    def on_enter(self, value):
+        if self.text and self.parent.previous_search != self.text:
+            self.parent.execute_search(self.text)
+
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if not self.text or str.isspace(self.text):
+            self.valid(True, False)
+
+        if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.175):
+            self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.175))
+
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 50:
+            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
+
+            return super().insert_text(s, from_undo=from_undo)
+
+
+    def valid(self, boolean_value, text=True):
+
+        self.valid_text(boolean_value, text)
+
+        self.background_normal = os.path.join(constants.gui_assets, f'search_input.png')
+        self.background_active = os.path.join(constants.gui_assets, f'search_input_selected.png')
+        self.hint_text_color = (0.6, 0.6, 1, 0.4)
+        self.foreground_color = (0.6, 0.6, 1, 1)
+        self.cursor_color = (0.55, 0.55, 1, 1)
+        self.selection_color = (0.5, 0.5, 1, 0.4)
+
+def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}):
+    class SearchLayout(FloatLayout):
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.previous_search = ""
+
+        # Gather search results from passed in function
+        def execute_search(self, query):
+            self.previous_search = query
+
+            def execute():
+                current_screen = screen_manager.current_screen.name
+                self.loading(True)
+                results = False
+
+                try:
+                    results = return_function(query, server_info)
+
+                except ConnectionRefusedError:
+                    pass
+
+                if not results and isinstance(results, bool):
+                    self.previous_search = ""
+
+                if screen_manager.current_screen.name == current_screen:
+                    update_screen = functools.partial(screen_manager.current_screen.gen_search_results, results, True)
+                    Clock.schedule_once(update_screen, 0)
+
+                    self.loading(False)
+
+            timer = threading.Timer(0, function=execute)
+            timer.start()  # Checks for potential crash
+
+
+        def loading(self, boolean_value):
+
+            for child in self.children:
+                if child.id == "load_icon":
+                    if boolean_value:
+                        Animation(color=(0.6, 0.6, 1, 1), duration=0.05).start(child)
+                    else:
+                        Animation(color=(0.6, 0.6, 1, 0), duration=0.2).start(child)
+
+                if child.id == "search_button":
+                    constants.hide_widget(child, boolean_value)
+
+    def repos_button(bar, button, load, *args):
+        def after_window(*args):
+            button.x = bar.x + bar.width - button.width - 18
+            load.x = bar.x + bar.width - load.width - 14
+
+        Clock.schedule_once(after_window, 0)
+
+    final_layout = SearchLayout()
+
+    # Input box
+    search_bar = SearchInput(return_function)
+    search_bar.pos_hint = pos_hint
+
+    # Search icon on the right of box
+    search_button = SearchButton()
+    search_button.pos_hint = {"center_y": pos_hint['center_y']}
+    search_button.size_hint_max = (search_bar.height / 3.6, search_bar.height / 3.6)
+
+    # Loading icon to swap button
+    load_icon = AsyncImage()
+    load_icon.id = "load_icon"
+    load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+    load_icon.size_hint_max = (search_bar.height / 3, search_bar.height / 3)
+    load_icon.color = (0.6, 0.6, 1, 0)
+    load_icon.pos_hint = {"center_y": pos_hint['center_y']}
+    load_icon.allow_stretch = True
+    load_icon.anim_delay = 0.02
+
+    # Assemble layout
+    final_layout.bind(pos=functools.partial(repos_button, search_bar, search_button, load_icon))
+    final_layout.bind(size=functools.partial(repos_button, search_bar, search_button, load_icon))
+    final_layout.add_widget(search_bar)
+    final_layout.add_widget(search_button)
+    final_layout.add_widget(load_icon)
+
+    return final_layout
+
+
+
+class ServerNameInput(BaseInput):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.title_text = "name"
+        self.hint_text = "enter a name..."
+        self.bind(on_text_validate=self.on_enter)
+
+
+    def on_enter(self, value):
+
+        constants.new_server_info['name'] = (self.text).strip()
+
+    # Invalid input
+        if not self.text or str.isspace(self.text):
+            self.valid(True, False)
+
+        elif self.text.lower() in constants.server_list_lower:
+            self.valid(False)
+
+    # Valid input
+        else:
+            break_loop = False
+            for child in self.parent.children:
+                if break_loop:
+                    break
+                for item in child.children:
+                    try:
+                        if item.id == "next_button":
+                            item.force_click()
+                            break_loop = True
+                            break
+                    except AttributeError:
+                        pass
+
+
+    def valid_text(self, boolean_value, text):
+        for child in self.parent.children:
+            try:
+                if child.id == "InputLabel":
+
+                # Empty input
+                    if not text:
+                        child.clear_text()
+                        child.disable_text(True)
+
+                # Valid input
+                    elif boolean_value:
+                        child.clear_text()
+                        child.disable_text(False)
+
+                # Invalid input
+                    else:
+                        child.update_text("This server already exists")
+                        child.disable_text(True)
+                    break
+
+            except AttributeError:
+                pass
+
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if keycode[1] == "backspace" and len(self.text) >= 1:
+            # Add name to current config
+            constants.new_server_info['name'] = (self.text).strip()
+
+            self.valid((self.text).lower() not in constants.server_list_lower)
+
+        if not self.text or str.isspace(self.text):
+            self.valid(True, False)
+
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 25:
+            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
+
+            self.valid((self.text + s).lower() not in constants.server_list_lower, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+
+            # Add name to current config
+            constants.new_server_info['name'] = (self.text + s).strip()
+
+            return super().insert_text(s, from_undo=from_undo)
+
+
+
+class ServerVersionInput(BaseInput):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.title_text = "version"
+        self.hint_text = f"click 'next' for latest  ({constants.latestMC[constants.new_server_info['type']]})"
+        self.bind(on_text_validate=self.on_enter)
+
+
+    def on_touch_down(self, touch):
+        if not constants.version_loading:
+            super().on_touch_down(touch)
+
+        else:
+            self.focus = False
+
+
+    def on_enter(self, value):
+
+        if not constants.version_loading:
+
+            if self.text:
+                constants.new_server_info['version'] = (self.text).strip()
+            else:
+                constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+
+            break_loop = False
+            for child in self.parent.children:
+                if break_loop:
+                    break
+                for item in child.children:
+                    try:
+                        if item.id == "next_button":
+                            item.force_click()
+                            break
+                    except AttributeError:
+                        pass
+
+
+    def valid_text(self, boolean_value, text):
+        if not constants.version_loading:
+
+            if isinstance(text, bool):
+                text = ''
+
+            for child in self.parent.children:
+                try:
+                    if child.id == "InputLabel":
+                    # Invalid input
+                        if text and not boolean_value:
+                            child.update_text(text)
+                            child.disable_text(True)
+
+                        elif boolean_value and text:
+                            self.text = constants.new_server_info['version']
+                            child.update_text(text, warning=True)
+                            child.disable_text(True)
+
+                    # Valid input
+                        else:
+                            child.clear_text()
+                            child.disable_text(False)
+
+                        break
+
+                except AttributeError:
+                    pass
+
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        if not constants.version_loading:
+
+            super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+            if keycode[1] == "backspace":
+                # Add name to current config
+                self.valid(True, True)
+
+                if self.text:
+                    constants.new_server_info['version'] = (self.text).strip()
+                else:
+                    constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not constants.version_loading:
+
+            if not self.text and substring == " ":
+                substring = ""
+
+            elif len(self.text) < 10:
+                self.valid(True, True)
+
+                s = re.sub('[^a-eA-e0-9 .wpreWPRE-]', '', substring.splitlines()[0]).lower()
+
+                # Add name to current config
+                if self.text + s:
+                    constants.new_server_info['version'] = (self.text + s).strip()
+                else:
+                    constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+
+                return super().insert_text(s, from_undo=from_undo)
+
+
+# Auto-complete directory content
+class DirectoryInput(BaseInput):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.recommended_folders = ["Users", "AppData", "Roaming", ".minecraft", "saves"]
+
+        # Create suggestion text
+        with self.canvas.after:
+            self.text_hint = RelativeLayout()
+            self.text_hint.text = Label()
+            self.text_hint.text.halign = "left"
+            self.text_hint.text.valign = "middle"
+            self.text_hint.text.color = (0.6, 0.6, 1, 0.4)
+            self.text_hint.text.font_name = self.font_name
+            self.text_hint.text.font_size = self.font_size
+            self.text_hint.text.max_lines = 1
+            self.text_hint.text.size_hint = (None, None)
+            self.suggestion_index = 0
+            self.bind(pos=self.update_suggestion)
+            self.bind(focus=self.update_suggestion)
+            self.bind(text=self.update_suggestion)
+            self.bind(scroll_x=self.update_suggestion)
+
+            # Cover suggestion text on sides
+            self.focus_images = RelativeLayout()
+            self.focus_images.ghost_cover_left = Image(source=os.path.join(constants.gui_assets, f'text_input_ghost_cover.png'))
+            self.focus_images.ghost_cover_right = Image(source=os.path.join(constants.gui_assets, f'text_input_ghost_cover.png'))
+            self.focus_images.ghost_image = Image(source=os.path.join(constants.gui_assets, f'text_input_ghost_selected.png'))
+            self.focus_images.ghost_image.allow_stretch = True
+            self.focus_images.ghost_image.keep_ratio = False
+            self.focus_images.ghost_cover_left.allow_stretch = True
+            self.focus_images.ghost_cover_left.keep_ratio = False
+            self.focus_images.ghost_cover_right.allow_stretch = True
+            self.focus_images.ghost_cover_right.keep_ratio = False
+            self.focus_images.ghost_image.opacity = 0
+            self.focus_images.ghost_cover_left.opacity = 0
+            self.focus_images.ghost_cover_right.opacity = 0
+            self.focus_images.ghost_cover_left.color = constants.background_color
+            self.focus_images.ghost_cover_right.color = constants.background_color
+
+        self.word_list = []
+        self.suggestion = (0.6, 0.6, 1, 0.4)
+        self.bind(text=self.on_text)
+
+    def update_suggestion(self, *args):
+        self.focus_images.ghost_image.size = (self.width+4, self.height+4)
+        self.focus_images.ghost_image.pos = (self.x-2, self.y-2)
+        self.focus_images.ghost_cover_left.pos = (0, self.y-(self.height/2))
+        self.focus_images.ghost_cover_left.width = ((Window.size[0]/2)-(self.width/2)+self.padding_x[0])
+        self.focus_images.ghost_cover_right.pos = (self.x+self.width-self.padding_x[0], self.y-(self.height/2))
+        self.focus_images.ghost_cover_right.width = ((Window.size[0]/2)-(self.width/2)+self.padding_x[0])
+        self.focus_images.ghost_image.opacity = 1 if self.focus else 0
+        self.focus_images.ghost_cover_left.opacity = 1 if self.focus else 0
+        self.focus_images.ghost_cover_right.opacity = 1 if self.focus else 0
+
+        Animation(opacity=(1 if self.focus else 0), duration=0.05).start(self.text_hint.text)
+
+        self.text_hint.size = self.size
+
+        if self.focus:
+            self.text_hint.text.text_size = (self.size[0] * 12, self.size[1])
+            self.text_hint.text.pos = (self.x + self.padding[0] + (self.size[0] * 5.5), self.y - self.font_size)
+            self.text_hint.text.width = (self.width) - (self.scroll_x * 2)
+
+            # Gather word list
+            if len(self.text) > 0:
+                if (self.text[0] != ".") and (('\\' in self.text) or ('/' in self.text)):
+                    self.word_list = constants.hidden_glob(self.text)
+                    self.on_text(None, self.text)
+
+    def on_text(self, instance, value):
+        # Prevent extra slashes in file name
+
+        if self.text.startswith('"') and self.text.endswith('"'):
+            self.text = self.text[1:-1]
+
+        self.text = self.text.replace("\\\\", "\\").replace("//", "/").replace("\\/", "\\").replace("/\\", "/")
+        self.text = self.text.replace("/", "\\") if constants.os_name == "windows" else self.text.replace("\\", "/")
+        self.text = self.text.replace("*", "")
+
+        """ Include all current text from textinput into the word list to
+        emulate the same kind of behavior as sublime text has.
+        """
+        self.text_hint.text.text = ''
+
+        # for item in self.word_list:
+        #     print(os.path.split(item)[1] in self.recommended_folders)
+        #     if os.path.split(item)[1] in self.recommended_folders:
+        #         self.suggestion_index = self.word_list.index(item)
+        #         print(self.suggestion_index)
+        #         break
+
+        word_list = constants.rotate_array(sorted(list(set(
+            self.word_list + value[:value.rfind('     ')].split('     ')))), self.suggestion_index)
+
+        word_list = [item for item in word_list if not (len(item) == 3 and ":\\" in item)
+                     and not (len(item) == 2 and ":" in item)
+                     and item]
+
+        val = value[value.rfind('     ') + 1:]
+        if not val:
+            return
+        try:
+            # grossly inefficient just for demo purposes
+            word = [word for word in word_list
+                    if word.startswith(val)][0][len(val):]
+            if not word:
+                return
+            self.text_hint.text.text = self.text + word
+        except IndexError:
+            # No matches found
+            pass
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        # Add support for tab as an 'autocomplete' using the suggestion text.
+        hint_text = self.text_hint.text.text[len(self.text):] + ''
+
+        if self.text_hint.text.text and keycode[1] in ['tab', 'right']:
+            self.insert_text(hint_text)
+
+            # Automatically add slash to directory
+            if os.path.isdir(self.text) and not (os.path.isfile(os.path.join(self.text, "level.dat")) or os.path.isfile(os.path.join(self.text, 'special_level.dat'))):
+                self.insert_text("\\" if constants.os_name == "windows" else "/")
+
+                if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.33):
+                    self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.33))
+
+            self.do_cursor_movement('cursor_end', True)
+            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+            self.suggestion_index = 0
+            return True
+
+        elif keycode[1] == 'backspace':
+            self.suggestion_index = 0
+            self.on_text(None, self.text)
+
+        elif keycode[1] == 'tab':
+            return
+
+        elif keycode[1] == 'up':
+            self.suggestion_index += 1
+            if self.suggestion_index >= len(self.word_list):
+                self.suggestion_index = 0
+            self.on_text(None, self.text)
+
+        elif keycode[1] == 'down':
+            self.suggestion_index -= 1
+            if self.suggestion_index < 0:
+                self.suggestion_index = len(self.word_list)-1
+            self.on_text(None, self.text)
+
+        else:
+            self.suggestion_index = 0
+
+        return super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+
+
+class ServerWorldInput(DirectoryInput):
+
+    # Hide input_button on focus
+    def _on_focus(self, *args):
+        super()._on_focus(*args)
+
+        for child in self.parent.children:
+            for child_item in child.children:
+                try:
+                    if child_item.id == "input_button":
+
+                        if constants.new_server_info['server_settings']['world'] == "world":
+                            self.hint_text = "type a directory, or click browse..." if self.focus else "create a new world"
+
+                        # Run input validation on focus change
+                        if self.focus:
+                            self.valid(True, True)
+
+                        # If unfocused, validate text
+                        if not self.focus and self.text and child_item.height == 0:
+                            self.on_enter(self.text)
+
+                        # If box deleted and unfocused, set back to previous text
+                        elif not self.focus and not self.text and constants.new_server_info['server_settings']['world'] != "world":
+                            self.text = self.cache_text
+
+                        # If box filled in and text box clicked
+                        if self.focus and self.text:
+                            self.text = constants.new_server_info['server_settings']['world']
+                            self.do_cursor_movement('cursor_end', True)
+                            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+                            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                        [constants.hide_widget(item, self.focus) for item in child.children]
+
+                        return
+
+                except AttributeError:
+                    continue
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.halign = "left"
+        self.padding_x = 25
+        self.size_hint_max = (528, 54)
+        self.title_text = "world file"
+        self.hint_text = "create a new world"
+        self.cache_text = ""
+        world = constants.new_server_info['server_settings']['world']
+        self.selected_world = None if world == 'world' else world
+        self.world_verified = False
+        self.update_world(hide_popup=True)
+
+    def on_enter(self, value):
+
+        if constants.os_name == "windows" and "\\" not in self.text:
+            self.text = os.path.join(constants.saveFolder, self.text)
+
+        elif constants.os_name != "windows" and "/" not in self.text:
+            self.text = os.path.join(constants.saveFolder, self.text)
+
+        self.selected_world = self.text.replace("~", constants.home)
+        self.update_world()
+
+    # Input validation and server selection
+    def valid_text(self, boolean_value, text):
+        if not constants.version_loading:
+
+            for child in self.parent.children:
+                try:
+                    if child.id == "InputLabel":
+                    # Invalid input
+                        if not boolean_value:
+                            child.update_text('This world is invalid or corrupt')
+                            self.text = ""
+                    # Valid input
+                        else:
+                            child.clear_text()
+                        break
+                except AttributeError:
+                    pass
+
+    def update_world(self, force_ignore=False, hide_popup=False):
+        if self.selected_world == "world":
+            self.text = ''
+
+        self.scroll_x = 0
+
+        if self.selected_world:
+            self.selected_world = os.path.abspath(self.selected_world)
+
+            # Check if the selected world is invalid
+            if not (os.path.isfile(os.path.join(self.selected_world, 'level.dat')) or os.path.isfile(os.path.join(self.selected_world, 'special_level.dat'))):
+                if self.selected_world != os.path.abspath(os.curdir):
+                    try:
+                        constants.new_server_info['server_settings']['world'] = 'world'
+                        if not force_ignore:
+                            self.valid_text(False, False)
+                        self.parent.parent.toggle_new(False)
+                    except AttributeError:
+                        pass
+
+            # If world is valid, do this
+            else:
+                if constants.new_server_info['server_settings']['world'] != "world":
+                    box_text = os.path.join(
+                        *Path(os.path.abspath(constants.new_server_info['server_settings']['world'])).parts[-2:])
+                    self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
+
+                def world_valid():
+                    box_text = os.path.join(*Path(os.path.abspath(self.selected_world)).parts[-2:])
+                    self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
+                    try:
+                        constants.new_server_info['server_settings']['world'] = self.selected_world
+                        self.valid_text(True, True)
+                        self.parent.parent.toggle_new(True)
+                    except AttributeError:
+                        pass
+
+
+                # When valid world selected, check if it matches server version
+                check_world = constants.check_world_version(self.selected_world, constants.new_server_info['version'])
+
+                if check_world[0] or hide_popup:
+                    world_valid()
+
+                else:
+                    content = None
+                    basename = os.path.basename(self.selected_world)
+                    basename = basename[:30] + "..." if len(basename) > 30 else basename
+
+                    if check_world[1]:
+                        content = f"'{basename}' was created in\
+ version {check_world[1]}, which is newer than your server. This may cause a crash.\
+\n\nWould you like to use this world anyway?"
+                    elif constants.version_check(constants.new_server_info['version'], "<", "1.9"):
+                        content = f"'{basename}' was created in a version prior to 1.9 and may be incompatible.\
+\n\nWould you like to use this world anyway?"
+
+                    if content:
+                        screen_manager.current_screen.show_popup(
+                            "query",
+                            "Potential Incompatibility",
+                            content,
+                            [None, functools.partial(world_valid)]
+                        )
+
+                    else:
+                        world_valid()
+
+
+
+class ServerImportPathInput(DirectoryInput):
+
+    # Hide input_button on focus
+    def _on_focus(self, *args):
+        super()._on_focus(*args)
+
+        for child in self.parent.children:
+            for child_item in child.children:
+                try:
+                    if child_item.id == "input_button":
+
+                        if not self.text:
+                            self.hint_text = "type a path, or click browse..."
+
+                        # Run input validation on focus change
+                        if self.focus:
+                            self.valid(True, True)
+
+                        # If unfocused, validate text
+                        if not self.focus and self.text and child_item.height == 0:
+                            self.on_enter(self.text)
+
+                        # If box deleted and unfocused, set back to previous text
+                        elif not self.focus and not self.text:
+                            self.text = self.cache_text
+
+                        # If box filled in and text box clicked
+                        if self.focus and self.text:
+                            self.text = self.selected_server
+                            self.do_cursor_movement('cursor_end', True)
+                            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+                            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                        [constants.hide_widget(item, self.focus) for item in child.children]
+
+                        return
+
+                except AttributeError:
+                    continue
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.halign = "left"
+        self.padding_x = 25
+        self.size_hint_max = (528, 54)
+        self.title_text = "server path"
+        self.hint_text = "type a path, or click browse..."
+        self.cache_text = ""
+        server = ""
+        self.selected_server = None if server == '' else server
+        self.server_verified = False
+        self.update_server(hide_popup=True)
+
+    def on_enter(self, value):
+        self.selected_server = self.text.replace("~", constants.home)
+        self.update_server()
+
+    # Input validation and server selection
+    def valid_text(self, boolean_value, text):
+        for child in self.parent.children:
+            try:
+                if child.id == "InputLabel":
+                # Invalid input
+                    if not boolean_value:
+                        if isinstance(text, str) and text:
+                            child.update_text(text)
+                        else:
+                            child.update_text('This server is invalid or corrupt')
+                        self.text = ""
+                # Valid input
+                    else:
+                        child.clear_text()
+                    break
+            except AttributeError:
+                pass
+
+
+    def update_server(self, force_ignore=False, hide_popup=False):
+
+        def disable_next(disable=False):
+            for item in screen_manager.current_screen.next_button.children:
+                try:
+                    if item.id == "next_button":
+                        item.disable(disable)
+                        break
+                except AttributeError:
+                    pass
+
+        self.scroll_x = 0
+
+        if self.selected_server:
+            self.selected_server = os.path.abspath(self.selected_server)
+
+            # Check if the selected server is invalid
+            if not (os.path.isfile(os.path.join(self.selected_server, 'server.properties'))):
+                if self.selected_server != os.path.abspath(os.curdir):
+                    try:
+                        self.selected_server = ''
+                        if not force_ignore:
+                            self.valid_text(False, False)
+                        disable_next(True)
+                    except AttributeError:
+                        pass
+
+
+            # Don't allow import of already imported servers
+            elif os.path.join(constants.applicationFolder, 'Servers') in self.selected_server or constants.server_path(os.path.basename(self.selected_server)):
+                self.valid_text(False, "This server already exists!")
+                disable_next(True)
+
+
+            # If server is valid, do this
+            else:
+                constants.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(self.selected_server).splitlines()[0])[:25], 'path': self.selected_server}
+                box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:])
+                self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
+                self.valid_text(True, True)
+                disable_next(False)
+
+class ServerImportBackupInput(DirectoryInput):
+
+    # Hide input_button on focus
+    def _on_focus(self, *args):
+        super()._on_focus(*args)
+
+        for child in self.parent.children:
+            for child_item in child.children:
+                try:
+                    if child_item.id == "input_button":
+
+                        if not self.text:
+                            self.hint_text = "type a path, or click browse..."
+
+                        # Run input validation on focus change
+                        if self.focus:
+                            self.valid(True, True)
+
+                        # If unfocused, validate text
+                        if not self.focus and self.text and child_item.height == 0:
+                            self.on_enter(self.text)
+
+                        # If box deleted and unfocused, set back to previous text
+                        elif not self.focus and not self.text:
+                            self.text = self.cache_text
+
+                        # If box filled in and text box clicked
+                        if self.focus and self.text:
+                            self.text = self.selected_server
+                            self.do_cursor_movement('cursor_end', True)
+                            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+                            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                        [constants.hide_widget(item, self.focus) for item in child.children]
+
+                        return
+
+                except AttributeError:
+                    continue
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.halign = "left"
+        self.padding_x = 25
+        self.size_hint_max = (528, 54)
+        self.title_text = "server path"
+        self.hint_text = "type a path, or click browse..."
+        self.cache_text = ""
+        server = ""
+        self.selected_server = None if server == '' else server
+        self.server_verified = False
+        self.update_server(hide_popup=True)
+
+    def on_enter(self, value):
+        self.selected_server = self.text.replace("~", constants.home)
+        self.update_server()
+
+    # Input validation and server selection
+    def valid_text(self, boolean_value, text):
+        for child in self.parent.children:
+            try:
+                if child.id == "InputLabel":
+                # Invalid input
+                    if not boolean_value:
+                        if isinstance(text, str) and text:
+                            child.update_text(text)
+                        else:
+                            child.update_text('This server is invalid or corrupt')
+                        self.text = ""
+                # Valid input
+                    else:
+                        child.clear_text()
+                    break
+            except AttributeError:
+                pass
+
+
+    def update_server(self, force_ignore=False, hide_popup=False):
+
+        def disable_next(disable=False):
+            for item in screen_manager.current_screen.next_button.children:
+                try:
+                    if item.id == "next_button":
+                        item.disable(disable)
+                        break
+                except AttributeError:
+                    pass
+
+        self.scroll_x = 0
+
+        if self.selected_server:
+            self.selected_server = os.path.abspath(self.selected_server)
+
+            # Extract auto-mcs.ini and server.properties
+            file_failure = True
+            server_name = None
+            new_path = None
+            test_path = constants.tempDir
+            cwd = os.path.abspath(os.curdir)
+            print(self.selected_server)
+            if (self.selected_server.endswith(".tgz") or self.selected_server.endswith(".amb") and os.path.isfile(self.selected_server)):
+                constants.folder_check(test_path)
+                os.chdir(test_path)
+                constants.run_proc(f'tar -xf "{self.selected_server}"{"" if constants.os_name == "windows" else " --wildcards"} *auto-mcs.ini')
+                constants.run_proc(f'tar -xf "{self.selected_server}" server.properties')
+                if (os.path.exists(os.path.join(test_path, "auto-mcs.ini")) or os.path.exists(os.path.join(test_path, ".auto-mcs.ini"))) and os.path.exists(os.path.join(test_path, "server.properties")):
+                    if os.path.exists(os.path.join(test_path, "auto-mcs.ini")):
+                        new_path = os.path.join(test_path, "auto-mcs.ini")
+                    elif os.path.exists(os.path.join(test_path, ".auto-mcs.ini")):
+                        new_path = os.path.join(test_path, ".auto-mcs.ini")
+                    if new_path:
+                        try:
+                            config_file = constants.server_config(server_name=None, config_path=new_path)
+                            server_name = config_file.get('general', 'serverName')
+                        except:
+                            pass
+                        file_failure = False
+                        # print(server_name, file_failure)
+
+                os.chdir(cwd)
+                constants.safe_delete(test_path)
+
+
+            # Check if the selected server is invalid
+            if file_failure:
+                if self.selected_server != os.path.abspath(os.curdir):
+                    try:
+                        self.selected_server = ''
+                        if not force_ignore:
+                            self.valid_text(False, False)
+                        disable_next(True)
+                    except AttributeError:
+                        pass
+
+
+            # Don't allow import of already imported servers
+            elif constants.server_path(server_name):
+                self.valid_text(False, "This server already exists!")
+                disable_next(True)
+
+
+            # If server is valid, do this
+            else:
+                constants.import_data = {'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25], 'path': self.selected_server}
+                box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:-1], server_name)
+                self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
+                self.valid_text(True, True)
+                disable_next(False)
+
+
+
+class ServerSeedInput(BaseInput):
+
+    # Hide input_button on focus
+    def _on_focus(self, *args):
+        try:
+            super()._on_focus(*args)
+
+            if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+                for child in self.parent.children:
+                    for child_item in child.children:
+                        try:
+                            if "drop_button" in child_item.id:
+
+                                # If box filled in and text box clicked
+                                if self.focus and self.text:
+                                    self.text = constants.new_server_info['server_settings']['seed']
+                                    self.do_cursor_movement('cursor_end', True)
+                                    Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+                                    Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                                if not self.focus:
+                                    # If text under button, cut it off temporarily
+                                    self.scroll_x = 0
+                                    self.cursor = (len(self.text), 0)
+                                    if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+                                        self.text = constants.new_server_info['server_settings']['seed'][:16] + "..."
+                                    self.scroll_x = 0
+                                    Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                                [constants.hide_widget(item, self.focus) for item in child.children]
+
+                                return
+
+                        except AttributeError:
+                            continue
+
+        except Exception as e:
+            print(f"Warning: Failed to focus input box ({e})")
+
+    def on_enter(self, value):
+
+        constants.new_server_info['server_settings']['seed'] = (self.text).strip()
+
+        break_loop = False
+        for child in self.parent.children:
+            if break_loop:
+                break
+            for item in child.children:
+                try:
+                    if item.id == "next_button":
+                        item.force_click()
+                        break
+                except AttributeError:
+                    pass
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint_max = (528, 54)
+        self.padding_x = 25
+        self.title_text = "world seed"
+        self.hint_text = "enter a seed..."
+        self.text = constants.new_server_info['server_settings']['seed']
+        self.bind(on_text_validate=self.on_enter)
+
+        if constants.new_server_info['server_settings']['world'] == "world":
+            if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+                self.halign = "left"
+                Clock.schedule_once(functools.partial(self._on_focus, self, True), 0.0)
+                Clock.schedule_once(functools.partial(self._on_focus, self, False), 0.0)
+
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        # if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+        #     if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+        #         self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.38))
+
+        if keycode[1] == "backspace":
+            # Add seed to current config
+            constants.new_server_info['server_settings']['seed'] = (self.text).strip()
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 32:
+            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring.splitlines()[0])
+
+            # Add name to current config
+            constants.new_server_info['server_settings']['seed'] = (self.text + s).strip()
+
+            return super().insert_text(s, from_undo=from_undo)
+
+
+
+class ServerPortInput(BaseInput):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint_max = (528, 54)
+        self.title_text = "IPv4/port"
+        self.hint_text = "enter IPv4 or port  (localhost:25565)"
+        self.stinky_text = ""
+        self.bind(on_text_validate=self.on_enter)
+
+
+    def on_enter(self, value):
+        self.process_text()
+
+        break_loop = False
+        for child in self.parent.children:
+            if break_loop:
+                break
+            for item in child.children:
+                try:
+                    if item.id == "next_button":
+                        if not item.disabled:
+                            item.force_click()
+                        break_loop = True
+                        break
+                except AttributeError:
+                    pass
+
+
+    def valid_text(self, boolean_value, text):
+        for child in self.parent.children:
+            try:
+                if child.id == "InputLabel":
+
+                # Valid input
+                    if boolean_value:
+                        child.clear_text()
+                        child.disable_text(False)
+
+                # Invalid input
+                    else:
+                        child.update_text(self.stinky_text)
+                        child.disable_text(True)
+                    break
+
+            except AttributeError:
+                pass
+
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if keycode[1] == "backspace":
+            self.process_text()
+
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 21:
+            s = re.sub('[^0-9:.]', '', substring.splitlines()[0])
+
+            if ":" in self.text and ":" in s:
+                s = ''
+            if ("." in s and ((self.cursor_col > self.text.find(":")) and (self.text.find(":") > -1))) or ("." in s and self.text.count(".") >= 3):
+                s = ''
+
+            # Add name to current config
+            self.process_text(text=(self.text + s))
+
+            return super().insert_text(s, from_undo=from_undo)
+
+
+    def process_text(self, text=''):
+
+        typed_info = text if text else self.text
+
+        # interpret typed information
+        if ":" in typed_info:
+            constants.new_server_info['ip'], constants.new_server_info['port'] = typed_info.split(":")
+        else:
+            if "." in typed_info:
+                constants.new_server_info['ip'] = typed_info.replace(":", "")
+                constants.new_server_info['port'] = "25565"
+            else:
+                constants.new_server_info['port'] = typed_info.replace(":", "")
+
+        if not constants.new_server_info['port']:
+            constants.new_server_info['port'] = "25565"
+
+        # print("ip: " + constants.new_server_info['ip'], "port: " + constants.new_server_info['port'])
+
+        # Input validation
+        port_check = ((int(constants.new_server_info['port']) < 1024) or (int(constants.new_server_info['port']) > 65535))
+        ip_check = (constants.check_ip(constants.new_server_info['ip']) and '.' in typed_info)
+        self.stinky_text = ''
+
+        if typed_info:
+
+            if not ip_check and ("." in typed_info or ":" in typed_info):
+                self.stinky_text = 'Invalid IPv4 address' if not port_check else 'Invalid IPv4 and port'
+
+            elif port_check:
+                self.stinky_text = ' Invalid port  (use 1024-65535)'
+
+        else:
+            constants.new_server_info['ip'] = ''
+            constants.new_server_info['port'] = '25565'
+
+        process_ip_text()
+        self.valid(not self.stinky_text)
+
+
+
+class ServerMOTDInput(BaseInput):
+
+    def on_enter(self, value):
+
+        constants.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
+
+        break_loop = False
+        for child in self.parent.children:
+            if break_loop:
+                break
+            for item in child.children:
+                try:
+                    if item.id == "next_button":
+                        item.force_click()
+                        break
+                except AttributeError:
+                    pass
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint_max = (528, 54)
+        self.title_text = "MOTD"
+        self.hint_text = "enter a message of the day..."
+        self.text = constants.new_server_info['server_settings']['motd'] if constants.new_server_info['server_settings']['motd'] != "A Minecraft Server" else ""
+        self.bind(on_text_validate=self.on_enter)
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if keycode[1] == "backspace" and len(self.text):
+            # Add name to current config
+            constants.new_server_info['server_settings']['motd'] = (self.text).strip() if self.text else "A Minecraft Server"
+
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 32:
+            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring.splitlines()[0])
+
+            # Add name to current config
+            constants.new_server_info['server_settings']['motd'] = (self.text + s).strip() if self.text + s else "A Minecraft Server"
+
+            return super().insert_text(s, from_undo=from_undo)
+
+
+
+class ServerPlayerInput(BaseInput):
+
+    def on_enter(self, value):
+        constants.new_server_info['server_settings']['max_players'] = (self.text).strip() if self.text else "20"
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint_max = (440, 54)
+        self.title_text = " max players "
+        self.hint_text = "max players  (20)"
+        self.text = constants.new_server_info['server_settings']['max_players'] if constants.new_server_info['server_settings']['max_players'] != "20" else ""
+        self.bind(on_text_validate=self.on_enter)
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if keycode[1] == "backspace" and len(self.text):
+            # Add name to current config
+            constants.new_server_info['server_settings']['max_players'] = (self.text).strip() if self.text else "20"
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring in [" ", "0"]:
+            substring = ""
+
+        elif len(self.text) < 7:
+            s = re.sub('[^0-9]', '', substring.splitlines()[0])
+
+            # Add name to current config
+            constants.new_server_info['server_settings']['max_players'] = (self.text + s).strip() if self.text + s else "20"
+
+            return super().insert_text(s, from_undo=from_undo)
+
+
+
+class ServerTickSpeedInput(BaseInput):
+
+    def on_enter(self, value):
+        constants.new_server_info['server_settings']['random_tick_speed'] = (self.text).strip() if self.text else "3"
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint_max = (440, 54)
+        self.title_text = "tick speed"
+        self.hint_text = "random tick speed  (3)"
+        self.text = constants.new_server_info['server_settings']['random_tick_speed'] if constants.new_server_info['server_settings']['random_tick_speed'] != "3" else ""
+        self.bind(on_text_validate=self.on_enter)
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if keycode[1] == "backspace" and len(self.text):
+            # Add name to current config
+            constants.new_server_info['server_settings']['random_tick_speed'] = (self.text).strip() if self.text else "3"
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring in [" "]:
+            substring = ""
+
+        elif len(self.text) < 5:
+            s = re.sub('[^0-9]', '', substring.splitlines()[0])
+
+            # Add name to current config
+            constants.new_server_info['server_settings']['random_tick_speed'] = (self.text + s).strip() if self.text + s else "3"
+
+            return super().insert_text(s, from_undo=from_undo)
+
+
+
+class AclInput(BaseInput):
+
+    # Hide input_button on focus
+    def _on_focus(self, *args):
+        super()._on_focus(*args)
+
+        for child in self.parent.children:
+            for child_item in child.children:
+                try:
+                    if child_item.id == "input_button":
+
+                        # self.hint_text = "search for rules, press 'ENTER' to add..." if self.focus else "search for rules..."
+
+                        # If box filled in and text box clicked
+                        if self.focus and self.text:
+                            self.text = self.actual_text
+                            self.do_cursor_movement('cursor_end', True)
+                            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+                            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                        if not self.focus:
+                            # If text under button, cut it off temporarily
+                            self.scroll_x = 0
+                            self.cursor = (len(self.text), 0)
+                            if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+                                self.text = self.text[:16] + "..."
+                            self.scroll_x = 0
+                            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                        [constants.hide_widget(item, self.focus) for item in child.children]
+
+                        return
+
+                except AttributeError:
+                    continue
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.halign = "left"
+        self.padding_x = 25
+        self.size_hint_max = (528, 54)
+        self.title_text = ""
+        self.hint_text = "search for rules..."
+        self.actual_text = ""
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+        # self.actual_text = self.text + ('' if not text else text)
+        # Backspace
+        if keycode[0] == 8:
+            self.actual_text = self.text + ('' if not text else text)
+            screen_manager.current_screen.search_filter(self.actual_text)
+
+    def insert_text(self, substring, from_undo=False):
+        if not self.text and substring in [" "]:
+            substring = ""
+
+        else:
+            s = re.sub('[^a-zA-Z0-9 _().!/,-]', '', substring.splitlines()[0])
+
+            # Filter input, and process data to search_filter function in AclScreen
+            self.actual_text = (self.text + s).strip() if self.text + s else ""
+            screen_manager.current_screen.search_filter(self.actual_text)
+
+            return super().insert_text(s, from_undo=from_undo)
+
+class AclRuleInput(BaseInput):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.title_text = "enter rules"
+        self.hint_text = "enter rules..."
+        self.halign = "left"
+        self.padding_x = 25
+        self.bind(on_text_validate=self.on_enter)
+
+
+    def on_enter(self, value):
+
+    # Invalid input
+        if not self.text or str.isspace(self.text):
+            self.valid(True, False)
+
+    # Valid input
+        else:
+            break_loop = False
+            for child in self.parent.children:
+                if break_loop:
+                    break
+                for item in child.children:
+                    try:
+                        if item.id == "next_button":
+                            item.force_click()
+                            break
+                    except AttributeError:
+                        pass
+
+
+    def valid_text(self, boolean_value, text):
+        for child in self.parent.children:
+            try:
+                if child.id == "InputLabel":
+
+                # Empty input
+                    if not text:
+                        child.clear_text()
+                        child.disable_text(True)
+
+                # Valid input
+                    elif boolean_value:
+                        child.clear_text()
+                        child.disable_text(False)
+
+            except AttributeError:
+                pass
+
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if not self.text or str.isspace(self.text):
+            self.valid(True, False)
+
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        else:
+
+            if screen_manager.current_screen.current_list == "bans":
+                reg_exp = '[^a-zA-Z0-9 _.,!/-]'
+            else:
+                reg_exp = '[^a-zA-Z0-9 _,!]'
+
+            s = re.sub(reg_exp, '', substring.splitlines()[0])
+
+            original_rule = self.text.split(",")[:self.text[:self.cursor_index()].count(",") + 1][-1]
+            rule = original_rule + s.replace(",","")
+
+            # Format pasted text
+            if len(s) > 3:
+                s = ', '.join([item.strip()[:16].strip() if not (item.count(".") >= 3) else item.strip() for item in s.split(",")])
+                if len(s.split(", ")[0].strip() + original_rule) > 16 and not (original_rule.count(".") >= 3):
+                    s = ", " + s + ", "
+
+
+            # Format typed text
+            elif len(rule.strip()) > 16 and not (rule.count(".") >= 3):
+                s = ""
+
+            if s == ",":
+                s = ", "
+
+
+            self.valid(True, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+
+            return super().insert_text(s, from_undo=from_undo)
+
+
+
+class BlankInput(BaseInput):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.halign = "left"
+        self.padding_x = 25
+        self.size_hint_max = (440, 54)
+        self.title_text = ""
+        self.hint_text = ""
+        self.bind(on_text_validate=self.on_enter)
+
+    # Make the text box non-interactive
+    def on_enter(self, value):
+        return
+
+    def on_touch_down(self, touch):
+        self.focus = False
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        return
+
+    def insert_text(self, substring, from_undo=False):
+        return
+def blank_input(pos_hint, hint_text):
+    drop_input = BlankInput()
+    drop_input.pos_hint = pos_hint
+    drop_input.hint_text = hint_text
+    return drop_input
+
+
+
+# --------------------------------------------------  File chooser  ----------------------------------------------------
+
+def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, select_multiple=False, title=None):
+    final_path = ""
+    file_icon = os.path.join(constants.gui_assets, "small-icon.ico")
+
+    # Will find the first file start_dir to auto select
+    def iter_start_dir(directory):
+        end_dir = directory
+
+        for dir_item in glob(os.path.join(start_dir, "*")):
+            end_dir = dir_item
+            break
+
+        return end_dir
+
+
+    # Make sure that ask_type file can dynamically choose between a list and a single file
+    if ask_type == "file":
+        final_path = filechooser.open_file(title=title, filters=ext, path=iter_start_dir(start_dir), multiple=select_multiple, icon=file_icon)
+        # Ext = [("Comma-separated Values", "*.csv")]
+
+    elif ask_type == "dir":
+        if constants.os_name == "windows":
+            root = tk.Tk()
+            root.withdraw()
+            root.iconbitmap(file_icon)
+            final_path = filedialog.askdirectory(initialdir=start_dir, title=title)
+            Window.raise_window()
+        else:
+            final_path = filechooser.choose_dir(path=iter_start_dir(start_dir), title=title, icon=file_icon, multiple=False)
+            final_path = final_path[0] if final_path else None
+
+    # World screen
+    if input_name:
+        break_loop = False
+        for item in screen_manager.current_screen.children:
+            if break_loop:
+                break
+            for child in item.children:
+                if break_loop:
+                    break
+                if child.__class__.__name__ == input_name:
+                    if input_name == "ServerWorldInput":
+                        if final_path:
+                            child.selected_world = os.path.abspath(final_path)
+                            child.update_world()
+                    break_loop = True
+                    break
+
+    # Import screen
+    if input_name:
+        break_loop = False
+        for child in screen_manager.current_screen.walk():
+            if break_loop:
+                break
+            if child.__class__.__name__ == input_name:
+                if input_name.startswith("ServerImport"):
+                    if final_path:
+                        child.selected_server = os.path.abspath(final_path) if isinstance(final_path, str) else os.path.abspath(final_path[0])
+                        child.update_server()
+                break_loop = True
+                break
+
+    return final_path
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
+
+class HeaderBackground(Widget):
+
+    y_offset = dp(62)
+
+    def update_rect(self, *args):
+        self.rect.size = self.size[0], self.y_offset
+        self.rect.pos = (self.pos[0], round(Window.height) - self.rect.size[1])
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        with self.canvas.before:
+            self.rect = Image(pos=self.pos, size=self.size, allow_stretch=True, keep_ratio=False, source=os.path.join(constants.gui_assets, 'header_background.png'))
+
+        with self.canvas.after:
+            self.canvas.clear()
+
+        self.bind(pos=self.update_rect)
+        self.bind(size=self.update_rect)
+
+
+
+class FooterBackground(Widget):
+
+    y_offset = dp(50)
+
+    def update_rect(self, *args):
+        self.rect.size = self.size[0], self.y_offset
+        self.rect.pos = self.pos
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        with self.canvas.before:
+            self.rect = Image(pos=self.pos, size=self.size, allow_stretch=True, keep_ratio=False, source=os.path.join(constants.gui_assets, 'footer_background.png'))
+            self.rect.color = (constants.background_color[0] - 0.02, constants.background_color[1] - 0.02, constants.background_color[2] - 0.02, 1)
+
+        with self.canvas.after:
+            self.canvas.clear()
+
+        self.bind(pos=self.update_rect)
+        self.bind(size=self.update_rect)
+
+
+
+class AlignLabel(Label):
+    def on_size(self, *args):
+        self.text_size = self.size
+
+
+
+def generate_title(title):
+    header = FloatLayout()
+
+    text_layout = BoxLayout()
+    text_layout.pos = (0, -8)
+
+    background = HeaderBackground()
+    label = AlignLabel(color=(0.2, 0.2, 0.4, 0.8), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf'), font_size=sp(25), size_hint=(1.0, 1.0), halign="center", valign="top")
+    label.text = title
+    text_layout.add_widget(label)
+
+    header.add_widget(background)
+    header.add_widget(text_layout)
+    return header
+
+
+
+def footer_label(path, color):
+
+    def fit_to_window(label_widget, path_string, *args):
+        x = 1
+        text = ""
+        shrink_value = round(Window.width / 25)
+        if len(path_list) > 2:
+            shrink_value -= (len("".join(path_list[2:])))
+
+        for item in path_list:
+            if x == 2 and len(item) > shrink_value and len(path_list) > 2:
+                item = item[:shrink_value - 4] + f"...{item[-1]}" if (item.endswith("'") or item.endswith("\"")) else item[:shrink_value - 5] + "..."
+
+            text += f'[color={"555599" if x < len(path_list) else color}]' + item + '[/color]'
+            if x < len(path_list):
+                text += f"[size={round(sp(22))}][font={arrow_font}]  ▸  [/font][/size]"
+            x += 1
+
+        label.text = text
+
+    arrow_font = os.path.join(constants.gui_assets, 'fonts', 'DejaVuSans.otf')
+
+    path_list = path.split(', ')
+    path_list.insert(0, "       ")
+
+    final_layout = FloatLayout()
+
+    text_layout = BoxLayout()
+    text_layout.pos = (20, 12)
+    version_layout = BoxLayout()
+
+    version_layout.pos = (-10, 13)
+
+    label = AlignLabel(color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf'), font_size=sp(22), markup=True, size_hint=(1.0, 1.0), halign="left", valign="bottom")
+    version = AlignLabel(text=f"auto-mcs[size={round(sp(18))}]  [/size]v{constants.app_version}", color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23), markup=True, size_hint=(1.0, 1.0), halign="right", valign="bottom")
+
+    text_layout.bind(pos=functools.partial(fit_to_window, label, path_list))
+    text_layout.bind(size=functools.partial(fit_to_window, label, path_list))
+
+    text_layout.add_widget(label)
+    version_layout.add_widget(version)
+
+    final_layout.add_widget(text_layout)
+    final_layout.add_widget(version_layout)
+
+    return final_layout
+
+
+
+def generate_footer(menu_path, color="9999FF", progress_screen=False):
+
+    constants.footer_path = " > ".join(menu_path.split(", "))
+
+    footer = FloatLayout()
+
+    if menu_path == 'splash':
+
+        if constants.app_online:
+            footer.add_widget(IconButton('connected', {}, (0, 5), (None, None), 'wifi-sharp.png', clickable=False))
+
+            if constants.app_latest:
+                footer.add_widget(IconButton('up to date', {}, (51, 5), (None, None), 'checkmark-sharp.png', clickable=False))
+            else:
+                footer.add_widget(IconButton('update now', {}, (51, 5), (None, None), 'sync.png', clickable=True, force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green']))
+
+            footer.add_widget(IconButton('view changelog', {}, (102, 5), (None, None), 'document-text-outline.png', clickable=True))
+
+        else:
+            footer.add_widget(IconButton('no connection', {}, (0, 5), (None, None), 'ban.png', clickable=True, force_color=[[(0.07, 0.07, 0.07, 1), (0.7, 0.7, 0.7, 1)], 'gray']))
+
+    else:
+        footer.add_widget(FooterBackground())
+        footer.add_widget(footer_label(path=menu_path, color=color)) # menu_path
+        if not progress_screen:
+            footer.add_widget(IconButton('main menu', {}, (0, 0), (None, None), 'home-sharp.png', clickable=True))
+        else:
+            footer.add_widget(AnimButton('please wait...', {}, (0, 0), (None, None), 'loading_pickaxe.gif', clickable=False))
+
+    return footer
+
+
+
+def page_counter(index, total, pos):
+    layout = FloatLayout()
+    label = Label(halign="center")
+    label.size_hint = (None, None)
+    label.pos_hint = {"center_x": 0.5, "center_y": pos[1] - 0.07}
+    label.markup = True
+    label.font_name = os.path.join(constants.gui_assets, 'fonts', 'DejaVuSans.otf')
+    label.font_size = sp(9)
+    label.opacity = 1
+
+    text = ''
+
+    for x in range(0, total):
+        if x == index - 1:
+            text += f'[color=8B8BF9]{"⬤   " if x + 1 != total else "⬤"}[/color]'
+        else:
+            text += f'[color=292942]{"⬤   " if x + 1 != total else "⬤"}[/color]'
+
+    label.text = text
+
+    layout.add_widget(label)
+    return layout
+
+
+
+class PageButton(HoverButton):
+
+    # Execute page swap on click
+    def on_touch_down(self, touch):
+        if not self.disabled and self.click_function and self.hovered and self.parent.total_pages > 1:
+            self.click_function()
+
+        return super().on_touch_down(touch)
+
+    def __init__(self, facing="left", **kwargs):
+        super().__init__(**kwargs)
+
+        # Comments for build script;
+        # "caret-back-sharp.png"
+        # "caret-forward-sharp.png"
+        self.icon = os.path.join(constants.gui_assets, 'icons', f'caret-{"back" if facing == "left" else "forward"}-sharp.png')
+        self.facing = facing
+        self.id = "page_button"
+        self.border = (0, 0, 0, 0)
+        self.background_normal = self.icon
+        self.background_down = self.icon
+        self.color_id = [(0.3, 0.3, 0.53, 1), (0.542, 0.577, 0.918, 1), (0.3, 0.3, 0.53, 0.4)]
+        self.background_color = self.color_id[0]
+        self.disabled = False
+        self.click_function = None
+        self.original_size = (22, 22)
+        self.size_hint_max = (22, 22)
+        self.size_offset = 5
+        self.pos_hint = {"center_y": 0.5}
+        self.original_x = None
+
+    def on_enter(self, *args):
+        if not self.ignore_hover and not self.disabled and self.parent.total_pages > 1:
+            new_x = (self.x - self.size_offset / 2)
+            new_hint = (self.original_size[0] + self.size_offset, self.original_size[1] + self.size_offset)
+            Animation(background_color=self.color_id[1], size_hint_max=new_hint, x=new_x, duration=0.11).start(self)
+
+    def on_leave(self, *args):
+        if not self.ignore_hover and self.parent.total_pages > 1:
+            Animation(background_color=self.color_id[0], size_hint_max=self.original_size, x=self.original_x, duration=0.11).start(self)
+
+class PageSwitcher(RelativeLayout):
+
+    def resize_self(self, *args):
+        self.width = len(self.label.text) * 0.74 + 45
+
+        # if not self.left_button.hovered:
+        self.left_button.pos = (Window.center[0] - self.width / 2 - self.left_button.width, Window.center[1])
+        self.left_button.original_x = self.left_button.x
+
+        # if not self.right_button.hovered:
+        self.right_button.pos = (Window.center[0] + self.width / 2, Window.center[1])
+        self.right_button.original_x = self.right_button.x
+
+
+    def update_index(self, index, total):
+        text = ''
+        self.total_pages = total
+
+        if index > 0 and total > 0:
+
+            for x in range(0, total):
+                if x == index - 1:
+                    text += f'[color=8B8BF9]{"⬤   " if x + 1 != total else "⬤"}[/color]'
+                else:
+                    text += f'[color=292942]{"⬤   " if x + 1 != total else "⬤"}[/color]'
+
+            self.label.text = text
+            constants.hide_widget(self, False)
+
+            if not (self.left_button.hovered or self.right_button.hovered):
+                self.resize_self()
+
+        else:
+            constants.hide_widget(self, True)
+
+        # Update button colors if disabled
+        Animation(background_color=self.left_button.color_id[(1 if (total > 1 and self.left_button.hovered) else 0 if (total > 1) else 2)], duration=0.2).start(self.left_button)
+        Animation(background_color=self.right_button.color_id[(1 if (total > 1 and self.right_button.hovered) else 0 if (total > 1) else 2)], duration=0.2).start(self.right_button)
+
+
+    def __init__(self, index, total, pos, function, **kwargs):
+        super().__init__(**kwargs)
+
+        self.total_pages = 0
+        self.size_hint_max_y = 50
+        self.pos_hint = {"center_x": 0.5, "center_y": pos[1] - 0.07}
+
+        # Page dots
+        self.label = Label(halign="center")
+        self.label.size_hint = (None, None)
+        self.label.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.label.markup = True
+        self.label.font_name = os.path.join(constants.gui_assets, 'fonts', 'DejaVuSans.otf')
+        self.label.font_size = sp(9)
+        self.label.opacity = 1
+
+        # Buttons
+        self.left_button = PageButton(facing="left")
+        self.left_button.click_function = functools.partial(function, "left")
+        self.right_button = PageButton(facing="right")
+        self.right_button.click_function = functools.partial(function, "right")
+
+        self.add_widget(self.label)
+        self.add_widget(self.left_button)
+        self.add_widget(self.right_button)
+
+        self.update_index(index, total)
+        self.bind(pos=self.resize_self)
+        Clock.schedule_once(self.resize_self, 0)
+
+
+
+class ParagraphObject(RelativeLayout):
+
+    def update_rect(self, *args):
+
+        self.rect.source = os.path.join(constants.gui_assets, f'text_input_cover_fade.png')
+
+        self.title.text = self.title_text
+        self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
+        if self.width > 500:
+            self.rect.width += (self.width - 500)
+        self.rect.pos = self.pos[0] + (self.size[0] / 2) - (self.rect.size[0] / 2) - 1, self.pos[1] + 45 + self.height-56
+        self.title.pos = self.pos[0] + (self.size[0] / 2) - (self.title.size[0] / 2), self.pos[1] + 4 + self.height-56
+
+        # Background sizes
+        body_offset = 29
+
+        self.background_top.width = self.width
+        self.background_top.height = body_offset
+        self.background_top.x = self.x
+        self.background_top.y = self.y + self.height - self.background_top.height
+
+        self.background_bottom.width = self.width
+        self.background_bottom.height = 0 - body_offset
+        self.background_bottom.x = self.x
+        self.background_bottom.y = self.y
+
+        self.background.width = self.width
+        self.background.x = self.x
+        self.background.y = self.background_bottom.y + abs(self.background_bottom.height) - body_offset
+        self.background.height = self.height - abs(self.background_bottom.height) - abs(self.background_top.height) + body_offset
+
+        self.text_content.y = self.background.y - 25
+        self.text_content.x = self.x + 25
+        self.text_content.size = self.size
+        self.text_content.width = self.width
+
+
+    def __init__(self, font, **kwargs):
+        super().__init__(**kwargs)
+
+        self.title_text = "Paragraph"
+        self.size_hint = (None, None)
+        self.size_hint_max = (None, None)
+
+        with self.canvas.after:
+            # Top
+            self.background_top = Image(source=os.path.join(constants.gui_assets, "paragraph_edge.png"))
+            self.background_top.allow_stretch = True
+            self.background_top.keep_ratio = False
+
+            # Body
+            self.background = Image(source=os.path.join(constants.gui_assets, "paragraph_background.png"))
+            self.background.allow_stretch = True
+            self.background.keep_ratio = False
+
+            # Top
+            self.background_bottom = Image(source=os.path.join(constants.gui_assets, "paragraph_edge.png"))
+            self.background_bottom.allow_stretch = True
+            self.background_bottom.keep_ratio = False
+
+            # Title
+            self.rect = Image(size=(100, 15), color=constants.background_color, allow_stretch=True, keep_ratio=False)
+            self.title = AlignLabel(halign="center", text=self.title_text, color=(0.6, 0.6, 1, 1), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
+            self.bind(pos=self.update_rect)
+            self.bind(size=self.update_rect)
+
+            # Text content
+            self.text_content = AlignLabel(halign="left", valign="top", color=(0.65, 0.65, 1, 1), font_name=font if font else os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'), markup=True)
+            self.text_content.line_height = 1.3
+
+def paragraph_object(size, name, content, font_size, font):
+    paragraph_obj = ParagraphObject(font)
+    paragraph_obj.pos_hint = {"center_x": 0.5} # , "center_y": 0.5
+    paragraph_obj.width = size[0]
+    paragraph_obj.height = size[1] + 10
+    paragraph_obj.title_text = name
+    paragraph_obj.text_content.text = content
+    paragraph_obj.text_content.font_size = font_size
+    paragraph_obj.bind(on_parent=functools.partial(print, "test"))
+    return paragraph_obj
+
+
+
+# Scroll View Items
+class ScrollViewWidget(ScrollView):
+    def __init__(self, position=(0.5, 0.52), **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint = (1, None)
+        self.size = (Window.width, Window.height // 2)
+        self.do_scroll_x = False
+        self.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.bar_width = 6
+        self.drag_pad = self.bar_width * 15
+        self.bar_color = (0.6, 0.6, 1, 1)
+        self.bar_inactive_color = (0.6, 0.6, 1, 0.25)
+        self.scroll_wheel_distance = dp(55)
+        self.scroll_timeout = 250
+
+    # Allow scroll bar to be dragged
+    def on_touch_move(self, touch, *args):
+        if touch.pos[0] > self.x + (self.width - self.drag_pad):
+            try:
+                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
+                self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
+                return True
+            except ZeroDivisionError:
+                pass
+        return super().on_touch_move(touch)
+
+    def on_touch_down(self, touch, *args):
+        if touch.pos[0] > self.x + (self.width - self.drag_pad):
+            try:
+                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
+                self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
+                return True
+            except ZeroDivisionError:
+                pass
+        return super().on_touch_down(touch)
+
+    def __del__(self):
+        for widget in self.walk():
+            self.remove_widget(widget)
+            del widget
+
+        self.clear_widgets()
+        gc.collect()
+
+class ScrollItem(RelativeLayout):
+    def __init__(self, widget=None, **kwargs):
+        super().__init__(**kwargs)
+        self.height = 85
+        self.size_hint_y = None
+
+        if widget:
+            self.add_widget(widget)
+
+def scroll_background(pos_hint, pos, size, highlight=False):
+
+    class ScrollBackground(Image):
+
+        def resize(self, *args):
+            self.width = Window.width-20
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.allow_stretch = True
+            self.keep_ratio = False
+            self.size_hint = (None, None)
+            self.color = (1, 1, 1, 1) if highlight else constants.background_color
+            self.source = os.path.join(constants.gui_assets, 'scroll_gradient.png')
+            Window.bind(on_resize=self.resize)
+
+    img = ScrollBackground()
+    img.pos = pos
+    img.pos_hint = pos_hint
+    img.size = size
+    img.width = 830
+
+    Clock.schedule_once(img.resize, 0)
+
+    return img
+
+
+# Recycle View Items
+# Scroll View Items
+class RecycleViewWidget(RecycleView):
+    def __init__(self, position=(0.5, 0.52), view_class=None, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint = (1, None)
+        self.size = (Window.width, Window.height // 2)
+        self.do_scroll_x = False
+        if position:
+            self.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.bar_width = 6
+        self.drag_pad = self.bar_width * 15
+        self.bar_color = (0.6, 0.6, 1, 1)
+        self.bar_inactive_color = (0.6, 0.6, 1, 0.25)
+        self.scroll_wheel_distance = dp(55)
+        Clock.schedule_once(functools.partial(self.assign_viewclass, view_class), 0)
+
+
+    # Allow scroll bar to be dragged
+    def on_touch_move(self, touch, *args):
+        if touch.pos[0] > self.x + (self.width - self.drag_pad):
+            try:
+                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
+                self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
+                return True
+            except ZeroDivisionError:
+                pass
+        return super().on_touch_move(touch)
+
+    def on_touch_down(self, touch, *args):
+        if touch.pos[0] > self.x + (self.width - self.drag_pad):
+            try:
+                new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
+                self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
+                return True
+            except ZeroDivisionError:
+                pass
+        return super().on_touch_down(touch)
+
+    def assign_viewclass(self, view_class, *args):
+        self.viewclass = view_class
+
+    # def __del__(self):
+    #     for widget in self.walk():
+    #         self.remove_widget(widget)
+    #         del widget
+    #
+    #     self.clear_widgets()
+    #     gc.collect()
+
+
+
+# Banner layout with random ID
+class BannerLayout(FloatLayout):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.id = constants.gen_rstring(10)
+
+# Notification banner object
+class BannerObject(RelativeLayout):
+
+    def resize_self(self, *args):
+        self.left_side.x = 0
+        self.right_side.x = self.size[0]
+        self.middle.x = self.left_side.x + self.left_side.width
+
+        if self.icon:
+            self.icon.pos_hint = {"center_y": 0.5}
+
+            if self.icon_side == "left":
+                self.icon.x = (self.height - 105) * 0.5
+
+            else:
+                self.icon.x = self.width - ((self.height + 95) * 0.5)
+
+
+    def show_animation(self, show=True, *args):
+
+        # On show
+        if show:
+            for widget in self.children:
+
+                if widget == self.text_object:
+                    text_size = self.text_object.font_size
+                    self.text_object.font_size = text_size - 12
+                    Animation(font_size=text_size, duration=0.15).start(widget)
+
+                if self.icon:
+                    if widget == self.icon:
+                        original_size = (self.icon.width, self.icon.height)
+                        self.icon.size = (self.icon.width - 9, self.icon.height - 9)
+                        Animation(size=original_size, duration=0.2).start(widget)
+
+                Animation(opacity=1, duration=0.3).start(widget)
+
+        # On hide
+        else:
+            for widget in self.children:
+
+                if widget == self.text_object:
+                    Animation(font_size=self.text_object.font_size - 15, duration=0.15).start(widget)
+
+                if self.icon:
+                    if widget == self.icon:
+                        new_size = (self.icon.width - 6, self.icon.height - 6)
+                        Animation(size=new_size, duration=0.2).start(widget)
+
+                Animation(opacity=0, duration=0.3).start(widget)
+
+
+    def __init__(self, pos_hint={"center_x": 0.5, "center_y": 0.5}, size=(200,50), color=(1,1,1,1), text="", icon=None, icon_side="left", animate=False, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size = size
+        self.size_hint_max = size
+        self.pos_hint = pos_hint
+        self.icon_side = icon_side
+
+
+        # Text
+        self.text_object = Label()
+        self.text_object.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text_object.font_size = sp(round(self.height / 1.8))
+        self.text_object.color = (0, 0, 0, 0.75)
+        self.text_object.markup = True
+        self.text_object.text = ("    " + text) if self.icon_side == "left" else (text + "    ")
+
+        # Readjust width to fit text if it's too small
+        if text:
+            new_width = (((len(self.text_object.text) - 4) * (self.text_object.font_size - 8)) / 1.09)
+
+            if new_width > self.width:
+                size = (new_width, size[1])
+                self.size = size
+                self.size_hint_max = size
+
+
+        # Left side
+        self.left_side = Image()
+        self.left_side.source = os.path.join(constants.gui_assets, "banner_edge.png")
+        self.left_side.color = color
+        self.left_side.allow_stretch = True
+        self.left_side.keep_ratio = False
+        self.left_side.size_hint = (None, None)
+        self.left_side.height = size[1]
+        self.left_side.width = (size[1] / 2.2)
+
+        # Middle stretched image
+        self.middle = Image()
+        self.middle.source = os.path.join(constants.gui_assets, "banner_middle.png")
+        self.middle.color = color
+        self.middle.allow_stretch = True
+        self.middle.keep_ratio = False
+        self.middle.size_hint = (None, None)
+        self.middle.height = size[1]
+        self.middle.width = size[0] - ((size[1] / 2.2) * 2)
+
+        # Right side
+        self.right_side = Image()
+        self.right_side.source = os.path.join(constants.gui_assets, "banner_edge.png")
+        self.right_side.color = color
+        self.right_side.allow_stretch = True
+        self.right_side.keep_ratio = False
+        self.right_side.size_hint = (None, None)
+        self.right_side.height = size[1]
+        self.right_side.width = -(size[1] / 2.2)
+
+
+        self.add_widget(self.left_side)
+        self.add_widget(self.middle)
+        self.add_widget(self.right_side)
+        self.add_widget(self.text_object)
+
+
+        # If icon is specified
+        if icon:
+            self.icon = Image()
+            self.icon.source = os.path.join(constants.gui_assets, 'icons', icon)
+            self.icon.color = (0, 0, 0, 0.8)
+            self.icon.size_hint = (None, None)
+            self.icon.allow_stretch = True
+            self.icon.height = size[1] / 1.6
+
+            self.add_widget(self.icon)
+
+
+        self.bind(pos=self.resize_self)
+        Clock.schedule_once(self.resize_self, 0)
+
+        if animate:
+            for widget in self.children:
+                widget.opacity = 0
+            Clock.schedule_once(functools.partial(self.show_animation, True), 0)
+
+
+
+# ----------------------------------------------------  Buttons  -------------------------------------------------------
+def main_button(name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None):
+
+    def repos_icon(icon_widget, button_widget, *args):
+
+        def resize(*args):
+            pos_calc = ((button_widget.width/2 - 35) if button_widget.center[0] > 0 else (-button_widget.width/2 + 35))
+            icon_widget.center[0] = button_widget.center[0] + pos_calc
+
+        Clock.schedule_once(resize, 0)
+
+    final = FloatLayout()
+    final.id = name
+
+    button = HoverButton()
+    button.id = 'main_button'
+    button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+    button.size_hint = (None, None)
+    button.size = (dp(450 if not width else width), dp(72))
+    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    button.border = (30, 30, 30, 30)
+    button.background_normal = os.path.join(constants.gui_assets, 'main_button.png')
+    button.background_down = os.path.join(constants.gui_assets, 'main_button_click.png')
+
+    text = Label()
+    text.id = 'text'
+    text.size_hint = (None, None)
+    text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    text.text = name.upper()
+    text.font_size = sp(19)
+    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+    text.color = (0.6, 0.6, 1, 1)
+
+
+    # Button click behavior
+    button.on_release = functools.partial(button_action, name, button)
+    final.add_widget(button)
+
+    if icon_name:
+        icon = Image()
+        icon.id = 'icon'
+        icon.source = icon_path(icon_name)
+        icon.size = (dp(1), dp(1))
+        icon.color = (0.6, 0.6, 1, 1)
+        icon.pos_hint = {"center_y": position[1]}
+        icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
+        final.add_widget(icon)
+
+    final.add_widget(text)
+
+    if auto_adjust_icon and icon_name:
+        Clock.schedule_once(functools.partial(repos_icon, icon, button), 0)
+
+    if click_func:
+        button.bind(on_press=click_func)
+
+    return final
+
+
+
+class IconButton(FloatLayout):
+
+    def resize(self, *args):
+        self.x = Window.width - self.default_pos[0]
+        self.y = Window.height - self.default_pos[1]
+
+        if self.default_pos:
+            self.button.pos = (self.x + 11, self.y)
+            self.icon.pos = (self.x, self.y - 11)
+
+            if self.anchor == "left":
+                self.text.pos = (self.x - 10, self.y + 17)
+                if self.text.pos[0] <= 0:
+                    self.text.pos[0] += sp(len(self.text.text) * 3)
+
+            elif self.anchor == "right":
+                self.text.pos = (self.x - 4, self.y - 17)
+                if self.text.pos[0] >= Window.width - self.button.width * 2:
+                    self.text.pos[0] -= sp(len(self.text.text) * 3)
+                    self.text.pos[1] -= self.button.height
+
+
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.default_pos = position
+        self.anchor = anchor
+
+        self.button = HoverButton()
+        self.button.id = 'icon_button'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
+    
+        if force_color:
+            self.button.alt_color = "_" + force_color[1]
+    
+        self.button.size_hint = size_hint
+        self.button.size = (dp(50), dp(50))
+        self.button.pos_hint = pos_hint
+    
+        if position:
+            self.button.pos = (position[0] + 11, position[1])
+    
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.button.id}.png')
+    
+        if not force_color:
+            self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
+        else:
+            self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
+    
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = size_hint
+        self.text.pos_hint = pos_hint
+        self.text.text = name.lower()
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.color = (0, 0, 0, 0)
+    
+        if position:
+            self.text.pos = (position[0] - 10, position[1] + 17)
+    
+        if self.text.pos[0] <= 0:
+            self.text.pos[0] += sp(len(self.text.text) * 3)
+    
+    
+        if clickable:
+            # Button click behavior
+            if click_func:
+                self.button.on_release = functools.partial(click_func)
+            else:
+                self.button.on_release = functools.partial(button_action, name, self.button)
+    
+    
+        self.add_widget(self.button)
+    
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.size_hint = size_hint
+            self.icon.source = icon_path(icon_name)
+            self.icon.size = (dp(72), dp(72))
+            self.icon.color = self.button.color_id[1]
+            self.icon.pos_hint = pos_hint
+    
+            if position:
+                self.icon.pos = (position[0], position[1] - 11)
+    
+            self.add_widget(self.icon)
+    
+        self.add_widget(self.text)
+
+        # Check for right float
+        if anchor == "right":
+            self.bind(size=self.resize)
+            self.bind(pos=self.resize)
+
+
+class AnimButton(FloatLayout):
+
+    def resize(self, *args):
+        self.x = Window.width - self.default_pos[0]
+        self.y = Window.height - self.default_pos[1]
+
+        if self.default_pos:
+            self.button.pos = (self.x + 11, self.y)
+            self.icon.pos = (self.x, self.y - 11)
+
+            if self.anchor == "left":
+                self.text.pos = (self.x - 10, self.y + 17)
+                if self.text.pos[0] <= 0:
+                    self.text.pos[0] += sp(len(self.text.text) * 3)
+
+            elif self.anchor == "right":
+                self.text.pos = (self.x - 4, self.y - 17)
+                if self.text.pos[0] >= Window.width - self.button.width * 2:
+                    self.text.pos[0] -= sp(len(self.text.text) * 3)
+                    self.text.pos[1] -= self.button.height
+
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.default_pos = position
+        self.anchor = anchor
+
+        self.button = HoverButton()
+        self.button.id = 'icon_button'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
+
+        if force_color:
+            self.button.alt_color = "_" + force_color[1]
+
+        self.button.size_hint = size_hint
+        self.button.size = (dp(50), dp(50))
+        self.button.pos_hint = pos_hint
+
+        if position:
+            self.button.pos = (position[0] + 11, position[1])
+
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.button.id}.png')
+
+        if not force_color:
+            self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
+        else:
+            self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = size_hint
+        self.text.pos_hint = pos_hint
+        self.text.text = name.lower()
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.color = (0, 0, 0, 0)
+
+        if position:
+            self.text.pos = (position[0] - 10, position[1] + 17)
+
+        if self.text.pos[0] <= 0:
+            self.text.pos[0] += sp(len(self.text.text) * 3)
+
+        if clickable:
+            # Button click behavior
+            if click_func:
+                self.button.on_release = functools.partial(click_func)
+            else:
+                self.button.on_release = functools.partial(button_action, name, self.button)
+
+        self.add_widget(self.button)
+
+        if icon_name:
+            self.icon = AsyncImage()
+            self.icon.id = 'icon'
+            self.icon.source = os.path.join(constants.gui_assets, 'animations', icon_name)
+            self.icon.size_hint_max = (dp(45), dp(45))
+            self.icon.color = self.button.color_id[1]
+            self.icon.pos_hint = pos_hint
+            self.icon.allow_stretch = True
+            self.icon.anim_delay = 0.02
+
+            if position:
+                self.icon.texture_update()
+                self.icon.pos = (self.button.pos[0] + 2.2, self.button.pos[1] + 2.2)
+
+            self.add_widget(self.icon)
+
+        self.add_widget(self.text)
+
+        # Check for right float
+        if anchor == "right":
+            self.bind(size=self.resize)
+            self.bind(pos=self.resize)
+
+
+class BigIcon(HoverButton):
+
+    def on_click(self):
+        for item in self.parent.parent.parent.children:
+            for child_item in item.children:
+                for child_button in child_item.children:
+                    if child_button.id == 'big_icon_button':
+
+                        if child_button.hovered is True:
+                            child_button.selected = True
+                            child_button.on_enter()
+                            child_button.background_down = os.path.join(constants.gui_assets, f'{child_button.id}_selected.png')
+                            constants.new_server_info['type'] = child_button.type
+
+                        else:
+                            child_button.selected = False
+                            for child in [x for x in child_button.parent.children if x.id == "icon"]:
+                                if child.type == child_button.type:
+                                    child_button.on_leave()
+                            child_button.background_normal = os.path.join(constants.gui_assets, f'{child_button.id}.png')
+                            child_button.background_down = os.path.join(constants.gui_assets, f'{child_button.id}_click.png')
+                            child_button.background_hover = os.path.join(constants.gui_assets, f'{child_button.id}_hover.png')
+
+                        break
+
+
+
+def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, selected=False):
+
+    final = FloatLayout()
+
+    button = BigIcon()
+    button.selected = selected
+    button.id = 'big_icon_button'
+    button.color_id = [(0.47, 0.52, 1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
+    button.type = icon_name
+
+    if force_color:
+        button.alt_color = "_" + force_color[1]
+
+    button.size_hint = size_hint
+    button.size = (dp(150), dp(150))
+    button.pos_hint = pos_hint
+
+    if position:
+        button.pos = (position[0] + 11, position[1])
+
+    button.border = (0, 0, 0, 0)
+    button.background_normal = os.path.join(constants.gui_assets, f'{button.id}{"_selected" if selected else ""}.png')
+
+    if not force_color:
+        if button.selected:
+            button.background_down = os.path.join(constants.gui_assets, f'{button.id}_selected.png')
+        else:
+            button.background_down = os.path.join(constants.gui_assets, f'{button.id}_click.png' if clickable else f'{button.id}_hover.png')
+    else:
+        button.background_down = os.path.join(constants.gui_assets, f'{button.id}_click_{force_color[1]}.png' if clickable else f'{button.id}_hover_{force_color[1]}.png')
+
+    text = Label()
+    text.id = 'text'
+    text.size_hint = size_hint
+    text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
+    text.text = name.lower()
+    text.font_size = sp(19)
+    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+    text.color = (0, 0, 0, 0)
+
+    if position:
+        text.pos = (position[0] - 10, position[1] - 17)
+
+    if text.pos[0] <= 0:
+        text.pos[0] += sp(len(text.text) * 3)
+
+
+    if clickable:
+        # Button click behavior
+        button.on_release = functools.partial(button.on_click)
+
+
+    final.add_widget(button)
+
+    if icon_name:
+        icon = Image()
+        icon.id = 'icon'
+        icon.type = button.type
+        icon.size_hint = size_hint
+        icon.source = icon_path(os.path.join('big', f'{icon_name}.png'))
+        icon.size = (dp(125), dp(125))
+        icon.color = button.color_id[1] if not selected else (0.05, 0.05, 0.1, 1)
+        icon.pos_hint = pos_hint
+
+        if position:
+            icon.pos = (position[0], position[1] - 11)
+
+        final.add_widget(icon)
+
+    final.add_widget(text)
+
+    return final
+
+
+
+def exit_button(name, position, cycle=False):
+
+    final = FloatLayout()
+
+    button = HoverButton()
+    button.id = 'exit_button'
+    button.color_id = [(0.1, 0.05, 0.05, 1), (0.6, 0.6, 1, 1)]
+
+    button.size_hint = (None, None)
+    button.size = (dp(195), dp(55))
+    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    button.border = (-10, -10, -10, -10)
+    button.background_normal = os.path.join(constants.gui_assets, 'exit_button.png')
+    button.background_down = os.path.join(constants.gui_assets, 'exit_button_click.png')
+
+    text = Label()
+    text.id = 'text'
+    text.size_hint = (None, None)
+    text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    text.text = name.upper()
+    text.font_size = sp(19)
+    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+    text.color = (0.6, 0.6, 1, 1)
+
+    icon = Image()
+    icon.id = 'icon'
+    icon.source = icon_path('close-circle-outline.png' if name.lower() == "quit" else 'back-outline.png')
+    icon.size = (dp(1), dp(1))
+    icon.color = (0.6, 0.6, 1, 1)
+    icon.pos_hint = {"center_y": position[1]}
+    icon.pos = (-70, 200)
+
+
+    # Button click behavior
+    button.on_release = functools.partial(button_action, name, button)
+
+
+    final.add_widget(button)
+    final.add_widget(icon)
+    final.add_widget(text)
+
+    return final
+
+
+
+class NextButton(HoverButton):
+
+    def disable(self, disable):
+
+        self.disabled = disable
+        for item in self.parent.children:
+            try:
+                if item.id == 'text':
+                    Animation(color=(0.6, 0.6, 1, 0.4) if self.disabled else (0.6, 0.6, 1, 1), duration=0.12).start(item)
+                elif item.id == 'icon':
+                    Animation(color=(0.6, 0.6, 1, 0) if self.disabled else (0.6, 0.6, 1, 1), duration=0.12).start(item)
+
+            except AttributeError:
+                pass
+
+    def loading(self, boolean_value):
+        self.on_leave()
+
+        for child in self.parent.children:
+            if child.id == "load_icon":
+                self.disable(boolean_value)
+                if boolean_value:
+                    child.color = (0.6, 0.6, 1, 1)
+                else:
+                    child.color = (0.6, 0.6, 1, 0)
+                break
+
+    def update_next(self, boolean_value, message):
+
+        if message:
+            for child in self.parent.parent.children:
+                if "ServerVersionInput" in child.__class__.__name__:
+                    child.focus = False
+                    child.valid(boolean_value, message)
+
+        self.disable(not boolean_value)
+
+    def on_press(self):
+        super().on_press()
+        for child in self.parent.parent.children:
+            if "ServerVersionInput" in child.__class__.__name__:
+                # Reset geyser_selected if version is less than 1.13.2
+                if constants.version_check(child.text, "<", "1.13.2") or constants.new_server_info['type'] not in ['spigot', 'paper', 'fabric']:
+                    constants.new_server_info['server_settings']['geyser_support'] = False
+
+                # Reset gamerule settings if version is less than 1.4.2
+                if constants.version_check(child.text, "<", "1.4.2"):
+                    constants.new_server_info['server_settings']['keep_inventory'] = False
+                    constants.new_server_info['server_settings']['daylight_weather_cycle'] = True
+                    constants.new_server_info['server_settings']['command_blocks'] = False
+                    constants.new_server_info['server_settings']['random_tick_speed'] = "3"
+
+                # Reset level_type if level type not supported
+                if constants.version_check(child.text, "<", "1.1"):
+                    constants.new_server_info['server_settings']['level_type'] = "default"
+                elif constants.version_check(child.text, "<", "1.3.1") and constants.new_server_info['server_settings']['level_type'] not in ['default', 'flat']:
+                    constants.new_server_info['server_settings']['level_type'] = "default"
+                elif constants.version_check(child.text, "<", "1.7.2") and constants.new_server_info['server_settings']['level_type'] not in ['default', 'flat', 'large_biomes']:
+                    constants.new_server_info['server_settings']['level_type'] = "default"
+
+                # Disable chat reporting
+                if constants.version_check(child.text, "<", "1.19") or constants.new_server_info['type'] == "vanilla":
+                    constants.new_server_info['server_settings']['disable_chat_reporting'] = False
+                else:
+                    constants.new_server_info['server_settings']['disable_chat_reporting'] = True
+
+                # Check for potential world incompatibilities
+                if constants.new_server_info['server_settings']['world'] != "world":
+                    check_world = constants.check_world_version(constants.new_server_info['server_settings']['world'], constants.new_server_info['version'])
+                    if not check_world[0] and check_world[1]:
+                        constants.new_server_info['server_settings']['world'] = "world"
+
+                child.valid_text(True, True)
+
+            if "Input" in child.__class__.__name__:
+                child.focus = False
+
+
+
+def next_button(name, position, disabled=False, next_screen="MainMenuScreen", show_load_icon=False):
+
+    final = FloatLayout()
+
+    button = NextButton(disabled=disabled)
+    button.id = 'next_button'
+    button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+    button.size_hint = (None, None)
+    button.size = (dp(240), dp(67))
+    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    button.border = (-25, -25, -25, -25)
+    button.background_normal = os.path.join(constants.gui_assets, 'next_button.png')
+    button.background_down = os.path.join(constants.gui_assets, 'next_button_click.png')
+    button.background_disabled_normal = os.path.join(constants.gui_assets, 'next_button_disabled.png')
+    button.background_disabled_down = os.path.join(constants.gui_assets, 'next_button_disabled.png')
+
+    text = Label()
+    text.id = 'text'
+    text.size_hint = (None, None)
+    text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    text.text = name.upper()
+    text.font_size = sp(19)
+    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+    text.color = (0.6, 0.6, 1, 0.4) if disabled else (0.6, 0.6, 1, 1)
+
+    # Button click behavior
+    button.on_release = functools.partial(button_action, name, button, next_screen)
+
+    icon = Image()
+    icon.id = 'icon'
+    icon.source = icon_path('arrow-forward-circle-outline.png')
+    icon.size = (dp(1), dp(1))
+    icon.color = (0.6, 0.6, 1, 0) if disabled else (0.6, 0.6, 1, 1)
+    icon.pos_hint = {"center_y": position[1]}
+    icon.pos = (-90, 200)
+
+    if show_load_icon:
+        load_icon = AsyncImage()
+        load_icon.id = 'load_icon'
+        load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+        load_icon.size_hint_max_y = 40
+        load_icon.color = (0.6, 0.6, 1, 0)
+        load_icon.pos_hint = {"center_y": position[1]}
+        load_icon.pos = (-87, 200)
+        load_icon.allow_stretch = True
+        load_icon.anim_delay = 0.02
+        final.add_widget(load_icon)
+
+    final.add_widget(button)
+    final.add_widget(icon)
+
+    final.add_widget(text)
+
+    return final
+
+
+
+def header_text(display_text, more_text, position, fixed_x=False, no_line=False):
+
+    final = FloatLayout()
+
+    text = Label()
+    text.id = 'text'
+    text.size_hint = (None, None)
+    text.markup = True
+    if not fixed_x:
+        text.pos_hint = {"center_x": 0.5, "center_y": position[1]}
+    else:
+        text.pos_hint = {"center_y": position[1]}
+    text.text = display_text
+    text.font_size = sp(23)
+    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+    text.color = (0.6, 0.6, 1, 1)
+
+    lower_text = Label()
+    lower_text.id = 'lower_text'
+    lower_text.size_hint = (None, None)
+    text.markup = True
+    lower_text.pos_hint = {"center_x": 0.5, "center_y": position[1] - 0.07}
+    lower_text.text = more_text
+    lower_text.font_size = sp(19)
+    lower_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+    lower_text.color = (0.6, 0.6, 1, 0.6)
+
+    separator = Label(text="_" * 48, pos_hint={"center_y": position[1] - 0.025}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+    separator.id = 'separator'
+    if not no_line:
+        final.add_widget(separator)
+    final.add_widget(text)
+
+    if lower_text:
+        final.add_widget(lower_text)
+
+    return final
+
+
+
+def input_button(name, position, file=(), input_name=None, title=None, ext_list=[]):
+
+    final = FloatLayout()
+    final.x += 190
+
+    button = HoverButton()
+    button.id = 'input_button'
+    button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+    button.size_hint_max = (151, 58)
+    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    button.border = (0, 0, 0, 0)
+    button.background_normal = os.path.join(constants.gui_assets, 'input_button.png')
+    button.background_down = os.path.join(constants.gui_assets, 'input_button_click.png')
+
+    text = Label()
+    text.id = 'text'
+    text.size_hint = (None, None)
+    text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    text.text = name.upper()
+    text.font_size = sp(17)
+    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+    text.color = (0.6, 0.6, 1, 1)
+
+    # Button click behavior
+    if file:
+        button.on_release = functools.partial(file_popup, file[0], file[1], ext_list, input_name, title=title)
+    else:
+        button.on_release = functools.partial(button_action, name, button)
+
+    final.add_widget(button)
+    final.add_widget(text)
+
+    return final
+
+
+# Facing: left, right, center
+class DropButton(FloatLayout):
+
+    def __init__(self, name, position, options_list, input_name=None, x_offset=0, facing='left', custom_func=None, change_text=True, **kwargs):
+        super().__init__(**kwargs)
+
+        text_padding = 5
+        self.facing = facing
+        self.options_list = options_list
+
+        self.x += 133 + x_offset
+
+        self.button = HoverButton()
+        self.id = self.button.id = 'drop_button' if facing == 'center' else f'drop_button_{self.facing}'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+        self.button.size_hint_max = (182, 58)
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
+        self.button.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+
+        # Change background when expanded - A
+        def toggle_background(boolean, *args):
+
+            self.button.ignore_hover = boolean
+
+            for child in self.button.parent.children:
+                if child.id == 'icon':
+                    Animation(height=-abs(child.init_height) if boolean else abs(child.init_height), duration=0.15).start(child)
+
+            if boolean:
+                Animation(opacity=1, duration=0.13).start(self.dropdown)
+                self.button.background_normal = os.path.join(constants.gui_assets, f'{self.id}_expand.png')
+            else:
+                self.button.on_mouse_pos(None, Window.mouse_pos)
+                if self.button.hovered:
+                    self.button.on_enter()
+                else:
+                    self.button.on_leave()
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.text.text = name.upper() + (" " * text_padding)
+        self.text.font_size = sp(17)
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 1)
+
+
+        # Dropdown list
+        class FadeDrop(DropDown):
+            def dismiss(self, *largs):
+                Animation(opacity=0, duration=0.13).start(self)
+                super().dismiss(self, *largs)
+                Clock.schedule_once(functools.partial(self.deselect_buttons), 0.15)
+
+            def deselect_buttons(self, *args):
+                for child in self.children:
+                    for child_item in child.children:
+                        for child_button in child_item.children:
+                            if "button" in child_button.id:
+                                child_button.on_leave()
+
+        self.dropdown = FadeDrop()
+        self.dropdown.id = 'dropdown'
+        self.dropdown.opacity = 0
+        self.dropdown.min_state_time = 0.13
+
+        for item in self.options_list:
+
+            # Middle of the list
+            if item != self.options_list[-1]:
+                mid_btn = self.list_button(item, sub_id='list_mid_button')
+                self.dropdown.add_widget(mid_btn)
+
+            # Last button
+            else:
+                end_btn = self.list_button(item, sub_id='list_end_button')
+                self.dropdown.add_widget(end_btn)
+
+        # Button click behavior
+        def set_var(var, result):
+
+            # Gamemode drop-down
+            if var == 'ServerModeInput':
+                constants.new_server_info['server_settings']['gamemode'] = result
+            elif var == 'ServerDiffInput':
+                constants.new_server_info['server_settings']['difficulty'] = result
+            elif var == 'ServerLevelTypeInput':
+                result = result.replace("normal", "default").replace("superflat", "flat").replace("large biomes", "large_biomes")
+                constants.new_server_info['server_settings']['level_type'] = result
+
+
+        self.button.on_release = functools.partial(lambda: self.dropdown.open(self.button))
+
+        if change_text:
+            self.dropdown.bind(on_select=lambda instance, x: setattr(self.text, 'text', x.upper() + (" " * text_padding)))
+
+        if custom_func:
+            self.dropdown.bind(on_select=lambda instance, x: custom_func(x))
+        else:
+            self.dropdown.bind(on_select=lambda instance, x: set_var(input_name, x))
+
+        # Change background when expanded - B
+        self.button.bind(on_release=functools.partial(toggle_background, True))
+        self.dropdown.bind(on_dismiss=functools.partial(toggle_background, False))
+
+
+        self.add_widget(self.button)
+        self.add_widget(self.text)
+
+        # dropdown arrow
+        self.icon = Image()
+        self.icon.id = 'icon'
+        self.icon.source = os.path.join(constants.gui_assets, 'drop_arrow.png')
+        self.icon.init_height = 14
+        self.icon.size = (14, self.icon.init_height)
+        self.icon.allow_stretch = True
+        self.icon.keep_ratio = True
+        self.icon.size_hint_y = None
+        self.icon.color = (0.6, 0.6, 1, 1)
+        self.icon.pos_hint = {"center_y": position[1]}
+        self.icon.pos = (195 + x_offset, 200)
+
+        self.add_widget(self.icon)
+
+
+    # Create button in drop-down list
+    def list_button(self, sub_name, sub_id):
+
+        sub_final = AnchorLayout()
+        sub_final.id = sub_name
+        sub_final.size_hint_y = None
+        sub_final.height = 42 if "mid" in sub_id else 46
+
+        sub_button = HoverButton()
+        sub_button.id = sub_id
+        sub_button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+        sub_button.border = (0, 0, 0, 0)
+        sub_button.background_normal = os.path.join(constants.gui_assets, f'{sub_id}.png')
+        sub_button.background_down = os.path.join(constants.gui_assets, f'{sub_id}_click.png')
+
+        sub_text = Label()
+        sub_text.id = 'text'
+        sub_text.text = sub_name
+        sub_text.font_size = sp(19)
+        sub_text.padding_y = 100
+        sub_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        sub_text.color = (0.6, 0.6, 1, 1)
+
+        sub_button.bind(on_release=lambda btn: self.dropdown.select(sub_name))
+
+        sub_final.add_widget(sub_button)
+        sub_final.add_widget(sub_text)
+
+        return sub_final
+
+
+    # Update list options
+    def change_options(self, options_list):
+        self.options_list = options_list
+        self.dropdown.clear_widgets()
+
+        for item in self.options_list:
+
+            # Middle of the list
+            if item != self.options_list[-1]:
+                mid_btn = self.list_button(item, sub_id='list_mid_button')
+                self.dropdown.add_widget(mid_btn)
+
+            # Last button
+            else:
+                end_btn = self.list_button(item, sub_id='list_end_button')
+                self.dropdown.add_widget(end_btn)
+
+
+def toggle_button(name, position, default_state=True, x_offset=0, custom_func=None):
+
+    knob_limits = (156.4 + x_offset, 193 + x_offset) # (Left, Right) (156.7 on left, 191 on right with border)
+    bgc = constants.background_color
+    color_id = [(bgc[0] - 0.021, bgc[1] - 0.021, bgc[2] - 0.021, bgc[3]), (0.6, 0.6, 1, 1)]
+
+    # When switch is toggled
+    def on_active(button_name, *args):
+
+        state = args[0].state == "down"
+
+        for child in args[0].parent.children:
+            if child.id == "knob":
+                Animation(x=knob_limits[1] if state else knob_limits[0], color=color_id[0] if state else color_id[1], duration=0.12).start(child)
+                child.source = os.path.join(constants.gui_assets, f'toggle_button_knob{"_enabled" if state else ""}.png')
+
+        if custom_func:
+            custom_func(state)
+
+        # Change settings of ID
+        elif button_name == "geyser_support":
+            constants.new_server_info['server_settings']['geyser_support'] = state
+        elif button_name == 'chat_report':
+            constants.new_server_info['server_settings']['disable_chat_reporting'] = state
+        elif button_name == "pvp":
+            constants.new_server_info['server_settings']['pvp'] = state
+        elif button_name == "spawn_protection":
+            constants.new_server_info['server_settings']['spawn_protection'] = state
+        elif button_name == "keep_inventory":
+            constants.new_server_info['server_settings']['keep_inventory'] = state
+        elif button_name == "daylight_weather_cycle":
+            constants.new_server_info['server_settings']['daylight_weather_cycle'] = state
+        elif button_name == "spawn_creatures":
+            constants.new_server_info['server_settings']['spawn_creatures'] = state
+        elif button_name == "command_blocks":
+            constants.new_server_info['server_settings']['command_blocks'] = state
+
+
+    final = FloatLayout()
+    final.x += 174 + x_offset
+
+    button = ToggleButton(state='down' if default_state else 'normal')
+    button.id = 'toggle_button'
+    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    button.size_hint_max = (82, 42)
+    button.border = (0, 0, 0, 0)
+    button.background_normal = os.path.join(constants.gui_assets, 'toggle_button.png')
+    button.background_down = os.path.join(constants.gui_assets, 'toggle_button_enabled.png')
+    button.bind(on_press=functools.partial(on_active, name))
+
+    knob = Image()
+    knob.id = 'knob'
+    knob.source = os.path.join(constants.gui_assets, f'toggle_button_knob{"_enabled" if default_state else ""}.png')
+    knob.size = (30, 30)
+    knob.pos_hint = {"center_y": position[1]}
+    knob.x = knob_limits[1] if default_state else knob_limits[0]
+    knob.color = color_id[0] if default_state else color_id[1]
+
+
+    final.add_widget(button)
+    final.add_widget(knob)
+    return final
+
+
+
+# ---------------------------------------------------- Screens ---------------------------------------------------------
+
+# Popup widgets
+class PopupWindow(RelativeLayout):
+
+    def generate_blur_background(self, *args):
+        image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+
+        # Prevent this from running every resize
+        def reset_activity(*args):
+            self.generating_background = False
+
+        if not self.generating_background:
+            self.generating_background = True
+
+            if self.shown:
+                for widget in self.window.children:
+                    widget.opacity = 0
+                self.blur_background.opacity = 0
+
+            screen_manager.current_screen.export_to_png(image_path)
+            im = PILImage.open(image_path)
+            im1 = im.filter(GaussianBlur(5))
+            im1.save(image_path)
+            self.blur_background.reload()
+
+            if self.shown:
+                for widget in self.window.children:
+                    widget.opacity = 1
+                self.blur_background.opacity = 1
+
+            self.resize_window()
+            Clock.schedule_once(reset_activity, 0.5)
+
+    # Annoying hack to fix canvas lag
+    def resize_window(*args):
+        Window.on_resize(*Window.size)
+
+
+    def click_event(self, *args):
+
+        if not self.clicked:
+
+            rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
+            rel_color = self.window_background.color
+
+            # Single, wide button
+            if self.ok_button:
+                if rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height:
+                    self.ok_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
+                    self.resize_window()
+
+                    if self.callback:
+                        self.callback()
+                        self.clicked = True
+
+                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
+
+
+            elif self.no_button and self.yes_button:
+
+                # Right button
+                if rel_coord[0] > self.no_button.width + 5 and rel_coord[1] < self.yes_button.height:
+                    self.yes_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
+                    self.resize_window()
+
+                    if self.callback:
+                        callback = self.callback[1]
+                        if callback:
+                            callback()
+                            self.clicked = True
+
+                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
+
+                # Left button
+                elif rel_coord[0] < self.no_button.width - 5 and rel_coord[1] < self.no_button.height:
+                    self.no_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
+                    self.resize_window()
+
+                    if self.callback:
+                        callback = self.callback[0]
+                        if callback:
+                            callback()
+                            self.clicked = True
+
+                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
+
+
+    def resize(self):
+        self.window.size = self.window_background.size
+        self.window.pos = (Window.size[0]/2 - self.window_background.width/2, Window.size[1]/2 - self.window_background.height/2)
+        if self.shown:
+            Clock.schedule_once(self.generate_blur_background, 0.1)
+
+
+    def animate(self, show=True, *args):
+        window_func = functools.partial(self.resize_window)
+        Clock.schedule_interval(window_func, 0.015)
+
+        def is_shown(*args):
+            self.shown = True
+
+        if show:
+            for widget in self.window.children:
+                original_size = (widget.width, widget.height)
+                widget.size = (original_size[0] * 0.8, original_size[1] * 0.8)
+                anim = Animation(size=original_size, duration=0.05)
+                anim &= Animation(opacity=1, duration=0.25)
+                anim.start(widget)
+            Animation(opacity=1, duration=0.25).start(self.blur_background)
+            Clock.schedule_once(functools.partial(is_shown), 0.5)
+        else:
+            for widget in self.window.children:
+                if "button" in widget.id:
+                    widget.opacity = 0
+
+            image_path = os.path.join(constants.gui_assets, 'live', 'popup.png')
+            self.window.export_to_png(image_path)
+
+            for widget in self.window.children:
+                if widget != self.window_background and "button" not in widget.id:
+                    widget.opacity = 0
+                else:
+                    if widget == self.window_background:
+                        widget.color = (1,1,1,1)
+                        widget.source = image_path
+                        widget.reload()
+                    original_size = (widget.width, widget.height)
+                    new_size = (original_size[0] * 0.85, original_size[1] * 0.85)
+                    anim = Animation(size=new_size, duration=0.08)
+                    anim &= Animation(opacity=0, duration=0.25)
+
+                    if "ok_button" in widget.id:
+                        widget.opacity = 1
+                        original_pos = (widget.pos[0], widget.pos[1] + 28)
+                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
+
+                    elif "button" in widget.id:
+                        widget.opacity = 1
+                        original_pos = (widget.pos[0] + (-34.25 if "yes" in widget.id else +34.25 if "no" in widget.id else 0), widget.pos[1] + 28)
+                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
+
+                    anim.start(widget)
+
+            Animation(opacity=0, duration=0.28).start(self.blur_background)
+
+        Clock.schedule_once(functools.partial(Clock.unschedule, window_func), 0.35)
+
+
+    # Delete popup bind
+    def self_destruct(self, animate, *args):
+
+        def delete(*args):
+
+            try:
+                for widget in self.parent.children:
+                    if "Popup" in widget.__class__.__name__:
+                        self.parent.popup_widget = None
+                        self.parent.canvas.after.clear()
+                        self.parent.remove_widget(widget)
+                        self.canvas.after.clear()
+            except AttributeError:
+                if constants.debug:
+                    print("Window Popup Error: Failed to delete popup as the parent window doesn't exist")
+
+        if animate:
+            self.animate(False)
+            Clock.schedule_once(delete, 0.36)
+        else:
+            delete()
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        # Popup window layout
+        self.window = RelativeLayout()
+        self.callback = None
+        self.window_sound = None
+        self.shown = False
+        self.clicked = False
+
+        with self.canvas.after:
+            # Blurred background
+            self.blur_background = Image()
+            self.blur_background.opacity = 0
+            self.blur_background.id = "blur_background"
+            self.blur_background.source = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+            self.blur_background.allow_stretch = True
+            self.blur_background.keep_ratio = False
+            self.generating_background = False
+
+
+            # Popup window background
+            self.window_background = Image(source=os.path.join(constants.gui_assets, "popup_background.png"))
+            self.window_background.id = "window_background"
+            self.window_background.size_hint = (None, None)
+            self.window_background.allow_stretch = True
+            self.window_background.keep_ratio = False
+            self.window_background.color = self.window_color
+            self.window_background.size = (460, 360)
+            self.window_background.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+
+
+            # Popup window title
+            self.window_icon = Image(source=self.window_icon_path)
+            self.window_icon.id = "window_icon"
+            self.window_icon.size_hint = (None, None)
+            self.window_icon.allow_stretch = True
+            self.window_icon.color = self.window_text_color
+            self.window_icon.size = (36, 36)
+            self.window_icon.pos = (self.window.x + 13, self.window.y + self.window_background.height - 48)
+
+            self.window_title = Label()
+            self.window_title.id = "window_title"
+            self.window_title.color = self.window_text_color
+            self.window_title.font_size = sp(25)
+            self.window_title.y = (self.window_background.height / 3 + 30)
+            self.window_title.pos_hint = {"center_x": 0.5}
+            self.window_title.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["italic"]}.ttf')
+            self.window_title.text_size[0] = (self.window_background.size[0] * 0.7)
+            self.window_title.halign = "center"
+            self.window_title.shorten = True
+            self.window_title.markup = True
+            self.window_title.shorten_from = "right"
+
+
+            # Popup window content
+            self.window_content = Label()
+            self.window_content.id = "window_content"
+            self.window_content.color = tuple([px * 1.5 if px < 1 else px for px in self.window_text_color])
+            self.window_content.font_size = sp(23)
+            self.window_content.line_height = 1.15
+            self.window_content.halign = "center"
+            self.window_content.valign = "center"
+            self.window_content.text_size = (self.window_background.width - 40, self.window_background.height - 25)
+            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.52}
+            self.window_content.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["bold"]}.ttf')
+
+
+        self.add_widget(self.blur_background)
+        self.window.add_widget(self.window_background)
+        self.window.add_widget(self.window_icon)
+        self.window.add_widget(self.window_title)
+        self.window.add_widget(self.window_content)
+
+# Normal info
+class PopupInfo(PopupWindow):
+    def __init__(self, **kwargs):
+        self.window_color = (0.42, 0.475, 1, 1)
+        self.window_text_color = (0.1, 0.1, 0.2, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'information-circle.png')
+        super().__init__(**kwargs)
+
+        # Modal specific settings
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
+        self.no_button = None
+        self.yes_button = None
+        with self.canvas.after:
+            self.ok_button = Button()
+            self.ok_button.id = "ok_button"
+            self.ok_button.size_hint = (None, None)
+            self.ok_button.size = (459, 65)
+            self.ok_button.border = (0, 0, 0, 0)
+            self.ok_button.background_color = self.window_color
+            self.ok_button.background_normal = os.path.join(constants.gui_assets, "popup_full_button.png")
+            self.ok_button.pos_hint = {"center_x": 0.5}
+            self.ok_button.text = "OKAY"
+            self.ok_button.color = self.window_text_color
+            self.ok_button.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["very-bold"]}.ttf')
+            self.ok_button.font_size = sp(22)
+            self.bind(on_touch_down=self.click_event)
+
+        self.window.add_widget(self.ok_button)
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+
+# Warning
+class PopupWarning(PopupWindow):
+    def __init__(self, **kwargs):
+        self.window_color = (1, 0.56, 0.6, 1)
+        self.window_text_color = (0.2, 0.1, 0.1, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'alert-circle-sharp.png')
+        super().__init__(**kwargs)
+
+        # Modal specific settings
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+        self.no_button = None
+        self.yes_button = None
+        with self.canvas.after:
+            self.ok_button = Button()
+            self.ok_button.id = "ok_button"
+            self.ok_button.size_hint = (None, None)
+            self.ok_button.size = (459, 65)
+            self.ok_button.border = (0, 0, 0, 0)
+            self.ok_button.background_color = self.window_color
+            self.ok_button.background_normal = os.path.join(constants.gui_assets, "popup_full_button.png")
+            self.ok_button.pos_hint = {"center_x": 0.5}
+            self.ok_button.text = "OKAY"
+            self.ok_button.color = self.window_text_color
+            self.ok_button.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["very-bold"]}.ttf')
+            self.ok_button.font_size = sp(22)
+            self.bind(on_touch_down=self.click_event)
+
+        self.window.add_widget(self.ok_button)
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+
+# Yes/No
+class PopupQuery(PopupWindow):
+    def __init__(self, **kwargs):
+        self.window_color = (0.42, 0.475, 1, 1)
+        self.window_text_color = (0.1, 0.1, 0.2, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'question-circle.png')
+        super().__init__(**kwargs)
+
+        # Modal specific settings
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
+        self.ok_button = None
+        with self.canvas.after:
+            self.no_button = Button()
+            self.no_button.id = "no_button"
+            self.no_button.size_hint = (None, None)
+            self.no_button.size = (229.5, 65)
+            self.no_button.border = (0, 0, 0, 0)
+            self.no_button.background_color = self.window_color
+            self.no_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.no_button.pos = (0.5, -0.3)
+            self.no_button.text = "NO"
+            self.no_button.color = self.window_text_color
+            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_size = sp(22)
+
+
+            self.yes_button = Button()
+            self.yes_button.id = "yes_button"
+            self.yes_button.size_hint = (None, None)
+            self.yes_button.size = (-229.5, 65)
+            self.yes_button.border = (0, 0, 0, 0)
+            self.yes_button.background_color = self.window_color
+            self.yes_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.yes_button.pos = (self.window_background.size[0] - 0.5, -0.3)
+            self.yes_button.text = "YES"
+            self.yes_button.color = self.window_text_color
+            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_size = sp(22)
+            self.bind(on_touch_down=self.click_event)
+
+
+        self.window.add_widget(self.no_button)
+        self.window.add_widget(self.yes_button)
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+
+
+# Big popup widgets
+class BigPopupWindow(RelativeLayout):
+
+    def generate_blur_background(self, *args):
+        image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+
+        # Prevent this from running every resize
+        def reset_activity(*args):
+            self.generating_background = False
+
+        if not self.generating_background:
+            self.generating_background = True
+
+            if self.shown:
+                for widget in self.window.children:
+                    widget.opacity = 0
+                self.blur_background.opacity = 0
+
+            screen_manager.current_screen.export_to_png(image_path)
+            im = PILImage.open(image_path)
+            im1 = im.filter(GaussianBlur(5))
+            im1.save(image_path)
+            self.blur_background.reload()
+
+            if self.shown:
+                for widget in self.window.children:
+                    widget.opacity = 1
+                self.blur_background.opacity = 1
+
+            self.resize_window()
+            Clock.schedule_once(reset_activity, 0.5)
+
+    # Annoying hack to fix canvas lag
+    def resize_window(*args):
+        Window.on_resize(*Window.size)
+
+
+    def click_event(self, *args):
+
+        if not self.clicked:
+
+            rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
+            rel_color = self.window_background.color
+
+            # Single, wide button
+            if self.ok_button:
+                if rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height:
+                    self.ok_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
+                    self.resize_window()
+
+                    if self.callback:
+                        self.callback()
+                        self.clicked = True
+
+                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
+
+
+            elif self.no_button and self.yes_button:
+
+                # Right button
+                if rel_coord[0] > self.no_button.width + 5 and rel_coord[1] < self.yes_button.height:
+                    self.yes_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
+                    self.resize_window()
+
+                    if self.callback:
+                        callback = self.callback[1]
+                        if callback:
+                            callback()
+                            self.clicked = True
+
+                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
+
+                # Left button
+                elif rel_coord[0] < self.no_button.width - 5 and rel_coord[1] < self.no_button.height:
+                    self.no_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
+                    self.resize_window()
+
+                    if self.callback:
+                        callback = self.callback[0]
+                        if callback:
+                            callback()
+                            self.clicked = True
+
+                    Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
+
+
+                # Body button if it exists
+                elif self.body_button:
+                    if (self.body_button.x < rel_coord[0] < self.body_button.x + self.body_button.width) and (self.body_button.y < rel_coord[1] < self.body_button.y + self.body_button.height):
+                        Animation.stop_all(self.body_button)
+                        self.body_button.background_color = (self.window_text_color[0], self.window_text_color[1], self.window_text_color[2], 0.3)
+                        Animation(background_color=self.window_text_color, duration=0.3).start(self.body_button)
+
+                        # Open link in browser
+                        if self.addon_object:
+                            if self.addon_object.type in ["forge", "fabric"]:
+                                url = "https://www.curseforge.com" + self.addon_object.url
+                            else:
+                                url = "https://dev.bukkit.org" + self.addon_object.url
+
+                            webbrowser.open_new_tab(url)
+
+
+    def resize(self):
+        self.window.size = self.window_background.size
+        self.window.pos = (Window.size[0]/2 - self.window_background.width/2, Window.size[1]/2 - self.window_background.height/2)
+        if self.shown:
+            Clock.schedule_once(self.generate_blur_background, 0.1)
+
+
+    def animate(self, show=True, *args):
+        window_func = functools.partial(self.resize_window)
+        Clock.schedule_interval(window_func, 0.015)
+
+        def is_shown(*args):
+            self.shown = True
+
+        if show:
+            for widget in self.window.children:
+                original_size = (widget.width, widget.height)
+                widget.size = (original_size[0] * 0.8, original_size[1] * 0.8)
+                anim = Animation(size=original_size, duration=0.05)
+                anim &= Animation(opacity=1, duration=0.25)
+                anim.start(widget)
+            Animation(opacity=1, duration=0.25).start(self.blur_background)
+            Clock.schedule_once(functools.partial(is_shown), 0.5)
+        else:
+            for widget in self.window.children:
+                if "button" in widget.id:
+                    widget.opacity = 0
+
+            image_path = os.path.join(constants.gui_assets, 'live', 'popup.png')
+            self.window.export_to_png(image_path)
+
+            for widget in self.window.children:
+                if widget != self.window_background and "button" not in widget.id:
+                    widget.opacity = 0
+                else:
+                    if widget == self.window_background:
+                        widget.color = (1,1,1,1)
+                        widget.source = image_path
+                        widget.reload()
+                    original_size = (widget.width, widget.height)
+                    new_size = (original_size[0] * 0.85, original_size[1] * 0.85)
+                    anim = Animation(size=new_size, duration=0.08)
+                    anim &= Animation(opacity=0, duration=0.25)
+
+                    if widget.id == "body_button":
+                        widget.opacity = 1
+                        original_pos = (widget.pos[0] + 13, widget.pos[1] + 45)
+                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
+
+                    elif "ok_button" in widget.id:
+                        widget.opacity = 1
+                        original_pos = (widget.pos[0], widget.pos[1] + 49.25)
+                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
+
+                    elif "button" in widget.id:
+                        widget.opacity = 1
+                        original_pos = (widget.pos[0] + (-49.25 if widget.id.replace("_button", "") in ["yes", "install"] else +49.25 if "no" in widget.id else 0), widget.pos[1] + 48)
+                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
+
+                    anim.start(widget)
+
+            Animation(opacity=0, duration=0.28).start(self.blur_background)
+
+        Clock.schedule_once(functools.partial(Clock.unschedule, window_func), 0.35)
+
+
+    # Delete popup bind
+    def self_destruct(self, animate, *args):
+
+        def delete(*args):
+
+            try:
+                for widget in self.parent.children:
+                    if "Popup" in widget.__class__.__name__:
+                        self.parent.popup_widget = None
+                        self.parent.canvas.after.clear()
+                        self.parent.remove_widget(widget)
+                        self.canvas.after.clear()
+            except AttributeError:
+                if constants.debug:
+                    print("Window Popup Error: Failed to delete popup as the parent window doesn't exist")
+
+        if animate:
+            self.animate(False)
+            Clock.schedule_once(delete, 0.36)
+        else:
+            delete()
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        # Popup window layout
+        self.window = RelativeLayout()
+        self.callback = None
+        self.window_sound = None
+        self.shown = False
+        self.clicked = False
+
+        with self.canvas.after:
+            # Blurred background
+            self.blur_background = Image()
+            self.blur_background.opacity = 0
+            self.blur_background.id = "blur_background"
+            self.blur_background.source = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+            self.blur_background.allow_stretch = True
+            self.blur_background.keep_ratio = False
+            self.generating_background = False
+
+
+            # Popup window background
+            self.window_background = Image(source=os.path.join(constants.gui_assets, "big_popup_background.png"))
+            self.window_background.id = "window_background"
+            self.window_background.size_hint = (None, None)
+            self.window_background.allow_stretch = True
+            self.window_background.keep_ratio = False
+            self.window_background.color = self.window_color
+            self.window_background.size = (650, 650)
+            self.window_background.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+
+
+            # Popup window title
+            self.window_icon = Image(source=self.window_icon_path)
+            self.window_icon.id = "window_icon"
+            self.window_icon.size_hint = (None, None)
+            self.window_icon.allow_stretch = True
+            self.window_icon.color = self.window_text_color
+            self.window_icon.size = (32, 32)
+            self.window_icon.pos = (self.window.x + 20, self.window.y + self.window_background.height - 44.5)
+
+            self.window_title = Label()
+            self.window_title.id = "window_title"
+            self.window_title.color = self.window_text_color
+            self.window_title.font_size = sp(25)
+            self.window_title.y = (self.window_background.height / 3 + 80)
+            self.window_title.pos_hint = {"center_x": 0.5}
+            self.window_title.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["italic"]}.ttf')
+
+
+            # Popup window content
+            self.window_content = Label()
+            self.window_content.id = "window_content"
+            self.window_content.color = tuple([px * 1.5 if px < 1 else px for px in self.window_text_color])
+            self.window_content.font_size = sp(23)
+            self.window_content.line_height = 1.15
+            self.window_content.halign = "center"
+            self.window_content.valign = "center"
+            self.window_content.text_size = (self.window_background.width - 40, self.window_background.height - 25)
+            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.52}
+            self.window_content.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["bold"]}.ttf')
+
+
+        self.add_widget(self.blur_background)
+        self.window.add_widget(self.window_background)
+        self.window.add_widget(self.window_icon)
+        self.window.add_widget(self.window_title)
+        self.window.add_widget(self.window_content)
+
+# Controls popup for biggg stuff
+class PopupControls(BigPopupWindow):
+    def __init__(self, **kwargs):
+        self.window_color = (0.42, 0.475, 1, 1)
+        self.window_text_color = (0.1, 0.1, 0.2, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'information-circle.png')
+        super().__init__(**kwargs)
+
+        # Modal specific settings
+        self.window_sound = None
+        self.no_button = None
+        self.yes_button = None
+        with self.canvas.after:
+            self.ok_button = Button()
+            self.ok_button.id = "ok_button"
+            self.ok_button.size_hint = (None, None)
+            self.ok_button.size = (650.6, 65)
+            self.ok_button.border = (0, 0, 0, 0)
+            self.ok_button.background_color = self.window_color
+            self.ok_button.background_normal = os.path.join(constants.gui_assets, "big_popup_full_button.png")
+            self.ok_button.pos_hint = {"center_x": 0.5006}
+            self.ok_button.text = "OKAY"
+            self.ok_button.color = self.window_text_color
+            self.ok_button.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["very-bold"]}.ttf')
+            self.ok_button.font_size = sp(22)
+            self.bind(on_touch_down=self.click_event)
+
+        self.window.add_widget(self.ok_button)
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+
+# Addon popup
+class PopupAddon(BigPopupWindow):
+    def __init__(self, addon_object=None, **kwargs):
+        self.window_color = (0.42, 0.475, 1, 1)
+        self.window_text_color = (0.1, 0.1, 0.2, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'extension-puzzle-sharp.png')
+        self.installed = False
+
+        # Assign addon info to popup
+        if addon_object:
+            if addon_object.__class__.__name__ == "partial":
+                addon_info = addon_object()
+                self.addon_object = addon_info[0]
+                self.installed = addon_info[1]
+        else:
+            self.addon_object = None
+
+        # If addon is unavailable, show info
+        if not self.addon_object:
+            del self
+            return
+
+
+        super().__init__(**kwargs)
+
+
+        # Title
+        self.window_title.text_size[0] = (self.window_background.size[0] * 0.7)
+        self.window_title.halign = "center"
+        self.window_title.shorten = True
+        self.window_title.markup = True
+        self.window_title.shorten_from = "right"
+        self.window_title.text = f"{self.addon_object.name}  [color=#3E4691]-[/color]  {self.addon_object.author if self.addon_object.author else 'Unknown'}"
+
+
+        # Description
+        self.window_content.text = "" if not addon_object else self.addon_object.description
+        if not self.window_content.text.strip():
+            self.window_content.text = "description unavailable"
+        else:
+            self.window_content.halign = "left"
+            self.window_content.valign = "top"
+            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.4}
+        self.window_content.max_lines = 14 # Cuts off the beginning of content??
+
+
+        # Modal specific settings
+        self.window_sound = None
+        self.ok_button = None
+        with self.canvas.after:
+
+            # Body Button (Open in browser)
+            self.body_button = Button()
+            self.body_button.id = "body_button"
+            self.body_button.size_hint = (None, None)
+            self.body_button.size = (200, 40)
+            self.body_button.border = (0, 0, 0, 0)
+            self.body_button.background_color = self.window_text_color
+            self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
+            self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
+            self.body_button.text = "click to view more"
+            self.body_button.color = self.window_color
+            self.body_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.body_button.font_size = sp(20)
+
+
+
+            self.no_button = Button()
+            self.no_button.id = "no_button"
+            self.no_button.size_hint = (None, None)
+            self.no_button.size = (327, 65)
+            self.no_button.border = (0, 0, 0, 0)
+            self.no_button.background_color = self.window_color
+            self.no_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.no_button.pos = (0, -0.3)
+            self.no_button.text = "BACK"
+            self.no_button.color = self.window_text_color
+            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_size = sp(22)
+
+            self.yes_button = Button()
+            self.yes_button.id = "install_button"
+            self.yes_button.size_hint = (None, None)
+            self.yes_button.size = (-327, 65)
+            self.yes_button.border = (0, 0, 0, 0)
+            self.yes_button.background_color = self.window_color
+            self.yes_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.yes_button.pos = (self.window_background.size[0] + 1, -0.3)
+            self.yes_button.text = "INSTALL" if not self.installed else "UNINSTALL"
+            self.yes_button.color = self.window_text_color
+            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_size = sp(22)
+
+
+            # Version Banner
+            addon_supported = False
+            if not self.addon_object.versions:
+                addon_versions = "None"
+
+            elif len(self.addon_object.versions) == 1:
+                addon_versions = self.addon_object.versions[0]
+
+            else:
+                addon_versions = f"{self.addon_object.versions[-1]}-{self.addon_object.versions[0]}"
+
+            if screen_manager.current_screen.name == "CreateServerAddonSearchScreen":
+                server_version = constants.new_server_info['version']
+
+                if self.addon_object.versions:
+                    addon_supported = constants.version_check(server_version, ">=", self.addon_object.versions[-1]) and constants.version_check(server_version, "<=", self.addon_object.versions[0])
+
+            version_text = f"{'Supported' if addon_supported else 'Unsupported'}:  {addon_versions}"
+
+            self.version_banner = BannerObject(
+                pos_hint = {"center_x": (0.5 if not self.installed else 0.36), "center_y": 0.877},
+                size = (250, 40),
+                color = (0.4, 0.682, 1, 1) if addon_supported else (1, 0.53, 0.58, 1),
+                text = version_text,
+                icon = "information-circle.png"
+            )
+            self.version_banner.id = "version_banner"
+
+
+            # Installed banner
+            if self.installed:
+                self.installed_banner = BannerObject(
+                    pos_hint = {"center_x": 0.74, "center_y": 0.877},
+                    size = (150, 40),
+                    color = (0.553, 0.902, 0.675, 1),
+                    text = "installed",
+                    icon = "checkmark-circle.png",
+                    icon_side = "right"
+                )
+                self.installed_banner.id = "installed_banner"
+
+
+
+        self.window.add_widget(self.no_button)
+        self.window.add_widget(self.yes_button)
+        self.window.add_widget(self.body_button)
+        self.window.add_widget(self.version_banner)
+        if self.installed:
+            self.window.add_widget(self.installed_banner)
+
+        self.bind(on_touch_down=self.click_event)
+
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+
+
+
+
+# Screen widgets
+def previous_screen(*args):
+    screen_manager.current = constants.screen_tree.pop(-1)
+    # print(constants.screen_tree)
+
+
+
+# Call function when any button is pressed
+def button_action(button_name, button, specific_screen=''):
+
+    # print(button_name)
+    # print(button.button_pressed)
+
+    if button.button_pressed == "left":
+
+        if button_name.lower() == "quit":
+            sys.exit()
+        elif button_name.lower() == "back":
+            constants.back_clicked = True
+            previous_screen()
+            constants.back_clicked = False
+
+        elif "manage" in button_name.lower() and "servers" in button_name.lower():
+            screen_manager.current = "ServerManagerScreen"
+
+        # Return to main menu, prompt user if inside of progressive function
+        elif "main menu" in button_name.lower():
+            def return_to_main(*argies):
+                screen_manager.current = 'MainMenuScreen'
+
+            # Warn user if creating server, or updating server etc...
+            if "CreateServer" in str(screen_manager.current_screen) or "ServerImport" in str(screen_manager.current_screen):
+                screen_manager.current_screen.show_popup(
+                    "query",
+                    "Main Menu",
+                    "Would you like to return to the main menu?\n\nYour progress will not be saved",
+                    [None, functools.partial(Clock.schedule_once, return_to_main, 0.25)])
+            else:
+                return_to_main()
+
+        elif "create a new server" in button_name.lower():
+            constants.new_server_init()
+            screen_manager.current = 'CreateServerNameScreen'
+
+        elif "import a server" in button_name.lower():
+            constants.new_server_init()
+            screen_manager.current = 'ServerImportScreen'
+
+        elif "create new world instead" in button_name.lower():
+            break_loop = False
+            for item in screen_manager.current_screen.children:
+                if item.id == 'content':
+                    for child_item in item.children:
+                        if break_loop:
+                            break
+                        if child_item.__class__.__name__ == 'ServerWorldInput':
+                            child_item.selected_world = constants.new_server_info['server_settings']['world'] = 'world'
+                            child_item.update_world(force_ignore=True)
+
+        # Different behavior depending on the page
+        elif "next" in button_name.lower() and not button.disabled:
+
+            def change_screen(name, *args, **kwargs):
+                screen_manager.current = name
+
+            if screen_manager.current == 'CreateServerVersionScreen':
+
+                def check_version(*args, **kwargs):
+                    break_loop = False
+                    for item in screen_manager.current_screen.children:
+                        if break_loop:
+                            break
+                        for child_item in item.children:
+                            if break_loop:
+                                break
+                            for child in child_item.children:
+
+                                if child.__class__.__name__ == "NextButton":
+
+                                    child.loading(True)
+                                    version_data = constants.search_version(constants.new_server_info)
+                                    constants.new_server_info['version'] = version_data[1]['version']
+                                    constants.new_server_info['build'] = version_data[1]['build']
+                                    constants.new_server_info['jar_link'] = version_data[3]
+                                    child.loading(False)
+                                    child.update_next(version_data[0], version_data[2])
+
+                                    # Continue to next screen if valid input, and back button not pressed
+                                    if version_data[0] and not version_data[2] and screen_manager.current == 'CreateServerVersionScreen':
+                                        Clock.schedule_once(functools.partial(change_screen, specific_screen), 0)
+
+                                    break_loop = True
+                                    break
+
+                timer = threading.Timer(0, function=check_version)
+                timer.start()  # Checks for potential crash
+
+            elif screen_manager.current == 'CreateServerOptionsScreen':
+                if not constants.new_server_info['acl_object']:
+                    while not constants.new_server_info['acl_object']:
+                        time.sleep(0.5)
+                change_screen(specific_screen)
+
+            else:
+                change_screen(specific_screen)
+
+            print(constants.new_server_info)
+
+        # Main menu reconnect button
+        elif "no connection" in button_name.lower():
+            try:
+                constants.check_app_updates()
+                constants.find_latest_mc()
+            except:
+                pass
+            screen_manager.current_screen.reload_menu()
+
+
+        elif "CreateServerNetwork" in str(screen_manager.current_screen):
+            if "access control manager" in button_name.lower():
+                if not constants.new_server_info['acl_object']:
+                    while not constants.new_server_info['acl_object']:
+                        time.sleep(0.5)
+                screen_manager.current = 'CreateServerAclScreen'
+
+
+        elif "add rules" in button_name.lower() and "CreateServerAclScreen" in str(screen_manager.current_screen):
+            screen_manager.current = 'CreateServerAclRuleScreen'
+
+        elif "add rules" in button_name.lower() and "CreateServerAclRuleScreen" in str(screen_manager.current_screen):
+            screen_manager.current_screen.apply_rules()
+
+
+        elif "CreateServerOptions" in str(screen_manager.current_screen) or "CreateServerAddon" in str(screen_manager.current_screen):
+
+            # If creating a new server, use CreateServerAddonScreen
+            if "add-on manager" in button_name.lower():
+                screen_manager.current = 'CreateServerAddonScreen'
+
+            elif "download" in button_name.lower():
+                screen_manager.current = 'CreateServerAddonSearchScreen'
+
+            elif "import" in button_name.lower():
+                title = "Select Add-on Files (.jar)"
+                selection = file_popup("file", start_dir=constants.userDownloads, ext=["*.jar"], input_name=None, select_multiple=True, title=title)
+
+                if selection:
+                    for addon in selection:
+                        if addon.endswith(".jar") and os.path.isfile(addon):
+                            addon = addons.get_addon_file(addon, constants.new_server_info)
+                            constants.new_server_info['addon_objects'].append(addon)
+                            screen_manager.current_screen.gen_search_results(constants.new_server_info['addon_objects'])
+
+                            # Switch pages if page is full
+                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                                screen_manager.current_screen.switch_page("right")
+
+                            # Show banner
+                            if len(selection) == 1:
+                                if len(addon.name) < 26:
+                                    addon_name = addon.name
+                                else:
+                                    addon_name = addon.name[:23] + "..."
+
+                                banner_text = f"Added '{addon_name}' to the queue"
+                            else:
+                                banner_text = f"Added {len(selection)} add-ons to the queue"
+
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (0.553, 0.902, 0.675, 1),
+                                    banner_text,
+                                    "add-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.895}
+                                ), 0
+                            )
+
+        elif "CreateServerReview" in str(screen_manager.current_screen) and "create server" in button_name.lower():
+            screen_manager.current = "CreateServerProgressScreen"
+
+
+
+
+# =============================================== Screen Templates =====================================================
+# <editor-fold desc="Screen Templates">
+
+# Template for any screen
+class MenuBackground(Screen):
+
+    reload_page = True
+
+    def on_pre_leave(self, *args):
+        super().on_pre_leave()
+        if not constants.back_clicked and not self._ignore_tree:
+            constants.screen_tree.append(self.__class__.__name__)
+
+        # Close keyboard listener on current screen
+        if self._keyboard:
+            self._keyboard_closed()
+
+    # Reset page on screen load
+    def on_pre_enter(self, *args):
+        if self.reload_page and constants.app_loaded:
+            self.reload_menu()
+
+            # Remove popup
+            if self.popup_widget:
+                self.popup_widget.self_destruct(self, False)
+                self.popup_widget = None
+                self.canvas.after.clear()
+
+            # Add global banner object if one exists
+            def revive_banner(*args):
+                if constants.global_banner:
+                    if constants.global_banner.parent:
+                        constants.global_banner.parent.remove_widget(constants.global_banner)
+                self.banner_widget = constants.global_banner if constants.global_banner else BannerLayout()
+                self.add_widget(self.banner_widget)
+
+            Clock.schedule_once(revive_banner, 0.12)
+
+        # Keyboard yumminess
+        self._input_focused = False
+        self._keyboard = Window.request_keyboard(None, self, 'text')
+        self._keyboard.bind(on_key_down=self._on_keyboard_down)
+
+
+    def on_leave(self, *args):
+        # Remove popup
+        if self.popup_widget:
+            self.popup_widget.self_destruct(self, False)
+            self.popup_widget = None
+            self.canvas.after.clear()
+
+            with self.canvas.after:
+                self.canvas.clear()
+
+        if self.resize_bind:
+            Window.unbind(on_resize=self.resize_bind)
+
+        # Causes bug with resizing
+        # for widget in self.walk():
+        #     self.remove_widget(widget)
+        #     del widget
+
+        with self.canvas.after:
+            self.canvas.clear()
+
+        with self.canvas.before:
+            self.canvas.clear()
+
+        self.canvas.clear()
+        self.clear_widgets()
+        gc.collect()
+
+
+    def reload_menu(self, *args):
+        self.clear_widgets()
+        self.generate_menu()
+
+
+    def generate_menu(self, *args):
+        pass
+
+    # Fit background color across screen for transitions
+    def update_rect(self, *args):
+        self.rect.pos = self.pos
+        self.rect.size = self.size
+
+        # Resize popup if it exists
+        if self.popup_widget:
+            self.popup_widget.resize()
+
+    # Ignore touch events when popup is present
+    def on_touch_down(self, touch):
+        if self.popup_widget:
+            if self.popup_widget.window.collide_point(*touch.pos):
+                return super().on_touch_down(touch)
+            else:
+                return
+        else:
+            return super().on_touch_down(touch)
+
+    # Show popup; popup_type can be "info", "warning", "query"
+    def show_popup(self, popup_type, title, content, callback=None, *args):
+        if title and content and popup_type in ["info", "warning", "query", "controls", "addon"] and (self == screen_manager.current_screen):
+
+            # self.show_popup("info", "Title", "This is an info popup!", functools.partial(callback_func))
+            # self.show_popup("warning", "Title", "This is a warning popup!", functools.partial(callback_func))
+            # self.show_popup("query", "Title", "Yes or no?", (functools.partial(callback_func_no), functools.partial(callback_func_yes)))
+            # self.show_popup("controls", "Title", "Press X to do Y", functools.partial(callback_func))
+            # self.show_popup("addon", "Title", "Description", (functools.partial(callback_func_web), functools.partial(callback_func_install)), addon_object)
+
+            with self.canvas.after:
+                if popup_type == "info":
+                    self.popup_widget = PopupInfo()
+                elif popup_type == "warning":
+                    self.popup_widget = PopupWarning()
+                elif popup_type == "query":
+                    self.popup_widget = PopupQuery()
+                elif popup_type == "controls":
+                    self.popup_widget = PopupControls()
+                elif popup_type == "addon":
+                    self.popup_widget = PopupAddon(addon_object=args[0])
+                    try:
+                        self.popup_widget.window_content
+                    except AttributeError:
+                        title = args[0].args[0].name[0:30]
+                        content = "There is no data available for this add-on"
+                        callback = None
+                        self.popup_widget = PopupWarning()
+
+            self.popup_widget.generate_blur_background()
+
+            if title.strip():
+                self.popup_widget.window_title.text = title
+
+            if content.strip():
+                self.popup_widget.window_content.text = content
+
+            self.popup_widget.callback = callback
+
+            def show(*argies):
+                self.add_widget(self.popup_widget)
+                self.popup_widget.resize()
+                self.popup_widget.animate(True)
+
+            if self.popup_widget.window_sound:
+                # Fix popping sound when sounds are played
+                self.popup_widget.window_sound.play()
+            Clock.schedule_once(show, 0.3)
+
+    # Show banner; pass in color, text, icon name, and duration
+    @staticmethod
+    def show_banner(color, text, icon, duration=5, pos_hint={"center_x": 0.5, "center_y": 0.895}, *args):
+
+        # Base banner layout
+        banner_layout = BannerLayout()
+        banner_size = (800, 47)
+
+        # Banner
+        banner_object = BannerObject(
+            pos_hint = pos_hint,
+            size = banner_size,
+            color = color,
+            text = text,
+            icon = icon,
+            animate = True
+        )
+
+        # Banner drop shadow
+        banner_shadow = Image()
+        banner_shadow.source = os.path.join(constants.gui_assets, 'banner_shadow.png')
+        banner_shadow.keep_ratio = False
+        banner_shadow.allow_stretch = True
+        banner_shadow.size_hint_max = (banner_size[0] + 150, banner_size[1] * 2)
+        banner_shadow.pos_hint = pos_hint
+        banner_shadow.opacity = 0
+        Animation(opacity=1, duration=0.5).start(banner_shadow)
+
+        # Banner progress bar
+        banner_progress_bar = Image()
+        banner_progress_bar.source = os.path.join(constants.gui_assets, 'banner_progress_bar.png')
+        banner_progress_bar.keep_ratio = False
+        banner_progress_bar.allow_stretch = True
+        banner_progress_bar.size_hint_max = (banner_size[0] - (banner_object.left_side.width * 2), banner_size[1])
+        banner_progress_bar.color = (0, 0, 0, 1)
+        banner_progress_bar.pos_hint = pos_hint
+        banner_progress_bar.opacity = 0
+        Animation(opacity=0.25, duration=0.5).start(banner_progress_bar)
+        Animation(size_hint_max=(0, banner_size[1]), duration=duration).start(banner_progress_bar)
+
+        banner_layout.add_widget(banner_shadow)
+        banner_layout.add_widget(banner_object)
+        banner_layout.add_widget(banner_progress_bar)
+
+        # Remove banner if it already exists
+        if constants.global_banner:
+            if constants.global_banner.parent:
+                constants.hide_widget(constants.global_banner)
+                constants.global_banner.parent.remove_widget(constants.global_banner)
+
+        screen_manager.current_screen.banner_widget = banner_layout
+        constants.global_banner = banner_layout
+
+        screen_manager.current_screen.add_widget(screen_manager.current_screen.banner_widget)
+
+        # Deletes banner object after duration
+        def hide_banner(widget, *args):
+
+            if constants.global_banner.id == widget.id:
+
+                if constants.global_banner:
+                    if constants.global_banner.parent:
+                        constants.global_banner.parent.remove_widget(constants.global_banner)
+
+                constants.global_banner = None
+                for screen in screen_manager.children:
+                    screen.banner_widget = None
+
+        def hide_widgets(shadow, progress_bar, *args):
+            Animation(opacity=0, duration=0.5).start(shadow)
+            Animation(opacity=0, duration=0.1).start(progress_bar)
+
+
+        Clock.schedule_once(functools.partial(banner_object.show_animation, False), duration)
+        Clock.schedule_once(functools.partial(hide_widgets, banner_shadow, banner_progress_bar), duration)
+        Clock.schedule_once(functools.partial(hide_banner, banner_layout), duration + 0.32)
+
+
+    # Keyboard listeners
+    def _keyboard_closed(self):
+        # print('Keyboard has been closed')
+        self._keyboard.unbind(on_key_down=self._on_keyboard_down)
+        self._keyboard = None
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        # print('The key', keycode, 'have been pressed')
+        # print(' - text is %r' % text)
+        # print(' - modifiers are %r' % modifiers)
+
+        # Ignore key presses when popup is visible
+        if self.popup_widget:
+            return
+
+        # Ignore ESC commands while input focused
+        if not self._input_focused and self.name == screen_manager.current_screen.name:
+
+            # Keycode is composed of an integer + a string
+            # If we hit escape, release the keyboard
+            # On ESC, click on back button if it exists
+            if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
+                for button in self.walk():
+                    try:
+                        if button.id == "exit_button":
+                            button.force_click()
+                            break
+                    except AttributeError:
+                        continue
+                keyboard.release()
+
+
+            # Click next button if it's not disabled
+            if keycode[1] == 'enter' and 'enter' not in self._ignore_keys:
+                for button in self.walk():
+                    try:
+                        if button.id == "next_button" and button.disabled is False:
+                            button.force_click()
+                            break
+                    except AttributeError:
+                        continue
+                keyboard.release()
+
+
+        # On TAB/Shift+TAB, cycle through elements
+        if keycode[1] == 'tab' and 'tab' not in self._ignore_keys:
+            pass
+            # for widget in self.walk():
+            #     try:
+            #         if "button" in widget.id or "input" in widget.id:
+            #             print(widget)
+            #             break
+            #     except AttributeError:
+            #         continue
+
+
+        # Return True to accept the key. Otherwise, it will be used by
+        # the system.
+        return True
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        # Screen won't get added to screen tree on leave
+        self._ignore_tree = False
+
+        self.banner_widget = None
+        self.popup_widget = None
+
+        self._input_focused = False
+        self._keyboard = None
+
+        # Add keys to override in child windows
+        self._ignore_keys = []
+
+        with self.canvas.before:
+            self.color = Color(*constants.background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+        with self.canvas.after:
+            self.canvas.clear()
+
+        self.bind(pos=self.update_rect)
+        self.bind(size=self.update_rect)
+
+        self.resize_bind = None
+        self.popup_bind = None
+
+
+
+# Template for loading/busy screens
+class ProgressWidget(RelativeLayout):
+
+    # Value: 0-100
+    def update_progress(self, value, *args):
+
+        value = 0 if value < 0 else 100 if value > 100 else int(round(value))
+
+        if self.value == value:
+            return
+
+        self.value = value
+
+        anim_duration = 0.7
+        adjusted_value = (self.value*0.01) if self.value != 99 else 0.98
+
+        new_width = (self.size_hint_max[0] * (1 - adjusted_value))
+        new_x = (self.size_hint_max[0] - new_width)
+        Animation.stop_all(self.cover)
+        Animation.stop_all(self.percentage)
+
+        # Funny text animation
+        diff = self.value - int(self.percentage.text.replace("%", ""))
+        def update_text(*args):
+            yummy = int(round(anim_duration*10))
+            if diff > 5:
+                new_value = int(self.percentage.text.replace("%", "")) + round((diff // yummy))
+                for num in range(1, yummy):
+                    if new_value > self.value:
+                        break
+                    new_value = new_value + round((diff // yummy))
+                    self.percentage.text = str(new_value) + "%"
+                    time.sleep(0.1)
+            self.percentage.text = str(self.value) + "%"
+
+        original_text = self.percentage.text
+        self.percentage.text = str(self.value) + "%"
+        if diff > 5:
+            Clock.schedule_once(self.percentage.texture_update, -1)
+        self.percentage.size_hint_max = self.percentage.texture_size
+        self.percentage.text = original_text
+
+        # Actually animate schennanies LOL fuck kivy holy shit
+        def anim(*args):
+
+            thread = threading.Timer(0, update_text)
+            thread.start()
+
+            text_x = new_x if self.value == 0 else (new_x - self.percentage.width / 2)
+            if text_x < self.rail.x:
+                text_x = self.rail.x
+            overshoot = (new_x + (self.percentage.width / 1.5)) - self.size_hint_max[0]
+            if overshoot > 0:
+                text_x -= overshoot
+
+            # print(text_x, self.percentage.text, self.percentage.texture_size)
+
+            Animation(x=text_x, duration=anim_duration, transition='out_sine').start(self.percentage)
+            Animation(size_hint_max_x=new_width, x=new_x, duration=anim_duration, transition='out_sine').start(self.cover)
+
+            if value == 100:
+                def make_green(*args):
+                    green = (0.3, 1, 0.6, 1)
+                    new_dur = 0.2
+                    for widget in [self.bar, self.rail, self.cover]:
+                        Animation(opacity=0, duration=new_dur).start(widget)
+                    Animation(opacity=1, duration=new_dur, color=green).start(self.static_bar)
+                    Animation(color=green, duration=new_dur).start(self.percentage)
+                Clock.schedule_once(make_green, 0 if diff < 3 else anim_duration-0.1)
+
+        Clock.schedule_once(anim, 0)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint_max = (540, 28)
+        self.value = 0
+
+        # Frame of progress bar
+        self.rail = Image()
+        self.rail.allow_stretch = True
+        self.rail.keep_ratio = False
+        self.rail.source = os.path.join(constants.gui_assets, 'progress_bar_empty.png')
+
+        # Cover of progress bar (to simulate horizontal movement)
+        self.cover = Image()
+        self.cover.allow_stretch = True
+        self.cover.keep_ratio = False
+        self.cover.size_hint_max_x = self.size_hint_max_x
+        self.cover.color = constants.background_color
+        self.cover.pos_hint = {'center_y': 0.5}
+
+        # Progress bar animation
+        self.bar = Image()
+        self.bar.allow_stretch = True
+        self.bar.keep_ratio = False
+        self.bar.source = os.path.join(constants.gui_assets, 'animations', 'bar_full.gif')
+        self.bar.anim_delay = 0.025
+
+        # Progress bar Static
+        self.static_bar = Image()
+        self.static_bar.allow_stretch = True
+        self.static_bar.keep_ratio = False
+        self.static_bar.source = os.path.join(constants.gui_assets, 'progress_bar_full.png')
+        self.static_bar.color = (0.58, 0.6, 1, 1)
+        self.static_bar.opacity = 0
+
+        # Percentage text
+        self.percentage = Label()
+        self.percentage.text = "0%"
+        self.percentage.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['medium'])
+        self.percentage.font_size = sp(19)
+        self.percentage.color = (0.58, 0.6, 1, 1)
+        self.percentage.opacity = 1
+        def align_label(*args):
+            self.percentage.texture_update()
+            self.percentage.size_hint_max = self.percentage.texture_size
+            self.percentage.y = self.rail.y + 31
+            self.percentage.texture_update()
+        Clock.schedule_once(align_label, -1)
+
+
+        self.add_widget(self.bar)
+        self.add_widget(self.static_bar)
+        self.add_widget(self.cover)
+        self.add_widget(self.rail)
+        self.add_widget(self.percentage)
+
+        self.update_progress(self.value)
+class ProgressScreen(MenuBackground):
+
+    # Returns current progress bar value
+    def get_progress(self):
+        return self.progress_bar.value
+
+    # Only replace this function when making a child screen
+    # Set fail message in child functions to trigger an error
+    def contents(self):
+        self.page_contents = {
+
+            # Page name
+            'title': "Progress Screen",
+
+            # Header text
+            'header': "Sit back and relax, it's automation time",
+
+            # Tuple of tuples for steps (label, function, percent)
+            # Percent of all functions must total 100
+            # Functions must return True, or default error will be executed
+            'default_error': 'There was an issue, please try again later',
+
+            'function_list': (
+                ('Step 1', functools.partial(time.sleep, 3), 30),
+                ('Step 2', functools.partial(time.sleep, 3), 30),
+                ('Step 3', functools.partial(time.sleep, 0.1), 30),
+                ('Step 4', functools.partial(time.sleep, 0.1), 10)
+            ),
+
+            # Function to run before steps (like checking for an internet connection)
+            'before_function': functools.partial(time.sleep, 0),
+
+            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
+            'after_function': functools.partial(time.sleep, 0),
+
+            # Screen to go to after complete
+            'next_screen': 'MainMenuScreen'
+        }
+
+
+    def execute_steps(self):
+        icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+
+        constants.ignore_close = True
+
+        # Execute before function
+        if self.page_contents['before_function']:
+            self.page_contents['before_function']()
+            if self.error:
+                return
+
+        # Go over every step in function_list
+        for x, step in enumerate(self.page_contents['function_list']):
+
+            # Close thread if error occurred
+            if self.error:
+                return
+
+            if x != 0:
+                if "[font=" not in self.steps.label_2.text:
+                    self.steps.label_2.text = self.steps.label_2.text.split('(')[0].strip() + f"   [font={icons}]å[/font]"
+                time.sleep(0.6)
+            self.update_steps(step[0], x)
+            # Execute function and check for completion
+            test = step[1]()
+            time.sleep(0.25)
+            self.last_progress = self.progress_bar.value
+
+            # If it failed, execute default error
+            if not test:
+                self.execute_error(self.page_contents['default_error'])
+                return
+
+            self.progress_bar.update_progress(self.progress_bar.value + step[2])
+
+        # Execute after_function
+        time.sleep(0.5)
+        if "[font=" not in self.steps.label_2.text:
+            self.steps.label_2.text = self.steps.label_2.text.split('(')[0].strip() + f"   [font={icons}]å[/font]"
+        time.sleep(0.19)
+        Animation(color=(0.3, 1, 0.6, 1), duration=0.2, transition='out_sine').start(self.steps.label_2)
+
+        # Execute after function on if there was no error
+        if self.page_contents['after_function'] and not self.error:
+            self.page_contents['after_function']()
+
+        # Switch to next_page after it's done
+        constants.ignore_close = False
+        if not self.error and self.page_contents['next_screen']:
+            def next_screen(*args):
+                screen_manager.current = self.page_contents['next_screen']
+            Clock.schedule_once(next_screen, 0.8)
+
+
+    def execute_error(self, msg, *args):
+        constants.ignore_close = False
+        self.error = True
+
+        def close(*args):
+            Clock.schedule_once(previous_screen, 0.25)
+            self.error = False
+            self.timer = None
+
+        def function(*args):
+            self.timer.cancel()
+            self.show_popup('warning', 'Error', msg, (close))
+
+        Clock.schedule_once(function, 0)
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self._ignore_tree = True
+
+        self.title = None
+        self.footer = None
+        self.progress_bar = None
+        self.steps = None
+        self.timer = None
+        self.error = False
+        self.start = False
+        self.last_progress = 0
+
+        self.page_contents = None
+
+
+    def update_steps(self, current, num):
+
+        print(f"Progress {current} {num}")
+
+        icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+        yummy_label = f"   ({num+1}/{len(self.page_contents['function_list'])})"
+        end_label = f"{len(self.page_contents['function_list'])})"
+
+        Animation.stop_all(self.steps.label_1)
+        Animation.stop_all(self.steps.label_2)
+        Animation.stop_all(self.steps.label_3)
+        Animation.stop_all(self.steps.label_4)
+        self.steps.label_1.y = self.steps.label_1.original_y
+        self.steps.label_2.y = self.steps.label_2.original_y
+        self.steps.label_3.y = self.steps.label_3.original_y
+        self.steps.label_4.y = self.steps.label_4.original_y
+
+        if len(self.page_contents['function_list']) == 1:
+            self.steps.label_2.text = current
+        else:
+            anim_duration = 0.5 if self.start else 0
+
+            if "[font=" not in self.steps.label_2.text and self.steps.label_2.text:
+                self.steps.label_2.text = self.steps.label_2.text.split('(')[0].strip() + f"   [font={icons}]å[/font]"
+            Animation(opacity=0.3, duration=0.2 if self.start else 0, transition='out_sine').start(self.steps.label_1)
+            Animation(opacity=0.3, duration=0.2 if self.start else 0, transition='out_sine').start(self.steps.label_2)
+            Animation(opacity=0.3, duration=0.2 if self.start else 0, transition='out_sine').start(self.steps.label_3)
+            Animation(opacity=0.3, duration=0.2 if self.start else 0, transition='out_sine').start(self.steps.label_4)
+
+            if num != 0:
+                if not self.steps.label_3.text.endswith(end_label) and self.steps.label_3.text:
+                    self.steps.label_3.text += yummy_label
+                Animation(y=self.steps.label_1.y + (self.steps.size_hint_max[1] / 2), duration=anim_duration, transition='out_sine').start(self.steps.label_1)
+                Animation(y=self.steps.label_2.y + (self.steps.size_hint_max[1] / 2), duration=anim_duration, transition='out_sine').start(self.steps.label_2)
+                Animation(y=self.steps.label_3.y + (self.steps.size_hint_max[1] / 2), opacity=1, duration=anim_duration, transition='out_sine').start(self.steps.label_3)
+                Animation(y=self.steps.label_4.y + (self.steps.size_hint_max[1] / 2), duration=anim_duration, transition='out_sine').start(self.steps.label_4)
+            else:
+                Animation.stop_all(self.steps.label_2)
+                self.steps.label_2.opacity = 1
+
+            def delayed_func(*args):
+                if num != 0:
+                    # Label 1
+                    try:
+                        self.steps.label_1.text = self.page_contents['function_list'][num-1][0]
+                        if "[font=" not in self.steps.label_1.text and self.steps.label_1.text:
+                            self.steps.label_1.text += f"   [font={icons}]å[/font]"
+                        self.steps.label_1.opacity = 0.3
+                    except IndexError:
+                        pass
+                    self.steps.label_1.y = self.steps.label_1.original_y
+
+
+                # Label 2
+                try:
+                    self.steps.label_2.text = current + yummy_label
+                    self.steps.label_2.opacity = 1
+                except IndexError:
+                    pass
+                self.steps.label_2.y = self.steps.label_2.original_y
+
+
+                # Label 3
+                try:
+                    self.steps.label_3.text = self.page_contents['function_list'][num+1][0]
+                    self.steps.label_3.opacity = 0.3
+                except IndexError:
+                    self.steps.label_3.text = ""
+                self.steps.label_3.y = self.steps.label_3.original_y
+
+
+                # Label 4
+                try:
+                    self.steps.label_4.text = self.page_contents['function_list'][num+2][0]
+                    self.steps.label_4.opacity = 0.3
+                except IndexError:
+                    self.steps.label_4.text = ""
+                self.steps.label_4.y = self.steps.label_4.original_y
+
+            Clock.schedule_once(delayed_func, anim_duration+0.01 if self.start else 0)
+            self.start = True
+
+
+    def generate_menu(self, **kwargs):
+        # Generate buttons on page load
+        self.contents()
+        self.start = False
+        self.last_progress = 0
+
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        float_layout.add_widget(header_text(self.page_contents['header'], '', (0, 0.8)))
+
+        self.progress_bar = ProgressWidget(pos_hint={'center_x': 0.5, 'center_y': 0.6})
+
+        self.title = generate_title(self.page_contents['title'])
+
+
+        # Yummy animated steps text
+        class StepLabel(Label):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.text = ""
+                self.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['medium'])
+                self.font_size = sp(25)
+                self.markup = True
+                self.color = (0.6, 0.6, 1, 1)
+                self.opacity = 1
+                self.original_y = 0
+        self.steps = RelativeLayout()
+        self.steps.size_hint_max = (150, 150)
+        self.steps.pos_hint = {'center_x': 0.5, 'center_y': 0.25}
+        self.steps.label_1 = StepLabel()
+        self.steps.label_1.original_y = self.steps.label_1.y = self.steps.size_hint_max[1]
+        self.steps.label_2 = StepLabel()
+        self.steps.label_2.original_y = self.steps.label_2.y = self.steps.size_hint_max[1] / 2
+        self.steps.label_3 = StepLabel()
+        self.steps.label_3.original_y = self.steps.label_3.y = 0
+        self.steps.label_4 = StepLabel()
+        self.steps.label_4.original_y = self.steps.label_4.y = 0 - (self.steps.size_hint_max[1] / 2)
+        self.steps.scroll_top = scroll_background(pos_hint={'center_x': 0.5}, pos=(0, self.steps.size_hint_max[1] * 1.7), size=(Window.width // 1.5, 60))
+        self.steps.scroll_bottom = scroll_background(pos_hint={'center_x': 0.5}, pos=(0, (self.steps.size_hint_max[1] / 3.5)), size=(Window.width // 1.5, -60))
+        self.steps.add_widget(self.steps.label_1)
+        self.steps.add_widget(self.steps.label_2)
+        self.steps.add_widget(self.steps.label_3)
+        self.steps.add_widget(self.steps.label_4)
+        self.steps.add_widget(self.steps.scroll_top)
+        self.steps.add_widget(self.steps.scroll_bottom)
+
+
+        # Change footer icon to loading pickaxe, remove home button
+        # Also prevent window from being closed during operations
+        self.footer = generate_footer(self.page_contents['title'] + '...', progress_screen=True)
+
+        float_layout.add_widget(self.title)
+        float_layout.add_widget(self.footer)
+        float_layout.add_widget(self.steps)
+        float_layout.add_widget(self.progress_bar)
+
+        self.add_widget(float_layout)
+
+        self.timer = threading.Timer(0, self.execute_steps)
+        self.timer.start()
+
+# </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+# ================================================== Main Menu =========================================================
+# <editor-fold desc="Main Menu">
+
+class MainMenuScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+
+    def generate_menu(self, **kwargs):
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+
+        constants.screen_tree = []
+        constants.generate_server_list()
+
+        splash = FloatLayout()
+
+        logo = Image(source=os.path.join(constants.gui_assets, 'logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
+
+        splash.add_widget(logo)
+        splash.add_widget(Label(text=f"v{constants.app_version}{(8 - len(constants.app_version)) * '  '}", pos=(330, 200), pos_hint={"center_y": 0.77}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23)))
+        splash.add_widget(Label(text="_" * 50, pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25)))
+        splash.add_widget(Label(text=constants.session_splash, pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25)))
+
+        float_layout.add_widget(splash)
+
+        if not constants.server_list:
+            buttons.append(main_button('Import a server', (0.5, 0.42), 'download-outline.png'))
+        else:
+            buttons.append(main_button('Manage Auto-MCS servers', (0.5, 0.42), 'settings-outline.png'))
+        buttons.append(main_button('Create a new server', (0.5, 0.32), 'duplicate-outline.png'))
+        buttons.append(exit_button('Quit', (0.5, 0.17)))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_footer('splash'))
+
+        self.add_widget(float_layout)
+
+# </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+#  =============================================== Create Server =======================================================
+# <editor-fold desc="Create Server">
+
+# Create Server Step 1:  Server Name -----------------------------------------------------------------------------------
+
+class CreateServerNameScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+    def generate_menu(self, **kwargs):
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        # Prevent server creation if offline
+        if not constants.app_online:
+            float_layout.add_widget(header_text("Server creation requires an internet connection", '', (0, 0.6)))
+            buttons.append(exit_button('Back', (0.5, 0.35)))
+
+        # Regular menus
+        else:
+            float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
+            float_layout.add_widget(header_text("What would you like to name your server?", '', (0, 0.76)))
+            name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['name'])
+            float_layout.add_widget(name_input)
+            buttons.append(next_button('Next', (0.5, 0.24), not constants.new_server_info['name'], next_screen='CreateServerTypeScreen'))
+            buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+            float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title('Create New Server'))
+        float_layout.add_widget(generate_footer('Create new server'))
+
+        self.add_widget(float_layout)
+
+        if constants.app_online:
+            name_input.grab_focus()
+
+
+
+# Create Server Step 2:  Server Type -----------------------------------------------------------------------------------
+
+class CreateServerTypeScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+    def generate_menu(self, **kwargs):
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        float_layout.add_widget(header_text("What type of server do you wish to create?", '', (0, 0.86)))
+
+        # Create UI buttons
+        buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerVersionScreen'))
+        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+
+        # Create type buttons
+        content_layout = FloatLayout()
+        content_layout.current_selection = constants.new_server_info['type']
+        row_top = BoxLayout()
+        row_bottom = BoxLayout()
+        row_top.pos_hint = {"center_y": 0.66, "center_x": 0.5}
+        row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
+        row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
+        row_top.orientation = row_bottom.orientation = "horizontal"
+        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('experimental mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        content_layout.add_widget(row_top)
+        content_layout.add_widget(row_bottom)
+        float_layout.add_widget(content_layout)
+        menu_name = f"Create '{constants.new_server_info['name']}'"
+
+        float_layout.add_widget(page_counter(2, 7, (0, 0.868)))
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+
+
+# Create Server Step 3:  Server Version --------------------------------------------------------------------------------
+
+class CreateServerVersionScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+    def generate_menu(self, **kwargs):
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        # Prevent server creation if offline
+        if not constants.app_online:
+            float_layout.add_widget(header_text("Server creation requires an internet connection", '', (0, 0.6)))
+            buttons.append(exit_button('Back', (0.5, 0.35)))
+
+        # Regular menus
+        else:
+            float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
+            float_layout.add_widget(page_counter(3, 7, (0, 0.768)))
+            float_layout.add_widget(header_text("What version of Minecraft do you wish to play?", '', (0, 0.76)))
+            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['version']))
+            buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerWorldScreen', show_load_icon=True))
+            buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"Create '{constants.new_server_info['name']}'"
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+
+
+# Create Server Step 4:  Server Name -----------------------------------------------------------------------------------
+# Note:  Also generates ACL object after name/version are decided
+class CreateServerWorldScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+    def generate_menu(self, **kwargs):
+
+        # Generate ACL in new_server_info
+        def create_acl():
+            if not constants.new_server_info['acl_object']:
+                constants.new_server_info['acl_object'] = acl.AclObject(constants.new_server_info['name'])
+            else:
+                constants.new_server_info['acl_object'].server = acl.dump_config(constants.new_server_info['name'], True)
+
+            # acl.print_acl(constants.new_server_info['acl_object'])
+
+        thread = threading.Timer(0, create_acl)
+        thread.start()
+
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.62}))
+        float_layout.add_widget(header_text("What world would you like to use?", '', (0, 0.76)))
+        float_layout.add_widget(ServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.55}))
+        float_layout.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
+        buttons.append(input_button('Browse...', (0.5, 0.55), ('dir', constants.saveFolder if os.path.isdir(constants.saveFolder) else constants.userDownloads), input_name='ServerWorldInput', title='Select a World File'))
+
+        server_version = constants.new_server_info['version']
+        if constants.version_check(server_version, '>=', "1.1"):
+            options = ['normal', 'superflat']
+            if constants.version_check(server_version, '>=', "1.3.1"):
+                options.append('large biomes')
+            if constants.version_check(server_version, '>=', "1.7.2"):
+                options.append('amplified')
+            default_name = constants.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
+            float_layout.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerLevelTypeInput', x_offset=41))
+
+        buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerNetworkScreen'))
+        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"Create '{constants.new_server_info['name']}'"
+        float_layout.add_widget(page_counter(4, 7, (0, 0.768)))
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+    def on_pre_enter(self, *args):
+        super().on_pre_enter()
+        self.toggle_new(constants.new_server_info['server_settings']['world'] != 'world')
+
+    # Call this when world loaded, and when the 'create new world instead' button is clicked. Fix overlapping when added/removed multiple times
+    def toggle_new(self, boolean_value):
+
+        current_input = ''
+        server_version = constants.new_server_info['version']
+
+        for child in self.children:
+            try:
+                if child.id == 'content':
+                    for item in child.children:
+                        try:
+                            if item.__class__.__name__ == 'ServerSeedInput':
+                                current_input = 'input'
+                                if constants.new_server_info['server_settings']['world'] != 'world':
+                                    child.remove_widget(item)
+
+                                    try:
+                                        if constants.version_check(server_version, '>=', "1.1"):
+                                            child.remove_widget([relative for relative in child.children if relative.__class__.__name__ == 'DropButton'][0])
+                                    except IndexError:
+                                        if constants.debug:
+                                            print("Error: 'DropButton' does not exist, can't remove")
+
+                            elif item.id == 'Create new world instead':
+                                current_input = 'button'
+                                if constants.new_server_info['server_settings']['world'] == 'world':
+                                    child.remove_widget(item)
+                        except AttributeError:
+                            continue
+
+                    # Show button if true
+                    if boolean_value and constants.new_server_info['server_settings']['world'] != 'world' and current_input == 'input':
+                        child.add_widget(main_button('Create new world instead', (0.5, 0.442), 'add-circle-outline.png', width=530))
+
+                    # Show seed input, and clear world text
+                    elif constants.new_server_info['server_settings']['world'] == 'world' and current_input == 'button':
+                        child.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
+
+                        if constants.version_check(server_version, '>=', "1.1"):
+                            options = ['normal', 'superflat']
+                            if constants.version_check(server_version, '>=', "1.3.1"):
+                                options.append('large biomes')
+                            if constants.version_check(server_version, '>=', "1.7.2"):
+                                options.append('amplified')
+                            default_name = constants.new_server_info['server_settings']['level_type'].replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
+                            child.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerLevelTypeInput', x_offset=41))
+                    break
+
+            except AttributeError:
+                pass
+
+
+
+# Create Server Step 5:  Server Network --------------------------------------------------------------------------------
+def process_ip_text():
+    start_text = ''
+    if not (constants.new_server_info['port'] == '25565' and not constants.new_server_info['ip']):
+        if constants.new_server_info['ip']:
+            start_text = constants.new_server_info['ip']
+        if constants.new_server_info['port']:
+            start_text = start_text + ':' + constants.new_server_info['port'] if start_text else constants.new_server_info['port']
+
+    return start_text
+
+class CreateServerNetworkScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+    def generate_menu(self, **kwargs):
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.685}))
+        float_layout.add_widget(header_text("Do you wish to configure network information?", '', (0, 0.8)))
+        float_layout.add_widget(ServerPortInput(pos_hint={"center_x": 0.5, "center_y": 0.62}, text=process_ip_text()))
+        float_layout.add_widget(ServerMOTDInput(pos_hint={"center_x": 0.5, "center_y": 0.515}))
+        float_layout.add_widget(main_button('Access Control Manager', (0.5, 0.4), 'lock-open-outline.png', width=531))
+        buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen'))
+        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"Create '{constants.new_server_info['name']}'"
+        float_layout.add_widget(page_counter(5, 7, (0, 0.808)))
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+
+
+# Create Server Step 5:  ACL Options -----------------------------------------------------------------------------------
+
+class RuleButton(FloatLayout):
+
+    def __setattr__(self, attr, value):
+
+        # Change attributes dynamically based on rule
+        if attr == "rule" and value:
+            self.text.text = value.rule.replace("!w", "")
+            self.change_properties(value)
+
+        super().__setattr__(attr, value)
+
+
+    # Modifies rule attributes based on rule.list_enabled status
+    def change_properties(self, rule):
+
+        # Prevent crash from spamming the back button
+        if "Acl" not in screen_manager.current_screen.name:
+            return
+
+        Animation.cancel_all(self.button)
+        Animation.cancel_all(self.text)
+        Animation.cancel_all(self.icon)
+
+        self.button.id = f'rule_button{"_enabled" if rule.list_enabled else ""}'
+        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.button.id}.png')
+        self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click.png')
+
+        # Change color attributes
+        if screen_manager.current_screen.current_list == "ops":
+            self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (0.439, 0.839, 1, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (0.6, 0.5, 1, 1)]
+            self.hover_attr = (icon_path("close-circle.png"), 'DEMOTE', (1, 0.5, 0.65, 1)) if rule.list_enabled else (icon_path("promote.png"), 'PROMOTE', (0.3, 1, 0.6, 1))
+        elif screen_manager.current_screen.current_list == "bans":
+            if rule.rule_type == "ip":
+                self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (1, 0.45, 0.85, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (0.4, 0.8, 1, 1)]
+            else:
+                self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (1, 0.5, 0.65, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (0.3, 1, 0.6, 1)]
+            if rule.list_enabled:
+                self.hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
+            else:
+                self.hover_attr = (icon_path("close-circle.png"), 'BAN' if rule.rule_type == 'player' else 'REMOVE', (1, 0.5, 0.65, 1))
+        elif screen_manager.current_screen.current_list == "wl":
+            if screen_manager.current_screen.acl_object.server['whitelist']:
+                self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (0.3, 1, 0.6, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (1, 0.5, 0.65, 1)]
+            else:
+                self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (0.3, 1, 0.6, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (0.7, 0.7, 0.7, 1)]
+            self.hover_attr = (icon_path("close-circle.png"), 'RESTRICT', (1, 0.5, 0.65, 1)) if rule.list_enabled else (icon_path("checkmark-circle-sharp.png"), 'PERMIT', (0.3, 1, 0.6, 1))
+
+        new_color_id = (self.color_id[1][0], self.color_id[1][1], self.color_id[1][2], 1 if rule.list_enabled else 0.95)
+        self.color_id[1] = new_color_id
+        self.button.color_id[1] = new_color_id
+        self.text.color = constants.brighten_color(new_color_id, 0.2)
+        self.icon.color = constants.brighten_color(new_color_id, 0.2)
+        self.icon.source = icon_path("earth-sharp.png")
+        self.button.background_color = new_color_id
+
+
+        # Change scope attributes
+        if rule.rule_scope == "global":
+            self.text.pos_hint["center_x"] = 0.5 + round(len(self.text.text) * 0.01, 2)
+            self.icon.opacity = 1
+            self.icon.color = self.global_icon_color
+            if rule.rule_type == "player" or "/" in rule.rule:
+                self.text.font_size = sp(19 - (0 if len(self.text.text) < 11 else (len(self.text.text) // 5)))
+
+        else:
+            self.text.pos_hint["center_x"] = 0.5
+            self.icon.opacity = 0
+            self.icon.color = self.color_id[1]
+            if rule.rule_type == "player" or "/" in rule.rule:
+                self.text.font_size = sp(19 - (0 if len(self.text.text) < 11 else (len(self.text.text) // 7)))
+
+        if rule.rule_type == "ip" and "/" not in rule.rule:
+            self.text.font_size = sp(19)
+
+        self.original_font_size = self.text.font_size
+
+
+    def highlight(self, original_color, original_text_color, original_hover_color):
+        self.button.background_color = constants.brighten_color(original_hover_color, -0.15)
+        self.text.color = constants.brighten_color(original_hover_color, -0.15)
+        Animation(background_color=original_color, duration=1).start(self.button)
+        Animation(color=original_text_color, duration=1).start(self.text)
+
+
+    def __init__(self, name='', icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, **kwargs):
+        super().__init__(**kwargs)
+
+        position = (0.5, 0.5)
+        self.size_hint_max_y = dp(60)
+        self.rule = None
+        self.id = 'rule_button'
+        self.enabled = True
+        self.original_font_size = None
+
+
+        # Hover button object
+        self.button = HoverButton()
+
+        def on_enter(*args):
+
+            Animation.cancel_all(self.button)
+            Animation.cancel_all(self.text)
+
+            if not self.button.ignore_hover:
+                animate_button(self.button, image=os.path.join(constants.gui_assets, f'{self.button.id}_hover.png'), color=self.button.color_id[0])
+                self.text.font_size = sp(18)
+
+                if self.rule.rule_scope == "global":
+                    self.icon.source = icon_path("earth-strike.png")
+                    self.text.text = "LOCALIZE"
+                    Animation(background_color=self.global_icon_color, duration=0.05).start(self.button)
+
+                else:
+                    self.icon.source = self.hover_attr[0]
+                    self.text.text = "   " + self.hover_attr[1]
+                    Animation(background_color=self.hover_attr[2], duration=0.05).start(self.button)
+                    Animation(opacity=1, duration=0.05).start(self.icon)
+
+        def on_leave(*args):
+            if not self.button.ignore_hover:
+                animate_button(self.button, image=os.path.join(constants.gui_assets, f'{self.button.id}.png'), color=constants.brighten_color(self.button.color_id[1], 0.2))
+                self.text.font_size = self.original_font_size
+                self.text.text = self.rule.rule.replace("!w", "")
+                new_color_id = (self.color_id[1][0], self.color_id[1][1], self.color_id[1][2], 1 if self.rule.list_enabled else 0.95)
+                Animation(background_color=new_color_id, duration=0.1).start(self.button)
+
+                if self.rule.rule_scope == "global":
+                    Animation(color=self.global_icon_color,duration=0.07).start(self.icon)
+                    self.icon.source = icon_path("earth-sharp.png")
+                else:
+                    Animation(opacity=0, duration=0.05).start(self.icon)
+
+        def click_func(button_pressed=None, *args):
+
+            if not button_pressed or not isinstance(button_pressed, str):
+                button_pressed = self.button.button_pressed.lower().strip()
+
+            button_text = self.text.text.lower().strip()
+            current_list = screen_manager.current_screen.current_list.lower().strip()
+            acl_object = screen_manager.current_screen.acl_object
+            original_name = self.rule.rule
+            filtered_name = self.rule.rule.replace("!w", "").replace("!g", "").strip()
+            original_hover_attr = self.hover_attr
+            new_scope = self.rule.rule_scope
+            banner_text = ""
+            reload_page = False
+            localize = False
+
+
+            # Left click on button (Local)
+            if button_pressed == "left" and self.rule.rule_scope == "local":
+
+                # Modify 'ops' list
+                if current_list == "ops" and button_text in ['promote', 'demote']:
+                    acl_object.op_user(self.rule.rule, remove=(button_text == "demote"))
+                    banner_text = f"'{filtered_name}' was {'demoted' if (button_text == 'demote') else 'promoted'}"
+                    reload_page = True
+
+                # Modify 'bans' list
+                elif current_list == "bans" and button_text in ['ban', 'pardon', 'remove']:
+                    acl_object.ban_user(self.rule.rule, remove=(button_text == "pardon") or ("!w" in self.rule.rule))
+
+                    if button_text == "pardon":
+                        try:
+                            ip_addr = acl.get_uuid(self.rule.rule)['latest-ip'].split(":")[0].strip()
+                        except KeyError:
+                            ip_addr = ""
+
+                        if ip_addr:
+                            # Whitelist IP if it's still in the rule list
+                            if ip_addr in acl.gen_iplist(acl_object.rules['subnets']):
+                                acl_object.ban_user(f"!w{ip_addr}", remove=False)
+
+                    banner_text = f"'{filtered_name}' was removed" if button_text == 'remove' else f"'{filtered_name}' is {'pardoned' if (button_text == 'pardon') else 'banned'}"
+                    reload_page = True
+
+                # Modify 'wl' list
+                elif current_list == "wl" and button_text in ['permit', 'restrict']:
+                    acl_object.wl_user(self.rule.rule, remove=(button_text == "restrict"))
+                    banner_text = f"'{filtered_name}' is {'restricted' if (button_text == 'restrict') else 'permitted'}"
+                    reload_page = True
+
+
+            # Left click on button (global)
+            elif button_pressed == "left" and self.rule.rule_scope == "global" and button_text == "localize":
+                acl_object.add_global_rule(self.rule.rule, current_list, remove=True)
+                original_hover_attr = (
+                    icon_path("earth-strike.png"),
+                    original_hover_attr[1],
+                    self.color_id[1]
+                )
+                banner_text = f"'{filtered_name}' rule is now locally applied"
+                localize = True
+                new_scope = "local"
+                reload_page = True
+
+
+            # Middle click on button
+            elif button_pressed == "middle":
+                acl_object.add_global_rule(self.rule.rule, current_list, remove=(button_text == 'localize'))
+                original_hover_attr = (
+                    icon_path(f"earth-{'strike' if (self.rule.rule_scope == 'global') else 'sharp'}.png"),
+                    original_hover_attr[1],
+                    self.global_icon_color if (self.rule.rule_scope == 'local') else self.color_id[1]
+                )
+                banner_text = f"'{filtered_name}' is now {'local' if (self.rule.rule_scope == 'global') else 'global'}ly applied"
+                localize = self.rule.rule_scope == "global"
+                new_scope = "local" if localize else "global"
+                reload_page = True
+
+
+
+            if reload_page:
+                # print(button_text, button_pressed, current_list)
+
+                # If rule localized, enable on current list
+                if localize:
+                    if current_list == "ops":
+                        acl_object.op_user(self.rule.rule)
+                    elif current_list == "bans":
+                        acl_object.ban_user(self.rule.rule)
+                    elif current_list == "wl":
+                        acl_object.wl_user(self.rule.rule)
+
+
+                self.button.on_leave()
+                self.change_properties(self.rule)
+                self.button.state = "normal"
+
+                Animation.cancel_all(self.button)
+                Animation.cancel_all(self.text)
+                Animation.cancel_all(self.icon)
+
+                screen_manager.current_screen.update_list(current_list, reload_children=False)
+
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        original_hover_attr[2],
+                        banner_text,
+                        original_hover_attr[0],
+                        2,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+
+                def trigger_highlight(*args):
+                    for rule_button in screen_manager.current_screen.scroll_layout.children:
+
+                        if rule_button.rule.rule == original_name:
+                            rule_button.highlight(rule_button.button.background_color, rule_button.text.color, original_hover_attr[2])
+
+                        else:
+                            rule_button.button.on_leave()
+                            Animation.cancel_all(rule_button.button)
+                            Animation.cancel_all(rule_button.text)
+                            Animation.cancel_all(rule_button.icon)
+                            rule_button.change_properties(rule_button.rule)
+
+                        rule_button.button.ignore_hover = False
+
+                Clock.schedule_once(trigger_highlight, 0)
+
+            # Update display rule regardless of button pressed
+            screen_manager.current_screen.update_user_panel(self.rule.rule, new_scope)
+
+
+
+        self.button.on_enter = on_enter
+        self.button.on_leave = on_leave
+        self.button.bind(on_press=click_func)
+        self.button.id = 'rule_button'
+        self.color_id = self.button.color_id = [(0.03, 0.03, 0.03, 1), (1, 1, 1, 1)] # [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        self.hover_attr = (icon_path('close-circle.png'), 'hover text', (1, 1, 1, 1)) # Icon, Text, Hover color
+        self.global_icon_color = (0.953, 0.929, 0.38, 1)
+
+        self.button.size_hint = (None, None)
+        self.button.size = (dp(190 if not width else width), self.size_hint_max_y)
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (-3, -3, -3, -3)
+        self.button.background_normal = os.path.join(constants.gui_assets, 'rule_button.png')
+        self.button.background_down = os.path.join(constants.gui_assets, 'rule_button_click.png')
+        self.button.always_release = True
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.text.text = name
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = self.color_id[1]
+
+
+        # Button click behavior
+        self.button.on_release = functools.partial(button_action, name, self.button)
+        self.add_widget(self.button)
+
+
+        # Icon thingy
+        self.icon = Image()
+        self.icon.id = 'icon'
+        self.icon.source = icon_path("earth-sharp.png") if not icon_name else icon_path(icon_name)
+        self.icon.size = (25, 25)
+        self.icon.size_hint = (None, None)
+        self.icon.opacity = 0
+        self.icon.color = self.color_id[1]
+        self.icon.pos_hint = {"center_x": -0.2, "center_y": 0.5}
+
+
+        self.add_widget(self.icon)
+        self.add_widget(self.text)
+
+class AclRulePanel(RelativeLayout):
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+
+        class HeaderLabel(Label):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.size_hint = (None, None)
+                self.markup = True
+                self.font_size = sp(22)
+                self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+                self.color = (0.6, 0.6, 1, 1)
+
+        class ParagraphLabel(Label, HoverBehavior):
+
+            def on_mouse_pos(self, *args):
+
+                if "AclScreen" in screen_manager.current_screen.name:
+
+                    try:
+                        super().on_mouse_pos(*args)
+                    except:
+                        pass
+
+                    if self.text.count(".") > 3 and "IP" in self.text:
+                        rel_y = args[1][1] - screen_manager.current_screen.user_panel.y
+                        if self.hovered and rel_y < 190:
+                            self.on_leave()
+                            self.hovered = False
+
+
+            # Hover stuffies
+            def on_enter(self, *args):
+
+                # Change size of IP text
+                if self.text.count(".") > 3 and "IP" in self.text:
+                    rel_y = self.border_point[1] - screen_manager.current_screen.user_panel.y
+                    if rel_y < 190:
+                        self.hovered = False
+                        return None
+
+                if self.copyable:
+                    self.outline_width = 0
+                    self.outline_color = constants.brighten_color(self.color, 0.05)
+                    Animation(outline_width=1, duration=0.03).start(self)
+
+
+            def on_leave(self, *args):
+
+                if self.copyable:
+                    Animation.stop_all(self)
+                    self.outline_width = 0
+
+
+            # Normal stuffies
+            def on_ref_press(self, *args):
+                if not self.disabled:
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.85, 0.65, 1, 1),
+                            "Copied text to clipboard",
+                            "link-sharp.png",
+                            2,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
+
+                    Clipboard.copy(re.sub("\[.*?\]","",self.text))
+
+
+            def ref_text(self, *args):
+
+                self.copyable = not (("unknown" in self.text.lower()) or ("online" in self.text.lower()) or (("access") in self.text.lower()))
+
+                if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
+                    self.text = f'[ref=none]{self.text}[/ref]'
+                elif '[/ref]' in self.text:
+                    self.text = self.text.replace("[/ref]","") + "[/ref]"
+
+                self.texture_update()
+                self.size = self.texture_size
+
+                if self.text.count(".") > 3 and "IP" in self.text:
+                    self.width = self.texture_size[0] / 1.5
+
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.size_hint = (None, None)
+                self.markup = True
+                self.font_size = sp(18)
+                self.copyable = True
+                self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+                self.default_color = (0.6, 0.6, 1, 1)
+                self.color = self.default_color
+                self.bind(text=self.ref_text)
+
+
+        self.color_dict = {
+            "blue":    "#70E6FF",
+            "red":     "#FF8793",
+            "green":   "#4CFF99",
+            "white":   "#FFFFFF",
+            "gray":    "#A0A0A0",
+            "yellow":  "#F3ED61",
+            "purple":  "#A699FF"
+        }
+
+
+        self.displayed_type = ""
+        self.displayed_scope = "local"
+
+        # User panel (I'm sorry in advance)
+        # <editor-fold desc="User Panel SUFFERING">
+        self.pos_hint = {"center_y": 0.42}
+        self.size_hint_max = (500, 600)
+
+        # Background image
+        self.background = Image()
+        self.background.id = 'background'
+        self.background.source = os.path.join(constants.gui_assets, 'user_panel.png')
+        self.background.color = (0.65, 0.6, 1, 1)
+        self.background.opacity = 0
+
+        # Label when no rule is displayed
+        self.blank_label = Label()
+        self.blank_label.id = 'blank_label'
+        self.blank_label.text = "Right-click a rule to view"
+        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.blank_label.font_size = sp(26)
+        self.blank_label.color = (0.6, 0.6, 1, 0.4)
+        self.blank_label.opacity = 0
+
+        # Drop down options button
+        self.options = DropButton('OPTIONS', (0.5, 0.192), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclOptionsInput', x_offset=-33, facing='center', custom_func=self.modify_rule, change_text=False)
+        self.add_widget(self.options)
+
+
+        # Player Layout
+        # <editor-fold desc="Player Layout Widgets">
+        self.player_layout = RelativeLayout()
+        self.player_layout.id = 'player_layout'
+
+        self.player_layout.header_icon = Image()
+        self.player_layout.header_icon.source = icon_path('person-circle-sharp.png')
+        self.player_layout.header_icon.allow_stretch = True
+        self.player_layout.header_icon.size_hint_max = (36, 36)
+        self.player_layout.header_icon.pos_hint = {"center_x": 0.5, "center_y": 0.808}
+        self.player_layout.add_widget(self.player_layout.header_icon)
+
+        # Make this copyable text
+        self.player_layout.name_label = HeaderLabel()
+        self.player_layout.name_label.pos_hint = {"center_x": 0.54, "center_y": 0.81}
+        self.player_layout.name_label.font_size = sp(25)
+        self.player_layout.add_widget(self.player_layout.name_label)
+
+        self.player_layout.online_icon = Image()
+        self.player_layout.online_icon.source = icon_path('radio-button-off-sharp.png')
+        self.player_layout.online_icon.allow_stretch = True
+        self.player_layout.online_icon.size_hint_max = (15, 15)
+        self.player_layout.online_icon.pos_hint = {"center_x": 0.5, "center_y": 0.752}
+        self.player_layout.add_widget(self.player_layout.online_icon)
+
+        self.player_layout.online_label = ParagraphLabel()
+        self.player_layout.online_label.font_size = sp(19)
+        self.player_layout.online_label.pos_hint = {"center_x": 0.523, "center_y": 0.755}
+        self.player_layout.add_widget(self.player_layout.online_label)
+
+        self.player_layout.uuid_header = HeaderLabel()
+        self.player_layout.uuid_header.pos_hint = {"center_x": 0.5, "center_y": 0.66}
+        self.player_layout.add_widget(self.player_layout.uuid_header)
+
+        # Make this copyable text
+        self.player_layout.uuid_label = ParagraphLabel()
+        self.player_layout.uuid_label.pos_hint = {"center_x": 0.5, "center_y": 0.619}
+        self.player_layout.add_widget(self.player_layout.uuid_label)
+
+        self.player_layout.ip_header = HeaderLabel()
+        self.player_layout.ip_header.pos_hint = {"center_x": 0.28, "center_y": 0.54}
+        self.player_layout.add_widget(self.player_layout.ip_header)
+
+        # Make this copyable text
+        self.player_layout.ip_label = ParagraphLabel()
+        self.player_layout.ip_label.font_size = sp(20)
+        self.player_layout.ip_label.pos_hint = {"center_x": 0.28, "center_y": 0.499}
+        self.player_layout.add_widget(self.player_layout.ip_label)
+
+        self.player_layout.geo_header = HeaderLabel()
+        self.player_layout.geo_header.pos_hint = {"center_x": 0.7, "center_y": 0.54}
+        self.player_layout.add_widget(self.player_layout.geo_header)
+
+        self.player_layout.geo_label = ParagraphLabel()
+        self.player_layout.geo_label.halign = "center"
+        self.player_layout.geo_label.pos_hint = {"center_x": 0.7, "center_y": 0.499}
+        self.player_layout.add_widget(self.player_layout.geo_label)
+
+        self.player_layout.access_header = HeaderLabel()
+        self.player_layout.access_header.pos_hint = {"center_x": 0.5, "center_y": 0.4}
+        self.player_layout.access_header.font_size = sp(20)
+        self.player_layout.add_widget(self.player_layout.access_header)
+
+        self.player_layout.access_label = ParagraphLabel()
+        self.player_layout.access_label.halign = "left"
+        self.player_layout.access_label.valign = "top"
+        self.player_layout.access_label.text_size = (250, 300)
+        self.player_layout.access_label.font_size = sp(19)
+        self.player_layout.access_label.line_height = sp(1.4)
+        self.player_layout.access_label.pos_hint = {"center_x": 0.465, "center_y": 0.11}
+        self.player_layout.add_widget(self.player_layout.access_label)
+
+        self.player_layout.access_line_1 = Image()
+        self.player_layout.access_line_1.size_hint_max = (35, 35)
+        self.player_layout.access_line_1.pos_hint = {"center_x": 0.165, "center_y": 0.29}
+        self.player_layout.access_line_1.allow_stretch = True
+        self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
+        self.player_layout.add_widget(self.player_layout.access_line_1)
+
+        self.player_layout.access_line_2 = Image()
+        self.player_layout.access_line_2.size_hint_max = (35, 35)
+        self.player_layout.access_line_2.pos_hint = {"center_x": 0.165, "center_y": 0.24}
+        self.player_layout.access_line_2.allow_stretch = True
+        self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_active.png")
+        self.player_layout.add_widget(self.player_layout.access_line_2)
+
+        self.player_layout.access_line_3 = Image()
+        self.player_layout.access_line_3.size_hint_max = (35, 35)
+        self.player_layout.access_line_3.pos_hint = {"center_x": 0.165, "center_y": 0.19}
+        self.player_layout.access_line_3.allow_stretch = True
+        self.player_layout.access_line_3.source = os.path.join(constants.gui_assets, "access_active.png")
+        self.player_layout.add_widget(self.player_layout.access_line_3)
+
+        self.player_layout.access_icon = Image()
+        self.player_layout.access_icon.size_hint_max = (30, 30)
+        self.player_layout.access_icon.pos_hint = {"center_x": 0.165, "center_y": 0.338}
+        self.player_layout.add_widget(self.player_layout.access_icon)
+        # </editor-fold>
+
+
+        # IP Layout
+        # <editor-fold desc="IP Layout Widgets">
+        self.ip_layout = RelativeLayout()
+        self.ip_layout.id = 'ip_layout'
+
+        self.ip_layout.header_icon = Image()
+        self.ip_layout.header_icon.source = icon_path('ethernet.png')
+        self.ip_layout.header_icon.allow_stretch = True
+        self.ip_layout.header_icon.size_hint_max = (36, 36)
+        self.ip_layout.header_icon.pos_hint = {"center_x": 0.5, "center_y": 0.808}
+        self.ip_layout.add_widget(self.ip_layout.header_icon)
+
+        # Make this copyable text
+        self.ip_layout.name_label = HeaderLabel()
+        self.ip_layout.name_label.pos_hint = {"center_x": 0.54, "center_y": 0.81}
+        self.ip_layout.name_label.font_size = sp(25)
+        self.ip_layout.add_widget(self.ip_layout.name_label)
+
+        self.ip_layout.type_header = HeaderLabel()
+        self.ip_layout.type_header.pos_hint = {"center_x": 0.28, "center_y": 0.64}
+        self.ip_layout.add_widget(self.ip_layout.type_header)
+
+        # Make ip copyable text
+        self.ip_layout.type_label = ParagraphLabel()
+        self.ip_layout.type_label.font_size = sp(20)
+        self.ip_layout.type_label.pos_hint = {"center_x": 0.28, "center_y": 0.598}
+        self.ip_layout.add_widget(self.ip_layout.type_label)
+
+        self.ip_layout.affected_header = HeaderLabel()
+        self.ip_layout.affected_header.pos_hint = {"center_x": 0.7, "center_y": 0.64}
+        self.ip_layout.add_widget(self.ip_layout.affected_header)
+
+        # Make ip copyable text
+        self.ip_layout.affected_label = ParagraphLabel()
+        self.ip_layout.affected_label.halign = "center"
+        self.ip_layout.affected_label.font_size = sp(20)
+        self.ip_layout.affected_label.pos_hint = {"center_x": 0.7, "center_y": 0.598}
+        self.ip_layout.add_widget(self.ip_layout.affected_label)
+
+        self.ip_layout.network_header = HeaderLabel()
+        self.ip_layout.network_header.pos_hint = {"center_x": 0.5, "center_y": 0.458}
+        self.ip_layout.add_widget(self.ip_layout.network_header)
+
+        # Make ip copyable text
+        self.ip_layout.network_label = ParagraphLabel()
+        self.ip_layout.network_label.halign = "center"
+        self.ip_layout.network_label.valign = "top"
+        self.ip_layout.network_label.text_size = (400, 150)
+        self.ip_layout.network_label.font_size = sp(20)
+        self.ip_layout.network_label.line_height = sp(1.4)
+        self.ip_layout.network_label.pos_hint = {"center_x": 0.5, "center_y": 0.3}
+        self.ip_layout.add_widget(self.ip_layout.network_label)
+        # </editor-fold>
+
+
+        for widget in self.player_layout.children:
+            constants.hide_widget(widget, True)
+        for widget in self.ip_layout.children:
+            constants.hide_widget(widget, True)
+
+        self.add_widget(self.background)
+        self.add_widget(self.blank_label)
+        self.add_widget(self.player_layout)
+        self.add_widget(self.ip_layout)
+        # </editor-fold>
+
+
+    # Actually updates data in panel based off of rule
+    def update_panel(self, displayed_rule: acl.AclRule, rule_scope: str):
+
+        self.displayed_scope = rule_scope
+        filtered_name = displayed_rule.rule.replace("!g", "").replace("!w", "")
+        panel_options = []
+
+        # Player layout ------------------------------------------------------------------------------------------------
+        if displayed_rule.rule_type == "player":
+
+            # Effective access colors
+            if displayed_rule.display_data['effective_access'] == "Operator access":
+                widget_color = self.color_dict['blue']
+                self.player_layout.access_icon.source = icon_path('promote.png')
+            elif displayed_rule.display_data['effective_access'] == "No access":
+                widget_color = self.color_dict['red']
+                self.player_layout.access_icon.source = icon_path('close-circle-outline.png')
+            else:
+                widget_color = self.color_dict['purple']
+                self.player_layout.access_icon.source = icon_path('chevron-up-circle-sharp.png')
+
+
+            if self.displayed_type != "player":
+                for widget in self.player_layout.children:
+                    constants.hide_widget(widget, False)
+                for widget in self.ip_layout.children:
+                    constants.hide_widget(widget, True)
+
+
+            # Change panel attributes ----------------------------------------------------------------------------------
+
+
+            # Change name in header
+            self.player_layout.name_label.text = filtered_name
+            self.player_layout.name_label.texture_update()
+            texture_size = 0.001 * self.player_layout.name_label.texture_size[0]
+            self.player_layout.header_icon.pos_hint = {"center_x": 0.485 - texture_size, "center_y": 0.808}
+
+
+            # Online status
+            if acl.check_online(displayed_rule.rule):
+                self.player_layout.online_label.color = self.color_dict['green']
+                self.player_layout.online_icon.color = self.color_dict['green']
+                self.player_layout.online_label.text = "Currently online"
+                self.player_layout.online_icon.source = icon_path('radio-button-on-sharp.png')
+
+            else:
+                self.player_layout.online_label.color = self.color_dict['gray']
+                self.player_layout.online_icon.color = self.color_dict['gray']
+                try:
+                    last_login = (dt.now() - dt.strptime(displayed_rule.extra_data['latest-login'], '%Y-%m-%d %H:%M:%S'))
+                    d = {"days": last_login.days}
+                    d["years"], rem = divmod(last_login.days, 365)
+                    d["months"], rem = divmod(last_login.days, 30)
+                    d["hours"], rem = divmod(last_login.seconds, 3600)
+                    d["minutes"], d["seconds"] = divmod(rem, 60)
+
+                    if d['years'] > 0:
+                        time_formatted = (f"{d['years']} year{'s' if d['years'] > 1 else ''} " if d['years'] > 0 else "")
+                    elif d['months'] > 0:
+                        time_formatted = (f"{d['months']} month{'s' if d['months'] > 1 else ''} " if d['months'] > 0 else "")
+                    else:
+                        time_formatted = (f"{d['days']}d " if d['days'] > 0 else "") + (f"{d['hours']}h " if d['hours'] > 0 else "") + (f"{d['minutes']}m " if d['minutes'] > 0 and d['days'] == 0 else "")
+
+                    self.player_layout.online_label.text = f"Last online {time_formatted}ago"
+
+                except ValueError:
+                    self.player_layout.online_label.text = "Last online unknown"
+
+                self.player_layout.online_icon.source = icon_path('radio-button-off-sharp.png')
+
+            self.player_layout.online_label.texture_update()
+            texture_size = 0.001 * self.player_layout.online_label.texture_size[0]
+            self.player_layout.online_icon.pos_hint = {"center_x": 0.492 - texture_size, "center_y": 0.752}
+
+
+            # Change UUID
+            self.player_layout.uuid_label.text = displayed_rule.extra_data['uuid']
+
+
+            # Change last IP
+            if displayed_rule.extra_data['latest-ip'].startswith("127."):
+                self.player_layout.ip_label.text = displayed_rule.extra_data['latest-ip']
+            else:
+                self.player_layout.ip_label.text = displayed_rule.extra_data['latest-ip'].split(":")[0]
+
+
+            # Change location
+            if " - " in displayed_rule.extra_data['ip-geo']:
+                self.player_layout.geo_label.text = displayed_rule.extra_data['ip-geo'].replace(" - ", "\n")
+                self.player_layout.geo_label.pos_hint = {"center_x": 0.7, "center_y": 0.48}
+            else:
+                self.player_layout.geo_label.text = displayed_rule.extra_data['ip-geo']
+                self.player_layout.geo_label.pos_hint = {"center_x": 0.7, "center_y": 0.499}
+            self.player_layout.geo_label.font_size = sp(20) if len(displayed_rule.extra_data['ip-geo']) < 15 else sp(18)
+
+
+            # Change effective access
+            very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"])
+            final_text = f"[color={widget_color}][font={very_bold_font}][size={round(sp(21))}]{displayed_rule.display_data['effective_access']}[/size][/font][/color]"
+            banned = False
+
+            # Display ban data
+            if displayed_rule.display_data['ip_ban'] and displayed_rule.display_data['ban']:
+                final_text += f"\n[color={self.color_dict['red']}]Banned IP & user[/color]"
+                banned = True
+            elif displayed_rule.display_data['ip_ban']:
+                final_text += f"\n[color={self.color_dict['red']}]Banned IP[/color]"
+                banned = True
+            elif displayed_rule.display_data['ban']:
+                final_text += f"\n[color={self.color_dict['red']}]Banned user[/color]"
+                banned = True
+            else:
+                final_text += "\n"
+
+            # Display OP data
+            final_text += (f"\n[color={self.color_dict['blue']}]Operator[/color]" if displayed_rule.display_data['op'] else "\n")
+
+            # Whitelist data
+            if screen_manager.current_screen.acl_object.server['whitelist']:
+                self.player_layout.access_line_3.opacity = 1
+                final_text += ("\n[color=" + (f"{self.color_dict['green']}]Whitelisted" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]Not whitelisted") + "[/color]")
+            else:
+                self.player_layout.access_line_3.opacity = 0
+                self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
+                self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_active.png")
+                self.player_layout.access_line_3.source = os.path.join(constants.gui_assets, "access_active.png")
+
+            self.player_layout.access_label.text = final_text
+
+
+            # Adjust graphic data for access
+            if screen_manager.current_screen.acl_object.server['whitelist']:
+                if displayed_rule.display_data['wl']:
+                    self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
+                    self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_active.png")
+                    self.player_layout.access_line_3.source = os.path.join(constants.gui_assets, "access_active.png")
+                else:
+                    self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_inactive.png")
+                    self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_inactive.png")
+                    self.player_layout.access_line_3.source = os.path.join(constants.gui_assets, "access_inactive.png")
+
+            if banned:
+                self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_inactive.png")
+            elif displayed_rule.display_data['wl']:
+                self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
+
+
+            # Set header names
+            self.player_layout.uuid_header.text = "UUID"
+            self.player_layout.ip_header.text = "IP"
+            self.player_layout.geo_header.text = "Location"
+            self.player_layout.access_header.text = f"Access to '{screen_manager.current_screen.acl_object.server['name']}':"
+
+
+
+            # Change colors based on rule access attributes ------------------------------------------------------------
+            self.background.color = widget_color
+            for widget in self.player_layout.children:
+
+                if widget is self.player_layout.online_label or widget is self.player_layout.online_icon:
+                    continue
+
+                if widget.__class__.__name__ in ['Image', 'HeaderLabel']:
+                    if widget in [self.player_layout.header_icon, self.player_layout.name_label]:
+                        widget.color = constants.brighten_color(widget_color, 0.12)
+                    elif widget in [self.player_layout.access_icon, self.player_layout.access_line_1, self.player_layout.access_line_2, self.player_layout.access_line_3]:
+                        widget.color = constants.brighten_color(widget_color, 0.2)
+                    else:
+                        widget.color = constants.brighten_color(widget_color, 0.34)
+
+                elif widget.__class__.__name__ == "ParagraphLabel":
+                    widget.color = self.color_dict['gray'] if "unknown" in widget.text.lower() else widget.default_color
+
+
+
+            # Generate panel options -----------------------------------------------------------------------------------
+            if screen_manager.current_screen.current_list == "ops":
+                panel_options.append("demote" if displayed_rule.display_data['op'] else "promote")
+
+            elif screen_manager.current_screen.current_list == "bans":
+                if displayed_rule.display_data['ip_ban'] and displayed_rule.display_data['ban']:
+                    panel_options.append("pardon IP & user")
+                elif displayed_rule.display_data['ip_ban']:
+                    if not displayed_rule.display_data['ban']:
+                        panel_options.append("ban user")
+                    panel_options.append("pardon IP")
+                elif displayed_rule.display_data['ban']:
+                    panel_options.append("pardon user")
+                else:
+                    panel_options.append("ban user")
+
+                if displayed_rule.extra_data['latest-ip'] != "Unknown" and not displayed_rule.display_data['ip_ban']:
+                    panel_options.append("ban IP")
+
+            elif screen_manager.current_screen.current_list == "wl":
+                panel_options.append("restrict" if displayed_rule.display_data['wl'] else "permit")
+
+            panel_options.append("localize rule" if rule_scope == "global" else "globalize rule")
+
+
+        # IP Layout ----------------------------------------------------------------------------------------------------
+        else:
+
+            # Effective access colors
+            if "whitelist" in displayed_rule.display_data['rule_info'].lower():
+                widget_color = self.color_dict['blue']
+            else:
+                widget_color = self.color_dict['red']
+
+            if not screen_manager.current_screen.acl_object.rule_in_acl('subnets', displayed_rule.rule):
+                displayed_rule.display_data['rule_info'] = "Unaffected " + displayed_rule.display_data['rule_info'].split(" ")[0]
+                displayed_rule.rule = displayed_rule.rule.replace("!w", "").replace("!g", "").strip()
+                screen_manager.current_screen.displayed_rule = displayed_rule
+                widget_color = self.color_dict['purple']
+
+            if self.displayed_type != "ip":
+                for widget in self.player_layout.children:
+                    constants.hide_widget(widget, True)
+                for widget in self.ip_layout.children:
+                    constants.hide_widget(widget, False)
+
+
+
+            # Change panel attributes ----------------------------------------------------------------------------------
+
+
+            # Change IP address in header
+            self.ip_layout.name_label.text = filtered_name
+            self.ip_layout.name_label.texture_update()
+            texture_size = 0.001 * self.ip_layout.name_label.texture_size[0]
+            self.ip_layout.header_icon.pos_hint = {"center_x": 0.485 - texture_size, "center_y": 0.808}
+
+
+            # Change rule type
+            self.ip_layout.type_label.text = displayed_rule.display_data['rule_info']
+
+
+            # Change affected users
+            users = displayed_rule.display_data['affected_users']
+            if users == 0:
+                self.ip_layout.affected_label.text = "0 users"
+                self.ip_layout.affected_label.color = self.color_dict['gray']
+            else:
+                self.ip_layout.affected_label.text = f"{users:,} user{'s' if users > 1 else ''}"
+                self.ip_layout.affected_label.color = self.color_dict['green'] if "whitelist" in displayed_rule.display_data['rule_info'].lower() else self.color_dict['red']
+
+
+            # Change network info
+            ip_count = acl.count_subnet(displayed_rule.rule.replace("!w", "").replace("!g", "").strip())
+            ips = displayed_rule.display_data['ip_range'].split(" - ")
+            self.ip_layout.network_label.text = f"{ips[0]} [color=#696997]-[/color] {ips[1]}"
+            self.ip_layout.network_label.text += f"\n[color={self.color_dict['gray']}]{displayed_rule.display_data['subnet_mask']}"
+            self.ip_layout.network_label.text += f"  ({ip_count:,} IP{'s' if ip_count > 1 else ''})[/color]"
+
+
+
+            # Set header names
+            self.ip_layout.type_header.text = "Rule Type"
+            self.ip_layout.affected_header.text = "Affected"
+            self.ip_layout.network_header.text = "Network"
+
+
+            # Change colors based on rule access attributes ------------------------------------------------------------
+            self.background.color = widget_color
+            for widget in self.ip_layout.children:
+                if widget.__class__.__name__ in ['Image', 'HeaderLabel']:
+                    if widget in [self.ip_layout.header_icon, self.ip_layout.name_label]:
+                        widget.color = constants.brighten_color(widget_color, 0.12)
+                    else:
+                        widget.color = constants.brighten_color(widget_color, 0.34)
+
+
+            # Generate panel options -----------------------------------------------------------------------------------
+            if screen_manager.current_screen.current_list == "bans":
+                after_text = 'subnet' if 'subnet' in displayed_rule.display_data['rule_info'].lower() else 'IP'
+                if "unaffected" in displayed_rule.display_data['rule_info'].lower():
+                    panel_options.append(f"ban {after_text}")
+                    panel_options.append(f"whitelist {after_text}")
+
+                else:
+                    if "whitelist" in displayed_rule.display_data['rule_info'].lower():
+                        panel_options.append("remove rule")
+                        panel_options.append(f"ban {after_text}")
+                    else:
+                        panel_options.append(f"pardon {after_text}")
+                        panel_options.append(f"whitelist {after_text}")
+
+                    panel_options.append("localize rule" if rule_scope == "global" else "globalize rule")
+
+        panel_options = panel_options if panel_options else ['no options']
+        self.options.change_options(panel_options)
+        self.displayed_type = displayed_rule.rule_type
+
+
+    # Changes rule attributes from options drop-down
+    def modify_rule(self, option: str):
+
+        current_list = screen_manager.current_screen.current_list.lower().strip()
+        acl_object = screen_manager.current_screen.acl_object
+        original_name = acl_object.displayed_rule.rule
+        filtered_name = acl_object.displayed_rule.rule.replace("!w", "").replace("!g", "").strip()
+        new_name = original_name
+        new_scope = self.displayed_scope
+        banner_text = ""
+        hover_attr = None
+        reload_page = False
+        localize = False
+
+        try:
+            ip_addr = acl_object.displayed_rule.extra_data['latest-ip'].split(":")[0].strip()
+        except KeyError:
+            ip_addr = ""
+
+
+        # Global options
+        if "local" in option or "global" in option:
+            if "localize" in option:
+                acl_object.add_global_rule(original_name, current_list, remove=True)
+
+                # If rule localized, enable on current list
+                if current_list == "ops":
+                    acl_object.op_user(acl_object.displayed_rule.rule)
+                elif current_list == "bans":
+                    acl_object.ban_user(acl_object.displayed_rule.rule)
+                elif current_list == "wl":
+                    acl_object.wl_user(acl_object.displayed_rule.rule)
+
+                hover_attr = (
+                    icon_path("earth-strike.png"), 'LOCALIZE',
+                    (0.439, 0.839, 1, 1) if current_list == "ops" else
+                    (1, 0.5, 0.65, 1) if current_list == "bans" else
+                    (0.3, 1, 0.6, 1)
+                )
+                banner_text = f"'{filtered_name}' is now locally applied"
+                new_scope = "local"
+                reload_page = True
+
+            elif "globalize" in option:
+                acl_object.add_global_rule(original_name, current_list, remove=False)
+                hover_attr = (icon_path("earth-sharp.png"), 'GLOBALIZE', (0.953, 0.929, 0.38, 1))
+                banner_text = f"'{filtered_name}' is now globally applied"
+                new_scope = "global"
+                reload_page = True
+
+
+        # Operator options
+        elif current_list == "ops":
+            if "demote" in option:
+                if self.displayed_scope == "global":
+                    acl_object.add_global_rule(original_name, current_list, remove=True)
+                else:
+                    acl_object.op_user(original_name, remove=True)
+
+                hover_attr = (icon_path("close-circle.png"), 'DEMOTE', (1, 0.5, 0.65, 1))
+                banner_text = f"'{filtered_name}' was demoted"
+                new_scope = "local"
+                reload_page = True
+
+            elif "promote" in option:
+                acl_object.op_user(original_name, remove=False)
+                hover_attr = (icon_path("promote.png"), 'PROMOTE', (0.3, 1, 0.6, 1))
+                banner_text = f"'{filtered_name}' was promoted"
+                reload_page = True
+
+
+        # Ban options Player/IP
+        elif current_list == "bans":
+            if acl_object.displayed_rule.rule_type == "player":
+                if "ban user" in option:
+                    acl_object.ban_user(original_name, remove=False)
+                    hover_attr = (icon_path("close-circle.png"), 'BAN', (1, 0.5, 0.65, 1))
+                    banner_text = f"'{filtered_name}' is banned"
+                    reload_page = True
+
+                elif "ban IP" in option:
+                    acl_object.ban_user(ip_addr, remove=False)
+
+                    if self.displayed_scope == "global":
+                        acl_object.add_global_rule(original_name, current_list, remove=True)
+
+                    acl_object.ban_user(f"!w{ip_addr}", remove=True)
+                    hover_attr = (icon_path("close-circle.png"), 'BAN', (1, 0.5, 0.65, 1))
+                    banner_text = f"'{filtered_name}' is banned"
+                    reload_page = True
+
+                if "pardon IP" in option and "user" in option:
+                    acl_object.ban_user([original_name, ip_addr], remove=True)
+
+                    if self.displayed_scope == "global":
+                        acl_object.add_global_rule(original_name, current_list, remove=True)
+
+                    # Whitelist IP if it's still in the rule list
+                    if ip_addr in acl.gen_iplist(acl_object.rules['subnets']):
+                        acl_object.ban_user(f"!w{ip_addr}", remove=False)
+
+                    hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
+                    banner_text = f"'{filtered_name}' is pardoned"
+                    new_scope = "local"
+                    reload_page = True
+
+                elif "pardon user" in option:
+                    if self.displayed_scope == "global":
+                        acl_object.add_global_rule(original_name, current_list, remove=True)
+                    else:
+                        acl_object.ban_user(original_name, remove=True)
+
+                    hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
+                    banner_text = f"'{filtered_name}' is pardoned"
+                    new_scope = "local"
+                    reload_page = True
+
+                elif "pardon IP" in option:
+                    acl_object.ban_user(ip_addr, remove=True)
+
+                    # Whitelist IP if it's still in the rule list
+                    if ip_addr in acl.gen_iplist(acl_object.rules['subnets']):
+                        acl_object.ban_user(f"!w{ip_addr}", remove=False)
+
+                    hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
+                    banner_text = f"'{filtered_name}' is pardoned"
+                    new_scope = "local"
+                    reload_page = True
+
+
+            # IP rules
+            else:
+                if "ban" in option:
+                    # If rule is global and ban is added, switch scope to local
+                    if "whitelist" in acl_object.displayed_rule.display_data['rule_info'] and self.displayed_scope == "global":
+                        new_scope = "local"
+
+                    if "!w" in original_name:
+                        acl_object.ban_user(original_name, remove=True)
+                        acl_object.ban_user(filtered_name, remove=False)
+                    else:
+                        acl_object.ban_user(original_name, remove=False)
+                    hover_attr = (icon_path("close-circle.png"), 'BAN', (1, 0.5, 0.65, 1))
+                    banner_text = f"'{filtered_name}' is banned"
+                    new_name = filtered_name
+                    reload_page = True
+
+                elif "pardon" in option:
+                    if self.displayed_scope == "global":
+                        acl_object.add_global_rule(original_name, current_list, remove=True)
+                    else:
+                        acl_object.ban_user(original_name, remove=True)
+
+                    hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
+                    banner_text = f"'{filtered_name}' is pardoned"
+                    new_scope = "local"
+                    reload_page = True
+
+                elif "remove" in option:
+                    if self.displayed_scope == "global":
+                        acl_object.add_global_rule(original_name, current_list, remove=True)
+                    else:
+                        acl_object.ban_user(original_name, remove=True)
+
+                    hover_attr = (icon_path("shield-disabled-outline.png"), 'REMOVE', (0.7, 0.7, 1, 1))
+                    banner_text = f"'{filtered_name}' was removed"
+                    new_scope = "local"
+                    reload_page = True
+
+                elif "whitelist" in option:
+                    # If rule is global and whitelist is added, switch scope to local
+                    if "ban" in acl_object.displayed_rule.display_data['rule_info'] and self.displayed_scope == "global":
+                        new_scope = "local"
+
+                    acl_object.ban_user(original_name, remove=True)
+                    acl_object.ban_user(f"!w{filtered_name}", remove=False)
+                    hover_attr = (icon_path("shield-checkmark-outline.png"), 'WHITELIST', (0.439, 0.839, 1, 1))
+                    banner_text = f"'{filtered_name}' is whitelisted"
+                    new_name = f"!w{filtered_name}"
+                    reload_page = True
+
+
+        # Whitelist options
+        elif current_list == "wl":
+            if "restrict" in option:
+                if self.displayed_scope == "global":
+                    acl_object.add_global_rule(original_name, current_list, remove=True)
+                else:
+                    acl_object.wl_user(original_name, remove=True)
+
+                hover_attr = (icon_path("close-circle.png"), 'RESTRICT', (1, 0.5, 0.65, 1))
+                banner_text = f"'{filtered_name}' is restricted"
+                new_scope = "local"
+                reload_page = True
+
+            elif "permit" in option:
+                acl_object.wl_user(original_name, remove=False)
+                hover_attr = (icon_path("checkmark-circle-sharp.png"), 'PERMIT', (0.3, 1, 0.6, 1))
+                banner_text = f"'{filtered_name}' is permitted"
+                reload_page = True
+
+
+        if reload_page:
+
+            screen_manager.current_screen.update_list(current_list, reload_children=False)
+
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_banner,
+                    hover_attr[2],
+                    banner_text,
+                    hover_attr[0],
+                    2,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+            def trigger_highlight(*args):
+                for rule_button in screen_manager.current_screen.scroll_layout.children:
+
+                    if rule_button.rule.rule == original_name:
+                        rule_button.highlight(rule_button.button.background_color, rule_button.text.color, hover_attr[2])
+
+                    else:
+                        rule_button.button.on_leave()
+                        Animation.cancel_all(rule_button.button)
+                        Animation.cancel_all(rule_button.text)
+                        Animation.cancel_all(rule_button.icon)
+                        rule_button.change_properties(rule_button.rule)
+
+                    rule_button.button.ignore_hover = False
+
+            Clock.schedule_once(trigger_highlight, 0)
+
+        # Update display rule regardless of button pressed
+        screen_manager.current_screen.update_user_panel(new_name, new_scope)
+
+        # print(option)
+
+class CreateServerAclScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self._ignore_keys = ['tab']
+        self.header = None
+        self.search_bar = None
+        self.whitelist_toggle = None
+        self.scroll_widget = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.search_label = None
+        self.list_header = None
+        self.controls_button = None
+        self.user_panel = None
+        self.show_panel = False
+
+        self.acl_object = None
+        self._hash = None
+        self.current_list = None
+
+        self.filter_text = ""
+        self.currently_filtering = False
+
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press
+        if keycode[1] == 'tab' and not self._input_focused and self.name == screen_manager.current_screen.name:
+            for button in self.walk():
+                try:
+                    if button.id == "input_button":
+                        button.force_click()
+                        break
+                except AttributeError:
+                    continue
+
+
+    def update_user_panel(self, rule_name: str, rule_scope: str):
+
+        # Generate rule list count
+        rule_count = len(self.scroll_widget.data)
+        panel_check = rule_count > 0
+
+
+        # Hide user panel if there are no items
+        if panel_check != self.show_panel:
+
+            for child in self.user_panel.children:
+
+                # Figure out how to make this not bug out when transitioning between rules, specifically with blank_text
+                if child.__class__.__name__ == "Label":
+                    child.opacity = (1 if panel_check else 0)
+                else:
+                    Animation(opacity=(1 if panel_check else 0), duration=0.3).start(child)
+
+                # Make sure self.options shows and hides properly
+                for widget in self.user_panel.options.children:
+                    constants.hide_widget(widget, panel_check)
+
+            self.show_panel = panel_check
+
+
+        # Update displayed data on user panel
+        if rule_name:
+            self.acl_object.display_rule(rule_name)
+            self.user_panel.update_panel(self.acl_object.displayed_rule, rule_scope)
+
+
+        # If rule is displayed
+        if self.acl_object.displayed_rule:
+
+            if self.user_panel.blank_label.opacity > 0:
+                Animation.stop_all(self.user_panel.blank_label)
+                constants.hide_widget(self.user_panel.blank_label, True)
+                for child in self.user_panel.options.children:
+                    constants.hide_widget(child, False)
+
+        # If rule is not displayed
+        else:
+
+            if self.user_panel.blank_label.opacity == 0:
+                constants.hide_widget(self.user_panel.blank_label, False)
+                for child in self.user_panel.options.children:
+                    constants.hide_widget(child, True)
+
+
+        if not panel_check:
+            for widget in self.user_panel.options.children:
+                constants.hide_widget(widget, True)
+
+
+        if self.acl_object.displayed_rule:
+            Animation.stop_all(self.user_panel.blank_label)
+            constants.hide_widget(self.user_panel.blank_label, True)
+            self.user_panel.blank_label.opacity = 0
+
+
+    # Filter data from search box
+    def search_filter(self, query):
+
+        def lock(*args):
+            self.currently_filtering = False
+            if self.filter_text != self.search_bar.text:
+                self.search_filter(self.search_bar.text)
+
+        # Prevent refreshes shorter than 0.5s
+        if not self.currently_filtering:
+            self.currently_filtering = True
+            self.filter_text = query
+
+            # Filter data
+
+            # Reset scroll
+            self.scroll_widget.scroll_y = 1
+
+            total_list = [{'rule': rule} for rule in self.acl_object.list_items[self.current_list]['enabled']]
+            total_list.extend([{'rule': rule} for rule in self.acl_object.list_items[self.current_list]['disabled']])
+
+            original_len = len(total_list)
+
+            if query:
+                filtered_list = []
+                for rule in total_list:
+                    rule_obj = rule['rule']
+
+                    # Name matches query
+                    if query.lower().replace("!w", "").replace("!g", "") in rule_obj.rule.lower():
+                        filtered_list.append(rule)
+
+                    # Scope matches query
+                    elif query.lower() == rule_obj.rule_scope:
+                        filtered_list.append(rule)
+
+                    # Rule type matches query
+                    elif query.lower() == rule_obj.rule_type:
+                        filtered_list.append(rule)
+
+                    # Location matches query
+                    else:
+                        try:
+                            location = acl.get_uuid(rule_obj.rule)['ip-geo']
+                            if query.lower() in location.lower().replace(" - ", " ") and location != "Unknown":
+                                filtered_list.append(rule)
+                        except KeyError:
+                            pass
+
+
+                total_list = filtered_list
+                del filtered_list
+
+            # Show hint text if there are no rules
+
+            self.set_data(total_list)
+
+
+            # Show search label if it exists
+            Animation.stop_all(self.search_label)
+            if self.filter_text and len(self.scroll_widget.data) == 0 and original_len > 0:
+                self.search_label.text = f"No results for '{self.filter_text}'"
+                Animation(opacity=1, duration=0.2).start(self.search_label)
+            else:
+                Animation(opacity=0, duration=0.05).start(self.search_label)
+
+
+            # Unlock the lock
+            timer = threading.Timer(0.5, function=lock)
+            timer.start()
+
+
+    # ops, bans, wl
+    def update_list(self, list_type: str, reload_children=True, reload_panel=False):
+
+        if "op" in list_type:
+            list_type = "ops"
+        elif "ban" in list_type:
+            list_type = "bans"
+        else:
+            list_type = "wl"
+
+        # Reset scroll
+        list_changed = False
+        if self.current_list != list_type:
+            list_changed = True
+            self.scroll_widget.scroll_y = 1
+
+        # Create list data with list type
+        self.current_list = list_type
+
+        # Check if there's an active filter
+        if self.filter_text:
+            self.search_filter(self.filter_text)
+        else:
+            total_list = [{'rule': rule} for rule in self.acl_object.list_items[list_type]['enabled']]
+            total_list.extend([{'rule': rule} for rule in self.acl_object.list_items[list_type]['disabled']])
+
+            self.set_data(total_list)
+
+        rule_count = len(self.acl_object.rules[list_type])
+        if list_type == "bans":
+            rule_count += len(self.acl_object.rules['subnets'])
+
+
+        # Modify header content
+        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        header_content = ('[color=#6A6ABA]No rules[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] rule' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] rules')
+        if list_type == "wl" and not self.acl_object.server['whitelist']:
+            header_content += " (inactive)"
+
+        # header_content = (" "*(len(header_content) - (55 if 'inactive' not in header_content else 50))) + header_content
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                child.halign = "left"
+                child.text_size[0] = 500
+                child.x = Window.width / 2 + 240
+                break
+
+        # If there are no rules, say as much with a label
+        constants.hide_widget(self.list_header.global_rule, rule_count == 0)
+        constants.hide_widget(self.list_header.enabled_rule, rule_count == 0)
+        constants.hide_widget(self.list_header.disabled_rule, rule_count == 0)
+
+        if rule_count == 0:
+            if self.blank_label.opacity < 1:
+                self.blank_label.text = "No rules available, add them above"
+                constants.hide_widget(self.blank_label, False)
+                self.blank_label.opacity = 0
+                Animation(opacity=1, duration=0.2).start(self.blank_label)
+                Animation(opacity=0, duration=0.2).start(self.search_label)
+
+        # If there are rules, display them here
+        else:
+            # Show search label if it exists
+            Animation.stop_all(self.search_label)
+            # print(len(self.scroll_widget.data))
+            if self.filter_text and len(self.scroll_widget.data) == 0:
+                self.search_label.text = f"No results for '{self.filter_text}'"
+                Animation(opacity=1, duration=0.2).start(self.search_label)
+            else:
+                Animation(opacity=0, duration=0.2).start(self.search_label)
+
+            self.list_header.remove_widget(self.list_header.enabled_rule)
+            self.list_header.enabled_rule = RelativeLayout()
+            self.list_header.enabled_rule.add_widget(
+                BannerObject(
+                    size=(120, 32),
+                    color=(0.439, 0.839, 1, 1) if list_type == 'ops'
+                    else (1, 0.5, 0.65, 1) if list_type == 'bans'
+                    else (0.3, 1, 0.6, 1),
+
+                    text="operator" if list_type == 'ops'
+                    else "banned" if list_type == 'bans'
+                    else "allowed",
+
+                    icon="settings-sharp.png" if list_type == 'ops'
+                    else "close-circle-sharp.png" if list_type == 'bans'
+                    else "checkmark-circle-sharp.png"
+                )
+            )
+            self.list_header.add_widget(self.list_header.enabled_rule)
+
+
+            self.list_header.remove_widget(self.list_header.disabled_rule)
+            self.list_header.disabled_rule = RelativeLayout()
+            self.list_header.disabled_rule.add_widget(
+                BannerObject(
+                    size=(125, 32),
+                    color=(0.6, 0.5, 1, 1) if list_type == 'ops'
+                    else (0.3, 1, 0.6, 1) if list_type == 'bans'
+                    else (1, 0.5, 0.65, 1) if self.acl_object.server['whitelist'] else(0.7, 0.7, 0.7, 1),
+
+                    text="standard" if list_type == 'ops'
+                    else "allowed" if list_type == 'bans'
+                    else "restricted",
+
+                    icon="person-circle-sharp.png" if list_type == 'ops'
+                    else "checkmark-circle-sharp.png" if list_type == 'bans'
+                    else "close-circle-sharp.png"
+                )
+            )
+            self.list_header.add_widget(self.list_header.disabled_rule)
+
+            constants.hide_widget(self.blank_label, True)
+
+        # Change whitelist toggle visibility based on list_type
+        constants.hide_widget(self.whitelist_toggle, list_type != 'wl')
+
+        # Refresh all buttons
+        if reload_children:
+            for rule_button in self.scroll_layout.children:
+                rule_button.change_properties(rule_button.rule)
+
+            gc.collect()
+
+            # Dirty fix to hide grid resize that fixes RuleButton text.pos_hint x
+            if list_changed:
+                self.scroll_widget.opacity = 0
+                self.scroll_layout.cols = 1
+                self.resize_bind()
+                def animate_grid(*args):
+                    Animation.stop_all(self.scroll_widget)
+                    Animation(opacity=1, duration=0.3).start(self.scroll_widget)
+                Clock.schedule_once(animate_grid, 0)
+
+
+        # Update displayed rule options
+        if (self.acl_object.displayed_rule and list_changed) or (reload_panel and self.acl_object.displayed_rule):
+            global_rules = acl.load_global_acl()
+            self.acl_object.displayed_rule.acl_group = list_type
+            rule_scope = acl.check_global_acl(global_rules, self.acl_object.displayed_rule).rule_scope
+            self.update_user_panel(self.acl_object.displayed_rule.rule, rule_scope)
+
+
+    def set_data(self, data):
+
+        if self.scroll_layout:
+            self.scroll_layout.rows = None
+
+        self.scroll_widget.data = data
+
+        if self.resize_bind:
+            self.resize_bind()
+
+
+    def generate_menu(self, **kwargs):
+
+        # # DELETE THIS DELETE THIS DELETE THIS
+        # if not constants.new_server_info['acl_object']:
+        #     constants.new_server_info['acl_object'] = acl.AclObject('1.17.1 Server')
+        #     constants.new_server_info['_hash'] = constants.gen_rstring(8)
+
+        # If self._hash doesn't match, set list to ops by default
+        if self._hash != constants.new_server_info['_hash']:
+            self.acl_object = constants.new_server_info['acl_object']
+            self._hash = constants.new_server_info['_hash']
+            self.current_list = 'ops'
+
+        self.show_panel = False
+
+        self.filter_text = ""
+        self.currently_filtering = False
+
+
+        # Scroll list
+        self.scroll_widget = RecycleViewWidget(position=(0.5, 0.43), view_class=RuleButton)
+        self.scroll_layout = RecycleGridLayout(spacing=[110, -15], size_hint_y=None, padding=[60, 20, 0, 30])
+        test_rule = RuleButton()
+
+        # Bind / cleanup height on resize
+        def resize_scroll(*args):
+            self.scroll_widget.height = Window.height // 1.65
+            rule_width = test_rule.width + self.scroll_layout.spacing[0] + 2
+            rule_width = int(((Window.width // rule_width) // 1) - 2)
+
+            self.scroll_layout.cols = rule_width
+            self.scroll_layout.rows = 2 if len(self.scroll_widget.data) <= rule_width else None
+
+            self.user_panel.x = Window.width - (self.user_panel.size_hint_max[0] * 0.93)
+
+            # Reposition header
+            for child in self.header.children:
+                if child.id == "text":
+                    child.halign = "left"
+                    child.text_size[0] = 500
+                    child.x = Window.width / 2 + 240
+                    break
+
+            self.search_label.pos_hint = {"center_x": (0.28 if Window.width < 1300 else 0.5), "center_y": 0.42}
+            self.search_label.text_size = (Window.width / 3, 500)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.14}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
+        page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
+        header_content = ""
+        self.header = header_text(header_content, '', (0, 0.89), fixed_x=True, no_line=True)
+
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+
+        # Search bar
+        self.search_bar = AclInput(pos_hint={"center_x": 0.5, "center_y": 0.815})
+        buttons.append(input_button('Add Rules...', (0.5, 0.815), input_name='AclInput'))
+
+
+        # Whitelist toggle button
+        def toggle_whitelist(boolean):
+            self.acl_object.toggle_whitelist(boolean)
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
+                    f"Server whitelist {'en' if boolean else 'dis'}abled",
+                    "shield-checkmark-outline.png" if boolean else "shield-disabled-outline.png",
+                    2,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+            # Update list
+            self.update_list('wl', reload_children=True, reload_panel=True)
+
+        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object.server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+
+
+        # Legend for rule types
+        self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749}, size_hint_max=(400, 100))
+        self.list_header.global_rule = RelativeLayout()
+        self.list_header.global_rule.add_widget(BannerObject(size=(125, 32), color=test_rule.global_icon_color, text="global rule", icon="earth-sharp.png", icon_side="left"))
+        self.list_header.add_widget(self.list_header.global_rule)
+
+        self.list_header.enabled_rule = RelativeLayout()
+        self.list_header.enabled_rule.add_widget(BannerObject(size=(120, 32), color=(1,1,1,1), text=" ", icon="add.png"))
+        self.list_header.add_widget(self.list_header.enabled_rule)
+
+        self.list_header.disabled_rule = RelativeLayout()
+        self.list_header.disabled_rule.add_widget(BannerObject(size=(120, 32), color=(1,1,1,1), text=" ", icon="add.png"))
+        self.list_header.add_widget(self.list_header.disabled_rule)
+
+
+        # Add blank label to the center, then load self.gen_search_results()
+        self.blank_label = Label()
+        self.blank_label.text = ""
+        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
+        self.blank_label.font_size = sp(23)
+        self.blank_label.opacity = 0
+        self.blank_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.blank_label)
+
+
+        # Lol search label idek
+        self.search_label = Label()
+        self.search_label.text = ""
+        self.search_label.halign = "center"
+        self.search_label.valign = "center"
+        self.search_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.search_label.pos_hint = {"center_x": 0.28, "center_y": 0.42}
+        self.search_label.font_size = sp(25)
+        self.search_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.search_label)
+
+
+        # Controls button
+        def show_controls():
+
+            controls_text = """This menu shows enabled rules from files like 'ops.json', and disabled rules as others who have joined. Global rules are applied to every server. Rules can be modified in a few different ways:
+            
+• Right-click a rule to view, and more options
+
+• Left-click a rule to toggle permission
+
+• Press middle-mouse to toggle globally
+
+Rules can be filtered with the search box, and can be added with the 'ADD RULES' button or by pressing 'TAB'. The visible list can be switched between operators, bans, and the whitelist from the drop-down at the top."""
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_popup,
+                    "controls",
+                    "Controls",
+                    controls_text,
+                    (None)
+                ),
+                0
+            )
+        self.controls_button = IconButton('controls', {}, (70, 110), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_controls)
+        float_layout.add_widget(self.controls_button)
+
+
+        # User panel
+        self.user_panel = AclRulePanel()
+
+
+        # Append scroll view items
+        self.scroll_widget.add_widget(self.scroll_layout)
+        float_layout.add_widget(self.scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(page_selector)
+        float_layout.add_widget(self.list_header)
+        float_layout.add_widget(self.search_bar)
+        float_layout.add_widget(self.whitelist_toggle)
+        float_layout.add_widget(self.user_panel)
+
+        buttons.append(exit_button('Back', (0.5, 0.099), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"Create '{constants.new_server_info['name']}', Access Control"
+        float_layout.add_widget(generate_title(f"Access Control Manager: '{constants.new_server_info['name']}'"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+        # Generate page content
+        self.update_list(self.current_list, reload_children=True)
+
+
+        # Generate user panel info
+        current_list = acl.deepcopy(self.acl_object.rules[self.current_list])
+        if self.current_list == "bans":
+            current_list.extend(acl.deepcopy(self.acl_object.rules['subnets']))
+
+        if self.acl_object.displayed_rule and current_list:
+            self.update_user_panel(self.acl_object.displayed_rule.rule, self.user_panel.displayed_scope)
+        else:
+            self.update_user_panel(None, None)
+
+class CreateServerAclRuleScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self._ignore_tree = True
+
+        self.acl_input = None
+        self.current_list = None
+        self.acl_object = None
+
+
+    def apply_rules(self):
+
+        # Actually apply rules
+        original_list = self.acl_object.process_query(self.acl_input.text, self.current_list)
+
+        applied_list = []
+        applied_list.extend(original_list['global'])
+        applied_list.extend(original_list['local'])
+
+
+        # Generate banner
+        banner_text = "Added "
+
+        if len(applied_list) == 1:
+            banner_text += f"'{acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}'"
+        elif len(applied_list) < 3:
+            banner_text += f"'{', '.join([(acl.get_uuid(x)['name'] if x.count('.') < 3 else x) for x in applied_list[0:2]])}'"
+        else:
+            banner_text += f"'{acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}' and {len(applied_list) - 1:,} more"
+
+
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_banner,
+                (0.553, 0.902, 0.675, 1),
+                banner_text,
+                "add-circle-sharp.png",
+                2.5,
+                {"center_x": 0.5, "center_y": 0.965}
+            ), 0
+        )
+
+        # Return to previous screen
+        self.acl_object.display_rule(applied_list[0])
+        previous_screen()
+
+        def update_panel(*args):
+            screen_manager.current_screen.update_user_panel(applied_list[0], applied_list[0] in original_list['global'])
+
+        Clock.schedule_once(update_panel, 0)
+
+        # Prevent back button from going back to this screen
+        for screen in constants.screen_tree:
+            if screen == self.name:
+                constants.screen_tree.remove(self.name)
+
+
+    def generate_menu(self, **kwargs):
+        # Generate buttons on page load
+
+        class HintLabel(RelativeLayout):
+
+            def icon_pos(self, *args):
+                self.text.texture_update()
+                self.icon.pos_hint = {"center_x": 0.57 - (0.005 * self.text.texture_size[0]), "center_y": 0.95}
+
+            def __init__(self, pos, label, **kwargs):
+                super().__init__(**kwargs)
+
+                self.pos_hint = {"center_x": 0.5, "center_y": pos}
+                self.size_hint_max = (100, 50)
+
+                self.text = Label()
+                self.text.id = 'text'
+                self.text.size_hint = (None, None)
+                self.text.markup = True
+                self.text.halign = "center"
+                self.text.valign = "center"
+                self.text.text = "        " + label
+                self.text.font_size = sp(22)
+                self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+                self.text.color = (0.6, 0.6, 1, 0.55)
+
+                self.icon = Image()
+                self.icon.id = 'icon'
+                self.icon.source = os.path.join(constants.gui_assets, 'icons', 'information-circle-outline.png')
+                self.icon.pos_hint = {"center_y": 0.95}
+                self.icon.color = (0.6, 0.6, 1, 1)
+
+                self.add_widget(self.text)
+                self.add_widget(self.icon)
+
+                self.bind(size=self.icon_pos)
+                self.bind(pos=self.icon_pos)
+
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        self.current_list = screen_manager.get_screen("CreateServerAclScreen").current_list
+        self.acl_object = screen_manager.get_screen("CreateServerAclScreen").acl_object
+
+        if self.current_list == "bans":
+            header_message = "Enter usernames/IPs delimited, by, commas"
+            float_layout.add_widget(HintLabel(0.464, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+            float_layout.add_widget(HintLabel(0.374, "You can ban IP ranges/whitelist:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]"))
+        else:
+            header_message = "Enter usernames delimited, by, commas"
+            float_layout.add_widget(HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+
+        float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.72}))
+        float_layout.add_widget(header_text(header_message, '', (0, 0.8)))
+        self.acl_input = AclRuleInput(pos_hint={"center_x": 0.5, "center_y": 0.64}, text="")
+        float_layout.add_widget(self.acl_input)
+
+        buttons.append(next_button('Add Rules', (0.5, 0.24), True, next_screen='CreateServerAclScreen'))
+        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"Create '{constants.new_server_info['name']}', Access Control"
+        list_name = "Operators" if self.current_list == "ops" else "Bans" if self.current_list == "bans" else "Whitelist"
+        float_layout.add_widget(generate_title(f"Access Control Manager: Add {list_name}"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+        self.acl_input.grab_focus()
+
+
+# Create Server Step 6:  Server Options --------------------------------------------------------------------------------
+
+# Create ACL options, and Addon Options
+class CreateServerOptionsScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget()
+        scroll_anchor = AnchorLayout()
+        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 2
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        scroll_layout.bind(minimum_height=scroll_layout.setter('height'))
+        scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.77}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.272}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(header_text(f"Optionally, configure additional properties", '', (0, 0.86)))
+
+        # If server type != vanilla, append addon manger button and extend float_layout widget
+        if constants.new_server_info['type'] != 'vanilla':
+            sub_layout = ScrollItem()
+            sub_layout.add_widget(main_button('Add-on Manager', (0.5, 0.5), 'extension-puzzle-sharp.png'))
+            scroll_layout.add_widget(sub_layout)
+
+        # Gamemode dropdown
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="gamemode"))
+        sub_layout.add_widget(DropButton(constants.new_server_info['server_settings']['gamemode'], (0.5, 0.5), options_list=['survival', 'adventure', 'creative'], input_name='ServerModeInput'))
+        scroll_layout.add_widget(sub_layout)
+
+        # Difficulty dropdown
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="difficulty"))
+        sub_layout.add_widget(DropButton(constants.new_server_info['server_settings']['difficulty'], (0.5, 0.5), options_list=['peaceful', 'easy', 'normal', 'hard', 'hardcore'], input_name='ServerDiffInput'))
+        scroll_layout.add_widget(sub_layout)
+
+        # Geyser switch for bedrock support
+        if constants.version_check(constants.new_server_info['version'], ">=", "1.13.2")\
+        and constants.new_server_info['type'].lower() in ['spigot', 'paper', 'fabric']:
+            sub_layout = ScrollItem()
+            sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="bedrock support (geyser)"))
+            sub_layout.add_widget(toggle_button('geyser_support', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['geyser_support']))
+            scroll_layout.add_widget(sub_layout)
+
+        # Disable chat reporting by default
+        if constants.version_check(constants.new_server_info['version'], ">=", "1.19")\
+        and constants.new_server_info['type'].lower() != "vanilla":
+            sub_layout = ScrollItem()
+            sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="disable chat reporting"))
+            sub_layout.add_widget(toggle_button('chat_report', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['disable_chat_reporting']))
+            scroll_layout.add_widget(sub_layout)
+
+        # PVP switch button
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable PVP"))
+        sub_layout.add_widget(toggle_button('pvp', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['pvp']))
+        scroll_layout.add_widget(sub_layout)
+
+        # Enable keep inventory
+        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+            sub_layout = ScrollItem()
+            sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="keep inventory"))
+            sub_layout.add_widget(toggle_button('keep_inventory', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['keep_inventory']))
+            scroll_layout.add_widget(sub_layout)
+
+        # Spawn protection switch button
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable spawn protection"))
+        sub_layout.add_widget(toggle_button('spawn_protection', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['spawn_protection']))
+        scroll_layout.add_widget(sub_layout)
+
+        # Enable daylight cycle
+        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+            label = "daylight & weather cycle" if constants.version_check(constants.new_server_info['version'], ">=", "1.11") else "daylight cycle"
+            sub_layout = ScrollItem()
+            sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=label))
+            sub_layout.add_widget(toggle_button('daylight_weather_cycle', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['daylight_weather_cycle']))
+            scroll_layout.add_widget(sub_layout)
+
+        # Spawn creatures switch button
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="spawn creatures"))
+        sub_layout.add_widget(toggle_button('spawn_creatures', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['spawn_creatures']))
+        scroll_layout.add_widget(sub_layout)
+
+        # Enable command blocks switch button
+        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+            sub_layout = ScrollItem()
+            sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable command blocks"))
+            sub_layout.add_widget(toggle_button('command_blocks', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['command_blocks']))
+            scroll_layout.add_widget(sub_layout)
+
+        # Random tick speed input
+        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+            sub_layout = ScrollItem()
+            sub_layout.add_widget(ServerTickSpeedInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['server_settings']['random_tick_speed']))
+            scroll_layout.add_widget(sub_layout)
+
+        # Max player input
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(ServerPlayerInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['server_settings']['max_players']))
+        scroll_layout.add_widget(sub_layout)
+
+        # Append scroll view items
+        scroll_anchor.add_widget(scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+        buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerReviewScreen'))
+        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"Create '{constants.new_server_info['name']}'"
+        float_layout.add_widget(page_counter(6, 7, (0, 0.868)))
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+
+
+# Create Server Step 6:  Add-on Options --------------------------------------------------------------------------------
+
+class AddonButton(HoverButton):
+
+    def toggle_installed(self, installed, *args):
+        self.installed = installed
+        self.install_image.opacity = 1 if installed and not self.show_type else 0
+        self.install_label.opacity = 1 if installed and not self.show_type else 0
+        self.title.text_size = (self.size_hint_max[0] * (0.7 if installed else 0.94), self.size_hint_max[1])
+        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
+        self.resize_self()
+
+    def animate_addon(self, image, color, **kwargs):
+        image_animate = Animation(duration=0.05)
+
+        def f(w):
+            w.background_normal = image
+
+        Animation(color=color, duration=0.06).start(self.title)
+        Animation(color=color, duration=0.06).start(self.subtitle)
+
+        a = Animation(duration=0.0)
+        a.on_complete = functools.partial(f)
+
+        image_animate += a
+
+        image_animate.start(self)
+
+    def resize_self(self, *args):
+
+        # Title and description
+        padding = 2.17
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (6 if self.installed else 0), self.y + 31)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1, self.y)
+
+        # Install label
+        self.install_image.pos = (self.width + self.x - self.install_label.width - 28, self.y + 38.5)
+        self.install_label.pos = (self.width + self.x - self.install_label.width - 30, self.y + 5)
+
+        # Type Banner
+        if self.show_type:
+            self.type_banner.pos_hint = {"center_x": None, "center_y": None}
+            self.type_banner.pos = (self.width + self.x - self.type_banner.width - 18, self.y + 38.5)
+
+        # self.version_label.x = self.width+self.x-(self.padding_x[0]*offset)
+        # self.version_label.y = self.y-(self.padding_y[0]*0.85)
+
+    def __init__(self, properties, click_function=None, installed=False, show_type=False, fade_in=0.0, **kwargs):
+        super().__init__(**kwargs)
+
+        self.installed = False
+        self.show_type = show_type
+        self.properties = properties
+        self.border = (-5, -5, -5, -5)
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
+        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+        self.size_hint_max = (580, 80)
+        self.id = "addon_button"
+        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
+        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+
+
+        # Loading stuffs
+        self.original_subtitle = self.properties.subtitle if self.properties.subtitle else "Description unavailable"
+        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Title of Addon
+        self.title = Label()
+        self.title.id = "title"
+        self.title.halign = "left"
+        self.title.color = self.color_id[1]
+        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_size = sp(25)
+        self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.title.shorten = True
+        self.title.markup = True
+        self.title.shorten_from = "right"
+        self.title.max_lines = 1
+        self.title.text = f"{self.properties.name}  [color=#434368]-[/color]  {self.properties.author if self.properties.author else 'Unknown'}"
+        self.add_widget(self.title)
+
+
+        # Description of Addon
+        self.subtitle = Label()
+        self.subtitle.id = "subtitle"
+        self.subtitle.halign = "left"
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.font_name = self.original_font
+        self.subtitle.font_size = sp(21)
+        self.subtitle.opacity = 0.56
+        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.shorten = True
+        self.subtitle.shorten_from = "right"
+        self.subtitle.max_lines = 1
+        self.subtitle.text = self.original_subtitle
+        self.add_widget(self.subtitle)
+
+
+        # Installed layout
+        self.install_image = Image()
+        self.install_image.size = (110, 30)
+        self.install_image.keep_ratio = False
+        self.install_image.allow_stretch = True
+        self.install_image.source = os.path.join(constants.gui_assets, 'installed.png')
+        self.install_image.opacity = 0
+        self.add_widget(self.install_image)
+
+        self.install_label = AlignLabel()
+        self.install_label.halign = "right"
+        self.install_label.valign = "middle"
+        self.install_label.font_size = sp(18)
+        self.install_label.color = self.color_id[1]
+        self.install_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.install_label.width = 100
+        self.install_label.color = (0.05, 0.08, 0.07, 1)
+        self.install_label.text = f'installed'
+        self.install_label.opacity = 0
+        self.add_widget(self.install_label)
+
+
+        # Type Banner
+        if show_type:
+            self.type_banner = show_type
+            self.add_widget(self.type_banner)
+
+
+        # If self.installed is false, and self.properties.version, display version where "installed" logo is
+        self.bind(pos=self.resize_self)
+        if installed:
+            self.toggle_installed(installed)
+
+        # If click_function
+        if click_function:
+            self.bind(on_press=click_function)
+
+        # Animate opacity
+        if fade_in > 0:
+            self.opacity = 0
+            self.install_label.opacity = 0
+            self.install_image.opacity = 0
+            self.title.opacity = 0
+
+            Animation(opacity=1, duration=fade_in).start(self)
+            Animation(opacity=1, duration=fade_in).start(self.title)
+            Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
+
+            if installed and not self.show_type:
+                Animation(opacity=1, duration=fade_in).start(self.install_label)
+                Animation(opacity=1, duration=fade_in).start(self.install_image)
+
+    def on_enter(self, *args):
+        if not self.ignore_hover:
+            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+
+    def on_leave(self, *args):
+        if not self.ignore_hover:
+            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
+
+    def loading(self, load_state, *args):
+        if load_state:
+            self.subtitle.text = "Loading add-on info..."
+            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        else:
+            self.subtitle.text = self.original_subtitle
+            self.subtitle.font_name = self.original_font
+
+class CreateServerAddonScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, *args):
+
+        # Update page counter
+        results = list(sorted(results, key=lambda d: d.name.lower()))
+        self.last_results = results
+        self.max_pages = (len(results) / self.page_size).__ceil__()
+        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+        self.scroll_layout.clear_widgets()
+        gc.collect()
+
+        # Generate header
+        addon_count = len(results)
+        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        header_content = "Add-on Queue  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] items')
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                break
+
+
+        # If there are no addons, say as much with a label
+        if addon_count == 0:
+            self.blank_label.text = "Import or Download add-ons below"
+            constants.hide_widget(self.blank_label, False)
+            self.blank_label.opacity = 0
+            Animation(opacity=1, duration=0.2).start(self.blank_label)
+            self.max_pages = 0
+            self.current_page = 0
+
+        # If there are addons, display them here
+        else:
+            constants.hide_widget(self.blank_label, True)
+
+            # Create list of addon names
+            installed_addon_names = [addon.name for addon in constants.new_server_info["addon_objects"]]
+
+            # Clear and add all addons
+            for x, addon_object in enumerate(page_list, 1):
+
+                # Function to remove addon
+                def remove_addon(index):
+                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+                    addon = selected_button.properties
+
+                    if len(addon.name) < 26:
+                        addon_name = addon.name
+                    else:
+                        addon_name = addon.name[:23] + "..."
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_banner,
+                            (0.937, 0.831, 0.62, 1),
+                            f"Removed '{addon_name}' from the queue",
+                            "remove-circle-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.895}
+                        ), 0.25
+                    )
+
+                    if addon in constants.new_server_info['addon_objects']:
+                        constants.new_server_info['addon_objects'].remove(addon)
+                        self.gen_search_results(constants.new_server_info['addon_objects'])
+
+                        # Switch pages if page is empty
+                        if (len(self.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                            self.switch_page("left")
+
+                    return addon, selected_button.installed
+
+
+                # Activated when addon is clicked
+                def view_addon(addon, index, *args):
+                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
+
+                    # Possibly make custom popup that shows differently for Web and File addons
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_popup,
+                            "query",
+                            addon.name,
+                            "Do you want to remove this add-on from the queue?",
+                            (None, functools.partial(remove_addon, index))
+                        ),
+                        0
+                    )
+
+
+                # Add-on button click function
+                self.scroll_layout.add_widget(
+                    ScrollItem(
+                        widget = AddonButton(
+                            properties = addon_object,
+                            installed = True,
+                            fade_in = ((x if x <= 8 else 8) / 10),
+
+                            show_type = BannerObject(
+                                pos_hint = {"center_x": 0.5, "center_y": 0.5},
+                                size = (125 if addon_object.addon_object_type == "web" else 100, 32),
+                                color = (0.647, 0.839, 0.969, 1) if addon_object.addon_object_type == "web" else (0.6, 0.6, 1, 1),
+                                text = "download" if addon_object.addon_object_type == "web" else "import",
+                                icon = "cloud-download-sharp.png" if addon_object.addon_object_type == "web" else "download.png",
+                                icon_side = "right"
+                            ),
+
+                            click_function = functools.partial(
+                                view_addon,
+                                addon_object,
+                                x
+                            )
+                        )
+                    )
+                )
+
+            self.resize_bind()
+            self.scroll_layout.parent.parent.scroll_y = 1
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.page_switcher = None
+
+        self.last_results = []
+        self.page_size = 20
+        self.current_page = 0
+        self.max_pages = 0
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.85
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.27}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        addon_count = len(constants.new_server_info['addon_objects'])
+        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        header_content = "Add-on Queue  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] items')
+        self.header = header_text(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+
+        # Add blank label to the center, then load self.gen_search_results()
+        self.blank_label = Label()
+        self.blank_label.text = "Import or Download add-ons below"
+        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.55}
+        self.blank_label.font_size = sp(24)
+        self.blank_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.blank_label)
+
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.page_switcher)
+
+        bottom_buttons = RelativeLayout()
+        bottom_buttons.size_hint_max_x = 312
+        bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        bottom_buttons.add_widget(main_button('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(main_button('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        buttons.append(exit_button('Back', (0.5, 0.11), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+        float_layout.add_widget(bottom_buttons)
+
+        menu_name = f"Create '{constants.new_server_info['name']}', Add-ons"
+        float_layout.add_widget(generate_title(f"Add-on Manager: '{constants.new_server_info['name']}'"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+        # Automatically generate results (installed add-ons) on page load
+        self.gen_search_results(constants.new_server_info['addon_objects'])
+
+class CreateServerAddonSearchScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, *args):
+
+        # Error on failure
+        if not results and isinstance(results, bool):
+            self.show_popup(
+                "warning",
+                "Server Error",
+                "There was an issue reaching the add-on repository\n\nPlease try again later",
+                None
+            )
+            self.max_pages = 0
+            self.current_page = 0
+
+        # On success, rebuild results
+        else:
+
+            # Update page counter
+            self.last_results = results
+            self.max_pages = (len(results) / self.page_size).__ceil__()
+            self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+            self.page_switcher.update_index(self.current_page, self.max_pages)
+            page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+            self.scroll_layout.clear_widgets()
+            gc.collect()
+
+
+            # Generate header
+            addon_count = len(results)
+            very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+            search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
+            header_content = f"Search for '{search_text}'  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No results[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] items')
+
+            for child in self.header.children:
+                if child.id == "text":
+                    child.text = header_content
+                    break
+
+
+            # If there are no addons, say as much with a label
+            if addon_count == 0:
+                self.blank_label.text = "there are no items to display"
+                constants.hide_widget(self.blank_label, False)
+                self.blank_label.opacity = 0
+                Animation(opacity=1, duration=0.2).start(self.blank_label)
+                self.max_pages = 0
+                self.current_page = 0
+
+            # If there are addons, display them here
+            else:
+                constants.hide_widget(self.blank_label, True)
+
+                # Create list of addon names
+                installed_addon_names = [addon.name for addon in constants.new_server_info["addon_objects"]]
+
+                # Clear and add all addons
+                for x, addon_object in enumerate(page_list, 1):
+
+
+                    # Function to download addon info
+                    def load_addon(addon, index):
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+
+                        # Cache updated addon info into button, or skip if it's already cached
+                        if selected_button.properties:
+                            if not selected_button.properties.versions or not selected_button.properties.description:
+                                new_addon_info = addons.get_addon_info(addon, constants.new_server_info)
+                                selected_button.properties = new_addon_info
+
+                        Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
+
+                        return selected_button.properties, selected_button.installed
+
+
+                    # Function to install addon
+                    def install_addon(index):
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+                        addon = selected_button.properties
+                        selected_button.toggle_installed(not selected_button.installed)
+
+                        if len(addon.name) < 26:
+                            addon_name = addon.name
+                        else:
+                            addon_name = addon.name[:23] + "..."
+
+                        # Install
+                        if selected_button.installed:
+                            constants.new_server_info["addon_objects"].append(addons.get_addon_url(addon, constants.new_server_info))
+
+                            Clock.schedule_once(
+                                functools.partial(
+                                    self.show_banner,
+                                    (0.553, 0.902, 0.675, 1),
+                                    f"Added '{addon_name}' to the queue",
+                                    "add-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.895}
+                                ), 0.25
+                            )
+
+                        # Uninstall
+                        else:
+                            for installed_addon_object in constants.new_server_info["addon_objects"]:
+                                if installed_addon_object.name == addon.name:
+                                    constants.new_server_info["addon_objects"].remove(installed_addon_object)
+
+                                    Clock.schedule_once(
+                                        functools.partial(
+                                            self.show_banner,
+                                            (0.937, 0.831, 0.62, 1),
+                                            f"Removed '{addon_name}' from the queue",
+                                            "remove-circle-sharp.png",
+                                            2.5,
+                                            {"center_x": 0.5, "center_y": 0.895}
+                                        ), 0.25
+                                    )
+
+                                    break
+
+                        return addon, selected_button.installed
+
+
+                    # Activated when addon is clicked
+                    def view_addon(addon, index, *args):
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
+
+                        selected_button.loading(True)
+
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_popup,
+                                "addon",
+                                " ",
+                                " ",
+                                (None, functools.partial(install_addon, index)),
+                                functools.partial(load_addon, addon, index)
+                            ),
+                            0
+                        )
+
+
+                    # Add-on button click function
+                    self.scroll_layout.add_widget(
+                        ScrollItem(
+                            widget = AddonButton(
+                                properties = addon_object,
+                                installed = addon_object.name in installed_addon_names,
+                                fade_in = ((x if x <= 8 else 8) / 10),
+                                click_function = functools.partial(
+                                    view_addon,
+                                    addon_object,
+                                    x
+                                )
+                            )
+                        )
+                    )
+
+                self.resize_bind()
+                self.scroll_layout.parent.parent.scroll_y = 1
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.search_bar = None
+        self.page_switcher = None
+
+        self.last_results = []
+        self.page_size = 20
+        self.current_page = 0
+        self.max_pages = 0
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+        elif keycode[1] == "tab" and self.name == screen_manager.current_screen.name:
+            for widget in self.search_bar.children:
+                try:
+                    if widget.id == "search_input":
+                        widget.grab_focus()
+                        break
+                except AttributeError:
+                    pass
+
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.437))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.79
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        addon_count = 0
+        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        header_content = "Add-on Search"
+        self.header = header_text(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        # Add blank label to the center
+        self.blank_label = Label()
+        self.blank_label.text = "search for add-ons above"
+        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
+        self.blank_label.font_size = sp(24)
+        self.blank_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.blank_label)
+
+
+        search_function = addons.search_addons
+        self.search_bar = search_input(return_function=search_function, server_info=constants.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.search_bar)
+        float_layout.add_widget(self.page_switcher)
+
+        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"Create '{constants.new_server_info['name']}', Add-ons, Download"
+        float_layout.add_widget(generate_title(f"Add-on Manager: '{constants.new_server_info['name']}'"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+        # Autofocus search bar
+        for widget in self.search_bar.children:
+            try:
+                if widget.id == "search_input":
+                    widget.grab_focus()
+                    break
+            except AttributeError:
+                pass
+
+
+
+# Create Server Step 7 (end):  Server Review ---------------------------------------------------------------------------
+
+# Create demo of how the server will appear in the Server Manager:
+class ServerDemoInput(BaseInput):
+
+    def resize_self(self, *args):
+        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper"]\
+            else 9.6 if self.type_image.type_label.text == "forge"\
+            else 9.35 if self.type_image.type_label.text == "craftbukkit"\
+            else 9.55
+
+        self.type_image.image.x = self.width+self.x-self.type_image.image.width-self.padding_x[0]+10
+        self.type_image.image.y = self.y+(self.padding_y[0]/2.7)
+
+        self.type_image.type_label.x = self.width+self.x-(self.padding_x[0]*offset)
+        self.type_image.type_label.y = self.y+(self.padding_y[0]/6.9)
+
+        self.type_image.version_label.x = self.width+self.x-(self.padding_x[0]*offset)
+        self.type_image.version_label.y = self.y-(self.padding_y[0]*0.85)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.halign = "left"
+        self.properties = {"type": "", "version": "", "name": ""}
+        self.padding_x = 30
+        self.padding_y = 24.5
+        self.font_size = sp(25)
+        self.size_hint_max = (580, 80)
+        self.hint_text_color = (0.65, 0.65, 1, 1)
+        self.background_normal = os.path.join(constants.gui_assets, 'server_preview.png')
+        self.title_text = ""
+        self.hint_text = ""
+
+        # Type icon and info
+        with self.canvas.after:
+            self.type_image = RelativeLayout()
+            self.type_image.image = Image(source=None)
+            self.type_image.image.allow_stretch = True
+            self.type_image.image.size = (62, 62)
+            self.type_image.image.color = (0.65, 0.65, 1, 1)
+
+            def TemplateLabel():
+                template_label = AlignLabel()
+                template_label.halign = "right"
+                template_label.valign = "middle"
+                template_label.text_size = template_label.size
+                template_label.font_size = sp(18)
+                template_label.color = self.foreground_color
+                template_label.font_name = self.font_name
+                template_label.width = 200
+                return template_label
+
+            self.type_image.version_label = TemplateLabel()
+            self.type_image.version_label.color = (0.6, 0.6, 1, 0.6)
+            self.type_image.type_label = TemplateLabel()
+            self.type_image.type_label.font_size = sp(22)
+
+            self.bind(pos=self.resize_self)
+
+    # Make the text box non-interactive
+    def on_enter(self, value):
+        return
+
+    def on_touch_down(self, touch):
+        self.focus = False
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        return
+
+    def insert_text(self, substring, from_undo=False):
+        return
+def server_demo_input(pos_hint, properties):
+    demo_input = ServerDemoInput()
+    demo_input.properties = properties
+    demo_input.pos_hint = pos_hint
+    demo_input.hint_text = properties['name']
+    demo_input.type_image.version_label.text = properties['version']
+    demo_input.type_image.type_label.text = properties['type'].lower().replace("craft", "")
+    demo_input.type_image.image.source = os.path.join(constants.gui_assets, 'icons', 'big', f'{properties["type"]}_small.png')
+    return demo_input
+
+class CreateServerReviewScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget()
+        scroll_anchor = AnchorLayout()
+        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, -10, 0, 60])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 2.05
+            call_widget.pos_hint = {"center_y": 0.51}
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        scroll_layout.bind(minimum_height=scroll_layout.setter('height'))
+        scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.272}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(header_text(f"Please verify your configuration", '', (0, 0.89), no_line=True))
+
+        pgh_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+
+
+        # Create and add paragraphs to GridLayout
+        def create_paragraph(name, text, cid):
+
+            # Dirty fix to anchor paragraphs to the top
+            def repos(p, s, *args):
+                if scroll_layout.cols == 2:
+                    if s.height != scroll_layout._rows[cid]:
+                        p.y = scroll_layout._rows[cid] - s.height
+
+                    if cid == 0:
+                        for child in scroll_layout.children:
+                            if child != s and child.x == s.x:
+                                p2 = child.children[0]
+                                p2.y = p.y
+                                break
+                else:
+                    p.y = 0
+
+            sub_layout = ScrollItem()
+            content_size = sp(22)
+            content_height = len(content.splitlines()) * (content_size + sp(9))
+            paragraph = paragraph_object(size=(485, content_height), name=name, content=text, font_size=content_size, font=pgh_font)
+            sub_layout.height = paragraph.height + 60
+
+            sub_layout.bind(pos=functools.partial(repos, paragraph, sub_layout, cid))
+            sub_layout.bind(size=functools.partial(repos, paragraph, sub_layout, cid))
+
+            sub_layout.add_widget(paragraph)
+            scroll_layout.add_widget(sub_layout)
+
+
+
+        # ----------------------------------------------- General ------------------------------------------------------
+        content = ""
+        content += f"[color=6666AA]Name:      [/color]{constants.new_server_info['name']}\n"
+        content += f"[color=6666AA]Type:      [/color]{constants.new_server_info['type'].title()}\n"
+        content += f"[color=6666AA]Version:   [/color]{constants.new_server_info['version']}"
+        if constants.new_server_info['build']:
+            content += f" ({constants.new_server_info['build']})"
+        content += "\n\n"
+        if constants.new_server_info['server_settings']['world'] == "world":
+            content += f"[color=6666AA]World:     [/color]Create a new world\n"
+            if constants.new_server_info['server_settings']['level_type']:
+                content += f"[color=6666AA]Type:      [/color]{constants.new_server_info['server_settings']['level_type'].title()}\n"
+            if constants.new_server_info['server_settings']['seed']:
+                content += f"[color=6666AA]Seed:      [/color]{constants.new_server_info['server_settings']['seed']}\n"
+        else:
+            box_text = os.path.join(*Path(os.path.abspath(constants.new_server_info['server_settings']['world'])).parts[-2:])
+            box_text = box_text[:30] + "..." if len(box_text) > 30 else box_text
+            content += f"[color=6666AA]World:     [/color]{box_text}\n"
+
+        create_paragraph('general', content, 0)
+        # --------------------------------------------------------------------------------------------------------------
+
+
+
+        # ----------------------------------------------- Options ------------------------------------------------------
+        content = ""
+        content += f"[color=6666AA]Gamemode:             [/color]{constants.new_server_info['server_settings']['gamemode'].title()}\n"
+        content += f"[color=6666AA]Difficulty:           [/color]{constants.new_server_info['server_settings']['difficulty'].title()}\n"
+        content += f"[color=6666AA]PVP:                  {'[/color]Enabled' if constants.new_server_info['server_settings']['pvp'] else 'Disabled[/color]'}\n"
+        content += f"[color=6666AA]Spawn protection:     {'[/color]Enabled' if constants.new_server_info['server_settings']['spawn_protection'] else 'Disabled[/color]'}"
+
+        content += "\n\n"
+
+        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+            content += f"[color=6666AA]Keep inventory:       {'[/color]Enabled' if constants.new_server_info['server_settings']['keep_inventory'] else 'Disabled[/color]'}\n"
+
+        content += f"[color=6666AA]Spawn creatures:      {'[/color]Enabled' if constants.new_server_info['server_settings']['spawn_creatures'] else 'Disabled[/color]'}\n"
+
+        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+            if constants.version_check(constants.new_server_info['version'], ">=", "1.11"):
+                content += f"[color=6666AA]Daylight/weather:     {'[/color]Enabled' if constants.new_server_info['server_settings']['daylight_weather_cycle'] else 'Disabled[/color]'}\n"
+            else:
+                content += f"[color=6666AA]Daylight cycle:       {'[/color]Enabled' if constants.new_server_info['server_settings']['daylight_weather_cycle'] else 'Disabled[/color]'}\n"
+
+        content += f"[color=6666AA]Command blocks:       {'[/color]Enabled' if constants.new_server_info['server_settings']['command_blocks'] else 'Disabled[/color]'}\n"
+
+        if constants.version_check(constants.new_server_info['version'], ">=", "1.19") and constants.new_server_info['type'].lower() != "vanilla":
+            content += f"[color=6666AA]Chat reporting:       {'[/color]Enabled' if constants.new_server_info['server_settings']['disable_chat_reporting'] else 'Disabled[/color]'}\n"
+
+        if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
+            content += f"[color=6666AA]Random tick speed:    [/color]{constants.new_server_info['server_settings']['random_tick_speed']} ticks"
+
+        create_paragraph('options', content, 0)
+        # --------------------------------------------------------------------------------------------------------------
+
+
+
+        # ----------------------------------------------- Network ------------------------------------------------------
+        formatted_ip = ("localhost" if not constants.new_server_info['ip'] else constants.new_server_info['ip']) + f":{constants.new_server_info['port']}"
+        max_plr = constants.new_server_info['server_settings']['max_players']
+        formatted_players = (max_plr + (' players' if int(max_plr) != 1 else ' player'))
+        content = ""
+        content += f"[color=6666AA]Server IP:      [/color]{formatted_ip}\n"
+        content += f"[color=6666AA]Max players:    [/color]{formatted_players}\n"
+        if constants.new_server_info['server_settings']['geyser_support']:
+            content += f"[color=6666AA]Geyser:         [/color]Enabled"
+
+        content += "\n\n"
+
+        content += f"[color=6666AA]MOTD:\n[/color]{constants.new_server_info['server_settings']['motd']}"
+
+        content += "\n\n\n"
+
+        rule_count = constants.new_server_info['acl_object'].count_rules()
+        if rule_count['total'] > 0:
+            content += f"[color=6666AA]          Access Control Rules[/color]"
+
+            if rule_count['ops'] > 0:
+                content += "\n\n"
+                content += f"[color=6666AA]Operators ({rule_count['ops']:,}):[/color]\n"
+                content += '    ' + '\n    '.join([rule.rule for rule in constants.new_server_info['acl_object'].rules['ops']])
+
+            if rule_count['bans'] > 0:
+                content += "\n\n"
+                content += f"[color=6666AA]Bans ({rule_count['bans']:,}):[/color]\n"
+                bans = acl.deepcopy(constants.new_server_info['acl_object'].rules['bans'])
+                bans.extend(acl.deepcopy(constants.new_server_info['acl_object'].rules['subnets']))
+                content += '    ' + '\n    '.join([rule.rule if '!w' not in rule.rule else rule.rule.replace('!w','').strip()+' (whitelist)' for rule in bans])
+
+            if rule_count['wl'] > 0:
+                content += "\n\n"
+                content += f"[color=6666AA]Whitelist ({rule_count['wl']:,}):[/color]\n"
+                content += '    ' + '\n    '.join([rule.rule for rule in constants.new_server_info['acl_object'].rules['wl']])
+
+        create_paragraph('network', content, 1)
+        # --------------------------------------------------------------------------------------------------------------
+
+
+
+        # ------------------------------------------------ Addons ------------------------------------------------------
+        if len(constants.new_server_info['addon_objects']) > 0:
+            content = ""
+            addons_sorted = {'import': [], 'download': []}
+            [addons_sorted['import' if addon.addon_object_type == 'file' else 'download'].append(addon.name) for addon in constants.new_server_info['addon_objects']]
+
+            if len(addons_sorted['download']) > 0:
+                content += f"[color=6666AA]Add-ons to download ({len(addons_sorted['download']):,}):[/color]\n"
+                content += '    ' + '\n    '.join([(item[:32]+'...' if len(item) > 35 else item) for item in addons_sorted['download']])
+
+                if len(addons_sorted['import']) > 0:
+                    content += "\n\n"
+
+            if len(addons_sorted['import']) > 0:
+                content += f"[color=6666AA]Add-ons to import ({len(addons_sorted['import']):,}):[/color]\n"
+                content += '    ' + '\n    '.join([(item[:32]+'...' if len(item) > 35 else item) for item in addons_sorted['import']])
+
+            create_paragraph('add-ons', content, 1)
+        # --------------------------------------------------------------------------------------------------------------
+
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+
+        # Server Preview Box
+        float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=constants.new_server_info))
+
+
+        buttons.append(main_button('Create Server', (0.5, 0.22), 'checkmark-circle-outline.png'))
+        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"Create '{constants.new_server_info['name']}'"
+        float_layout.add_widget(page_counter(7, 7, (0, 0.815)))
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(f"{menu_name}, Verify"))
+
+        self.add_widget(float_layout)
+
+
+# Create Server Progress Screen ----------------------------------------------------------------------------------------
+class CreateServerProgressScreen(ProgressScreen):
+
+    # Only replace this function when making a child screen
+    # Set fail message in child functions to trigger an error
+    def contents(self):
+
+        def before_func(*args):
+
+            # First, clean out any existing server in temp folder
+            constants.safe_delete(constants.tmpsvr)
+
+            if not constants.app_online:
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+            else:
+                constants.folder_check(constants.tmpsvr)
+
+        # Original is percentage before this function, adjusted is a percent of hooked value
+        def adjust_percentage(*args):
+            original = self.last_progress
+            adjusted = args[0]
+            total = args[1] * 0.01
+            final = original + round(adjusted * total)
+            if final < 0:
+                final = original
+            self.progress_bar.update_progress(final)
+
+
+        self.page_contents = {
+
+            # Page name
+            'title': f"Creating '{constants.new_server_info['name']}'",
+
+            # Header text
+            'header': "Sit back and relax, it's automation time...",
+
+            # Tuple of tuples for steps (label, function, percent)
+            # Percent of all functions must total 100
+            # Functions must return True, or default error will be executed
+            'default_error': 'There was an issue, please try again later',
+
+            'function_list': (),
+
+            # Function to run before steps (like checking for an internet connection)
+            'before_function': before_func,
+
+            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
+            'after_function': functools.partial(open_server, constants.new_server_info['name'], True, f"'{constants.new_server_info['name']}' was created successfully"),
+
+            # Screen to go to after complete
+            'next_screen': None
+        }
+
+        # Create function list
+        function_list = [
+            ('Verifying Java installation', functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 30)), 0)
+        ]
+
+        download_addons = False
+        needs_installed = False
+
+        if constants.new_server_info['type'] != 'vanilla':
+            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] == 'fabric')
+            needs_installed = constants.new_server_info['type'] in ['forge', 'fabric']
+
+        if download_addons:
+            function_list.append(('Add-oning add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
+
+        if needs_installed:
+            function_list.append((f'Installing {constants.new_server_info["type"].title()}', functools.partial(constants.install_server), 10 if download_addons else 20))
+
+        function_list.append(('Applying server configuration', functools.partial(constants.generate_server_files), 10 if (download_addons or needs_installed) else 20))
+
+
+        function_list.append(('Creating initial back-up', functools.partial(constants.create_backup), 10 if (download_addons or needs_installed) else 20))
+
+
+        self.page_contents['function_list'] = tuple(function_list)
+
+# </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+# =============================================== Server Manager =======================================================
+# <editor-fold desc="Server Manager">
+
+# Import Server --------------------------------------------------------------------------------------------------------
+
+class ServerImportScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.layout = None
+        self.button_layout = None
+        self.page_counter = None
+        self.input_type = None
+        self.input = None
+        self.next_button = None
+
+
+    def load_input(self, input_type, *args):
+        self.input_type = input_type
+        self.button_layout.clear_widgets()
+        self.page_counter.clear_widgets()
+        self.layout.remove_widget(self.page_counter)
+
+        # Change the input based on input_type
+        self.page_counter = page_counter(2, 2, (0, 0.768))
+        self.button_layout.opacity = 0
+        self.add_widget(self.page_counter)
+
+
+        if input_type == "external":
+            self.button_layout.add_widget(ServerImportPathInput(pos_hint={"center_x": 0.5, "center_y": 0.47}))
+            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.47), ('dir', constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home), input_name='ServerImportPathInput', title='Select a Server Folder'))
+
+        elif input_type == "backup":
+            self.button_layout.add_widget(ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.47}))
+            start_path = constants.backupFolder if os.path.isdir(constants.backupFolder) else constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
+            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.47), ('file', start_path), input_name='ServerImportBackupInput', title='Select an Auto-MCS back-up file', ext_list=['*.amb', '*.tgz']))
+
+
+        # Auto-launch popup
+        try:
+            for item in self.button_layout.children[0].children:
+                if item.id == "input_button":
+                    Clock.schedule_once(item.force_click, 0)
+                    Clock.schedule_once(item.on_leave, 0.01)
+                    break
+        except AttributeError:
+            pass
+
+
+        # def set_import_path(*args):
+        #     for item in self.button_layout.children:
+        #         if "ServerImport" in item.__class__.__name__:
+        #             constants.import_data['path'] = item.selected_server
+
+
+        self.button_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.56}))
+        self.next_button = next_button('Next', (0.5, 0.24), True, next_screen='ServerImportProgressScreen')
+        # self.next_button.children[2].bind(on_press=set_import_path)
+        self.button_layout.add_widget(self.next_button)
+        Animation(opacity=1, duration=0.5).start(self.button_layout)
+
+
+    def generate_menu(self, **kwargs):
+
+        # Reset import path
+        constants.import_data = {'name': None, 'path': None}
+        constants.safe_delete(constants.tempDir)
+
+        # Generate buttons on page load
+        buttons = []
+        self.layout = FloatLayout()
+        self.layout.id = 'content'
+
+        # Prevent server creation if offline
+        if not constants.app_online:
+            self.layout.add_widget(header_text("Importing a server requires an internet connection", '', (0, 0.6)))
+            buttons.append(exit_button('Back', (0.5, 0.35)))
+
+        # Regular menus
+        else:
+            self.layout.add_widget(header_text("Which server do you wish to import?", '', (0, 0.76)))
+            buttons.append(main_button('Import external server', (0.5, 0.5), 'folder-outline.png', click_func=functools.partial(self.load_input, 'external')))
+            buttons.append(main_button('Import Auto-MCS back-up', (0.5, 0.38), 'backup-icon.png', click_func=functools.partial(self.load_input, 'backup')))
+            self.layout.add_widget(exit_button('Back', (0.5, 0.14), cycle=True))
+            self.page_counter = page_counter(1, 2, (0, 0.768))
+            self.add_widget(self.page_counter)
+
+        self.button_layout = FloatLayout()
+        for button in buttons:
+            self.button_layout.add_widget(button)
+
+        self.layout.add_widget(self.button_layout)
+        self.layout.add_widget(generate_title('Server Manager: Import Server'))
+        self.layout.add_widget(generate_footer('Server Manager, Import server'))
+
+        self.add_widget(self.layout)
+
+class ServerImportProgressScreen(ProgressScreen):
+
+    # Only replace this function when making a child screen
+    # Set fail message in child functions to trigger an error
+    def contents(self):
+
+        def before_func(*args):
+
+            # First, clean out any existing server in temp folder
+            constants.safe_delete(constants.tempDir)
+
+            if not constants.app_online:
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+            else:
+                constants.folder_check(constants.tmpsvr)
+
+        # Original is percentage before this function, adjusted is a percent of hooked value
+        def adjust_percentage(*args):
+            original = self.last_progress
+            adjusted = args[0]
+            total = args[1] * 0.01
+            final = original + round(adjusted * total)
+            if final < 0:
+                final = original
+            self.progress_bar.update_progress(final)
+
+
+        self.page_contents = {
+
+            # Page name
+            'title': f"Importing '{constants.import_data['name']}'",
+
+            # Header text
+            'header': "Sit back and relax, it's automation time...",
+
+            # Tuple of tuples for steps (label, function, percent)
+            # Percent of all functions must total 100
+            # Functions must return True, or default error will be executed
+            'default_error': 'There was an issue, please try again later',
+
+            'function_list': (),
+
+            # Function to run before steps (like checking for an internet connection)
+            'before_function': before_func,
+
+            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
+            'after_function': functools.partial(open_server, constants.import_data['name'], True, f"'{constants.import_data['name']}' was imported successfully"),
+
+            # Screen to go to after complete
+            'next_screen': None
+        }
+
+        is_backup_file = ((constants.import_data['path'].endswith(".tgz") or constants.import_data['path'].endswith(".amb")) and os.path.isfile(constants.import_data['path']))
+
+        # Create function list
+        function_list = [
+            ('Verifying Java installation', functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            ('Importing server', functools.partial(constants.scan_import, is_backup_file, functools.partial(adjust_percentage, 30)), 0),
+            ('Validating configuration', functools.partial(constants.finalize_import, functools.partial(adjust_percentage, 20)), 0),
+            ('Creating initial back-up', functools.partial(constants.create_backup, True), 20)
+        ]
+
+        self.page_contents['function_list'] = tuple(function_list)
+
+
+
+# Server Manager Overview ----------------------------------------------------------------------------------------------
+
+# Opens server in panel, and updates Server Manager current_server
+def open_server(server_name, wait_page_load=False, show_banner='', *args):
+    def next_screen(*args):
+        print(vars(constants.server_manager.current_server))
+        if constants.server_manager.current_server.name != server_name:
+            while constants.server_manager.current_server.name != server_name:
+                time.sleep(0.005)
+        screen_manager.current = 'ServerManagerViewScreen'
+
+        if show_banner:
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_banner,
+                    (0.553, 0.902, 0.675, 1),
+                    show_banner,
+                    "checkmark-circle-sharp.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.895}
+                ), 0
+            )
+
+        constants.screen_tree = ['MainMenuScreen', 'ServerManagerScreen']
+
+    constants.server_manager.open_server(server_name)
+    Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
+
+class ServerButton(HoverButton):
+
+    def toggle_favorite(self, favorite, *args):
+        self.favorite = favorite
+        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
+        self.title.text_size = (self.size_hint_max[0] * (0.7 if favorite else 0.94), self.size_hint_max[1])
+        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png')
+        self.resize_self()
+
+    def animate_button(self, image, color, **kwargs):
+        image_animate = Animation(duration=0.05)
+
+        def f(w):
+            w.background_normal = image
+
+        Animation(color=color, duration=0.06).start(self.title)
+        Animation(color=self.run_color if (self.running and not self.hovered) else color, duration=0.06).start(self.subtitle)
+        Animation(color=color, duration=0.06).start(self.type_image.image)
+        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
+            Animation(color=color, duration=0.06).start(self.type_image.version_label)
+        Animation(color=color, duration=0.06).start(self.type_image.type_label)
+
+        a = Animation(duration=0.0)
+        a.on_complete = functools.partial(f)
+
+        image_animate += a
+
+        image_animate.start(self)
+
+    def resize_self(self, *args):
+
+        # Title and description
+        padding = 2.17
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (6 if self.favorite else 0) + 30, self.y + 31)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1 + 30, self.y)
+
+
+        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper"]\
+            else 9.6 if self.type_image.type_label.text == "forge"\
+            else 9.35 if self.type_image.type_label.text == "craftbukkit"\
+            else 9.55
+
+
+        self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 13
+        self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
+
+        self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
+        self.type_image.type_label.y = self.y + (self.height * 0.05)
+
+        # Update label
+        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
+            self.type_image.version_label.y = self.y - (self.height / 3.2)
+
+        # Banner version object
+        else:
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 130
+            self.type_image.version_label.y = self.y - (self.height / 3.2) - 2
+
+
+        # Favorite button
+        self.favorite_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
+        self.favorite_layout.pos = (self.pos[0] - 6, self.pos[1] + 13)
+
+
+        # Highlight border
+        self.highlight_border.pos = self.pos
+
+    def highlight(self):
+        def next_frame(*args):
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        Clock.schedule_once(next_frame, 0)
+
+    def __init__(self, server_object, click_function=None, fade_in=0.0, highlight=None, update_banner="", **kwargs):
+        super().__init__(**kwargs)
+
+        self.favorite = server_object.favorite
+        self.properties = server_object
+        self.border = (-5, -5, -5, -5)
+        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
+        self.run_color = (0.529, 1, 0.729, 1)
+        self.running = server_object.running and server_object.run_data
+        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+        self.size_hint_max = (580, 80)
+        self.id = "server_button"
+        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
+        self.background_down = os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_click.png')
+        icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+
+
+        # Loading stuffs
+        self.original_subtitle = backup.convert_date(server_object.last_modified)
+        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Title of Server
+        self.title = Label()
+        self.title.id = "title"
+        self.title.halign = "left"
+        self.title.color = self.color_id[1]
+        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_size = sp(25)
+        self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.title.shorten = True
+        self.title.markup = True
+        self.title.shorten_from = "right"
+        self.title.max_lines = 1
+        self.title.text = server_object.name
+        self.add_widget(self.title)
+
+
+        # Server last modified date formatted
+        self.subtitle = Label()
+        self.subtitle.id = "subtitle"
+        self.subtitle.halign = "left"
+        self.subtitle.font_size = sp(21)
+        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.shorten = True
+        self.subtitle.markup = True
+        self.subtitle.shorten_from = "right"
+        self.subtitle.max_lines = 1
+
+        if self.running:
+            self.subtitle.color = self.run_color
+            self.subtitle.default_opacity = 0.8
+            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            if 'ngrok' in server_object.run_data['network']['address']['ip'].lower():
+                text = server_object.run_data['network']['address']['ip']
+            else:
+                text = ':'.join(server_object.run_data['network']['address'].values())
+            self.subtitle.text = f"Running  [font={icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+        else:
+            self.subtitle.color = self.color_id[1]
+            self.subtitle.default_opacity = 0.56
+            self.subtitle.font_name = self.original_font
+            self.subtitle.text = self.original_subtitle
+
+        self.subtitle.opacity = self.subtitle.default_opacity
+
+        self.add_widget(self.subtitle)
+
+
+
+        # Type icon and info
+        self.type_image = RelativeLayout()
+        self.type_image.width = 400
+        self.type_image.image = Image(source=os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type}_small.png'))
+        self.type_image.image.allow_stretch = True
+        self.type_image.image.size_hint_max = (65, 65)
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.add_widget(self.type_image.image)
+
+        def TemplateLabel():
+            template_label = AlignLabel()
+            template_label.halign = "right"
+            template_label.valign = "middle"
+            template_label.text_size = template_label.size
+            template_label.font_size = sp(19)
+            template_label.color = self.color_id[1]
+            template_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            template_label.width = 150
+            return template_label
+
+
+        if update_banner:
+            self.type_image.version_label = RelativeLayout()
+            self.type_image.version_label.add_widget(
+                BannerObject(
+                    pos_hint={"center_x": 1, "center_y": 0.5},
+                    size=(100, 30),
+                    color=(0.647, 0.839, 0.969, 1),
+                    text= ('   ' + update_banner + '  ') if update_banner.startswith('b-') else update_banner,
+                    icon="arrow-up-circle.png",
+                    icon_side="left"
+                )
+            )
+
+        else:
+            self.type_image.version_label = TemplateLabel()
+            self.type_image.version_label.color = self.color_id[1]
+            self.type_image.version_label.text = server_object.version.lower()
+            self.type_image.version_label.opacity = 0.6
+
+
+        self.type_image.type_label = TemplateLabel()
+        self.type_image.type_label.text = server_object.type.lower().replace("craft", "")
+        self.type_image.type_label.font_size = sp(23)
+        self.type_image.add_widget(self.type_image.version_label)
+        self.type_image.add_widget(self.type_image.type_label)
+        self.add_widget(self.type_image)
+
+
+        # Favorite button
+        self.favorite_layout = RelativeLayout()
+        favorite = functools.partial(screen_manager.current_screen.favorite, server_object.name)
+
+        if self.favorite:
+            self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'], anchor='right', click_func=favorite)
+        else:
+            self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-outline.png', clickable=True, anchor='right', click_func=favorite)
+
+        self.favorite_layout.add_widget(self.favorite_button)
+        self.add_widget(self.favorite_layout)
+
+
+        # Highlight border
+        self.highlight_layout = RelativeLayout()
+        self.highlight_border = Image()
+        self.highlight_border.keep_ratio = False
+        self.highlight_border.allow_stretch = True
+        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+        self.highlight_border.opacity = 0
+        self.highlight_border.source = os.path.join(constants.gui_assets, 'server_button_highlight.png')
+        self.highlight_layout.add_widget(self.highlight_border)
+        self.highlight_layout.width = self.size_hint_max[0]
+        self.highlight_layout.height = self.size_hint_max[1]
+        self.add_widget(self.highlight_layout)
+
+
+
+        # Toggle favorite stuffies
+        self.bind(pos=self.resize_self)
+        if self.favorite:
+            self.toggle_favorite(self.favorite)
+
+        # If click_function
+        if click_function:
+            self.bind(on_press=click_function)
+
+
+
+        # Animate opacity
+        if fade_in > 0:
+            self.opacity = 0
+            self.title.opacity = 0
+
+            Animation(opacity=1, duration=fade_in).start(self)
+            Animation(opacity=1, duration=fade_in).start(self.title)
+            Animation(opacity=self.subtitle.default_opacity, duration=fade_in).start(self.subtitle)
+
+        if highlight:
+            self.highlight()
+
+    def on_enter(self, *args):
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_hover.png'), color=self.color_id[0], hover_action=True)
+
+    def on_leave(self, *args):
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png'), color=self.color_id[1], hover_action=False)
+
+    def loading(self, load_state, *args):
+        if load_state:
+            self.subtitle.text = "Loading add-on info..."
+            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        else:
+            self.subtitle.text = self.original_subtitle
+            self.subtitle.font_name = self.original_font
+
+class ServerManagerScreen(MenuBackground):
+
+    # Toggles favorite of item, and reload list
+    def favorite(self, server_name):
+        config_file = constants.server_config(server_name)
+        config_file.set('general', 'isFavorite', ('false' if config_file.get('general', 'isFavorite') == 'true' else 'true'))
+        constants.server_config(server_name, config_file)
+
+
+        # Show banner
+        bool_favorite = bool(config_file.get('general', 'isFavorite') == 'true')
+
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_banner,
+                (0.85, 0.65, 1, 1) if bool_favorite else (0.68, 0.68, 1, 1),
+                f"'{server_name}'" + (" marked as favorite" if bool_favorite else " is no longer marked as favorite"),
+                "heart-sharp.png" if bool_favorite else "heart-dislike-outline.png",
+                2,
+                {"center_x": 0.5, "center_y": 0.895}
+            ), 0
+        )
+
+
+        constants.server_manager.refresh_list()
+        self.gen_search_results(constants.server_manager.server_list, fade_in=False, highlight=server_name)
+
+    def switch_page(self, direction):
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, *args):
+
+        # Set to proper page on favorite/unfavorite
+        default_scroll = 1
+        if highlight:
+            def divide_chunks(l, n):
+                final_list = []
+
+                for i in range(0, len(l), n):
+                    final_list.append(l[i:i + n])
+
+                return final_list
+
+            for x, l in enumerate(divide_chunks([x.name for x in results], self.page_size), 1):
+                if highlight in l:
+                    if self.current_page != x:
+                        self.current_page = x
+
+                    # Update scroll when page is bigger than list
+                    if Window.height < self.scroll_layout.height:
+                        default_scroll = 1 - round(l.index(highlight) / self.page_size, 2)
+                        if default_scroll < 0.2:
+                            default_scroll = 0
+                        if default_scroll > 0.97:
+                            default_scroll = 1
+                    break
+
+
+        # Update page counter
+        self.last_results = results
+        self.max_pages = (len(results) / self.page_size).__ceil__()
+        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+        self.scroll_layout.clear_widgets()
+        gc.collect()
+
+        # Generate header
+        server_count = len(constants.server_manager.server_list)
+        header_content = "Select a server to manage"
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                break
+
+
+        # Show servers if they exist
+        if server_count != 0:
+
+            # Create list of addon names
+            server_names = [server.name for server in constants.server_manager.server_list]
+
+            # Clear and add all addons
+            for x, server_object in enumerate(page_list, 1):
+
+                # Activated when addon is clicked
+                def view_server(server, index, *args):
+                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ServerButton"][index - 1]
+
+                    # View Server
+                    if selected_button.last_touch.button == "left":
+                        open_server(server.name)
+
+                    # Favorite
+                    elif selected_button.last_touch.button == "middle":
+                        self.favorite(server.name)
+
+
+                # Check if updates are available
+                update_banner = ""
+                if server_object.auto_update == 'true':
+                    update_banner = server_object.update_string
+
+
+                # Add-on button click function
+                self.scroll_layout.add_widget(
+                    ScrollItem(
+                        widget = ServerButton(
+                            server_object = server_object,
+                            fade_in = ((x if x <= 8 else 8) / 10) if fade_in else 0,
+                            highlight = (highlight == server_object.name),
+                            update_banner = update_banner,
+                            click_function = functools.partial(
+                                view_server,
+                                server_object,
+                                x
+                            )
+                        )
+                    )
+                )
+
+            self.resize_bind()
+
+        # Animate scrolling
+        def set_scroll(*args):
+            # self.scroll_layout.parent.parent.scroll_y = default_scroll
+            Animation.stop_all(self.scroll_layout.parent.parent)
+            Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+        Clock.schedule_once(set_scroll, 0)
+
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.page_switcher = None
+
+        self.last_results = []
+        self.page_size = 10
+        self.current_page = 0
+        self.max_pages = 0
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.82
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        header_content = "Select a server in which to manage"
+        self.header = header_text(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.page_switcher)
+
+        buttons.append(main_button('Import a server', (0.5, 0.202), 'download-outline.png'))
+        buttons.append(exit_button('Back', (0.5, 0.11), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = "Server Manager"
+        float_layout.add_widget(generate_title("Server Manager"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+        # Automatically generate results (installed add-ons) on page load
+        constants.server_manager.refresh_list()
+        self.gen_search_results(constants.server_manager.server_list)
+
+
+
+class ConsolePanel(FloatLayout):
+
+    # Update process to communicate with
+    def update_process(self, run_data, *args):
+        self.run_data = run_data
+        if self.update_text not in self.run_data['process-hooks']:
+            self.run_data['process-hooks'].append(self.update_text)
+
+        self.update_text(self.run_data['log'])
+
+        def update_scroll(*args):
+            if (self.console_text.height > self.scroll_layout.height - self.console_text.padding[-1]):
+                self.scroll_layout.scroll_y = 0
+        Clock.schedule_once(update_scroll, 0)
+
+
+    # Updates RecycleView text with console text
+    def update_text(self, text, force_scroll=False, *args):
+        original_scroll = self.scroll_layout.scroll_y
+        original_len = len(self.scroll_layout.data)
+        self.scroll_layout.data = text
+        if (self.console_text.height > self.scroll_layout.height - self.console_text.padding[-1]) and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
+            self.scroll_layout.scroll_y = 0
+            self.auto_scroll = True
+
+        def fade_animation(*args):
+            for label in self.console_text.children:
+                Animation.stop_all(label.anim_cover)
+                Animation.stop_all(label.main_label)
+                label.main_label.opacity = 1
+                label.anim_cover.opacity = 0
+                if label.original_text == self.scroll_layout.data[-1]['text']:
+                    label.main_label.opacity = 0
+                    label.anim_cover.opacity = 1
+                    Animation(opacity=1, duration = 0.3).start(label.main_label)
+                    Animation(opacity=0, duration=0.3).start(label.anim_cover)
+        if len(text) > original_len:
+            Clock.schedule_once(fade_animation, 0)
+
+
+    # Fit background color across screen for transitions, and fix position
+    def update_size(self, *args):
+        self.rect.pos = self.pos
+        self.rect.size = self.size
+
+        self.scroll_layout.height = self.height - self.input.height
+        self.scroll_layout.width = self.width
+        self.scroll_layout.x = self.x
+        self.scroll_layout.y = self.y + self.input.height
+
+        self.console_text.width = self.width
+
+        self.input.pos = self.pos
+
+        self.gradient.pos = (self.input.pos[0], self.input.height * 1.2)
+        self.gradient.width = self.scroll_layout.width - self.scroll_layout.bar_width
+        self.gradient.height = 0-(self.input.height*0.5)
+
+
+    def __init__(self, server_name, **kwargs):
+        super().__init__(**kwargs)
+
+        self.server_name = server_name
+
+        class ConsoleLabel(RelativeLayout):
+
+            def __setattr__(self, attr, value):
+                # Change attributes dynamically based on rule
+                if attr == "text" and value:
+                    self.original_text = value
+                    self.change_properties(value)
+
+                super().__setattr__(attr, value)
+
+            # Modifies rule attributes based on text content
+            def change_properties(self, text):
+
+                if text and screen_manager.current_screen.name == 'ServerManagerViewScreen':
+                    self.date_label.text = text[0]
+                    self.type_label.text = text[1]
+                    self.main_label.text = text[2]
+                    type_color = text[3]
+
+
+                    # Log text section formatting
+                    width = screen_manager.current_screen.console_panel.console_text.width
+                    self.width = width
+                    self.main_label.width = width - (self.section_size * 2) - 3
+                    self.main_label.text_size = (width - (self.section_size * 2) - 3, None)
+                    self.main_label.texture_update()
+                    self.main_label.size = self.main_label.texture_size
+                    self.main_label.size_hint_max_x = width - (self.section_size * 2) - 3
+                    self.size_hint_max_x = width
+
+                    # This is an extremely dirty and stinky fix for setting position and height
+                    self.main_label.x = (width / 2) - 50 + (self.section_size) - 3
+
+                    # def update_grid(*args):
+                    #     self.main_label.texture_update()
+                    #     self.size[1] = self.main_label.texture_size[1] + self.line_spacing
+                    #
+                    # Clock.schedule_once(update_grid, 0)
+
+
+                    # Type & date label stuffies
+                    self.date_label.x = 8
+                    self.type_label.x = self.date_label.x + self.section_size - 6
+                    self.type_banner.x = self.type_label.x - 7
+
+                    if type_color:
+                        self.main_label.color = type_color
+                        self.date_label.color = self.type_label.color = constants.brighten_color(type_color, -0.65)
+                        self.date_banner1.color = self.date_banner2.color = constants.brighten_color(type_color, -0.2)
+                        self.type_banner.color = type_color
+
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+                self.original_text = None
+                self.line_spacing = 20
+                self.font_size = sp(17)
+                self.section_size = 110
+
+
+                # Main text
+                self.main_label = Label()
+                self.main_label.markup = True
+                self.main_label.shorten = True
+                self.main_label.shorten_from = 'right'
+                self.main_label.font_size = sp(20)
+                self.main_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+                self.main_label.halign = 'left'
+                self.add_widget(self.main_label)
+
+
+                # Type label/banner
+                self.type_banner = Image()
+                self.type_banner.source = os.path.join(constants.gui_assets, 'console_banner.png')
+                self.type_banner.allow_stretch = True
+                self.type_banner.keep_ratio = False
+                self.add_widget(self.type_banner)
+
+                self.type_label = Label()
+                self.type_label.font_size = self.font_size
+                self.type_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+                self.add_widget(self.type_label)
+
+
+                # Date label/banner
+                self.date_banner1 = Image()
+                self.date_banner1.source = os.path.join(constants.gui_assets, 'console_banner.png')
+                self.date_banner1.allow_stretch = True
+                self.date_banner1.keep_ratio = False
+                self.add_widget(self.date_banner1)
+                self.date_banner2 = Image()
+                self.date_banner2.source = os.path.join(constants.gui_assets, 'console_banner.png')
+                self.date_banner2.allow_stretch = True
+                self.date_banner2.keep_ratio = False
+                self.date_banner2.x = 27
+                self.add_widget(self.date_banner2)
+
+                self.date_label = Label()
+                self.date_label.font_size = self.font_size
+                self.date_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+                self.date_label.halign = 'left'
+                self.add_widget(self.date_label)
+
+
+                # Cover for fade animation
+                self.anim_cover = Image()
+                self.anim_cover.opacity = 0
+                self.anim_cover.allow_stretch = True
+                self.anim_cover.size_hint = (None, None)
+                self.anim_cover.width = self.section_size * 1.9
+                self.anim_cover.height = self.section_size / 2.65
+                self.anim_cover.color = background_color
+                self.add_widget(self.anim_cover)
+
+
+        class ConsoleInput(TextInput):
+
+            def _on_focus(self, instance, value, *largs):
+                super(ConsoleInput, self)._on_focus(instance, value)
+                Animation.stop_all(self.parent.input_background)
+                Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+                self.original_text = ''
+                self.history_index = 0
+
+                self.multiline = False
+                self.halign = "left"
+                self.hint_text = "enter command..."
+                self.hint_text_color = (0.6, 0.6, 1, 0.4)
+                self.foreground_color = (0.6, 0.6, 1, 1)
+                self.background_color = (0, 0, 0, 0)
+                self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+                self.font_size = sp(22)
+                self.padding_y = (12, 12)
+                self.padding_x = (70, 12)
+                self.cursor_color = (0.55, 0.55, 1, 1)
+                self.cursor_width = dp(3)
+                self.selection_color = (0.5, 0.5, 1, 0.4)
+
+                self.bind(on_text_validate=self.on_enter)
+
+            def grab_focus(self):
+                def focus_later(*args):
+                    self.focus = True
+
+                Clock.schedule_once(focus_later, 0)
+
+            def on_enter(self, value):
+
+                # Move this to a proper send_command() function in svrmgr
+                if self.parent.run_data:
+                    self.parent.run_data['send-command'](self.text)
+                    self.parent.update_text(self.parent.run_data['log'], force_scroll=True)
+
+                self.original_text = ''
+                self.history_index = 0
+
+                self.text = ''
+                self.grab_focus()
+
+            # Input validation
+            def insert_text(self, substring, from_undo=False):
+
+                if not self.text and substring in [' ', '/']:
+                    substring = ""
+
+                else:
+                    s = substring.encode("ascii", "ignore").decode().replace("\n","").replace("\r","")
+                    self.original_text = self.text + s
+                    self.history_index = 0
+                    return super().insert_text(s, from_undo=from_undo)
+
+
+            # Manipulate command history
+            def keyboard_on_key_down(self, window, keycode, text, modifiers):
+                super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+                if self.parent.run_data:
+
+                    if keycode[1] == 'up' and self.parent.run_data['command-history']:
+                        if self.text != self.original_text:
+                            self.history_index += 1
+                        if self.history_index > len(self.parent.run_data['command-history']) - 1:
+                            self.history_index = len(self.parent.run_data['command-history']) - 1
+                            if self.history_index < 0:
+                                self.history_index = 0
+                        self.text = self.parent.run_data['command-history'][self.history_index]
+
+
+                    elif keycode[1] == 'down' and self.parent.run_data['command-history']:
+                        self.history_index -= 1
+                        if self.history_index < 0:
+                            self.history_index = 0
+                            self.text = self.original_text
+                        else:
+                            self.text = self.parent.run_data['command-history'][self.history_index]
+
+
+        # Popen object reference
+        self.run_data = None
+        self.scale = 1
+        self.auto_scroll = False
+
+        background_color = constants.brighten_color(constants.background_color, -0.1)
+
+
+        # Background
+        with self.canvas.before:
+            self.color = Color(*background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+        with self.canvas.after:
+            self.canvas.clear()
+
+
+
+        # Text Layout
+        self.scroll_layout = RecycleViewWidget(position=None, view_class=ConsoleLabel)
+        self.scroll_layout.scroll_wheel_distance = dp(50)
+        self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(100, 42), padding=[0, 0, 0, 30]) # , default_size=(100, 0)
+        self.console_text.bind(minimum_height=self.console_text.setter('height'))
+        self.scroll_layout.add_widget(self.console_text)
+        self.add_widget(self.scroll_layout)
+
+
+        # Log gradient
+        self.gradient = Image()
+        self.gradient.allow_stretch = True
+        self.gradient.keep_ratio = False
+        self.gradient.size_hint = (None, None)
+        self.gradient.color = background_color
+        self.gradient.opacity = 0.9
+        self.gradient.source = os.path.join(constants.gui_assets, 'scroll_gradient.png')
+        self.add_widget(self.gradient)
+
+        # Command input
+        self.input = ConsoleInput(size_hint_max_y=50)
+        self.add_widget(self.input)
+
+        # Input icon
+        self.input_background = Image()
+        self.input_background.default_opacity = 0.35
+        self.input_background.pos = (-22, 8)
+        self.input_background.color = self.input.foreground_color
+        self.input_background.opacity = self.input_background.default_opacity
+        self.input_background.allow_stretch = True
+        self.input_background.size_hint = (None, None)
+        self.input_background.height = self.input.size_hint_max_y / 1.45
+        self.input_background.source = os.path.join(constants.gui_assets, 'console_input_banner.png')
+        self.add_widget(self.input_background)
+
+
+        self.bind(pos=self.update_size)
+        self.bind(size=self.update_size)
+        Clock.schedule_once(self.update_size, 0)
+
+
+
+
+class ServerManagerViewScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.server = None
+        self.console_panel = None
+
+    def generate_menu(self, **kwargs):
+        self.server = constants.server_manager.current_server
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        float_layout.add_widget(header_text(f"What would you like to do with '{self.server.name}'?", '', (0, 0.88)))
+        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title(f"Server Manager: '{self.server.name}'"))
+        float_layout.add_widget(generate_footer(self.server.name, color="70E6FF"))
+
+
+
+        # Add ConsolePanel
+        self.console_panel = ConsolePanel(self.server.name)
+        self.console_panel.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        #self.console_panel.size_hint_max = (700, 500)
+
+
+        self.add_widget(float_layout)
+
+        self.add_widget(self.console_panel)
+
+        # Delete this
+        constants.java_check()
+
+        # with open(r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\buildspace\logs\latest.log", 'r') as f:
+        #     def update_log(text, *args):
+        #         final_list = []
+        #
+        #         # (date, type, log, color)
+        #         def format_log(line, *args):
+        #
+        #             def format_time(string):
+        #                 try:
+        #                     date = dt.strptime(string, "%H:%M:%S").strftime("%#I:%M:%S %p").rjust(11)
+        #                 except ValueError:
+        #                     date = ''
+        #                 return date
+        #
+        #             def format_color(code, *args):
+        #                 if 'r' not in code:
+        #                     formatted_code = f'[color={constants.color_table[code]}]'
+        #                 else:
+        #                     formatted_code = '[/color]'
+        #                 return formatted_code
+        #
+        #             date_label = ''
+        #             type_label = ''
+        #             main_label = ''
+        #             type_color = ''
+        #
+        #             if line:
+        #
+        #                 # New log formatting (latest.log)
+        #                 if text.startswith('['):
+        #                     message = line.split("]: ", 1)[-1].strip()
+        #                     date_label = format_time(line.split("]", 1)[0].strip().replace("[", ""))
+        #
+        #                 # Old log formatting (server.log)
+        #                 else:
+        #                     message = line.split("] ", 1)[-1].strip()
+        #                     date_label = format_time(line.split(" ", 1)[1].split("[", 1)[0].strip())
+        #
+        #                 # Format string as needed
+        #
+        #                 # Shorten coordinates because FUCK they are long
+        #                 for float_str in re.findall(r"[-+]?(?:\d*\.*\d+)", message):
+        #                     if len(float_str) > 5 and "." in float_str:
+        #                         message = message.replace(float_str, str(round(float(float_str), 2)))
+        #
+        #                 if message.endswith("[m"):
+        #                     message = message.replace("[m", "").strip()
+        #
+        #                 # Format special color codes
+        #                 if '§' in message:
+        #                     message = escape_markup(message)
+        #                     code_list = [message[x:x + 2] for x, y in enumerate(message, 0) if y == '§']
+        #                     for code in code_list:
+        #                         message = message.replace(code, format_color(code))
+        #
+        #                     if len(code_list) % 2 == 1:
+        #                         message = message + '[/color]'
+        #
+        #                 main_label = message.strip()
+        #
+        #                 # Calculate color based on log type
+        #                 type_color = None
+        #
+        #                 if (message.startswith("<") and ">" in message) or "[Async Chat Thread" in line:
+        #                     type_label = "CHAT"
+        #                     type_color = (0.439, 0.839, 1, 1)
+        #
+        #                 elif "issued server command: " in message:
+        #                     type_label = "EXEC"
+        #                     type_color = (1, 0.298, 0.6, 1)
+        #
+        #                 elif "Done" in line and "For help," in line:
+        #                     type_label = "START"
+        #                     type_color = (0.3, 1, 0.6, 1)
+        #
+        #                 elif "Stopping server" in line:
+        #                     type_label = "STOP"
+        #                     type_color = (0.3, 1, 0.6, 1)
+        #
+        #                 elif ("logged in with entity id" in message or "lost connection: " in message):
+        #                     type_label = "PLAYER"
+        #                     type_color = (0.953, 0.929, 0.38, 1)
+        #
+        #                 elif "WARN" in line:
+        #                     type_label = "WARN"
+        #                     type_color = (1, 0.5, 0.65, 1)
+        #                 elif "ERROR" in line:
+        #                     type_label = "ERROR"
+        #                     type_color = (1, 0.5, 0.65, 1)
+        #                 elif "FATAL" in line:
+        #                     type_label = "FATAL"
+        #                     type_color = (1, 0.5, 0.65, 1)
+        #                 else:
+        #                     type_label = "INFO"
+        #                     type_color = (0.6, 0.6, 1, 1)
+        #
+        #                 if date_label and type_label and main_label and type_color:
+        #                     return (date_label, type_label, main_label, type_color)
+        #
+        #         for log_line in text.splitlines():
+        #             if text and log_line:
+        #                 formatted_line = {'text': format_log(log_line)}
+        #                 if formatted_line not in final_list and formatted_line['text']:
+        #                     final_list.append(formatted_line)
+        #         return final_list
+        #     self.console_panel.update_text(update_log(f.read()))
+        self.console_panel.update_process(self.server.launch())
+
+
+
+# </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+# ======================================================================================================================
+screen_manager = ScreenManager()
+# ======================================================================================================================
+
+
+# .kv file
+kv_file = '''
+'''
+
+
+# Run application and startup preferences
+class MainApp(App):
+
+    # Disable F1 menu when compiled
+    if constants.app_compiled and constants.debug is False:
+        def open_settings(self, *largs):
+            pass
+
+    # Window size
+    size = (850, 850)
+
+    # Get pos and knowing the old size calculate the new one
+    top = dp((Window.top * Window.size[1] / size[1])) - dp(50)
+    left = dp(Window.left * Window.size[0] / size[0])
+
+    Window.size = (dp(size[0]), dp(size[1]))
+    Window.top = top
+    Window.left = left
+    Window.on_request_close = functools.partial(sys.exit)
+
+    Window.minimum_width, Window.minimum_height = Window.size
+    Window.clearcolor = constants.background_color
+    Builder.load_string(kv_file)
+
+    # Prevent window from closing during certain situations
+    def exit_check(*args):
+        if constants.ignore_close:
+            return True
+        else:
+            return False
+    Window.bind(on_request_close=exit_check)
+
+
+    def build(self):
+        self.icon = os.path.join(constants.gui_assets, "big-icon.png")
+        Loader.loading_pickaxe = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+
+        # Dynamically add every class with the name '*Screen' to ScreenManager
+        screen_list = [x[0] for x in inspect.getmembers(sys.modules[__name__], inspect.isclass) if x[0].endswith('Screen') and x[0] != 'Screen']
+        # print(screen_list)
+        for screen in screen_list:
+            screen_manager.add_widget(globals()[screen]())
+
+        constants.app_loaded = True
+        screen_manager.transition = NoTransition()
+        screen_manager.current = constants.startup_screen
+
+        # Screen manager override
+        if not constants.app_compiled:
+            pass
+            # constants.new_server_init()
+            # constants.new_server_info['name'] = "TEST test test test"
+            # constants.new_server_info['type'] = "paper"
+            # constants.new_server_info['version'] = "1.19.4"
+            # constants.new_server_info['build'] = "283"
+            # constants.new_server_info['server_settings']['seed'] = "loll"
+            # constants.new_server_info['acl_object'] = acl.AclObject(constants.new_server_info['name'])
+            # # constants.new_server_info['server_settings']['world'] = r"C:\Users\macarooni machine\AppData\Roaming\.minecraft\saves\Mob Apocalypse"
+            # constants.new_server_info['server_settings']['geyser_support'] = True
+            # # constants.new_server_info['addon_objects'] = [item for item in [addons.get_addon_url(addons.get_addon_info(addon, constants.new_server_info), constants.new_server_info, compat_mode=True) for addon in addons.search_addons("worldedit", constants.new_server_info) if "Regions"] if item]
+            # # constants.new_server_info['addon_objects'].extend([addons.get_addon_file(addon, constants.new_server_info) for addon in glob(r'C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\pluginupdate test\plugins\*.jar')])
+            screen_manager.current = "ServerManagerScreen"
+            #open_server("test")
+
+
+        screen_manager.transition = FadeTransition(duration=0.115)
+
+        # Close splash screen if compiled
+        if constants.app_compiled:
+            import pyi_splash
+            pyi_splash.close()
+
+        Window.show()
+        return screen_manager
+
+
+def run_application():
+    main_app = MainApp(title=constants.app_title)
+    try:
+        main_app.run()
+    except ArgumentError:
+        pass
+
+if constants.app_compiled and constants.debug is True:
+    sys.stderr = open("error.log", "a")
