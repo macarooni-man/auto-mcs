@@ -9,6 +9,7 @@ The Auto-MCS scripting API (amscript) is available to create universal plugins f
 
 > Note: Every parameter with a * in the table is required for assignment, but doesn't need to be used
 
+> Note: If you're using delay, the `delay=<int>` keyword must be specified 
 
 
 ## @server events
