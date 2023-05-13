@@ -14,7 +14,7 @@ Accessed via the global variable `server`
 
 Methods:
 
-### server.get_player(username or selector)
+### server.get_player(*username* or *selector: str*)
 
 Returns **PlayerScriptObject** on match, else `None`
 
@@ -27,7 +27,7 @@ Accessed by an applicable event, or by the `server.get_player()` method
 
 Methods:
 
-### player.log(message, error: bool)
+### player.log(*message: str, error: bool*)
 
 Returns **PlayerScriptObject** on match, else `None`
 
