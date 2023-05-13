@@ -138,5 +138,5 @@ Accepted parameters:
 ```
 @player.on_message(player, message):
     if "can i have op" in message.lower():
-        server.execute(f'/ban {player.name}')
+        acl.ban_user(user.name)
 ```
