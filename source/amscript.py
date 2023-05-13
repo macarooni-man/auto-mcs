@@ -206,11 +206,22 @@ class ScriptObject():
                                     # Format string and use exec to return function object
                                     func_name = f'__{event.split(".")[1]}__'
                                     for new_line in text.splitlines()[:x]:
+
+                                        # Replace event decorators with function assignments
                                         if new_line.startswith("@"):
                                             new_line = new_line.replace(event, f'def {func_name}')
+
+                                        # Attempt to prevent while loops from looping forever
+                                        if new_line.strip().startswith("while "):
+                                            new_line = ' and server._running:'.join(new_line.rsplit(':', 1))
+
                                         function = function + new_line + "\n"
                                     function = function.strip()
-                                    # print(function)
+                                    print(function)
+
+
+
+
 
 
                                     # Check if delay is specified for events that support it, and modify the function accordingly
@@ -375,23 +386,20 @@ class ScriptObject():
 
                         div_int = 5
                         new = divmod(loop['interval'], div_int)
-                        print(new)
 
                         # Initialize wrapper and split timer into chunks for polling if the server has closed
                         new_func = "def __on_loop__():\n"
-                        new_func += f"    def __valid_loop__():\n"
-                        new_func += f"        return (server._running and ('{self.server_script_obj._hash}' == server._hash))\n"
-                        new_func += f"    while __valid_loop__():\n"
+                        new_func += f"    while server._running:\n"
                         if new[0] > 0:
                             new_func += f"        for s in range({int(new[0])}):\n"
-                            new_func += f"            if not __valid_loop__():\n"
+                            new_func += f"            if not server._running:\n"
                             new_func += f"                return\n"
                             new_func += f"            time.sleep({div_int})\n"
 
                         if new[1]:
                             new_func += f"        time.sleep({new[1]})\n"
 
-                        new_func += f"        if not __valid_loop__():\n"
+                        new_func += f"        if not server._running:\n"
                         new_func += f"            return\n"
 
                         new_func += "\n"
@@ -400,7 +408,7 @@ class ScriptObject():
                         new_func += indent(loop['function'].split("\n", 1)[1], "    ")
                         new_func += "\n\n"
 
-                        print(new_func)
+                        # print(new_func)
                         exec(new_func, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
                         self.function_dict[os.path.basename(script_path)]['@server.on_loop'].append(self.function_dict[os.path.basename(script_path)]['values']['__on_loop__'])
 
@@ -435,6 +443,8 @@ class ScriptObject():
     def deconstruct(self):
         self.enabled = False
         self.server_script_obj._running = False
+
+        # Wait for tick time*2 for loops to stop
         time.sleep(0.1)
         del self.server_script_obj
 
@@ -537,7 +547,6 @@ class ScriptObject():
 class ServerScriptObject():
     def __init__(self, server_obj):
         self._running = True
-        self._hash = constants.gen_rstring(7)
         self.aliases = {}
 
         # Assign functions from main server object

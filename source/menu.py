@@ -5741,13 +5741,13 @@ class RuleButton(FloatLayout):
 
                 # Modify 'ops' list
                 if current_list == "ops" and button_text in ['promote', 'demote']:
-                    acl_object.op_user(self.rule.rule, remove=(button_text == "demote"))
+                    acl_object.op_player(self.rule.rule, remove=(button_text == "demote"))
                     banner_text = f"'{filtered_name}' was {'demoted' if (button_text == 'demote') else 'promoted'}"
                     reload_page = True
 
                 # Modify 'bans' list
                 elif current_list == "bans" and button_text in ['ban', 'pardon', 'remove']:
-                    acl_object.ban_user(self.rule.rule, remove=(button_text == "pardon") or ("!w" in self.rule.rule))
+                    acl_object.ban_player(self.rule.rule, remove=(button_text == "pardon") or ("!w" in self.rule.rule))
 
                     if button_text == "pardon":
                         try:
@@ -5758,14 +5758,14 @@ class RuleButton(FloatLayout):
                         if ip_addr:
                             # Whitelist IP if it's still in the rule list
                             if ip_addr in acl.gen_iplist(acl_object.rules['subnets']):
-                                acl_object.ban_user(f"!w{ip_addr}", remove=False)
+                                acl_object.ban_player(f"!w{ip_addr}", remove=False)
 
                     banner_text = f"'{filtered_name}' was removed" if button_text == 'remove' else f"'{filtered_name}' is {'pardoned' if (button_text == 'pardon') else 'banned'}"
                     reload_page = True
 
                 # Modify 'wl' list
                 elif current_list == "wl" and button_text in ['permit', 'restrict']:
-                    acl_object.wl_user(self.rule.rule, remove=(button_text == "restrict"))
+                    acl_object.whitelist_player(self.rule.rule, remove=(button_text == "restrict"))
                     banner_text = f"'{filtered_name}' is {'restricted' if (button_text == 'restrict') else 'permitted'}"
                     reload_page = True
 
@@ -5805,11 +5805,11 @@ class RuleButton(FloatLayout):
                 # If rule localized, enable on current list
                 if localize:
                     if current_list == "ops":
-                        acl_object.op_user(self.rule.rule)
+                        acl_object.op_player(self.rule.rule)
                     elif current_list == "bans":
-                        acl_object.ban_user(self.rule.rule)
+                        acl_object.ban_player(self.rule.rule)
                     elif current_list == "wl":
-                        acl_object.wl_user(self.rule.rule)
+                        acl_object.whitelist_player(self.rule.rule)
 
 
                 self.button.on_leave()
@@ -6531,11 +6531,11 @@ class AclRulePanel(RelativeLayout):
 
                 # If rule localized, enable on current list
                 if current_list == "ops":
-                    acl_object.op_user(acl_object.displayed_rule.rule)
+                    acl_object.op_player(acl_object.displayed_rule.rule)
                 elif current_list == "bans":
-                    acl_object.ban_user(acl_object.displayed_rule.rule)
+                    acl_object.ban_player(acl_object.displayed_rule.rule)
                 elif current_list == "wl":
-                    acl_object.wl_user(acl_object.displayed_rule.rule)
+                    acl_object.whitelist_player(acl_object.displayed_rule.rule)
 
                 hover_attr = (
                     icon_path("earth-strike.png"), 'LOCALIZE',
@@ -6561,7 +6561,7 @@ class AclRulePanel(RelativeLayout):
                 if self.displayed_scope == "global":
                     acl_object.add_global_rule(original_name, current_list, remove=True)
                 else:
-                    acl_object.op_user(original_name, remove=True)
+                    acl_object.op_player(original_name, remove=True)
 
                 hover_attr = (icon_path("close-circle.png"), 'DEMOTE', (1, 0.5, 0.65, 1))
                 banner_text = f"'{filtered_name}' was demoted"
@@ -6569,7 +6569,7 @@ class AclRulePanel(RelativeLayout):
                 reload_page = True
 
             elif "promote" in option:
-                acl_object.op_user(original_name, remove=False)
+                acl_object.op_player(original_name, remove=False)
                 hover_attr = (icon_path("promote.png"), 'PROMOTE', (0.3, 1, 0.6, 1))
                 banner_text = f"'{filtered_name}' was promoted"
                 reload_page = True
@@ -6579,31 +6579,31 @@ class AclRulePanel(RelativeLayout):
         elif current_list == "bans":
             if acl_object.displayed_rule.rule_type == "player":
                 if "ban user" in option:
-                    acl_object.ban_user(original_name, remove=False)
+                    acl_object.ban_player(original_name, remove=False)
                     hover_attr = (icon_path("close-circle.png"), 'BAN', (1, 0.5, 0.65, 1))
                     banner_text = f"'{filtered_name}' is banned"
                     reload_page = True
 
                 elif "ban IP" in option:
-                    acl_object.ban_user(ip_addr, remove=False)
+                    acl_object.ban_player(ip_addr, remove=False)
 
                     if self.displayed_scope == "global":
                         acl_object.add_global_rule(original_name, current_list, remove=True)
 
-                    acl_object.ban_user(f"!w{ip_addr}", remove=True)
+                    acl_object.ban_player(f"!w{ip_addr}", remove=True)
                     hover_attr = (icon_path("close-circle.png"), 'BAN', (1, 0.5, 0.65, 1))
                     banner_text = f"'{filtered_name}' is banned"
                     reload_page = True
 
                 if "pardon IP" in option and "user" in option:
-                    acl_object.ban_user([original_name, ip_addr], remove=True)
+                    acl_object.ban_player([original_name, ip_addr], remove=True)
 
                     if self.displayed_scope == "global":
                         acl_object.add_global_rule(original_name, current_list, remove=True)
 
                     # Whitelist IP if it's still in the rule list
                     if ip_addr in acl.gen_iplist(acl_object.rules['subnets']):
-                        acl_object.ban_user(f"!w{ip_addr}", remove=False)
+                        acl_object.ban_player(f"!w{ip_addr}", remove=False)
 
                     hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
                     banner_text = f"'{filtered_name}' is pardoned"
@@ -6614,7 +6614,7 @@ class AclRulePanel(RelativeLayout):
                     if self.displayed_scope == "global":
                         acl_object.add_global_rule(original_name, current_list, remove=True)
                     else:
-                        acl_object.ban_user(original_name, remove=True)
+                        acl_object.ban_player(original_name, remove=True)
 
                     hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
                     banner_text = f"'{filtered_name}' is pardoned"
@@ -6622,11 +6622,11 @@ class AclRulePanel(RelativeLayout):
                     reload_page = True
 
                 elif "pardon IP" in option:
-                    acl_object.ban_user(ip_addr, remove=True)
+                    acl_object.ban_player(ip_addr, remove=True)
 
                     # Whitelist IP if it's still in the rule list
                     if ip_addr in acl.gen_iplist(acl_object.rules['subnets']):
-                        acl_object.ban_user(f"!w{ip_addr}", remove=False)
+                        acl_object.ban_player(f"!w{ip_addr}", remove=False)
 
                     hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
                     banner_text = f"'{filtered_name}' is pardoned"
@@ -6642,10 +6642,10 @@ class AclRulePanel(RelativeLayout):
                         new_scope = "local"
 
                     if "!w" in original_name:
-                        acl_object.ban_user(original_name, remove=True)
-                        acl_object.ban_user(filtered_name, remove=False)
+                        acl_object.ban_player(original_name, remove=True)
+                        acl_object.ban_player(filtered_name, remove=False)
                     else:
-                        acl_object.ban_user(original_name, remove=False)
+                        acl_object.ban_player(original_name, remove=False)
                     hover_attr = (icon_path("close-circle.png"), 'BAN', (1, 0.5, 0.65, 1))
                     banner_text = f"'{filtered_name}' is banned"
                     new_name = filtered_name
@@ -6655,7 +6655,7 @@ class AclRulePanel(RelativeLayout):
                     if self.displayed_scope == "global":
                         acl_object.add_global_rule(original_name, current_list, remove=True)
                     else:
-                        acl_object.ban_user(original_name, remove=True)
+                        acl_object.ban_player(original_name, remove=True)
 
                     hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
                     banner_text = f"'{filtered_name}' is pardoned"
@@ -6666,7 +6666,7 @@ class AclRulePanel(RelativeLayout):
                     if self.displayed_scope == "global":
                         acl_object.add_global_rule(original_name, current_list, remove=True)
                     else:
-                        acl_object.ban_user(original_name, remove=True)
+                        acl_object.ban_player(original_name, remove=True)
 
                     hover_attr = (icon_path("shield-disabled-outline.png"), 'REMOVE', (0.7, 0.7, 1, 1))
                     banner_text = f"'{filtered_name}' was removed"
@@ -6678,8 +6678,8 @@ class AclRulePanel(RelativeLayout):
                     if "ban" in acl_object.displayed_rule.display_data['rule_info'] and self.displayed_scope == "global":
                         new_scope = "local"
 
-                    acl_object.ban_user(original_name, remove=True)
-                    acl_object.ban_user(f"!w{filtered_name}", remove=False)
+                    acl_object.ban_player(original_name, remove=True)
+                    acl_object.ban_player(f"!w{filtered_name}", remove=False)
                     hover_attr = (icon_path("shield-checkmark-outline.png"), 'WHITELIST', (0.439, 0.839, 1, 1))
                     banner_text = f"'{filtered_name}' is whitelisted"
                     new_name = f"!w{filtered_name}"
@@ -6692,7 +6692,7 @@ class AclRulePanel(RelativeLayout):
                 if self.displayed_scope == "global":
                     acl_object.add_global_rule(original_name, current_list, remove=True)
                 else:
-                    acl_object.wl_user(original_name, remove=True)
+                    acl_object.whitelist_player(original_name, remove=True)
 
                 hover_attr = (icon_path("close-circle.png"), 'RESTRICT', (1, 0.5, 0.65, 1))
                 banner_text = f"'{filtered_name}' is restricted"
@@ -6700,7 +6700,7 @@ class AclRulePanel(RelativeLayout):
                 reload_page = True
 
             elif "permit" in option:
-                acl_object.wl_user(original_name, remove=False)
+                acl_object.whitelist_player(original_name, remove=False)
                 hover_attr = (icon_path("checkmark-circle-sharp.png"), 'PERMIT', (0.3, 1, 0.6, 1))
                 banner_text = f"'{filtered_name}' is permitted"
                 reload_page = True

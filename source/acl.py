@@ -785,20 +785,20 @@ class AclObject():
 
         if final_list['local']:
             if list_type in ['bans', 'subnets']:
-                self.ban_user(', '.join(final_list['local']))
+                self.ban_player(', '.join(final_list['local']))
             elif list_type == 'ops':
-                self.op_user(', '.join(final_list['local']))
+                self.op_player(', '.join(final_list['local']))
             elif list_type == 'wl':
-                self.wl_user(', '.join(final_list['local']))
+                self.whitelist_player(', '.join(final_list['local']))
 
         return final_list
 
 
     # Note:  the *_user functions below return the entire ACL dict, not just rule_list
 
-    # op_user("BlUe_KAZoo, kchicken, test")
+    # op_player("BlUe_KAZoo, kchicken, test")
     # "Rule1, Rule2" --> [AclObject1, AclObject2]
-    def op_user(self, rule_list: str or list, remove=False, force_version=None, temp_server=False):
+    def op_player(self, rule_list: str or list, remove=False, force_version=None, temp_server=False):
 
         # Ignore removal of global rules
         if remove:
@@ -817,9 +817,9 @@ class AclObject():
         self.list_items = self.__gen_list_items__()
         return self.rules
 
-    # ban_user("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.0-37")
+    # ban_player("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.0-37")
     # "Rule1, Rule2" --> [AclObject1, AclObject2]
-    def ban_user(self, rule_list: str or list, remove=False, force_version=None, temp_server=False):
+    def ban_player(self, rule_list: str or list, remove=False, force_version=None, temp_server=False):
 
         # Ignore removal of global rules
         if remove:
@@ -839,9 +839,9 @@ class AclObject():
         self.list_items = self.__gen_list_items__()
         return self.rules
 
-    # wl_user("BlUe_KAZoo, kchicken, test")
+    # whitelist_player("BlUe_KAZoo, kchicken, test")
     # "Rule1, Rule2" --> [AclObject1, AclObject2]
-    def wl_user(self, rule_list: str or list, remove=False, force_version=None, temp_server=False):
+    def whitelist_player(self, rule_list: str or list, remove=False, force_version=None, temp_server=False):
 
         # Ignore removal of global rules
         if remove:
@@ -919,7 +919,6 @@ class AclObject():
             self.rules['subnets'] = self.load_acl('subnets')
 
 
-
     # Note:  below methods are specifically for new servers
 
     # Operates similarly to *_user rules, but only edits self.rules[list_type]
@@ -987,13 +986,13 @@ class AclObject():
         if self.rules['bans'] or self.rules['subnets']:
             ban_list = [rule.rule for rule in self.rules['bans']]
             ban_list.extend([rule.rule for rule in self.rules['subnets']])
-            self.ban_user(', '.join(ban_list), force_version=self.server['version'], temp_server=new_server)
+            self.ban_player(', '.join(ban_list), force_version=self.server['version'], temp_server=new_server)
 
         if self.rules['ops']:
-            self.op_user(', '.join([rule.rule for rule in self.rules['ops']]), force_version=self.server['version'], temp_server=new_server)
+            self.op_player(', '.join([rule.rule for rule in self.rules['ops']]), force_version=self.server['version'], temp_server=new_server)
 
         if self.rules['wl']:
-            self.wl_user(', '.join([rule.rule for rule in self.rules['wl']]), force_version=self.server['version'], temp_server=new_server)
+            self.whitelist_player(', '.join([rule.rule for rule in self.rules['wl']]), force_version=self.server['version'], temp_server=new_server)
 
         self._new_server = new_server
 
@@ -1894,7 +1893,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
         return server_acl
 
 
-# op_user("BlUe_KAZoo, kchicken, test")
+# op_player("BlUe_KAZoo, kchicken, test")
 # "Rule1, Rule2" --> [AclObject1, AclObject2]
 # Returns: op_list
 def op_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False):
@@ -1994,7 +1993,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
     return op_list
 
 
-# ban_user("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.0-37")
+# ban_player("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.0-37")
 # "Rule1, Rule2" --> [AclObject1, AclObject2]
 # Returns: ban_list, subnet_list
 def ban_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False):
@@ -2260,7 +2259,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
     return ban_list, subnet_list
 
 
-# wl_user("BlUe_KAZoo, kchicken, test")
+# whitelist_player("BlUe_KAZoo, kchicken, test")
 # "Rule1, Rule2" --> [AclObject1, AclObject2]
 # Returns: wl_list, op_list
 def wl_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False):
@@ -2397,9 +2396,9 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
 # # Edit ACL:
 # acl.display_rule("127.0.0.1")
 # acl.process_query("!g KChicken, !w 192.168.1.2", list_type="bans")
-# acl.op_user("ChaffyCosine669, blue_kazoo", remove=False)
-# acl.wl_user("test1, test2, test3", remove=False)
-# acl.ban_user("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.10-37")
+# acl.op_player("ChaffyCosine669, blue_kazoo", remove=False)
+# acl.whitelist_player("test1, test2, test3", remove=False)
+# acl.ban_player("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.10-37")
 # acl.add_global_rule("KChicken, blue_kazoo", list_type="ops", remove=False)
 
 # # If ACL is a new server

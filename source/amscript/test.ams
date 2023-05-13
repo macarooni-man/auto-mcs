@@ -83,7 +83,6 @@ def test_func(*args):
 
 @server.alias(command='py', arguments={'command': True}, permission='op', description='lol its python bro'):
     values = {}
-
     exec(f"exec_return = {arguments['command']}", globals(), values)
     server.execute(f'/say {values["exec_return"]}')
     
@@ -105,5 +104,4 @@ def test_func(*args):
         
 
 @server.on_loop(1, 'tick'):
-    print(True)
     server.execute(f'/clear @a tnt')
