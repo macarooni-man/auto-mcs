@@ -16,7 +16,7 @@ Methods:
 
 ### server.get_player(*selector*)
 
-Returns **PlayerScriptObject** on match, else `None`
+Returns **PlayerScriptObject** on match, else `None`. Only returns the first match.
 
 
 
@@ -30,6 +30,8 @@ Methods:
 ### player.log(*message, style*)
 
 Returns **PlayerScriptObject** on match, else `None`
+
+change the formatting to an arg table later: `style` can be 'standard', `'error'`, `'success'`
 
 
 
