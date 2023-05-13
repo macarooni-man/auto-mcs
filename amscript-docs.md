@@ -31,7 +31,7 @@ Methods:
 
 Returns **PlayerScriptObject** on match, else `None`
 
-change the formatting to an arg table later: color and style match `/tellraw` color strings. Style can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`.
+change the formatting to an arg table later: color and style match `/tellraw` color strings, Defaults to `gray`. Style can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'`
 
 
 
