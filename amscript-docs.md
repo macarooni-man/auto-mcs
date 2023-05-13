@@ -81,7 +81,7 @@ Accepted parameters:
 | `player*` | **PlayerScriptObject** sent at execution |
 | `command*` | `str` to specify the command verb |
 | `arguments` | `dict` specifying requirement for execution `{'arg1': True}` where `True` denotes a required argument. Only the last argument can be optional |
-| `permission`| Can be `'anyone'`, `'op'`, or `'server'`. Defaults to `'anyone'`|
+| `permission`| Used to restrict execution to privileged users. Can be `'anyone'`, `'op'`, or `'server'`. Defaults to `'anyone'`|
 | `description` | `str` for `!help` menu. Commands will be shown to users with the minimum permission level |
 | `hidden` | `bool`, defaults to `False`. Hides command from all users (they can still be executed) and disables the wrapper functionality described below. Useful for augmenting existing commands |
 
