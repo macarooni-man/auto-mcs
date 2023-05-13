@@ -8643,11 +8643,11 @@ class CreateServerProgressScreen(ProgressScreen):
             download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] == 'fabric')
             needs_installed = constants.new_server_info['type'] in ['forge', 'fabric']
 
-        if download_addons:
-            function_list.append(('Add-oning add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
-
         if needs_installed:
             function_list.append((f'Installing {constants.new_server_info["type"].title()}', functools.partial(constants.install_server), 10 if download_addons else 20))
+
+        if download_addons:
+            function_list.append(('Add-oning add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
 
         function_list.append(('Applying server configuration', functools.partial(constants.generate_server_files), 10 if (download_addons or needs_installed) else 20))
 

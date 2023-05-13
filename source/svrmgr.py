@@ -387,9 +387,10 @@ class ServerObject():
                 if log_cmd:
                     self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'EXEC', f"Console issued server command: {new_cmd}", (1, 0.298, 0.6, 1))})
 
-                # Send to server
-                self.run_data['process'].stdin.write(f"{cmd}\r\n".encode())
-                self.run_data['process'].stdin.flush()
+                # Send to server if it doesn't start with !
+                if not cmd.startswith("!"):
+                    self.run_data['process'].stdin.write(f"{cmd}\r\n".encode())
+                    self.run_data['process'].stdin.flush()
     def silent_command(self, cmd, log=True):
         self.send_command(cmd, False, log, True)
 
@@ -541,6 +542,7 @@ class ServerObject():
             # Initialize ScriptObject
             self.script_object = amscript.ScriptObject(self)
             self.script_object.construct()
+            self.script_object.start_event({'date': dt.now()})
 
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():

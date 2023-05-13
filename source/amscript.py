@@ -36,7 +36,7 @@ class ScriptObject():
 
         # Yummy stuffs
         self.protected_variables = ["server", "acl", "backup", "addon"]
-        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@server.alias", "@server.on_start", "@server.on_shutdown", "@server.on_interval"]
+        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@server.alias", "@server.on_start", "@server.on_shutdown", "@server.on_loop"]
         self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@server.on_start", "@server.on_shutdown"]
         self.valid_imports = ['requests', 'time', 'os', 'requests', 'glob', 'datetime', 'concurrent.futures']
         self.valid_imports.extend([os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.script_path, '*.py'))])
@@ -76,10 +76,14 @@ class ScriptObject():
                         if line.startswith(event):
                             if event == '@server.alias':
                                 line = line.replace(event, f'{event.split(".")[1]}').replace(":\n", f'\ndef alias():\n')
+                            elif event == '@server.on_loop':
+                                line = line.replace(event, f'{event.split(".")[1]}').replace(":\n", f'\ndef on_loop():\n')
                             else:
                                 line = line.replace(event, f'def {event.split(".")[1]}')
 
                     script_text = script_text + f'{line}'
+
+            # print(script_text)
 
 
             try:
@@ -111,7 +115,10 @@ class ScriptObject():
                     test = self.function_dict[os.path.basename(script_path)]['values']
                 except KeyError:
                     self.function_dict[os.path.basename(script_path)]['values'] = variables
+
                 alias_functions = {}
+                loop_functions = []
+
 
                 # Ignore all comments and grab imports/global variables
                 script_data = ""
@@ -274,6 +281,46 @@ class ScriptObject():
                                                 'description': alias_dict['description']
                                             }
                                         alias_functions[alias_dict['command']] = function
+
+                                    # Register loop event and reformat code
+                                    elif event == '@server.on_loop':
+                                        loop_values = {
+                                            'itvl': 0,
+                                            'unt': 'second'
+                                        }
+
+                                        args = function.splitlines()[0].split('(',1)[1].rsplit(')',1)[0].lower()
+                                        proc_func = "def process(interval=1, unit='second'):\n    global itvl, unt\n    itvl=interval\n    unt=unit\n"
+                                        proc_func += f"process({args})"
+                                        exec(proc_func, loop_values, loop_values)
+
+                                        loop_dict = {
+                                            'interval': loop_values['itvl'],
+                                            'unit': loop_values['unt'],
+                                            'function': function
+                                        }
+
+                                        # Input validation
+                                        loop_dict['unit'] = loop_dict['unit'] if loop_dict['unit'] in ('second', 'minute', 'hour', 'tick') else 'second'
+
+                                        # Seconds conversion, round to nearest 0.05 step
+                                        try:
+                                            if loop_dict['unit'] in ('second', 'minute', 'hour'):
+                                                test = float(loop_dict['interval'])
+                                                test = test if loop_dict['unit'] == 'second' else (test*60) if loop_dict['unit'] == 'minute' else (test*3600)
+                                                loop_dict['interval'] = round(((test // 0.05) * 0.05) + 0.05, 2)
+
+                                            # Tick conversion to seconds
+                                            else:
+                                                test = float(loop_dict['interval'])
+                                                loop_dict['interval'] = round((test * 0.05), 2) if test > 1 else 0.05
+                                        except:
+                                            loop_dict['interval'] = 1
+
+
+                                        loop_functions.append(loop_dict)
+                                        # print(loop_dict)
+
                                     else:
                                         exec(function, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
                                         self.function_dict[os.path.basename(script_path)][event].append(self.function_dict[os.path.basename(script_path)]['values'][func_name])
@@ -319,8 +366,43 @@ class ScriptObject():
 
                     # print(new_func)
                     exec(new_func, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
-
                     self.function_dict[os.path.basename(script_path)]['@server.alias'].append(self.function_dict[os.path.basename(script_path)]['values']['__alias__'])
+
+
+                # Convert all loops to actual loops
+                if loop_functions:
+                    for loop in loop_functions:
+
+                        div_int = 5
+                        new = divmod(loop['interval'], div_int)
+                        print(new)
+
+                        # Initialize wrapper and split timer into chunks for polling if the server has closed
+                        new_func = "def __on_loop__():\n"
+                        new_func += f"    def __valid_loop__():\n"
+                        new_func += f"        return (server._running and ('{self.server_script_obj._hash}' == server._hash))\n"
+                        new_func += f"    while __valid_loop__():\n"
+                        if new[0] > 0:
+                            new_func += f"        for s in range({int(new[0])}):\n"
+                            new_func += f"            if not __valid_loop__():\n"
+                            new_func += f"                return\n"
+                            new_func += f"            time.sleep({div_int})\n"
+
+                        if new[1]:
+                            new_func += f"        time.sleep({new[1]})\n"
+
+                        new_func += f"        if not __valid_loop__():\n"
+                        new_func += f"            return\n"
+
+                        new_func += "\n"
+
+                        # Put code in loop
+                        new_func += indent(loop['function'].split("\n", 1)[1], "    ")
+                        new_func += "\n\n"
+
+                        print(new_func)
+                        exec(new_func, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
+                        self.function_dict[os.path.basename(script_path)]['@server.on_loop'].append(self.function_dict[os.path.basename(script_path)]['values']['__on_loop__'])
 
 
                 # Remove references to function calls in the script context
@@ -330,7 +412,7 @@ class ScriptObject():
                         del self.function_dict[os.path.basename(script_path)]['values'][func_name]
 
                 del variables
-                print(function)
+                # print(function)
             # print(self.function_dict)
 
 
@@ -352,6 +434,9 @@ class ScriptObject():
     # Deconstruct loaded .ams files
     def deconstruct(self):
         self.enabled = False
+        self.server_script_obj._running = False
+        time.sleep(0.1)
+        del self.server_script_obj
 
         # Reset dict in memory
         for key, item in self.function_dict.items():
@@ -385,6 +470,7 @@ class ScriptObject():
     # {'date': date}
     def start_event(self, data):
         self.call_event('@server.on_start', (data))
+        self.call_event('@server.on_loop', ())
         print('server.on_start')
         print(data)
 
@@ -392,6 +478,7 @@ class ScriptObject():
     # Eventually add return code to see if it crashed
     # {'date': date}
     def shutdown_event(self, data):
+        self.server_script_obj._running = False
         self.call_event('@server.on_stop', (data))
         print('server.on_shutdown')
         print(data)
@@ -449,9 +536,17 @@ class ScriptObject():
 # Reconfigured ServerObject to be passed in as 'server' variable to amscripts
 class ServerScriptObject():
     def __init__(self, server_obj):
+        self._running = True
+        self._hash = constants.gen_rstring(7)
+        self.aliases = {}
+
+        # Assign functions from main server object
         self.execute = server_obj.silent_command
         self.reload_scripts = server_obj.reload_scripts
-        self.aliases = {}
+
+
+    def __del__(self):
+        self._running = False
 
 
 # Reconfigured ServerObject to be passed in as 'player' variable to amscript events
