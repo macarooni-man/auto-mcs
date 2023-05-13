@@ -90,7 +90,7 @@ Accepted parameters:
     server.execute(f'/say {player.name} executed {command} with the following arguments: {arguments}')
 ```
 
-> Note: Every alias automatically validates syntax and checks the player's permission before execution
+> Note: Every alias automatically validates syntax and checks the player's permission level before execution
 
 Following the above example when a player with the `anyone` privilege executes `!test foo bar`:
 - Auto-MCS will determine that the player doesn't meet the minimum permission and will fail
