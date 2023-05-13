@@ -50,6 +50,25 @@ Accepted parameters:
 
 
 --------------------------------------------
+### @server.on_loop
+
+Fired after every `interval`. Loops until the server is closed, or manually cancelled with `return`.
+
+Accepted parameters:
+| Parameter | Description |
+| --- | --- |
+| `interval` | `int`, defaults to `1` |
+| `unit` | Specifies `interval` scale, can be `'tick'`, `'second'`, `'minute'`, or `'hour'`. Defaults to `'second'` |
+
+```
+@server.on_loop(interval=1, unit='minute'):
+    server.execute("/kill @e[type=item]")
+    server.execute("/say Cleaned up items!")
+```
+
+
+
+--------------------------------------------
 ### @server.alias
 
 Used for registering custom commands and augmenting existing ones.
