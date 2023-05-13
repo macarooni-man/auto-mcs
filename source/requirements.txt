@@ -1,12 +1,12 @@
 altgraph==0.17.3
 asyncio-dgram==2.1.2
 beautifulsoup4==4.11.1
-certifi==2022.9.24
+certifi==2023.5.7
 charset-normalizer==2.1.1
 cloudscraper==1.2.69
 dnspython==2.2.1
 docutils==0.19
-future==0.18.2
+future==0.18.3
 idna==3.4
 ipaddress==1.0.23
 Kivy==2.0.0
@@ -17,7 +17,7 @@ Kivy-Garden==0.1.5
 mcstatus==10.0.1
 NBT==1.5.1
 pefile==2022.5.30
-Pillow==9.2.0
+Pillow==9.5.0
 plyer==2.0.0
 psutil==5.9.2
 pyinstaller==5.5
