@@ -1,0 +1,25 @@
+{
+  "name": "amscript",
+  "displayName": "amscript",
+  "description": "extension for amscript",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.78.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "amscript",
+      "aliases": ["amscript", "amscript"],
+      "extensions": [".ams"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "amscript",
+      "scopeName": "source.amscript",
+      "path": "./syntaxes/amscript.tmLanguage.json"
+    }]
+  }
+}
