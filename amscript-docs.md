@@ -54,7 +54,7 @@ Accepted parameters:
 
 Used for registering custom commands and augmenting existing ones.
 
-> Note: Commands will start with `!` therefore making them visible when executed from the in-game chat
+> Note: Commands will start with `!` therefore making them visible when executed from the in-game chat, though the feedback is hidden
 
 Accepted parameters:
 | Parameter | Description |
