@@ -547,11 +547,11 @@ class ScriptObject():
 class ServerScriptObject():
     def __init__(self, server_obj):
         self._running = True
-        self.aliases = {}
+        self._reload_scripts = server_obj.reload_scripts
 
         # Assign functions from main server object
         self.execute = server_obj.silent_command
-        self.reload_scripts = server_obj.reload_scripts
+        self.aliases = {}
 
 
     def __del__(self):
