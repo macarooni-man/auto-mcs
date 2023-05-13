@@ -217,11 +217,7 @@ class ScriptObject():
 
                                         function = function + new_line + "\n"
                                     function = function.strip()
-                                    print(function)
-
-
-
-
+                                    # print(function)
 
 
                                     # Check if delay is specified for events that support it, and modify the function accordingly
@@ -277,7 +273,7 @@ class ScriptObject():
                                             'hidden': alias_values['hide']
                                         }
 
-                                        syntax = f"{alias_values['cmd']}"
+                                        syntax = f"!{alias_values['cmd']}"
                                         for z, y in alias_dict['arguments'].items():
                                             syntax += f" <{z + ':optional' if not y else z}>"
 
@@ -292,6 +288,7 @@ class ScriptObject():
                                                 'description': alias_dict['description']
                                             }
                                         alias_functions[alias_dict['command']] = function
+
 
                                     # Register loop event and reformat code
                                     elif event == '@server.on_loop':
@@ -332,6 +329,7 @@ class ScriptObject():
                                         loop_functions.append(loop_dict)
                                         # print(loop_dict)
 
+
                                     else:
                                         exec(function, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
                                         self.function_dict[os.path.basename(script_path)][event].append(self.function_dict[os.path.basename(script_path)]['values'][func_name])
@@ -357,12 +355,12 @@ class ScriptObject():
                         new_func += f"        if perm_dict[permission] < perm_dict['{self.aliases[k]['permission']}']:\n"
 
                         # Permission thingy
-                        new_func += (f"            server.execute(\"/say You don't have permission to use this command\")\n" if not hidden else "            pass\n")
+                        new_func += (f"            player.log_error(\"You do not have permission to use this command\")\n" if not hidden else "            pass\n")
                         new_func += f"        else:\n"
                         new_func += f"            if len(command.split(' ', len({argument_list}))[1:]) < len({req_args_list}):\n"
 
                         # Syntax thingy
-                        new_func += (f"                server.execute(\"/say Invalid syntax: {syntax}\")\n" if not hidden else "                pass\n")
+                        new_func += (f"                player.log_error(\"Invalid syntax: {syntax}\")\n" if not hidden else "                pass\n")
                         new_func += f"            else:\n"
                         new_func += f"                arguments = dict(zip_longest(reversed({argument_list}), reversed(command.split(' ', len({argument_list}))[1:])))\n"
                         new_func += f"                command = command.split(' ', 1)[0].strip()\n"
@@ -425,12 +423,12 @@ class ScriptObject():
 
 
         # Parse script file
-        def process_file(script):
-            valid = is_valid(script)
+        def process_file(script_file):
+            valid = is_valid(script_file)
             print(valid)
 
             if valid is None:
-                convert_script(script)
+                convert_script(script_file)
 
 
         # with ThreadPoolExecutor(max_workers=10) as pool:
@@ -474,6 +472,7 @@ class ScriptObject():
                 except KeyError:
                     return
 
+
     # ----------------------- Server Events ------------------------
 
     # Fires when server starts
@@ -493,25 +492,20 @@ class ScriptObject():
         print('server.on_shutdown')
         print(data)
 
-    # # Fires every server tick
-    # async def timer_event(self, data):
-    #     while self.enabled:
-    #         time.sleep(0.05)
-    #         print('server tick')
 
     # ----------------------- Player Events ------------------------
 
     # Fires event when player joins the game
     # {'user': user, 'ip': ip_addr, 'date': date, 'logged-in': True}
     def join_event(self, player_obj):
-        self.call_event('@player.on_join', (PlayerScriptObject(player_obj['user']), player_obj))
+        self.call_event('@player.on_join', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj))
         print('player.on_join')
         print(player_obj)
 
     # Fires when player leaves the game
     # {'user': user, 'ip': ip_addr, 'date': date, 'logged-in': False}
     def leave_event(self, player_obj):
-        self.call_event('@player.on_leave', (PlayerScriptObject(player_obj['user']), player_obj))
+        self.call_event('@player.on_leave', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj))
         print('player.on_leave')
         print(player_obj)
 
@@ -521,7 +515,7 @@ class ScriptObject():
         if msg_obj['content'].strip().split(" ",1)[0].strip() in self.aliases.keys():
             self.alias_event(msg_obj)
         elif msg_obj['user'] != self.server_id:
-            self.call_event('@player.on_message', (PlayerScriptObject(msg_obj['user']), msg_obj['content']))
+            self.call_event('@player.on_message', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), msg_obj['content']))
 
             print('player.on_message')
             print(msg_obj)
@@ -530,6 +524,7 @@ class ScriptObject():
     # {'user': player, 'content': message}
     def alias_event(self, player_obj):
         self.server.acl.reload_list('ops')
+        print([rule.rule for rule in self.server.acl.rules['ops']])
         if player_obj['user'] == self.server_id:
             permission = 'server'
         elif self.server.acl.rule_in_acl('ops', player_obj['user']):
@@ -537,29 +532,112 @@ class ScriptObject():
         else:
             permission = 'anyone'
 
-        self.call_event('@server.alias', (PlayerScriptObject(player_obj['user']), player_obj['content'], permission))
+        self.call_event('@server.alias', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj['content'], permission))
 
         print('server.alias')
         print(player_obj)
+
 
 
 # Reconfigured ServerObject to be passed in as 'server' variable to amscripts
 class ServerScriptObject():
     def __init__(self, server_obj):
         self._running = True
+        self._server_id = ("#" + server_obj._hash)
         self._reload_scripts = server_obj.reload_scripts
 
         # Assign functions from main server object
         self.execute = server_obj.silent_command
+        self.log = server_obj.send_log
         self.aliases = {}
+
+        # Properties
+        self.name = server_obj.name
+        self.version = server_obj.version
+        self.build = server_obj.build
+        self.type = server_obj.type
+        self.network = server_obj.run_data['network']['address']
 
 
     def __del__(self):
         self._running = False
 
+    # Logging functions
+    def log_error(self, msg):
+        self.log(msg, 'error')
+    def log_success(self, msg):
+        self.log(msg, 'success')
+
 
 # Reconfigured ServerObject to be passed in as 'player' variable to amscript events
 class PlayerScriptObject():
-    def __init__(self, player_name):
+    def __init__(self, server_script_obj: ServerScriptObject, player_name: str):
+        self._server = server_script_obj
+        self._server_id = server_script_obj._server_id
+
+        # Properties
         self.name = player_name
-        pass
+
+
+    # Simple boolean check to see if user is the server
+    def is_server(self):
+        return self.name == self._server_id
+
+    # Logging functions
+    # Version compatible message system for local player object
+    def log(self, msg, color="gray", style='italic'):
+        style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
+
+        # Use /tellraw if it's supported, else /tell
+        if constants.version_check(str(self._server.version), '>=', '1.7.2') and not self.is_server():
+            msg = f'/tellraw {self.name} {{"text": "{msg}", "color": "{color}"}}'
+            if style != 'normal':
+                msg = msg[:-1] + f', "{style}": "true"}}'
+            self._server.execute(msg, log=False)
+
+        # Pre 1.7.2
+        else:
+            color_table = {
+                'dark_red': '§4',
+                'red': '§c',
+                'gold': '§6',
+                'yellow': '§e',
+                'dark_green': '§2',
+                'green': '§a',
+                'aqua': '§b',
+                'dark_aqua': '§3',
+                'dark_blue': '§1',
+                'blue': '§9',
+                'light_purple': '§d',
+                'dark_purple': '§5',
+                'white': '§f',
+                'gray': '§7',
+                'dark_gray': '§8',
+                'black': '§0'
+            }
+            style_table = {
+                'obfuscated': '§k',
+                'bold': '§l',
+                'underlined': '§n',
+                'strikethrough': '§m',
+                'italic': '§o'
+            }
+            final_code = ''
+
+            if color in list(color_table.keys()):
+                final_code += color_table[color]
+
+            # If user is server, send to server instead
+            if self.is_server():
+                msg = f'{final_code}{("§r " + final_code).join(msg.strip().split(" "))}§r'
+                self._server.log(msg)
+            else:
+                if style != 'normal':
+                    final_code += style_table[style]
+                msg = f'/tell {self.name} {final_code}{("§r "+final_code).join(msg.strip().split(" "))}§r'
+                self._server.execute(msg, log=False)
+
+    def log_error(self, msg):
+        self.log(msg, "red", "normal")
+    def log_success(self, msg):
+        self.log(msg, "green", "normal")

@@ -144,10 +144,9 @@ class ServerObject():
         constants.server_properties(self.name, self.server_properties)
 
     # Converts stdout of self.run_data['process'] to fancy stuff
-    def update_log(self, text, *args):
+    def update_log(self, text: bytes, *args):
 
-        # print(text)
-        text = text.decode()
+        text = text.replace(b'\xa7', b'\xc2\xa7').decode('utf-8', errors='ignore')
 
         # (date, type, log, color)
         def format_log(line, *args):
@@ -200,13 +199,19 @@ class ServerObject():
 
                 # Format special color codes
                 if '§' in message:
-                    message = escape_markup(message)
-                    code_list = [message[x:x + 2] for x, y in enumerate(message, 0) if y == '§']
-                    for code in code_list:
-                        message = message.replace(code, format_color(code))
+                    original_message = message
 
-                    if len(code_list) % 2 == 1:
-                        message = message + '[/color]'
+                    try:
+                        message = escape_markup(message)
+                        code_list = [message[x:x + 2] for x, y in enumerate(message, 0) if y == '§']
+                        for code in code_list:
+                            message = message.replace(code, format_color(code))
+
+                        if len(code_list) % 2 == 1:
+                            message = message + '[/color]'
+
+                    except KeyError:
+                        message = original_message
 
                 main_label = message.strip()
 
@@ -227,6 +232,7 @@ class ServerObject():
                     type_label = "EXEC"
                     type_color = (1, 0.298, 0.6, 1)
                     user = message.split('>', 1)[0].replace('<', '', 1).strip()
+                    user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
                     content = message.split('>', 1)[1].strip()
                     main_label = f"{user} issued server command: {content}"
                     self.script_object.message_event({'user': user, 'content': content})
@@ -239,6 +245,7 @@ class ServerObject():
 
                     if self.script_object.enabled:
                         user = message.split('>', 1)[0].replace('<', '', 1).strip()
+                        user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
                         content = message.split('>', 1)[1].strip()
                         self.script_object.message_event({'user': user, 'content': content})
 
@@ -256,6 +263,7 @@ class ServerObject():
 
                     if self.script_object.enabled:
                         user = message.split('issued server command: ')[0].strip()
+                        user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
                         content = message.split('issued server command: ')[1].strip()
                         self.script_object.message_event({'user': user, 'content': content})
 
@@ -389,10 +397,8 @@ class ServerObject():
 
                 # Send to server if it doesn't start with !
                 if not cmd.startswith("!"):
-                    self.run_data['process'].stdin.write(f"{cmd}\r\n".encode())
+                    self.run_data['process'].stdin.write(f"{cmd}\r\n".encode('utf-8', errors='ignore').replace(b'\xc2\xa7', b'\xa7'))
                     self.run_data['process'].stdin.flush()
-    def silent_command(self, cmd, log=True):
-        self.send_command(cmd, False, log, True)
 
     # Launch server, or reconnect to background server
     def launch(self):
@@ -543,6 +549,97 @@ class ServerObject():
             self.script_object = amscript.ScriptObject(self)
             self.script_object.construct()
             self.script_object.start_event({'date': dt.now()})
+
+
+    # Methods strictly to send to amscript.ServerScriptObject
+    # Castrated log function to prevent recursive events, sends only INFO, WARN, ERROR, and SUCC
+    # log_type: 'info', 'warning', 'error', 'success'
+    def send_log(self, text: str, log_type='info', *args):
+        log_type = log_type if log_type in ('info', 'warning', 'error', 'success') else 'info'
+        text = text.encode().replace(b'\xa7', b'\xc2\xa7').decode('utf-8', errors='ignore')
+
+        # (date, type, log, color)
+        def format_log(message, *args):
+
+            def format_color(code, *args):
+                if 'r' not in code:
+                    formatted_code = f'[color={constants.color_table[code]}]'
+                else:
+                    formatted_code = '[/color]'
+                return formatted_code
+
+            date_label = ''
+            type_label = ''
+            main_label = ''
+            type_color = ''
+
+            if message:
+
+                message_date_obj = dt.now()
+                date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+
+                # Format string as needed
+
+                # Shorten coordinates because FUCK they are long
+                if "logged in with entity id" not in message:
+                    for float_str in re.findall(r"[-+]?(?:\d*\.*\d+)", message):
+                        if len(float_str) > 5 and "." in float_str:
+                            message = message.replace(float_str, str(round(float(float_str), 2)))
+
+                if message.endswith("[m"):
+                    message = message.replace("[m", "").strip()
+
+                # Format special color codes
+                if '§' in message:
+                    original_message = message
+
+                    try:
+                        message = escape_markup(message)
+                        code_list = [message[x:x + 2] for x, y in enumerate(message, 0) if y == '§']
+                        for code in code_list:
+                            message = message.replace(code, format_color(code))
+
+                        if len(code_list) % 2 == 1:
+                            message = message + '[/color]'
+
+                    except KeyError:
+                        message = original_message
+
+                main_label = message.strip()
+
+                if log_type == 'warning':
+                    type_label = "WARN"
+                    type_color = (1, 0.659, 0.42, 1)
+                elif log_type == 'error':
+                    type_label = "ERROR"
+                    type_color = (1, 0.5, 0.65, 1)
+                elif log_type == 'success':
+                    type_label = "SUCCESS"
+                    type_color = (0.3, 1, 0.6, 1)
+                else:
+                    type_label = "INFO"
+                    type_color = (0.6, 0.6, 1, 1)
+
+            if date_label and type_label and main_label and type_color:
+                return (date_label, type_label, main_label, type_color)
+
+        for log_line in text.splitlines():
+            if text and log_line:
+                formatted_line = {'text': format_log(log_line)}
+                if formatted_line not in self.run_data['log'] and formatted_line['text']:
+                    self.run_data['log'].append(formatted_line)
+
+                    # Purge long ones
+                    if len(self.run_data['log']) > self.max_log_size:
+                        self.run_data['log'].pop(0)
+
+        # Run process hooks
+        for hook in self.run_data['process-hooks']:
+            hook(self.run_data['log'])
+
+    def silent_command(self, cmd, log=True):
+        self.send_command(cmd, False, log, True)
+
 
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():

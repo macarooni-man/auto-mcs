@@ -9592,7 +9592,7 @@ class ConsolePanel(FloatLayout):
                     substring = ""
 
                 else:
-                    s = substring.encode("ascii", "ignore").decode().replace("\n","").replace("\r","")
+                    s = substring.replace("§", "[_color_]").encode("ascii", "ignore").decode().replace("\n","").replace("\r","").replace("[_color_]", "§")
                     self.original_text = self.text + s
                     self.history_index = 0
                     return super().insert_text(s, from_undo=from_undo)
