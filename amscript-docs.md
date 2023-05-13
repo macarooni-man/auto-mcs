@@ -2,6 +2,29 @@
 
 The Auto-MCS scripting API (amscript) is available to create universal plugins for your Auto-MCS servers. It functions primarily as an asynchronous wrapper which fires events from what happens in game. Because of this mechanic, a single script will work with every Vanilla, CraftBukkit (and derivatives), Forge, and Fabric server regardless of game version.
 
+# Objects
+> Note: All object attributes are read-only, but can be manipulated with their methods
+
+## ServerScriptObject
+Contains the server's running configuration from the `server.properties` to the list of connected players.
+
+Accessed via the global variable `server`
+
+Methods:
+
+
+
+## PlayerScriptObject
+Contains current player configuration, from their username, UUID, and all their NBT data
+
+Accessed by an applicable event, or by the `server.get_player()` method
+
+Methods:
+
+
+
+
+
 
 
 
@@ -157,5 +180,5 @@ Accepted parameters:
 ```
 @player.on_message(player, message):
     if "can i have op" in message.lower():
-        acl.ban_player(player.name)
+        acl.ban_player(player)
 ```
