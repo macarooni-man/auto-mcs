@@ -31,7 +31,7 @@ Methods:
 
 Returns **PlayerScriptObject** on match, else `None`
 
-change the formatting to an arg table later: `style` can be 'standard', `'error'`, `'success'`
+change the formatting to an arg table later: `style` can be `'standard'`, `'error'`, `'success'`
 
 
 
