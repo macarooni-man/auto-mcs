@@ -1,5 +1,5 @@
 @server.alias(player, command='reloadscripts', permission='op'):
-	server.reload_scripts()
+	server._reload_scripts()
 	server.execute(f'/say Scripts reloaded successfully!')
 
 
