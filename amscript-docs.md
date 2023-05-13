@@ -27,11 +27,11 @@ Accessed by an applicable event, or by the `server.get_player()` method
 
 Methods:
 
-### player.log(*message, style*)
+### player.log(*message, color, style*)
 
 Returns **PlayerScriptObject** on match, else `None`
 
-change the formatting to an arg table later: `style` can be `'normal'`, `'error'`, `'success'`, `'discrete'`. Defaults to `'normal'`
+change the formatting to an arg table later: color and style match `/tellraw` color strings. Style can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`.
 
 
 
