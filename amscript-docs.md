@@ -77,6 +77,9 @@ Accepted parameters:
 | `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
 | `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
 
+<br><br>
+
+
 
 
 # Events
@@ -85,6 +88,7 @@ Accepted parameters:
 
 > Note: If you're using delay, the `delay=<int>` keyword must be specified 
 
+<br>
 
 ## @server events
 
@@ -103,9 +107,10 @@ Accepted parameters:
     server.execute("/say Server has started!")
 ```
 
+<br>
 
 
---------------------------------------------
+
 ### @server.on_stop
 
 Fired upon process termination by Auto-MCS, not when `/stop` or a crash is logged.
@@ -121,9 +126,10 @@ Accepted parameters:
     server.execute("/say Server has stopped!")
 ```
 
+<br>
 
 
---------------------------------------------
+
 ### @server.on_loop
 
 Fired after every `interval`. Loops until the server is closed, or manually cancelled with `return`.
@@ -140,9 +146,10 @@ Accepted parameters:
     server.execute("/say Cleaned up items!")
 ```
 
+<br>
 
 
---------------------------------------------
+
 ### @server.alias
 
 Used for registering custom commands and augmenting existing ones.
@@ -175,6 +182,8 @@ Following the above example when a player with the `op` or `server` privilege ex
 - `arguments` will be converted to `{'arg1': 'foo', 'arg2': 'bar'}` after execution, and can be acccessed in the function as such
 - Calling `arguments['arg1']` will return the value of `'foo'`
 
+<br><br>
+
 
 
 ## @player events
@@ -195,9 +204,10 @@ Accepted parameters:
     server.execute(f'/say Welcome to the server {player.name}!')
 ```
 
+<br>
 
 
---------------------------------------------
+
 ### @player.on_leave
 
 Fired upon player disconnecting from the server.
@@ -214,9 +224,10 @@ Accepted parameters:
     server.execute(f'/say Goodbye, {player.name}!')
 ```
 
+<br>
 
 
---------------------------------------------
+
 ### @player.on_message
 
 Fired upon player sending a message in the chat, excluding commands.
