@@ -1,39 +1,81 @@
 # Overview
 
-The Auto-MCS scripting API (amscript) is available to create universal plugins for your Auto-MCS servers. It functions primarily as an asynchronous wrapper which fires events from what happens in game. Because of this mechanic, a single script will work with every Vanilla, CraftBukkit (and derivatives), Forge, and Fabric server regardless of game version.
+The Auto-MCS scripting API (amscript) is available to create universal plugins for your Auto-MCS servers. It functions primarily as an asynchronous wrapper which fires events from what happens in game. Because of this mechanic, a single script will work with every Vanilla, CraftBukkit (and derivatives), Forge, and Fabric server regardless of game version. <br><br><br>
+
+
 
 
 # Objects
 > Note: All object attributes are read-only, but can be manipulated with their methods
 
-
 ## ServerScriptObject
-Contains the server's running configuration from the `server.properties` to the list of connected players.
+Contains the server's running configuration from the `server.properties`, to the list of connected players.
 
 Accessed via the global variable `server`
 
-Methods:
+Methods: <br><br>
 
-### server.get_player(*selector*)
+
+
+### server.log(*message, log_type*)
+
+Sends a custom log event to the console. This output is displayed only while the server is running, and is not saved to the log file.
+
+- `server.log_success()`, `server.log_warning()`, and `server.log_error()` methods are also available with only the `message` parameter.
+
+Accepted parameters:
+| Parameter | Description |
+| --- | --- |
+| `message*` | `str` of log content |
+| `log_type` | Can be `'info'`, `'success'`, `'warning'` or `'error'`. Defaults to `'info'` |
+
+<br>
+
+
+
+### server.get_player(*selector*) # NEEDS IMPLEMENTATION
+
+> amscript uses a custom selector parser, and therefore tags like `@a[nbt={}]` should work in older versions
+
+server.get_players # ALSO NEEDS IMPLEMENTATION
 
 Returns **PlayerScriptObject** on match, else `None`. Only returns the first match.
+
+Accepted parameters:
+| Parameter | Description |
+| --- | --- |
+| `selector*` | `str` of username, or a valid Minecraft selector. Only players will be matched |
+| `reverse` | `bool` selects last match on `True`. Defaults to `False` |
+
+<br><br>
+
+
 
 
 
 ## PlayerScriptObject
-Contains current player configuration, from their username, UUID, and all their NBT data
+Contains current player configuration from their username, UUID, to all their NBT data
 
 Accessed by an applicable event, or by the `server.get_player()` method
 
-Methods:
+Methods: <br><br>
+
+
 
 ### player.log(*message, color, style*)
 
 Returns **PlayerScriptObject** on match, else `None`
 
+- `player.log_success()`, `player.log_warning()`, and `player.log_error()` methods are also available with only the `message` parameter.
+
 change the formatting to an arg table later: color and style match `/tellraw` color strings, Defaults to `'gray'`. Style can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'`
 
-
+Accepted parameters:
+| Parameter | Description |
+| --- | --- |
+| `message*` | `str` of username, or selector. Only players will be matched |
+| `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
+| `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
 
 
 
