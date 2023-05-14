@@ -154,42 +154,6 @@ Accepted parameters:
     server.log_success("Cleaned up items!")
 ```
 
-<br>
-
-
-
-### @server.alias
-
-Used for registering custom commands and augmenting existing ones.
-
-> Note: Commands will start with `!` therefore making them visible when executed from the in-game chat, though the feedback is hidden
-
-Accepted parameters:
-| Parameter | Description |
-| --- | --- |
-| `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
-| `command*` | `str` to specify the command verb |
-| `arguments` | `dict` specifying requirement for execution `{'arg1': True}` where `True` denotes a required argument. Only the last argument can be optional |
-| `permission`| Used to restrict execution to privileged users. Can be `'anyone'`, `'op'`, or `'server'`. Defaults to `'anyone'`|
-| `description` | `str` for `!help` menu. Commands will be shown to users with the minimum permission level |
-| `hidden` | `bool`, defaults to `False`. Hides command from all users (they can still be executed) and disables the wrapper functionality described below. Useful for augmenting existing commands |
-
-```
-@server.alias(player, command='test', arguments={'arg': True, 'arg2': False}, permission='op', description='Test command'):
-    server.execute(f'/say {player.name} executed {command} with the following arguments: {arguments}')
-```
-
-> Note: Every alias automatically validates syntax and checks the player's permission level before execution
-
-Following the above example when a player with the `anyone` privilege executes `!test foo bar`:
-- Auto-MCS will determine that the player doesn't meet the minimum permission and will fail
-- Permission tree is `server` > `op` > `anyone`
-
-Following the above example when a player with the `op` or `server` privilege executes `!test foo bar`:
-
-- `arguments` will be converted to `{'arg1': 'foo', 'arg2': 'bar'}` after execution, and can be acccessed in the function as such
-- Calling `arguments['arg1']` will return the value of `'foo'`
-
 <br><br>
 
 
@@ -252,3 +216,39 @@ Accepted parameters:
     if "can i have op" in message.lower():
         acl.ban_player(player)
 ```
+
+<br>
+
+
+
+### @player.on_alias
+
+Used for registering custom commands and augmenting existing ones.
+
+> Note: Commands will start with `!` therefore making them visible when executed from the in-game chat, though the feedback is hidden
+
+Accepted parameters:
+| Parameter | Description |
+| --- | --- |
+| `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
+| `command*` | `str` to specify the command verb |
+| `arguments` | `dict` specifying requirement for execution `{'arg1': True}` where `True` denotes a required argument. Only the last argument can be optional |
+| `permission`| Used to restrict execution to privileged users. Can be `'anyone'`, `'op'`, or `'server'`. Defaults to `'anyone'`|
+| `description` | `str` for `!help` menu. Commands will be shown to users with the minimum permission level |
+| `hidden` | `bool`, defaults to `False`. Hides command from all users (they can still be executed) and disables the wrapper functionality described below. Useful for augmenting existing commands |
+
+```
+@player.on_alias(player, command='test', arguments={'arg': True, 'arg2': False}, permission='op', description='Test command'):
+    server.execute(f'/say {player.name} executed {command} with the following arguments: {arguments}')
+```
+
+> Note: Every alias automatically validates syntax and checks the player's permission level before execution
+
+Following the above example when a player with the `anyone` privilege executes `!test foo bar`:
+- Auto-MCS will determine that the player doesn't meet the minimum permission and will fail
+- Permission tree is `server` > `op` > `anyone`
+
+Following the above example when a player with the `op` or `server` privilege executes `!test foo bar`:
+
+- `arguments` will be converted to `{'arg1': 'foo', 'arg2': 'bar'}` after execution, and can be acccessed in the function as such
+- Calling `arguments['arg1']` will return the value of `'foo'`
