@@ -1,6 +1,6 @@
 # Overview
 
-The Auto-MCS scripting API (amscript) is available to create universal plugins for your Auto-MCS servers. It functions primarily as an asynchronous wrapper which fires events from what happens in game. Because of this mechanic, a single script will work with every Vanilla, CraftBukkit (and derivatives), Forge, and Fabric server regardless of game version. <br><br><br>
+The Auto-MCS scripting API (*amscript*) is available to create universal plugins for your Auto-MCS servers. It functions primarily as an asynchronous wrapper which fires events from what happens in game. Because of this mechanic, a single script will work with every Vanilla, CraftBukkit (and derivatives), Forge, and Fabric server regardless of game version. <br><br><br>
 
 
 
