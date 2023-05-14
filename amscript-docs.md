@@ -152,7 +152,7 @@ Used for registering custom commands and augmenting existing ones.
 Accepted parameters:
 | Parameter | Description |
 | --- | --- |
-| `player*` | **PlayerScriptObject** sent at execution |
+| `player*` | [**PlayerScriptObject**](https://github.com/macarooni-man/auto-mcs/blob/main/amscript-docs.md#playerscriptobject) sent at execution |
 | `command*` | `str` to specify the command verb |
 | `arguments` | `dict` specifying requirement for execution `{'arg1': True}` where `True` denotes a required argument. Only the last argument can be optional |
 | `permission`| Used to restrict execution to privileged users. Can be `'anyone'`, `'op'`, or `'server'`. Defaults to `'anyone'`|
