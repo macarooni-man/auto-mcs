@@ -186,7 +186,7 @@ Fired upon player successfully connecting to the server.
 Accepted parameters:
 | Parameter | Description |
 | --- | --- |
-| `player*` | **PlayerScriptObject** sent at execution |
+| `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
 | `data*` | `dict` of login data, currently `{'ip': ip address, 'date': datetime, 'logged-in': True}` |
 | `delay` | Waits a specified amount of time in seconds before running |
 
@@ -205,7 +205,7 @@ Fired upon player disconnecting from the server.
 Accepted parameters:
 | Parameter | Description |
 | --- | --- |
-| `player*` | **PlayerScriptObject** sent at execution |
+| `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
 | `data*` | `dict` of logout data, currently `{'ip': ip address, 'date': datetime, 'logged-in': False}` |
 | `delay` | Waits a specified amount of time in seconds before running |
 
@@ -224,7 +224,7 @@ Fired upon player sending a message in the chat, excluding commands.
 Accepted parameters:
 | Parameter | Description |
 | --- | --- |
-| `player*` | **PlayerScriptObject** sent at execution |
+| `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
 | `message*` | `str` of the message |
 | `delay` | Waits a specified amount of time in seconds before running |
 
