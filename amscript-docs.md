@@ -21,7 +21,7 @@ Methods: <br><br>
 
 Sends a custom log event to the console. This output is displayed only while the server is running, and is not saved to the log file.
 
-- `server.log_success()`, `server.log_warning()`, and `server.log_error()` methods are also available with only the `message` parameter.
+- `server.log_success()`, `server.log_warning()`, and `server.log_error()` methods can also be used, and only require the `message` parameter.
 
 Accepted parameters:
 | Parameter | Description |
@@ -39,7 +39,7 @@ Accepted parameters:
 
 server.get_players # ALSO NEEDS IMPLEMENTATION
 
-Returns **PlayerScriptObject** on match, else `None`. Only returns the first match.
+Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Only returns the first match.
 
 Accepted parameters:
 | Parameter | Description |
@@ -62,13 +62,21 @@ Methods: <br><br>
 
 
 
+
+### player.is_server()
+
+Returns `True` if the object represents the server console. Useful for [**@server**](#server-events) events that require different functionality based on the player. For example, `/give {player.name}` won't work with the console, nor NBT queries.
+
+<br>
+
+
+
 ### player.log(*message, color, style*)
 
-Returns **PlayerScriptObject** on match, else `None`
+Sends a private message to the chat of the player with formatting support.
+Useful for command feedback with a [**@server.alias**](#serveralias) event
 
-- `player.log_success()`, `player.log_warning()`, and `player.log_error()` methods are also available with only the `message` parameter.
-
-change the formatting to an arg table later: color and style match `/tellraw` color strings, Defaults to `'gray'`. Style can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'`
+- `player.log_success()`, `player.log_warning()`, and `player.log_error()` methods can also be used, and only require the `message` parameter.
 
 Accepted parameters:
 | Parameter | Description |
@@ -104,7 +112,7 @@ Accepted parameters:
 
 ```
 @server.on_start(data, delay=0):
-    server.execute("/say Server has started!")
+    server.log("Server has started!")
 ```
 
 <br>
@@ -123,7 +131,7 @@ Accepted parameters:
 
 ```
 @server.on_stop(data, delay=0):
-    server.execute("/say Server has stopped!")
+    server.log("Server has stopped!")
 ```
 
 <br>
@@ -143,7 +151,7 @@ Accepted parameters:
 ```
 @server.on_loop(interval=1, unit='minute'):
     server.execute("/kill @e[type=item]")
-    server.execute("/say Cleaned up items!")
+    server.log_success("Cleaned up items!")
 ```
 
 <br>
@@ -201,7 +209,7 @@ Accepted parameters:
 
 ```
 @player.on_join(player, data):
-    server.execute(f'/say Welcome to the server {player.name}!')
+    player.log(f'Welcome to the server {player.name}!')
 ```
 
 <br>
