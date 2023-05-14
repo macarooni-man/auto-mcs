@@ -225,7 +225,7 @@ Accepted parameters:
 
 Used for registering custom commands and augmenting existing ones.
 
-> Note: Commands will start with `!` therefore making them visible when executed from the in-game chat, though the feedback is hidden
+> Note: Commands will start with `!` therefore making them visible when executed by a player from the in-game chat, though the feedback is hidden when using the `server.log()` and `player.log()` methods. They are completely hidden if executed from the server console.
 
 Accepted parameters:
 | Parameter | Description |
