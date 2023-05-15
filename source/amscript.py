@@ -1,12 +1,15 @@
+import functools
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from threading import Timer
 from textwrap import indent
 from glob import glob
 import constants
+import traceback
 import time
 import acl
 import ast
+import sys
 import os
 import re
 import gc
@@ -36,11 +39,12 @@ class ScriptObject():
 
         # Yummy stuffs
         self.protected_variables = ["server", "acl", "backup", "addon"]
-        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@server.alias", "@server.on_start", "@server.on_shutdown", "@server.on_loop"]
+        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_shutdown", "@server.on_loop"]
         self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@server.on_start", "@server.on_shutdown"]
         self.valid_imports = ['requests', 'time', 'os', 'requests', 'glob', 'datetime', 'concurrent.futures']
         self.valid_imports.extend([os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.script_path, '*.py'))])
         self.aliases = {}
+        self.src_dict = {}
         self.function_dict = {}
 
 
@@ -56,6 +60,7 @@ class ScriptObject():
 
             parse_error = {}
             script_text = ""
+            id_hash = constants.gen_rstring(10)
 
             with open(script_path, 'r') as f:
 
@@ -65,21 +70,32 @@ class ScriptObject():
                     for var in self.protected_variables:
                         if line.strip().replace(' ', '').startswith(f"{var}=") or ("def" in line and f" {var}(" in line):
                             parse_error['file'] = os.path.basename(script_path)
-                            parse_error['code'] = line.strip()
+                            parse_error['code'] = line.rstrip()
                             parse_error['line'] = f'{x}:{line.find(f"{var}")+1}'
                             parse_error['message'] = f"AssertionError: '{var}' attribute is read-only and cannot be re-assigned"
-                            parse_error['object'] = AssertionError(parse_error['message'])
+                            parse_error['object'] = AssertionError(parse_error['message'].split(": ")[1])
                             return parse_error
 
                     # Format valid event tags as functions
                     for event in self.valid_events:
                         if line.startswith(event):
-                            if event == '@server.alias':
-                                line = line.replace(event, f'{event.split(".")[1]}').replace(":\n", f'\ndef alias():\n')
+                            if event == '@player.on_alias':
+                                line = line.replace(event, f'{event.split(".")[1]}').replace(":\n", f'\ndef __on_alias__(): #{id_hash}\n')
                             elif event == '@server.on_loop':
-                                line = line.replace(event, f'{event.split(".")[1]}').replace(":\n", f'\ndef on_loop():\n')
+                                line = line.replace(event, f'{event.split(".")[1]}').replace(":\n", f'\ndef __on_loop__(): #{id_hash}\n')
                             else:
                                 line = line.replace(event, f'def {event.split(".")[1]}')
+
+                        # Check for invalid events
+                        elif (line.startswith("@server.") or line.startswith("@player.")) and (("(") in line and ("):") in line):
+                            parsed_event = line.strip().split('(')[0]
+                            if parsed_event not in self.valid_events:
+                                parse_error['file'] = os.path.basename(script_path)
+                                parse_error['code'] = line.rstrip()
+                                parse_error['line'] = f'{x}:10'
+                                parse_error['message'] = f"NameError: '{parsed_event}' event does not exist"
+                                parse_error['object'] = NameError(parse_error['message'].split(": ")[1])
+                                return parse_error
 
                     script_text = script_text + f'{line}'
 
@@ -89,9 +105,10 @@ class ScriptObject():
             try:
                 ast.parse(script_text)
             except Exception as e:
+                line_num = e.args[1][1] - script_text.count(f'#{id_hash}', 0, script_text.find(e.args[1][-1].strip()))
                 parse_error['file'] = os.path.basename(script_path)
                 parse_error['code'] = e.args[1][-1].strip()
-                parse_error['line'] = f"{e.args[1][1]}:{e.args[1][2]}"
+                parse_error['line'] = f"{line_num}:{e.args[1][2]}"
                 parse_error['message'] = f"{e.__class__.__name__}: {e.args[0]}"
                 parse_error['object'] = e
                 return parse_error
@@ -102,6 +119,10 @@ class ScriptObject():
 
                 # Initialize self.function_dict
                 self.function_dict[os.path.basename(script_path)] = {event: [] for event in self.valid_events}
+                self.src_dict[os.path.basename(script_path)] = {event: [] for event in self.valid_events}
+                self.src_dict[os.path.basename(script_path)]['other_funcs'] = []
+                self.src_dict[os.path.basename(script_path)]['src'] = ''
+                self.src_dict[os.path.basename(script_path)]['gbl'] = ''
 
                 # Get list of all variables
                 variables = {
@@ -126,6 +147,8 @@ class ScriptObject():
 
                 for line in f.readlines():
                     line = line.replace('\t', '    ')
+                    self.src_dict[os.path.basename(script_path)]['src'] += line
+
 
                     # Find and remove comments
                     if "#" in line.strip():
@@ -178,10 +201,12 @@ class ScriptObject():
                                     new_line = new_line.replace("%def ", f'def ')
                                 function = function + new_line + "\n"
                             global_variables = global_variables + "\n\n" + function.strip()
+                            self.src_dict[os.path.basename(script_path)]['other_funcs'].append(function.strip())
                             break
 
                 # Load Imports, and global variables/functions into memory
                 # print(global_variables)
+                self.src_dict[os.path.basename(script_path)]['gbl'] = global_variables
                 global_variables += f"\nos.chdir(r'{self.server.server_path}')"
                 exec(global_variables, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
 
@@ -236,7 +261,7 @@ class ScriptObject():
 
 
                                     # Register alias and reformat code
-                                    if event == '@server.alias':
+                                    if event == '@player.on_alias':
                                         alias_values = {
                                             'cmd': '',
                                             'args': {},
@@ -333,6 +358,7 @@ class ScriptObject():
                                     else:
                                         exec(function, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
                                         self.function_dict[os.path.basename(script_path)][event].append(self.function_dict[os.path.basename(script_path)]['values'][func_name])
+                                        self.src_dict[os.path.basename(script_path)][event].append(function.strip())
                                     break
 
 
@@ -340,7 +366,7 @@ class ScriptObject():
                 if alias_functions:
                     first = True
 
-                    new_func = "def __alias__(player, command, permission='anyone'):\n"
+                    new_func = "def __on_alias__(player, command, permission='anyone'):\n"
                     new_func += "    perm_dict = {'anyone': 0, 'op': 1, 'server': 2}\n\n"
 
                     for k, v in alias_functions.items():
@@ -375,7 +401,8 @@ class ScriptObject():
 
                     # print(new_func)
                     exec(new_func, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
-                    self.function_dict[os.path.basename(script_path)]['@server.alias'].append(self.function_dict[os.path.basename(script_path)]['values']['__alias__'])
+                    self.function_dict[os.path.basename(script_path)]['@player.on_alias'].append(self.function_dict[os.path.basename(script_path)]['values']['__on_alias__'])
+                    self.src_dict[os.path.basename(script_path)]['@player.on_alias'].append(new_func.strip())
 
 
                 # Convert all loops to actual loops
@@ -409,6 +436,7 @@ class ScriptObject():
                         # print(new_func)
                         exec(new_func, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
                         self.function_dict[os.path.basename(script_path)]['@server.on_loop'].append(self.function_dict[os.path.basename(script_path)]['values']['__on_loop__'])
+                        self.src_dict[os.path.basename(script_path)]['@server.on_loop'].append(new_func.strip())
 
 
                 # Remove references to function calls in the script context
@@ -424,11 +452,12 @@ class ScriptObject():
 
         # Parse script file
         def process_file(script_file):
-            valid = is_valid(script_file)
-            print(valid)
+            parse_error = is_valid(script_file)
 
-            if valid is None:
+            if parse_error is None:
                 convert_script(script_file)
+            else:
+                self.log_error(parse_error)
 
 
         # with ThreadPoolExecutor(max_workers=10) as pool:
@@ -446,31 +475,104 @@ class ScriptObject():
         time.sleep(0.1)
         del self.server_script_obj
 
-        # Reset dict in memory
+        # Reset dicts in memory
         for key, item in self.function_dict.items():
-            for v in self.function_dict[key]['values'].values():
-                del v
+            self.function_dict[key].clear()
+            del item
+
+        for key, item in self.src_dict.items():
             self.function_dict[key].clear()
             del item
 
         self.function_dict.clear()
         del self.function_dict
         self.function_dict = {}
+        self.src_dict = {}
         self.aliases = {}
         gc.collect()
 
 
     # Runs specified event with parameters
     def call_event(self, event: str, args: tuple, delay=0):
+
         if self.function_dict and event in self.valid_events:
-            for script in tuple(self.function_dict.values()):
+            for script in tuple(self.function_dict.items()):
                 try:
-                    for func in script[event]:
+                    for x, func in enumerate(script[1][event]):
                         if not self.enabled:
                             return
-                        Timer(delay, partial(func, *args)).start()
+
+                        # s = script name, i = function index
+                        def error_handler(s, i, *func_args):
+
+                            # First, try and execute function
+                            try:
+                                func(*func_args)
+
+                            # On failure, locate original code in file
+                            except Exception as e:
+                                ex_type, ex_value, ex_traceback = sys.exc_info()
+                                parse_error = {}
+
+                                # First, grab relative line number from modified code
+                                tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
+                                line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
+
+                                # Try to locate event first
+                                try:
+                                    # Locate original code from the source
+                                    original_code = self.src_dict[s][event][i].splitlines()[line_num-1]
+
+                                    # Use the line to find the original line number from the source
+                                    event_count = 0
+                                    for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                                        # print(n, line, event_count, i)
+
+                                        if (original_code in line) and ((i + 1) == event_count):
+                                            line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                                            break
+
+                                        if line.startswith(event):
+                                            event_count += 1
+
+                                # When error is not in an event, but in a nested function or library
+                                except IndexError:
+
+                                    # Locate original code from source
+                                    original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
+
+                                    # Use the line to find the original line number from the source
+                                    event_count = 0
+                                    func_name = f'def {tb.split("in ")[1].strip()}('
+                                    for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                                        # print(n, line, event_count, i)
+
+                                        if (original_code in line) and (event_count > 0):
+                                            line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                                            break
+
+                                        if line.startswith(func_name):
+                                            event_count += 1
+
+
+                                # Generate error dict
+                                parse_error['file'] = s
+                                parse_error['code'] = original_code.strip()
+                                parse_error['line'] = line_num
+                                parse_error['message'] = f"{ex_type.__name__}: {ex_value}"
+                                parse_error['object'] = e
+                                self.log_error(parse_error)
+
+                        Timer(delay, functools.partial(error_handler, script[0], x, *args)).start()
+
+
                 except KeyError:
                     return
+
+
+    # Logs error to console from generated error dict
+    def log_error(self, error_dict: dict):
+        print(error_dict)
 
 
     # ----------------------- Server Events ------------------------
@@ -532,9 +634,9 @@ class ScriptObject():
         else:
             permission = 'anyone'
 
-        self.call_event('@server.alias', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj['content'], permission))
+        self.call_event('@player.on_alias', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj['content'], permission))
 
-        print('server.alias')
+        print('player.on_alias')
         print(player_obj)
 
 
@@ -556,17 +658,21 @@ class ServerScriptObject():
         self.version = server_obj.version
         self.build = server_obj.build
         self.type = server_obj.type
-        self.network = server_obj.run_data['network']['address']
+
+        if server_obj.run_data:
+            self.network = server_obj.run_data['network']['address']
 
 
     def __del__(self):
         self._running = False
 
     # Logging functions
+    def log_warning(self, msg):
+        self.log(msg, log_type='warning')
     def log_error(self, msg):
-        self.log(msg, 'error')
+        self.log(msg, log_type='error')
     def log_success(self, msg):
-        self.log(msg, 'success')
+        self.log(msg, log_type='success')
 
 
 # Reconfigured ServerObject to be passed in as 'player' variable to amscript events
@@ -586,6 +692,9 @@ class PlayerScriptObject():
     # Logging functions
     # Version compatible message system for local player object
     def log(self, msg, color="gray", style='italic'):
+        if not msg:
+            return
+
         style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
 
         # Use /tellraw if it's supported, else /tell
@@ -637,6 +746,8 @@ class PlayerScriptObject():
                 msg = f'/tell {self.name} {final_code}{("§r "+final_code).join(msg.strip().split(" "))}§r'
                 self._server.execute(msg, log=False)
 
+    def log_warning(self, msg):
+        self.log(msg, "gold", "normal")
     def log_error(self, msg):
         self.log(msg, "red", "normal")
     def log_success(self, msg):

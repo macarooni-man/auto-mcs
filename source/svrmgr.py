@@ -555,6 +555,9 @@ class ServerObject():
     # Castrated log function to prevent recursive events, sends only INFO, WARN, ERROR, and SUCC
     # log_type: 'info', 'warning', 'error', 'success'
     def send_log(self, text: str, log_type='info', *args):
+        if not text:
+            return
+
         log_type = log_type if log_type in ('info', 'warning', 'error', 'success') else 'info'
         text = text.encode().replace(b'\xa7', b'\xc2\xa7').decode('utf-8', errors='ignore')
 
