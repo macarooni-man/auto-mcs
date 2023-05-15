@@ -60,9 +60,9 @@ final_list = []
 excluded_binaries = [
 	'libstdc++.so.6',
 	'libgcc_s.so.1',
-    'libfreetype.so.6',
-    'libfontconfig.so.1',
-    'libasound'
+	'libfreetype.so.6',
+	'libfontconfig.so.1',
+	'libasound'
 	]
 
 for binary in a.binaries:
