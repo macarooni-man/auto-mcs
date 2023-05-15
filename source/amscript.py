@@ -56,6 +56,8 @@ class ScriptObject():
     def construct(self):
 
         # If script returns None it's valid, else will return error message
+        # 1. Iterate over every line and check for valid events, and protect global variables and functions
+        # 2. Check for general Python syntax errors
         def is_valid(script_path):
 
             parse_error = {}
@@ -114,6 +116,10 @@ class ScriptObject():
                 return parse_error
 
         # Converts amscripts into memory to be accessed by events
+        # 1. Remove all comments and sort global functions and variables into 'gbl' string, and source into 'src' string
+        # 2. Run 'gbl' string in exec() to check for functional errors, and send final memory space to 'variables' dict
+        # 3. Pull out every @event and send them to the src_dict and function_dict for further processing
+        # 4. Wrap @server.on_loop and @player.on_alias events with special code to ensure proper functionality
         def convert_script(script_path):
             with open(script_path, 'r') as f:
 
@@ -139,6 +145,7 @@ class ScriptObject():
 
                 alias_functions = {}
                 loop_functions = []
+                func_calls = []
 
 
                 # Ignore all comments and grab imports/global variables
@@ -148,6 +155,12 @@ class ScriptObject():
                 for line in f.readlines():
                     line = line.replace('\t', '    ')
                     self.src_dict[os.path.basename(script_path)]['src'] += line
+
+                    # Possible function call
+                    try:
+                        func_call = re.search(r'\w+[^\s+(def|async)\s+.+]+\.?\w+\(*.*\)[^\:]*', line).group(0).strip()
+                    except AttributeError:
+                        func_call = None
 
 
                     # Find and remove comments
@@ -173,8 +186,13 @@ class ScriptObject():
                         line = "%" + line
 
                     # Find global variables
-                    elif not (line.startswith(' ') or line.startswith('\t')):
-                        if re.match(r"[A-Za-z0-9]+.*=.*", line.strip(), re.IGNORECASE):
+                    elif not ((line.startswith(' ') or line.startswith('\t'))):
+
+                        # Find function calls and decorators
+                        if (func_call == line.strip() or line.startswith("@")) and line.strip()[-1] != ":":
+                            func_calls.append(f'{line.strip()}\n')
+
+                        elif re.match(r"[A-Za-z0-9]+.*=.*", line.strip(), re.IGNORECASE):
                             global_variables = global_variables + line.strip() + "\n"
 
                     script_data = script_data + line
@@ -204,11 +222,70 @@ class ScriptObject():
                             self.src_dict[os.path.basename(script_path)]['other_funcs'].append(function.strip())
                             break
 
-                # Load Imports, and global variables/functions into memory
-                # print(global_variables)
-                self.src_dict[os.path.basename(script_path)]['gbl'] = global_variables
+                # Load global function calls at the very end
+                global_variables += "\n\n"
+                for line in func_calls:
+                    global_variables = global_variables + line
+
+                # Change to server directory
                 global_variables += f"\nos.chdir(r'{self.server.server_path}')"
-                exec(global_variables, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
+
+                # Load Imports, and global variables/functions into memory
+                self.src_dict[os.path.basename(script_path)]['gbl'] = global_variables
+
+                try:
+                    # print(global_variables)
+                    exec(global_variables, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
+                except Exception as e:
+                    s = os.path.basename(script_path)
+                    ex_type, ex_value, ex_traceback = sys.exc_info()
+                    parse_error = {}
+
+                    # First, grab relative line number from modified code
+                    tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
+                    line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
+
+                    # Locate original code from source
+                    original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
+
+                    # Use the line to find the original line number from the source
+                    event_count = 0
+                    func_name = f'def {tb.split("in ")[1].strip()}('
+                    for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                        # print(n, line, event_count, i)
+
+                        if (original_code in line) and (event_count > 0):
+                            line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                            break
+
+                        if line.startswith(func_name):
+                            event_count += 1
+
+                    # Likely global code that's not wrapped in a function
+                    else:
+                        for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                            # print(n, line, event_count, i)
+
+                            if original_code in line:
+                                line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                                break
+
+                            if line.startswith(func_name):
+                                event_count += 1
+
+
+                    # Generate error dict
+                    parse_error['file'] = s
+                    parse_error['code'] = original_code.strip()
+                    parse_error['line'] = line_num
+                    parse_error['message'] = f"{ex_type.__name__}: {ex_value}"
+                    parse_error['object'] = e
+
+                    del self.function_dict[s]['values']
+                    del self.src_dict[s]['gbl']
+                    del self.src_dict[s]['src']
+
+                    return parse_error
 
 
                 # Search through script for events
@@ -455,8 +532,9 @@ class ScriptObject():
             parse_error = is_valid(script_file)
 
             if parse_error is None:
-                convert_script(script_file)
-            else:
+                parse_error = convert_script(script_file)
+
+            if parse_error:
                 self.log_error(parse_error)
 
 
