@@ -27,7 +27,21 @@ Accepted parameters:
 | Parameter | Description |
 | --- | --- |
 | `message*` | `str` of log content |
-| `log_type` | Can be `'info'`, `'success'`, `'warning'` or `'error'`. Defaults to `'info'` |
+| `log_type` | `str` can be `'info'`, `'success'`, `'warning'` or `'error'`. Defaults to `'info'` |
+
+<br>
+
+
+
+### server.version_check(*comparator, version*)
+
+Returns `bool` based on the comparison used
+
+Accepted parameters:
+| Parameter | Description |
+| --- | --- |
+| `comparator*` | `str`, can be `'='`, `'<'`, `'<='`, `'>'`, or `'>='` |
+| `version*` | `str`, any Minecraft version, i.e. `'1.17.1'` |
 
 <br>
 
@@ -108,7 +122,7 @@ Accepted parameters:
 | Parameter | Description |
 | --- | --- |
 | `data*` | `dict` of startup data, currently `{'date': datetime}` |
-| `delay` | Waits a specified amount of time in seconds before running |
+| `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
 
 ```
 @server.on_start(data, delay=0):
@@ -127,7 +141,7 @@ Accepted parameters:
 | Parameter | Description |
 | --- | --- |
 | `data*` | `dict` of shutdown data, currently `{'date': datetime, 'crash': str}` |
-| `delay` | Waits a specified amount of time in seconds before running |
+| `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
 
 ```
 @server.on_stop(data, delay=0):
@@ -146,7 +160,7 @@ Accepted parameters:
 | Parameter | Description |
 | --- | --- |
 | `interval` | `int`, defaults to `1` |
-| `unit` | Specifies `interval` scale, can be `'tick'`, `'second'`, `'minute'`, or `'hour'`. Defaults to `'second'` |
+| `unit` | `str`, specifies `interval` scale, can be `'tick'`, `'second'`, `'minute'`, or `'hour'`. Defaults to `'second'` |
 
 ```
 @server.on_loop(interval=1, unit='minute'):
@@ -168,8 +182,8 @@ Accepted parameters:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
-| `data*` | `dict` of login data, currently `{'ip': ip address, 'date': datetime, 'logged-in': True}` |
-| `delay` | Waits a specified amount of time in seconds before running |
+| `data*` | `dict` of login data, currently `{'uuid': uuid, 'ip': ip address, 'date': datetime, 'logged-in': True}` |
+| `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
 
 ```
 @player.on_join(player, data):
@@ -188,8 +202,8 @@ Accepted parameters:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
-| `data*` | `dict` of logout data, currently `{'ip': ip address, 'date': datetime, 'logged-in': False}` |
-| `delay` | Waits a specified amount of time in seconds before running |
+| `data*` | `dict` of logout data, currently `{'uuid': uuid, 'ip': ip address, 'date': datetime, 'logged-in': False}` |
+| `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
 
 ```
 @player.on_leave(player, data):
@@ -209,7 +223,7 @@ Accepted parameters:
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
 | `message*` | `str` of the message |
-| `delay` | Waits a specified amount of time in seconds before running |
+| `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
 
 ```
 @player.on_message(player, message):
@@ -233,7 +247,7 @@ Accepted parameters:
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
 | `command*` | `str` to specify the command verb |
 | `arguments` | `dict` specifying requirement for execution `{'arg1': True}` where `True` denotes a required argument. Only the last argument can be optional |
-| `permission`| Used to restrict execution to privileged users. Can be `'anyone'`, `'op'`, or `'server'`. Defaults to `'anyone'`|
+| `permission`| `str`, used to restrict execution to privileged users. Can be `'anyone'`, `'op'`, or `'server'`. Defaults to `'anyone'`|
 | `description` | `str` for `!help` menu. Commands will be shown to users with the minimum permission level |
 | `hidden` | `bool`, defaults to `False`. Hides command from all users (they can still be executed) and disables the wrapper functionality described below. Useful for augmenting existing commands |
 
