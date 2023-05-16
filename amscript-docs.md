@@ -35,7 +35,7 @@ Accepted parameters:
 
 ### server.version_check(*comparator, version*)
 
-Returns `bool` based on the comparison used
+Compares server version to `version` with the `comparator`, returns `bool`.
 
 Accepted parameters:
 | Parameter | Description |
