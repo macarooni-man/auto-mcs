@@ -2,6 +2,6 @@
     server.execute(f'/say I LOVE YOU {player.name}!')
     server.execute(f'/give {player.name} minecraft:wooden_hoe')
 
-@server.alias(player, command='/killeveryone', arguments={'arg': True, 'arg2': False}, description='kills everyone'):
+@player.on_alias(player, command='/killeveryone', arguments={'arg': True, 'arg2': False}, description='kills everyone'):
     server.execute(f'/say {player.name} executed {command} with the following arguments: {arguments}')
     server.execute(f'/execute at @e run summon lightning_bolt')

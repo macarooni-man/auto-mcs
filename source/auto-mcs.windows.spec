@@ -13,7 +13,7 @@ block_cipher = None
 a = Analysis(['wrapper.py'],
              pathex=[],
              binaries=[],
-             datas = [('.\\icon.ico', '.')],
+             datas = [('.\\icon.ico', '.'), ('.\\baselib.ams', '.')],
              hiddenimports=['plyer.platforms.win.filechooser'],
              hookspath=[],
              hooksconfig={},
@@ -78,4 +78,6 @@ exe = EXE(pyz,
           disable_windowed_traceback=False,
           target_arch=None,
           codesign_identity=None,
-          entitlements_file=None , icon='icon.ico')
+          entitlements_file=None,
+          icon='icon.ico'
+)

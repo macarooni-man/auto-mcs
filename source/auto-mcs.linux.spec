@@ -16,6 +16,7 @@ a = Analysis(['wrapper.py'],
              # Fix xsel and xclip not being recognized in shell somehow
              datas = [
                         ('./icon.ico', '.'),
+                        ('./baselib.ams', '.'),
                         ('/etc/ssl/certs/ca-bundle.crt', '.'),
                         ('/usr/bin/xclip', '.'),
                         ('/usr/bin/xsel', '.'),
@@ -60,9 +61,9 @@ final_list = []
 excluded_binaries = [
 	'libstdc++.so.6',
 	'libgcc_s.so.1',
-	'libfreetype.so.6',
-	'libfontconfig.so.1',
-	'libasound'
+    'libfreetype.so.6',
+    'libfontconfig.so.1',
+    'libasound'
 	]
 
 for binary in a.binaries:

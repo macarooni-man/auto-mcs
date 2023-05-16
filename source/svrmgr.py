@@ -547,9 +547,12 @@ class ServerObject():
 
             # Initialize ScriptObject
             self.script_object = amscript.ScriptObject(self)
-            self.script_object.construct()
+            loaded_count, total_count = self.script_object.construct()
             self.script_object.start_event({'date': dt.now()})
 
+            return loaded_count, total_count
+        else:
+            return None, None
 
     # Methods strictly to send to amscript.ServerScriptObject
     # Castrated log function to prevent recursive events, sends only INFO, WARN, ERROR, and SUCC
@@ -639,6 +642,68 @@ class ServerObject():
         # Run process hooks
         for hook in self.run_data['process-hooks']:
             hook(self.run_data['log'])
+
+
+    # Methods strictly to receive from amscript.ScriptObject
+    # Castrated log function to prevent recursive events, sends only INFO, WARN, ERROR, and SUCC
+    # log_type: 'print', 'info', 'warning', 'error', 'success'
+    def amscript_log(self, text: str, log_type='info', *args):
+        if not text:
+            return
+
+        log_type = log_type if log_type in ('print', 'info', 'warning', 'error', 'success') else 'info'
+        text = text.encode().replace(b'\xa7', b'\xc2\xa7').decode('utf-8', errors='ignore')
+
+        # (date, type, log, color)
+        def format_log(message, *args):
+
+            def format_color(code, *args):
+                if 'r' not in code:
+                    formatted_code = f'[color={constants.color_table[code]}]'
+                else:
+                    formatted_code = '[/color]'
+                return formatted_code
+
+            date_label = ''
+            type_label = ''
+            main_label = ''
+            type_color = ''
+
+            if message:
+                message_date_obj = dt.now()
+                date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+
+                main_label = message.strip()
+                type_label = "AMS"
+
+                if log_type == 'print':
+                    type_color = (0.9, 0.9, 0.9, 1)
+                elif log_type == 'warning':
+                    type_color = (1, 0.659, 0.42, 1)
+                elif log_type == 'error':
+                    type_color = (1, 0.5, 0.65, 1)
+                elif log_type == 'success':
+                    type_color = (0.3, 1, 0.6, 1)
+                else:
+                    type_color = (0.6, 0.6, 1, 1)
+
+            if date_label and type_label and main_label and type_color:
+                return (date_label, type_label, main_label, type_color)
+
+        for log_line in text.splitlines():
+            if text and log_line:
+                formatted_line = {'text': format_log(log_line)}
+                if formatted_line not in self.run_data['log'] and formatted_line['text']:
+                    self.run_data['log'].append(formatted_line)
+
+                    # Purge long ones
+                    if len(self.run_data['log']) > self.max_log_size:
+                        self.run_data['log'].pop(0)
+
+        # Run process hooks
+        for hook in self.run_data['process-hooks']:
+            hook(self.run_data['log'])
+
 
     def silent_command(self, cmd, log=True):
         self.send_command(cmd, False, log, True)

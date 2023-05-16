@@ -34,8 +34,7 @@ class ScriptObject():
 
         # File stuffs
         self.script_path = os.path.join(constants.configDir, 'amscript')
-        constants.folder_check(self.script_path)
-        self.scripts = glob(os.path.join(self.script_path, '*.ams'))
+        self.scripts = None
 
         # Yummy stuffs
         self.protected_variables = ["server", "acl", "backup", "addon"]
@@ -54,6 +53,11 @@ class ScriptObject():
 
     # Generate script thread and code from .ams files
     def construct(self):
+
+        # First, gather all script files
+        constants.folder_check(self.script_path)
+        self.scripts = [os.path.join(constants.executable_folder, 'baselib.ams')]
+        self.scripts.extend(glob(os.path.join(self.script_path, '*.ams')))
 
         # If script returns None it's valid, else will return error message
         # 1. Iterate over every line and check for valid events, and protect global variables and functions
@@ -74,8 +78,8 @@ class ScriptObject():
                             parse_error['file'] = os.path.basename(script_path)
                             parse_error['code'] = line.rstrip()
                             parse_error['line'] = f'{x}:{line.find(f"{var}")+1}'
-                            parse_error['message'] = f"AssertionError: '{var}' attribute is read-only and cannot be re-assigned"
-                            parse_error['object'] = AssertionError(parse_error['message'].split(": ")[1])
+                            parse_error['message'] = f"(AssertionError) '{var}' attribute is read-only and cannot be re-assigned"
+                            parse_error['object'] = AssertionError(parse_error['message'].split(") ")[1])
                             return parse_error
 
                     # Format valid event tags as functions
@@ -95,8 +99,8 @@ class ScriptObject():
                                 parse_error['file'] = os.path.basename(script_path)
                                 parse_error['code'] = line.rstrip()
                                 parse_error['line'] = f'{x}:10'
-                                parse_error['message'] = f"NameError: '{parsed_event}' event does not exist"
-                                parse_error['object'] = NameError(parse_error['message'].split(": ")[1])
+                                parse_error['message'] = f"(EventError) '{parsed_event}' event does not exist"
+                                parse_error['object'] = NameError(parse_error['message'].split(") ")[1])
                                 return parse_error
 
                     script_text = script_text + f'{line}'
@@ -111,7 +115,7 @@ class ScriptObject():
                 parse_error['file'] = os.path.basename(script_path)
                 parse_error['code'] = e.args[1][-1].strip()
                 parse_error['line'] = f"{line_num}:{e.args[1][2]}"
-                parse_error['message'] = f"{e.__class__.__name__}: {e.args[0]}"
+                parse_error['message'] = f"({e.__class__.__name__}) {e.args[0]}"
                 parse_error['object'] = e
                 return parse_error
 
@@ -199,6 +203,10 @@ class ScriptObject():
                 script_data += "\n "
 
 
+                # Redefine print function to redirect to server console instead of Python console
+                print_func = "def print(*args, sep=' ', end=''):\n    for line in sep.join(str(arg) for arg in args).replace('\\r','').splitlines():\n        server._ams_log(line, 'print')"
+                global_variables = global_variables + "\n" + print_func + "\n"
+
                 # Search through script to find global functions
                 last_index = 0
                 for num in range(0, script_data.count("%def ")):
@@ -231,11 +239,14 @@ class ScriptObject():
                 global_variables += f"\nos.chdir(r'{self.server.server_path}')"
 
                 # Load Imports, and global variables/functions into memory
+                # print(global_variables)
                 self.src_dict[os.path.basename(script_path)]['gbl'] = global_variables
 
+                # Attempt to process imports, global variables, and functions
                 try:
-                    # print(global_variables)
                     exec(global_variables, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
+
+                # Handle global variable exceptions
                 except Exception as e:
                     s = os.path.basename(script_path)
                     ex_type, ex_value, ex_traceback = sys.exc_info()
@@ -278,7 +289,7 @@ class ScriptObject():
                     parse_error['file'] = s
                     parse_error['code'] = original_code.strip()
                     parse_error['line'] = line_num
-                    parse_error['message'] = f"{ex_type.__name__}: {ex_value}"
+                    parse_error['message'] = f"({ex_type.__name__}) {ex_value}"
                     parse_error['object'] = e
 
                     del self.function_dict[s]['values']
@@ -536,12 +547,34 @@ class ScriptObject():
 
             if parse_error:
                 self.log_error(parse_error)
+                return False
+            else:
+                return True
 
 
-        # with ThreadPoolExecutor(max_workers=10) as pool:
-        #     pool.map(process_file, self.scripts)
+        # Process all script files
+        total_count = loaded_count = len(self.scripts) - 1
+
+        if total_count > 0:
+            self.server.amscript_log(f'Compiling amscripts, please wait...', 'info')
+
         for script in self.scripts:
-            process_file(script)
+            success = process_file(script)
+            if not success:
+                loaded_count -= 1
+
+        # Report stats to console
+        if total_count > 0:
+            if loaded_count < total_count:
+                self.server.amscript_log(f'Loaded ({loaded_count}/{total_count}) scripts: check errors above for more info', 'warning')
+
+            elif loaded_count == 0:
+                self.server.amscript_log(f'No scripts were loaded: check errors above for more info', 'error')
+
+            else:
+                self.server.amscript_log(f'Loaded ({loaded_count}/{total_count}) scripts successfully!', 'success')
+
+        return loaded_count, total_count
 
 
     # Deconstruct loaded .ams files
@@ -637,7 +670,7 @@ class ScriptObject():
                                 parse_error['file'] = s
                                 parse_error['code'] = original_code.strip()
                                 parse_error['line'] = line_num
-                                parse_error['message'] = f"{ex_type.__name__}: {ex_value}"
+                                parse_error['message'] = f"({ex_type.__name__}) {ex_value}"
                                 parse_error['object'] = e
                                 self.log_error(parse_error)
 
@@ -650,7 +683,9 @@ class ScriptObject():
 
     # Logs error to console from generated error dict
     def log_error(self, error_dict: dict):
-        print(error_dict)
+        # print(error_dict)
+        self.server.amscript_log(f"Exception in '{error_dict['file']}': {error_dict['message']}", 'error')
+        self.server.amscript_log(f"[Line {error_dict['line']}]  {error_dict['code']}", 'error')
 
 
     # ----------------------- Server Events ------------------------
@@ -724,6 +759,7 @@ class ServerScriptObject():
     def __init__(self, server_obj):
         self._running = True
         self._server_id = ("#" + server_obj._hash)
+        self._ams_log = server_obj.amscript_log
         self._reload_scripts = server_obj.reload_scripts
 
         # Assign functions from main server object

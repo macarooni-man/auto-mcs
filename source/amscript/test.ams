@@ -1,13 +1,3 @@
-# test = 1
-
-
-
-# @server.on_start(delay=0):
-#     x()
-#     y()
-
-
-
 # @player.on_join(user):
 #     server.execute(f'/say Welcome to the server {user.name}!')
 #     print("big penis!")
@@ -20,29 +10,12 @@
 
 
 
-# @player.on_message(user, content):
-#     global test
-#     server.execute(f'/say Hi there, {user.name}!')
-#     test += 1
-#     print(content)
-#     print(test)
-#     print(acl)
-
-
-
-# @server.alias(command='/help', op=False):
-#     server.execute('/say All auto-mcs commands:')
-#     for command in server.aliases:
-#         server.execute(f'/say {command}')
-
-
-
 import os
 import requests
 import glob as gl
 import time
 from datetime import datetime as dt
-# import library
+import library
 
 
 test_var = 0
@@ -59,13 +32,14 @@ test_var = 0
 
 
 def test_func(*args):
-    print(True)
+    library.anti_depression()
+    timeglele=awe22
     return args
 
 
 
 # Permission: anyone, op, server
-@server.alias(command='test', arguments={'lol': True}, permission='op', description='test'):
+@player.on_alias(command='test', arguments={'lol': True}, permission='op', description='test'):
     global test_var
 
     server.execute(f'/say permission test, {arguments}')
@@ -76,32 +50,37 @@ def test_func(*args):
     server.execute(f'/say {test_func(test_var)}')
 
 
-@server.alias(command='test2', arguments={'teehee': False}, permission='op', description='test'):
+@player.on_alias(command='test2', arguments={'teehee': False}, permission='op', description='test'):
     server.execute(f'/say permission test, {arguments}, {permission}')
 
 
 
-@server.alias(command='py', arguments={'command': True}, permission='op', description='lol its python bro'):
+@player.on_alias(command='py', arguments={'command': True}, permission='op', description='lol its python bro'):
     values = {}
     exec(f"exec_return = {arguments['command']}", globals(), values)
     server.execute(f'/say {values["exec_return"]}')
     
 
-
-@server.alias(user, command='permtest', arguments={'arg': True, 'arg2': False}, permission='op', description='Test command'):
+@player.on_alias(user, command='permtest', arguments={'arg': True, 'arg2': False}, permission='op', description='Test command'):
     server.execute(f'/say {user.name} executed {command} with the following arguments: {arguments}')
-
 
 
 @player.on_message(user, msg):
     if "give me" in msg and "diamond" in msg:
         server.execute(f'/give {user.name} diamond')
+        print("test", user.name, sep='\n')
 
 
 @player.on_message(user, msg):
-    if "give me" in msg and "op" in msg:
-        server.execute(f'/ban {user.name}')
-        
+    if msg == 'test':
+        user.log('I will not give you op', color='light_purple', style='obfuscated')
 
-@server.on_loop(1, 'tick'):
-    server.execute(f'/clear @a tnt')
+
+@server.on_loop(1, 'minute'):
+    server.execute(f'/kill @e[type=Item]')
+
+
+@player.on_message(user, msg):
+    if "geometry dash" in msg:
+        server.execute(f"/ban {user.name}")
+    #   test_func()

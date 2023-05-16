@@ -1,0 +1,38 @@
+# '!reloadscripts' command to forcefully close and reload all scripts from in game
+@player.on_alias(player, command='reloadscripts', permission='op'):
+	loaded_count, total_count = server._reload_scripts()
+	
+	# It's getting output to the console anyway
+	if not player.is_server() and total_count > 0:
+
+		if loaded_count < total_count:
+			player.log_warning(f'[auto-mcs] Loaded ({loaded_count}/{total_count}) scripts: check the console for info')
+
+		elif loaded_count == 0:
+			player.log_error('[auto-mcs] No scripts were loaded: check the console for info')
+
+		else:
+			player.log_success(f'[auto-mcs] Loaded ({loaded_count}/{total_count}) scripts successfully!')
+
+	elif total_count == 0:
+		player.log('[auto-mcs] There are no scripts to load')
+
+
+
+# Displays all amscript commands that the player has access to, with an optional search feature
+@player.on_alias(player, command='help', arguments={'cmd': False}, permission='anyone'):
+	if arguments['cmd']:
+		server.execute(f'/say Search for "{arguments["cmd"]}":')
+	else:
+		server.execute('/say All Auto-MCS commands:')
+
+	for cmd in server.aliases.values():
+		if perm_dict[permission] >= perm_dict[cmd['permission']]:
+			if arguments['cmd']:
+				if arguments['cmd'] not in cmd['command']:
+					continue
+
+			if arguments['cmd']:
+				server.execute(f"say {cmd['syntax']}")
+			else:
+				server.execute(f"say {cmd['command']}: {cmd['description']}")
