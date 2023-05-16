@@ -77,14 +77,6 @@ Methods: <br><br>
 
 
 
-### player.is_server()
-
-Returns `True` if the object represents the server console. Useful for [**@player**](#player-events) events that require different functionality based on the player. For example, `/give {player.name}` won't work with the console, nor NBT queries.
-
-<br>
-
-
-
 ### player.log(*message, color, style*)
 
 Sends a private message to the chat of the player with formatting support.
