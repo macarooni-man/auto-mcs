@@ -18,7 +18,7 @@ def mainLoop():
 
     # Instantiate Server Manager
     constants.server_manager = ServerManager()
-    print(constants.server_manager.server_list)
+    print("Current server_list: ", constants.server_manager.server_list)
 
     run_application()
 

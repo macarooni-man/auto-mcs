@@ -1,11 +1,13 @@
-import functools
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from threading import Timer
 from textwrap import indent
 from glob import glob
+from nbt import nbt
 import constants
 import traceback
+import functools
+import json
 import time
 import acl
 import ast
@@ -38,9 +40,10 @@ class ScriptObject():
 
         # Yummy stuffs
         self.protected_variables = ["server", "acl", "backup", "addon"]
-        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_shutdown", "@server.on_loop"]
-        self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@server.on_start", "@server.on_shutdown"]
-        self.valid_imports = ['requests', 'time', 'os', 'requests', 'glob', 'datetime', 'concurrent.futures']
+        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
+        self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@server.on_start", "@server.on_stop"]
+        self.valid_imports = ['time', 'os', 'glob', 'datetime', 'concurrent.futures', 'tkinter', 'json']
+        self.valid_imports.extend(['requests', 'bs4', 'nbt'])
         self.valid_imports.extend([os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.script_path, '*.py'))])
         self.aliases = {}
         self.src_dict = {}
@@ -704,21 +707,21 @@ class ScriptObject():
     def shutdown_event(self, data):
         self.server_script_obj._running = False
         self.call_event('@server.on_stop', (data))
-        print('server.on_shutdown')
+        print('server.on_stop')
         print(data)
 
 
     # ----------------------- Player Events ------------------------
 
     # Fires event when player joins the game
-    # {'user': user, 'ip': ip_addr, 'date': date, 'logged-in': True}
+    # {'user': user, 'uuid': uuid, 'ip': ip_addr, 'date': date, 'logged-in': True}
     def join_event(self, player_obj):
         self.call_event('@player.on_join', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj))
         print('player.on_join')
         print(player_obj)
 
     # Fires when player leaves the game
-    # {'user': user, 'ip': ip_addr, 'date': date, 'logged-in': False}
+    # {'user': user, 'uuid': uuid, 'ip': ip_addr, 'date': date, 'logged-in': False}
     def leave_event(self, player_obj):
         self.call_event('@player.on_leave', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj))
         print('player.on_leave')
@@ -739,7 +742,7 @@ class ScriptObject():
     # {'user': player, 'content': message}
     def alias_event(self, player_obj):
         self.server.acl.reload_list('ops')
-        print([rule.rule for rule in self.server.acl.rules['ops']])
+        # print([rule.rule for rule in self.server.acl.rules['ops']])
         if player_obj['user'] == self.server_id:
             permission = 'server'
         elif self.server.acl.rule_in_acl('ops', player_obj['user']):
@@ -761,17 +764,21 @@ class ServerScriptObject():
         self._server_id = ("#" + server_obj._hash)
         self._ams_log = server_obj.amscript_log
         self._reload_scripts = server_obj.reload_scripts
+        self._update_log = server_obj.update_log
 
         # Assign functions from main server object
         self.execute = server_obj.silent_command
         self.log = server_obj.send_log
         self.aliases = {}
+        self.player_list = server_obj.run_data['player-list']
 
         # Properties
         self.name = server_obj.name
         self.version = server_obj.version
         self.build = server_obj.build
         self.type = server_obj.type
+        self.world = server_obj.world if server_obj.world else 'world'
+        self.server_path = server_obj.server_path
 
         if server_obj.run_data:
             self.network = server_obj.run_data['network']['address']
@@ -788,15 +795,77 @@ class ServerScriptObject():
     def log_success(self, msg):
         self.log(msg, log_type='success')
 
+    # Version check
+    def version_check(self, operand, version):
+        return constants.version_check(self.version, operand, version)
+
 
 # Reconfigured ServerObject to be passed in as 'player' variable to amscript events
 class PlayerScriptObject():
     def __init__(self, server_script_obj: ServerScriptObject, player_name: str):
         self._server = server_script_obj
         self._server_id = server_script_obj._server_id
+        self._execute = server_script_obj.execute
+        self._version_check = server_script_obj.version_check
+        self._world_path = os.path.join(server_script_obj.server_path, server_script_obj.world)
+        player_info = server_script_obj.player_list[player_name]
+
 
         # Properties
         self.name = player_name
+        self.uuid = player_info['uuid']
+        self.ip_address = player_info['ip']
+        self.nbt = None
+        self.position = None
+        self.rotation = None
+        self.motion = None
+        self.health = None
+        self.hunger_level = None
+        self.gamemode = None
+        self.xp_level = None
+        self.inventory = None
+        self.dimension = None
+        self.active_effects = None
+
+        self._get_nbt()
+
+
+    # Grabs latest player NBT data
+    def _get_nbt(self):
+        last_nbt = self.nbt
+
+        # If newer versions, use data get to gather updated data
+        if self._version_check(">", "1.13"):
+            log_data = None
+
+            # Attempt to intercept player's entity data
+            try:
+                log_data = self._execute(f'data get entity {self.name}', log=False, capture=True)
+                nbt_data = log_data.split("following entity data: ")[1].strip()
+                self.nbt = json.loads(re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: f'"{x.group(2)}"' if x.group(2) else x.group(1), nbt_data).replace(";",","))
+
+            # If log doesn't contain entity content, pass it back to the console and revert NBT
+            except IndexError:
+                self._server._update_log(log_data.encode())
+                self.nbt = last_nbt
+
+        # If older, get outdated data from the playerdata file
+        elif self._version_check(">=", "1.8") and self._version_check("<", "1.13"):
+            try:
+                self.nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
+            except OSError:
+                self.nbt = last_nbt
+
+        # Pre 1.8
+        else:
+            try:
+                self.nbt = nbt.NBTFile(os.path.join(self._world_path, 'players', f'{self.name}.dat'), 'rb')
+            except OSError:
+                self.nbt = last_nbt
+
+        # Eventually process this to object data
+        print(self.nbt)
+
 
 
     # Simple boolean check to see if user is the server

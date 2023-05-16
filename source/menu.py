@@ -9465,7 +9465,6 @@ class ConsolePanel(FloatLayout):
                     self.date_label.x = 8
                     self.type_label.x = self.date_label.x + self.section_size - 6
                     self.type_banner.x = self.type_label.x - 7
-                    self.type_label.x += 1.2
 
                     if type_color:
                         self.main_label.color = type_color

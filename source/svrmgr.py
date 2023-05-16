@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
+from subprocess import Popen, PIPE, run
 from kivy.utils import escape_markup
 from datetime import datetime as dt
-from subprocess import Popen, PIPE, run
 from threading import Timer
 from glob import glob
 import ctypes
@@ -285,10 +285,19 @@ class ServerObject():
                     user = message.split("[/", 1)[0].strip()
                     ip = message.split("[/", 1)[1].split("]")[0].strip()
                     main_label = f'{user} logged in from {ip} ' + message.split("]")[1].replace('logged in', '').strip()
+                    try:
+                        for log_item in reversed(self.run_data['log'][-10:]):
+                            if user in log_item['text'][2] and "UUID" in log_item['text'][2]:
+                                uuid = log_item['text'][2].split(f"UUID of player {user} is ")[1]
+                                break
+                    except:
+                        uuid = None
+
 
                     def add_to_list():
                         self.run_data['player-list'][user] = {
                             'user': user,
+                            'uuid': uuid,
                             'ip': ip,
                             'date': message_date_obj,
                             'logged-in': True
@@ -347,6 +356,10 @@ class ServerObject():
                     type_label = "FATAL"
                     type_color = (1, 0.5, 0.65, 1)
                 else:
+                    # Ignore NBT data updates
+                    if " has the following entity data: {" in main_label:
+                        return
+
                     type_label = "INFO"
                     type_color = (0.6, 0.6, 1, 1)
 
@@ -354,8 +367,10 @@ class ServerObject():
                     return (date_label, type_label, main_label, type_color)
 
         for log_line in text.splitlines():
+            if log_line:
+                log_line = format_log(log_line)
             if text and log_line:
-                formatted_line = {'text': format_log(log_line)}
+                formatted_line = {'text': log_line}
                 if formatted_line not in self.run_data['log'] and formatted_line['text']:
                     self.run_data['log'].append(formatted_line)
 
@@ -705,8 +720,18 @@ class ServerObject():
             hook(self.run_data['log'])
 
 
-    def silent_command(self, cmd, log=True):
+    def silent_command(self, cmd, log=True, capture=False):
         self.send_command(cmd, False, log, True)
+
+        # Wait for response and return data as string
+        if capture:
+            if constants.version_check(self.version, '<', '1.7'):
+                lines_iterator = iter(self.run_data['process'].stderr.readline, "")
+            else:
+                lines_iterator = iter(self.run_data['process'].stdout.readline, "")
+
+            for line in lines_iterator:
+                return line.decode()
 
 
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
