@@ -764,7 +764,6 @@ class ServerScriptObject():
         self._server_id = ("#" + server_obj._hash)
         self._ams_log = server_obj.amscript_log
         self._reload_scripts = server_obj.reload_scripts
-        self._update_log = server_obj.update_log
 
         # Assign functions from main server object
         self.execute = server_obj.silent_command
@@ -814,63 +813,77 @@ class PlayerScriptObject():
         # Properties
         self.name = player_name
         self.uuid = player_info['uuid']
-        self.ip_address = player_info['ip']
-        self.nbt = None
+        self.ip_address = player_info['ip'].split(":")[0]
+
+        # If this object is the console
+        self.is_server = (self.name == self._server_id)
+
+        # NBT data
         self.position = None
         self.rotation = None
         self.motion = None
+        self.spawn_position = None
         self.health = None
         self.hunger_level = None
         self.gamemode = None
-        self.xp_level = None
-        self.inventory = None
+        self.xp = None
+        self.hurt_time = None
+        self.death_time = None
+        self.sleeping = None
         self.dimension = None
         self.active_effects = None
+        self.inventory = None
 
-        self._get_nbt()
+        if not self.is_server:
+            self._get_nbt()
 
 
     # Grabs latest player NBT data
     def _get_nbt(self):
-        last_nbt = self.nbt
+        update_nbt = False
+        nbt_version = None
+        new_nbt = None
 
-        # If newer versions, use data get to gather updated data
+        # If newer version, use "/data get" to gather updated playerdata
         if self._version_check(">", "1.13"):
             log_data = None
 
             # Attempt to intercept player's entity data
             try:
-                log_data = self._execute(f'data get entity {self.name}', log=False, capture=True)
+                log_data = self._execute(f'data get entity {self.name}', log=False, capture=f"{self.name} has the following entity data: ")
                 nbt_data = log_data.split("following entity data: ")[1].strip()
-                self.nbt = json.loads(re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: f'"{x.group(2)}"' if x.group(2) else x.group(1), nbt_data).replace(";",","))
+                new_nbt = json.loads(re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: f'"{x.group(2)}"' if x.group(2) else x.group(1), nbt_data).replace(";",","))
 
-            # If log doesn't contain entity content, pass it back to the console and revert NBT
+                nbt_version = "modern"
+                update_nbt = True
+
+            # If log doesn't contain entity content, revert NBT
             except IndexError:
-                self._server._update_log(log_data.encode())
-                self.nbt = last_nbt
+                update_nbt = False
 
-        # If older, get outdated data from the playerdata file
-        elif self._version_check(">=", "1.8") and self._version_check("<", "1.13"):
-            try:
-                self.nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
-            except OSError:
-                self.nbt = last_nbt
-
-        # Pre 1.8
+        # If pre-1.12, get outdated playerdata from the user's .dat file but updated pos
         else:
             try:
-                self.nbt = nbt.NBTFile(os.path.join(self._world_path, 'players', f'{self.name}.dat'), 'rb')
+                log_data = self._execute(f'execute {self.name} ~ ~ ~ tp {self.name} ~ ~ ~', log=False, capture=f"Teleported {self.name} to ")
+                print(log_data)
+
+                if self._version_check(">=", "1.8") and self._version_check("<", "1.13"):
+                    new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
+
+                # Pre-1.8, get outdated playerdata from the user's .dat file
+                else:
+                    new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'players', f'{self.name}.dat'), 'rb')
+
+                nbt_version = "legacy"
+                update_nbt = True
+
             except OSError:
-                self.nbt = last_nbt
+                update_nbt = False
 
         # Eventually process this to object data
-        print(self.nbt)
+        print(new_nbt)
+        #if update_nbt and new_nbt:
 
-
-
-    # Simple boolean check to see if user is the server
-    def is_server(self):
-        return self.name == self._server_id
 
     # Logging functions
     # Version compatible message system for local player object
@@ -881,7 +894,7 @@ class PlayerScriptObject():
         style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
 
         # Use /tellraw if it's supported, else /tell
-        if constants.version_check(str(self._server.version), '>=', '1.7.2') and not self.is_server():
+        if constants.version_check(str(self._server.version), '>=', '1.7.2') and not self.is_server:
             msg = f'/tellraw {self.name} {{"text": "{msg}", "color": "{color}"}}'
             if style != 'normal':
                 msg = msg[:-1] + f', "{style}": "true"}}'
@@ -920,7 +933,7 @@ class PlayerScriptObject():
                 final_code += color_table[color]
 
             # If user is server, send to server instead
-            if self.is_server():
+            if self.is_server:
                 msg = f'{final_code}{("§r " + final_code).join(msg.strip().split(" "))}§r'
                 self._server.log(msg)
             else:
@@ -935,3 +948,46 @@ class PlayerScriptObject():
         self.log(msg, "red", "normal")
     def log_success(self, msg):
         self.log(msg, "green", "normal")
+
+
+
+# --------------------------------------------- General Functions ------------------------------------------------------
+
+# Conversion dict for effect IDs
+effect_data_dict = {
+    1:  'speed',
+    2:  'slowness',
+    3:  'haste',
+    4:  'mining_fatigue',
+    5:  'strength',
+    6:  'instant_health',
+    7:  'instant_damage',
+    8:  'jump_boost',
+    9:  'nausea',
+    10: 'regeneration',
+    11: 'resistance',
+    12: 'fire_resistance',
+    13: 'water_breathing',
+    14: 'invisibility',
+    15: 'blindness',
+    16: 'night_vision',
+    17: 'hunger',
+    18: 'weakness',
+    19: 'poison',
+    20: 'wither',
+    21: 'health_boost',
+    22: 'absorption',
+    23: 'saturation',
+    24: 'glowing',
+    25: 'levitation',
+    26: 'luck',
+    27: 'unluck',
+    28: 'slow_falling',
+    29: 'conduit_power',
+    30: 'dolphins_grace',
+    31: 'bad_omen',
+    32: 'hero_of_the_village',
+    33: 'darkness',
+    34: 'big',
+    35: 'small'
+}

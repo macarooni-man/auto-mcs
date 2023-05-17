@@ -720,7 +720,7 @@ class ServerObject():
             hook(self.run_data['log'])
 
 
-    def silent_command(self, cmd, log=True, capture=False):
+    def silent_command(self, cmd, log=True, capture=None):
         self.send_command(cmd, False, log, True)
 
         # Wait for response and return data as string
@@ -731,8 +731,11 @@ class ServerObject():
                 lines_iterator = iter(self.run_data['process'].stdout.readline, "")
 
             for line in lines_iterator:
-                return line.decode()
-
+                if capture in line.decode('utf-8', errors='ignore'):
+                    return line.decode('utf-8', errors='ignore')
+                else:
+                    self.update_log(line)
+                    return ""
 
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():
