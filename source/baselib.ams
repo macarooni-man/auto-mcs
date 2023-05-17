@@ -3,7 +3,7 @@
 	loaded_count, total_count = server._reload_scripts()
 	
 	# It's getting output to the console anyway
-	if not player.is_server() and total_count > 0:
+	if not player.is_server and total_count > 0:
 
 		if loaded_count < total_count:
 			player.log_warning(f'[auto-mcs] Loaded ({loaded_count}/{total_count}) scripts: check the console for info')
