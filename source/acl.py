@@ -433,7 +433,7 @@ class AclObject():
 
     # Updates ACL information from server log when player joins/leaves
     @staticmethod
-    def process_log(log_object):
+    def _process_log(log_object):
 
         def generate_dict(*args):
 
@@ -467,6 +467,7 @@ class AclObject():
 
         timer = threading.Timer(0, generate_dict)
         timer.start()
+
 
     # Generates rule lists that show up in the ACL manager
     # Sort defaults to A-Z (case-insensitive)

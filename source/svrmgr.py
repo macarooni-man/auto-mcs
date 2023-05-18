@@ -302,7 +302,7 @@ class ServerObject():
                             'date': message_date_obj,
                             'logged-in': True
                         }
-                        self.acl.process_log(self.run_data['player-list'][user])
+                        self.acl._process_log(self.run_data['player-list'][user])
 
                         if self.script_object.enabled:
                             self.script_object.join_event(self.run_data['player-list'][user])
@@ -327,7 +327,7 @@ class ServerObject():
                     def add_to_list():
                         self.run_data['player-list'][user]['date'] = message_date_obj
                         self.run_data['player-list'][user]['logged-in'] = False
-                        self.acl.process_log(self.run_data['player-list'][user])
+                        self.acl._process_log(self.run_data['player-list'][user])
 
                         if self.script_object.enabled:
                             self.script_object.leave_event(self.run_data['player-list'][user])
