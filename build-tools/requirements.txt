@@ -15,6 +15,7 @@ kivy-deps.glew==0.3.1
 kivy-deps.sdl2==0.3.1
 Kivy-Garden==0.1.5
 mcstatus==10.0.1
+munch==3.0.0
 NBT==1.5.1
 pefile==2022.5.30
 Pillow==9.5.0
@@ -29,5 +30,6 @@ pywin32-ctypes==0.2.0
 requests==2.28.1
 requests-toolbelt==0.10.0
 simpleaudio==1.0.4
+six==1.16.0
 soupsieve==2.3.2.post1
 urllib3==1.26.12
