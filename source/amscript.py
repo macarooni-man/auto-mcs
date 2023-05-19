@@ -1066,7 +1066,7 @@ class PlayerScriptObject():
                     pass
 
                 try:
-                    self.dimension = {0: 'overworld', -1: 'nether', 1: 'end'}.get(int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:','')
+                    self.dimension = {0: 'overworld', -1: 'the_nether', 1: 'the_end'}.get(int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:','')
                 except:
                     pass
 
