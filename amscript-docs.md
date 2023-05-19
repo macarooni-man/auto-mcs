@@ -104,7 +104,7 @@ Useful for command feedback with a [**@server.alias**](#serveralias) event
  - `str`, player's current username
 
 #### player.uuid
- - `str`, player's Universally Unique IDentifier (or `None` pre-1.8)
+ - `str`, player's Universally Unique IDentifier *(`None` pre-1.8)*
 
 #### player.ip_address
  - `str`, currently connected IP address
@@ -135,23 +135,51 @@ Useful for command feedback with a [**@server.alias**](#serveralias) event
 
 #### player.health
  - `int`, player's current health
- - Value of *0-20*, but can be higher depending on attributes
+ - Value of `0-20`, but can be higher depending on attributes
 
 #### player.hunger_level
  - `int`, player's current hunger level
- - Value of *0-20*
+ - Value of `0-20`
 
 #### player.gamemode
+ - `str`, player's current gamemode
+ - Value of `'survival'`, `'creative'`, `'adventure'`, or `'spectator'`
+
 #### player.xp
+ - `float`, player's current xp level
+
 #### player.on_fire
+ - `bool`, is `True` if player is on fire
+
 #### player.is_flying
+ - `bool`, is `True` if player is flying
+
 #### player.is_sleeping
+ - `bool`, is `True` if player is sleeping
+
 #### player.hurt_time
+ - `int`, determines if player was hurt recently *(in ticks)*
+ - Any value above `0` yields invincibilty until it reaches `0` again
+
 #### player.death_time
+ - `int`, how long since the player died *(in ticks)*
+
 #### player.dimension
+ - `str`, player's current gamemode
+ - Value of `'overworld'`, `'the_nether'`, or `'the_end'`
+
 #### player.active_effects
+ - `dict` of `EffectObject`, player's current effects
+ - Speed, for example can be accessed with `player.active_effects['speed'].duration`
+
 #### player.inventory
+ - `InventoryObject`, organized list of all items in the player's inventory
+ - Attributes are `player.inventory.selected_item`, `player.inventory.offhand`, `player.inventory.hotbar`, `player.inventory.armor`, `player.inventory.inventory`
+ - Each list is full of `ItemObject`, which can be accessed via lowercase NBT attributes like in game, and with Pythonic logic: `player.inventory.selected_item.tag.display.name` or `if "diamond_sword" in player.inventory`
+
 #### player.persistent
+ - `dict`, persistent variable storage for saving information between server restarts, or script reloads
+ - Assigning or updating a key in the `player.persistent` dictionary will automatically save it, and can be accessed via the same key persistently until it is changed again, or deleted
 
 <br><br>
 
