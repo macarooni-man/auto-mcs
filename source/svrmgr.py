@@ -496,7 +496,7 @@ class ServerObject():
             constants.server_manager.running_servers[self.name] = self
 
 
-            # Add temp file to update last modified time of server directory
+            # Add and delete temp file to update last modified time of server directory
             with open(os.path.join(self.server_path, 'session.mcs'), 'w+') as f:
                 f.write(self.name)
             os.remove(os.path.join(self.server_path, 'session.mcs'))
@@ -548,6 +548,13 @@ class ServerObject():
             self.script_object.deconstruct()
         del self.script_object
         self.script_object = None
+
+
+        # Add and delete temp file to update last modified time of server directory
+        with open(os.path.join(self.server_path, 'session.mcs'), 'w+') as f:
+            f.write(self.name)
+        os.remove(os.path.join(self.server_path, 'session.mcs'))
+
 
         # Delete log from memory (hopefully)
         for item in self.run_data['log']:

@@ -269,7 +269,7 @@ class ScriptObject():
                     for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
                         # print(n, line, event_count, i)
 
-                        if (original_code in line) and (event_count > 0):
+                        if (original_code.strip() in line) and (event_count > 0):
                             line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
                             break
 
@@ -281,7 +281,7 @@ class ScriptObject():
                         for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
                             # print(n, line, event_count, i)
 
-                            if original_code in line:
+                            if original_code.strip() in line:
                                 line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
                                 break
 
@@ -469,7 +469,7 @@ class ScriptObject():
                         req_args_list = list([x for x in self.aliases[k]['arguments'].keys() if self.aliases[k]['arguments'][x]])
                         arguments = {}
 
-                        new_func += f"    {'if' if first else 'elif'} command.strip().split(' ',1)[0].strip() == '{k}':\n"
+                        new_func += f"    {'if' if first else 'elif'} command.strip().split(' ',1)[0].strip() == '{k}': #__{self.server_id}__\n"
                         new_func += f"        if perm_dict[permission] < perm_dict['{self.aliases[k]['permission']}']:\n"
 
                         # Permission thingy
@@ -480,7 +480,7 @@ class ScriptObject():
                         # Syntax thingy
                         new_func += (f"                player.log_error(\"Invalid syntax: {syntax}\")\n" if not hidden else "                pass\n")
                         new_func += f"            else:\n"
-                        new_func += f"                arguments = dict(zip_longest(reversed({argument_list}), reversed(command.split(' ', len({argument_list}))[1:])))\n"
+                        new_func += f"                arguments = dict(zip_longest({argument_list}, command.split(' ', len({argument_list}))[1:]))\n"
                         new_func += f"                command = command.split(' ', 1)[0].strip()\n"
 
                         # Allow 'player' variable to be reassigned if needed
@@ -629,6 +629,7 @@ class ScriptObject():
                                 ex_type, ex_value, ex_traceback = sys.exc_info()
                                 parse_error = {}
 
+
                                 # First, grab relative line number from modified code
                                 tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
                                 line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
@@ -638,12 +639,17 @@ class ScriptObject():
                                     # Locate original code from the source
                                     original_code = self.src_dict[s][event][i].splitlines()[line_num-1]
 
+                                    # If alias, count if statements beforehand instead because it's one function
+                                    if event == "@player.on_alias":
+                                        i = ("\n".join(self.src_dict[s]['@player.on_alias'][i].splitlines()[:line_num]).count(f": #__{self.server_id}__")) - 1
+
                                     # Use the line to find the original line number from the source
                                     event_count = 0
                                     for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                                        # print((original_code.strip(), line), (i+1, event_count))
                                         # print(n, line, event_count, i)
 
-                                        if (original_code in line) and ((i + 1) == event_count):
+                                        if (original_code.strip() in line) and ((i + 1) == event_count):
                                             line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
                                             break
 
@@ -662,7 +668,7 @@ class ScriptObject():
                                     for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
                                         # print(n, line, event_count, i)
 
-                                        if (original_code in line) and (event_count > 0):
+                                        if (original_code.strip() in line) and (event_count > 0):
                                             line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
                                             break
 
@@ -844,7 +850,7 @@ class PlayerScriptObject():
 
         if not self.is_server:
             self._get_nbt()
-            
+
 
     # Grabs latest player NBT data
     def _get_nbt(self):
