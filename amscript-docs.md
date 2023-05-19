@@ -13,7 +13,7 @@ Contains the server's running configuration from the `server.properties`, to the
 
 Accessed via the global variable `server`
 
-Methods: <br><br>
+**Methods**: <br><br>
 
 
 
@@ -23,7 +23,7 @@ Sends a custom log event to the console. This output is displayed only while the
 
 - `server.log_success()`, `server.log_warning()`, and `server.log_error()` methods can also be used, and only require the `message` parameter.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `message*` | `str` of log content |
@@ -37,7 +37,7 @@ Accepted parameters:
 
 Compares server version to `version` with the `comparator`, returns `bool`.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `comparator*` | `str`, can be `'='`, `'<'`, `'<='`, `'>'`, or `'>='` |
@@ -55,7 +55,7 @@ server.get_players # ALSO NEEDS IMPLEMENTATION
 
 Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Only returns the first match.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `selector*` | `str` of username, or a valid Minecraft selector. Only players will be matched |
@@ -72,7 +72,7 @@ Contains current player configuration from their username, UUID, to all their NB
 
 Accessed by an applicable event, or by the `server.get_player()` method
 
-Methods: <br><br>
+**Methods**: <br><br>
 
 
 
@@ -84,15 +84,40 @@ Useful for command feedback with a [**@server.alias**](#serveralias) event
 
 - `player.log_success()`, `player.log_warning()`, and `player.log_error()` methods can also be used, and only require the `message` parameter.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `message*` | `str` of username, or selector. Only players will be matched |
 | `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
 | `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
 
-<br><br>
+<br>
 
+**Attributes**: <br><br>
+
+
+
+#### player.name
+#### player.uuid
+#### player.ip_address
+#### player.is_server
+#### player.position
+#### player.rotation
+#### player.motion
+#### player.spawn_position
+#### player.health
+#### player.hunger_level
+#### player.gamemode
+#### player.xp
+#### player.on_fire
+#### player.is_flying
+#### player.is_sleeping
+#### player.hurt_time
+#### player.death_time
+#### player.dimension
+#### player.active_effects
+#### player.inventory
+#### player.persistent
 
 
 
@@ -110,7 +135,7 @@ Accepted parameters:
 
 Fired upon process execution by Auto-MCS, not when a player can connect.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `data*` | `dict` of startup data, currently `{'date': datetime}` |
@@ -129,7 +154,7 @@ Accepted parameters:
 
 Fired upon process termination by Auto-MCS, not when `/stop` or a crash is logged.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `data*` | `dict` of shutdown data, currently `{'date': datetime, 'crash': str}` |
@@ -148,7 +173,7 @@ Accepted parameters:
 
 Fired after every `interval`. Loops until the server is closed, or manually cancelled with `return`.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `interval` | `int`, defaults to `1` |
@@ -170,7 +195,7 @@ Accepted parameters:
 
 Fired upon player successfully connecting to the server.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
@@ -190,7 +215,7 @@ Accepted parameters:
 
 Fired upon player disconnecting from the server.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
@@ -210,7 +235,7 @@ Accepted parameters:
 
 Fired upon player sending a message in the chat, excluding commands.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
@@ -233,7 +258,7 @@ Used for registering custom commands and augmenting existing ones.
 
 > Note: Commands will start with `!` therefore making them visible when executed by a player from the in-game chat, though the feedback is hidden when using the `server.log()` and `player.log()` methods. They are completely hidden if executed from the server console.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
