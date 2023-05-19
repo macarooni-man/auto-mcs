@@ -496,6 +496,12 @@ class ServerObject():
             constants.server_manager.running_servers[self.name] = self
 
 
+            # Add temp file to update last modified time of server directory
+            with open(os.path.join(self.server_path, 'session.mcs'), 'w+') as f:
+                f.write(self.name)
+            os.remove(os.path.join(self.server_path, 'session.mcs'))
+
+
             # Initialize ScriptObject
             self.script_object = amscript.ScriptObject(self)
 
@@ -503,6 +509,7 @@ class ServerObject():
             if self.script_object.enabled:
                 self.script_object.construct()
                 self.script_object.start_event({'date': dt.now()})
+
 
             # If start-cmd.tmp exists, run every command in file
             cmd_tmp = constants.server_path(self.name, constants.command_tmp)

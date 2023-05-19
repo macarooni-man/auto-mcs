@@ -1,7 +1,9 @@
-from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime as dt
 from functools import partial
 from threading import Timer
 from textwrap import indent
+from copy import deepcopy
+from munch import Munch
 from glob import glob
 from nbt import nbt
 import constants
@@ -9,7 +11,6 @@ import traceback
 import functools
 import json
 import time
-import acl
 import ast
 import sys
 import os
@@ -824,70 +825,262 @@ class PlayerScriptObject():
         self.name = player_name
 
         # NBT data
-        self.position = None
-        self.rotation = None
-        self.motion = None
-        self.spawn_position = None
-        self.health = None
-        self.hunger_level = None
-        self.gamemode = None
-        self.xp = None
-        self.hurt_time = None
-        self.death_time = None
-        self.sleeping = None
-        self.dimension = None
-        self.active_effects = None
-        self.inventory = None
+        self.position = CoordinateObject({'x': None, 'y': None, 'z': None})
+        self.rotation = CoordinateObject({'x': None, 'y': None})
+        self.motion = CoordinateObject({'x': None, 'y': None, 'z': None})
+        self.spawn_position = CoordinateObject({'x': None, 'y': None, 'z': None})
+        self.health = 0
+        self.hunger_level = 0
+        self.gamemode = "None"
+        self.xp = 0
+        self.on_fire = False
+        self.is_flying = False
+        self.is_sleeping = False
+        self.hurt_time = 0
+        self.death_time = 0
+        self.dimension = "None"
+        self.active_effects = {}
+        self.inventory = InventoryObject(None, None)
 
         if not self.is_server:
             self._get_nbt()
-
+            
 
     # Grabs latest player NBT data
     def _get_nbt(self):
-        update_nbt = False
-        nbt_version = None
+        log_data = None
         new_nbt = None
 
         # If newer version, use "/data get" to gather updated playerdata
         if self._version_check(">", "1.13"):
-            log_data = None
+
+            # Gives strings quotes that don't have any, and formats numbers
+            def json_regex(match):
+                if match.group(2):
+                    # print(match.group(2), re.match(r'^-?\d+.?\d*(f|L|b|d)?$', match.group(2)))
+
+                    if re.match(r'^-?\d+.?\d*(f|L|b|d)?$', match.group(2)):
+                        if "." in match.group(2):
+                            final_str = str(round(float(re.sub(r'[^0-9.-]', '', match.group(2))), 4))
+                        else:
+                            final_str = re.sub(r'[^0-9-]', '', match.group(2))
+                    else:
+                        final_str = f'"{match.group(2).lower()}"'
+
+                else:
+                    final_str = match.group(1).replace('minecraft:', '')
+
+                return final_str
+
 
             # Attempt to intercept player's entity data
             try:
                 log_data = self._execute(f'data get entity {self.name}', log=False, capture=f"{self.name} has the following entity data: ")
                 nbt_data = log_data.split("following entity data: ")[1].strip()
-                new_nbt = json.loads(re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: f'"{x.group(2)}"' if x.group(2) else x.group(1), nbt_data).replace(";",","))
+                # print(log_data)
 
-                nbt_version = "modern"
-                update_nbt = True
+                # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
+                new_nbt = re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: json_regex(x), nbt_data).replace(";",",").replace("'{", '"{').replace("}'", '}"')
+                new_nbt = json.loads(re.sub(r'(?<="{)(.*)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
 
             # If log doesn't contain entity content, revert NBT
             except IndexError:
-                update_nbt = False
+                pass
+
+            # Process NBT if there's no error
+            else:
+                try:
+                    self.position = CoordinateObject({'x': new_nbt['pos'][0], 'y': new_nbt['pos'][1], 'z': new_nbt['pos'][2]})
+                except:
+                    pass
+
+                try:
+                    self.rotation = CoordinateObject({'x': new_nbt['rotation'][0], 'y': new_nbt['rotation'][1]})
+                except:
+                    pass
+
+                try:
+                    self.motion = CoordinateObject({'x': new_nbt['motion'][0], 'y': new_nbt['motion'][1], 'z': new_nbt['motion'][2]})
+                except:
+                    pass
+
+                try:
+                    self.spawn_position = CoordinateObject({'x': new_nbt['spawnx'], 'y': new_nbt['spawny'], 'z': new_nbt['spawnz']})
+                except:
+                    pass
+
+                try:
+                    self.health = int(new_nbt['health'])
+                except:
+                    pass
+
+                try:
+                    self.hunger_level = int(new_nbt['foodlevel'])
+                except:
+                    pass
+
+                try:
+                    self.gamemode = ['survival', 'creative', 'adventure', 'spectator'][int(new_nbt['playergametype'])]
+                except:
+                    pass
+
+                try:
+                    self.xp = round(float(new_nbt['xplevel']) + float(new_nbt['xpp']), 3)
+                except:
+                    pass
+
+                try:
+                    self.on_fire = (int(new_nbt['fire']) > 0)
+                except:
+                    pass
+
+                try:
+                    self.is_flying = (int(new_nbt['abilities']['flying']) == 1)
+                except:
+                    pass
+
+                try:
+                    self.is_sleeping = (int(new_nbt['sleeptimer']) > 0)
+                except:
+                    pass
+
+                try:
+                    self.hurt_time = int(new_nbt['hurttime'])
+                except:
+                    pass
+
+                try:
+                    self.death_time = int(new_nbt['deathtime'])
+                except:
+                    pass
+
+                try:
+                    self.dimension = str(new_nbt['dimension']).replace('minecraft:','')
+                except:
+                    pass
+
+                try:
+                    self.active_effects = {id_dict['effect'].get(item['id'], item['id']).replace('minecraft:',''): EffectObject(item) for item in new_nbt['activeeffects']}
+                except:
+                    pass
+
+                try:
+                    try:
+                        selected_item = (new_nbt['selecteditem'], int(new_nbt['selecteditemslot']))
+                    except KeyError:
+                        selected_item = None
+                    self.inventory = InventoryObject(new_nbt['inventory'], selected_item)
+                except:
+                    pass
+
 
         # If pre-1.12, get outdated playerdata from the user's .dat file but updated pos
         else:
             try:
-                log_data = self._execute(f'execute {self.name} ~ ~ ~ tp {self.name} ~ ~ ~', log=False, capture=f"Teleported {self.name} to ")
-                print(log_data)
-
                 if self._version_check(">=", "1.8") and self._version_check("<", "1.13"):
+                    log_data = self._execute(f'execute {self.name} ~ ~ ~ tp {self.name} ~ ~ ~', log=False, capture=f"Teleported {self.name} to ")
                     new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
 
                 # Pre-1.8, get outdated playerdata from the user's .dat file
                 else:
                     new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'players', f'{self.name}.dat'), 'rb')
 
-                nbt_version = "legacy"
-                update_nbt = True
-
             except OSError:
-                update_nbt = False
+                pass
+
+            # Process NBT if there's no error
+            else:
+                try:
+                    if log_data:
+                        coords = [round(float(pos.strip()), 4) for pos in log_data.split(f"Teleported {self.name} to ")[1].split(",")]
+                        self.position = CoordinateObject({'x': coords[0], 'y': coords[1], 'z': coords[2]})
+                    else:
+                        self.position = CoordinateObject({'x': fmt(new_nbt['Pos'][0]), 'y': fmt(new_nbt['Pos'][1]), 'z': fmt(new_nbt['Pos'][2])})
+                except:
+                    pass
+
+                try:
+                    self.rotation = CoordinateObject({'x': fmt(new_nbt['Rotation'][0]), 'y': fmt(new_nbt['Rotation'][1])})
+                except:
+                    pass
+
+                try:
+                    self.motion = CoordinateObject({'x': fmt(new_nbt['Motion'][0]), 'y': fmt(new_nbt['Motion'][1]), 'z': fmt(new_nbt['Motion'][2])})
+                except:
+                    pass
+
+                try:
+                    self.spawn_position = CoordinateObject({'x': fmt(new_nbt['SpawnX']), 'y': fmt(new_nbt['SpawnY']), 'z': fmt(new_nbt['SpawnZ'])})
+                except:
+                    pass
+
+                try:
+                    self.health = int(new_nbt['Health'].value)
+                except:
+                    pass
+
+                try:
+                    self.hunger_level = int(new_nbt['foodLevel'].value)
+                except:
+                    pass
+
+                try:
+                    self.gamemode = ['survival', 'creative', 'adventure', 'spectator'][int(new_nbt['playerGameType'].value)]
+                except:
+                    pass
+
+                try:
+                    self.xp = round(float(new_nbt['XpLevel'].value) + float(new_nbt['XpP'].value), 3)
+                except:
+                    pass
+
+                try:
+                    self.hurt_time = int(new_nbt['HurtTime'].value)
+                except:
+                    pass
+
+                try:
+                    self.death_time = int(new_nbt['DeathTime'].value)
+                except:
+                    pass
+
+                try:
+                    self.on_fire = (int(new_nbt['Fire'].value) > 0)
+                except:
+                    pass
+
+                try:
+                    self.is_flying = (int(new_nbt['abilities']['flying'].value) == 1)
+                except:
+                    pass
+
+                try:
+                    self.is_sleeping = (int(new_nbt['Sleeping'].value) == 1)
+                except:
+                    pass
+
+                try:
+                    self.dimension = {0: 'overworld', -1: 'nether', 1: 'end'}.get(int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:','')
+                except:
+                    pass
+
+                try:
+                    self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:',''): EffectObject({'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)}) for item in new_nbt['ActiveEffects'].tags}
+                except:
+                    pass
+
+                try:
+                    try:
+                        selected_item = (new_nbt['SelectedItem'], int(new_nbt['SelectedItemSlot'].value))
+                    except KeyError:
+                        selected_item = None
+                    self.inventory = InventoryObject(new_nbt['Inventory'], selected_item)
+                except:
+                    pass
+
 
         # Eventually process this to object data
-        print(new_nbt)
-        #if update_nbt and new_nbt:
+        # print(new_nbt)
 
 
     # Logging functions
@@ -1497,3 +1690,210 @@ id_dict = {
         2267: 'minecraft:record_wait'
     }
 }
+
+# Gets and formats value for old NBT values
+def fmt(obj):
+    return round(float(obj.value), 4)
+
+# Inventory classes for PlayerScriptObject
+class ItemObject(Munch):
+    pass
+
+class EffectObject(Munch):
+    pass
+
+class CoordinateObject(Munch):
+    pass
+
+class InventoryObject():
+
+    def __init__(self, item_list, selected_item):
+
+        self._item_list = []
+
+        self.selected_item = ItemObject({})
+        self.offhand = ItemObject({})
+        self.hotbar = ItemObject({x: ItemObject({}) for x in range(0, 9)})
+        self.inventory = ItemObject({x: ItemObject({}) for x in range(0, 27)})
+        self.armor = ItemObject({'head': ItemObject({}), 'chest': ItemObject({}), 'legs': ItemObject({}), 'feet': ItemObject({})})
+
+        if item_list:
+            self._process_items(item_list, selected_item)
+
+    def __iter__(self):
+        for item in self._item_list:
+            yield item
+
+    def _process_items(self, i, s):
+
+        # Old items, parsing from playerdata
+        if i.__class__.__name__ == "TAG_List":
+
+            # Converts block/item/enchantment IDs to names
+            def proc_nbt(item):
+
+                # Add all root tags to formatted
+                formatted = {}
+                for x in item:
+
+                    # Add all tag attributes to root.tag
+                    if item[x].name == 'tag':
+                        formatted[item[x].name] = {}
+                        for tag in item[x]:
+                            value = item[x][tag].value
+                            formatted[item[x].name.lower()][item[x][tag].name.lower() if item[x][tag].name != "ench" else "enchantments"] = value if value else {}
+
+                            # Format all enchantments
+                            if item[x][tag].name.lower() in ["ench", "storedenchantments"]:
+                                for e in item[x][tag]:
+                                    formatted[item[x].name.lower()]['enchantments'][id_dict['enchant'].get(e['id'].value, e['id'].value)] = {'id': e['id'].value, 'lvl': e['lvl'].value}
+
+                            # Format all display items
+                            elif item[x][tag].name.lower() == "display":
+                                for d in item[x][tag]:
+                                    if d == "Lore":
+                                        value = '\n'.join([line.value for line in item[x][tag][d]])
+                                    else:
+                                        value = item[x][tag][d].value
+
+                                        if d == "Name":
+                                            # Add to item list for __iter__ function
+                                            if value not in self._item_list:
+                                                self._item_list.append(value)
+
+                                    formatted[item[x].name.lower()][item[x][tag].name][item[x][tag][d].name.lower()] = value
+
+                            # Attributes
+                            elif item[x][tag].name.lower() == "attributemodifiers":
+                                formatted[item[x].name.lower()]['attributemodifiers'] = []
+                                for y in item[x][tag].tags:
+                                    attr_dict = {y[a].name.lower(): y[a].value for a in y}
+                                    formatted[item[x].name.lower()]['attributemodifiers'].append(attr_dict)
+
+                            # Format all book pages
+                            elif item[x][tag].name.lower() == "pages":
+                                formatted[item[x].name.lower()]['pages'] = [y for y in item[x][tag].tags]
+
+
+                    elif item[x].name == 'id':
+                        try:
+                            value = item[x].value.replace('minecraft:','')
+                        except AttributeError:
+                            value = id_dict['items'][item[x].value].replace('minecraft:','')
+
+                        # Add to item list for __iter__ function
+                        if value not in self._item_list:
+                            self._item_list.append(value)
+
+                        formatted[item[x].name.lower()] = value
+
+
+                    elif item[x].name != 'Slot':
+                        formatted[item[x].name.lower()] = item[x].value
+
+
+                return ItemObject(formatted)
+
+            # Iterates over every item in inventory
+            def sort_item(item):
+                slot = fmt(item['Slot'])
+
+                # Hotbar
+                if slot in range(0, 9):
+                    self.hotbar[slot] = proc_nbt(item)
+
+                # Offhand
+                elif slot == -106:
+                    self.offhand = proc_nbt(item)
+
+                # Feet
+                elif slot == 100:
+                    self.armor.feet = proc_nbt(item)
+
+                # Legs
+                elif slot == 101:
+                    self.armor.legs = proc_nbt(item)
+
+                # Chest
+                elif slot == 102:
+                    self.armor.chest = proc_nbt(item)
+
+                # Head
+                elif slot == 103:
+                    self.armor.head = proc_nbt(item)
+
+                # Inventory
+                else:
+                    self.inventory[slot-9] = proc_nbt(item)
+
+            for item in i.tags:
+                sort_item(item)
+
+            if s:
+                self.selected_item = proc_nbt(s[0])
+                self.selected_item['slot'] = s[1]
+
+        # /data get formatting
+        else:
+
+            # Converts block/item/enchantment IDs to names
+            def proc_nbt(item):
+                new_item = deepcopy(item)
+
+                # Delete slot attribute, because it already exists in parent
+                try:
+                    del new_item['slot']
+                except KeyError:
+                    pass
+
+                # Add ID's and names to persistent cache
+                if new_item['id'] not in self._item_list:
+                    self._item_list.append(new_item['id'])
+
+                try:
+                    custom_name = ''.join([name for name in re.findall(r'"text":\s*?"([^"]*)"', new_item['tag']['display']['name'])])
+                    if custom_name not in self._item_list:
+                        self._item_list.append(custom_name)
+                except KeyError:
+                    pass
+
+                return ItemObject(new_item)
+
+            # Iterates over every item in inventory
+            def sort_item(item):
+                slot = int(item['slot'])
+
+                # Hotbar
+                if slot in range(0, 9):
+                    self.hotbar[slot] = proc_nbt(item)
+
+                # Offhand
+                elif slot == -106:
+                    self.offhand = proc_nbt(item)
+
+                # Feet
+                elif slot == 100:
+                    self.armor.feet = proc_nbt(item)
+
+                # Legs
+                elif slot == 101:
+                    self.armor.legs = proc_nbt(item)
+
+                # Chest
+                elif slot == 102:
+                    self.armor.chest = proc_nbt(item)
+
+                # Head
+                elif slot == 103:
+                    self.armor.head = proc_nbt(item)
+
+                # Inventory
+                else:
+                    self.inventory[slot-9] = proc_nbt(item)
+
+            for item in i:
+                sort_item(item)
+
+            if s:
+                self.selected_item = proc_nbt(s[0])
+                self.selected_item['slot'] = s[1]
