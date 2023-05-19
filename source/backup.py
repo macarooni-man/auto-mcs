@@ -58,7 +58,15 @@ class BackupObject():
 
 # Converts os.mtime to readable format
 def convert_date(m_time: int or float):
-    return dt.fromtimestamp(float(m_time)).strftime("%a %#I:%M %p %#m/%#d/%Y")
+    dt_obj = dt.fromtimestamp(float(m_time))
+    days = (dt.now().date() - dt_obj.date()).days
+    if days == 0:
+        fmt = "Today %#I:%M %p"
+    elif days == 1:
+        fmt = "Yesterday %#I:%M %p"
+    else:
+        fmt = "%a %#I:%M %p %#m/%#d/%Y"
+    return dt_obj.strftime(fmt)
 
 
 # Convert string to date
