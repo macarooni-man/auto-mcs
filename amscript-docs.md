@@ -93,20 +93,54 @@ Useful for command feedback with a [**@server.alias**](#serveralias) event
 
 <br>
 
-**Attributes**: <br><br>
 
+
+**Attributes**:
+
+> Note: Versions prior to 1.13 load NBT from playerdata.dat, which is only updated every couple of minutes or so. Any version between 1.8-1.13, though, will have updated position data. 1.13 and later retrieves *all* of the most recent NBT data.
 
 
 #### player.name
+ - `str`, player's current username
+
 #### player.uuid
+ - `str`, player's Universally Unique IDentifier (or `None` pre-1.8)
+
 #### player.ip_address
+ - `str`, currently connected IP address
+
 #### player.is_server
+ - `bool`, if current object was created from the console
+ - This will be `True` if the console sends a command to a [**@player.on_alias**](#playeron_alias) event, for example
+
 #### player.position
+ - `CoordinateObject`, player's current position in X, Y, and Z coordinates
+ - When assigned to a variable or persistence, it will stay a `CoordinateObject`
+ - Can be referenced in a string (such as a command) with `player.position` or `player.position.x`, `player.position.y`, and `player.position.z`
+
 #### player.rotation
+ - `CoordinateObject`, player's current rotation in X, and Y values
+ - When assigned to a variable or persistence, it will stay a `CoordinateObject`
+ - Can be referenced in a string (such as a command) with `player.rotation` or `player.rotation.x` and `player.rotation.y`
+
 #### player.motion
+ - `CoordinateObject`, player's current motion in X, Y, and Z values
+ - When assigned to a variable or persistence, it will stay a `CoordinateObject`
+ - Can be referenced in a string (such as a command) with `player.motion` or `player.motion.x`, `player.motion.y`, and `player.motion.z`
+
 #### player.spawn_position
+ - `CoordinateObject`, player's spawn position in X, Y, and Z coordinates
+ - When assigned to a variable or persistence, it will stay a `CoordinateObject`
+ - Can be referenced in a string (such as a command) with `player.spawn_position` or `player.spawn_position.x`, `player.spawn_position.y`, and `player.spawn_position.z`
+
 #### player.health
+ - `int`, player's current health
+ - Value of *0-20*, but can be higher depending on attributes
+
 #### player.hunger_level
+ - `int`, player's current hunger level
+ - Value of *0-20*
+
 #### player.gamemode
 #### player.xp
 #### player.on_fire
@@ -118,6 +152,8 @@ Useful for command feedback with a [**@server.alias**](#serveralias) event
 #### player.active_effects
 #### player.inventory
 #### player.persistent
+
+<br><br>
 
 
 
