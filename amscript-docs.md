@@ -96,6 +96,7 @@ Useful for command feedback with a [**@server.alias**](#serveralias) event
 
 
 **Attributes**:
+> Note: All attributes are read-only, and thus will not change playerdata when modified
 
 > Note: Versions prior to 1.13 load NBT from playerdata.dat, which is only updated every couple of minutes or so. Any version between 1.8-1.13, though, will have updated position data. 1.13 and later retrieves *all* of the most recent NBT data.
 
