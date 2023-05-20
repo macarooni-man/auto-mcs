@@ -851,6 +851,9 @@ class PlayerScriptObject():
         if not self.is_server:
             self._get_nbt()
 
+    # If self is printed, show string of username instead
+    def __str__(self):
+        return self.name
 
     # Grabs latest player NBT data
     def _get_nbt(self):
@@ -966,7 +969,7 @@ class PlayerScriptObject():
                     pass
 
                 try:
-                    self.active_effects = {id_dict['effect'].get(item['id'], item['id']).replace('minecraft:',''): EffectObject(item) for item in new_nbt['activeeffects']}
+                    self.active_effects = {id_dict['effect'].get(item['id'], item['id']).replace('minecraft:',''): EffectObject(item, name=id_dict['effect'].get(item['id'], item['id']).replace('minecraft:','')) for item in new_nbt['activeeffects']}
                 except:
                     pass
 
@@ -1066,12 +1069,12 @@ class PlayerScriptObject():
                     pass
 
                 try:
-                    self.dimension = {0: 'overworld', -1: 'nether', 1: 'end'}.get(int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:','')
+                    self.dimension = {0: 'overworld', -1: 'the_nether', 1: 'the_end'}.get(int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:','')
                 except:
                     pass
 
                 try:
-                    self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:',''): EffectObject({'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)}) for item in new_nbt['ActiveEffects'].tags}
+                    self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:',''): EffectObject({'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)}, name=id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:','')) for item in new_nbt['ActiveEffects'].tags}
                 except:
                     pass
 
@@ -1703,13 +1706,20 @@ def fmt(obj):
 
 # Inventory classes for PlayerScriptObject
 class ItemObject(Munch):
-    pass
+    def __str__(self):
+        return str(self['id'])
 
 class EffectObject(Munch):
-    pass
+    def __init__(self, name, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.effect_name = name
+
+    def __str__(self):
+        return str(self.effect_name)
 
 class CoordinateObject(Munch):
-    pass
+    def __str__(self):
+        return " ".join([str(i) for i in self.values()])
 
 class InventoryObject():
 
