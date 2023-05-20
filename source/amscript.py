@@ -458,8 +458,9 @@ class ScriptObject():
                 if alias_functions:
                     first = True
 
-                    new_func = "def __on_alias__(player, command, permission='anyone'):\n"
-                    new_func += "    perm_dict = {'anyone': 0, 'op': 1, 'server': 2}\n\n"
+                    func_header = "def __on_alias__(player, command, permission='anyone'):\n"
+                    func_header += "    perm_dict = {'anyone': 0, 'op': 1, 'server': 2}\n\n"
+                    new_func = ""
 
                     for k, v in alias_functions.items():
 
@@ -486,12 +487,25 @@ class ScriptObject():
                         # Allow 'player' variable to be reassigned if needed
                         if self.aliases[k]['player'] != 'player':
                             new_func += f"                {self.aliases[k]['player']} = player\n"
+
+                        # Iterate over function to pull out global calls, and put them at the top
+                        actual_code = ''
+                        for line in v.split("\n", 1)[1].splitlines():
+                            if line.strip().startswith("global"):
+                                if line.strip() not in func_header:
+                                    func_header += ("    " + line.strip() + "\n")
+                            else:
+                                actual_code += (line + "\n")
+                        func_header += "\n"
+
                         new_func += "\n"
-                        new_func += indent(v.split("\n", 1)[1], "            ")
+                        new_func += indent(actual_code, "            ")
                         new_func += "\n\n"
                         first = False
 
-                    # print(new_func)
+                    new_func = func_header + new_func
+
+                    print(new_func)
                     exec(new_func, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
                     self.function_dict[os.path.basename(script_path)]['@player.on_alias'].append(self.function_dict[os.path.basename(script_path)]['values']['__on_alias__'])
                     self.src_dict[os.path.basename(script_path)]['@player.on_alias'].append(new_func.strip())
@@ -628,7 +642,8 @@ class ScriptObject():
                             except Exception as e:
                                 ex_type, ex_value, ex_traceback = sys.exc_info()
                                 parse_error = {}
-
+                                original_code = ""
+                                nested_func = False
 
                                 # First, grab relative line number from modified code
                                 tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
@@ -637,11 +652,12 @@ class ScriptObject():
                                 # Try to locate event first
                                 try:
                                     # Locate original code from the source
-                                    original_code = self.src_dict[s][event][i].splitlines()[line_num-1]
+                                    original_code = self.src_dict[s][event][i].splitlines()[line_num - 1]
+                                    new_i = i
 
                                     # If alias, count if statements beforehand instead because it's one function
                                     if event == "@player.on_alias":
-                                        i = ("\n".join(self.src_dict[s]['@player.on_alias'][i].splitlines()[:line_num]).count(f": #__{self.server_id}__")) - 1
+                                        new_i = ("\n".join(self.src_dict[s]['@player.on_alias'][i].splitlines()[:line_num]).count(f": #__{self.server_id}__")) - 1
 
                                     # Use the line to find the original line number from the source
                                     event_count = 0
@@ -649,15 +665,21 @@ class ScriptObject():
                                         # print((original_code.strip(), line), (i+1, event_count))
                                         # print(n, line, event_count, i)
 
-                                        if (original_code.strip() in line) and ((i + 1) == event_count):
+                                        if (original_code.strip() in line) and ((new_i + 1) == event_count):
                                             line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
                                             break
 
                                         if line.startswith(event):
                                             event_count += 1
+                                    else:
+                                        nested_func = True
 
                                 # When error is not in an event, but in a nested function or library
                                 except IndexError:
+                                    nested_func = True
+
+
+                                if nested_func:
 
                                     # Locate original code from source
                                     original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
@@ -789,7 +811,6 @@ class ServerScriptObject():
         if server_obj.run_data:
             self.network = server_obj.run_data['network']['address']
 
-
     def __del__(self):
         self._running = False
 
@@ -804,6 +825,10 @@ class ServerScriptObject():
     # Version check
     def version_check(self, operand, version):
         return constants.version_check(self.version, operand, version)
+
+    # Returns PlayerScriptObject that matches selector
+    def get_player(self, username):
+        return PlayerScriptObject(self, username)
 
 
 # Reconfigured ServerObject to be passed in as 'player' variable to amscript events
@@ -890,7 +915,7 @@ class PlayerScriptObject():
 
                 # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
                 new_nbt = re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: json_regex(x), nbt_data).replace(";",",").replace("'{", '"{').replace("}'", '}"')
-                new_nbt = json.loads(re.sub(r'(?<="{)(.*)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
+                new_nbt = json.loads(re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
 
             # If log doesn't contain entity content, revert NBT
             except IndexError:
