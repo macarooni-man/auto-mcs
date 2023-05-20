@@ -13,7 +13,7 @@ Contains the server's running configuration from the `server.properties`, to the
 
 Accessed via the global variable `server`
 
-Methods: <br><br>
+**Methods**: <br><br>
 
 
 
@@ -23,7 +23,7 @@ Sends a custom log event to the console. This output is displayed only while the
 
 - `server.log_success()`, `server.log_warning()`, and `server.log_error()` methods can also be used, and only require the `message` parameter.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `message*` | `str` of log content |
@@ -37,7 +37,7 @@ Accepted parameters:
 
 Compares server version to `version` with the `comparator`, returns `bool`.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `comparator*` | `str`, can be `'='`, `'<'`, `'<='`, `'>'`, or `'>='` |
@@ -55,7 +55,7 @@ server.get_players # ALSO NEEDS IMPLEMENTATION
 
 Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Only returns the first match.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `selector*` | `str` of username, or a valid Minecraft selector. Only players will be matched |
@@ -72,7 +72,7 @@ Contains current player configuration from their username, UUID, to all their NB
 
 Accessed by an applicable event, or by the `server.get_player()` method
 
-Methods: <br><br>
+**Methods**: <br><br>
 
 
 
@@ -84,15 +84,104 @@ Useful for command feedback with a [**@server.alias**](#serveralias) event
 
 - `player.log_success()`, `player.log_warning()`, and `player.log_error()` methods can also be used, and only require the `message` parameter.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `message*` | `str` of username, or selector. Only players will be matched |
 | `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
 | `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
 
-<br><br>
+<br>
 
+
+
+**Attributes**:
+
+> Note: Versions prior to 1.13 load NBT from playerdata.dat, which is only updated every couple of minutes or so. Any version between 1.8-1.13, though, will have updated position data. 1.13 and later retrieves *all* of the most recent NBT data.
+
+
+#### player.name
+ - `str`, player's current username
+
+#### player.uuid
+ - `str`, player's Universally Unique IDentifier *(`None` pre-1.8)*
+
+#### player.ip_address
+ - `str`, currently connected IP address
+
+#### player.is_server
+ - `bool`, if current object was created from the console
+ - This will be `True` if the console sends a command to a [**@player.on_alias**](#playeron_alias) event, for example
+
+#### player.position
+ - `CoordinateObject`, player's current position in X, Y, and Z coordinates
+ - When assigned to a variable or persistence, it will stay a `CoordinateObject`
+ - Can be referenced in a string (such as a command) with `player.position` or `player.position.x`, `player.position.y`, and `player.position.z`
+
+#### player.rotation
+ - `CoordinateObject`, player's current rotation in X, and Y values
+ - When assigned to a variable or persistence, it will stay a `CoordinateObject`
+ - Can be referenced in a string (such as a command) with `player.rotation` or `player.rotation.x` and `player.rotation.y`
+
+#### player.motion
+ - `CoordinateObject`, player's current motion in X, Y, and Z values
+ - When assigned to a variable or persistence, it will stay a `CoordinateObject`
+ - Can be referenced in a string (such as a command) with `player.motion` or `player.motion.x`, `player.motion.y`, and `player.motion.z`
+
+#### player.spawn_position
+ - `CoordinateObject`, player's spawn position in X, Y, and Z coordinates
+ - When assigned to a variable or persistence, it will stay a `CoordinateObject`
+ - Can be referenced in a string (such as a command) with `player.spawn_position` or `player.spawn_position.x`, `player.spawn_position.y`, and `player.spawn_position.z`
+
+#### player.health
+ - `int`, player's current health
+ - Value of `0-20`, but can be higher depending on attributes
+
+#### player.hunger_level
+ - `int`, player's current hunger level
+ - Value of `0-20`
+
+#### player.gamemode
+ - `str`, player's current gamemode
+ - Value of `'survival'`, `'creative'`, `'adventure'`, or `'spectator'`
+
+#### player.xp
+ - `float`, player's current xp level
+
+#### player.on_fire
+ - `bool`, is `True` if player is on fire
+
+#### player.is_flying
+ - `bool`, is `True` if player is flying
+
+#### player.is_sleeping
+ - `bool`, is `True` if player is sleeping
+
+#### player.hurt_time
+ - `int`, determines if player was hurt recently *(in ticks)*
+ - Any value above `0` yields invincibilty until it reaches `0` again
+
+#### player.death_time
+ - `int`, how long since the player died *(in ticks)*
+
+#### player.dimension
+ - `str`, player's current gamemode
+ - Value of `'overworld'`, `'the_nether'`, or `'the_end'`
+
+#### player.active_effects
+ - `dict` of `EffectObject`, player's current effects
+ - Speed, for example can be accessed with `player.active_effects['speed'].duration`
+
+#### player.inventory
+ - `InventoryObject`, organized list of all items in the player's inventory
+ - Attributes are `player.inventory.selected_item`, `player.inventory.offhand`, `player.inventory.hotbar`, `player.inventory.armor`, `player.inventory.inventory`
+ - Each list is full of `ItemObject`, which can be accessed via lowercase NBT attributes like in game, and with Pythonic logic: `player.inventory.selected_item.tag.display.name` or `if "diamond_sword" in player.inventory`
+
+#### player.persistent
+ - `dict`, persistent variable storage for saving information between server restarts, or script reloads
+ - Assigning or updating a key in the `player.persistent` dictionary will automatically save it, and can be accessed via the same key persistently until it is changed again, or deleted
+
+<br><br>
 
 
 
@@ -110,7 +199,7 @@ Accepted parameters:
 
 Fired upon process execution by Auto-MCS, not when a player can connect.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `data*` | `dict` of startup data, currently `{'date': datetime}` |
@@ -129,7 +218,7 @@ Accepted parameters:
 
 Fired upon process termination by Auto-MCS, not when `/stop` or a crash is logged.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `data*` | `dict` of shutdown data, currently `{'date': datetime, 'crash': str}` |
@@ -148,7 +237,7 @@ Accepted parameters:
 
 Fired after every `interval`. Loops until the server is closed, or manually cancelled with `return`.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `interval` | `int`, defaults to `1` |
@@ -170,7 +259,7 @@ Accepted parameters:
 
 Fired upon player successfully connecting to the server.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
@@ -190,7 +279,7 @@ Accepted parameters:
 
 Fired upon player disconnecting from the server.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
@@ -210,7 +299,7 @@ Accepted parameters:
 
 Fired upon player sending a message in the chat, excluding commands.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
@@ -233,7 +322,7 @@ Used for registering custom commands and augmenting existing ones.
 
 > Note: Commands will start with `!` therefore making them visible when executed by a player from the in-game chat, though the feedback is hidden when using the `server.log()` and `player.log()` methods. They are completely hidden if executed from the server console.
 
-Accepted parameters:
+**Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
