@@ -22,9 +22,9 @@
 # Displays all amscript commands that the player has access to, with an optional search feature
 @player.on_alias(player, command='help', arguments={'cmd': False}, permission='anyone'):
 	if arguments['cmd']:
-		server.execute(f'/say Search for "{arguments["cmd"]}":')
+		player.log(f'  ------ Search for "{arguments["cmd"]}" ------  ', 'green', 'normal')
 	else:
-		server.execute('/say All Auto-MCS commands:')
+		player.log('  ------ All Auto-MCS commands ------', 'green', 'normal')
 
 	for cmd in server.aliases.values():
 		if perm_dict[permission] >= perm_dict[cmd['permission']]:
@@ -33,6 +33,6 @@
 					continue
 
 			if arguments['cmd']:
-				server.execute(f"say {cmd['syntax']}")
+				player.log(f"{cmd['syntax']}", 'white', 'normal')
 			else:
-				server.execute(f"say {cmd['command']}: {cmd['description']}")
+				player.log(f"{cmd['command']}: {cmd['description']}", 'white', 'normal')
