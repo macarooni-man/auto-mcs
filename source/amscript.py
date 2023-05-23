@@ -596,6 +596,10 @@ class ScriptObject():
 
     # Deconstruct loaded .ams files
     def deconstruct(self):
+
+        # Write persistent data before doing anything
+        self.server_script_obj._persistent_config.write_config()
+
         self.enabled = False
         self.server_script_obj._running = False
 
@@ -740,7 +744,6 @@ class ScriptObject():
     def shutdown_event(self, data):
         self.server_script_obj._running = False
         self.call_event('@server.on_stop', (data))
-        self.server_script_obj._persistent_config.write_config()
         print('server.on_stop')
         print(data)
 
