@@ -61,9 +61,52 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
 | `selector*` | `str` of username, or a valid Minecraft selector. Only players will be matched |
 | `reverse` | `bool` selects last match on `True`. Defaults to `False` |
 
+
+<br>
+
+
+
+**Attributes**:
+> Note: All attributes are read-only, and thus will not change the server data when modified
+
+
+#### server.name
+ - `str`, server's current filename
+
+#### server.version
+ - `str`, Minecraft version of the server, i.e. `'1.16.3'`
+
+#### sever.build
+ - `str`, Only applicable for Paper/Forge, contains build number. Else will be `None`
+
+#### server.type
+ - `str`, type of server, i.e. `'craftbukkit'` or `'vanilla'`
+ - Can be `'vanilla'`, `'craftbukkit'`, `'spigot'`, `'paper'`, `'forge'`, or `'fabric'`
+
+#### server.world
+ - `str`, filename of `level-name` from `server.properties`
+ - Value of `0-20`, but can be higher depending on attributes
+
+#### server.directory
+ - `str`, full path of the directory in which the server is stored
+
+#### server.network
+ - `dict`, contains the listening IP and port
+ - Structured as `{'ip': ip_address, 'port': port}`
+
+#### server.properties
+ - `dict`, current keys in the `server.properties` file
+ - A boolean value for example can be accessed with `server.properties['enable-command-block']`
+
+#### server.player_list
+ - `dict`, contains a key and a sub-dictionary for each connected player
+ - The current format is `{'username': {'uuid': uuid, 'ip': ip address, 'date': datetime, 'logged-in': True}}`
+
+#### server.persistent
+ - `dict`, persistent variable storage for saving information between server restarts, or script reloads
+ - Assigning or updating a key in the `server.persistent` dictionary will automatically save it, and can be accessed via the same key persistently until it is changed again, or deleted. Data will only be saved for the server referenced in the object.
+
 <br><br>
-
-
 
 
 
@@ -180,7 +223,7 @@ Useful for command feedback with a [**@server.alias**](#serveralias) event
 
 #### player.persistent
  - `dict`, persistent variable storage for saving information between server restarts, or script reloads
- - Assigning or updating a key in the `player.persistent` dictionary will automatically save it, and can be accessed via the same key persistently until it is changed again, or deleted
+ - Assigning or updating a key in the `player.persistent` dictionary will automatically save it, and can be accessed via the same key persistently until it is changed again, or deleted. Data will be saved only for the player referenced by the object, and only for the server. Data will not persist between different servers.
 
 <br><br>
 
