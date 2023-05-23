@@ -821,6 +821,8 @@ class ServerScriptObject():
 
         if server_obj.run_data:
             self.network = server_obj.run_data['network']['address']
+        else:
+            self.network = {'ip': None, 'port': None}
 
     def __del__(self):
         self._running = False
