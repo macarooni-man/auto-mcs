@@ -1,5 +1,3 @@
-from datetime import datetime as dt
-from functools import partial
 from threading import Timer
 from textwrap import indent
 from copy import deepcopy
@@ -9,6 +7,7 @@ from nbt import nbt
 import constants
 import traceback
 import functools
+import hashlib
 import json
 import time
 import ast
@@ -505,7 +504,7 @@ class ScriptObject():
 
                     new_func = func_header + new_func
 
-                    print(new_func)
+                    # print(new_func)
                     exec(new_func, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
                     self.function_dict[os.path.basename(script_path)]['@player.on_alias'].append(self.function_dict[os.path.basename(script_path)]['values']['__on_alias__'])
                     self.src_dict[os.path.basename(script_path)]['@player.on_alias'].append(new_func.strip())
@@ -647,55 +646,60 @@ class ScriptObject():
 
                                 # First, grab relative line number from modified code
                                 tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
-                                line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
-
-                                # Try to locate event first
                                 try:
-                                    # Locate original code from the source
-                                    original_code = self.src_dict[s][event][i].splitlines()[line_num - 1]
-                                    new_i = i
+                                    line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
+                                except AttributeError:
+                                    line_num = 0
+                                    original_code = "Unknown"
+                                else:
 
-                                    # If alias, count if statements beforehand instead because it's one function
-                                    if event == "@player.on_alias":
-                                        new_i = ("\n".join(self.src_dict[s]['@player.on_alias'][i].splitlines()[:line_num]).count(f": #__{self.server_id}__")) - 1
+                                    # Try to locate event first
+                                    try:
+                                        # Locate original code from the source
+                                        original_code = self.src_dict[s][event][i].splitlines()[line_num - 1]
+                                        new_i = i
 
-                                    # Use the line to find the original line number from the source
-                                    event_count = 0
-                                    for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
-                                        # print((original_code.strip(), line), (i+1, event_count))
-                                        # print(n, line, event_count, i)
+                                        # If alias, count if statements beforehand instead because it's one function
+                                        if event == "@player.on_alias":
+                                            new_i = ("\n".join(self.src_dict[s]['@player.on_alias'][i].splitlines()[:line_num]).count(f": #__{self.server_id}__")) - 1
 
-                                        if (original_code.strip() in line) and ((new_i + 1) == event_count):
-                                            line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
-                                            break
+                                        # Use the line to find the original line number from the source
+                                        event_count = 0
+                                        for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                                            # print((original_code.strip(), line), (i+1, event_count))
+                                            # print(n, line, event_count, i)
 
-                                        if line.startswith(event):
-                                            event_count += 1
-                                    else:
+                                            if (original_code.strip() in line) and ((new_i + 1) == event_count):
+                                                line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                                                break
+
+                                            if line.startswith(event):
+                                                event_count += 1
+                                        else:
+                                            nested_func = True
+
+                                    # When error is not in an event, but in a nested function or library
+                                    except IndexError:
                                         nested_func = True
 
-                                # When error is not in an event, but in a nested function or library
-                                except IndexError:
-                                    nested_func = True
 
+                                    if nested_func:
 
-                                if nested_func:
+                                        # Locate original code from source
+                                        original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
 
-                                    # Locate original code from source
-                                    original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
+                                        # Use the line to find the original line number from the source
+                                        event_count = 0
+                                        func_name = f'def {tb.split("in ")[1].strip()}('
+                                        for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                                            # print(n, line, event_count, i)
 
-                                    # Use the line to find the original line number from the source
-                                    event_count = 0
-                                    func_name = f'def {tb.split("in ")[1].strip()}('
-                                    for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
-                                        # print(n, line, event_count, i)
+                                            if (original_code.strip() in line) and (event_count > 0):
+                                                line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                                                break
 
-                                        if (original_code.strip() in line) and (event_count > 0):
-                                            line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
-                                            break
-
-                                        if line.startswith(func_name):
-                                            event_count += 1
+                                            if line.startswith(func_name):
+                                                event_count += 1
 
 
                                 # Generate error dict
@@ -736,6 +740,7 @@ class ScriptObject():
     def shutdown_event(self, data):
         self.server_script_obj._running = False
         self.call_event('@server.on_stop', (data))
+        self.server_script_obj._persistent_config.write_config()
         print('server.on_stop')
         print(data)
 
@@ -759,6 +764,7 @@ class ScriptObject():
     # Fires event when message/cmd is sent
     # {'user': player, 'content': message}
     def message_event(self, msg_obj):
+        msg_obj['content'] = msg_obj['content'].replace("&bl;", "[").replace("&br;", "]")
         if msg_obj['content'].strip().split(" ",1)[0].strip() in self.aliases.keys():
             self.alias_event(msg_obj)
         elif msg_obj['user'] != self.server_id:
@@ -793,6 +799,7 @@ class ServerScriptObject():
         self._server_id = ("#" + server_obj._hash)
         self._ams_log = server_obj.amscript_log
         self._reload_scripts = server_obj.reload_scripts
+        self._persistent_config = PersistenceManager(server_obj.name)
 
         # Assign functions from main server object
         self.execute = server_obj.silent_command
@@ -807,6 +814,7 @@ class ServerScriptObject():
         self.type = server_obj.type
         self.world = server_obj.world if server_obj.world else 'world'
         self.server_path = server_obj.server_path
+        self.persistent = self._persistent_config._data.server
 
         if server_obj.run_data:
             self.network = server_obj.run_data['network']['address']
@@ -872,6 +880,22 @@ class PlayerScriptObject():
         self.dimension = "None"
         self.active_effects = {}
         self.inventory = InventoryObject(None, None)
+
+        # Persistent config
+        if self.is_server:
+            self.persistent = server_script_obj._persistent_config._data.server
+        elif self.uuid:
+            try:
+                self.persistent = server_script_obj._persistent_config._data.player[self.uuid]
+            except KeyError:
+                server_script_obj._persistent_config._data.player[self.uuid] = {}
+                self.persistent = server_script_obj._persistent_config._data.player[self.uuid]
+        else:
+            try:
+                self.persistent = server_script_obj._persistent_config._data.player[self.name]
+            except KeyError:
+                server_script_obj._persistent_config._data.player[self.name] = {}
+                self.persistent = server_script_obj._persistent_config._data.player[self.name]
 
         if not self.is_server:
             self._get_nbt()
@@ -1731,20 +1755,29 @@ def fmt(obj):
 
 # Inventory classes for PlayerScriptObject
 class ItemObject(Munch):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self['$_amsclass'] = self.__class__.__name__
+
     def __str__(self):
         return str(self['id'])
 
 class EffectObject(Munch):
     def __init__(self, name, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self['$_amsclass'] = self.__class__.__name__
         self.effect_name = name
 
     def __str__(self):
         return str(self.effect_name)
 
 class CoordinateObject(Munch):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self['$_amsclass'] = self.__class__.__name__
+
     def __str__(self):
-        return " ".join([str(i) for i in self.values()])
+        return " ".join([str(i) for k, i in self.items() if k != '$_amsclass'])
 
 class InventoryObject():
 
@@ -1938,3 +1971,98 @@ class InventoryObject():
             if s:
                 self.selected_item = proc_nbt(s[0])
                 self.selected_item['slot'] = s[1]
+
+
+# Stores persistent player and server configurations
+class PersistenceManager():
+
+    class ObjectDecoder(json.JSONDecoder):
+        def __init__(self, *args, **kwargs):
+            json.JSONDecoder.__init__(self, object_hook=self.object_hook, *args, **kwargs)
+
+        def object_hook(self, dct):
+            if '$_amsclass' in dct:
+                if dct['$_amsclass'] == 'ItemObject':
+                    return ItemObject(dct)
+                elif dct['$_amsclass'] == 'EffectObject':
+                    return EffectObject(dct)
+                elif dct['$_amsclass'] == 'CoordinateObject':
+                    return CoordinateObject(dct)
+            return dct
+
+    class PersistenceObject(Munch):
+
+        # Prevent deletion of root keys
+        def __delitem__(self, key):
+            if key in ['server', 'player']:
+                self[key] = {}
+            return super().__delitem__(key)
+
+        # Prevent assignment to root keys
+        def __setitem__(self, key, value):
+            if not isinstance(value, dict):
+                raise AttributeError(f"Root attribute '{key}' must be a dictionary, assign '{value}' to a key instead")
+            return super().__setitem__(key, value)
+
+    def __init__(self, server_name):
+        # The server's persistent configuration will reside in the 'server' key
+        # Individual players will have their own dictionary in the 'player' key
+
+        self._name = server_name
+        self._hash = int(hashlib.sha1(self._name.encode("utf-8")).hexdigest(), 16) % (10 ** 12)
+        self._config_path = os.path.join(constants.configDir, 'amscript', 'pstconf')
+        self._path = os.path.join(self._config_path, f"{self._hash}.json")
+        self._data = None
+
+        # Retrieve data if it exists
+        # print(self._path)
+        if os.path.exists(self._path):
+            with open(self._path, 'r+') as f:
+                try:
+                    self._data = self.PersistenceObject(json.load(f, cls=self.ObjectDecoder))
+                    print(self._data)
+                except json.JSONDecodeError:
+                    pass
+
+        # Else instantiate new object
+        if not self._data:
+            self._data = self.PersistenceObject({"server": {}, "player": {}})
+
+        self.clean_keys()
+
+
+    # Fixes deleted keys
+    def clean_keys(self):
+        try:
+            if not self._data['server']:
+                self._data.update({'server': {}})
+        except KeyError:
+            self._data.update({'server': {}})
+
+        try:
+            if not self._data['player']:
+                self._data.update({'player': {}})
+        except KeyError:
+            self._data.update({'player': {}})
+
+
+    # Writes persistent config to disk
+    def write_config(self):
+        self.clean_keys()
+
+        # If data is empty, delete persistent config if it exists in file
+        if not self._data['server'] and not self._data['player']:
+            if os.path.exists(self._path):
+                os.remove(self._path)
+
+        # If they do exist, write to file
+        else:
+            constants.folder_check(self._config_path)
+            with open(self._path, 'w+') as f:
+                json.dump(self._data, f, indent=4)
+
+
+    # Resets data, and deletes file on disk
+    def purge(self):
+        self._data = self.PersistenceObject({"server": {}, "player": {}})
+        self.write_config()
