@@ -85,7 +85,6 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
 
 #### server.world
  - `str`, filename of `level-name` from `server.properties`
- - Value of `0-20`, but can be higher depending on attributes
 
 #### server.directory
  - `str`, full path of the directory in which the server is stored
