@@ -105,6 +105,8 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
  - `dict`, persistent variable storage for saving information between server restarts, or script reloads
  - Assigning or updating a key in the `server.persistent` dictionary will automatically save it, and can be accessed via the same key persistently until it is changed again, or deleted. Data will only be saved for the server referenced in the object.
 
+> Warning: persistent data is only saved properly when the server shuts down gracefully, if the computer crashes or the server process is terminated forcefully, the persistent data will likely revert to previous values
+
 <br><br>
 
 
@@ -223,6 +225,8 @@ Useful for command feedback with a [**@server.alias**](#serveralias) event
 #### player.persistent
  - `dict`, persistent variable storage for saving information between server restarts, or script reloads
  - Assigning or updating a key in the `player.persistent` dictionary will automatically save it, and can be accessed via the same key persistently until it is changed again, or deleted. Data will be saved only for the player referenced by the object, and only for the server. Data will not persist between different servers.
+
+> Warning: persistent data is only saved properly when the server shuts down gracefully, if the computer crashes or the server process is terminated forcefully, the persistent data will likely revert to previous values
 
 <br><br>
 
