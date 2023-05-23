@@ -816,7 +816,8 @@ class ServerScriptObject():
         self.build = server_obj.build
         self.type = server_obj.type
         self.world = server_obj.world if server_obj.world else 'world'
-        self.server_path = server_obj.server_path
+        self.directory = server_obj.server_path
+        self.properties = server_obj.server_properties
         self.persistent = self._persistent_config._data.server
 
         if server_obj.run_data:
@@ -851,7 +852,7 @@ class PlayerScriptObject():
         self._server_id = server_script_obj._server_id
         self._execute = server_script_obj.execute
         self._version_check = server_script_obj.version_check
-        self._world_path = os.path.join(server_script_obj.server_path, server_script_obj.world)
+        self._world_path = os.path.join(server_script_obj.directory, server_script_obj.world)
 
 
         # If this object is the console
