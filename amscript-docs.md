@@ -91,7 +91,7 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
 
 #### server.network
  - `dict`, contains the listening IP and port
- - Structured as `{'ip': ip_address, 'port': port}`
+ - Structured as `{'ip': ip address, 'port': port}`
 
 #### server.properties
  - `dict`, current keys in the `server.properties` file
