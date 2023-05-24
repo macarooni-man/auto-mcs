@@ -1,0 +1,247 @@
+Verify functions that do x.replace('\n', '') also replace linux line breaks 
+
+If IP banned user is pardoned, unban IP if the rule is a single IP. If it's a subnet ban, whitelist the user's IP
+
+
+Use bukkit.org mirror for bukkit type servers with AddonWebObject functions 
+
+Add function in addon API specifically for downloading and upgrading geyser, viaversion, amd floodgate
+
+
+
+
+
+Fabric search version use latest build from mcver in url instead of searching again 
+
+When a popup is displayed, get kivy to use os alert to window if minimized (i.e. orange highlight on taskbar icon) 
+
+Ignore seed and level type if a custom world is selected during server creation 
+
+Add geyser specification to server type in preview box 
+
+When creating server, change level-type:
+  normal > default
+  superflat > flat 
+
+Remove addons when type other than bukkit derivatives are selected on ServerTypeScreen 
+
+When geyser is enabled, add geysermc, floodgate, and viaversion to addons 
+
+Update geyser with server updates 
+
+During while loop of javacheck, if loop fails to install properly 3 times, error out of menu by returning false and display error of "There was an issue configuring the java installation. Please check your internet connection and try again later"
+
+
+
+
+Make a sub server PID cache, update it every time the server is started. Check all PIDs in table when auto-mcs is opened and set to none if that process is closed
+ServerA=1686
+ServerB=46457
+ServerC=None 
+
+Download old and new java as portable versions, and store them in auto-mcs application folder to avoid installation as admin. Verify x-plat compatibility
+
+
+Create Import Server, ACL Manager, and Addon Manager menus and add the latter to create server. 
+
+Allow create server ACL/Addon manager to save plugins to a temp directory, and copy them to the server when it's created 
+
+Create scripting api for servers that allows for custom plugins: 
+
+- async features that respond to server events like "player.on_join", "player.on_leave", "player.on_message", "player.on_death", "server.on_start", "server.on_shutdown", "server.on_restart", "server.on_interval(10)" - to create timer events 
+
+- check for async events every time the latest.log file is modified and read the last line 
+
+- for any player async event, scrape NBT data to get rotation, position, etc so they can be used in the function 
+
+@player.on_join(user):
+    if user not in server.usercache:
+        server.execute(f'/say Welcome to the server {user.name}!') 
+
+@server.on_start(delay=0):
+    do x
+    do y 
+
+- server functions like "server.execute('/say test')", "server.create_backup", "server.shutdown", "server.restart" 
+
+- server properties that have all the auto-mcs properties like "server.running", "server.version", "server.type", "server.players", "server.playercache", "server.aliases" 
+
+- acl functions like "acl.ban('name or ip', global=True)", "acl.unban('name or ip', global=True)", "acl.whitelist('name', global=True) 
+
+- server alias function for custom player commands
+# permissions;
+# 0 = anyone
+# 1 = only operators
+# 2 = only auto-mcs admins
+# Commands in game must start with !
+@server.alias(command='help', permission=0):
+    server.execute('/say All auto-mcs commands:')
+    for command in server.aliases:
+        server.execute(f'/say !{command}') 
+
+- allow ability to inherit events from other .ams files 
+
+Remove tqdm from dependencies 
+
+‐------------------------------------------------------‐------------------ 
+
+Find a way to reset option screens to init when exiting screen
+Dynamic button logic will only execute with the creation of a screen class 
+
+Force gui to run as subserver, "press M to minimize, q to quit, or any key to continue" 
+
+Make sure that offline mode works fine with ACL
+Only write players to control lists, and not uuid-db 
+
+Move info panel up one line 
+
+Make sure day value is accurate from multiday logs 
+
+Function to run on background thread when app starts:
+If there are entries in uuid-db.json that only have uuid and name, check every latest.log 
+
+Check for every logged in user from every sub server for Online status 
+
+Make logged user function run when server is stopped instead of the very end of the function 
+
+Show players with banned IP addresses in ban list: instead of 'pardon user', show 'whitelist ip' 
+
+Create function that detects username updates in uuid-db.json 
+
+Rebuild uuid-db.json if improperly formatted (add an extra comma to test) 
+
+Left clicking a player name will show menu with more player info including uuid. Also show applied rule hierarchy and effective access. Show servers joined 
+
+Global ACL menu to control ops, bans, and whitelist for every server 
+
+Make cache a hidden folder 
+
+Find a way to not write the whole ip block file every time 
+
+(Ip blacklisting might not work with ngrok) 
+
+Force hover > action to toggle items, and ignore lmb/enter. Reflect this behavior with the tooltip 
+
+only load playerdata when new server is opened 
+
+Error user search in ban manager when network or broadcast address is entered, or if both subnet decorators are used "!wX.X.X.X/SM"
+
+
+If user is on the ban list, don't show them in whitelist or operator list
+
+
+
+
+
+Create addons-db that appends name and download location. Remove addon from list if addon is deleted 
+
+Interpret specific commands that can be entered in game by scraping the server process (eg !restart, !stats, !ban (!g) <user/IP>)
+
+
+Option to export compatible client launcher file based on server details (forge might be tricky) 
+
+Add support for alpha servers from a mirror 
+
+Add troubleshooting mode when server crashes to determine where the issue lies. First, clone server to troubleshooting directory. First step, check why it crashed. If the issue is networking, find the proper subnet and pick an ip and port that is not in use automatically by checking pings and internal port scans. Then check for RAM limitations, and set dedicated RAM to auto. If that doesn't work turn it either up or down depending on the error and within RAM limits. When all RAM options are exhausted, tell user to close any high RAM usage applications. If not vanilla, test without any plugins (safe mode) 
+
+Check for open port externally when server is started
+
+
+Crash when importing server and start subserver
+Crash when enabling auto updates for the first time after import
+Auto updates don't detect until app restarted for the first time 
+
+Sort singleplayer worlds by date modified, not alphabetically in create server 
+
+"Would you like to update from 1.x.x (add current build) to new build?" It just shows version for some reason 
+
+Ignore server updates in offline mode
+If offline is true, check in wrapper for connectivity every 45 seconds until connection is established, when connection is established run find version function 
+
+Create server ask for difficulty and gamemode 
+
+Prevent import server/start server if offline and java does not exist 
+
+FIX YML EDITOR CRASH WHEN FILE IS EMPTY 
+
+If visual date in backup manager gives exception sass, name that option to the "servername - ???" to prevent crash in case someone alters the name 
+
+Set console font to consolas with win32 api 
+
+Mouse support in sub server 
+
+Yml editor:
+Only prevent deletion of root level keys. Any new subkey that's added, return it to the next line and give it a slightly different color
+Press left arrow key on a subkey when cursor is to the right of ":" to edit subkey name. If subkey name is empty, store entire key in undo buffer and delete subkey/values and return to previous key line
+
+
+If theres a "-" after a key/":"  return it to the next line
+And keep adding list items when enter is pressed 
+
+Detect inegers, strings, and bool/null values with different colors 
+
+Comment out lines that start with "#", "---", "- - -", or "..." 
+
+With variable length files, it is necessary to change how the undo index stores line numbers (append adding lines action to undo buffer) 
+
+Eventually process operators like "<", "|", or "!!int" 
+
+Start program minimized until everything loads 
+
+Don't reset console size until the very end of the startserver function 
+
+Find out why most plugins fail to update (likely due to not checking if they are compatible, or filename in url) 
+
+Find another way to uninstall java instead of wmic 
+
+Limit addon name size when displayed in addon manager 
+
+Set default version to current server version if enter is pressed when modifying jar 
+
+Change header with controls depending on input_type 
+
+Prettify updating auto mcs screen
+
+
+User accounts 
+
+Create commandline interpreter for server creation and running server 
+
+Add release date to changelog
+Add scrolling to changelog, and ability to switch between prior changelogs 
+
+Full logging support 
+
+SSH setup automation 
+
+Show server size on disk in server options under
+version - type 
+
+ACL manager, whitelist takes precedent over blacklist
+Add ACL in server options, toggle blacklist/whitelist mode with consolidated list that updates both files automatically, enable/disable acl 
+
+create yml editor for bukkit, spigot, and paper 
+
+Center menu alert text instead of right padding 
+
+Add sleepyserver integration 
+
+
+Add fabric support 
+
+Add cpu/memory/storage/current players data to monitor submenu when subserver is running 
+
+Find the actual version instead of guessing, the logic is broken and it will find the latest folder and not the proper subrevision. You can infer latest version installed by folder modification date in libraries/net/minecraftforge/forge/* 
+
+Mod manager: handle exception when mod can't be found after clicking on it from the searchlist 
+
+Modify installed plugins/mods when jar is switched, check them first to see if they exist for the server version and warn the user that not all add-ons support this version before they can upgrade.
+Plugin auto updates on switchjar, disable incompatible ones 
+
+Create algorithm for handling outdated addons that can't be auto updated to version, and addressing the risks involved with installation 
+
+Convert world owner uuid for server so inventory is preserved < check older versions 
+
+Port Linux version 
+
+Add datapack manager 

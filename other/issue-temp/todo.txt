@@ -1,0 +1,24 @@
+Add-on Manager:
+
+	- Add drag'n'drop support for importing .jar files
+
+
+ACL Manager:
+
+	- In AclObject.display_rule(), check if user is currently logged in to a server (225)
+
+
+Create New Server:
+
+	- Make sure Geyser installation is successful on every version of MC, and with updates
+
+
+Bugs:
+	(Likely fixed, test by running ACL manager in Windows sleep mode)
+	-  Exception ignored in: 'kivy.graphics.texture.Texture.allocate'
+	   Traceback (most recent call last):
+	     File "C:\Users\macarooni machine\AppData\Local\Programs\Python\Python39\lib\site-packages\kivy\core\window\__init__.py", line 1395, in on_draw
+		self.render_context.draw()
+           Exception: Unable to allocate memory for texture (size is -8)
+
+	   Process finished with exit code -1073741819 (0xC0000005)
