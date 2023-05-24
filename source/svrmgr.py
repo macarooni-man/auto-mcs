@@ -357,7 +357,7 @@ class ServerObject():
                     type_color = (1, 0.5, 0.65, 1)
                 else:
                     # Ignore NBT data updates
-                    if " has the following entity data: {" in main_label:
+                    if " has the following entity data: {" in main_label or ("Teleported " in main_label and " to " in main_label):
                         return
 
                     type_label = "INFO"
@@ -381,7 +381,7 @@ class ServerObject():
     # Command handler to current server process
     def send_command(self, cmd, add_to_history=True, log_cmd=True, script=False):
 
-        if self.running and self.run_data:
+        if self.running and self.run_data and len(cmd) > 0:
 
             # Format command with proper return
             cmd = cmd.replace('\n', '').replace('\r', '').strip()
@@ -734,18 +734,23 @@ class ServerObject():
             hook(self.run_data['log'])
 
 
-    def silent_command(self, cmd, log=True, capture=None):
+    def silent_command(self, cmd, log=True, _capture=None, _send_twice=False):
+
         self.send_command(cmd, False, log, True)
 
+        # Dirty fix: repeat command if get_player() is used
+        if _send_twice and _capture:
+            self.send_command(cmd, False, False, True)
+
         # Wait for response and return data as string
-        if capture:
+        if _capture:
             if constants.version_check(self.version, '<', '1.7'):
                 lines_iterator = iter(self.run_data['process'].stderr.readline, "")
             else:
                 lines_iterator = iter(self.run_data['process'].stdout.readline, "")
 
             for line in lines_iterator:
-                if capture in line.decode('utf-8', errors='ignore'):
+                if _capture in line.decode('utf-8', errors='ignore'):
                     return line.decode('utf-8', errors='ignore')
                 else:
                     self.update_log(line)

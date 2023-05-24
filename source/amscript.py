@@ -842,12 +842,19 @@ class ServerScriptObject():
 
     # Returns PlayerScriptObject that matches selector
     def get_player(self, username):
-        return PlayerScriptObject(self, username)
+
+        if username in self.player_list:
+            obj = PlayerScriptObject(self, username, _get_player=True)
+        else:
+            obj = None
+
+        return obj
 
 
 # Reconfigured ServerObject to be passed in as 'player' variable to amscript events
 class PlayerScriptObject():
-    def __init__(self, server_script_obj: ServerScriptObject, player_name: str):
+    def __init__(self, server_script_obj: ServerScriptObject, player_name: str, _get_player=False):
+        self._get_player = _get_player
         self._server = server_script_obj
         self._server_id = server_script_obj._server_id
         self._execute = server_script_obj.execute
@@ -939,7 +946,7 @@ class PlayerScriptObject():
 
             # Attempt to intercept player's entity data
             try:
-                log_data = self._execute(f'data get entity {self.name}', log=False, capture=f"{self.name} has the following entity data: ")
+                log_data = self._execute(f'data get entity {self.name}', log=False, _capture=f"{self.name} has the following entity data: ", _send_twice=self._get_player)
                 nbt_data = log_data.split("following entity data: ")[1].strip()
                 # print(log_data)
 
@@ -1042,7 +1049,7 @@ class PlayerScriptObject():
         else:
             try:
                 if self._version_check(">=", "1.8") and self._version_check("<", "1.13"):
-                    log_data = self._execute(f'execute {self.name} ~ ~ ~ tp {self.name} ~ ~ ~', log=False, capture=f"Teleported {self.name} to ")
+                    log_data = self._execute(f'execute {self.name} ~ ~ ~ tp {self.name} ~ ~ ~', log=False, _capture=f"Teleported {self.name} to ", _send_twice=self._get_player)
                     new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
 
                 # Pre-1.8, get outdated playerdata from the user's .dat file
@@ -2069,6 +2076,6 @@ class PersistenceManager():
 
 
     # Resets data, and deletes file on disk
-    def purge(self):
+    def purge_config(self):
         self._data = self.PersistenceObject({"server": {}, "player": {}})
         self.write_config()
