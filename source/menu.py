@@ -4428,7 +4428,7 @@ def button_action(button_name, button, specific_screen=''):
             elif screen_manager.current == 'CreateServerOptionsScreen':
                 if not constants.new_server_info['acl_object']:
                     while not constants.new_server_info['acl_object']:
-                        time.sleep(0.5)
+                        time.sleep(0.2)
                 change_screen(specific_screen)
 
             else:
@@ -4450,7 +4450,7 @@ def button_action(button_name, button, specific_screen=''):
             if "access control manager" in button_name.lower():
                 if not constants.new_server_info['acl_object']:
                     while not constants.new_server_info['acl_object']:
-                        time.sleep(0.5)
+                        time.sleep(0.2)
                 screen_manager.current = 'CreateServerAclScreen'
 
 
