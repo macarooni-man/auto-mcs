@@ -888,6 +888,7 @@ class PlayerScriptObject():
         self.on_fire = False
         self.is_flying = False
         self.is_sleeping = False
+        self.is_drowning = False
         self.hurt_time = 0
         self.death_time = 0
         self.dimension = "None"
@@ -1016,6 +1017,11 @@ class PlayerScriptObject():
                     pass
 
                 try:
+                    self.is_drowning = (int(new_nbt['air']) < 1)
+                except:
+                    pass
+
+                try:
                     self.hurt_time = int(new_nbt['hurttime'])
                 except:
                     pass
@@ -1127,6 +1133,11 @@ class PlayerScriptObject():
 
                 try:
                     self.is_sleeping = (int(new_nbt['Sleeping'].value) == 1)
+                except:
+                    pass
+
+                try:
+                    self.is_drowning = (int(new_nbt['Air'].value) < 1)
                 except:
                     pass
 
