@@ -202,6 +202,9 @@ Useful for command feedback with a [**@server.alias**](#serveralias) event
 #### player.is_sleeping
  - `bool`, is `True` if player is sleeping
 
+#### player.is_drowning
+ - `bool`, is `True` if player is drowning
+
 #### player.hurt_time
  - `int`, determines if player was hurt recently *(in ticks)*
  - Any value above `0` yields invincibilty until it reaches `0` again
