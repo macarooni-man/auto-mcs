@@ -3,6 +3,7 @@ from datetime import datetime as dt
 from PIL import Image as PILImage
 from ctypes import ArgumentError
 from plyer import filechooser
+from random import randrange
 import simpleaudio as sa
 from pathlib import Path
 from glob import glob
@@ -2712,6 +2713,67 @@ def main_button(name, position, icon_name=None, width=None, icon_offset=None, au
     return final
 
 
+def color_button(name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, color=(1, 1, 1, 1)):
+
+    def repos_icon(icon_widget, button_widget, *args):
+
+        def resize(*args):
+            pos_calc = ((button_widget.width/2 - 35) if button_widget.center[0] > 0 else (-button_widget.width/2 + 35))
+            icon_widget.center[0] = button_widget.center[0] + pos_calc
+
+        Clock.schedule_once(resize, 0)
+
+    final = FloatLayout()
+    final.id = name
+
+    button = HoverButton()
+    button.id = 'color_button'
+    button.color_id = [constants.brighten_color(color, -0.9), color]
+
+    button.size_hint = (None, None)
+    button.size = (dp(450 if not width else width), dp(72))
+    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    button.border = (30, 30, 30, 30)
+    button.background_normal = os.path.join(constants.gui_assets, 'color_button.png')
+    button.background_down = os.path.join(constants.gui_assets, 'color_button_click.png')
+    button.background_disabled_normal = os.path.join(constants.gui_assets, 'color_button.png')
+    button.background_disabled_down = os.path.join(constants.gui_assets, 'color_button_click.png')
+    button.background_color = button.color_id[1]
+
+    text = Label()
+    text.id = 'text'
+    text.size_hint = (None, None)
+    text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    text.text = name.upper()
+    text.font_size = sp(19)
+    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+    text.color = button.color_id[1]
+
+
+    # Button click behavior
+    button.on_release = functools.partial(button_action, name, button)
+    final.add_widget(button)
+
+    if icon_name:
+        icon = Image()
+        icon.id = 'icon'
+        icon.source = icon_path(icon_name)
+        icon.size = (dp(1), dp(1))
+        icon.color = button.color_id[1]
+        icon.pos_hint = {"center_y": position[1]}
+        icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
+        final.add_widget(icon)
+
+    final.add_widget(text)
+
+    if auto_adjust_icon and icon_name:
+        Clock.schedule_once(functools.partial(repos_icon, icon, button), 0)
+
+    if click_func:
+        button.bind(on_press=click_func)
+
+    return final
+
 
 class IconButton(FloatLayout):
 
@@ -2734,8 +2796,12 @@ class IconButton(FloatLayout):
                     self.text.pos[0] -= sp(len(self.text.text) * 3)
                     self.text.pos[1] -= self.button.height
 
+        if self.text.offset[0] != 0 or self.text.offset[1] != 0:
+            self.text.pos[0] = self.text.pos[0] - self.text.offset[0]
+            self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
 
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, **kwargs):
+
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), **kwargs):
         super().__init__(**kwargs)
 
         self.default_pos = position
@@ -2771,12 +2837,17 @@ class IconButton(FloatLayout):
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
-    
+        self.text.offset = text_offset
+
         if position:
             self.text.pos = (position[0] - 10, position[1] + 17)
     
         if self.text.pos[0] <= 0:
             self.text.pos[0] += sp(len(self.text.text) * 3)
+
+        if self.text.offset[0] != 0 or self.text.offset[1] != 0:
+            self.text.pos[0] = self.text.pos[0] - self.text.offset[0]
+            self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
     
     
         if clickable:
@@ -9411,16 +9482,68 @@ class ConsolePanel(FloatLayout):
 
         self.input.pos = self.pos
 
-        self.gradient.pos = (self.input.pos[0], self.input.height * 1.2)
+        self.gradient.pos = (self.input.pos[0], self.pos[1] + (self.input.height * 1.2))
         self.gradient.width = self.scroll_layout.width - self.scroll_layout.bar_width
         self.gradient.height = 0-(self.input.height*0.5)
+
+        self.input_background.pos = (self.pos[0] - 22, self.pos[1] + 8)
+
+
+        # Corner resize
+        offset = self.corner_size - (self.corner_size*0.18)
+        self.corner_mask.size_hint_max = (self.size[0] - offset, self.size[1] - offset)
+        self.corner_mask.pos = (self.x + (offset/2), self.y + (offset/2))
+
+
+        # Console panel resize:
+        self.controls.size = self.size
+        self.controls.pos = self.pos
+
+        texture = self.controls.background.texture_size
+        self.controls.background.size_hint_max = (texture[0] + (self.height - texture[1]) + 200, texture[1] + (self.height - texture[1]))
+        if self.full_screen:
+            self.size_hint_max = (None, None)
+        else:
+            self.size_hint_max = (Window.width - 150, Window.height - 450)
+
+        self.controls.maximize_button.pos = self.pos
+
+
+    # Launch server and update properties
+    def launch_server(self, animate=True, *args):
+
+        # Animate panel
+        anim_speed = 0.15 if animate else 0
+        self.controls.launch_button.disabled = True
+        constants.hide_widget(self.controls.maximize_button, False)
+        constants.hide_widget(self.controls.stop_button, False)
+        self.controls.maximize_button.opacity = 0
+        self.controls.stop_button.opacity = 0
+        Animation(opacity=0, duration=anim_speed).start(self.controls.background)
+        Animation(opacity=0, duration=(anim_speed*1.5) if animate else 0).start(self.controls.launch_button)
+        Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.maximize_button)
+
+        def disable(*args):
+            self.controls.maximize_button.disabled = False
+            self.controls.stop_button.disabled = False
+            self.controls.remove_widget(self.controls.launch_button)
+            Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.stop_button)
+
+        Clock.schedule_once(disable, (anim_speed*1.51) if animate else 0)
+
+        # constants.java_check()
+        # self.update_process(screen_manager.current_screen.server.launch())
 
 
     def __init__(self, server_name, **kwargs):
         super().__init__(**kwargs)
 
         self.server_name = server_name
+        self.full_screen = False
+        self.has_crashed = False
 
+
+        # Console line Viewclass for RecycleView
         class ConsoleLabel(RelativeLayout):
 
             def __setattr__(self, attr, value):
@@ -9536,7 +9659,7 @@ class ConsolePanel(FloatLayout):
                 self.anim_cover.color = background_color
                 self.add_widget(self.anim_cover)
 
-
+        # Command input at the bottom
         class ConsoleInput(TextInput):
 
             def _on_focus(self, instance, value, *largs):
@@ -9622,6 +9745,45 @@ class ConsolePanel(FloatLayout):
                         else:
                             self.text = self.parent.run_data['command-history'][self.history_index]
 
+        # Controls and background for console panel
+        class ConsoleControls(RelativeLayout):
+            def __init__(self, panel, **kwargs):
+                super().__init__(**kwargs)
+                self.panel = panel
+
+                # Blurred background image
+                self.background = Image()
+                self.background.allow_stretch = True
+                self.background.keep_ratio = False
+                self.background.source = os.path.join(constants.gui_assets, f'console_preview_{randrange(3)}.png')
+                self.add_widget(self.background)
+
+                # Button shadow
+                self.button_shadow = Image(pos_hint={'center_x': 0.5, 'center_y': 0.5})
+                self.button_shadow.allow_stretch = True
+                self.button_shadow.keep_ratio = False
+                self.button_shadow.size_hint_max = (580, 140)
+                self.button_shadow.source = os.path.join(constants.gui_assets, 'banner_shadow.png')
+                self.add_widget(self.button_shadow)
+
+                # Launch button
+                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='play-circle-sharp.png', click_func=self.panel.launch_server)
+                self.launch_button.disabled = False
+                self.add_widget(self.launch_button)
+
+                # Full screen button
+                self.maximize_button = IconButton('full screen', {}, (215, 505), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(32, 45))
+                constants.hide_widget(self.maximize_button)
+                self.add_widget(self.maximize_button)
+
+                # Stop server button
+                self.stop_button = IconButton('stop server', {}, (267, 505), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 45), force_color=[[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], 'pink'])
+                constants.hide_widget(self.stop_button)
+                self.add_widget(self.stop_button)
+
+                # self.label = Label(text="Server gay")
+
+
 
         # Popen object reference
         self.run_data = None
@@ -9638,7 +9800,6 @@ class ConsolePanel(FloatLayout):
 
         with self.canvas.after:
             self.canvas.clear()
-
 
 
         # Text Layout
@@ -9667,7 +9828,6 @@ class ConsolePanel(FloatLayout):
         # Input icon
         self.input_background = Image()
         self.input_background.default_opacity = 0.35
-        self.input_background.pos = (-22, 8)
         self.input_background.color = self.input.foreground_color
         self.input_background.opacity = self.input_background.default_opacity
         self.input_background.allow_stretch = True
@@ -9677,10 +9837,38 @@ class ConsolePanel(FloatLayout):
         self.add_widget(self.input_background)
 
 
+        # Start server/blurred background layout
+        self.controls = ConsoleControls(self)
+        self.add_widget(self.controls)
+
+
+        # Rounded corner mask
+        self.corner_size = 30
+        class Corner(Image):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.source = os.path.join(constants.gui_assets, 'console_border.png')
+                self.color = constants.background_color
+                self.allow_stretch = True
+                self.keep_ratio = False
+
+        self.corner_mask = RelativeLayout()
+        self.corner_mask.tl = Corner(pos_hint={'center_x': 0, 'center_y': 1}, size_hint_max=(self.corner_size, self.corner_size))
+        self.corner_mask.tr = Corner(pos_hint={'center_x': 1, 'center_y': 1}, size_hint_max=(-self.corner_size, self.corner_size))
+        self.corner_mask.bl = Corner(pos_hint={'center_x': 0, 'center_y': 0}, size_hint_max=(self.corner_size, -self.corner_size))
+        self.corner_mask.br = Corner(pos_hint={'center_x': 1, 'center_y': 0}, size_hint_max=(-self.corner_size, -self.corner_size))
+        self.corner_mask.add_widget(self.corner_mask.tl)
+        self.corner_mask.add_widget(self.corner_mask.tr)
+        self.corner_mask.add_widget(self.corner_mask.bl)
+        self.corner_mask.add_widget(self.corner_mask.br)
+
+        self.add_widget(self.corner_mask)
+
+
+
         self.bind(pos=self.update_size)
         self.bind(size=self.update_size)
         Clock.schedule_once(self.update_size, 0)
-
 
 
 
@@ -9702,7 +9890,7 @@ class ServerManagerViewScreen(MenuBackground):
         float_layout.id = 'content'
 
         float_layout.add_widget(header_text(f"What would you like to do with '{self.server.name}'?", '', (0, 0.88)))
-        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+        buttons.append(exit_button('Back', (0.5, 0.1), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -9711,127 +9899,13 @@ class ServerManagerViewScreen(MenuBackground):
         float_layout.add_widget(generate_footer(self.server.name, color="70E6FF"))
 
 
+        self.add_widget(float_layout)
+
 
         # Add ConsolePanel
         self.console_panel = ConsolePanel(self.server.name)
-        self.console_panel.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        #self.console_panel.size_hint_max = (700, 500)
-
-
-        self.add_widget(float_layout)
-
+        self.console_panel.pos_hint = {"center_x": 0.5, "center_y": 0.42}
         self.add_widget(self.console_panel)
-
-        # Delete this
-        constants.java_check()
-
-        # with open(r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\buildspace\logs\latest.log", 'r') as f:
-        #     def update_log(text, *args):
-        #         final_list = []
-        #
-        #         # (date, type, log, color)
-        #         def format_log(line, *args):
-        #
-        #             def format_time(string):
-        #                 try:
-        #                     date = dt.strptime(string, "%H:%M:%S").strftime("%#I:%M:%S %p").rjust(11)
-        #                 except ValueError:
-        #                     date = ''
-        #                 return date
-        #
-        #             def format_color(code, *args):
-        #                 if 'r' not in code:
-        #                     formatted_code = f'[color={constants.color_table[code]}]'
-        #                 else:
-        #                     formatted_code = '[/color]'
-        #                 return formatted_code
-        #
-        #             date_label = ''
-        #             type_label = ''
-        #             main_label = ''
-        #             type_color = ''
-        #
-        #             if line:
-        #
-        #                 # New log formatting (latest.log)
-        #                 if text.startswith('['):
-        #                     message = line.split("]: ", 1)[-1].strip()
-        #                     date_label = format_time(line.split("]", 1)[0].strip().replace("[", ""))
-        #
-        #                 # Old log formatting (server.log)
-        #                 else:
-        #                     message = line.split("] ", 1)[-1].strip()
-        #                     date_label = format_time(line.split(" ", 1)[1].split("[", 1)[0].strip())
-        #
-        #                 # Format string as needed
-        #
-        #                 # Shorten coordinates because FUCK they are long
-        #                 for float_str in re.findall(r"[-+]?(?:\d*\.*\d+)", message):
-        #                     if len(float_str) > 5 and "." in float_str:
-        #                         message = message.replace(float_str, str(round(float(float_str), 2)))
-        #
-        #                 if message.endswith("[m"):
-        #                     message = message.replace("[m", "").strip()
-        #
-        #                 # Format special color codes
-        #                 if '§' in message:
-        #                     message = escape_markup(message)
-        #                     code_list = [message[x:x + 2] for x, y in enumerate(message, 0) if y == '§']
-        #                     for code in code_list:
-        #                         message = message.replace(code, format_color(code))
-        #
-        #                     if len(code_list) % 2 == 1:
-        #                         message = message + '[/color]'
-        #
-        #                 main_label = message.strip()
-        #
-        #                 # Calculate color based on log type
-        #                 type_color = None
-        #
-        #                 if (message.startswith("<") and ">" in message) or "[Async Chat Thread" in line:
-        #                     type_label = "CHAT"
-        #                     type_color = (0.439, 0.839, 1, 1)
-        #
-        #                 elif "issued server command: " in message:
-        #                     type_label = "EXEC"
-        #                     type_color = (1, 0.298, 0.6, 1)
-        #
-        #                 elif "Done" in line and "For help," in line:
-        #                     type_label = "START"
-        #                     type_color = (0.3, 1, 0.6, 1)
-        #
-        #                 elif "Stopping server" in line:
-        #                     type_label = "STOP"
-        #                     type_color = (0.3, 1, 0.6, 1)
-        #
-        #                 elif ("logged in with entity id" in message or "lost connection: " in message):
-        #                     type_label = "PLAYER"
-        #                     type_color = (0.953, 0.929, 0.38, 1)
-        #
-        #                 elif "WARN" in line:
-        #                     type_label = "WARN"
-        #                     type_color = (1, 0.5, 0.65, 1)
-        #                 elif "ERROR" in line:
-        #                     type_label = "ERROR"
-        #                     type_color = (1, 0.5, 0.65, 1)
-        #                 elif "FATAL" in line:
-        #                     type_label = "FATAL"
-        #                     type_color = (1, 0.5, 0.65, 1)
-        #                 else:
-        #                     type_label = "INFO"
-        #                     type_color = (0.6, 0.6, 1, 1)
-        #
-        #                 if date_label and type_label and main_label and type_color:
-        #                     return (date_label, type_label, main_label, type_color)
-        #
-        #         for log_line in text.splitlines():
-        #             if text and log_line:
-        #                 formatted_line = {'text': format_log(log_line)}
-        #                 if formatted_line not in final_list and formatted_line['text']:
-        #                     final_list.append(formatted_line)
-        #         return final_list
-        #     self.console_panel.update_text(update_log(f.read()))
-        self.console_panel.update_process(self.server.launch())
 
 
 
@@ -9912,7 +9986,7 @@ class MainApp(App):
             # # constants.new_server_info['addon_objects'] = [item for item in [addons.get_addon_url(addons.get_addon_info(addon, constants.new_server_info), constants.new_server_info, compat_mode=True) for addon in addons.search_addons("worldedit", constants.new_server_info) if "Regions"] if item]
             # # constants.new_server_info['addon_objects'].extend([addons.get_addon_file(addon, constants.new_server_info) for addon in glob(r'C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\pluginupdate test\plugins\*.jar')])
             screen_manager.current = "ServerManagerScreen"
-            #open_server("test")
+            open_server("test")
 
 
         screen_manager.transition = FadeTransition(duration=0.115)
