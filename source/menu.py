@@ -2413,13 +2413,13 @@ class ScrollViewWidget(ScrollView):
                 pass
         return super().on_touch_down(touch)
 
-    def __del__(self):
-        for widget in self.walk():
-            self.remove_widget(widget)
-            del widget
-
-        self.clear_widgets()
-        gc.collect()
+    # def __del__(self):
+    #     for widget in self.walk():
+    #         self.remove_widget(widget)
+    #         del widget
+    #
+    #     self.clear_widgets()
+    #     gc.collect()
 
 class ScrollItem(RelativeLayout):
     def __init__(self, widget=None, **kwargs):
@@ -9501,38 +9501,114 @@ class ConsolePanel(FloatLayout):
 
         texture = self.controls.background.texture_size
         self.controls.background.size_hint_max = (texture[0] + (self.height - texture[1]) + 200, texture[1] + (self.height - texture[1]))
-        if self.full_screen:
-            self.size_hint_max = (None, None)
+        if self.full_screen == "animate":
+            pass
+        elif self.full_screen:
+            self.size_hint_max = (Window.width, Window.height - self.full_screen_offset)
         else:
-            self.size_hint_max = (Window.width - 150, Window.height - 450)
+            self.size_hint_max = (Window.width - self.size_offset[0], Window.height - self.size_offset[1])
 
         self.controls.maximize_button.pos = self.pos
 
 
     # Launch server and update properties
     def launch_server(self, animate=True, *args):
+        anim_speed = 0.15 if animate else 0
 
         # Animate panel
-        anim_speed = 0.15 if animate else 0
         self.controls.launch_button.disabled = True
         constants.hide_widget(self.controls.maximize_button, False)
         constants.hide_widget(self.controls.stop_button, False)
         self.controls.maximize_button.opacity = 0
         self.controls.stop_button.opacity = 0
+
+        Animation(opacity=0, duration=anim_speed).start(self.controls.button_shadow)
         Animation(opacity=0, duration=anim_speed).start(self.controls.background)
         Animation(opacity=0, duration=(anim_speed*1.5) if animate else 0).start(self.controls.launch_button)
         Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.maximize_button)
 
-        def disable(*args):
+        def after_anim(*a):
             self.controls.maximize_button.disabled = False
             self.controls.stop_button.disabled = False
             self.controls.remove_widget(self.controls.launch_button)
             Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.stop_button)
 
-        Clock.schedule_once(disable, (anim_speed*1.51) if animate else 0)
+        Clock.schedule_once(after_anim, (anim_speed*1.51) if animate else 0)
 
-        # constants.java_check()
-        # self.update_process(screen_manager.current_screen.server.launch())
+        constants.java_check()
+        self.update_process(screen_manager.current_screen.server.launch())
+
+
+
+
+    # Toggles full screen on the console
+    def maximize(self, maximize=True, *args):
+        anim_speed = 0.135
+        self.full_screen = "animate"
+
+
+        # Fix scrolling
+        if (self.console_text.height > self.scroll_layout.height - self.console_text.padding[-1]):
+            Animation(scroll_y=0, duration=anim_speed, transition='out_sine').start(self.scroll_layout)
+        else:
+            Animation(scroll_y=1, duration=anim_speed, transition='out_sine').start(self.scroll_layout)
+
+
+        # Entering full screen
+        if maximize:
+            Animation(size_hint_max=(Window.width, Window.height - self.full_screen_offset), duration=anim_speed, transition='out_sine').start(self)
+            Animation(opacity=0, duration=anim_speed, transition='out_sine').start(self.corner_mask)
+
+            # Full screen button
+            self.controls.remove_widget(self.controls.maximize_button)
+            del self.controls.maximize_button
+            self.controls.maximize_button = IconButton('exit fullscreen', {}, (71, 150), (None, None), 'minimize.png', clickable=True, anchor='right', click_func=functools.partial(self.maximize, False))
+            self.controls.maximize_button.opacity = 0
+            self.controls.add_widget(self.controls.maximize_button)
+
+            # Stop server button
+            self.controls.remove_widget(self.controls.stop_button)
+            del self.controls.stop_button
+            self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=[[(0.05, 0.08, 0.07, 1), (1, 0.5, 1, 1)], 'pink'])
+            self.controls.stop_button.opacity = 0
+            self.controls.add_widget(self.controls.stop_button)
+
+            def after_anim(*a):
+                self.full_screen = True
+                Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
+                Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
+
+            Clock.schedule_once(after_anim, (anim_speed*1.1))
+
+
+        # Exiting full screen
+        else:
+            Animation(size_hint_max=(Window.width - self.size_offset[0], Window.height - self.size_offset[1]), duration=anim_speed, transition='out_sine').start(self)
+            Animation(opacity=1, duration=(anim_speed*0.3), transition='out_sine').start(self.corner_mask)
+
+            # Full screen button
+            self.controls.remove_widget(self.controls.maximize_button)
+            del self.controls.maximize_button
+            self.controls.maximize_button = IconButton('fullscreen', {}, (215, 505), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(32, 45), click_func=functools.partial(self.maximize, True))
+            self.controls.maximize_button.opacity = 0
+            self.controls.add_widget(self.controls.maximize_button)
+
+            # Stop server button
+            self.controls.remove_widget(self.controls.stop_button)
+            del self.controls.stop_button
+            self.controls.stop_button = IconButton('stop server', {}, (267, 505), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=[[(0.05, 0.08, 0.07, 1), (1, 0.5, 1, 1)], 'pink'])
+            self.controls.stop_button.opacity = 0
+            self.controls.add_widget(self.controls.stop_button)
+
+            def after_anim(*a):
+                self.full_screen = False
+                Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
+                Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
+
+            Clock.schedule_once(after_anim, (anim_speed*1.1))
+
+
+
 
 
     def __init__(self, server_name, **kwargs):
@@ -9540,6 +9616,8 @@ class ConsolePanel(FloatLayout):
 
         self.server_name = server_name
         self.full_screen = False
+        self.full_screen_offset = 95
+        self.size_offset = (150, 450)
         self.has_crashed = False
 
 
@@ -9772,12 +9850,12 @@ class ConsolePanel(FloatLayout):
                 self.add_widget(self.launch_button)
 
                 # Full screen button
-                self.maximize_button = IconButton('full screen', {}, (215, 505), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(32, 45))
+                self.maximize_button = IconButton('fullscreen', {}, (215, 505), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(32, 45), click_func=functools.partial(self.panel.maximize, True))
                 constants.hide_widget(self.maximize_button)
                 self.add_widget(self.maximize_button)
 
                 # Stop server button
-                self.stop_button = IconButton('stop server', {}, (267, 505), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 45), force_color=[[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], 'pink'])
+                self.stop_button = IconButton('stop server', {}, (267, 505), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 45), force_color=[[(0.05, 0.08, 0.07, 1), (1, 0.5, 1, 1)], 'pink']) # (0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)
                 constants.hide_widget(self.stop_button)
                 self.add_widget(self.stop_button)
 
@@ -9805,7 +9883,7 @@ class ConsolePanel(FloatLayout):
         # Text Layout
         self.scroll_layout = RecycleViewWidget(position=None, view_class=ConsoleLabel)
         self.scroll_layout.scroll_wheel_distance = dp(50)
-        self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(100, 42), padding=[0, 0, 0, 30]) # , default_size=(100, 0)
+        self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(100, 42), padding=[0, 3, 0, 30]) # , default_size=(100, 0)
         self.console_text.bind(minimum_height=self.console_text.setter('height'))
         self.scroll_layout.add_widget(self.console_text)
         self.add_widget(self.scroll_layout)
@@ -9904,7 +9982,7 @@ class ServerManagerViewScreen(MenuBackground):
 
         # Add ConsolePanel
         self.console_panel = ConsolePanel(self.server.name)
-        self.console_panel.pos_hint = {"center_x": 0.5, "center_y": 0.42}
+        self.console_panel.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.add_widget(self.console_panel)
 
 
