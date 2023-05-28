@@ -9717,12 +9717,12 @@ class ConsolePanel(FloatLayout):
         anim_speed = 0.135
         self.full_screen = "animate"
 
-
         # Fix scrolling
-        if (self.console_text.height > self.scroll_layout.height):
-            Animation(scroll_y=0, duration=anim_speed, transition='out_sine').start(self.scroll_layout)
-        else:
-            Animation(scroll_y=1, duration=anim_speed, transition='out_sine').start(self.scroll_layout)
+        def fix_scroll(*a):
+            if (self.console_text.height > self.scroll_layout.height):
+                Animation(scroll_y=0, duration=anim_speed, transition='out_sine').start(self.scroll_layout)
+            else:
+                Animation(scroll_y=1, duration=anim_speed, transition='out_sine').start(self.scroll_layout)
 
 
         # Entering full screen
@@ -9750,6 +9750,7 @@ class ConsolePanel(FloatLayout):
                 Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                 Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                 Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
+                fix_scroll()
 
             Clock.schedule_once(after_anim, (anim_speed*1.1))
 
@@ -9784,6 +9785,7 @@ class ConsolePanel(FloatLayout):
                 if self.run_data:
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
+                fix_scroll()
 
             Clock.schedule_once(after_anim, (anim_speed*1.1))
 
@@ -9800,8 +9802,8 @@ class ConsolePanel(FloatLayout):
         self.ignore_keypress = False
 
         self.button_colors = {
-            'maximize': [[(0.05, 0.08, 0.07, 1), (1, 1, 1, 1)], ''],
-            'stop': [[(0.05, 0.08, 0.07, 1), (1, 1, 1, 1)], 'pink']
+            'maximize': [[(0.05, 0.08, 0.07, 1), (0.8, 0.8, 1, 1)], ''],
+            'stop': [[(0.05, 0.08, 0.07, 1), (0.8, 0.8, 1, 1)], 'pink']
         }
 
 
@@ -9925,6 +9927,13 @@ class ConsolePanel(FloatLayout):
         class ConsoleInput(TextInput):
 
             def _on_focus(self, instance, value, *largs):
+
+                # Update screen focus value on next frame
+                def update_focus(*args):
+                    screen_manager.current_screen._input_focused = self.focus
+
+                Clock.schedule_once(update_focus, 0)
+
                 super(ConsoleInput, self)._on_focus(instance, value)
                 Animation.stop_all(self.parent.input_background)
                 Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
@@ -10045,7 +10054,7 @@ class ConsolePanel(FloatLayout):
 
 
                 # Full screen button
-                self.maximize_button = IconButton('maximize', {}, (215, 505), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(32, 45), force_color=self.panel.button_colors['stop'], click_func=functools.partial(self.panel.maximize, True))
+                self.maximize_button = IconButton('maximize', {}, (215, 505), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(32, 45), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.maximize, True))
                 constants.hide_widget(self.maximize_button)
                 self.add_widget(self.maximize_button)
 
