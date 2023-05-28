@@ -4867,8 +4867,7 @@ class MenuBackground(Screen):
             #         continue
 
 
-        # Return True to accept the key. Otherwise, it will be used by
-        # the system.
+        # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
 
@@ -8930,6 +8929,61 @@ def open_server(server_name, wait_page_load=False, show_banner='', *args):
 
 class ServerButton(HoverButton):
 
+    class ParagraphLabel(Label, HoverBehavior):
+
+        def on_mouse_pos(self, *args):
+
+            if "ServerManagerViewScreen" in screen_manager.current_screen.name and self.copyable:
+                try:
+                    super().on_mouse_pos(*args)
+                except:
+                    pass
+
+        # Hover stuffies
+        def on_enter(self, *args):
+
+            if self.copyable:
+                self.outline_width = 0
+                self.outline_color = constants.brighten_color(self.color, 0.05)
+                Animation(outline_width=1, duration=0.03).start(self)
+
+        def on_leave(self, *args):
+
+            if self.copyable:
+                Animation.stop_all(self)
+                self.outline_width = 0
+
+        # Normal stuffies
+        def on_ref_press(self, *args):
+            if not self.disabled:
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        (0.85, 0.65, 1, 1),
+                        "Copied IP address to clipboard",
+                        "link-sharp.png",
+                        2,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+
+                Clipboard.copy(re.sub("\[.*?\]","",self.text.split(" ")[-1].strip()))
+
+        def ref_text(self, *args):
+
+            if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
+                self.text = f'[ref=none]{self.text.strip()}[/ref]'
+            elif '[/ref]' in self.text:
+                self.text = self.text.replace("[/ref]", "") + "[/ref]"
+
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.markup = True
+            self.copyable = True
+            self.bind(text=self.ref_text)
+
+
     def toggle_favorite(self, favorite, *args):
         self.favorite = favorite
         self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
@@ -8962,7 +9016,7 @@ class ServerButton(HoverButton):
         # Title and description
         padding = 2.17
         self.title.pos = (self.x + (self.title.text_size[0] / padding) - (6 if self.favorite else 0) + 30, self.y + 31)
-        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1 + 30, self.y)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1 + 30 - 100, self.y + 8)
 
 
         offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper"]\
@@ -9006,6 +9060,7 @@ class ServerButton(HoverButton):
 
     def update_subtitle(self, run_data=None, last_modified=None):
         if run_data:
+            self.subtitle.copyable = True
             self.subtitle.color = self.run_color
             self.subtitle.default_opacity = 0.8
             self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
@@ -9015,6 +9070,7 @@ class ServerButton(HoverButton):
                 text = ':'.join(run_data['network']['address'].values())
             self.subtitle.text = f"Running  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
         else:
+            self.subtitle.copyable = False
             if last_modified:
                 self.original_subtitle = backup.convert_date(last_modified)
             self.subtitle.color = self.color_id[1]
@@ -9023,7 +9079,6 @@ class ServerButton(HoverButton):
             self.subtitle.text = self.original_subtitle
 
         self.subtitle.opacity = self.subtitle.default_opacity
-
 
     def __init__(self, server_object, click_function=None, fade_in=0.0, highlight=None, update_banner="", view_only=False, **kwargs):
         super().__init__(**kwargs)
@@ -9074,9 +9129,14 @@ class ServerButton(HoverButton):
 
 
         # Server last modified date formatted
-        self.subtitle = Label()
+        if self.view_only:
+            self.subtitle = self.ParagraphLabel()
+        else:
+            self.subtitle = Label()
+        self.subtitle.size = (300, 30)
         self.subtitle.id = "subtitle"
         self.subtitle.halign = "left"
+        self.subtitle.valign = "center"
         self.subtitle.font_size = sp(21)
         self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
         self.subtitle.shorten = True
@@ -9085,6 +9145,7 @@ class ServerButton(HoverButton):
         self.subtitle.max_lines = 1
 
         if self.running:
+            self.subtitle.copyable = True
             self.subtitle.color = self.run_color
             self.subtitle.default_opacity = 0.8
             self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
@@ -9094,6 +9155,7 @@ class ServerButton(HoverButton):
                 text = ':'.join(server_object.run_data['network']['address'].values())
             self.subtitle.text = f"Running  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
         else:
+            self.subtitle.copyable = False
             self.subtitle.color = self.color_id[1]
             self.subtitle.default_opacity = 0.56
             self.subtitle.font_name = self.original_font
@@ -9271,7 +9333,7 @@ class ServerManagerScreen(MenuBackground):
     def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, *args):
 
         # Set to proper page on favorite/unfavorite
-        default_scroll = 1
+        default_scroll = 1 if self.current_scroll[1] == 1 or new_search or self.current_page != self.current_scroll[0] else self.current_scroll[1]
         if highlight:
             def divide_chunks(l, n):
                 final_list = []
@@ -9330,6 +9392,7 @@ class ServerManagerScreen(MenuBackground):
                 # Activated when addon is clicked
                 def view_server(server, index, *args):
                     selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ServerButton"][index - 1]
+                    self.current_scroll = (self.current_page, self.scroll_layout.parent.parent.scroll_y)
 
                     # View Server
                     if selected_button.last_touch.button == "left":
@@ -9372,7 +9435,6 @@ class ServerManagerScreen(MenuBackground):
             Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
         Clock.schedule_once(set_scroll, 0)
 
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
@@ -9385,6 +9447,7 @@ class ServerManagerScreen(MenuBackground):
         self.last_results = []
         self.page_size = 10
         self.current_page = 0
+        self.current_scroll = (1, 1)
         self.max_pages = 0
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
@@ -9614,17 +9677,16 @@ class ConsolePanel(FloatLayout):
             return
 
         self.run_data = None
+        self.ignore_keypress = True
 
         if self.server_button:
             self.server_button.update_subtitle(self.run_data, dt.now())
 
 
         # Else, reset it back to normal
-        if self.full_screen:
-            self.maximize(False)
-        else:
-            constants.hide_widget(self.controls.maximize_button, True)
-            constants.hide_widget(self.controls.stop_button, True)
+        self.maximize(False)
+        constants.hide_widget(self.controls.maximize_button, True)
+        constants.hide_widget(self.controls.stop_button, True)
 
 
         def after_anim(*a):
@@ -9683,6 +9745,7 @@ class ConsolePanel(FloatLayout):
 
             def after_anim(*a):
                 self.full_screen = True
+                self.ignore_keypress = False
                 Animation(opacity=0, duration=(anim_speed*0.1), transition='out_sine').start(self.corner_mask)
                 Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                 Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
@@ -9717,6 +9780,7 @@ class ConsolePanel(FloatLayout):
 
             def after_anim(*a):
                 self.full_screen = False
+                self.ignore_keypress = False
                 if self.run_data:
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
@@ -9733,6 +9797,7 @@ class ConsolePanel(FloatLayout):
         self.full_screen = False
         self.full_screen_offset = 95
         self.size_offset = (150, 450)
+        self.ignore_keypress = False
 
         self.button_colors = {
             'maximize': [[(0.05, 0.08, 0.07, 1), (1, 1, 1, 1)], ''],
@@ -10118,6 +10183,45 @@ class ServerManagerViewScreen(MenuBackground):
         self.console_panel = None
         self.server_button = None
         self.server_button_layout = None
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        # print('The key', keycode, 'have been pressed')
+        # print(' - text is %r' % text)
+        # print(' - modifiers are %r' % modifiers)
+
+        # Ignore key presses when popup is visible
+        if self.popup_widget:
+            return
+
+        # Ignore ESC commands while input focused
+        if not self._input_focused and self.name == screen_manager.current_screen.name:
+
+            # Keycode is composed of an integer + a string
+            # If we hit escape, release the keyboard
+            # On ESC, click on back button if it exists
+            if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
+
+                if self.console_panel.full_screen:
+                    self.console_panel.maximize(False)
+
+                else:
+                    for button in self.walk():
+                        try:
+                            if button.id == "exit_button":
+                                button.force_click()
+                                break
+                        except AttributeError:
+                            continue
+                keyboard.release()
+
+
+            # Use 'F' to toggle fullscreen
+            elif keycode[1] == 'f' and 'f' not in self._ignore_keys and self.server.run_data:
+                self.console_panel.maximize(not self.console_panel.full_screen)
+                self.console_panel.ignore_keypress = True
+
+        # Return True to accept the key. Otherwise, it will be used by the system.
+        return True
 
 
     def generate_menu(self, **kwargs):
