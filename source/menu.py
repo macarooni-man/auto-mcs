@@ -2726,19 +2726,19 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
     final = FloatLayout()
     final.id = name
 
-    button = HoverButton()
-    button.id = 'color_button'
-    button.color_id = [constants.brighten_color(color, -0.9), color]
+    final.button = HoverButton()
+    final.button.id = 'color_button'
+    final.button.color_id = [constants.brighten_color(color, -0.9), color]
 
-    button.size_hint = (None, None)
-    button.size = (dp(450 if not width else width), dp(72))
-    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
-    button.border = (30, 30, 30, 30)
-    button.background_normal = os.path.join(constants.gui_assets, 'color_button.png')
-    button.background_down = os.path.join(constants.gui_assets, 'color_button_click.png')
-    button.background_disabled_normal = os.path.join(constants.gui_assets, 'color_button.png')
-    button.background_disabled_down = os.path.join(constants.gui_assets, 'color_button_click.png')
-    button.background_color = button.color_id[1]
+    final.button.size_hint = (None, None)
+    final.button.size = (dp(450 if not width else width), dp(72))
+    final.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+    final.button.border = (30, 30, 30, 30)
+    final.button.background_normal = os.path.join(constants.gui_assets, 'color_button.png')
+    final.button.background_down = os.path.join(constants.gui_assets, 'color_button_click.png')
+    final.button.background_disabled_normal = os.path.join(constants.gui_assets, 'color_button.png')
+    final.button.background_disabled_down = os.path.join(constants.gui_assets, 'color_button_click.png')
+    final.button.background_color = final.button.color_id[1]
 
     text = Label()
     text.id = 'text'
@@ -2747,19 +2747,19 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
     text.text = name.upper()
     text.font_size = sp(19)
     text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-    text.color = button.color_id[1]
+    text.color = final.button.color_id[1]
 
 
     # Button click behavior
-    button.on_release = functools.partial(button_action, name, button)
-    final.add_widget(button)
+    final.button.on_release = functools.partial(button_action, name, final.button)
+    final.add_widget(final.button)
 
     if icon_name:
         icon = Image()
         icon.id = 'icon'
         icon.source = icon_path(icon_name)
         icon.size = (dp(1), dp(1))
-        icon.color = button.color_id[1]
+        icon.color = final.button.color_id[1]
         icon.pos_hint = {"center_y": position[1]}
         icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
         final.add_widget(icon)
@@ -2767,10 +2767,10 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
     final.add_widget(text)
 
     if auto_adjust_icon and icon_name:
-        Clock.schedule_once(functools.partial(repos_icon, icon, button), 0)
+        Clock.schedule_once(functools.partial(repos_icon, icon, final.button), 0)
 
     if click_func:
-        button.bind(on_press=click_func)
+        final.button.bind(on_press=click_func)
 
     return final
 
@@ -2811,7 +2811,7 @@ class IconButton(FloatLayout):
         self.button.id = 'icon_button'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
     
-        if force_color:
+        if force_color and force_color[1]:
             self.button.alt_color = "_" + force_color[1]
     
         self.button.size_hint = size_hint
@@ -2824,7 +2824,7 @@ class IconButton(FloatLayout):
         self.button.border = (0, 0, 0, 0)
         self.button.background_normal = os.path.join(constants.gui_assets, f'{self.button.id}.png')
     
-        if not force_color:
+        if not force_color or not force_color[1]:
             self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
         else:
             self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
@@ -9004,8 +9004,34 @@ class ServerButton(HoverButton):
 
         Clock.schedule_once(next_frame, 0)
 
-    def __init__(self, server_object, click_function=None, fade_in=0.0, highlight=None, update_banner="", **kwargs):
+    def update_subtitle(self, run_data=None, last_modified=None):
+        if run_data:
+            self.subtitle.color = self.run_color
+            self.subtitle.default_opacity = 0.8
+            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            if 'ngrok' in run_data['network']['address']['ip'].lower():
+                text = run_data['network']['address']['ip']
+            else:
+                text = ':'.join(run_data['network']['address'].values())
+            self.subtitle.text = f"Running  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+        else:
+            if last_modified:
+                self.original_subtitle = backup.convert_date(last_modified)
+            self.subtitle.color = self.color_id[1]
+            self.subtitle.default_opacity = 0.56
+            self.subtitle.font_name = self.original_font
+            self.subtitle.text = self.original_subtitle
+
+        self.subtitle.opacity = self.subtitle.default_opacity
+
+
+    def __init__(self, server_object, click_function=None, fade_in=0.0, highlight=None, update_banner="", view_only=False, **kwargs):
         super().__init__(**kwargs)
+
+        self.view_only = view_only
+
+        if self.view_only:
+            self.ignore_hover = True
 
         self.favorite = server_object.favorite
         self.properties = server_object
@@ -9017,8 +9043,13 @@ class ServerButton(HoverButton):
         self.size_hint_max = (580, 80)
         self.id = "server_button"
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_click.png')
-        icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+
+        if not self.view_only:
+            self.background_down = os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_click.png')
+        else:
+            self.background_down = os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png')
+
+        self.icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
 
 
         # Loading stuffs
@@ -9061,7 +9092,7 @@ class ServerButton(HoverButton):
                 text = server_object.run_data['network']['address']['ip']
             else:
                 text = ':'.join(server_object.run_data['network']['address'].values())
-            self.subtitle.text = f"Running  [font={icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+            self.subtitle.text = f"Running  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
         else:
             self.subtitle.color = self.color_id[1]
             self.subtitle.default_opacity = 0.56
@@ -9125,12 +9156,15 @@ class ServerButton(HoverButton):
 
         # Favorite button
         self.favorite_layout = RelativeLayout()
-        favorite = functools.partial(screen_manager.current_screen.favorite, server_object.name)
+        if not view_only:
+            favorite = functools.partial(screen_manager.current_screen.favorite, server_object.name)
+        else:
+            favorite = None
 
         if self.favorite:
-            self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'], anchor='right', click_func=favorite)
+            self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-sharp.png', clickable=not self.view_only, force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'], anchor='right', click_func=favorite)
         else:
-            self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-outline.png', clickable=True, anchor='right', click_func=favorite)
+            self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-outline.png', clickable=not self.view_only, anchor='right', click_func=favorite)
 
         self.favorite_layout.add_widget(self.favorite_button)
         self.add_widget(self.favorite_layout)
@@ -9157,7 +9191,7 @@ class ServerButton(HoverButton):
             self.toggle_favorite(self.favorite)
 
         # If click_function
-        if click_function:
+        if click_function and not view_only:
             self.bind(on_press=click_function)
 
 
@@ -9287,10 +9321,10 @@ class ServerManagerScreen(MenuBackground):
         # Show servers if they exist
         if server_count != 0:
 
-            # Create list of addon names
+            # Create list of server names
             server_names = [server.name for server in constants.server_manager.server_list]
 
-            # Clear and add all addons
+            # Clear and add all ServerButtons
             for x, server_object in enumerate(page_list, 1):
 
                 # Activated when addon is clicked
@@ -9436,6 +9470,9 @@ class ConsolePanel(FloatLayout):
         if self.update_text not in self.run_data['process-hooks']:
             self.run_data['process-hooks'].append(self.update_text)
 
+        if self.reset_panel not in self.run_data['close-hooks']:
+            self.run_data['close-hooks'].append(self.reset_panel)
+
         self.update_text(self.run_data['log'])
 
         def update_scroll(*args):
@@ -9449,7 +9486,7 @@ class ConsolePanel(FloatLayout):
         original_scroll = self.scroll_layout.scroll_y
         original_len = len(self.scroll_layout.data)
         self.scroll_layout.data = text
-        if (self.console_text.height > self.scroll_layout.height - self.console_text.padding[-1]) and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
+        if (self.console_text.height > self.scroll_layout.height - self.console_text.padding[-1] - self.console_text.padding[1]) and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
             self.scroll_layout.scroll_y = 0
             self.auto_scroll = True
 
@@ -9490,9 +9527,13 @@ class ConsolePanel(FloatLayout):
 
 
         # Corner resize
-        offset = self.corner_size - (self.corner_size*0.18)
+        offset = self.corner_size
         self.corner_mask.size_hint_max = (self.size[0] - offset, self.size[1] - offset)
         self.corner_mask.pos = (self.x + (offset/2), self.y + (offset/2))
+        self.corner_mask.sl.size_hint_max_y = self.height - (self.corner_size*2)
+        self.corner_mask.sr.size_hint_max_y = self.height - (self.corner_size*2)
+        self.corner_mask.sb.size_hint_max_x = self.width - (self.corner_size*2)
+        self.corner_mask.st.size_hint_max_x = self.width - (self.corner_size*2)
 
 
         # Console panel resize:
@@ -9510,10 +9551,20 @@ class ConsolePanel(FloatLayout):
 
         self.controls.maximize_button.pos = self.pos
 
+        shadow_size = self.controls.control_shadow.size
+        self.controls.control_shadow.pos = (self.width - shadow_size[0], self.height - shadow_size[1])
+
+
+        # Fullscreen shadow
+        self.fullscreen_shadow.y = self.height + self.x - 3
+        self.fullscreen_shadow.width = Window.width
+
 
     # Launch server and update properties
     def launch_server(self, animate=True, *args):
         anim_speed = 0.15 if animate else 0
+        self.scroll_layout.scroll_y = 1
+        self.auto_scroll = False
 
         # Animate panel
         self.controls.launch_button.disabled = True
@@ -9531,14 +9582,72 @@ class ConsolePanel(FloatLayout):
             self.controls.maximize_button.disabled = False
             self.controls.stop_button.disabled = False
             self.controls.remove_widget(self.controls.launch_button)
+            self.controls.launch_button.button.on_leave()
             Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.stop_button)
+
+        def update_launch_data(*args):
+            if self.server_button:
+                self.server_button.update_subtitle(self.run_data)
+        Clock.schedule_once(update_launch_data, 3)
 
         Clock.schedule_once(after_anim, (anim_speed*1.51) if animate else 0)
 
+
+        # Actually launch server
         constants.java_check()
         self.update_process(screen_manager.current_screen.server.launch())
 
 
+    # Send '/stop' command to server console
+    def stop_server(self, *args):
+        screen_manager.current_screen.server.silent_command("stop")
+
+
+    # Called from ServerObject when process stops
+    def reset_panel(self, crash=False):
+
+        # Ignore if screen isn't visible or a different server
+        if not (screen_manager.current_screen.name == 'ServerManagerViewScreen'):
+            return
+
+        if screen_manager.current_screen.server.name != self.server_name or not self.run_data:
+            return
+
+        self.run_data = None
+
+        if self.server_button:
+            self.server_button.update_subtitle(self.run_data, dt.now())
+
+
+        # Else, reset it back to normal
+        if self.full_screen:
+            self.maximize(False)
+        else:
+            constants.hide_widget(self.controls.maximize_button, True)
+            constants.hide_widget(self.controls.stop_button, True)
+
+
+        def after_anim(*a):
+            anim_speed = 0.15
+
+
+            # Animate panel
+            self.controls.launch_button.disabled = False
+            self.controls.launch_button.opacity = 0
+            self.controls.add_widget(self.controls.launch_button)
+
+            Animation(opacity=1, duration=anim_speed).start(self.controls.button_shadow)
+            Animation(opacity=1, duration=anim_speed).start(self.controls.launch_button)
+            Animation(opacity=1, duration=anim_speed).start(self.controls.background)
+
+            def after_anim2(*a):
+                self.controls.maximize_button.disabled = False
+                self.controls.stop_button.disabled = False
+                self.scroll_layout.data = {}
+
+            Clock.schedule_once(after_anim2, (anim_speed * 1.51))
+
+        Clock.schedule_once(after_anim, 1)
 
 
     # Toggles full screen on the console
@@ -9548,7 +9657,7 @@ class ConsolePanel(FloatLayout):
 
 
         # Fix scrolling
-        if (self.console_text.height > self.scroll_layout.height - self.console_text.padding[-1]):
+        if (self.console_text.height > self.scroll_layout.height):
             Animation(scroll_y=0, duration=anim_speed, transition='out_sine').start(self.scroll_layout)
         else:
             Animation(scroll_y=1, duration=anim_speed, transition='out_sine').start(self.scroll_layout)
@@ -9557,24 +9666,25 @@ class ConsolePanel(FloatLayout):
         # Entering full screen
         if maximize:
             Animation(size_hint_max=(Window.width, Window.height - self.full_screen_offset), duration=anim_speed, transition='out_sine').start(self)
-            Animation(opacity=0, duration=anim_speed, transition='out_sine').start(self.corner_mask)
 
             # Full screen button
             self.controls.remove_widget(self.controls.maximize_button)
             del self.controls.maximize_button
-            self.controls.maximize_button = IconButton('exit fullscreen', {}, (71, 150), (None, None), 'minimize.png', clickable=True, anchor='right', click_func=functools.partial(self.maximize, False))
+            self.controls.maximize_button = IconButton('minimize', {}, (71, 150), (None, None), 'minimize.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, False))
             self.controls.maximize_button.opacity = 0
             self.controls.add_widget(self.controls.maximize_button)
 
             # Stop server button
             self.controls.remove_widget(self.controls.stop_button)
             del self.controls.stop_button
-            self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=[[(0.05, 0.08, 0.07, 1), (1, 0.5, 1, 1)], 'pink'])
+            self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server)
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
             def after_anim(*a):
                 self.full_screen = True
+                Animation(opacity=0, duration=(anim_speed*0.1), transition='out_sine').start(self.corner_mask)
+                Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                 Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                 Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
 
@@ -9584,41 +9694,50 @@ class ConsolePanel(FloatLayout):
         # Exiting full screen
         else:
             Animation(size_hint_max=(Window.width - self.size_offset[0], Window.height - self.size_offset[1]), duration=anim_speed, transition='out_sine').start(self)
-            Animation(opacity=1, duration=(anim_speed*0.3), transition='out_sine').start(self.corner_mask)
+            Animation(opacity=1, duration=(anim_speed*0.1), transition='out_sine').start(self.corner_mask)
+            Animation(opacity=0, duration=(anim_speed*0.1), transition='out_sine').start(self.fullscreen_shadow)
 
             # Full screen button
             self.controls.remove_widget(self.controls.maximize_button)
             del self.controls.maximize_button
-            self.controls.maximize_button = IconButton('fullscreen', {}, (215, 505), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(32, 45), click_func=functools.partial(self.maximize, True))
+            self.controls.maximize_button = IconButton('maximize', {}, (215, 505), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(32, 45), force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, True))
             self.controls.maximize_button.opacity = 0
             self.controls.add_widget(self.controls.maximize_button)
 
             # Stop server button
             self.controls.remove_widget(self.controls.stop_button)
             del self.controls.stop_button
-            self.controls.stop_button = IconButton('stop server', {}, (267, 505), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=[[(0.05, 0.08, 0.07, 1), (1, 0.5, 1, 1)], 'pink'])
+            self.controls.stop_button = IconButton('stop server', {}, (267, 505), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 45), force_color=self.button_colors['stop'], click_func=self.stop_server)
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
+            if not self.run_data:
+                constants.hide_widget(self.controls.maximize_button, True)
+                constants.hide_widget(self.controls.stop_button, True)
+
             def after_anim(*a):
                 self.full_screen = False
-                Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
-                Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
+                if self.run_data:
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
 
             Clock.schedule_once(after_anim, (anim_speed*1.1))
 
 
 
-
-
-    def __init__(self, server_name, **kwargs):
+    def __init__(self, server_name, server_button=None, **kwargs):
         super().__init__(**kwargs)
 
         self.server_name = server_name
+        self.server_button = server_button
         self.full_screen = False
         self.full_screen_offset = 95
         self.size_offset = (150, 450)
-        self.has_crashed = False
+
+        self.button_colors = {
+            'maximize': [[(0.05, 0.08, 0.07, 1), (1, 1, 1, 1)], ''],
+            'stop': [[(0.05, 0.08, 0.07, 1), (1, 1, 1, 1)], 'pink']
+        }
 
 
         # Console line Viewclass for RecycleView
@@ -9849,17 +9968,27 @@ class ConsolePanel(FloatLayout):
                 self.launch_button.disabled = False
                 self.add_widget(self.launch_button)
 
+
+                # Button shadow in the top right
+                self.control_shadow = Image()
+                self.control_shadow.allow_stretch = True
+                self.control_shadow.keep_ratio = False
+                self.control_shadow.color = background_color
+                self.control_shadow.source = os.path.join(constants.gui_assets, 'console_control_shadow.png')
+                self.control_shadow.size_hint_max = (200, 120)
+                self.add_widget(self.control_shadow)
+
+
                 # Full screen button
-                self.maximize_button = IconButton('fullscreen', {}, (215, 505), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(32, 45), click_func=functools.partial(self.panel.maximize, True))
+                self.maximize_button = IconButton('maximize', {}, (215, 505), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(32, 45), force_color=self.panel.button_colors['stop'], click_func=functools.partial(self.panel.maximize, True))
                 constants.hide_widget(self.maximize_button)
                 self.add_widget(self.maximize_button)
 
                 # Stop server button
-                self.stop_button = IconButton('stop server', {}, (267, 505), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 45), force_color=[[(0.05, 0.08, 0.07, 1), (1, 0.5, 1, 1)], 'pink']) # (0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)
+                self.stop_button = IconButton('stop server', {}, (267, 505), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 45), force_color=self.panel.button_colors['stop'], click_func=self.panel.stop_server)
                 constants.hide_widget(self.stop_button)
                 self.add_widget(self.stop_button)
 
-                # self.label = Label(text="Server gay")
 
 
 
@@ -9869,7 +9998,8 @@ class ConsolePanel(FloatLayout):
         self.auto_scroll = False
 
         background_color = constants.brighten_color(constants.background_color, -0.1)
-
+        with self.canvas.after:
+            print(vars(self))
 
         # Background
         with self.canvas.before:
@@ -9882,8 +10012,9 @@ class ConsolePanel(FloatLayout):
 
         # Text Layout
         self.scroll_layout = RecycleViewWidget(position=None, view_class=ConsoleLabel)
+        self.scroll_layout.always_overscroll = False
         self.scroll_layout.scroll_wheel_distance = dp(50)
-        self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(100, 42), padding=[0, 3, 0, 30]) # , default_size=(100, 0)
+        self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(100, 42), padding=[0, 3, 0, 30])
         self.console_text.bind(minimum_height=self.console_text.setter('height'))
         self.scroll_layout.add_widget(self.console_text)
         self.add_widget(self.scroll_layout)
@@ -9898,6 +10029,7 @@ class ConsolePanel(FloatLayout):
         self.gradient.opacity = 0.9
         self.gradient.source = os.path.join(constants.gui_assets, 'scroll_gradient.png')
         self.add_widget(self.gradient)
+
 
         # Command input
         self.input = ConsoleInput(size_hint_max_y=50)
@@ -9915,6 +10047,17 @@ class ConsolePanel(FloatLayout):
         self.add_widget(self.input_background)
 
 
+        # Fullscreen shadow
+        self.fullscreen_shadow = Image()
+        self.fullscreen_shadow.allow_stretch = True
+        self.fullscreen_shadow.keep_ratio = False
+        self.fullscreen_shadow.size_hint_max = (None, 50)
+        self.fullscreen_shadow.color = (0, 0, 0, 1)
+        self.fullscreen_shadow.opacity = 0
+        self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
+        self.add_widget(self.fullscreen_shadow)
+
+
         # Start server/blurred background layout
         self.controls = ConsoleControls(self)
         self.add_widget(self.controls)
@@ -9930,6 +10073,13 @@ class ConsolePanel(FloatLayout):
                 self.allow_stretch = True
                 self.keep_ratio = False
 
+        class Side(Image):
+            def __init__(self, vertical=True, **kwargs):
+                super().__init__(**kwargs)
+                self.source = os.path.join(constants.gui_assets, f'control_gradient_{"vertical" if vertical else "horizontal"}.png')
+                self.allow_stretch = True
+                self.keep_ratio = False
+
         self.corner_mask = RelativeLayout()
         self.corner_mask.tl = Corner(pos_hint={'center_x': 0, 'center_y': 1}, size_hint_max=(self.corner_size, self.corner_size))
         self.corner_mask.tr = Corner(pos_hint={'center_x': 1, 'center_y': 1}, size_hint_max=(-self.corner_size, self.corner_size))
@@ -9940,8 +10090,16 @@ class ConsolePanel(FloatLayout):
         self.corner_mask.add_widget(self.corner_mask.bl)
         self.corner_mask.add_widget(self.corner_mask.br)
 
-        self.add_widget(self.corner_mask)
+        self.corner_mask.sl = Side(pos_hint={'center_x': 0, 'center_y': 0.5}, size_hint_max=(self.corner_size, None), vertical=False)
+        self.corner_mask.sr = Side(pos_hint={'center_x': 1, 'center_y': 0.5}, size_hint_max=(-self.corner_size, None), vertical=False)
+        self.corner_mask.st = Side(pos_hint={'center_x': 0.5, 'center_y': 1}, size_hint_max=(None, self.corner_size))
+        self.corner_mask.sb = Side(pos_hint={'center_x': 0.5, 'center_y': 0}, size_hint_max=(None, -self.corner_size))
+        self.corner_mask.add_widget(self.corner_mask.sl)
+        self.corner_mask.add_widget(self.corner_mask.sr)
+        self.corner_mask.add_widget(self.corner_mask.st)
+        self.corner_mask.add_widget(self.corner_mask.sb)
 
+        self.add_widget(self.corner_mask)
 
 
         self.bind(pos=self.update_size)
@@ -9958,6 +10116,9 @@ class ServerManagerViewScreen(MenuBackground):
         self.menu = 'init'
         self.server = None
         self.console_panel = None
+        self.server_button = None
+        self.server_button_layout = None
+
 
     def generate_menu(self, **kwargs):
         self.server = constants.server_manager.current_server
@@ -9967,7 +10128,15 @@ class ServerManagerViewScreen(MenuBackground):
         float_layout = FloatLayout()
         float_layout.id = 'content'
 
-        float_layout.add_widget(header_text(f"What would you like to do with '{self.server.name}'?", '', (0, 0.88)))
+        # Check if updates are available
+        update_banner = ""
+        if self.server.auto_update == 'true':
+            update_banner = self.server.update_string
+
+        self.server_button = ServerButton(self.server, update_banner=update_banner, fade_in=0.3, view_only=True)
+        self.server_button_layout = ScrollItem(pos_hint = {'center_x': 0.5, 'center_y': 0.84})
+        self.server_button_layout.add_widget(self.server_button)
+        float_layout.add_widget(self.server_button_layout)
         buttons.append(exit_button('Back', (0.5, 0.1), cycle=True))
 
         for button in buttons:
@@ -9981,7 +10150,10 @@ class ServerManagerViewScreen(MenuBackground):
 
 
         # Add ConsolePanel
-        self.console_panel = ConsolePanel(self.server.name)
+        self.console_panel = ConsolePanel(self.server.name, self.server_button)
+        if self.server.running:
+            self.console_panel.launch_server(animate=False)
+
         self.console_panel.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.add_widget(self.console_panel)
 
@@ -10064,7 +10236,7 @@ class MainApp(App):
             # # constants.new_server_info['addon_objects'] = [item for item in [addons.get_addon_url(addons.get_addon_info(addon, constants.new_server_info), constants.new_server_info, compat_mode=True) for addon in addons.search_addons("worldedit", constants.new_server_info) if "Regions"] if item]
             # # constants.new_server_info['addon_objects'].extend([addons.get_addon_file(addon, constants.new_server_info) for addon in glob(r'C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\pluginupdate test\plugins\*.jar')])
             screen_manager.current = "ServerManagerScreen"
-            open_server("test")
+            open_server("format test b1.8")
 
 
         screen_manager.transition = FadeTransition(duration=0.115)

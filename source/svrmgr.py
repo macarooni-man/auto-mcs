@@ -90,6 +90,7 @@ class ServerObject():
             self.difficulty = None
 
         self.server_path = constants.server_path(server_name)
+        self.last_modified = os.path.getmtime(self.server_path)
 
 
         # Special sub-objects, and defer loading in the background
@@ -429,6 +430,7 @@ class ServerObject():
             self.run_data['network'] = {}
             self.run_data['log'] = [{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
             self.run_data['process-hooks'] = []
+            self.run_data['close-hooks'] = []
 
             with open(script_path, 'r') as f:
                 script_content = f.read()
@@ -465,8 +467,11 @@ class ServerObject():
                     lines_iterator = iter(self.run_data['process'].stderr.readline, "")
                 else:
                     lines_iterator = iter(self.run_data['process'].stdout.readline, "")
+
                 fail_counter = 0
                 close = False
+                crash_info = None
+
                 for line in lines_iterator:
                     self.update_log(line)
 
@@ -482,13 +487,19 @@ class ServerObject():
                     for hook in self.run_data['process-hooks']:
                         hook(self.run_data['log'])
 
+                    # Do things when server closes
                     if close:
+
+                        for hook in self.run_data['close-hooks']:
+                            hook(crash_info)
+
                         break
 
 
                 # Close server
                 self.terminate()
                 return
+
 
             self.run_data['thread'] = Timer(0, process_thread)
             self.run_data['thread'].start()
@@ -500,6 +511,7 @@ class ServerObject():
             with open(os.path.join(self.server_path, 'session.mcs'), 'w+') as f:
                 f.write(self.name)
             os.remove(os.path.join(self.server_path, 'session.mcs'))
+            self.last_modified = os.path.getmtime(self.server_path)
 
 
             # Initialize ScriptObject
@@ -554,6 +566,7 @@ class ServerObject():
         with open(os.path.join(self.server_path, 'session.mcs'), 'w+') as f:
             f.write(self.name)
         os.remove(os.path.join(self.server_path, 'session.mcs'))
+        self.last_modified = os.path.getmtime(self.server_path)
 
 
         # Delete log from memory (hopefully)

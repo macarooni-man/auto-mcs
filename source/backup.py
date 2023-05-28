@@ -58,7 +58,10 @@ class BackupObject():
 
 # Converts os.mtime to readable format
 def convert_date(m_time: int or float):
-    dt_obj = dt.fromtimestamp(float(m_time))
+    if isinstance(m_time, (int, float)):
+        dt_obj = dt.fromtimestamp(float(m_time))
+    else:
+        dt_obj = m_time
     days = (dt.now().date() - dt_obj.date()).days
     if days == 0:
         fmt = "Today %#I:%M %p"
