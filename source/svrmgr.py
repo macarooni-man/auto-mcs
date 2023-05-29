@@ -362,6 +362,9 @@ class ServerObject():
                 elif "CRITICAL" in line:
                     type_label = "CRIT"
                     type_color = (1, 0.5, 0.65, 1)
+                elif "SEVERE" in line:
+                    type_label = "SEVERE"
+                    type_color = (1, 0.5, 0.65, 1)
                 elif "FATAL" in line:
                     type_label = "FATAL"
                     type_color = (1, 0.5, 0.65, 1)
@@ -440,6 +443,7 @@ class ServerObject():
             self.run_data['log'] = [{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
             self.run_data['process-hooks'] = []
             self.run_data['close-hooks'] = []
+            self.run_data['crash-log'] = None
             self.run_data['console-panel'] = None
 
 
@@ -473,7 +477,6 @@ class ServerObject():
 
 
 
-
             # ----------------------------------------------------------------------------------------------------------
             # Main server process loop, handles reading output, hooks, and crash detection
             def process_thread(*args):
@@ -487,8 +490,15 @@ class ServerObject():
                 fail_counter = 0
                 close = False
                 crash_info = None
+                error_list = []
 
                 for line in lines_iterator:
+
+                    # Append legacy errors to error list
+                    if constants.version_check(self.version, '<', '1.7'):
+                        if "[STDERR] ".encode() in line:
+                            error_list.append(line.decode().split("[STDERR] ")[1])
+
                     self.update_log(line)
 
                     fail_counter = 0 if line else (fail_counter + 1)
@@ -496,27 +506,107 @@ class ServerObject():
                     # Close wrapper if server is closed
                     if not self.running or self.run_data['process'].poll() is not None or fail_counter > 25:
 
+
                         # Initially check for crashes
                         def get_latest_crash():
-                            # 1. Check for crash file, do some research on < 1.7 versions to see if there is a separate crash log
-                            #    Newer versions store it in 'server\crash-reports\latest-crash.log'
+                            crash_log = None
 
-                            # 2. If crash log doesn't exist, iterate over log_file defined above for crash events
+                            # First, check if a recent crash-reports file exists
+                            if constants.server_path(self.name, 'crash-reports'):
+                                crash_log = sorted(glob(os.path.join(self.server_path, 'crash-reports', 'crash-*-server.*')), key=os.path.getmtime)
+                                if crash_log:
+                                    crash_log = crash_log[-1]
+                                    if ((dt.now() - dt.fromtimestamp(os.path.getmtime(crash_log))).total_seconds() <= 30):
+                                        crash_log = crash_log
+                                    else:
+                                        crash_log = None
 
-                            # 4. If a crash file doesn't exist, create it like in Auto-MCS v1.651 (line 4931)
+                            # If crash report file does not exist, try to deduce what happened and make a new one
+                            if not crash_log:
 
-                            # 5. Return selected message
-                            pass
+                                if constants.version_check(self.version, '<', '1.7'):
+                                    error = ''.join(error_list)
+                                else:
+                                    output, error = self.run_data['process'].communicate()
+                                    error = error.decode().replace('\r', '')
+                                file = None
 
 
+                                # If the log was modified recently, try and scrape error from there
+                                use_error = True
+                                if ((dt.now() - dt.fromtimestamp(os.path.getmtime(log_file))).total_seconds() <= 30):
+
+                                    with open(log_file, 'r') as f:
+                                        file = f.read()
+
+                                        # If older log, split to the newest session
+                                        if os.path.basename(log_file) == 'server.log':
+                                            identifier = "[INFO] Starting minecraft server version"
+                                            file = identifier + file.split(identifier)[-1]
+                                            date = file.splitlines()[1].split(' [')[0]
+                                            file = f"{date} {file}"
+
+                                        # Iterate through log to find errors
+                                        file_lines = file.splitlines()
+                                        for x, log_line in enumerate(file_lines):
+                                            if (("crash report" in log_line.lower()) or
+                                            ("a server is already running on that port" in log_line.lower()) or
+                                            ("you need to agree to the eula" in log_line.lower()) or
+                                            ("FATAL]" in log_line or "encountered an unexpected exception" in log_line.lower())):
+                                                file = '\n'.join(file_lines[x:])
+                                                use_error = False
+                                                break
+
+
+                                # Use STDERR if no exception was found
+                                if error and use_error:
+                                    file = error.replace('\r', '').strip()
+
+
+                                # If the crash was located, write it to the log file
+                                folder_path = os.path.join(self.server_path, 'crash-reports')
+                                crash_log = os.path.join(folder_path, dt.now().strftime("crash-%Y-%m-%d_%H.%M.%S-server.txt"))
+                                constants.folder_check(folder_path)
+
+                                with open(crash_log, 'w+') as f:
+                                    content = "---- Minecraft Crash Report ----\n"
+                                    content += "// This report was generated by Auto-MCS\n\n"
+                                    content += f"Time: {dt.now().strftime('%#m/%#d/%y, %#I:%M %p')}\n"
+
+                                    if file:
+                                        if "a server is already running on that port" in file.lower():
+                                            content += "Description: Networking conflict\n\n"
+                                            file = f"A connection is already active on *:{self.port}. Change the 'server-port' parameter in 'server.properties', or close the conflicting connection."
+                                        elif "you need to agree to the eula" in file.lower():
+                                            content += "Description: License error\n\n"
+                                            file = "You need to agree to the EULA in order to run the server. Go to 'eula.txt' for more info."
+                                        else:
+                                            content += "Description: Exception in server tick loop\n\n"
+                                        content += file
+
+                                    # If error was not found, generate generic error
+                                    else:
+                                        content += "Description: Unknown exception\n\n"
+                                        content += f"Something went wrong launching '{self.name}': an unspecified error has occurred. To troubleshoot, try the following:\n"
+                                        content += f" - Verify that 'EULA.txt' is set to true\n"
+                                        if self.type.lower() != 'vanilla':
+                                            content += f" - Disable all {'mods' if self.type.lower() in ('fabric', 'forge') else 'plugins'} in the Add-on Manager\n"
+                                        content += f" - Try using a different world file\n"
+                                        content += f" - Try a different server file with the 'Change server.jar' option in Advanced\n"
+                                        content += f"     - If this error was caused after using 'Change server.jar', there's an automatic back-up of the previous version in the Back-up Manager"
+
+                                    f.write(content)
+
+                            self.run_data['crash-log'] = crash_log
+                            return crash_log
 
 
                         # Check for crash if exit code is not 0
                         if self.run_data['process'].returncode != 0:
                             crash_info = get_latest_crash()
 
-                        # If server closes within 5 seconds, something probably went wrong
-                        elif (dt.now() - self.run_data['launch-time']).total_seconds() <= 5:
+                        # If server closes within 3 seconds, something probably went wrong
+                        elif (dt.now() - self.run_data['launch-time']).total_seconds() <= 3:
                             crash_info = get_latest_crash()
 
                         # At last, check if there are problematic log events
@@ -528,7 +618,10 @@ class ServerObject():
                                     crash_info = get_latest_crash()
                                     break
 
-                                elif (log[1] in ('ERROR', 'CRITICAL', 'WARN')) and (("crash report" in log[2].lower()) or ("a server is already running on that port" in log[2].lower()) or ("encountered an unexpected exception" in log[2].lower())):
+                                elif (log[1] in ('ERROR', 'CRITICAL', 'WARN', 'SEVERE')) and (("crash report" in log[2].lower()) or
+                                                                                              ("a server is already running on that port" in log[2].lower()) or
+                                                                                              ("you need to agree to the eula" in log[2].lower()) or
+                                                                                              ("encountered an unexpected exception" in log[2].lower())):
                                     crash_info = get_latest_crash()
                                     break
 
@@ -561,7 +654,6 @@ class ServerObject():
                 return
 
             # ----------------------------------------------------------------------------------------------------------
-
 
 
 
@@ -620,7 +712,11 @@ class ServerObject():
 
         # Fire server stop event
         if self.script_object.enabled:
-            self.script_object.shutdown_event({'date': dt.now()})
+            crash_data = ''
+            if self.run_data['crash-log']:
+                with open(self.run_data['crash-log'], 'r') as f:
+                    crash_data = f.read()
+            self.script_object.shutdown_event({'date': dt.now(), 'crash': crash_data})
             self.script_object.deconstruct()
         del self.script_object
         self.script_object = None

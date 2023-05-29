@@ -9689,8 +9689,8 @@ class ConsolePanel(FloatLayout):
         self.run_data = None
         self.ignore_keypress = True
 
-        if self.server_button:
-            self.server_button.update_subtitle(self.run_data, dt.now())
+        if self.parent.server_button:
+            self.parent.server_button.update_subtitle(self.run_data, dt.now())
 
 
         # Else, reset it back to normal
@@ -9719,7 +9719,7 @@ class ConsolePanel(FloatLayout):
 
             Clock.schedule_once(after_anim2, (anim_speed * 1.51))
 
-        Clock.schedule_once(after_anim, 1)
+        Clock.schedule_once(after_anim, 1.5)
 
 
     # Toggles full screen on the console
@@ -10359,7 +10359,7 @@ class MainApp(App):
             # # constants.new_server_info['addon_objects'] = [item for item in [addons.get_addon_url(addons.get_addon_info(addon, constants.new_server_info), constants.new_server_info, compat_mode=True) for addon in addons.search_addons("worldedit", constants.new_server_info) if "Regions"] if item]
             # # constants.new_server_info['addon_objects'].extend([addons.get_addon_file(addon, constants.new_server_info) for addon in glob(r'C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\pluginupdate test\plugins\*.jar')])
             screen_manager.current = "ServerManagerScreen"
-            open_server("format test b1.8")
+            open_server("test")
 
 
         screen_manager.transition = FadeTransition(duration=0.115)
