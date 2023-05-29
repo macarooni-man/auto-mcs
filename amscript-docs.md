@@ -213,7 +213,7 @@ Useful for command feedback with a [**@server.alias**](#serveralias) event
  - `int`, how long since the player died *(in ticks)*
 
 #### player.dimension
- - `str`, player's current gamemode
+ - `str`, the dimension that the player is currently in
  - Value of `'overworld'`, `'the_nether'`, or `'the_end'`
 
 #### player.active_effects
