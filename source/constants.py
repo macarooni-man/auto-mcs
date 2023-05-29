@@ -1420,10 +1420,14 @@ def iter_addons(progress_func=None):
     folder_check(os.path.join(tmpsvr, "disabled-" + addon_folder))
 
     def process_addon(addon_object):
-        if addon_object.addon_object_type == "web":
-            addons.download_addon(addon_object, new_server_info, tmpsvr=True)
-        else:
-            addons.import_addon(addon_object, new_server_info, tmpsvr=True)
+        # Add exception handler at some point
+        try:
+            if addon_object.addon_object_type == "web":
+                addons.download_addon(addon_object, new_server_info, tmpsvr=True)
+            else:
+                addons.import_addon(addon_object, new_server_info, tmpsvr=True)
+        except:
+            pass
 
 
     # Iterate over all addon_objects in ThreadPool

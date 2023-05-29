@@ -4574,7 +4574,7 @@ def button_action(button_name, button, specific_screen=''):
                                     banner_text,
                                     "add-circle-sharp.png",
                                     2.5,
-                                    {"center_x": 0.5, "center_y": 0.895}
+                                    {"center_x": 0.5, "center_y": 0.965}
                                 ), 0
                             )
 
@@ -7879,7 +7879,7 @@ class CreateServerAddonScreen(MenuBackground):
                             f"Removed '{addon_name}' from the queue",
                             "remove-circle-sharp.png",
                             2.5,
-                            {"center_x": 0.5, "center_y": 0.895}
+                            {"center_x": 0.5, "center_y": 0.965}
                         ), 0.25
                     )
 
@@ -8159,7 +8159,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
                                     f"Added '{addon_name}' to the queue",
                                     "add-circle-sharp.png",
                                     2.5,
-                                    {"center_x": 0.5, "center_y": 0.895}
+                                    {"center_x": 0.5, "center_y": 0.965}
                                 ), 0.25
                             )
 
@@ -8176,7 +8176,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
                                             f"Removed '{addon_name}' from the queue",
                                             "remove-circle-sharp.png",
                                             2.5,
-                                            {"center_x": 0.5, "center_y": 0.895}
+                                            {"center_x": 0.5, "center_y": 0.965}
                                         ), 0.25
                                     )
 
@@ -8918,7 +8918,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', *args):
                     show_banner,
                     "checkmark-circle-sharp.png",
                     2.5,
-                    {"center_x": 0.5, "center_y": 0.895}
+                    {"center_x": 0.5, "center_y": 0.965}
                 ), 0
             )
 
@@ -8982,7 +8982,6 @@ class ServerButton(HoverButton):
             self.markup = True
             self.copyable = True
             self.bind(text=self.ref_text)
-
 
     def toggle_favorite(self, favorite, *args):
         self.favorite = favorite
@@ -9060,6 +9059,7 @@ class ServerButton(HoverButton):
 
     def update_subtitle(self, run_data=None, last_modified=None):
         if run_data:
+            self.running = True
             self.subtitle.copyable = True
             self.subtitle.color = self.run_color
             self.subtitle.default_opacity = 0.8
@@ -9070,6 +9070,7 @@ class ServerButton(HoverButton):
                 text = ':'.join(run_data['network']['address'].values())
             self.subtitle.text = f"Running  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
         else:
+            self.running = False
             self.subtitle.copyable = False
             if last_modified:
                 self.original_subtitle = backup.convert_date(last_modified)
@@ -9305,7 +9306,7 @@ class ServerManagerScreen(MenuBackground):
                 f"'{server_name}'" + (" marked as favorite" if bool_favorite else " is no longer marked as favorite"),
                 "heart-sharp.png" if bool_favorite else "heart-dislike-outline.png",
                 2,
-                {"center_x": 0.5, "center_y": 0.895}
+                {"center_x": 0.5, "center_y": 0.965}
             ), 0
         )
 
@@ -9659,6 +9660,7 @@ class ConsolePanel(FloatLayout):
         # Actually launch server
         constants.java_check()
         self.update_process(screen_manager.current_screen.server.launch())
+        constants.server_manager.current_server.run_data['console-panel'] = self
 
 
     # Send '/stop' command to server console
@@ -9671,6 +9673,14 @@ class ConsolePanel(FloatLayout):
 
         # Ignore if screen isn't visible or a different server
         if not (screen_manager.current_screen.name == 'ServerManagerViewScreen'):
+
+            # Update caption on list if user is staring at it for some reason
+            if (screen_manager.current_screen.name == 'ServerManagerScreen'):
+                for button in screen_manager.current_screen.scroll_layout.children:
+                    button = button.children[0]
+                    if button.title.text.strip() == self.server_name:
+                        button.update_subtitle(None, dt.now())
+                        break
             return
 
         if screen_manager.current_screen.server.name != self.server_name or not self.run_data:
@@ -10072,8 +10082,6 @@ class ConsolePanel(FloatLayout):
         self.auto_scroll = False
 
         background_color = constants.brighten_color(constants.background_color, -0.1)
-        with self.canvas.after:
-            print(vars(self))
 
         # Background
         with self.canvas.before:
@@ -10180,8 +10188,6 @@ class ConsolePanel(FloatLayout):
         self.bind(size=self.update_size)
         Clock.schedule_once(self.update_size, 0)
 
-
-
 class ServerManagerViewScreen(MenuBackground):
 
     def __init__(self, **kwargs):
@@ -10263,9 +10269,13 @@ class ServerManagerViewScreen(MenuBackground):
 
 
         # Add ConsolePanel
-        self.console_panel = ConsolePanel(self.server.name, self.server_button)
-        if self.server.running:
-            self.console_panel.launch_server(animate=False)
+        if self.server.run_data:
+            self.console_panel = self.server.run_data['console-panel']
+
+        else:
+            self.console_panel = ConsolePanel(self.server.name, self.server_button)
+            if self.server.running:
+                self.console_panel.launch_server(animate=False)
 
         self.console_panel.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.add_widget(self.console_panel)

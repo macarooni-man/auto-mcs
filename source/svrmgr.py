@@ -178,14 +178,20 @@ class ServerObject():
                 # New log formatting (latest.log)
                 if text.startswith('['):
                     message = line.split("]: ", 1)[-1].strip()
-                    date_str = line.split("]", 1)[0].strip().replace("[", "")
-                    date_label = format_time(date_str)
+                    try:
+                        date_str = line.split("]", 1)[0].strip().replace("[", "")
+                        date_label = format_time(date_str)
+                    except IndexError:
+                        date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
 
                 # Old log formatting (server.log)
                 else:
                     message = line.split("] ", 1)[-1].strip()
-                    date_str = line.split(" ", 1)[1].split("[", 1)[0].strip()
-                    date_label = format_time(date_str)
+                    try:
+                        date_str = line.split(" ", 1)[1].split("[", 1)[0].strip()
+                        date_label = format_time(date_str)
+                    except IndexError:
+                        date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
 
                 # Format string as needed
 
@@ -353,6 +359,9 @@ class ServerObject():
                 elif "ERROR" in line:
                     type_label = "ERROR"
                     type_color = (1, 0.5, 0.65, 1)
+                elif "CRITICAL" in line:
+                    type_label = "CRIT"
+                    type_color = (1, 0.5, 0.65, 1)
                 elif "FATAL" in line:
                     type_label = "FATAL"
                     type_color = (1, 0.5, 0.65, 1)
@@ -431,6 +440,8 @@ class ServerObject():
             self.run_data['log'] = [{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
             self.run_data['process-hooks'] = []
             self.run_data['close-hooks'] = []
+            self.run_data['console-panel'] = None
+
 
             with open(script_path, 'r') as f:
                 script_content = f.read()
@@ -461,12 +472,17 @@ class ServerObject():
             self.run_data['command-history'] = []
 
 
+
+
+            # ----------------------------------------------------------------------------------------------------------
             # Main server process loop, handles reading output, hooks, and crash detection
             def process_thread(*args):
                 if constants.version_check(self.version, '<', '1.7'):
                     lines_iterator = iter(self.run_data['process'].stderr.readline, "")
+                    log_file = os.path.join(self.server_path, 'server.log')
                 else:
                     lines_iterator = iter(self.run_data['process'].stdout.readline, "")
+                    log_file = os.path.join(self.server_path, 'logs', 'latest.log')
 
                 fail_counter = 0
                 close = False
@@ -478,14 +494,58 @@ class ServerObject():
                     fail_counter = 0 if line else (fail_counter + 1)
 
                     # Close wrapper if server is closed
-                    # Likely put crash detector here
-                    if not self.running or self.run_data['process'].poll() is not None or fail_counter > 100:
-                        self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"'{self.name}' has stopped successfully", (0.7,0.7,0.7,1))})
+                    if not self.running or self.run_data['process'].poll() is not None or fail_counter > 25:
+
+                        # Initially check for crashes
+                        def get_latest_crash():
+                            # 1. Check for crash file, do some research on < 1.7 versions to see if there is a separate crash log
+                            #    Newer versions store it in 'server\crash-reports\latest-crash.log'
+
+                            # 2. If crash log doesn't exist, iterate over log_file defined above for crash events
+
+                            # 4. If a crash file doesn't exist, create it like in Auto-MCS v1.651 (line 4931)
+
+                            # 5. Return selected message
+                            pass
+
+
+
+
+                        # Check for crash if exit code is not 0
+                        if self.run_data['process'].returncode != 0:
+                            crash_info = get_latest_crash()
+
+                        # If server closes within 5 seconds, something probably went wrong
+                        elif (dt.now() - self.run_data['launch-time']).total_seconds() <= 5:
+                            crash_info = get_latest_crash()
+
+                        # At last, check if there are problematic log events
+                        else:
+                            for log in reversed(self.run_data['log'][-50:]):
+                                log = log['text']
+
+                                if log[1] == "FATAL":
+                                    crash_info = get_latest_crash()
+                                    break
+
+                                elif (log[1] in ('ERROR', 'CRITICAL', 'WARN')) and (("crash report" in log[2].lower()) or ("a server is already running on that port" in log[2].lower()) or ("encountered an unexpected exception" in log[2].lower())):
+                                    crash_info = get_latest_crash()
+                                    break
+
+
+                        # Log shutdown data
+                        if crash_info:
+                            self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"'{self.name}' has stopped unexpectedly", (1,0.5,0.65,1))})
+                        else:
+                            self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"'{self.name}' has stopped successfully", (0.7,0.7,0.7,1))})
+
                         close = True
+
 
                     # Run process hooks
                     for hook in self.run_data['process-hooks']:
                         hook(self.run_data['log'])
+
 
                     # Do things when server closes
                     if close:
@@ -499,6 +559,10 @@ class ServerObject():
                 # Close server
                 self.terminate()
                 return
+
+            # ----------------------------------------------------------------------------------------------------------
+
+
 
 
             self.run_data['thread'] = Timer(0, process_thread)
