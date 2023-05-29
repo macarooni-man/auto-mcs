@@ -383,7 +383,7 @@ Used for registering custom commands and augmenting existing ones.
 | `hidden` | `bool`, defaults to `False`. Hides command from all users (they can still be executed) and disables the wrapper functionality described below. Useful for augmenting existing commands |
 
 ```
-@player.on_alias(player, command='test', arguments={'arg': True, 'arg2': False}, permission='op', description='Test command'):
+@player.on_alias(player, command='test', arguments={'arg1': True, 'arg2': False}, permission='op'):
     server.log(f'{player.name} executed {command} with the following arguments: {arguments}')
 ```
 
