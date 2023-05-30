@@ -31,6 +31,7 @@ class ServerObject():
 
         self.name = server_name
         self.running = False
+        self.crash_log = None
         self.max_log_size = 800
         self.run_data = {}
         self._hash = constants.gen_rstring(8)
@@ -443,7 +444,6 @@ class ServerObject():
             self.run_data['log'] = [{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
             self.run_data['process-hooks'] = []
             self.run_data['close-hooks'] = []
-            self.run_data['crash-log'] = None
             self.run_data['console-panel'] = None
 
 
@@ -498,6 +498,7 @@ class ServerObject():
                     if constants.version_check(self.version, '<', '1.7'):
                         if "[STDERR] ".encode() in line:
                             error_list.append(line.decode().split("[STDERR] ")[1])
+                            continue
 
                     self.update_log(line)
 
@@ -597,13 +598,19 @@ class ServerObject():
 
                                     f.write(content)
 
-                            self.run_data['crash-log'] = crash_log
+                            self.crash_log = crash_log
                             return crash_log
 
 
                         # Check for crash if exit code is not 0
                         if self.run_data['process'].returncode != 0:
-                            crash_info = get_latest_crash()
+                            false_positive = False
+                            if error_list:
+                                if 'java.net.SocketException: socket closed' in ''.join(error_list):
+                                    false_positive = True
+
+                            if not false_positive:
+                                crash_info = get_latest_crash()
 
                         # If server closes within 3 seconds, something probably went wrong
                         elif (dt.now() - self.run_data['launch-time']).total_seconds() <= 3:
@@ -712,10 +719,12 @@ class ServerObject():
 
         # Fire server stop event
         if self.script_object.enabled:
+
             crash_data = ''
-            if self.run_data['crash-log']:
-                with open(self.run_data['crash-log'], 'r') as f:
+            if self.crash_log:
+                with open(self.crash_log, 'r') as f:
                     crash_data = f.read()
+
             self.script_object.shutdown_event({'date': dt.now(), 'crash': crash_data})
             self.script_object.deconstruct()
         del self.script_object
@@ -984,6 +993,11 @@ class ServerManager():
 
     # Sets self.current_server to selected ServerObject
     def open_server(self, name):
+        if self.current_server:
+            crash_info = (self.current_server.name, self.current_server.crash_log)
+        else:
+            crash_info = (None, None)
+
         del self.current_server
         self.current_server = None
 
@@ -992,6 +1006,8 @@ class ServerManager():
             self.current_server = self.running_servers[name]
         else:
             self.current_server = ServerObject(name)
+            if crash_info[0] == name:
+                self.current_server.crash_log = crash_info[1]
 
     # Reloads self.current_server
     def reload_server(self):

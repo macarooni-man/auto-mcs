@@ -9632,21 +9632,27 @@ class ConsolePanel(FloatLayout):
 
         # Animate panel
         self.controls.launch_button.disabled = True
+        self.controls.log_button.disabled = True
         constants.hide_widget(self.controls.maximize_button, False)
         constants.hide_widget(self.controls.stop_button, False)
         self.controls.maximize_button.opacity = 0
         self.controls.stop_button.opacity = 0
 
+        self.controls.crash_text.clear_text()
+
         Animation(opacity=0, duration=anim_speed).start(self.controls.button_shadow)
         Animation(opacity=0, duration=anim_speed).start(self.controls.background)
         Animation(opacity=0, duration=(anim_speed*1.5) if animate else 0).start(self.controls.launch_button)
+        Animation(opacity=0, duration=(anim_speed*1.5) if animate else 0).start(self.controls.log_button)
         Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.maximize_button)
 
         def after_anim(*a):
             self.controls.maximize_button.disabled = False
             self.controls.stop_button.disabled = False
             self.controls.remove_widget(self.controls.launch_button)
+            self.controls.remove_widget(self.controls.log_button)
             self.controls.launch_button.button.on_leave()
+            self.controls.log_button.button.on_leave()
             Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.stop_button)
 
         def update_launch_data(*args):
@@ -9664,15 +9670,31 @@ class ConsolePanel(FloatLayout):
 
 
     # Send '/stop' command to server console
-    def stop_server(self, *args):
+    @staticmethod
+    def stop_server(*args):
         screen_manager.current_screen.server.silent_command("stop")
 
 
     # Called from ServerObject when process stops
-    def reset_panel(self, crash=False):
+    def reset_panel(self, crash=None):
+
+        # Show crash banner if not on server screen
+        def show_crash_banner(*args):
+            if crash:
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        (1, 0.5, 0.65, 1),
+                        f"'{self.server_name}' has crashed",
+                        "close-circle-sharp.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0.25
+                )
 
         # Ignore if screen isn't visible or a different server
         if not (screen_manager.current_screen.name == 'ServerManagerViewScreen'):
+            show_crash_banner()
 
             # Update caption on list if user is staring at it for some reason
             if (screen_manager.current_screen.name == 'ServerManagerScreen'):
@@ -9684,6 +9706,7 @@ class ConsolePanel(FloatLayout):
             return
 
         if screen_manager.current_screen.server.name != self.server_name or not self.run_data:
+            show_crash_banner()
             return
 
         self.run_data = None
@@ -9702,9 +9725,18 @@ class ConsolePanel(FloatLayout):
         def after_anim(*a):
             anim_speed = 0.15
 
+            # Update crash widgets
+            if crash:
+                self.controls.log_button.disabled = False
+                self.controls.log_button.opacity = 0
+                self.controls.add_widget(self.controls.log_button)
+                Animation(opacity=1, duration=anim_speed).start(self.controls.log_button)
+                self.controls.crash_text.update_text(f"Uh oh, '{self.server_name}' has crashed", False)
+
 
             # Animate panel
             self.controls.launch_button.disabled = False
+
             self.controls.launch_button.opacity = 0
             self.controls.add_widget(self.controls.launch_button)
 
@@ -9799,6 +9831,12 @@ class ConsolePanel(FloatLayout):
 
             Clock.schedule_once(after_anim, (anim_speed*1.1))
 
+
+    # Opens crash log in default text editor
+    def open_log(self):
+        # Make cross-platform text editor in constants.py to open a graphical text editor with the log path stored in:
+        # constants.server_manager.current_server.crash_log
+        pass
 
 
     def __init__(self, server_name, server_button=None, **kwargs):
@@ -10043,7 +10081,7 @@ class ConsolePanel(FloatLayout):
                 self.button_shadow = Image(pos_hint={'center_x': 0.5, 'center_y': 0.5})
                 self.button_shadow.allow_stretch = True
                 self.button_shadow.keep_ratio = False
-                self.button_shadow.size_hint_max = (580, 140)
+                self.button_shadow.size_hint_max = (580, 250)
                 self.button_shadow.source = os.path.join(constants.gui_assets, 'banner_shadow.png')
                 self.add_widget(self.button_shadow)
 
@@ -10051,6 +10089,18 @@ class ConsolePanel(FloatLayout):
                 self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='play-circle-sharp.png', click_func=self.panel.launch_server)
                 self.launch_button.disabled = False
                 self.add_widget(self.launch_button)
+
+                # Open log button
+                self.log_button = color_button("VIEW CRASH LOG", position=(0.5, 0.25), icon_name='document-text-outline-sharp.png', click_func=self.panel.open_log, color=(1,0.65,0.75,1))
+                self.log_button.disabled = False
+                if constants.server_manager.current_server.crash_log:
+                    self.add_widget(self.log_button)
+
+                # Crash text
+                self.crash_text = InputLabel(pos_hint={'center_y': 0.76})
+                self.add_widget(self.crash_text)
+                if constants.server_manager.current_server.crash_log:
+                    self.crash_text.update_text(f"Uh oh, '{self.panel.server_name}' has crashed", False)
 
 
                 # Button shadow in the top right
@@ -10238,7 +10288,6 @@ class ServerManagerViewScreen(MenuBackground):
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
-
     def generate_menu(self, **kwargs):
         self.server = constants.server_manager.current_server
 
@@ -10274,8 +10323,6 @@ class ServerManagerViewScreen(MenuBackground):
 
         else:
             self.console_panel = ConsolePanel(self.server.name, self.server_button)
-            if self.server.running:
-                self.console_panel.launch_server(animate=False)
 
         self.console_panel.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.add_widget(self.console_panel)
@@ -10359,7 +10406,7 @@ class MainApp(App):
             # # constants.new_server_info['addon_objects'] = [item for item in [addons.get_addon_url(addons.get_addon_info(addon, constants.new_server_info), constants.new_server_info, compat_mode=True) for addon in addons.search_addons("worldedit", constants.new_server_info) if "Regions"] if item]
             # # constants.new_server_info['addon_objects'].extend([addons.get_addon_file(addon, constants.new_server_info) for addon in glob(r'C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\pluginupdate test\plugins\*.jar')])
             screen_manager.current = "ServerManagerScreen"
-            open_server("test")
+            open_server("1.6 crash test")
 
 
         screen_manager.transition = FadeTransition(duration=0.115)
