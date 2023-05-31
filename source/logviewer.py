@@ -16,7 +16,7 @@ def open_log(server_name: str, path: str):
         background_color = constants.convert_color(constants.brighten_color(constants.background_color, -0.1))['hex']
         text_color = constants.convert_color((0.6, 0.6, 1))['hex']
         file_icon = os.path.join(constants.gui_assets, "small-icon.ico")
-        min_size = (800, 500)
+        min_size = (900, 500)
 
         root = Tk()
         root.geometry(f"{min_size[0]}x{min_size[1]}")
@@ -50,6 +50,3 @@ def open_log(server_name: str, path: str):
         scrollbar.config(command=text_info.yview)
 
         root.mainloop()
-
-
-open_log('test', r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\Spigot Test\crash-reports\crash-2022-03-26_18.00.43-server.txt")
