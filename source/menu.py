@@ -19,6 +19,7 @@ import gc
 
 
 # Local imports
+import logviewer
 import constants
 import addons
 import backup
@@ -9833,10 +9834,15 @@ class ConsolePanel(FloatLayout):
 
 
     # Opens crash log in default text editor
-    def open_log(self):
-        # Make cross-platform text editor in constants.py to open a graphical text editor with the log path stored in:
-        # constants.server_manager.current_server.crash_log
-        pass
+    def open_log(self, *args):
+        threading.Timer(
+            0,
+            functools.partial(
+                logviewer.open_log,
+                self.server_name,
+                constants.server_manager.current_server.crash_log
+            )
+        ).start()
 
 
     def __init__(self, server_name, server_button=None, **kwargs):

@@ -224,7 +224,7 @@ def convert_color(color: str or tuple):
             x = f"0{x}" if len(x) == 1 else x
             new_color += x
 
-        rgb_color = color[0:3]
+        rgb_color = list(color[0:3])
         rgb_color.append(1)
 
         return {'hex': new_color, 'rgb': tuple(rgb_color)}
