@@ -52,5 +52,6 @@ def mainLoop():
 #   - Garuda KDE Lite - 5.19.7
 #   - Garuda Wayfire - 5.19.7  //Issues with YAD not displaying file dialog
 #   - Garuda i3 - 5.19.7       //Issues with YAD not displaying file dialog
+#   - SteamOS Holo - 5.13
 #
 # ----------------------------------------------------------------------------------------------
