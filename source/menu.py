@@ -9836,7 +9836,12 @@ class ConsolePanel(FloatLayout):
     import multiprocessing.spawn
     # Opens crash log in default text editor
     def open_log(self, *args):
-        logviewer.open_log(self.server_name, constants.server_manager.current_server.crash_log)
+        data_dict = {
+            'app_title': constants.app_title,
+            'gui_assets': constants.gui_assets,
+            'background_color': constants.background_color
+        }
+        logviewer.open_log(self.server_name, constants.server_manager.current_server.crash_log, data_dict)
         self.controls.log_button.button.on_leave()
         self.controls.log_button.button.on_release()
 
