@@ -23,7 +23,7 @@ a = Analysis(['wrapper.py'],
                         ('/usr/lib64/libcrypt-2.21.so', '.'),
                         ('/usr/lib64/libcrypt.so.1', '.')
                     ],
-             hiddenimports=['plyer.platforms.linux.filechooser'],
+             hiddenimports=['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder'],
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],

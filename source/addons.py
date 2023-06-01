@@ -718,6 +718,7 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
     if not addon.download_url:
         return False
 
+    print(server_properties)
     addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
     destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else constants.server_path(server_properties['name'], addon_folder)
 
@@ -972,7 +973,7 @@ def geyser_addons(server_properties):
 # try:
 #     addon_file = get_addon_file(jar_path, properties)
 #     addon_web = get_update_url(addon_file, '1.15')
-#     success = download_addon(addon_web, os.path.split(jar_path)[0])
+#     success = download_addon(addon_web, properties, os.path.split(jar_path)[0])
 #
 #     # return (addon_web if addon_web else addon_file), success
 #     print(vars(addon_web))

@@ -1419,6 +1419,8 @@ def iter_addons(progress_func=None):
     folder_check(os.path.join(tmpsvr, addon_folder))
     folder_check(os.path.join(tmpsvr, "disabled-" + addon_folder))
 
+    print(glob(os.path.join(tmpsvr, "*")))
+
     def process_addon(addon_object):
         # Add exception handler at some point
         try:
@@ -1426,8 +1428,9 @@ def iter_addons(progress_func=None):
                 addons.download_addon(addon_object, new_server_info, tmpsvr=True)
             else:
                 addons.import_addon(addon_object, new_server_info, tmpsvr=True)
-        except:
-            pass
+        except Exception as e:
+            if debug:
+                print(e)
 
 
     # Iterate over all addon_objects in ThreadPool
@@ -2440,7 +2443,7 @@ def get_current_ip(name):
                 def get_public_ip(server_name, *args):
                     global public_ip
                     try:
-                        new_ip = requests.get('https://api.ipify.org', timeout=5).content.decode('utf-8')
+                        new_ip = requests.get('http://api.ipify.org', timeout=5).content.decode('utf-8')
                     except:
                         new_ip = ""
 

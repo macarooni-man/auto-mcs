@@ -1,15 +1,19 @@
-from tkinter import Tk, Text, Entry, Label, Scrollbar, RIGHT, BOTTOM, X, Y, BOTH, DISABLED, END, IntVar, Frame
+from tkinter import Tk, Text, Entry, Label, Scrollbar, RIGHT, BOTTOM, X, Y, BOTH, DISABLED, END, IntVar, Frame, PhotoImage
 from PIL import ImageTk, Image
+import multiprocessing
 import constants
+import functools
 import os
 
 
+
 # Opens a crash log in a read-only text editor
-def open_log(server_name: str, path: str):
+def launch_window(server_name: str, path: str, assets: str):
 
     # Get text
     crash_data = ''
     if path:
+
         with open(path, 'r') as f:
             crash_data = f.read()
 
@@ -17,15 +21,17 @@ def open_log(server_name: str, path: str):
         # Init Tk window
         background_color = constants.convert_color(constants.brighten_color(constants.background_color, -0.1))['hex']
         text_color = constants.convert_color((0.6, 0.6, 1))['hex']
-        file_icon = os.path.join(constants.gui_assets, "small-icon.ico")
+        file_icon = os.path.join(assets, "big-icon.png")
         min_size = (950, 600)
 
         root = Tk()
         root.geometry(f"{min_size[0]}x{min_size[1]}")
         root.minsize(width=min_size[0], height=min_size[1])
         root.title(f'{constants.app_title} - {server_name} ({os.path.basename(path)})')
-        root.iconbitmap(file_icon)
+        img = PhotoImage(file=file_icon)
+        root.tk.call('wm', 'iconphoto', root._w, img)
         root.configure(bg=background_color)
+        root.close = False
 
 
         # Configure search box
@@ -60,12 +66,13 @@ def open_log(server_name: str, path: str):
 
         search_frame = Frame(root, height=1)
         search_frame.pack(fill=X, side=BOTTOM)
-        search_frame.configure(bg=background_color)
+        search_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
         search = EntryPlaceholder(search_frame, placeholder='search for text')
-        search.pack(fill=X, expand=True, padx=(55, 5), pady=(0, 10), side=BOTTOM, ipady=5)
+        search.pack(fill=BOTH, expand=True, padx=(55, 5), pady=(10, 3), side=BOTTOM, ipady=5)
         search.configure(
             bg = background_color,
             borderwidth = 0,
+            highlightthickness=0,
             selectforeground = constants.convert_color((0.75, 0.75, 1))['hex'],
             selectbackground = constants.convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
@@ -142,6 +149,8 @@ def open_log(server_name: str, path: str):
             fg = text_color,
             bg = background_color,
             borderwidth = 0,
+            highlightthickness = 0,
+            inactiveselectbackground = constants.convert_color((0.2, 0.2, 0.4))['hex'],
             selectforeground = constants.convert_color((0.75, 0.75, 1))['hex'],
             selectbackground = constants.convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
@@ -154,20 +163,39 @@ def open_log(server_name: str, path: str):
         # Highlight stuffies
         text_info.tag_configure("highlight", foreground="white", background=constants.convert_color((0.2, 0.2, 0.4))['hex'])
 
+
         def highlight_search():
-            search_text = search.get()
-            if text_info.last_search != search_text:
-                text_info.tag_remove("highlight", "1.0", "end")
-                text_info.highlight_pattern(search.get(), "highlight", regexp=False)
-            root.after(250, highlight_search)
+            if root.close:
+                return
+
+            if root.state() == "normal":
+                search_text = search.get()
+                if text_info.last_search != search_text:
+                    text_info.tag_remove("highlight", "1.0", "end")
+                    text_info.highlight_pattern(search.get(), "highlight", regexp=False)
+
+                root.after(250, highlight_search)
         highlight_search()
 
 
         # Search icon
-        icon = ImageTk.PhotoImage(Image.open(os.path.join(constants.gui_assets, 'icons', 'color-search.png')))
+        icon = ImageTk.PhotoImage(Image.open(os.path.join(assets, 'color-search.png')))
         search_icon = Label(image=icon, bg=background_color)
-        search_icon.place(anchor='nw', in_=search, x=-45, y=4)
+        search_icon.place(anchor='nw', in_=search, x=-45, rely=0.1)
 
         scrollbar.config(command=text_info.yview)
 
+        def on_closing():
+            root.close = True
+            root.destroy()
+
+        root.protocol("WM_DELETE_WINDOW", on_closing)
+
         root.mainloop()
+
+
+
+def open_log(server_name: str, path: str):
+    if path:
+        process = multiprocessing.Process(target=functools.partial(launch_window, server_name, path, constants.gui_assets))
+        process.start()

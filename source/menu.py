@@ -5094,10 +5094,11 @@ class ProgressScreen(MenuBackground):
                     self.steps.label_2.text = self.steps.label_2.text.split('(')[0].strip() + f"   [font={icons}]å[/font]"
                 time.sleep(0.6)
             self.update_steps(step[0], x)
+
             # Execute function and check for completion
-            test = step[1]()
-            time.sleep(0.25)
             self.last_progress = self.progress_bar.value
+            test = step[1]()
+            time.sleep(0.27)
 
             # If it failed, execute default error
             if not test:
@@ -9832,17 +9833,12 @@ class ConsolePanel(FloatLayout):
 
             Clock.schedule_once(after_anim, (anim_speed*1.1))
 
-
+    import multiprocessing.spawn
     # Opens crash log in default text editor
     def open_log(self, *args):
-        threading.Timer(
-            0,
-            functools.partial(
-                logviewer.open_log,
-                self.server_name,
-                constants.server_manager.current_server.crash_log
-            )
-        ).start()
+        logviewer.open_log(self.server_name, constants.server_manager.current_server.crash_log)
+        self.controls.log_button.button.on_leave()
+        self.controls.log_button.button.on_release()
 
 
     def __init__(self, server_name, server_button=None, **kwargs):
@@ -10400,17 +10396,20 @@ class MainApp(App):
         # Screen manager override
         if not constants.app_compiled:
             pass
+            # constants.safe_delete(constants.server_path("test 1.6"))
             # constants.new_server_init()
-            # constants.new_server_info['name'] = "TEST test test test"
-            # constants.new_server_info['type'] = "paper"
-            # constants.new_server_info['version'] = "1.19.4"
+            # constants.new_server_info['name'] = "test 1.6"
+            # constants.new_server_info['type'] = "forge"
+            # constants.new_server_info['version'] = "1.6.4"
             # constants.new_server_info['build'] = "283"
             # constants.new_server_info['server_settings']['seed'] = "loll"
             # constants.new_server_info['acl_object'] = acl.AclObject(constants.new_server_info['name'])
             # # constants.new_server_info['server_settings']['world'] = r"C:\Users\macarooni machine\AppData\Roaming\.minecraft\saves\Mob Apocalypse"
             # constants.new_server_info['server_settings']['geyser_support'] = True
-            # # constants.new_server_info['addon_objects'] = [item for item in [addons.get_addon_url(addons.get_addon_info(addon, constants.new_server_info), constants.new_server_info, compat_mode=True) for addon in addons.search_addons("worldedit", constants.new_server_info) if "Regions"] if item]
+            # constants.new_server_info['addon_objects'] = [item for item in [addons.get_addon_url(addons.get_addon_info(addon, constants.new_server_info), constants.new_server_info, compat_mode=True) for addon in addons.search_addons("worldedit", constants.new_server_info) if "Regions"] if item]
             # # constants.new_server_info['addon_objects'].extend([addons.get_addon_file(addon, constants.new_server_info) for addon in glob(r'C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\pluginupdate test\plugins\*.jar')])
+            # screen_manager.current = "CreateServerReviewScreen"
+
             screen_manager.current = "ServerManagerScreen"
             open_server("1.6 crash test")
 
