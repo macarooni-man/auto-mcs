@@ -9628,6 +9628,10 @@ class ConsolePanel(FloatLayout):
 
     # Launch server and update properties
     def launch_server(self, animate=True, *args):
+        for k in self.parent._ignore_keys:
+            if k == 'f':
+                self.parent._ignore_keys.remove(k)
+
         anim_speed = 0.15 if animate else 0
         self.scroll_layout.scroll_y = 1
         self.auto_scroll = False
@@ -9668,6 +9672,7 @@ class ConsolePanel(FloatLayout):
         # Actually launch server
         constants.java_check()
         self.update_process(screen_manager.current_screen.server.launch())
+        self.input.disabled = False
         constants.server_manager.current_server.run_data['console-panel'] = self
 
 
@@ -9679,6 +9684,8 @@ class ConsolePanel(FloatLayout):
 
     # Called from ServerObject when process stops
     def reset_panel(self, crash=None):
+        if 'f' not in self.parent._ignore_keys:
+            self.parent._ignore_keys.append('f')
 
         # Show crash banner if not on server screen
         def show_crash_banner(*args):
@@ -9738,6 +9745,8 @@ class ConsolePanel(FloatLayout):
 
             # Animate panel
             self.controls.launch_button.disabled = False
+            self.input.disabled = True
+            self.input.text = ''
 
             self.controls.launch_button.opacity = 0
             self.controls.add_widget(self.controls.launch_button)
@@ -9758,6 +9767,11 @@ class ConsolePanel(FloatLayout):
 
     # Toggles full screen on the console
     def maximize(self, maximize=True, *args):
+
+        # Make sure the buttons exist
+        if 'f' in self.parent._ignore_keys and maximize:
+            return
+
         anim_speed = 0.135
         self.full_screen = "animate"
 
@@ -9839,7 +9853,8 @@ class ConsolePanel(FloatLayout):
         data_dict = {
             'app_title': constants.app_title,
             'gui_assets': constants.gui_assets,
-            'background_color': constants.background_color
+            'background_color': constants.background_color,
+            'sub_processes': constants.sub_processes
         }
         logviewer.open_log(self.server_name, constants.server_manager.current_server.crash_log, data_dict)
         self.controls.log_button.button.on_leave()
@@ -10172,6 +10187,7 @@ class ConsolePanel(FloatLayout):
 
         # Command input
         self.input = ConsoleInput(size_hint_max_y=50)
+        self.input.disabled = True
         self.add_widget(self.input)
 
         # Input icon
@@ -10287,10 +10303,34 @@ class ServerManagerViewScreen(MenuBackground):
                 keyboard.release()
 
 
+            # Start server when enter is pressed
+            if (keycode[1] == 'enter' and 'enter' not in self._ignore_keys) and not self.server.run_data:
+                self.console_panel.controls.launch_button.button.on_enter()
+                Clock.schedule_once(self.console_panel.launch_server, 0.1)
+
+
             # Use 'F' to toggle fullscreen
-            elif keycode[1] == 'f' and 'f' not in self._ignore_keys and self.server.run_data:
+            if keycode[1] == 'f' and 'f' not in self._ignore_keys and self.server.run_data:
                 self.console_panel.maximize(not self.console_panel.full_screen)
                 self.console_panel.ignore_keypress = True
+
+
+            # Focus text input if server is started
+            if (keycode[1] == 'tab' and 'tab' not in self._ignore_keys) and self.server.run_data:
+                self.console_panel.input.grab_focus()
+
+
+
+        # Capture keypress on current screen no matter what
+        if self.name == screen_manager.current_screen.name:
+
+            # Stop the server if it's currently running
+            if ((keycode[1] == 'c' and modifiers[0] == 'ctrl') and ('c' not in self._ignore_keys)) and self.server.run_data:
+                stop_button = self.console_panel.controls.stop_button
+                if stop_button.opacity == 1:
+                    stop_button.button.trigger_action(0.1)
+
+
 
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
@@ -10381,6 +10421,7 @@ class MainApp(App):
             return True
         else:
             return False
+
     Window.bind(on_request_close=exit_check)
 
 

@@ -122,6 +122,8 @@ server_list = []
 server_list_lower = []
 new_server_info = {}
 
+sub_processes = []
+
 
 # For '*.bat' or '*.sh' respectively
 start_script_name = "Start"
@@ -221,7 +223,7 @@ def convert_color(color: str or tuple):
 
         for item in color[0:3]:
             x = str(hex(round(item * 255)).split("0x")[1]).upper()
-            x = f"0{x}" if len(x) == 1 else x
+            x = f"0{x}" if len(x) == 1 else "FF" if len(x) > 2 else x
             new_color += x
 
         rgb_color = list(color[0:3])

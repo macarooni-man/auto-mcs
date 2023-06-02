@@ -230,11 +230,9 @@ if __name__ == '__main__':
                 main.mainLoop()
 
             except SystemExit:
-                exitApp = True
-
-
-            except EOFError:
-                print("< CTRL-C >")
+                if constants.sub_processes:
+                    for proc in constants.sub_processes:
+                        proc.kill()
                 exitApp = True
 
 
