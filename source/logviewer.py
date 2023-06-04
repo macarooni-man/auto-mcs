@@ -411,7 +411,7 @@ def launch_window(server_name: str, path: str, data: dict):
 
 
 
-def open_log(server_name: str, path: str, data: dict):
+def open_log(server_name: str, path: str, data: dict, *args):
     if path:
         # multiprocessing.freeze_support()
         process = multiprocessing.Process(target=functools.partial(launch_window, server_name, path, data), daemon=True)
