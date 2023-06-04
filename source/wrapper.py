@@ -9,6 +9,7 @@ import datetime
 import textwrap
 import hashlib
 import psutil
+import signal
 import glob
 import json
 import time
@@ -17,6 +18,8 @@ import os
 
 
 if __name__ == '__main__':
+    import multiprocessing
+    multiprocessing.freeze_support()
 
     # Import constants and check for debug mode
     import constants
@@ -231,8 +234,15 @@ if __name__ == '__main__':
 
             except SystemExit:
                 if constants.sub_processes:
-                    for proc in constants.sub_processes:
-                        proc.kill()
+                    for pid in constants.sub_processes:
+                        try:
+                            if constants.os_name == "windows":
+                                os.kill(pid, signal.SIGTERM)
+                            else:
+                                os.kill(pid, signal.SIGKILL)
+                        except PermissionError:
+                            continue
+
                 exitApp = True
 
 

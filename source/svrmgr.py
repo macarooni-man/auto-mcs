@@ -407,7 +407,7 @@ class ServerObject():
                 if not self.run_data['command-history']:
                     self.run_data['command-history'].insert(0, cmd)
                 else:
-                    if cmd != self.run_data['command-history'][-1]:
+                    if cmd != self.run_data['command-history'][0]:
                         self.run_data['command-history'].insert(0, cmd)
 
             # Send command to Popen stdin

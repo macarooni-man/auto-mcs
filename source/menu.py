@@ -2811,25 +2811,25 @@ class IconButton(FloatLayout):
         self.button = HoverButton()
         self.button.id = 'icon_button'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
-    
+
         if force_color and force_color[1]:
             self.button.alt_color = "_" + force_color[1]
-    
+
         self.button.size_hint = size_hint
         self.button.size = (dp(50), dp(50))
         self.button.pos_hint = pos_hint
-    
+
         if position:
             self.button.pos = (position[0] + 11, position[1])
-    
+
         self.button.border = (0, 0, 0, 0)
         self.button.background_normal = os.path.join(constants.gui_assets, f'{self.button.id}.png')
-    
+
         if not force_color or not force_color[1]:
             self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click.png' if clickable else f'{self.button.id}_hover.png')
         else:
             self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
-    
+
         self.text = Label()
         self.text.id = 'text'
         self.text.size_hint = size_hint
@@ -2842,25 +2842,25 @@ class IconButton(FloatLayout):
 
         if position:
             self.text.pos = (position[0] - 10, position[1] + 17)
-    
+
         if self.text.pos[0] <= 0:
             self.text.pos[0] += sp(len(self.text.text) * 3)
 
         if self.text.offset[0] != 0 or self.text.offset[1] != 0:
             self.text.pos[0] = self.text.pos[0] - self.text.offset[0]
             self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
-    
-    
+
+
         if clickable:
             # Button click behavior
             if click_func:
                 self.button.on_release = functools.partial(click_func)
             else:
                 self.button.on_release = functools.partial(button_action, name, self.button)
-    
-    
+
+
         self.add_widget(self.button)
-    
+
         if icon_name:
             self.icon = Image()
             self.icon.id = 'icon'
@@ -2869,12 +2869,12 @@ class IconButton(FloatLayout):
             self.icon.size = (dp(72), dp(72))
             self.icon.color = self.button.color_id[1]
             self.icon.pos_hint = pos_hint
-    
+
             if position:
                 self.icon.pos = (position[0], position[1] - 11)
-    
+
             self.add_widget(self.icon)
-    
+
         self.add_widget(self.text)
 
         # Check for right float
@@ -5641,7 +5641,7 @@ class CreateServerNetworkScreen(MenuBackground):
         float_layout.add_widget(header_text("Do you wish to configure network information?", '', (0, 0.8)))
         float_layout.add_widget(ServerPortInput(pos_hint={"center_x": 0.5, "center_y": 0.62}, text=process_ip_text()))
         float_layout.add_widget(ServerMOTDInput(pos_hint={"center_x": 0.5, "center_y": 0.515}))
-        float_layout.add_widget(main_button('Access Control Manager', (0.5, 0.4), 'lock-open-outline.png', width=531))
+        float_layout.add_widget(main_button('Access Control Manager', (0.5, 0.4), 'shield-half-small.png', width=531))
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen'))
         buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
 
@@ -9684,8 +9684,9 @@ class ConsolePanel(FloatLayout):
 
     # Called from ServerObject when process stops
     def reset_panel(self, crash=None):
-        if 'f' not in self.parent._ignore_keys:
-            self.parent._ignore_keys.append('f')
+        if screen_manager.current_screen.name == 'ServerManagerViewScreen':
+            if 'f' not in self.parent._ignore_keys:
+                self.parent._ignore_keys.append('f')
 
         # Show crash banner if not on server screen
         def show_crash_banner(*args):
@@ -9847,7 +9848,7 @@ class ConsolePanel(FloatLayout):
 
             Clock.schedule_once(after_anim, (anim_speed*1.1))
 
-    import multiprocessing.spawn
+
     # Opens crash log in default text editor
     def open_log(self, *args):
         data_dict = {
@@ -9856,7 +9857,7 @@ class ConsolePanel(FloatLayout):
             'background_color': constants.background_color,
             'sub_processes': constants.sub_processes
         }
-        logviewer.open_log(self.server_name, constants.server_manager.current_server.crash_log, data_dict)
+        Clock.schedule_once(functools.partial(logviewer.open_log, self.server_name, constants.server_manager.current_server.crash_log, data_dict), 0.1)
         self.controls.log_button.button.on_leave()
         self.controls.log_button.button.on_release()
 
@@ -10325,7 +10326,7 @@ class ServerManagerViewScreen(MenuBackground):
         if self.name == screen_manager.current_screen.name:
 
             # Stop the server if it's currently running
-            if ((keycode[1] == 'c' and modifiers[0] == 'ctrl') and ('c' not in self._ignore_keys)) and self.server.run_data:
+            if ((keycode[1] == 'q' and 'ctrl' in modifiers) and ('q' not in self._ignore_keys)) and self.server.run_data:
                 stop_button = self.console_panel.controls.stop_button
                 if stop_button.opacity == 1:
                     stop_button.button.trigger_action(0.1)

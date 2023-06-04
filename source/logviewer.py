@@ -413,9 +413,10 @@ def launch_window(server_name: str, path: str, data: dict):
 
 def open_log(server_name: str, path: str, data: dict):
     if path:
-        process = multiprocessing.Process(target=functools.partial(launch_window, server_name, path, data))
+        # multiprocessing.freeze_support()
+        process = multiprocessing.Process(target=functools.partial(launch_window, server_name, path, data), daemon=True)
         process.start()
-        data['sub_processes'].append(process)
+        data['sub_processes'].append(process.pid)
 
 
 
