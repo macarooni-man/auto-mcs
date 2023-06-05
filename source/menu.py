@@ -10262,6 +10262,98 @@ class ConsolePanel(FloatLayout):
         self.bind(size=self.update_size)
         Clock.schedule_once(self.update_size, 0)
 
+class MenuTaskbar(RelativeLayout):
+
+    def resize(self, *args):
+
+        # Resize background
+        self.bg_left.x = 0
+        self.bg_right.x = self.width
+        self.bg_center.x = 0 + self.bg_left.width
+        self.bg_center.size_hint_max_x = self.width - (self.bg_left.width * 2)
+
+
+    def __init__(self, selected_item=None, **kwargs):
+        super().__init__(**kwargs)
+
+
+        class TaskbarItem(RelativeLayout):
+            def __init__(self, item_info, **kwargs):
+                super().__init__(**kwargs)
+
+                print(item_info)
+                self.icon = Image()
+                self.icon.size_hint_max = (40, 40)
+                self.icon.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                self.icon.source = item_info[1]
+                self.add_widget(self.icon)
+
+
+
+        # Icon list  (name, path, next_screen)
+        icon_path = os.path.join(constants.gui_assets, 'icons', 'sm')
+        self.item_list = [
+            ('back',              os.path.join(icon_path, 'back-outline.png'),  'NextScreen'),
+            ('launch',            os.path.join(icon_path, 'terminal.png'),      'NextScreen'),
+            ('back-up manager',   os.path.join(icon_path, 'backup.png'),        'NextScreen'),
+            ('access control',    os.path.join(icon_path, 'acl.png'),           'NextScreen'),
+            ('add-on manager',    os.path.join(icon_path, 'addon.png'),         'NextScreen'),
+            ('amscript',          os.path.join(icon_path, 'amscript.png'),      'NextScreen'),
+            ('advanced options',  os.path.join(icon_path, 'advanced.png'),      'NextScreen')
+        ]
+
+
+        self.y = 70
+        self.size_hint_max = (500, 64)
+        self.side_width = self.size_hint_max[1] * 0.55
+        self.background_color = (0.063, 0.067, 0.141, 1)
+
+
+        # Define resizable background
+        self.bg_left = Image()
+        self.bg_left.keep_ratio = False
+        self.bg_left.allow_stretch = True
+        self.bg_left.size_hint_max = (self.side_width, self.size_hint_max[1])
+        self.bg_left.source = os.path.join(constants.gui_assets, 'taskbar_edge.png')
+        self.bg_left.color = self.background_color
+        self.add_widget(self.bg_left)
+
+        self.bg_right = Image()
+        self.bg_right.keep_ratio = False
+        self.bg_right.allow_stretch = True
+        self.bg_right.size_hint_max = (-self.side_width, self.size_hint_max[1])
+        self.bg_right.source = os.path.join(constants.gui_assets, 'taskbar_edge.png')
+        self.bg_right.color = self.background_color
+        self.add_widget(self.bg_right)
+
+        self.bg_center = Image()
+        self.bg_center.keep_ratio = False
+        self.bg_center.allow_stretch = True
+        self.bg_center.source = os.path.join(constants.gui_assets, 'taskbar_center.png')
+        self.bg_center.color = self.background_color
+        self.add_widget(self.bg_center)
+
+
+        # Taskbar layout
+        self.taskbar = BoxLayout(orientation='horizontal', padding=[5,0,5,0])
+        for item in self.item_list:
+            self.taskbar.add_widget(TaskbarItem(item))
+
+        self.add_widget(self.taskbar)
+
+
+
+
+
+
+        self.bind(pos=self.resize, size=self.resize)
+        Clock.schedule_once(self.resize, 0)
+
+
+
+
+
+
 class ServerManagerViewScreen(MenuBackground):
 
     def __init__(self, **kwargs):
@@ -10270,6 +10362,7 @@ class ServerManagerViewScreen(MenuBackground):
         self.menu = 'init'
         self.server = None
         self.console_panel = None
+        self.menu_taskbar = None
         self.server_button = None
         self.server_button_layout = None
 
@@ -10353,10 +10446,11 @@ class ServerManagerViewScreen(MenuBackground):
         self.server_button_layout = ScrollItem(pos_hint = {'center_x': 0.5, 'center_y': 0.84})
         self.server_button_layout.add_widget(self.server_button)
         float_layout.add_widget(self.server_button_layout)
-        buttons.append(exit_button('Back', (0.5, 0.1), cycle=True))
 
-        for button in buttons:
-            float_layout.add_widget(button)
+        # buttons.append(exit_button('Back', (0.5, 0.1), cycle=True))
+        #
+        # for button in buttons:
+        #     float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Server Manager: '{self.server.name}'"))
         float_layout.add_widget(generate_footer(self.server.name, color="70E6FF"))
@@ -10371,8 +10465,16 @@ class ServerManagerViewScreen(MenuBackground):
 
         else:
             self.console_panel = ConsolePanel(self.server.name, self.server_button)
-
         self.console_panel.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+
+
+        # Add ManuTaskbar
+        self.menu_taskbar = MenuTaskbar()
+        self.add_widget(self.menu_taskbar)
+        self.menu_taskbar.pos_hint = {"center_x": 0.5}
+
+
+
         self.add_widget(self.console_panel)
 
 
