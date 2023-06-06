@@ -2583,7 +2583,10 @@ class BannerObject(RelativeLayout):
         self.text_object.font_size = sp(round(self.height / 1.8))
         self.text_object.color = (0, 0, 0, 0.75)
         self.text_object.markup = True
-        self.text_object.text = ("    " + text) if self.icon_side == "left" else (text + "    ")
+        if icon:
+            self.text_object.text = ("    " + text) if self.icon_side == "left" else (text + "    ")
+        else:
+            self.text_object.text = "    " + text + "    "
 
         # Readjust width to fit text if it's too small
         if text:
@@ -2642,6 +2645,8 @@ class BannerObject(RelativeLayout):
             self.icon.height = size[1] / 1.6
 
             self.add_widget(self.icon)
+        else:
+            self.icon = None
 
 
         self.bind(pos=self.resize_self)
@@ -7919,7 +7924,7 @@ class CreateServerAddonScreen(MenuBackground):
                         widget = AddonButton(
                             properties = addon_object,
                             installed = True,
-                            fade_in = ((x if x <= 8 else 8) / 10),
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed),
 
                             show_type = BannerObject(
                                 pos_hint = {"center_x": 0.5, "center_y": 0.5},
@@ -7955,6 +7960,7 @@ class CreateServerAddonScreen(MenuBackground):
         self.page_size = 20
         self.current_page = 0
         self.max_pages = 0
+        self.anim_speed = 10
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         super()._on_keyboard_down(keyboard, keycode, text, modifiers)
@@ -7975,6 +7981,7 @@ class CreateServerAddonScreen(MenuBackground):
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
             call_widget.height = Window.height // 1.85
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
             def update_grid(*args):
                 anchor_layout.size_hint_min_y = grid_layout.height
@@ -8212,7 +8219,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
                             widget = AddonButton(
                                 properties = addon_object,
                                 installed = addon_object.name in installed_addon_names,
-                                fade_in = ((x if x <= 8 else 8) / 10),
+                                fade_in = ((x if x <= 8 else 8) / self.anim_speed),
                                 click_function = functools.partial(
                                     view_addon,
                                     addon_object,
@@ -8239,6 +8246,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
         self.page_size = 20
         self.current_page = 0
         self.max_pages = 0
+        self.anim_speed = 10
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         super()._on_keyboard_down(keyboard, keycode, text, modifiers)
@@ -8268,6 +8276,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
             call_widget.height = Window.height // 1.79
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
             def update_grid(*args):
                 anchor_layout.size_hint_min_y = grid_layout.height
@@ -9417,7 +9426,7 @@ class ServerManagerScreen(MenuBackground):
                     ScrollItem(
                         widget = ServerButton(
                             server_object = server_object,
-                            fade_in = ((x if x <= 8 else 8) / 10) if fade_in else 0,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
                             highlight = (highlight == server_object.name),
                             update_banner = update_banner,
                             click_function = functools.partial(
@@ -9452,6 +9461,7 @@ class ServerManagerScreen(MenuBackground):
         self.current_page = 0
         self.current_scroll = (1, 1)
         self.max_pages = 0
+        self.anim_speed = 10
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         super()._on_keyboard_down(keyboard, keycode, text, modifiers)
@@ -9472,6 +9482,7 @@ class ServerManagerScreen(MenuBackground):
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
             call_widget.height = Window.height // 1.82
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
 
             def update_grid(*args):
                 anchor_layout.size_hint_min_y = grid_layout.height
@@ -9771,6 +9782,11 @@ class ConsolePanel(FloatLayout):
 
         # Make sure the buttons exist
         if 'f' in self.parent._ignore_keys and maximize:
+            return
+
+        try:
+            test = self.controls.maximize_button.opacity
+        except AttributeError:
             return
 
         anim_speed = 0.135
@@ -10273,33 +10289,122 @@ class MenuTaskbar(RelativeLayout):
         self.bg_center.size_hint_max_x = self.width - (self.bg_left.width * 2)
 
 
-    def __init__(self, selected_item=None, **kwargs):
+    def __init__(self, selected_item=None, animate=False, **kwargs):
         super().__init__(**kwargs)
 
+        # Layout for icon object
+        class TaskbarItem(AnchorLayout):
 
-        class TaskbarItem(RelativeLayout):
-            def __init__(self, item_info, **kwargs):
+            def __init__(self, item_info, selected=False, **kwargs):
                 super().__init__(**kwargs)
+                new_color = constants.convert_color(item_info[2])['rgb']
 
-                print(item_info)
-                self.icon = Image()
-                self.icon.size_hint_max = (40, 40)
-                self.icon.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-                self.icon.source = item_info[1]
+
+                # Icon and listed functions
+                class Icon(AnchorLayout, HoverBehavior):
+
+                    # Pretty animation if specified
+                    def animate(self, *args):
+                        def anim_in(*args):
+                            Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine').start(self.icon)
+                            if self.selected:
+                                Animation(opacity=1, duration=0.3, transition='in_out_sine').start(self.background)
+                                Animation(color=constants.brighten_color(self.hover_color, -0.87), duration=0.2, transition='in_out_sine').start(self.icon)
+
+                        def anim_out(*args):
+                            Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine').start(self.icon)
+
+                        Clock.schedule_once(anim_in, 0.1)
+                        Clock.schedule_once(anim_out, 0.25)
+
+
+                    # Execute click function
+                    def on_touch_down(self, touch):
+                        if self.hovered and not self.selected:
+                            # print(self.data)
+
+                            # Animate button
+                            self.icon.color = constants.brighten_color(self.hover_color, 0.7)
+                            Animation(color=self.hover_color, duration=0.3).start(self.icon)
+
+                            # Return if back is clicked
+                            if self.data[0] == 'back':
+                                constants.back_clicked = True
+                                previous_screen()
+                                constants.back_clicked = False
+
+                            # If not back, proceed to next screen
+                            else:
+                                print(self.data[-1])
+
+
+                        # If no button is matched, return touch to super
+                        else:
+                            super().on_touch_down(touch)
+
+
+                    # Change attributes when hovered
+                    def on_enter(self):
+                        if not self.selected:
+                            Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine', color=self.hover_color).start(self.icon)
+                        Animation(opacity=1, duration=0.25, transition='in_out_sine').start(self.parent.text)
+
+                    def on_leave(self):
+                        if not self.selected:
+                            Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine', color=self.default_color).start(self.icon)
+                        Animation(opacity=0, duration=0.25, transition='in_out_sine').start(self.parent.text)
+
+                    def __init__(self, **kwargs):
+                        super().__init__(**kwargs)
+
+                        self.data = item_info
+                        self.default_size = 40
+                        self.default_color = (0.8, 0.8, 1, 1)
+                        self.selected = selected
+                        self.hover_color = new_color
+                        self.size_hint_max = (self.default_size + 23, self.default_size + 23)
+                        self.icon = Image()
+                        self.icon.size_hint_max = (self.default_size, self.default_size)
+                        self.icon.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                        self.icon.source = item_info[1]
+                        self.icon.color = self.default_color
+
+                        # Add background and change color if selected
+                        if self.selected:
+                            self.background = Image(source=os.path.join(constants.gui_assets, 'icons', 'sm', 'selected.png'))
+                            self.background.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                            self.background.size_hint_max = self.size_hint_max
+                            self.background.color = self.hover_color
+                            self.add_widget(self.background)
+                            if animate:
+                                self.background.opacity = 0
+                            else:
+                                self.icon.color = constants.brighten_color(self.hover_color, -0.87)
+
+                        self.add_widget(self.icon)
+
+
+                self.icon = Icon()
                 self.add_widget(self.icon)
 
+                self.text = RelativeLayout(size_hint_min=(300, 50))
+                self.text.add_widget(BannerObject(pos_hint={'center_x': 0.5, 'center_y': 1.25}, text=item_info[0], size=(70, 30), color=new_color))
+                self.text.pos_hint = {'center_x': 0.5, 'center_y': 1}
+                self.text.opacity = 0
+                self.add_widget(self.text)
 
 
-        # Icon list  (name, path, next_screen)
+
+        # Icon list  (name, path, color, next_screen)
         icon_path = os.path.join(constants.gui_assets, 'icons', 'sm')
         self.item_list = [
-            ('back',              os.path.join(icon_path, 'back-outline.png'),  'NextScreen'),
-            ('launch',            os.path.join(icon_path, 'terminal.png'),      'NextScreen'),
-            ('back-up manager',   os.path.join(icon_path, 'backup.png'),        'NextScreen'),
-            ('access control',    os.path.join(icon_path, 'acl.png'),           'NextScreen'),
-            ('add-on manager',    os.path.join(icon_path, 'addon.png'),         'NextScreen'),
-            ('amscript',          os.path.join(icon_path, 'amscript.png'),      'NextScreen'),
-            ('advanced options',  os.path.join(icon_path, 'advanced.png'),      'NextScreen')
+            ('back',            os.path.join(icon_path, 'back-outline.png'),  '#FF6FB4'),
+            ('launch',          os.path.join(icon_path, 'terminal.png'),      '#817EFF',  'NextScreen'),
+            ('back-ups',        os.path.join(icon_path, 'backup.png'),        '#56E6FF',  'NextScreen'),
+            ('access control',  os.path.join(icon_path, 'acl.png'),           '#00FFB2',  'NextScreen'),
+            ('add-ons',         os.path.join(icon_path, 'addon.png'),         '#42FF5E',  'NextScreen'),
+            ('amscript',        os.path.join(icon_path, 'amscript.png'),      '#BFFF2B',  'NextScreen'),
+            ('advanced',        os.path.join(icon_path, 'advanced.png'),      '#FFFF44',  'NextScreen')
         ]
 
 
@@ -10336,14 +10441,14 @@ class MenuTaskbar(RelativeLayout):
 
         # Taskbar layout
         self.taskbar = BoxLayout(orientation='horizontal', padding=[5,0,5,0])
-        for item in self.item_list:
-            self.taskbar.add_widget(TaskbarItem(item))
+        for x, item in enumerate(self.item_list):
+            selected = (selected_item == item[0])
+            item = TaskbarItem(item, selected=selected)
+            self.taskbar.add_widget(item)
+            if animate:
+                Clock.schedule_once(item.icon.animate, x / 15)
 
         self.add_widget(self.taskbar)
-
-
-
-
 
 
         self.bind(pos=self.resize, size=self.resize)
@@ -10443,18 +10548,17 @@ class ServerManagerViewScreen(MenuBackground):
             update_banner = self.server.update_string
 
         self.server_button = ServerButton(self.server, update_banner=update_banner, fade_in=0.3, view_only=True)
-        self.server_button_layout = ScrollItem(pos_hint = {'center_x': 0.5, 'center_y': 0.84})
+        self.server_button_layout = ScrollItem(pos_hint={'center_x': 0.5, 'center_y': 0.84})
         self.server_button_layout.add_widget(self.server_button)
         float_layout.add_widget(self.server_button_layout)
 
-        # buttons.append(exit_button('Back', (0.5, 0.1), cycle=True))
-        #
-        # for button in buttons:
-        #     float_layout.add_widget(button)
+        # Only add this off-screen for 'ESC' behavior
+        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+        for button in buttons:
+            float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Server Manager: '{self.server.name}'"))
         float_layout.add_widget(generate_footer(self.server.name, color="70E6FF"))
-
 
         self.add_widget(float_layout)
 
@@ -10462,14 +10566,13 @@ class ServerManagerViewScreen(MenuBackground):
         # Add ConsolePanel
         if self.server.run_data:
             self.console_panel = self.server.run_data['console-panel']
-
         else:
             self.console_panel = ConsolePanel(self.server.name, self.server_button)
         self.console_panel.pos_hint = {"center_x": 0.5, "center_y": 0.5}
 
 
         # Add ManuTaskbar
-        self.menu_taskbar = MenuTaskbar()
+        self.menu_taskbar = MenuTaskbar(selected_item='launch', animate=True)
         self.add_widget(self.menu_taskbar)
         self.menu_taskbar.pos_hint = {"center_x": 0.5}
 
