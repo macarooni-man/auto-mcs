@@ -3592,6 +3592,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 # ---------------------------------------------------- Screens ---------------------------------------------------------
 
 # Popup widgets
+popup_blur_amount = 7  # Originally 5
 class PopupWindow(RelativeLayout):
 
     def generate_blur_background(self, *args):
@@ -3612,7 +3613,7 @@ class PopupWindow(RelativeLayout):
 
             screen_manager.current_screen.export_to_png(image_path)
             im = PILImage.open(image_path)
-            im1 = im.filter(GaussianBlur(5))
+            im1 = im.filter(GaussianBlur(popup_blur_amount))
             im1.save(image_path)
             self.blur_background.reload()
 
@@ -3975,7 +3976,7 @@ class BigPopupWindow(RelativeLayout):
 
             screen_manager.current_screen.export_to_png(image_path)
             im = PILImage.open(image_path)
-            im1 = im.filter(GaussianBlur(5))
+            im1 = im.filter(GaussianBlur(popup_blur_amount))
             im1.save(image_path)
             self.blur_background.reload()
 
@@ -4534,7 +4535,10 @@ def button_action(button_name, button, specific_screen=''):
         elif "add rules" in button_name.lower() and "CreateServerAclScreen" in str(screen_manager.current_screen):
             screen_manager.current = 'CreateServerAclRuleScreen'
 
-        elif "add rules" in button_name.lower() and "CreateServerAclRuleScreen" in str(screen_manager.current_screen):
+        elif "add rules" in button_name.lower() and "ServerAclScreen" in str(screen_manager.current_screen):
+            screen_manager.current = 'ServerAclRuleScreen'
+
+        elif "add rules" in button_name.lower() and "ServerAclRuleScreen" in str(screen_manager.current_screen):
             screen_manager.current_screen.apply_rules()
 
 
@@ -7151,11 +7155,6 @@ class CreateServerAclScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
 
-        # # DELETE THIS DELETE THIS DELETE THIS
-        # if not constants.new_server_info['acl_object']:
-        #     constants.new_server_info['acl_object'] = acl.AclObject('1.17.1 Server')
-        #     constants.new_server_info['_hash'] = constants.gen_rstring(8)
-
         # If self._hash doesn't match, set list to ops by default
         if self._hash != constants.new_server_info['_hash']:
             self.acl_object = constants.new_server_info['acl_object']
@@ -8919,7 +8918,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', *args):
         if constants.server_manager.current_server.name != server_name:
             while constants.server_manager.current_server.name != server_name:
                 time.sleep(0.005)
-        screen_manager.current = 'ServerManagerViewScreen'
+        screen_manager.current = 'ServerViewScreen'
 
         if show_banner:
             Clock.schedule_once(
@@ -8944,7 +8943,7 @@ class ServerButton(HoverButton):
 
         def on_mouse_pos(self, *args):
 
-            if "ServerManagerViewScreen" in screen_manager.current_screen.name and self.copyable:
+            if "ServerViewScreen" in screen_manager.current_screen.name and self.copyable:
                 try:
                     super().on_mouse_pos(*args)
                 except:
@@ -9695,7 +9694,7 @@ class ConsolePanel(FloatLayout):
 
     # Called from ServerObject when process stops
     def reset_panel(self, crash=None):
-        if screen_manager.current_screen.name == 'ServerManagerViewScreen':
+        if screen_manager.current_screen.name == 'ServerViewScreen':
             if 'f' not in self.parent._ignore_keys:
                 self.parent._ignore_keys.append('f')
 
@@ -9714,7 +9713,7 @@ class ConsolePanel(FloatLayout):
                 )
 
         # Ignore if screen isn't visible or a different server
-        if not (screen_manager.current_screen.name == 'ServerManagerViewScreen'):
+        if not (screen_manager.current_screen.name == 'ServerViewScreen'):
             show_crash_banner()
 
             # Update caption on list if user is staring at it for some reason
@@ -9908,7 +9907,7 @@ class ConsolePanel(FloatLayout):
             # Modifies rule attributes based on text content
             def change_properties(self, text):
 
-                if text and screen_manager.current_screen.name == 'ServerManagerViewScreen':
+                if text and screen_manager.current_screen.name == 'ServerViewScreen':
                     self.date_label.text = text[0]
                     self.type_label.text = text[1]
                     self.main_label.text = text[2]
@@ -10288,9 +10287,11 @@ class MenuTaskbar(RelativeLayout):
         self.bg_center.x = 0 + self.bg_left.width
         self.bg_center.size_hint_max_x = self.width - (self.bg_left.width * 2)
 
-
     def __init__(self, selected_item=None, animate=False, **kwargs):
         super().__init__(**kwargs)
+
+        show_addons = (constants.server_manager.current_server.type != 'vanilla')
+        self.pos_hint = {"center_x": 0.5}
 
         # Layout for icon object
         class TaskbarItem(AnchorLayout):
@@ -10320,23 +10321,41 @@ class MenuTaskbar(RelativeLayout):
 
                     # Execute click function
                     def on_touch_down(self, touch):
-                        if self.hovered and not self.selected:
-                            # print(self.data)
+                        if self.hovered and not self.selected and not screen_manager.current_screen.popup_widget:
 
                             # Animate button
-                            self.icon.color = constants.brighten_color(self.hover_color, 0.7)
+                            self.icon.color = constants.brighten_color(self.hover_color, 0.2)
                             Animation(color=self.hover_color, duration=0.3).start(self.icon)
+
+                            constants.back_clicked = True
 
                             # Return if back is clicked
                             if self.data[0] == 'back':
-                                constants.back_clicked = True
+
                                 previous_screen()
-                                constants.back_clicked = False
+
 
                             # If not back, proceed to next screen
                             else:
-                                print(self.data[-1])
+                                # Wait for data to exist on ServerAclScreen, ServerBackupScreen, And ServerAddonScreen
+                                if self.data[-1] == 'ServerAclScreen':
+                                    if not constants.server_manager.current_server.acl:
+                                        while not constants.server_manager.current_server.acl:
+                                            time.sleep(0.2)
 
+                                if self.data[-1] == 'ServerBackupScreen':
+                                    if not constants.server_manager.current_server.backup:
+                                        while not constants.server_manager.current_server.backup:
+                                            time.sleep(0.2)
+
+                                if self.data[-1] == 'ServerAddonScreen':
+                                    if not constants.server_manager.current_server.addon:
+                                        while not constants.server_manager.current_server.addon:
+                                            time.sleep(0.2)
+
+                                screen_manager.current = self.data[-1]
+
+                            constants.back_clicked = False
 
                         # If no button is matched, return touch to super
                         else:
@@ -10345,11 +10364,15 @@ class MenuTaskbar(RelativeLayout):
 
                     # Change attributes when hovered
                     def on_enter(self):
+                        if self.ignore_hover:
+                            return
+
                         if not self.selected:
                             Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine', color=self.hover_color).start(self.icon)
                         Animation(opacity=1, duration=0.25, transition='in_out_sine').start(self.parent.text)
 
                     def on_leave(self):
+                        self.ignore_hover = False
                         if not self.selected:
                             Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine', color=self.default_color).start(self.icon)
                         Animation(opacity=0, duration=0.25, transition='in_out_sine').start(self.parent.text)
@@ -10369,6 +10392,7 @@ class MenuTaskbar(RelativeLayout):
                         self.icon.source = item_info[1]
                         self.icon.color = self.default_color
 
+
                         # Add background and change color if selected
                         if self.selected:
                             self.background = Image(source=os.path.join(constants.gui_assets, 'icons', 'sm', 'selected.png'))
@@ -10384,6 +10408,14 @@ class MenuTaskbar(RelativeLayout):
                         self.add_widget(self.icon)
 
 
+                        # Ignore on_hover when selected widget is already selected on page load
+                        self.ignore_hover = False
+                        def check_prehover(*args):
+                            if self.collide_point(*self.to_widget(*Window.mouse_pos)) and self.selected:
+                                self.ignore_hover = True
+                        Clock.schedule_once(check_prehover, 0)
+
+
                 self.icon = Icon()
                 self.add_widget(self.icon)
 
@@ -10394,22 +10426,21 @@ class MenuTaskbar(RelativeLayout):
                 self.add_widget(self.text)
 
 
-
         # Icon list  (name, path, color, next_screen)
         icon_path = os.path.join(constants.gui_assets, 'icons', 'sm')
         self.item_list = [
             ('back',            os.path.join(icon_path, 'back-outline.png'),  '#FF6FB4'),
-            ('launch',          os.path.join(icon_path, 'terminal.png'),      '#817EFF',  'NextScreen'),
+            ('launch',          os.path.join(icon_path, 'terminal.png'),      '#817EFF',  'ServerViewScreen'),
             ('back-ups',        os.path.join(icon_path, 'backup.png'),        '#56E6FF',  'NextScreen'),
-            ('access control',  os.path.join(icon_path, 'acl.png'),           '#00FFB2',  'NextScreen'),
+            ('access control',  os.path.join(icon_path, 'acl.png'),           '#00FFB2',  'ServerAclScreen'),
             ('add-ons',         os.path.join(icon_path, 'addon.png'),         '#42FF5E',  'NextScreen'),
             ('amscript',        os.path.join(icon_path, 'amscript.png'),      '#BFFF2B',  'NextScreen'),
             ('advanced',        os.path.join(icon_path, 'advanced.png'),      '#FFFF44',  'NextScreen')
         ]
 
 
-        self.y = 70
-        self.size_hint_max = (500, 64)
+        self.y = 65
+        self.size_hint_max = (500 if show_addons else 430, 64)
         self.side_width = self.size_hint_max[1] * 0.55
         self.background_color = (0.063, 0.067, 0.141, 1)
 
@@ -10442,6 +10473,10 @@ class MenuTaskbar(RelativeLayout):
         # Taskbar layout
         self.taskbar = BoxLayout(orientation='horizontal', padding=[5,0,5,0])
         for x, item in enumerate(self.item_list):
+
+            if item[0] == 'add-ons' and not show_addons:
+                continue
+
             selected = (selected_item == item[0])
             item = TaskbarItem(item, selected=selected)
             self.taskbar.add_widget(item)
@@ -10454,12 +10489,7 @@ class MenuTaskbar(RelativeLayout):
         self.bind(pos=self.resize, size=self.resize)
         Clock.schedule_once(self.resize, 0)
 
-
-
-
-
-
-class ServerManagerViewScreen(MenuBackground):
+class ServerViewScreen(MenuBackground):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -10535,6 +10565,15 @@ class ServerManagerViewScreen(MenuBackground):
         return True
 
     def generate_menu(self, **kwargs):
+
+        # If a new server is selected, animate the taskbar
+        animate_taskbar = False
+        try:
+            if self.server.name != constants.server_manager.current_server.name:
+                animate_taskbar = True
+        except AttributeError:
+            pass
+
         self.server = constants.server_manager.current_server
 
         # Generate buttons on page load
@@ -10558,9 +10597,14 @@ class ServerManagerViewScreen(MenuBackground):
             float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Server Manager: '{self.server.name}'"))
-        float_layout.add_widget(generate_footer(self.server.name, color="70E6FF"))
+        float_layout.add_widget(generate_footer(f"{self.server.name}, Launch"))
 
         self.add_widget(float_layout)
+
+
+        # Add ManuTaskbar
+        self.menu_taskbar = MenuTaskbar(selected_item='launch', animate=animate_taskbar)
+        self.add_widget(self.menu_taskbar)
 
 
         # Add ConsolePanel
@@ -10570,16 +10614,283 @@ class ServerManagerViewScreen(MenuBackground):
             self.console_panel = ConsolePanel(self.server.name, self.server_button)
         self.console_panel.pos_hint = {"center_x": 0.5, "center_y": 0.5}
 
-
-        # Add ManuTaskbar
-        self.menu_taskbar = MenuTaskbar(selected_item='launch', animate=True)
-        self.add_widget(self.menu_taskbar)
-        self.menu_taskbar.pos_hint = {"center_x": 0.5}
-
-
-
         self.add_widget(self.console_panel)
 
+
+# Server ACL Manager ---------------------------------------------------------------------------------------------------
+class ServerAclScreen(CreateServerAclScreen):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.menu_taskbar = None
+
+    def generate_menu(self, **kwargs):
+
+        # If self._hash doesn't match, set list to ops by default
+        if self._hash != constants.server_manager.current_server._hash:
+            self.acl_object = constants.server_manager.current_server.acl
+            self._hash = constants.server_manager.current_server._hash
+            self.current_list = 'ops'
+
+        self.show_panel = False
+
+        self.filter_text = ""
+        self.currently_filtering = False
+
+        # Scroll list
+        self.scroll_widget = RecycleViewWidget(position=(0.5, 0.455), view_class=RuleButton)
+        self.scroll_layout = RecycleGridLayout(spacing=[110, -15], size_hint_y=None, padding=[60, 20, 0, 30])
+        test_rule = RuleButton()
+
+        # Bind / cleanup height on resize
+        def resize_scroll(*args):
+            self.scroll_widget.height = Window.height // 1.68
+            rule_width = test_rule.width + self.scroll_layout.spacing[0] + 2
+            rule_width = int(((Window.width // rule_width) // 1) - 2)
+
+            self.scroll_layout.cols = rule_width
+            self.scroll_layout.rows = 2 if len(self.scroll_widget.data) <= rule_width else None
+
+            self.user_panel.x = Window.width - (self.user_panel.size_hint_max[0] * 0.93)
+
+            # Reposition header
+            for child in self.header.children:
+                if child.id == "text":
+                    child.halign = "left"
+                    child.text_size[0] = 500
+                    child.x = Window.width / 2 + 240
+                    break
+
+            self.search_label.pos_hint = {"center_x": (0.28 if Window.width < 1300 else 0.5), "center_y": 0.42}
+            self.search_label.text_size = (Window.width / 3, 500)
+
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.735}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.165}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
+        page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
+        header_content = ""
+        self.header = header_text(header_content, '', (0, 0.89), fixed_x=True, no_line=True)
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        # Search bar
+        self.search_bar = AclInput(pos_hint={"center_x": 0.5, "center_y": 0.815})
+        buttons.append(input_button('Add Rules...', (0.5, 0.815), input_name='AclInput'))
+
+        # Whitelist toggle button
+        def toggle_whitelist(boolean):
+            self.acl_object.toggle_whitelist(boolean)
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
+                    f"Server whitelist {'en' if boolean else 'dis'}abled",
+                    "shield-checkmark-outline.png" if boolean else "shield-disabled-outline.png",
+                    2,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+            # Update list
+            self.update_list('wl', reload_children=True, reload_panel=True)
+
+        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object.server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+
+        # Legend for rule types
+        self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749}, size_hint_max=(400, 100))
+        self.list_header.global_rule = RelativeLayout()
+        self.list_header.global_rule.add_widget(BannerObject(size=(125, 32), color=test_rule.global_icon_color, text="global rule", icon="earth-sharp.png", icon_side="left"))
+        self.list_header.add_widget(self.list_header.global_rule)
+
+        self.list_header.enabled_rule = RelativeLayout()
+        self.list_header.enabled_rule.add_widget(BannerObject(size=(120, 32), color=(1, 1, 1, 1), text=" ", icon="add.png"))
+        self.list_header.add_widget(self.list_header.enabled_rule)
+
+        self.list_header.disabled_rule = RelativeLayout()
+        self.list_header.disabled_rule.add_widget(BannerObject(size=(120, 32), color=(1, 1, 1, 1), text=" ", icon="add.png"))
+        self.list_header.add_widget(self.list_header.disabled_rule)
+
+        # Add blank label to the center, then load self.gen_search_results()
+        self.blank_label = Label()
+        self.blank_label.text = ""
+        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
+        self.blank_label.font_size = sp(23)
+        self.blank_label.opacity = 0
+        self.blank_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.blank_label)
+
+        # Lol search label idek
+        self.search_label = Label()
+        self.search_label.text = ""
+        self.search_label.halign = "center"
+        self.search_label.valign = "center"
+        self.search_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.search_label.pos_hint = {"center_x": 0.28, "center_y": 0.42}
+        self.search_label.font_size = sp(25)
+        self.search_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.search_label)
+
+        # Controls button
+        def show_controls():
+
+            controls_text = """This menu shows enabled rules from files like 'ops.json', and disabled rules as others who have joined. Global rules are applied to every server. Rules can be modified in a few different ways:
+
+• Right-click a rule to view, and more options
+
+• Left-click a rule to toggle permission
+
+• Press middle-mouse to toggle globally
+
+Rules can be filtered with the search box, and can be added with the 'ADD RULES' button or by pressing 'TAB'. The visible list can be switched between operators, bans, and the whitelist from the drop-down at the top."""
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_popup,
+                    "controls",
+                    "Controls",
+                    controls_text,
+                    (None)
+                ),
+                0
+            )
+
+        self.controls_button = IconButton('controls', {}, (70, 110), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_controls)
+        float_layout.add_widget(self.controls_button)
+
+        # User panel
+        self.user_panel = AclRulePanel()
+        self.user_panel.pos_hint = {"center_y": 0.44}
+
+        # Append scroll view items
+        self.scroll_widget.add_widget(self.scroll_layout)
+        float_layout.add_widget(self.scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(page_selector)
+        float_layout.add_widget(self.list_header)
+        float_layout.add_widget(self.search_bar)
+        float_layout.add_widget(self.whitelist_toggle)
+        float_layout.add_widget(self.user_panel)
+
+        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"{constants.server_manager.current_server.name}, Access Control"
+        float_layout.add_widget(generate_title(f"Access Control Manager: '{constants.server_manager.current_server.name}'"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+
+        # Add ManuTaskbar
+        self.menu_taskbar = MenuTaskbar(selected_item='access control')
+        self.add_widget(self.menu_taskbar)
+
+
+        # Generate page content
+        self.update_list(self.current_list, reload_children=True)
+
+        # Generate user panel info
+        current_list = acl.deepcopy(self.acl_object.rules[self.current_list])
+        if self.current_list == "bans":
+            current_list.extend(acl.deepcopy(self.acl_object.rules['subnets']))
+
+        if self.acl_object.displayed_rule and current_list:
+            self.update_user_panel(self.acl_object.displayed_rule.rule, self.user_panel.displayed_scope)
+        else:
+            self.update_user_panel(None, None)
+
+class ServerAclRuleScreen(CreateServerAclRuleScreen):
+
+    def generate_menu(self, **kwargs):
+        # Generate buttons on page load
+
+        class HintLabel(RelativeLayout):
+
+            def icon_pos(self, *args):
+                self.text.texture_update()
+                self.icon.pos_hint = {"center_x": 0.57 - (0.005 * self.text.texture_size[0]), "center_y": 0.95}
+
+            def __init__(self, pos, label, **kwargs):
+                super().__init__(**kwargs)
+
+                self.pos_hint = {"center_x": 0.5, "center_y": pos}
+                self.size_hint_max = (100, 50)
+
+                self.text = Label()
+                self.text.id = 'text'
+                self.text.size_hint = (None, None)
+                self.text.markup = True
+                self.text.halign = "center"
+                self.text.valign = "center"
+                self.text.text = "        " + label
+                self.text.font_size = sp(22)
+                self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+                self.text.color = (0.6, 0.6, 1, 0.55)
+
+                self.icon = Image()
+                self.icon.id = 'icon'
+                self.icon.source = os.path.join(constants.gui_assets, 'icons', 'information-circle-outline.png')
+                self.icon.pos_hint = {"center_y": 0.95}
+                self.icon.color = (0.6, 0.6, 1, 1)
+
+                self.add_widget(self.text)
+                self.add_widget(self.icon)
+
+                self.bind(size=self.icon_pos)
+                self.bind(pos=self.icon_pos)
+
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        self.current_list = screen_manager.get_screen("ServerAclScreen").current_list
+        self.acl_object = screen_manager.get_screen("ServerAclScreen").acl_object
+
+        if self.current_list == "bans":
+            header_message = "Enter usernames/IPs delimited, by, commas"
+            float_layout.add_widget(HintLabel(0.464, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+            float_layout.add_widget(HintLabel(0.374, "You can ban IP ranges/whitelist:   [color=#FF6666]192.168.0.0-150[/color], [color=#66FF88]!w 192.168.1.1[/color]"))
+        else:
+            header_message = "Enter usernames delimited, by, commas"
+            float_layout.add_widget(HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
+
+        float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.72}))
+        float_layout.add_widget(header_text(header_message, '', (0, 0.8)))
+        self.acl_input = AclRuleInput(pos_hint={"center_x": 0.5, "center_y": 0.64}, text="")
+        float_layout.add_widget(self.acl_input)
+
+        buttons.append(next_button('Add Rules', (0.5, 0.24), True, next_screen='ServerAclScreen'))
+        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"{constants.server_manager.current_server.name}, Access Control"
+        list_name = "Operators" if self.current_list == "ops" else "Bans" if self.current_list == "bans" else "Whitelist"
+        float_layout.add_widget(generate_title(f"Access Control Manager: Add {list_name}"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+        self.acl_input.grab_focus()
 
 
 # </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
