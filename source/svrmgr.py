@@ -445,6 +445,7 @@ class ServerObject():
             self.run_data['process-hooks'] = []
             self.run_data['close-hooks'] = []
             self.run_data['console-panel'] = None
+            self.run_data['performance-panel'] = None
 
 
             with open(script_path, 'r') as f:
