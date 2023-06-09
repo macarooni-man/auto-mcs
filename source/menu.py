@@ -9632,6 +9632,11 @@ class PerformancePanel(RelativeLayout):
         self.height = 240
 
         # Repos panel widgets
+        meter_max = (Window.width * 0.32)
+        meter_min = 350
+        self.meter_layout.size_hint_max_x = meter_max if meter_max >= meter_min else meter_min
+        for child in self.meter_layout.children:
+            Clock.schedule_once(child.recalculate_size, 0)
         self.meter_layout.x = self.width - self.meter_layout.width
         self.player_widget.x = self.overview_widget.x + self.overview_widget.width - texture_offset + 12
         self.player_widget.size_hint_max_x = (self.width) - self.meter_layout.width - self.overview_widget.width + (texture_offset * 2) - 24
@@ -9722,38 +9727,56 @@ class PerformancePanel(RelativeLayout):
 
         class MeterWidget(RelativeLayout):
 
-            def set_percent(self, percent: float or int, *args):
+            def set_percent(self, percent: float or int, animate=True, *args):
 
                 # Normalize value
                 if percent > 100:
                     percent = 100
                 if percent < 0:
                     percent = 0
-                percent = round(percent, 1)
+                self.percent = round(percent, 1)
 
 
                 # Colors
-                if percent < 5:
+                if self.percent < 5:
                     color = gray_accent
-                elif percent < 50:
+                elif self.percent < 50:
                     color = green_accent
-                elif percent < 75:
+                elif self.percent < 75:
                     color = yellow_accent
                 else:
                     color = red_accent
 
 
                 # Update properties
-                self.percentage_label.text = f'{percent} %'
-                Animation(color=color, duration=0.3, transition='in_out_sine').start(self.percentage_label.label)
-                Animation(color=color, duration=0.3, transition='in_out_sine').start(self.progress_bar)
-                Animation(size_hint_max_x=(self.progress_bg.size_hint_max_x * (percent / 100)), duration=0.99, transition='in_out_sine').start(self.progress_bar)
+                self.percentage_label.text = f'{self.percent} %'
+                new_size = (self.progress_bg.size_hint_max_x * (self.percent / 100))
+                if animate:
+                    Animation(color=color, duration=0.3, transition='in_out_sine').start(self.percentage_label.label)
+                    Animation(color=color, duration=0.3, transition='in_out_sine').start(self.progress_bar)
+                    Animation(size_hint_max_x=new_size, duration=0.99, transition='in_out_sine').start(self.progress_bar)
+                else:
+                    Animation.stop_all(self.progress_bar)
+                    Animation.stop_all(self.percentage_label.label)
+                    self.percentage_label.label.color = self.progress_bar.color = color
+                    self.progress_bar.size_hint_max_x = new_size
 
+            def recalculate_size(self, *args):
 
+                # Update bar size
+                self.progress_bg.size_hint_max = (self.width - 145, 7)
+                self.progress_bar.pos = (self.progress_bg.x, self.progress_bg.y + self.progress_bar.size_hint_max[1] + 1)
+                self.set_percent(self.percent, animate=False)
 
+                # Set text position
+                text_x = self.width - self.percentage_label.width - 45
+                self.name.pos = (text_x, self.progress_bg.pos[1] - (self.progress_bar.size_hint_max[1] / 2))
+                self.percentage_label.pos = (text_x, self.progress_bar.pos[1] + 12)
 
             def __init__(self, meter_name, **kwargs):
                 super().__init__(**kwargs)
+
+                self.percent = 0
 
                 # Background
                 self.background = PanelFrame()
@@ -9763,28 +9786,25 @@ class PerformancePanel(RelativeLayout):
 
                 # Progress bar
                 self.progress_bg = Image(color=dark_accent)
-                self.progress_bg.size_hint_max = (205, 7)
                 self.progress_bg.pos = (45, 52)
                 self.add_widget(self.progress_bg)
 
                 self.progress_bar = Image(color=gray_accent)
                 self.progress_bar.size_hint_max = (0, 7)
-                self.progress_bar.pos = (self.progress_bg.x, self.progress_bg.y + self.progress_bar.size_hint_max[1] + 1)
                 self.add_widget(self.progress_bar)
 
 
                 # Label text
                 self.name = ShadowLabel(text=meter_name, font=os.path.join(constants.gui_assets, 'fonts', constants.fonts["medium"]), size=sp(22), color=normal_accent, align='right', shadow_color=(0, 0, 0, 0))
-                self.name.pos_hint = {'center_x': 0.375}
-                self.name.y = self.progress_bg.pos[1] - (self.progress_bar.size_hint_max[1] / 2)
                 self.add_widget(self.name)
 
 
                 # Percent text
-                self.percentage_label = ShadowLabel(text='0 %', font=os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"]), size=sp(30), color=gray_accent, offset=3, align='right', shadow_color=(0, 0, 0, 0))
-                self.percentage_label.pos_hint = {'center_x': 0.375}
-                self.percentage_label.y = self.progress_bar.pos[1] + 12
+                self.percentage_label = ShadowLabel(text=f'{self.percent} %', font=os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"]), size=sp(32), color=gray_accent, offset=3, align='right', shadow_color=(0, 0, 0, 0))
                 self.add_widget(self.percentage_label)
+
+
+                self.recalculate_size()
 
                 for x in range(2, 100):
                     Clock.schedule_once(functools.partial(self.set_percent, randrange(100)), x)
