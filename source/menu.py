@@ -9623,27 +9623,106 @@ class ServerManagerScreen(MenuBackground):
 class PerformancePanel(RelativeLayout):
 
     def update_rect(self, *args):
+        texture_offset = 70
 
-        self.y = screen_manager.current_screen.console_panel.default_y + screen_manager.current_screen.console_panel.height + 30
-        self.height = Window.height - self.y - 200
+        # Resize panel
+        console_panel = screen_manager.current_screen.console_panel
+        self.y = console_panel.default_y + (Window.height - console_panel.size_offset[1]) - 24
+        self.width = Window.width - console_panel.size_offset[0] + texture_offset
+        self.height = 240
+
+        # Repos panel widgets
+        self.meter_layout.x = self.width - self.meter_layout.width
+        self.player_widget.x = self.overview_widget.x + self.overview_widget.width - texture_offset + 12
+        self.player_widget.size_hint_max_x = (self.width) - self.meter_layout.width - self.overview_widget.width + (texture_offset * 2) - 24
 
 
     def __init__(self, server_name, **kwargs):
         super().__init__(**kwargs)
 
+        # Hacky background for panel objects
+        class PanelFrame(Button):
+
+            def on_press(self):
+                self.state = 'normal'
+                pass
+
+            def on_touch_down(self, touch):
+                return super().on_touch_down(touch)
+
+            def on_touch_up(self, touch):
+                return super().on_touch_up(touch)
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+                self.background_normal = os.path.join(constants.gui_assets, 'performance_panel.png')
+                self.background_down = os.path.join(constants.gui_assets, 'performance_panel.png')
+                self.background_color = constants.convert_color("#23243B")['rgb']
+                self.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                self.border = (60, 60, 60, 60)
+
+
+        class MeterWidget(RelativeLayout):
+
+            def __init__(self, meter_name, **kwargs):
+                super().__init__(**kwargs)
+
+                self.background = PanelFrame()
+                self.size_hint_max_y = 152
+                self.add_widget(self.background)
+
+
+
+        class OverviewWidget(RelativeLayout):
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+                self.background = PanelFrame()
+                self.size_hint_max_x = 270
+                self.add_widget(self.background)
+
+
+
+        class PlayerWidget(RelativeLayout):
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+
+                self.background = PanelFrame()
+                self.add_widget(self.background)
+
+
         self.title_text = "Paragraph"
         self.size_hint = (None, None)
         self.size_hint_max = (None, None)
         self.pos_hint = {"center_x": 0.5}
-        self.width = 700
 
-        self.add_widget(Image())
+
+        # Add widgets to layouts
+
+        # Overview widget
+        self.overview_widget = OverviewWidget()
+        self.add_widget(self.overview_widget)
+
+        # Player widget
+        self.player_widget = PlayerWidget()
+        self.add_widget(self.player_widget)
+
+        # Meter widgets
+        self.meter_layout = RelativeLayout(size_hint_max_x=350)
+        self.cpu_meter = MeterWidget(meter_name='CPU', pos_hint={'center_y': 0.684})
+        self.ram_meter = MeterWidget(meter_name='RAM', pos_hint={'center_y': 0.316})
+        self.meter_layout.add_widget(self.cpu_meter)
+        self.meter_layout.add_widget(self.ram_meter)
+        self.add_widget(self.meter_layout)
+
 
 
         self.bind(pos=self.update_rect)
         self.bind(size=self.update_rect)
         Clock.schedule_once(self.update_rect, 0)
-
 
 class ConsolePanel(FloatLayout):
 
@@ -9728,7 +9807,7 @@ class ConsolePanel(FloatLayout):
             self.size_hint_max = (Window.width, Window.height - self.full_screen_offset)
             self.y = 50
         else:
-            self.size_hint_max = (Window.width - self.size_offset[0], (Window.height/2) - (self.y/1.5))
+            self.size_hint_max = (Window.width - self.size_offset[0], Window.height - self.size_offset[1])
             self.y = self.default_y
 
         # Console controls resize
@@ -9746,6 +9825,12 @@ class ConsolePanel(FloatLayout):
         # Fullscreen shadow
         self.fullscreen_shadow.y = self.height + self.x - 3
         self.fullscreen_shadow.width = Window.width
+
+        # Controls background
+        def resize_background(*args):
+            self.controls.background_ext.x = self.controls.background.width
+            self.controls.background_ext.size_hint_max_x = self.width - self.controls.background.width
+        Clock.schedule_once(resize_background, 0)
 
 
     # Launch server and update properties
@@ -9772,6 +9857,7 @@ class ConsolePanel(FloatLayout):
 
         Animation(opacity=0, duration=anim_speed).start(self.controls.button_shadow)
         Animation(opacity=0, duration=anim_speed).start(self.controls.background)
+        Animation(opacity=0, duration=anim_speed).start(self.controls.background_ext)
         Animation(opacity=0, duration=(anim_speed*1.5) if animate else 0).start(self.controls.launch_button)
         Animation(opacity=0, duration=(anim_speed*1.5) if animate else 0).start(self.controls.log_button)
         Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.maximize_button)
@@ -9882,6 +9968,7 @@ class ConsolePanel(FloatLayout):
                 Animation(opacity=1, duration=anim_speed).start(self.controls.button_shadow)
                 Animation(opacity=1, duration=anim_speed).start(self.controls.launch_button)
                 Animation(opacity=1, duration=anim_speed).start(self.controls.background)
+                Animation(opacity=1, duration=anim_speed).start(self.controls.background_ext)
 
                 def after_anim2(*a):
                     self.controls.maximize_button.disabled = False
@@ -9950,7 +10037,7 @@ class ConsolePanel(FloatLayout):
 
         # Exiting full screen
         else:
-            Animation(size_hint_max=(Window.width - self.size_offset[0], (Window.height/2) - (self.default_y/1.5)), y=self.default_y, duration=anim_speed, transition='out_sine').start(self)
+            Animation(size_hint_max=(Window.width - self.size_offset[0], Window.height - self.size_offset[1]), y=self.default_y, duration=anim_speed, transition='out_sine').start(self)
             Animation(opacity=1, duration=(anim_speed*0.1), transition='out_sine').start(self.corner_mask)
             Animation(opacity=0, duration=(anim_speed*0.1), transition='out_sine').start(self.fullscreen_shadow)
 
@@ -10004,10 +10091,10 @@ class ConsolePanel(FloatLayout):
         self.server_button = server_button
         self.full_screen = False
         self.full_screen_offset = 95
-        self.size_offset = (150, 450)
+        self.size_offset = (70, 550)
         self.ignore_keypress = False
         self.pos_hint = {"center_x": 0.5}
-        self.default_y = 175
+        self.default_y = 170
         self.y = self.default_y
 
         self.button_colors = {
@@ -10236,6 +10323,8 @@ class ConsolePanel(FloatLayout):
                 self.background.allow_stretch = True
                 self.background.keep_ratio = False
                 self.background.source = os.path.join(constants.gui_assets, f'console_preview_{randrange(3)}.png')
+                self.background_ext = Image(size_hint_max=(None, None))
+                self.add_widget(self.background_ext)
                 self.add_widget(self.background)
 
                 # Button shadow
@@ -10283,8 +10372,6 @@ class ConsolePanel(FloatLayout):
                 self.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.stop_server)
                 constants.hide_widget(self.stop_button)
                 self.add_widget(self.stop_button)
-
-
 
 
         # Popen object reference
@@ -10355,6 +10442,7 @@ class ConsolePanel(FloatLayout):
         # Start server/blurred background layout
         self.controls = ConsoleControls(self)
         self.add_widget(self.controls)
+        self.controls.background_ext.color = background_color
 
 
         # Rounded corner mask
