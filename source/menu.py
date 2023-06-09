@@ -9633,8 +9633,7 @@ class PerformancePanel(RelativeLayout):
 
         # Repos panel widgets
         meter_max = (Window.width * 0.32)
-        meter_min = 350
-        self.meter_layout.size_hint_max_x = meter_max if meter_max >= meter_min else meter_min
+        self.meter_layout.size_hint_max_x = meter_max if meter_max >= self.meter_min else self.meter_min
         for child in self.meter_layout.children:
             Clock.schedule_once(child.recalculate_size, 0)
         self.meter_layout.x = self.width - self.meter_layout.width
@@ -9651,6 +9650,7 @@ class PerformancePanel(RelativeLayout):
         gray_accent = (0.5, 0.5, 0.5, 1)
         green_accent = (0.3, 1, 0.6, 1)
         red_accent = (1, 0.53, 0.58, 1)
+        self.meter_min = 350
 
 
         # Label with shadow
@@ -9764,19 +9764,22 @@ class PerformancePanel(RelativeLayout):
             def recalculate_size(self, *args):
 
                 # Update bar size
-                self.progress_bg.size_hint_max = (self.width - 145, 7)
+                padding = (self.width - self.meter_min) * 0.03
+                self.progress_bg.pos = (45 + padding, 52)
+                self.progress_bg.size_hint_max = (self.width - 145 - (padding * 2), 7)
                 self.progress_bar.pos = (self.progress_bg.x, self.progress_bg.y + self.progress_bar.size_hint_max[1] + 1)
                 self.set_percent(self.percent, animate=False)
 
                 # Set text position
-                text_x = self.width - self.percentage_label.width - 45
+                text_x = self.width - self.percentage_label.width - 45 - padding
                 self.name.pos = (text_x, self.progress_bg.pos[1] - (self.progress_bar.size_hint_max[1] / 2))
                 self.percentage_label.pos = (text_x, self.progress_bar.pos[1] + 12)
 
-            def __init__(self, meter_name, **kwargs):
+            def __init__(self, meter_name, meter_min=350, **kwargs):
                 super().__init__(**kwargs)
 
                 self.percent = 0
+                self.meter_min = meter_min
 
                 # Background
                 self.background = PanelFrame()
@@ -9786,7 +9789,6 @@ class PerformancePanel(RelativeLayout):
 
                 # Progress bar
                 self.progress_bg = Image(color=dark_accent)
-                self.progress_bg.pos = (45, 52)
                 self.add_widget(self.progress_bg)
 
                 self.progress_bar = Image(color=gray_accent)
@@ -9806,8 +9808,8 @@ class PerformancePanel(RelativeLayout):
 
                 self.recalculate_size()
 
-                for x in range(2, 100):
-                    Clock.schedule_once(functools.partial(self.set_percent, randrange(100)), x)
+                # for x in range(2, 100):
+                #     Clock.schedule_once(functools.partial(self.set_percent, randrange(100)), x)
 
 
 
@@ -9848,9 +9850,9 @@ class PerformancePanel(RelativeLayout):
         self.add_widget(self.player_widget)
 
         # Meter widgets
-        self.meter_layout = RelativeLayout(size_hint_max_x=350)
-        self.cpu_meter = MeterWidget(meter_name='CPU', pos_hint={'center_y': 0.684})
-        self.ram_meter = MeterWidget(meter_name='RAM', pos_hint={'center_y': 0.316})
+        self.meter_layout = RelativeLayout(size_hint_max_x=self.meter_min)
+        self.cpu_meter = MeterWidget(meter_name='CPU', pos_hint={'center_y': 0.684}, meter_min=self.meter_min)
+        self.ram_meter = MeterWidget(meter_name='RAM', pos_hint={'center_y': 0.316}, meter_min=self.meter_min)
         self.meter_layout.add_widget(self.cpu_meter)
         self.meter_layout.add_widget(self.ram_meter)
         self.add_widget(self.meter_layout)
