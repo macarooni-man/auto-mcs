@@ -9640,6 +9640,63 @@ class PerformancePanel(RelativeLayout):
     def __init__(self, server_name, **kwargs):
         super().__init__(**kwargs)
 
+        normal_accent = constants.convert_color("#707EB7")['rgb']
+        dark_accent = constants.convert_color("#151523")['rgb']
+        yellow_accent = (1, 0.9, 0.5, 1)
+        gray_accent = (0.5, 0.5, 0.5, 1)
+        green_accent = (0.3, 1, 0.6, 1)
+        red_accent = (1, 0.53, 0.58, 1)
+
+
+        # Label with shadow
+        class ShadowLabel(RelativeLayout):
+
+            def __setattr__(self, attr, value):
+                if "text" in attr or "color" in attr:
+                    try:
+                        self.label.__setattr__(attr, value)
+                        self.shadow.__setattr__(attr, value)
+                        Clock.schedule_once(self.on_resize, 0)
+                    except AttributeError:
+                        super().__setattr__(attr, value)
+                else:
+                    super().__setattr__(attr, value)
+
+
+            def on_resize(self, *args):
+                self.label.texture_update()
+                self.size_hint_max = self.label.texture_size
+                self.label.size_hint_max = self.label.texture_size
+
+                self.shadow.texture_update()
+                self.shadow.size_hint_max = self.shadow.texture_size
+                self.shadow.pos = (self.label.x + self.offset, self.label.y - self.offset)
+
+
+            def __init__(self, text, font, size, color, align='left', offset=2, shadow_color=dark_accent, **kwargs):
+                super().__init__(**kwargs)
+
+                self.offset = offset
+
+                # Shadow
+                self.shadow = AlignLabel(text=text)
+                self.shadow.font_name = font
+                self.shadow.font_size = size
+                self.shadow.color = shadow_color
+                self.shadow.halign = align
+                self.add_widget(self.shadow)
+
+                # Main label
+                self.label = AlignLabel(text=text)
+                self.label.font_name = font
+                self.label.font_size = size
+                self.label.color = color
+                self.label.halign = align
+                self.add_widget(self.label)
+
+                Clock.schedule_once(self.on_resize, 0)
+
+
         # Hacky background for panel objects
         class PanelFrame(Button):
 
@@ -9658,19 +9715,79 @@ class PerformancePanel(RelativeLayout):
 
                 self.background_normal = os.path.join(constants.gui_assets, 'performance_panel.png')
                 self.background_down = os.path.join(constants.gui_assets, 'performance_panel.png')
-                self.background_color = constants.convert_color("#23243B")['rgb']
+                self.background_color = constants.convert_color("#232439")['rgb']
                 self.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
                 self.border = (60, 60, 60, 60)
 
 
         class MeterWidget(RelativeLayout):
 
+            def set_percent(self, percent: float or int, *args):
+
+                # Normalize value
+                if percent > 100:
+                    percent = 100
+                if percent < 0:
+                    percent = 0
+                percent = round(percent, 1)
+
+
+                # Colors
+                if percent < 5:
+                    color = gray_accent
+                elif percent < 50:
+                    color = green_accent
+                elif percent < 75:
+                    color = yellow_accent
+                else:
+                    color = red_accent
+
+
+                # Update properties
+                self.percentage_label.text = f'{percent} %'
+                Animation(color=color, duration=0.3, transition='in_out_sine').start(self.percentage_label.label)
+                Animation(color=color, duration=0.3, transition='in_out_sine').start(self.progress_bar)
+                Animation(size_hint_max_x=(self.progress_bg.size_hint_max_x * (percent / 100)), duration=0.99, transition='in_out_sine').start(self.progress_bar)
+
+
+
+
             def __init__(self, meter_name, **kwargs):
                 super().__init__(**kwargs)
 
+                # Background
                 self.background = PanelFrame()
                 self.size_hint_max_y = 152
                 self.add_widget(self.background)
+
+
+                # Progress bar
+                self.progress_bg = Image(color=dark_accent)
+                self.progress_bg.size_hint_max = (205, 7)
+                self.progress_bg.pos = (45, 52)
+                self.add_widget(self.progress_bg)
+
+                self.progress_bar = Image(color=gray_accent)
+                self.progress_bar.size_hint_max = (0, 7)
+                self.progress_bar.pos = (self.progress_bg.x, self.progress_bg.y + self.progress_bar.size_hint_max[1] + 1)
+                self.add_widget(self.progress_bar)
+
+
+                # Label text
+                self.name = ShadowLabel(text=meter_name, font=os.path.join(constants.gui_assets, 'fonts', constants.fonts["medium"]), size=sp(22), color=normal_accent, align='right', shadow_color=(0, 0, 0, 0))
+                self.name.pos_hint = {'center_x': 0.375}
+                self.name.y = self.progress_bg.pos[1] - (self.progress_bar.size_hint_max[1] / 2)
+                self.add_widget(self.name)
+
+
+                # Percent text
+                self.percentage_label = ShadowLabel(text='0 %', font=os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"]), size=sp(30), color=gray_accent, offset=3, align='right', shadow_color=(0, 0, 0, 0))
+                self.percentage_label.pos_hint = {'center_x': 0.375}
+                self.percentage_label.y = self.progress_bar.pos[1] + 12
+                self.add_widget(self.percentage_label)
+
+                for x in range(2, 100):
+                    Clock.schedule_once(functools.partial(self.set_percent, randrange(100)), x)
 
 
 
@@ -9719,10 +9836,14 @@ class PerformancePanel(RelativeLayout):
         self.add_widget(self.meter_layout)
 
 
-
         self.bind(pos=self.update_rect)
         self.bind(size=self.update_rect)
         Clock.schedule_once(self.update_rect, 0)
+
+
+
+
+
 
 class ConsolePanel(FloatLayout):
 
