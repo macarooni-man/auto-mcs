@@ -4,6 +4,7 @@ from kivy.utils import escape_markup
 from datetime import datetime as dt
 from threading import Timer
 from glob import glob
+import psutil
 import ctypes
 import time
 import os
@@ -446,6 +447,7 @@ class ServerObject():
             self.run_data['close-hooks'] = []
             self.run_data['console-panel'] = None
             self.run_data['performance-panel'] = None
+            self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00'}
 
 
             with open(script_path, 'r') as f:
@@ -605,9 +607,18 @@ class ServerObject():
 
                         # Check for crash if exit code is not 0
                         if self.run_data['process'].returncode != 0:
+
+                            print(True)
+
+                            # Check for false positives
                             false_positive = False
                             if error_list:
-                                if 'java.net.SocketException: socket closed' in ''.join(error_list):
+                                joined_errors = '\n'.join(error_list)
+
+                                if 'java.net.SocketException: socket closed' in joined_errors:
+                                    false_positive = True
+
+                                if 'Server will start in ' in joined_errors:
                                     false_positive = True
 
                             if not false_positive:
@@ -748,6 +759,48 @@ class ServerObject():
         self.running = False
         del constants.server_manager.running_servers[self.name]
         # print(constants.server_manager.running_servers)
+
+    # Retrieves performance information
+    def performance_stats(self, interval=0.5):
+        perc_cpu = 0
+        perc_ram = 0
+
+        # Get Java process
+        try:
+            parent = psutil.Process(self.run_data['process'].pid)
+            sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
+
+            children = parent.children(recursive=True)
+            for proc in children:
+                if proc.name() == "java.exe":
+                    perc_cpu = proc.cpu_percent(interval=interval)
+                    perc_ram = round(proc.memory_info().private / 1048576, 2)
+                    break
+
+            perc_cpu = round(perc_cpu / psutil.cpu_count(), 2)
+            perc_ram = round(((perc_ram / sys_mem) * 100), 2)
+
+        except:
+            pass
+
+        if not self.run_data:
+            return
+
+        # Format up-time
+        delta = (dt.now() - self.run_data['launch-time'])
+        time_str = str(delta).split(',')[-1]
+        if '.' in time_str:
+            time_str = time_str.split('.')[0]
+        formatted_date = f"{str(delta.days)}:{time_str.strip().zfill(8)}".zfill(11)
+
+        self.run_data['performance'] = {
+            'cpu':  perc_cpu,
+            'ram':  perc_ram,
+            'uptime': formatted_date
+        }
+
+
+
 
     # Reloads all auto-mcs scripts
     def reload_scripts(self):

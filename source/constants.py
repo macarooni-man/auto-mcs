@@ -2449,7 +2449,7 @@ def get_current_ip(name):
                     except:
                         new_ip = ""
 
-                    if new_ip:
+                    if new_ip and 'bad' not in new_ip.lower():
                         public_ip = new_ip
                         # Assign public IP to current running server
                         if server_manager.running_servers:

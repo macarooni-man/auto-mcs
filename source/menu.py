@@ -9421,10 +9421,10 @@ class ServerManagerScreen(MenuBackground):
         self.page_switcher.update_index(self.current_page, self.max_pages)
         self.gen_search_results(self.last_results)
 
-    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, *args):
+    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True, *args):
 
         # Set to proper page on favorite/unfavorite
-        default_scroll = 1 if self.current_scroll[1] == 1 or new_search or self.current_page != self.current_scroll[0] else self.current_scroll[1]
+        default_scroll = 1
         if highlight:
             def divide_chunks(l, n):
                 final_list = []
@@ -9483,7 +9483,6 @@ class ServerManagerScreen(MenuBackground):
                 # Activated when addon is clicked
                 def view_server(server, index, *args):
                     selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ServerButton"][index - 1]
-                    self.current_scroll = (self.current_page, self.scroll_layout.parent.parent.scroll_y)
 
                     # View Server
                     if selected_button.last_touch.button == "left":
@@ -9521,9 +9520,11 @@ class ServerManagerScreen(MenuBackground):
 
         # Animate scrolling
         def set_scroll(*args):
-            # self.scroll_layout.parent.parent.scroll_y = default_scroll
             Animation.stop_all(self.scroll_layout.parent.parent)
-            Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+            if animate_scroll:
+                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+            else:
+                self.scroll_layout.parent.parent.scroll_y = default_scroll
         Clock.schedule_once(set_scroll, 0)
 
     def __init__(self, **kwargs):
@@ -9538,7 +9539,6 @@ class ServerManagerScreen(MenuBackground):
         self.last_results = []
         self.page_size = 10
         self.current_page = 0
-        self.current_scroll = (1, 1)
         self.max_pages = 0
         self.anim_speed = 10
 
@@ -9614,7 +9614,15 @@ class ServerManagerScreen(MenuBackground):
 
         # Automatically generate results (installed add-ons) on page load
         constants.server_manager.refresh_list()
+        highlight = False
         self.gen_search_results(constants.server_manager.server_list)
+
+        # Highlight the last server that was last selected
+        def highlight_last_server(*args):
+            if constants.server_manager.current_server:
+                highlight = constants.server_manager.current_server.name
+                self.gen_search_results(constants.server_manager.server_list, highlight=highlight, animate_scroll=False)
+        Clock.schedule_once(highlight_last_server, 0)
 
 
 
@@ -9632,25 +9640,100 @@ class PerformancePanel(RelativeLayout):
         self.height = 240
 
         # Repos panel widgets
+        overview_max = (Window.width * 0.2)
+        self.overview_widget.size_hint_max_x = overview_max if overview_max >= self.overview_min else self.overview_min
+
         meter_max = (Window.width * 0.32)
         self.meter_layout.size_hint_max_x = meter_max if meter_max >= self.meter_min else self.meter_min
         for child in self.meter_layout.children:
             Clock.schedule_once(child.recalculate_size, 0)
+
         self.meter_layout.x = self.width - self.meter_layout.width
         self.player_widget.x = self.overview_widget.x + self.overview_widget.width - texture_offset + 12
         self.player_widget.size_hint_max_x = (self.width) - self.meter_layout.width - self.overview_widget.width + (texture_offset * 2) - 24
 
+    # Updates data in panel while the server is running
+    def refresh_data(self, interval=0.5, *args):
+
+        # Get performance stats
+        threading.Timer(0, functools.partial(constants.server_manager.current_server.performance_stats, interval)).start()
+
+        def update_data(*args):
+            try:
+                perf_data = constants.server_manager.current_server.run_data['performance']
+            except KeyError or AttributeError:
+                return
+
+            # Update meter
+            self.cpu_meter.set_percent(perf_data['cpu'])
+            self.ram_meter.set_percent(perf_data['ram'])
+
+            # Update up-time
+            formatted_color = '[color=#737373]'
+            found = False
+            for x, item in enumerate(perf_data['uptime'].split(":")):
+                if x == 0 and item != '00':
+                    formatted_color += '[/color]'
+                    found = True
+                if item != "00" and not found:
+                    found = True
+                    item = int(item)
+                    formatted_color += f'[/color]{item}:' if len(str(item)) == 2 else f'0[/color]{item}:'
+                else:
+                    formatted_color += f'{item}:'
+
+
+            # Update player count every 5 cycles
+            self.player_clock += 1
+            if self.player_clock > 5:
+                self.player_clock = 0
+
+                total_count = int(self.overview_widget.max_players)
+                players = {k:v for (k, v) in constants.server_manager.current_server.run_data['player-list'].items() if v['logged-in']}
+                percent = (len(players) / total_count)
+
+                # Colors
+                if percent == 0:
+                    color = (0.45, 0.45, 0.45, 1)
+                elif percent < 50:
+                    color = (0.92, 0.92, 0.92, 1)
+                elif percent < 75:
+                    color = (1, 0.9, 0.5, 1)
+                else:
+                    color = (1, 0.53, 0.58, 1)
+
+                Animation(color=color, duration=0.4, transition='in_out_sine').start(self.overview_widget.player_label.label)
+                self.overview_widget.player_label.label.text = f'{len(players)}[color=#737373] / [/color]{total_count}'
+
+
+
+
+            self.overview_widget.uptime_label.text = formatted_color[:-1]
+            Animation(color=(0.92, 0.92, 0.92, 1), duration=0.4, transition='in_out_sine').start(self.overview_widget.uptime_label.label)
+
+        Clock.schedule_once(update_data, (interval + 0.05))
+
+    # Sets panel back to the default state
+    def reset_panel(self):
+        def reset(*args):
+            self.cpu_meter.set_percent(0)
+            self.ram_meter.set_percent(0)
+            self.overview_widget.reset_panel()
+        Clock.schedule_once(reset, 1.5)
 
     def __init__(self, server_name, **kwargs):
         super().__init__(**kwargs)
 
-        normal_accent = constants.convert_color("#707EB7")['rgb']
+        normal_accent = constants.convert_color("#707CB7")['rgb']
         dark_accent = constants.convert_color("#151523")['rgb']
         yellow_accent = (1, 0.9, 0.5, 1)
-        gray_accent = (0.5, 0.5, 0.5, 1)
+        gray_accent = (0.45, 0.45, 0.45, 1)
         green_accent = (0.3, 1, 0.6, 1)
         red_accent = (1, 0.53, 0.58, 1)
+
+        self.overview_min = 280
         self.meter_min = 350
+        self.player_clock = 0
 
 
         # Label with shadow
@@ -9697,6 +9780,7 @@ class PerformancePanel(RelativeLayout):
                 self.label.font_size = size
                 self.label.color = color
                 self.label.halign = align
+                self.label.markup = True
                 self.add_widget(self.label)
 
                 Clock.schedule_once(self.on_resize, 0)
@@ -9730,11 +9814,11 @@ class PerformancePanel(RelativeLayout):
             def set_percent(self, percent: float or int, animate=True, *args):
 
                 # Normalize value
-                if percent > 100:
-                    percent = 100
-                if percent < 0:
-                    percent = 0
                 self.percent = round(percent, 1)
+                if percent >= 100:
+                    self.percent = 100
+                if percent <= 0:
+                    self.percent = 0
 
 
                 # Colors
@@ -9750,14 +9834,20 @@ class PerformancePanel(RelativeLayout):
 
                 # Update properties
                 self.percentage_label.text = f'{self.percent} %'
-                new_size = (self.progress_bg.size_hint_max_x * (self.percent / 100))
+                new_size = round(self.progress_bg.size_hint_max_x * (self.percent / 100)) if self.percent >= 1 else 0
+
+                Animation.stop_all(self.progress_bar)
+                Animation.stop_all(self.percentage_label.label)
+
                 if animate:
                     Animation(color=color, duration=0.3, transition='in_out_sine').start(self.percentage_label.label)
                     Animation(color=color, duration=0.3, transition='in_out_sine').start(self.progress_bar)
-                    Animation(size_hint_max_x=new_size, duration=0.99, transition='in_out_sine').start(self.progress_bar)
+                    if new_size == 0:
+                        Animation.stop_all(self.progress_bar)
+                        Animation(color=color, size_hint_max_x=new_size, duration=0.4, transition='in_out_sine').start(self.progress_bar)
+                    else:
+                        Animation(size_hint_max_x=new_size, duration=0.99, transition='in_out_sine').start(self.progress_bar)
                 else:
-                    Animation.stop_all(self.progress_bar)
-                    Animation.stop_all(self.percentage_label.label)
                     self.percentage_label.label.color = self.progress_bar.color = color
                     self.progress_bar.size_hint_max_x = new_size
 
@@ -9797,31 +9887,110 @@ class PerformancePanel(RelativeLayout):
 
 
                 # Label text
-                self.name = ShadowLabel(text=meter_name, font=os.path.join(constants.gui_assets, 'fonts', constants.fonts["medium"]), size=sp(22), color=normal_accent, align='right', shadow_color=(0, 0, 0, 0))
+                self.name = ShadowLabel(
+                    text = meter_name,
+                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["medium"]),
+                    size = sp(22),
+                    color = normal_accent,
+                    align = 'right',
+                    shadow_color = (0, 0, 0, 0)
+                )
                 self.add_widget(self.name)
 
 
                 # Percent text
-                self.percentage_label = ShadowLabel(text=f'{self.percent} %', font=os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"]), size=sp(32), color=gray_accent, offset=3, align='right', shadow_color=(0, 0, 0, 0))
+                self.percentage_label = ShadowLabel(
+                    text = f'{self.percent} %',
+                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"]),
+                    size = sp(30),
+                    color = gray_accent,
+                    offset = 3,
+                    align = 'right',
+                    shadow_color = (0, 0, 0, 0)
+                )
                 self.add_widget(self.percentage_label)
 
-
                 self.recalculate_size()
-
-                # for x in range(2, 100):
-                #     Clock.schedule_once(functools.partial(self.set_percent, randrange(100)), x)
-
 
 
         class OverviewWidget(RelativeLayout):
 
-            def __init__(self, **kwargs):
+            def reset_panel(self):
+                def reset_text(*args):
+                    self.uptime_label.text = f'00:00:00:00'
+                    self.player_label.text = f'0 / {self.max_players}'
+                Animation(color=gray_accent, duration=0.4, transition='in_out_sine').start(self.uptime_label.label)
+                Animation(color=gray_accent, duration=0.4, transition='in_out_sine').start(self.player_label.label)
+                Clock.schedule_once(reset_text, 0.4)
+
+            def __init__(self, overview_min=270, **kwargs):
                 super().__init__(**kwargs)
 
+                self.max_players = constants.server_manager.current_server.server_properties['max-players']
+
                 self.background = PanelFrame()
-                self.size_hint_max_x = 270
+                self.size_hint_max_x = overview_min
+                self.overview_min = overview_min
                 self.add_widget(self.background)
 
+
+                # Up-time title
+                self.uptime_title = ShadowLabel(
+                    text = f'up-time',
+                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["italic"]),
+                    size = sp(23),
+                    color = normal_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = constants.brighten_color(dark_accent, 0.04)
+                )
+                self.uptime_title.pos_hint = {'center_x': 0.5}
+                self.uptime_title.y = 170
+                self.add_widget(self.uptime_title)
+
+                # Up-time label
+                self.uptime_label = ShadowLabel(
+                    text = f'00:00:00:00',
+                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["mono-bold"]) + '.otf',
+                    size = sp(30),
+                    color = gray_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = (0, 0, 0, 0)
+                )
+                self.uptime_label.pos_hint = {'center_x': 0.5}
+                self.uptime_label.y = 135
+                self.add_widget(self.uptime_label)
+
+
+
+                # Player count title
+                self.player_title = ShadowLabel(
+                    text = f'capacity',
+                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["italic"]),
+                    size = sp(23),
+                    color = normal_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = constants.brighten_color(dark_accent, 0.04)
+                )
+                self.player_title.pos_hint = {'center_x': 0.5}
+                self.player_title.y = 80
+                self.add_widget(self.player_title)
+
+                # Player count label
+                self.player_label = ShadowLabel(
+                    text = f'0 / {self.max_players}',
+                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"]),
+                    size = sp(26),
+                    color = gray_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = (0, 0, 0, 0)
+                )
+                self.player_label.pos_hint = {'center_x': 0.5}
+                self.player_label.y = 45
+                self.add_widget(self.player_label)
 
 
         class PlayerWidget(RelativeLayout):
@@ -9833,6 +10002,21 @@ class PerformancePanel(RelativeLayout):
                 self.add_widget(self.background)
 
 
+                # Player title
+                self.title = ShadowLabel(
+                    text = f'connected players',
+                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["italic"]),
+                    size = sp(23),
+                    color = normal_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = constants.brighten_color(dark_accent, 0.04)
+                )
+                self.title.pos_hint = {'center_x': 0.5}
+                self.title.y = 170
+                self.add_widget(self.title)
+
+
         self.title_text = "Paragraph"
         self.size_hint = (None, None)
         self.size_hint_max = (None, None)
@@ -9842,7 +10026,7 @@ class PerformancePanel(RelativeLayout):
         # Add widgets to layouts
 
         # Overview widget
-        self.overview_widget = OverviewWidget()
+        self.overview_widget = OverviewWidget(overview_min=self.overview_min)
         self.add_widget(self.overview_widget)
 
         # Player widget
@@ -9853,8 +10037,8 @@ class PerformancePanel(RelativeLayout):
         self.meter_layout = RelativeLayout(size_hint_max_x=self.meter_min)
         self.cpu_meter = MeterWidget(meter_name='CPU', pos_hint={'center_y': 0.684}, meter_min=self.meter_min)
         self.ram_meter = MeterWidget(meter_name='RAM', pos_hint={'center_y': 0.316}, meter_min=self.meter_min)
-        self.meter_layout.add_widget(self.cpu_meter)
         self.meter_layout.add_widget(self.ram_meter)
+        self.meter_layout.add_widget(self.cpu_meter)
         self.add_widget(self.meter_layout)
 
 
@@ -10025,6 +10209,10 @@ class ConsolePanel(FloatLayout):
         # Actually launch server
         constants.java_check()
         self.update_process(screen_manager.current_screen.server.launch())
+
+        # Start performance counter
+        screen_manager.current_screen.set_timer(True)
+
         self.input.disabled = False
         constants.server_manager.current_server.run_data['console-panel'] = self
         constants.server_manager.current_server.run_data['performance-panel'] = screen_manager.current_screen.performance_panel
@@ -10040,9 +10228,6 @@ class ConsolePanel(FloatLayout):
     def reset_panel(self, crash=None):
 
         def reset(*args):
-            if screen_manager.current_screen.name == 'ServerViewScreen':
-                if 'f' not in self.parent._ignore_keys:
-                    self.parent._ignore_keys.append('f')
 
             # Show crash banner if not on server screen
             def show_crash_banner(*args):
@@ -10074,6 +10259,13 @@ class ConsolePanel(FloatLayout):
             if screen_manager.current_screen.server.name != self.server_name or not self.run_data:
                 show_crash_banner()
                 return
+
+
+            # Do things when on server launch screen
+            screen_manager.current_screen.set_timer(False)
+            screen_manager.current_screen.performance_panel.reset_panel()
+            if 'f' not in self.parent._ignore_keys:
+                self.parent._ignore_keys.append('f')
 
             self.run_data = None
             self.ignore_keypress = True
@@ -10855,6 +11047,29 @@ class ServerViewScreen(MenuBackground):
         self.menu_taskbar = None
         self.server_button = None
         self.server_button_layout = None
+        self.perf_timer = None
+
+    def set_timer(self, start=True):
+        if start:
+            try:
+                if self.server.run_data:
+                    self.performance_panel.player_clock = 6
+                    Clock.schedule_once(self.performance_panel.refresh_data, 0.5)
+                    self.perf_timer = Clock.schedule_interval(self.performance_panel.refresh_data, 1)
+            except AttributeError:
+                pass
+        else:
+            if self.perf_timer:
+                self.perf_timer.cancel()
+            self.perf_timer = None
+
+    def on_pre_leave(self, **kwargs):
+        self.set_timer(False)
+        super().on_pre_leave(**kwargs)
+
+    def on_pre_enter(self, **kwargs):
+        super().on_pre_enter(**kwargs)
+        self.set_timer(True)
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         # print('The key', keycode, 'have been pressed')
@@ -10965,14 +11180,18 @@ class ServerViewScreen(MenuBackground):
 
 
         # Add performance panel
+        perf_layout = ScrollItem()
         if self.server.run_data:
             self.performance_panel = self.server.run_data['performance-panel']
+            try:
+                if self.performance_panel.parent:
+                    self.performance_panel.parent.remove_widget(self.performance_panel)
+            except AttributeError:
+                pass
         else:
-            perf_layout = ScrollItem()
-            perf_layout.add_widget(PerformancePanel(self.server.name))
-            self.performance_panel = perf_layout
-
-        self.add_widget(self.performance_panel)
+            self.performance_panel = PerformancePanel(self.server.name)
+        perf_layout.add_widget(self.performance_panel)
+        self.add_widget(perf_layout)
 
 
         # Add ConsolePanel
@@ -11344,7 +11563,7 @@ class MainApp(App):
             # screen_manager.current = "CreateServerReviewScreen"
 
             screen_manager.current = "ServerManagerScreen"
-            open_server("1.6 crash test")
+            open_server("test")
 
 
         screen_manager.transition = FadeTransition(duration=0.115)
