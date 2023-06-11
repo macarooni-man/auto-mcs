@@ -155,6 +155,7 @@ def launch_window(server_name: str, path: str, data: dict):
                 self.new_start_x = 0
                 self.first_y = 0
                 self.first_x = 0
+                self.hidden = False
 
                 self.last_scrolled = 4
 
@@ -212,6 +213,19 @@ def launch_window(server_name: str, path: str, data: dict):
                 self.y0 = y0
                 self.x1 = x1
                 self.y1 = y1
+
+
+                # Hide scrollbar if it's the same size as the screen
+                def check_hidden(*args):
+                    if (y1 - y0) == height:
+                        self.hidden = True
+                        self.fade_out()
+                        color = background_color
+                        self.itemconfig('slider', fill=color, outline=color)
+                    else:
+                        self.hidden = False
+                root.after(0, lambda *_: check_hidden())
+
 
             def move_on_click(self, event):
                 if self.orient == 'vertical':
@@ -288,6 +302,9 @@ def launch_window(server_name: str, path: str, data: dict):
                     self.command('moveto', mouse_pos / self.winfo_width())
 
             def fade_out(self):
+                if self.hidden:
+                    return
+
                 max_frames = 20
                 def reduce_opacity(frame):
                     color = convert_color((0.6-(frame/(max_frames*2.3)), 0.6-(frame/(max_frames*2.3)), 1-(frame/(max_frames*1.4))))['hex']
@@ -401,6 +418,8 @@ def launch_window(server_name: str, path: str, data: dict):
 
         scrollbar.command = text_info.yview
 
+
+        # When window is closed
         def on_closing():
             root.close = True
             root.destroy()
@@ -426,5 +445,6 @@ def open_log(server_name: str, path: str, data: dict, *args):
 #         'gui_assets': constants.gui_assets,
 #         'background_color': constants.background_color
 #     }
-#     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\Spigot Test\crash-reports\crash-2022-05-29_16.09.53-server.txt"
+#     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\test\crash-reports\crash-2023-06-10_00.17.17-server.txt"
+#     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\test\crash-reports\crash-2023-05-08_12.37.24-server.txt"
 #     launch_window('test', path, data_dict)

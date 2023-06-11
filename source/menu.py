@@ -6433,6 +6433,9 @@ class AclRulePanel(RelativeLayout):
                     else:
                         time_formatted = (f"{d['days']}d " if d['days'] > 0 else "") + (f"{d['hours']}h " if d['hours'] > 0 else "") + (f"{d['minutes']}m " if d['minutes'] > 0 and d['days'] == 0 else "")
 
+                    if not time_formatted:
+                        time_formatted = 'seconds '
+
                     self.player_layout.online_label.text = f"Last online {time_formatted}ago"
 
                 except ValueError:
@@ -9651,12 +9654,13 @@ class PerformancePanel(RelativeLayout):
         self.meter_layout.x = self.width - self.meter_layout.width
         self.player_widget.x = self.overview_widget.x + self.overview_widget.width - texture_offset + 12
         self.player_widget.size_hint_max_x = (self.width) - self.meter_layout.width - self.overview_widget.width + (texture_offset * 2) - 24
+        Clock.schedule_once(self.player_widget.recalculate_size, 0)
 
     # Updates data in panel while the server is running
     def refresh_data(self, interval=0.5, *args):
 
         # Get performance stats
-        threading.Timer(0, functools.partial(constants.server_manager.current_server.performance_stats, interval)).start()
+        threading.Timer(0, functools.partial(constants.server_manager.current_server.performance_stats, interval, (self.player_clock == 3))).start()
 
         def update_data(*args):
             try:
@@ -9689,8 +9693,8 @@ class PerformancePanel(RelativeLayout):
                 self.player_clock = 0
 
                 total_count = int(self.overview_widget.max_players)
-                players = {k:v for (k, v) in constants.server_manager.current_server.run_data['player-list'].items() if v['logged-in']}
-                percent = (len(players) / total_count)
+                percent = (len(perf_data['current-players']) / total_count)
+                self.player_widget.update_data(perf_data['current-players'])
 
                 # Colors
                 if percent == 0:
@@ -9703,10 +9707,7 @@ class PerformancePanel(RelativeLayout):
                     color = (1, 0.53, 0.58, 1)
 
                 Animation(color=color, duration=0.4, transition='in_out_sine').start(self.overview_widget.player_label.label)
-                self.overview_widget.player_label.label.text = f'{len(players)}[color=#737373] / [/color]{total_count}'
-
-
-
+                self.overview_widget.player_label.label.text = f'{len(perf_data["current-players"])}[color=#737373] / [/color]{total_count}'
 
             self.overview_widget.uptime_label.text = formatted_color[:-1]
             Animation(color=(0.92, 0.92, 0.92, 1), duration=0.4, transition='in_out_sine').start(self.overview_widget.uptime_label.label)
@@ -9719,6 +9720,7 @@ class PerformancePanel(RelativeLayout):
             self.cpu_meter.set_percent(0)
             self.ram_meter.set_percent(0)
             self.overview_widget.reset_panel()
+            self.player_widget.update_data(None)
         Clock.schedule_once(reset, 1.5)
 
     def __init__(self, server_name, **kwargs):
@@ -9784,7 +9786,6 @@ class PerformancePanel(RelativeLayout):
                 self.add_widget(self.label)
 
                 Clock.schedule_once(self.on_resize, 0)
-
 
         # Hacky background for panel objects
         class PanelFrame(Button):
@@ -9995,11 +9996,108 @@ class PerformancePanel(RelativeLayout):
 
         class PlayerWidget(RelativeLayout):
 
+            # Add players
+            def update_data(self, player_dict):
+                if player_dict:
+                    if self.layout.opacity == 0:
+                        Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.layout)
+                        Animation(opacity=0, duration=0.4, transition='in_out_sine').start(self.empty_label)
+                    self.scroll_layout.data = player_dict
+
+                else:
+                    if self.layout.opacity == 1:
+                        Animation(opacity=0, duration=0.4, transition='in_out_sine').start(self.layout)
+                        Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.empty_label)
+
+            def recalculate_size(self, *args):
+                texture_offset = 70
+                list_offset = 15
+
+                self.layout.pos = ((texture_offset / 2), (texture_offset / 2) + list_offset)
+                self.layout.size_hint_max = (self.width - texture_offset, self.height - texture_offset - (list_offset * 3.5))
+                self.scroll_layout.size = self.layout.size
+
+                def resize_list(*args):
+                    text_width = 240
+                    text_width = int(((self.layout.width // text_width) // 1))
+
+                    self.player_list.cols = text_width
+                    self.player_list.rows = 1 if len(self.scroll_layout.data) <= text_width else None
+                Clock.schedule_once(resize_list, 0)
+
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
 
+                class PlayerLabel(AlignLabel, HoverBehavior):
+
+                    # Hover stuffies
+                    def on_enter(self, *args):
+                        if self.copyable:
+                            self.outline_width = 0
+                            self.outline_color = constants.brighten_color(self.color, 0.05)
+                            Animation(outline_width=1, duration=0.03).start(self)
+
+                    def on_leave(self, *args):
+
+                        if self.copyable:
+                            Animation.stop_all(self)
+                            self.outline_width = 0
+
+                    # Normal stuffies
+                    def on_ref_press(self, *args):
+                        if not self.disabled:
+                            if constants.server_manager.current_server.acl:
+                                constants.server_manager.current_server.acl.display_rule(re.sub("\[.*?\]", "", self.text))
+                                constants.back_clicked = True
+                                screen_manager.current = 'ServerAclScreen'
+                                constants.back_clicked = False
+
+                    def ref_text(self, *args):
+                        if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
+                            self.text = f'[ref=none]{self.text}[/ref]'
+                        elif '[/ref]' in self.text:
+                            self.text = self.text.replace("[/ref]", "") + "[/ref]"
+
+                    def __init__(self, **kwargs):
+                        super().__init__(**kwargs)
+                        self.size_hint = (240, 39)
+                        self.pos = (0, 0)
+                        self.markup = True
+                        self.font_size = sp(25)
+                        self.copyable = True
+                        self.halign = 'left'
+                        self.valign = 'center'
+                        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+                        self.default_color = (0.6, 0.6, 1, 1)
+                        self.color = self.default_color
+                        self.bind(text=self.ref_text)
+
+
                 self.background = PanelFrame()
                 self.add_widget(self.background)
+
+                self.current_players = None
+
+                # List layout
+                self.layout = RelativeLayout()
+                self.layout.opacity = 0
+                self.layout_bg = Image(source=os.path.join(constants.gui_assets, 'performance_panel_background.png'))
+                self.layout_bg.allow_stretch = True
+                self.layout_bg.keep_ratio = False
+                self.layout_bg.color = constants.brighten_color(constants.convert_color("#232439")['rgb'], -0.015)
+                self.layout.add_widget(self.layout_bg)
+
+
+                # Player layout
+                self.scroll_layout = RecycleViewWidget(position=None, view_class=PlayerLabel)
+                self.scroll_layout.always_overscroll = False
+                self.scroll_layout.scroll_wheel_distance = dp(50)
+                self.player_list = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(240, 39), padding=[15, 0, 0, 0])
+                self.player_list.bind(minimum_height=self.player_list.setter('height'))
+                self.scroll_layout.add_widget(self.player_list)
+                self.layout.add_widget(self.scroll_layout)
+
+                self.add_widget(self.layout)
 
 
                 # Player title
@@ -10015,6 +10113,26 @@ class PerformancePanel(RelativeLayout):
                 self.title.pos_hint = {'center_x': 0.5}
                 self.title.y = 170
                 self.add_widget(self.title)
+
+
+                # Empty label
+                self.empty_label = ShadowLabel(
+                    text = f'*crickets*',
+                    font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["italic"]),
+                    size = sp(26),
+                    color = gray_accent,
+                    offset = 3,
+                    align = 'center',
+                    shadow_color = (0, 0, 0, 0)
+                )
+                self.empty_label.pos_hint = {'center_x': 0.5}
+                self.empty_label.y = 95
+                self.add_widget(self.empty_label)
+
+
+                Clock.schedule_once(self.recalculate_size, 0)
+
+
 
 
         self.title_text = "Paragraph"
@@ -11263,7 +11381,6 @@ class ServerAclScreen(CreateServerAclScreen):
         scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.175}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
         page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
         header_content = ""

@@ -447,7 +447,7 @@ class ServerObject():
             self.run_data['close-hooks'] = []
             self.run_data['console-panel'] = None
             self.run_data['performance-panel'] = None
-            self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00'}
+            self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
 
 
             with open(script_path, 'r') as f:
@@ -761,7 +761,7 @@ class ServerObject():
         # print(constants.server_manager.running_servers)
 
     # Retrieves performance information
-    def performance_stats(self, interval=0.5):
+    def performance_stats(self, interval=0.5, update_players=False):
         perc_cpu = 0
         perc_ram = 0
 
@@ -793,13 +793,26 @@ class ServerObject():
             time_str = time_str.split('.')[0]
         formatted_date = f"{str(delta.days)}:{time_str.strip().zfill(8)}".zfill(11)
 
-        self.run_data['performance'] = {
-            'cpu':  perc_cpu,
-            'ram':  perc_ram,
-            'uptime': formatted_date
-        }
+        self.run_data['performance']['cpu'] = perc_cpu
+        self.run_data['performance']['ram'] = perc_ram
+        self.run_data['performance']['uptime'] = formatted_date
 
 
+        # Update players
+        if update_players:
+            self.acl.reload_list('ops')
+            player_list = self.run_data['player-list']
+            final_list = []
+
+            # Update player list
+            for player, data in player_list.items():
+                if data['logged-in']:
+                    if self.acl.rule_in_acl('ops', player):
+                        final_list.insert(0, {'text': player, 'color': (0, 1, 1, 1)})
+                    else:
+                        final_list.append({'text': player, 'color': (0.6, 0.6, 1, 1)})
+
+            self.run_data['performance']['current-players'] = final_list
 
 
     # Reloads all auto-mcs scripts
