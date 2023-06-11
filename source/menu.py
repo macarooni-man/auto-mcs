@@ -10000,14 +10000,25 @@ class PerformancePanel(RelativeLayout):
             def update_data(self, player_dict):
                 if player_dict:
                     if self.layout.opacity == 0:
-                        Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.layout)
                         Animation(opacity=0, duration=0.4, transition='in_out_sine').start(self.empty_label)
+                        def after_anim(*args):
+                            Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.layout)
+                        Clock.schedule_once(after_anim, 0.4)
                     self.scroll_layout.data = player_dict
+                    self.resize_list()
 
                 else:
                     if self.layout.opacity == 1:
                         Animation(opacity=0, duration=0.4, transition='in_out_sine').start(self.layout)
-                        Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.empty_label)
+                        def after_anim(*args):
+                            Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.empty_label)
+                        Clock.schedule_once(after_anim, 0.4)
+
+            def resize_list(self, *args):
+                text_width = 240
+                text_width = int(((self.scroll_layout.width // text_width) // 1))
+                self.player_list.cols = text_width
+                self.player_list.rows = 1 if len(self.scroll_layout.data) <= text_width else None
 
             def recalculate_size(self, *args):
                 texture_offset = 70
@@ -10017,13 +10028,7 @@ class PerformancePanel(RelativeLayout):
                 self.layout.size_hint_max = (self.width - texture_offset, self.height - texture_offset - (list_offset * 3.5))
                 self.scroll_layout.size = self.layout.size
 
-                def resize_list(*args):
-                    text_width = 240
-                    text_width = int(((self.layout.width // text_width) // 1))
-
-                    self.player_list.cols = text_width
-                    self.player_list.rows = 1 if len(self.scroll_layout.data) <= text_width else None
-                Clock.schedule_once(resize_list, 0)
+                Clock.schedule_once(self.resize_list, 0)
 
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
@@ -10077,6 +10082,8 @@ class PerformancePanel(RelativeLayout):
                 self.add_widget(self.background)
 
                 self.current_players = None
+                self.padding = 15
+
 
                 # List layout
                 self.layout = RelativeLayout()
@@ -10092,12 +10099,19 @@ class PerformancePanel(RelativeLayout):
                 self.scroll_layout = RecycleViewWidget(position=None, view_class=PlayerLabel)
                 self.scroll_layout.always_overscroll = False
                 self.scroll_layout.scroll_wheel_distance = dp(50)
-                self.player_list = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(240, 39), padding=[15, 0, 0, 0])
+                self.player_list = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(240, 39), padding=[self.padding, 0, self.padding, 0])
                 self.player_list.bind(minimum_height=self.player_list.setter('height'))
                 self.scroll_layout.add_widget(self.player_list)
                 self.layout.add_widget(self.scroll_layout)
 
                 self.add_widget(self.layout)
+
+
+                # List shadow
+                self.layout_shadow = Image(source=os.path.join(constants.gui_assets, 'performance_panel_shadow.png'))
+                self.layout_shadow.allow_stretch = True
+                self.layout_shadow.keep_ratio = False
+                self.layout.add_widget(self.layout_shadow)
 
 
                 # Player title
@@ -10129,10 +10143,11 @@ class PerformancePanel(RelativeLayout):
                 self.empty_label.y = 95
                 self.add_widget(self.empty_label)
 
+                #player_list = [{'text': str(x)} for x in range(100)]
+                #self.update_data(player_list)
+
 
                 Clock.schedule_once(self.recalculate_size, 0)
-
-
 
 
         self.title_text = "Paragraph"
