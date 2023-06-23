@@ -199,11 +199,11 @@ if __name__ == '__main__':
         try:
 
             # Find latest game versions and update data cache
+            constants.check_data_cache()
+
             constants.find_latest_mc()
 
             constants.make_update_list()
-
-            constants.check_data_cache()
 
             main.publicIP = requests.get('https://api.ipify.org').content.decode('utf-8')
 

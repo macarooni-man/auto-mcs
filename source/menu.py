@@ -9999,13 +9999,18 @@ class PerformancePanel(RelativeLayout):
             # Add players
             def update_data(self, player_dict):
                 if player_dict:
+                    if self.player_list:
+                        self.player_list.rows = None
+
                     if self.layout.opacity == 0:
                         Animation(opacity=0, duration=0.4, transition='in_out_sine').start(self.empty_label)
                         def after_anim(*args):
                             Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.layout)
                         Clock.schedule_once(after_anim, 0.4)
                     self.scroll_layout.data = player_dict
-                    self.resize_list()
+
+                    if self.resize_list:
+                        self.resize_list()
 
                 else:
                     if self.layout.opacity == 1:
@@ -10018,7 +10023,8 @@ class PerformancePanel(RelativeLayout):
                 text_width = 240
                 text_width = int(((self.scroll_layout.width // text_width) // 1))
                 self.player_list.cols = text_width
-                self.player_list.rows = 1 if len(self.scroll_layout.data) <= text_width else None
+                self.player_list.rows = round(len(self.scroll_layout.data) / text_width)
+                print(text_width, self.player_list.cols, self.player_list.rows, len(self.scroll_layout.data))
 
             def recalculate_size(self, *args):
                 texture_offset = 70
@@ -10077,7 +10083,6 @@ class PerformancePanel(RelativeLayout):
                         self.color = self.default_color
                         self.bind(text=self.ref_text)
 
-
                 self.background = PanelFrame()
                 self.add_widget(self.background)
 
@@ -10097,12 +10102,18 @@ class PerformancePanel(RelativeLayout):
 
                 # Player layout
                 self.scroll_layout = RecycleViewWidget(position=None, view_class=PlayerLabel)
-                self.scroll_layout.always_overscroll = False
+                #self.scroll_layout.always_overscroll = False
                 self.scroll_layout.scroll_wheel_distance = dp(50)
-                self.player_list = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(240, 39), padding=[self.padding, 0, self.padding, 0])
+                self.player_list = RecycleGridLayout(size_hint_y=None, default_size=(240, 39), padding=[self.padding, 0, self.padding, 0])
                 self.player_list.bind(minimum_height=self.player_list.setter('height'))
                 self.scroll_layout.add_widget(self.player_list)
                 self.layout.add_widget(self.scroll_layout)
+
+                # Test stuffs
+                def test(*args):
+                    data = [{'text':str(x)} for x in range(3)]
+                    self.update_data(data)
+                Clock.schedule_once(test, 3)
 
                 self.add_widget(self.layout)
 
@@ -10133,7 +10144,7 @@ class PerformancePanel(RelativeLayout):
                 self.empty_label = ShadowLabel(
                     text = f'*crickets*',
                     font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["italic"]),
-                    size = sp(26),
+                    size = sp(24),
                     color = gray_accent,
                     offset = 3,
                     align = 'center',
@@ -10142,10 +10153,6 @@ class PerformancePanel(RelativeLayout):
                 self.empty_label.pos_hint = {'center_x': 0.5}
                 self.empty_label.y = 95
                 self.add_widget(self.empty_label)
-
-                #player_list = [{'text': str(x)} for x in range(100)]
-                #self.update_data(player_list)
-
 
                 Clock.schedule_once(self.recalculate_size, 0)
 
@@ -10178,11 +10185,6 @@ class PerformancePanel(RelativeLayout):
         self.bind(pos=self.update_rect)
         self.bind(size=self.update_rect)
         Clock.schedule_once(self.update_rect, 0)
-
-
-
-
-
 
 class ConsolePanel(FloatLayout):
 
@@ -10265,7 +10267,7 @@ class ConsolePanel(FloatLayout):
             pass
         elif self.full_screen:
             self.size_hint_max = (Window.width, Window.height - self.full_screen_offset)
-            self.y = 50
+            self.y = 47
         else:
             self.size_hint_max = (Window.width - self.size_offset[0], Window.height - self.size_offset[1])
             self.y = self.default_y
@@ -10475,7 +10477,7 @@ class ConsolePanel(FloatLayout):
 
         # Entering full screen
         if maximize:
-            Animation(size_hint_max=(Window.width, Window.height - self.full_screen_offset), y=50, duration=anim_speed, transition='out_sine').start(self)
+            Animation(size_hint_max=(Window.width, Window.height - self.full_screen_offset), y=47, duration=anim_speed, transition='out_sine').start(self)
 
             # Full screen button
             self.controls.remove_widget(self.controls.maximize_button)

@@ -712,13 +712,21 @@ def find_latest_mc():
 
         if name == "vanilla":
             # Vanilla
-            reqs = requests.get(url)
-            soup = BeautifulSoup(reqs.text, 'html.parser')
-
-            for div in soup.find_all('div', "item flex items-center p-3 border-b border-gray-700 snap-start ncItem"):
-                if "latest release" in div.div.span.text.lower():
-                    latestMC["vanilla"] = div.get('data-version')
-                    break
+            # reqs = requests.get(url)
+            # soup = BeautifulSoup(reqs.text, 'html.parser')
+            #
+            # for div in soup.find_all('div', "item flex items-center p-3 border-b border-gray-700 snap-start ncItem"):
+            #     if "latest release" in div.div.span.text.lower():
+            #         latestMC["vanilla"] = div.get('data-version')
+            #         break
+            with open(os.path.join(cacheDir, 'data-version-db.json'), 'r') as f:
+                for key in json.loads(f.read()).keys():
+                    for char in key:
+                        if char.isalpha():
+                            break
+                    else:
+                        latestMC["vanilla"] = key
+                        break
 
 
         elif name == "forge":

@@ -427,8 +427,12 @@ class ServerObject():
 
                 # Send to server if it doesn't start with !
                 if not cmd.startswith("!"):
-                    self.run_data['process'].stdin.write(f"{cmd}\r\n".encode('utf-8', errors='ignore').replace(b'\xc2\xa7', b'\xa7'))
-                    self.run_data['process'].stdin.flush()
+                    try:
+                        self.run_data['process'].stdin.write(f"{cmd}\r\n".encode('utf-8', errors='ignore').replace(b'\xc2\xa7', b'\xa7'))
+                        self.run_data['process'].stdin.flush()
+                    except OSError:
+                        if constants.debug:
+                            print("Error: Command sent after process shutdown")
 
     # Launch server, or reconnect to background server
     def launch(self):
