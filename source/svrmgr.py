@@ -565,6 +565,13 @@ class ServerObject():
                                                 use_error = False
                                                 break
 
+                                        # If file wasn't split, don't use it
+                                        else:
+                                            if not (error and use_error):
+                                                file = None
+                                                error = False
+                                                return None
+
 
                                 # Use STDERR if no exception was found
                                 if error and use_error:
@@ -611,8 +618,6 @@ class ServerObject():
 
                         # Check for crash if exit code is not 0
                         if self.run_data['process'].returncode != 0:
-
-                            print(True)
 
                             # Check for false positives
                             false_positive = False

@@ -9061,6 +9061,7 @@ class ServerButton(HoverButton):
 
                 Clipboard.copy(re.sub("\[.*?\]","",self.text.split(" ")[-1].strip()))
 
+
         def ref_text(self, *args):
 
             if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
@@ -10020,11 +10021,36 @@ class PerformancePanel(RelativeLayout):
                         Clock.schedule_once(after_anim, 0.4)
 
             def resize_list(self, *args):
+                blank_name = ''
+
+                data_len = len(self.scroll_layout.data)
+
+                try:
+                    if self.player_list.rows <= 5:
+                        for player in self.scroll_layout.data:
+                            if player['text'] == blank_name:
+                                self.scroll_layout.data.remove(player)
+                        data_len = len([item for item in self.scroll_layout.data if item['text'] != blank_name])
+                except TypeError:
+                    pass
+
+
                 text_width = 240
                 text_width = int(((self.scroll_layout.width // text_width) // 1))
                 self.player_list.cols = text_width
-                self.player_list.rows = round(len(self.scroll_layout.data) / text_width)
-                print(text_width, self.player_list.cols, self.player_list.rows, len(self.scroll_layout.data))
+                self.player_list.rows = round(data_len / text_width) + 3
+                print(text_width, self.player_list.cols, self.player_list.rows, data_len)
+
+                # Dirty fix to circumvent RecycleView missing data: https://github.com/kivy/kivy/pull/7262
+                try:
+                    if ((data_len <= self.player_list.cols) and self.player_list.rows <= 5) or data_len + 1 == self.player_list.cols:
+                        if self.scroll_layout.data[-1] is not {'text': blank_name}:
+                            for x in range(self.player_list.cols):
+                                self.scroll_layout.data.append({'text': blank_name})
+                except ZeroDivisionError:
+                    pass
+                except IndexError:
+                    pass
 
             def recalculate_size(self, *args):
                 texture_offset = 70
@@ -10056,7 +10082,7 @@ class PerformancePanel(RelativeLayout):
 
                     # Normal stuffies
                     def on_ref_press(self, *args):
-                        if not self.disabled:
+                        if not self.disabled and self.text:
                             if constants.server_manager.current_server.acl:
                                 constants.server_manager.current_server.acl.display_rule(re.sub("\[.*?\]", "", self.text))
                                 constants.back_clicked = True
@@ -10102,7 +10128,7 @@ class PerformancePanel(RelativeLayout):
 
                 # Player layout
                 self.scroll_layout = RecycleViewWidget(position=None, view_class=PlayerLabel)
-                #self.scroll_layout.always_overscroll = False
+                self.scroll_layout.always_overscroll = False
                 self.scroll_layout.scroll_wheel_distance = dp(50)
                 self.player_list = RecycleGridLayout(size_hint_y=None, default_size=(240, 39), padding=[self.padding, 0, self.padding, 0])
                 self.player_list.bind(minimum_height=self.player_list.setter('height'))
