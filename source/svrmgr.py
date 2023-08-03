@@ -195,6 +195,10 @@ class ServerObject():
                     except IndexError:
                         date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
 
+                # If date_label is missing, it may be formatted differently
+                if not date_label:
+                    date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+
                 # Format string as needed
 
                 # Shorten coordinates because FUCK they are long
@@ -847,6 +851,8 @@ class ServerObject():
     def send_log(self, text: str, log_type='info', *args):
         if not text:
             return
+
+        text = str(text)
 
         log_type = log_type if log_type in ('info', 'warning', 'error', 'success') else 'info'
         text = text.encode().replace(b'\xa7', b'\xc2\xa7').decode('utf-8', errors='ignore')

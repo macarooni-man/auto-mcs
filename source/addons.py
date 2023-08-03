@@ -9,7 +9,7 @@ import os
 import re
 
 
-# Auto-MCS Addon API
+# Auto-MCS Add-on API
 # ----------------------------------------------- Addon Objects --------------------------------------------------------
 
 # Base AddonObject for others
@@ -55,6 +55,7 @@ class AddonFileObject(AddonObject):
         self.id = addon_id
         self.path = addon_path
         self.addon_version = addon_version
+        self.disabled = False
 
 # Server addon manager object for ServerManager()
 class AddonManager():
@@ -106,7 +107,7 @@ class AddonManager():
 
 # Returns file object from addon jar file
 # addon.jar --> AddonFileObject
-def get_addon_file(addon_path: str, server_properties):
+def get_addon_file(addon_path: str, server_properties, disabled=False):
     jar_name = os.path.basename(addon_path)
     addon_name = None
     addon_author = None
@@ -272,7 +273,9 @@ def get_addon_file(addon_path: str, server_properties):
             addon_name = new_name
             addon_type = server_type
 
-        return AddonFileObject(addon_name, addon_type, addon_author, addon_subtitle, addon_path, addon_id, addon_version)
+        AddonObj = AddonFileObject(addon_name, addon_type, addon_author, addon_subtitle, addon_path, addon_id, addon_version)
+        AddonObj.disabled = disabled
+        return AddonObj
     else:
         return None
 
@@ -783,7 +786,7 @@ def enumerate_addons(server_properties, single_list=False):
         enabled_addons = list(filter(lambda item: item is not None, enabled_addons))
 
     if disabled_addon_folder:
-        disabled_addons = [get_addon_file(addon, server_properties) for addon in glob(os.path.join(disabled_addon_folder, "*"))]
+        disabled_addons = [get_addon_file(addon, server_properties, disabled=True) for addon in glob(os.path.join(disabled_addon_folder, "*"))]
         disabled_addons = list(filter(lambda item: item is not None, disabled_addons))
 
     if single_list:

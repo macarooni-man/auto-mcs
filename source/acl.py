@@ -1459,80 +1459,87 @@ def get_uuid(user: str):
 # Concatenates all files in ..\Cache\uuid-temp\* --> ..\Cache\uuid-db.json
 def concat_db(only_delete=False):
 
-    temp_file = os.path.join(cache_folder, 'uuid-temp')
-    uuid_list = []
-    final_db = []
-    added_items = []
-
-
-    # Load current uuid-db.json into final_db
     try:
-        with open(uuid_db, "r") as f:
-            current_db = json.load(f)
-            uuid_list = [item['uuid'] for item in current_db]
-
-    except OSError:
-        current_db = []
-
-    final_db = current_db
+        temp_file = os.path.join(cache_folder, 'uuid-temp')
+        uuid_list = []
+        final_db = []
+        added_items = []
 
 
-    # Iterate over every file in uuid-temp
-    if os.path.exists(temp_file):
-        for item in glob(os.path.join(temp_file, 'uuid-*.json')):
+        # Load current uuid-db.json into final_db
+        try:
+            with open(uuid_db, "r") as f:
+                current_db = json.load(f)
+                uuid_list = [item['uuid'] for item in current_db]
 
-            if not only_delete:
+        except OSError:
+            current_db = []
 
-                with open(item, 'r') as f:
-                    user = json.load(f)
-                    added_items.append(user)
-
-                    if user['uuid'] in uuid_list:
-                        found_user = final_db[uuid_list.index(user['uuid'])]
-                        found_user['name'] = user['name']
-                        try:
-                            found_user['latest-ip'] = user['latest-ip']
-                            found_user['latest-login'] = user['latest-login']
-                            found_user['ip-geo'] = user['ip-geo']
-                        except KeyError:
-                            pass
-
-                    else:
-                        final_db.append(user)
-                        uuid_list = [item['uuid'] for item in final_db]
-
-            os.remove(item)
-
-        with open(uuid_db, "w+") as f:
-            f.write(json.dumps(final_db, indent=2))
-
-        constants.safe_delete(temp_file)
+        final_db = current_db
 
 
-        # Check added_items against global ACL to update names
-        global_acl = load_global_acl()
-        added_uuid_list = [item['uuid'] for item in added_items]
+        # Iterate over every file in uuid-temp
+        if os.path.exists(temp_file):
+            for item in glob(os.path.join(temp_file, 'uuid-*.json')):
 
-        for user in global_acl['ops']:
-            if user['uuid'] in added_uuid_list:
-                updated_user = added_items[added_uuid_list.index(user['uuid'])]
-                if user['name'] != updated_user['name']:
-                    add_global_rule(user['name'], list_type='ops', remove=True)
-                    add_global_rule(updated_user['name'], list_type='ops')
+                if not only_delete:
 
-        for user in global_acl['bans']:
-            if user['uuid'] in added_uuid_list:
-                updated_user = added_items[added_uuid_list.index(user['uuid'])]
-                if user['name'] != updated_user['name']:
-                    add_global_rule(user['name'], list_type='bans', remove=True)
-                    add_global_rule(updated_user['name'], list_type='bans')
+                    with open(item, 'r') as f:
+                        user = json.load(f)
+                        added_items.append(user)
 
-        for user in global_acl['wl']:
-            if user['uuid'] in added_uuid_list:
-                updated_user = added_items[added_uuid_list.index(user['uuid'])]
-                if user['name'] != updated_user['name']:
-                    add_global_rule(user['name'], list_type='wl', remove=True)
-                    add_global_rule(updated_user['name'], list_type='wl')
+                        if user['uuid'] in uuid_list:
+                            found_user = final_db[uuid_list.index(user['uuid'])]
+                            found_user['name'] = user['name']
+                            try:
+                                found_user['latest-ip'] = user['latest-ip']
+                                found_user['latest-login'] = user['latest-login']
+                                found_user['ip-geo'] = user['ip-geo']
+                            except KeyError:
+                                pass
+
+                        else:
+                            final_db.append(user)
+                            uuid_list = [item['uuid'] for item in final_db]
+                try:
+                    os.remove(item)
+                except PermissionError:
+                    if constants.debug:
+                        print("Error: could not delete cache")
+
+            with open(uuid_db, "w+") as f:
+                f.write(json.dumps(final_db, indent=2))
+
+            constants.safe_delete(temp_file)
+
+
+            # Check added_items against global ACL to update names
+            global_acl = load_global_acl()
+            added_uuid_list = [item['uuid'] for item in added_items]
+
+            for user in global_acl['ops']:
+                if user['uuid'] in added_uuid_list:
+                    updated_user = added_items[added_uuid_list.index(user['uuid'])]
+                    if user['name'] != updated_user['name']:
+                        add_global_rule(user['name'], list_type='ops', remove=True)
+                        add_global_rule(updated_user['name'], list_type='ops')
+
+            for user in global_acl['bans']:
+                if user['uuid'] in added_uuid_list:
+                    updated_user = added_items[added_uuid_list.index(user['uuid'])]
+                    if user['name'] != updated_user['name']:
+                        add_global_rule(user['name'], list_type='bans', remove=True)
+                        add_global_rule(updated_user['name'], list_type='bans')
+
+            for user in global_acl['wl']:
+                if user['uuid'] in added_uuid_list:
+                    updated_user = added_items[added_uuid_list.index(user['uuid'])]
+                    if user['name'] != updated_user['name']:
+                        add_global_rule(user['name'], list_type='wl', remove=True)
+                        add_global_rule(updated_user['name'], list_type='wl')
+
+    except FileNotFoundError:
+        pass
 
 
 # Generates AclRule objects from server files

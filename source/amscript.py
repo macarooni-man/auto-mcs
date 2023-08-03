@@ -42,7 +42,7 @@ class ScriptObject():
         self.protected_variables = ["server", "acl", "backup", "addon"]
         self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
         self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@server.on_start", "@server.on_stop"]
-        self.valid_imports = ['time', 'os', 'glob', 'datetime', 'concurrent.futures', 'tkinter', 'json']
+        self.valid_imports = ['time', 'os', 'glob', 'datetime', 'concurrent.futures', 'tkinter', 'json', 'subprocess']
         self.valid_imports.extend(['requests', 'bs4', 'nbt'])
         self.valid_imports.extend([os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.script_path, '*.py'))])
         self.aliases = {}
@@ -760,7 +760,7 @@ class ScriptObject():
     # Fires when player leaves the game
     # {'user': user, 'uuid': uuid, 'ip': ip_addr, 'date': date, 'logged-in': False}
     def leave_event(self, player_obj):
-        self.call_event('@player.on_leave', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj))
+        self.call_event('@player.on_leave', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
         print('player.on_leave')
         print(player_obj)
 
@@ -828,6 +828,14 @@ class ServerScriptObject():
     def __del__(self):
         self._running = False
 
+    # If self is printed, show string of server name instead
+    def __str__(self):
+        return self.name
+
+    # Overrides comparison to return string instead
+    def __eq__(self, comp):
+        return self.name == comp
+
     # Logging functions
     def log_warning(self, msg):
         self.log(msg, log_type='warning')
@@ -853,8 +861,9 @@ class ServerScriptObject():
 
 # Reconfigured ServerObject to be passed in as 'player' variable to amscript events
 class PlayerScriptObject():
-    def __init__(self, server_script_obj: ServerScriptObject, player_name: str, _get_player=False):
+    def __init__(self, server_script_obj: ServerScriptObject, player_name: str, _get_player=False, _send_command=True):
         self._get_player = _get_player
+        self._send_command = _send_command
         self._server = server_script_obj
         self._server_id = server_script_obj._server_id
         self._execute = server_script_obj.execute
@@ -918,6 +927,10 @@ class PlayerScriptObject():
     def __str__(self):
         return self.name
 
+    # Overrides comparison to return string instead
+    def __eq__(self, comp):
+        return self.name == comp
+
     # Grabs latest player NBT data
     def _get_nbt(self):
         log_data = None
@@ -947,13 +960,114 @@ class PlayerScriptObject():
 
             # Attempt to intercept player's entity data
             try:
-                log_data = self._execute(f'data get entity {self.name}', log=False, _capture=f"{self.name} has the following entity data: ", _send_twice=self._get_player)
-                nbt_data = log_data.split("following entity data: ")[1].strip()
-                # print(log_data)
+                if not self._send_command:
+                    new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
+                    try:
+                        self.position = CoordinateObject({'x': fmt(new_nbt['Pos'][0]), 'y': fmt(new_nbt['Pos'][1]), 'z': fmt(new_nbt['Pos'][2])})
+                    except:
+                        pass
 
-                # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
-                new_nbt = re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: json_regex(x), nbt_data).replace(";",",").replace("'{", '"{').replace("}'", '}"')
-                new_nbt = json.loads(re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
+                    try:
+                        self.rotation = CoordinateObject(
+                            {'x': fmt(new_nbt['Rotation'][0]), 'y': fmt(new_nbt['Rotation'][1])})
+                    except:
+                        pass
+
+                    try:
+                        self.motion = CoordinateObject({'x': fmt(new_nbt['Motion'][0]), 'y': fmt(new_nbt['Motion'][1]),
+                                                        'z': fmt(new_nbt['Motion'][2])})
+                    except:
+                        pass
+
+                    try:
+                        self.spawn_position = CoordinateObject(
+                            {'x': fmt(new_nbt['SpawnX']), 'y': fmt(new_nbt['SpawnY']), 'z': fmt(new_nbt['SpawnZ'])})
+                    except:
+                        pass
+
+                    try:
+                        self.health = int(new_nbt['Health'].value)
+                    except:
+                        pass
+
+                    try:
+                        self.hunger_level = int(new_nbt['foodLevel'].value)
+                    except:
+                        pass
+
+                    try:
+                        self.gamemode = ['survival', 'creative', 'adventure', 'spectator'][
+                            int(new_nbt['playerGameType'].value)]
+                    except:
+                        pass
+
+                    try:
+                        self.xp = round(float(new_nbt['XpLevel'].value) + float(new_nbt['XpP'].value), 3)
+                    except:
+                        pass
+
+                    try:
+                        self.hurt_time = int(new_nbt['HurtTime'].value)
+                    except:
+                        pass
+
+                    try:
+                        self.death_time = int(new_nbt['DeathTime'].value)
+                    except:
+                        pass
+
+                    try:
+                        self.on_fire = (int(new_nbt['Fire'].value) > 0)
+                    except:
+                        pass
+
+                    try:
+                        self.is_flying = (int(new_nbt['abilities']['flying'].value) == 1)
+                    except:
+                        pass
+
+                    try:
+                        self.is_sleeping = (int(new_nbt['Sleeping'].value) == 1)
+                    except:
+                        pass
+
+                    try:
+                        self.is_drowning = (int(new_nbt['Air'].value) < 1)
+                    except:
+                        pass
+
+                    try:
+                        self.dimension = {0: 'overworld', -1: 'the_nether', 1: 'the_end'}.get(
+                            int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:', '')
+                    except:
+                        pass
+
+                    try:
+                        self.active_effects = {
+                            id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): EffectObject(
+                                {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value),
+                                 'show_particles': (item[1].value == 1)},
+                                name=id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', '')) for
+                            item in new_nbt['ActiveEffects'].tags}
+                    except:
+                        pass
+
+                    try:
+                        try:
+                            selected_item = (new_nbt['SelectedItem'], int(new_nbt['SelectedItemSlot'].value))
+                        except KeyError:
+                            selected_item = None
+                        self.inventory = InventoryObject(new_nbt['Inventory'], selected_item)
+                    except:
+                        pass
+                else:
+                    log_data = self._execute(f'data get entity {self.name}', log=False, _capture=f"{self.name} has the following entity data: ", _send_twice=self._get_player)
+                    nbt_data = log_data.split("following entity data: ")[1].strip()
+                    # print(log_data)
+
+                    # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
+                    new_nbt = re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: json_regex(x), nbt_data).replace(";",",").replace("'{", '"{').replace("}'", '}"')
+                    new_nbt = json.loads(re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
 
             # If log doesn't contain entity content, revert NBT
             except IndexError:
@@ -1055,7 +1169,8 @@ class PlayerScriptObject():
         else:
             try:
                 if self._version_check(">=", "1.8") and self._version_check("<", "1.13"):
-                    log_data = self._execute(f'execute {self.name} ~ ~ ~ tp {self.name} ~ ~ ~', log=False, _capture=f"Teleported {self.name} to ", _send_twice=self._get_player)
+                    if self._send_command:
+                        log_data = self._execute(f'execute {self.name} ~ ~ ~ tp {self.name} ~ ~ ~', log=False, _capture=f"Teleported {self.name} to ", _send_twice=self._get_player)
                     new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
 
                 # Pre-1.8, get outdated playerdata from the user's .dat file
@@ -1170,6 +1285,8 @@ class PlayerScriptObject():
     def log(self, msg, color="gray", style='italic'):
         if not msg:
             return
+
+        msg = str(msg)
 
         style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
 
