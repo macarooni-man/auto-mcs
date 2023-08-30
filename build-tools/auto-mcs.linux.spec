@@ -21,7 +21,8 @@ a = Analysis(['wrapper.py'],
                         ('/usr/bin/xclip', '.'),
                         ('/usr/bin/xsel', '.'),
                         ('/usr/lib64/libcrypt-2.21.so', '.'),
-                        ('/usr/lib64/libcrypt.so.1', '.')
+                        ('/usr/lib64/libcrypt.so.1', '.'),
+                        ('./gui-assets/icons/sm/*', './gui-assets/icons/sm')
                     ],
              hiddenimports=['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder'],
              hookspath=[],
@@ -40,9 +41,9 @@ pyz = PYZ(a.pure, a.zipped_data,
 png_list = []
 
 with open("./menu.py", 'r') as f:
-    scrip_contents = f.read()
-    [png_list.append(x) for x in findall(r"'(.*?)'", scrip_contents) if '.png' in x and '{' not in x]
-    [png_list.append(x) for x in findall(r'"(.*?)"', scrip_contents) if '.png' in x and '{' not in x]
+    script_contents = f.read()
+    [png_list.append(x) for x in findall(r"'(.*?)'", script_contents) if '.png' in x and '{' not in x]
+    [png_list.append(x) for x in findall(r'"(.*?)"', script_contents) if '.png' in x and '{' not in x]
 
 exclude_list = [basename(file) for file in glob("./gui-assets/icons/*") if (basename(file) not in png_list) and ("big" not in file)]
 

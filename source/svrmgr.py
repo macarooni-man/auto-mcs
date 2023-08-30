@@ -307,25 +307,25 @@ class ServerObject():
                         uuid = None
 
 
-                    def add_to_list():
-                        self.run_data['player-list'][user] = {
-                            'user': user,
-                            'uuid': uuid,
-                            'ip': ip,
-                            'date': message_date_obj,
+                    def add_to_list(username, user_uuid, ip_addr, msg_date_obj):
+                        self.run_data['player-list'][username] = {
+                            'user': username,
+                            'uuid': user_uuid,
+                            'ip': ip_addr,
+                            'date': msg_date_obj,
                             'logged-in': True
                         }
-                        self.acl._process_log(self.run_data['player-list'][user])
+                        self.acl._process_log(self.run_data['player-list'][username])
 
                         if self.script_object.enabled:
-                            self.script_object.join_event(self.run_data['player-list'][user])
+                            self.script_object.join_event(self.run_data['player-list'][username])
 
                     try:
                         if self.run_data['player-list'][user]['date'] < message_date_obj:
-                            add_to_list()
+                            add_to_list(user, uuid, ip, message_date_obj)
                     except KeyError:
                         try:
-                            add_to_list()
+                            add_to_list(user, uuid, ip, message_date_obj)
                         except KeyError:
                             pass
 
@@ -882,7 +882,7 @@ class ServerObject():
                 # Shorten coordinates because FUCK they are long
                 if "logged in with entity id" not in message:
                     for float_str in re.findall(r"[-+]?(?:\d*\.*\d+)", message):
-                        if len(float_str) > 5 and "." in float_str:
+                        if len(float_str) > 5 and float_str.count(".") == 1:
                             message = message.replace(float_str, str(round(float(float_str), 2)))
 
                 if message.endswith("[m"):

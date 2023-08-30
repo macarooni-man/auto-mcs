@@ -13,7 +13,7 @@ block_cipher = None
 a = Analysis(['wrapper.py'],
              pathex=[],
              binaries=[],
-             datas = [('.\\icon.ico', '.'), ('.\\baselib.ams', '.')],
+             datas = [('.\\icon.ico', '.'), ('.\\baselib.ams', '.'), ('.\\gui-assets\\icons\\sm\\*', '.\\gui-assets\\icons\\sm')],
              hiddenimports=['plyer.platforms.win.filechooser', 'PIL._tkinter_finder'],
              hookspath=[],
              hooksconfig={},
@@ -31,9 +31,9 @@ pyz = PYZ(a.pure, a.zipped_data,
 png_list = []
 
 with open(".\\menu.py", 'r') as f:
-    scrip_contents = f.read()
-    [png_list.append(x) for x in findall(r"'(.*?)'", scrip_contents) if '.png' in x and '{' not in x]
-    [png_list.append(x) for x in findall(r'"(.*?)"', scrip_contents) if '.png' in x and '{' not in x]
+    script_contents = f.read()
+    [png_list.append(x) for x in findall(r"'(.*?)'", script_contents) if '.png' in x and '{' not in x]
+    [png_list.append(x) for x in findall(r'"(.*?)"', script_contents) if '.png' in x and '{' not in x]
 
 exclude_list = [basename(file) for file in glob(".\\gui-assets\\icons\\*") if (basename(file) not in png_list) and ("big" not in file)]
 

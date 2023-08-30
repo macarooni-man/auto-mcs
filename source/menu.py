@@ -12451,7 +12451,7 @@ class MainApp(App):
             open_server("test")
             def open_addons(*args):
                 while not constants.server_manager.current_server.addon:
-                    time.sleep(0.2)
+                    time.sleep(0.25)
                 screen_manager.current = "ServerAddonScreen"
             Clock.schedule_once(open_addons, 2)
 

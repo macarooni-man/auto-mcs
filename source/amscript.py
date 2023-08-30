@@ -753,16 +753,18 @@ class ScriptObject():
     # Fires event when player joins the game
     # {'user': user, 'uuid': uuid, 'ip': ip_addr, 'date': date, 'logged-in': True}
     def join_event(self, player_obj):
-        self.call_event('@player.on_join', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj))
-        print('player.on_join')
-        print(player_obj)
+        self.call_event('@player.on_join', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
+        if constants.debug:
+            print('player.on_join')
+            print(player_obj)
 
     # Fires when player leaves the game
     # {'user': user, 'uuid': uuid, 'ip': ip_addr, 'date': date, 'logged-in': False}
     def leave_event(self, player_obj):
         self.call_event('@player.on_leave', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
-        print('player.on_leave')
-        print(player_obj)
+        if constants.debug:
+            print('player.on_leave')
+            print(player_obj)
 
     # Fires event when message/cmd is sent
     # {'user': player, 'content': message}
@@ -961,7 +963,10 @@ class PlayerScriptObject():
             # Attempt to intercept player's entity data
             try:
                 if not self._send_command:
-                    new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
+                    try:
+                        new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
+                    except FileNotFoundError:
+                        return None
                     try:
                         self.position = CoordinateObject({'x': fmt(new_nbt['Pos'][0]), 'y': fmt(new_nbt['Pos'][1]), 'z': fmt(new_nbt['Pos'][2])})
                     except:
@@ -1171,7 +1176,10 @@ class PlayerScriptObject():
                 if self._version_check(">=", "1.8") and self._version_check("<", "1.13"):
                     if self._send_command:
                         log_data = self._execute(f'execute {self.name} ~ ~ ~ tp {self.name} ~ ~ ~', log=False, _capture=f"Teleported {self.name} to ", _send_twice=self._get_player)
-                    new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
+                    try:
+                        new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
+                    except FileNotFoundError:
+                        return None
 
                 # Pre-1.8, get outdated playerdata from the user's .dat file
                 else:
