@@ -12,7 +12,7 @@ import re
 
 from backup import BackupObject
 from addons import AddonManager
-from acl import AclObject
+from acl import AclObject, get_uuid
 import constants
 import amscript
 
@@ -295,6 +295,7 @@ class ServerObject():
 
                 # Player join log
                 elif "logged in with entity id" in message:
+                    uuid = None
                     user = message.split("[/", 1)[0].strip()
                     ip = message.split("[/", 1)[1].split("]")[0].strip()
                     main_label = f'{user} logged in from {ip} ' + message.split("]")[1].replace('logged in', '').strip()
@@ -304,7 +305,10 @@ class ServerObject():
                                 uuid = log_item['text'][2].split(f"UUID of player {user} is ")[1]
                                 break
                     except:
-                        uuid = None
+                        pass
+
+                    if not uuid:
+                        uuid = get_uuid(user)['uuid']
 
 
                     def add_to_list(username, user_uuid, ip_addr, msg_date_obj):
@@ -814,8 +818,11 @@ class ServerObject():
         # Update players
         if update_players:
             self.acl.reload_list('ops')
-            player_list = self.run_data['player-list']
             final_list = []
+            try:
+                player_list = self.run_data['player-list']
+            except KeyError:
+                return
 
             # Update player list
             for player, data in player_list.items():
