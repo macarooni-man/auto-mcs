@@ -22,7 +22,7 @@
 # Displays all amscript commands that the player has access to, with an optional search feature
 @player.on_alias(player, command='help', arguments={'cmd': False}, permission='anyone'):
 	if arguments['cmd']:
-		player.log(f'  ------ Search for "{arguments["cmd"]}" ------  ', 'green', 'normal')
+		player.log(f'  ------ Search for \'{arguments["cmd"]}\' ------  ', 'green', 'normal')
 	else:
 		player.log('  ------ All Auto-MCS commands ------', 'green', 'normal')
 

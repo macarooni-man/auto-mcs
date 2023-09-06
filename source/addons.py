@@ -107,7 +107,7 @@ class AddonManager():
 
 # Returns file object from addon jar file
 # addon.jar --> AddonFileObject
-def get_addon_file(addon_path: str, server_properties, disabled=False):
+def get_addon_file(addon_path: str, server_properties, enabled=False):
     jar_name = os.path.basename(addon_path)
     addon_name = None
     addon_author = None
@@ -274,7 +274,7 @@ def get_addon_file(addon_path: str, server_properties, disabled=False):
             addon_type = server_type
 
         AddonObj = AddonFileObject(addon_name, addon_type, addon_author, addon_subtitle, addon_path, addon_id, addon_version)
-        AddonObj.disabled = disabled
+        AddonObj.enabled = enabled
         return AddonObj
     else:
         return None
@@ -782,11 +782,11 @@ def enumerate_addons(server_properties, single_list=False):
 
     # Get list of enabled AddonFileObjects
     if addon_folder:
-        enabled_addons = [get_addon_file(addon, server_properties) for addon in glob(os.path.join(addon_folder, "*"))]
+        enabled_addons = [get_addon_file(addon, server_properties, enabled=True) for addon in glob(os.path.join(addon_folder, "*"))]
         enabled_addons = list(filter(lambda item: item is not None, enabled_addons))
 
     if disabled_addon_folder:
-        disabled_addons = [get_addon_file(addon, server_properties, disabled=True) for addon in glob(os.path.join(disabled_addon_folder, "*"))]
+        disabled_addons = [get_addon_file(addon, server_properties, enabled=False) for addon in glob(os.path.join(disabled_addon_folder, "*"))]
         disabled_addons = list(filter(lambda item: item is not None, disabled_addons))
 
     if single_list:

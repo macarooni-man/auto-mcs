@@ -7891,6 +7891,9 @@ class CreateServerAddonScreen(MenuBackground):
 
     def switch_page(self, direction):
 
+        if self.max_pages == 1:
+            return
+
         if direction == "right":
             if self.current_page == self.max_pages:
                 self.current_page = 1
@@ -8136,6 +8139,9 @@ class CreateServerAddonScreen(MenuBackground):
 class CreateServerAddonSearchScreen(MenuBackground):
 
     def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
 
         if direction == "right":
             if self.current_page == self.max_pages:
@@ -9411,6 +9417,9 @@ class ServerManagerScreen(MenuBackground):
         self.gen_search_results(constants.server_manager.server_list, fade_in=False, highlight=server_name)
 
     def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
 
         if direction == "right":
             if self.current_page == self.max_pages:
@@ -11520,7 +11529,6 @@ Rules can be filtered with the search box, and can be added with the 'ADD RULES'
             )
 
         self.controls_button = IconButton('controls', {}, (70, 110), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_controls)
-        float_layout.add_widget(self.controls_button)
 
         # User panel
         self.user_panel = AclRulePanel()
@@ -11552,6 +11560,9 @@ Rules can be filtered with the search box, and can be added with the 'ADD RULES'
         # Add ManuTaskbar
         self.menu_taskbar = MenuTaskbar(selected_item='access control')
         self.add_widget(self.menu_taskbar)
+
+        # Add controls after taskbar because it's unclickable for some reason
+        float_layout.add_widget(self.controls_button)
 
 
         # Generate page content
@@ -11648,12 +11659,23 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
 
 class AddonListButton(HoverButton):
 
-    def toggle_installed(self, installed, *args):
-        self.installed = installed
-        self.install_image.opacity = 1 if installed and not self.show_type else 0
-        self.install_label.opacity = 1 if installed and not self.show_type else 0
-        self.title.text_size = (self.size_hint_max[0] * (0.7 if installed else 0.94), self.size_hint_max[1])
-        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
+    def toggle_enabled(self, enabled, *args):
+        self.enabled = enabled
+        self.title.text_size = (self.size_hint_max[0] * (0.7 if enabled else 0.94), self.size_hint_max[1])
+        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png')
+
+        # If disabled, add banner as such
+        if not self.enabled:
+            self.disabled_banner = BannerObject(
+                pos_hint = {"center_x": 0.5, "center_y": 0.5},
+                size = (125, 32),
+                color = (1, 0.53, 0.58, 1),
+                text = "disabled",
+                icon = "close-circle.png",
+                icon_side = "right"
+            )
+            self.add_widget(self.disabled_banner)
+
         self.resize_self()
 
     def animate_addon(self, image, color, **kwargs):
@@ -11676,34 +11698,55 @@ class AddonListButton(HoverButton):
 
         # Title and description
         padding = 2.17
-        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (6 if self.installed else 0), self.y + 31)
+        self.title.pos = (self.x + (self.title.text_size[0] / padding), self.y + 31)
         self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1, self.y)
-
-        # Install label
-        self.install_image.pos = (self.width + self.x - self.install_label.width - 28, self.y + 38.5)
-        self.install_label.pos = (self.width + self.x - self.install_label.width - 30, self.y + 5)
+        self.hover_text.pos = (self.x + (self.title.text_size[0] / padding) - 15, self.y + 14)
 
         # Type Banner
-        if self.show_type:
-            self.type_banner.pos_hint = {"center_x": None, "center_y": None}
-            self.type_banner.pos = (self.width + self.x - self.type_banner.width - 18, self.y + 38.5)
+        if self.disabled_banner:
+            self.disabled_banner.pos_hint = {"center_x": None, "center_y": None}
+            self.disabled_banner.pos = (self.width + self.x - self.disabled_banner.width - 18, self.y + 38.5)
 
-        # self.version_label.x = self.width+self.x-(self.padding_x[0]*offset)
-        # self.version_label.y = self.y-(self.padding_y[0]*0.85)
+        # Delete button
+        self.delete_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
+        self.delete_layout.pos = (self.pos[0] + self.width - (self.delete_button.width / 1.33), self.pos[1] + 13)
 
-    def __init__(self, properties, click_function=None, installed=False, show_type=False, fade_in=0.0, **kwargs):
+
+    def __init__(self, properties, click_function=None, enabled=False, fade_in=0.0, **kwargs):
         super().__init__(**kwargs)
 
-        self.installed = False
-        self.show_type = show_type
+        self.enabled = enabled
         self.properties = properties
         self.border = (-5, -5, -5, -5)
-        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.enabled else [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
         self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
         self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+        self.disabled_banner = None
+
+
+        # Delete button
+        self.delete_layout = RelativeLayout(opacity=0)
+        self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'], anchor='right', click_func=None)
+        self.delete_layout.add_widget(self.delete_button)
+        self.add_widget(self.delete_layout)
+
+
+        # Hover text
+        self.hover_text = Label()
+        self.hover_text.id = 'hover_text'
+        self.hover_text.size_hint = (None, None)
+        self.hover_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
+        self.hover_text.font_size = sp(25)
+        self.hover_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.hover_text.color = (0.1, 0.1, 0.1, 1)
+        self.hover_text.halign = "center"
+        self.hover_text.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.hover_text.opacity = 0
+        self.add_widget(self.hover_text)
 
 
         # Loading stuffs
@@ -11734,7 +11777,8 @@ class AddonListButton(HoverButton):
         self.subtitle.color = self.color_id[1]
         self.subtitle.font_name = self.original_font
         self.subtitle.font_size = sp(21)
-        self.subtitle.opacity = 0.56
+        self.default_subtitle_opacity = 0.56
+        self.subtitle.opacity = self.default_subtitle_opacity
         self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
         self.subtitle.shorten = True
         self.subtitle.shorten_from = "right"
@@ -11743,38 +11787,10 @@ class AddonListButton(HoverButton):
         self.add_widget(self.subtitle)
 
 
-        # Installed layout
-        self.install_image = Image()
-        self.install_image.size = (110, 30)
-        self.install_image.keep_ratio = False
-        self.install_image.allow_stretch = True
-        self.install_image.source = os.path.join(constants.gui_assets, 'installed.png')
-        self.install_image.opacity = 0
-        self.add_widget(self.install_image)
-
-        self.install_label = AlignLabel()
-        self.install_label.halign = "right"
-        self.install_label.valign = "middle"
-        self.install_label.font_size = sp(18)
-        self.install_label.color = self.color_id[1]
-        self.install_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-        self.install_label.width = 100
-        self.install_label.color = (0.05, 0.08, 0.07, 1)
-        self.install_label.text = f'installed'
-        self.install_label.opacity = 0
-        self.add_widget(self.install_label)
-
-
-        # Type Banner
-        if show_type:
-            self.type_banner = show_type
-            self.add_widget(self.type_banner)
-
-
-        # If self.installed is false, and self.properties.version, display version where "installed" logo is
+        # If self.enabled is false, and self.properties.version, display version where "enabled" logo is
         self.bind(pos=self.resize_self)
-        if installed:
-            self.toggle_installed(installed)
+        if not enabled:
+            self.toggle_enabled(enabled)
 
         # If click_function
         if click_function:
@@ -11783,25 +11799,61 @@ class AddonListButton(HoverButton):
         # Animate opacity
         if fade_in > 0:
             self.opacity = 0
-            self.install_label.opacity = 0
-            self.install_image.opacity = 0
             self.title.opacity = 0
 
             Animation(opacity=1, duration=fade_in).start(self)
             Animation(opacity=1, duration=fade_in).start(self.title)
             Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
 
-            if installed and not self.show_type:
-                Animation(opacity=1, duration=fade_in).start(self.install_label)
-                Animation(opacity=1, duration=fade_in).start(self.install_image)
 
     def on_enter(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+
+            # Hide disabled banner if it exists
+            if self.disabled_banner:
+                Animation.stop_all(self.disabled_banner)
+                Animation(opacity=0, duration=0.13).start(self.disabled_banner)
+
+            # Fade button to hover state
+            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
+
+            # Show delete button
+            Animation.stop_all(self.delete_layout)
+            Animation(opacity=1, duration=0.13).start(self.delete_layout)
+
+            # Hide text
+            Animation(opacity=0, duration=0.13).start(self.title)
+            Animation(opacity=0, duration=0.13).start(self.subtitle)
+            Animation(opacity=1, duration=0.13).start(self.hover_text)
+
+            # Change button color based on state
+            self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
+
 
     def on_leave(self, *args):
         if not self.ignore_hover:
-            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
+
+            # Hide disabled banner if it exists
+            if self.disabled_banner:
+                Animation.stop_all(self.disabled_banner)
+                Animation(opacity=1, duration=0.13).start(self.disabled_banner)
+
+            # Fade button to default state
+            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
+
+            # Hide delete button
+            Animation.stop_all(self.delete_layout)
+            Animation(opacity=0, duration=0.13).start(self.delete_layout)
+
+            # Show text
+            Animation(opacity=1, duration=0.13).start(self.title)
+            Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
+            Animation(opacity=0, duration=0.13).start(self.hover_text)
+
+            # Reset button color
+            def reset_color(*args):
+                self.background_color = (1, 1, 1, 1)
+            Clock.schedule_once(reset_color, 0.1)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -11814,6 +11866,9 @@ class AddonListButton(HoverButton):
 class ServerAddonScreen(MenuBackground):
 
     def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
 
         if direction == "right":
             if self.current_page == self.max_pages:
@@ -11834,7 +11889,7 @@ class ServerAddonScreen(MenuBackground):
 
         # Update page counter
         print(results)
-        results = list(sorted(results, key=lambda d: d.name.lower()))
+        # results = list(sorted(results, key=lambda d: d.name.lower()))
         self.last_results = results
         self.max_pages = (len(results) / self.page_size).__ceil__()
         self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
@@ -11929,18 +11984,8 @@ class ServerAddonScreen(MenuBackground):
                     ScrollItem(
                         widget = AddonListButton(
                             properties = addon_object,
-                            installed = True,
+                            enabled = addon_object.enabled,
                             fade_in = ((x if x <= 8 else 8) / self.anim_speed),
-
-                            show_type = BannerObject(
-                                pos_hint = {"center_x": 0.5, "center_y": 0.5},
-                                size = (125 if addon_object.addon_object_type == "web" else 100, 32),
-                                color = (0.647, 0.839, 0.969, 1) if addon_object.addon_object_type == "web" else (0.6, 0.6, 1, 1),
-                                text = "download" if addon_object.addon_object_type == "web" else "import",
-                                icon = "cloud-download-sharp.png" if addon_object.addon_object_type == "web" else "download.png",
-                                icon_side = "right"
-                            ),
-
                             click_function = functools.partial(
                                 view_addon,
                                 addon_object,
@@ -12013,7 +12058,7 @@ class ServerAddonScreen(MenuBackground):
         # Generate buttons on page load
         addon_count = len(self.server.addon.return_single_list())
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Add-on Queue  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] items')
+        header_content = "Installed Add-ons  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] items')
         self.header = header_text(header_content, '', (0, 0.89))
 
         buttons = []
@@ -12071,6 +12116,9 @@ class ServerAddonScreen(MenuBackground):
 class ServerAddonSearchScreen(MenuBackground):
 
     def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
 
         if direction == "right":
             if self.current_page == self.max_pages:
