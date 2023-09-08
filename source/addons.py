@@ -82,11 +82,21 @@ class AddonManager():
         self.refresh_addons()
         return addon
 
-    # Downloads addon directly from the closest match of name
-    def download_addon(self, name: str):
-        addon = find_addon(name, self.server)
-        if addon:
-            download_addon(addon, self.server)
+    # Downloads addon directly from the closest match of name, or from AddonWebObject
+    def download_addon(self, addon: str or AddonWebObject):
+
+        # If AddonWebObject was provided
+        if isinstance(addon, AddonWebObject):
+            if not addon.download_url:
+                addon = get_addon_url(addon, self.server)
+            if addon:
+                download_addon(addon, self.server)
+
+        # If addon was provided with a name
+        else:
+            addon = find_addon(addon, self.server)
+            if addon:
+                download_addon(addon, self.server)
         self.refresh_addons()
 
     # Enables/Disables installed addons
@@ -163,13 +173,14 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
     if jar_name.endswith(".jar"):
 
         with ZipFile(addon_path, 'r') as jar_file:
-            constants.folder_check(constants.tempDir)
+            addon_tmp = os.path.join(constants.tempDir, constants.gen_rstring(6))
+            constants.folder_check(addon_tmp)
 
             # Check if addon is actually a bukkit plugin
             if server_type == "bukkit":
                 try:
-                    jar_file.extract('plugin.yml', constants.tempDir)
-                    with open(os.path.join(constants.tempDir, 'plugin.yml'), 'r') as yml:
+                    jar_file.extract('plugin.yml', addon_tmp)
+                    with open(os.path.join(addon_tmp, 'plugin.yml'), 'r') as yml:
                         addon_type = server_type
                         next_line_desc = False
                         for line in yml.readlines():
@@ -191,7 +202,13 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                             addon_author = line.split(".")[1].replace("\"", "").strip()
                                     else:
                                         addon_author = line.split(".")[1].replace("\"", "").strip()
-                                addon_id = line.split(".")[2].replace("\"", "").strip().lower()
+                                try:
+                                    addon_id = line.split(".")[2].replace("\"", "").strip().lower()
+                                except IndexError:
+                                    if line.startswith("main:"):
+                                        addon_id = line.split(".")[0].split(":")[1].strip().lower()
+                                    else:
+                                        addon_id = addon_name.lower().replace(" ", "-")
                             elif line.strip().startswith("description:"):
                                 addon_subtitle = line.split("description:")[1].replace("\"", "").strip()
                                 next_line_desc = addon_subtitle == ">"
@@ -210,8 +227,8 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
                 # Check if mcmod.info exists
                 try:
-                    jar_file.extract('mcmod.info', constants.tempDir)
-                    with open(os.path.join(constants.tempDir, 'mcmod.info'), 'r') as info:
+                    jar_file.extract('mcmod.info', addon_tmp)
+                    with open(os.path.join(addon_tmp, 'mcmod.info'), 'r') as info:
                         addon_type = server_type
                         for line in info.readlines():
                             if addon_author and addon_name and addon_version and addon_subtitle and addon_id:
@@ -238,8 +255,8 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                 # If mcmod.info is absent, check mods.toml
                 if not addon_name:
                     try:
-                        jar_file.extract('META-INF/mods.toml', constants.tempDir)
-                        with open(os.path.join(constants.tempDir, 'META-INF', 'mods.toml'), 'r') as toml:
+                        jar_file.extract('META-INF/mods.toml', addon_tmp)
+                        with open(os.path.join(addon_tmp, 'META-INF', 'mods.toml'), 'r') as toml:
                             addon_type = server_type
                             file_contents = toml.read().split("[[dependencies")[0]
                             for line in file_contents.splitlines():
@@ -268,8 +285,8 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
             # Check if addon is actually a fabric mod
             elif server_type == "fabric":
                 try:
-                    jar_file.extract('fabric.mod.json', constants.tempDir)
-                    with open(os.path.join(constants.tempDir, 'fabric.mod.json'), 'r') as mod:
+                    jar_file.extract('fabric.mod.json', addon_tmp)
+                    with open(os.path.join(addon_tmp, 'fabric.mod.json'), 'r') as mod:
                         addon_type = server_type
                         file_contents = json.loads(mod.read())
 
@@ -291,7 +308,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                     pass
 
 
-            constants.safe_delete(constants.tempDir)
+            constants.safe_delete(addon_tmp)
 
         # If information was not found, use file name instead
         if not addon_name:

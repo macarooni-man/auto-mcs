@@ -4486,9 +4486,11 @@ class PopupAddon(BigPopupWindow):
 
             if screen_manager.current_screen.name == "CreateServerAddonSearchScreen":
                 server_version = constants.new_server_info['version']
+            else:
+                server_version = constants.server_manager.current_server.version
 
-                if self.addon_object.versions:
-                    addon_supported = constants.version_check(server_version, ">=", self.addon_object.versions[-1]) and constants.version_check(server_version, "<=", self.addon_object.versions[0])
+            if self.addon_object.versions:
+                addon_supported = constants.version_check(server_version, ">=", self.addon_object.versions[-1]) and constants.version_check(server_version, "<=", self.addon_object.versions[0])
 
             version_text = f"{'Supported' if addon_supported else 'Unsupported'}:  {addon_versions}"
 
@@ -4762,7 +4764,7 @@ def button_action(button_name, button, specific_screen=''):
                                     (0.937, 0.831, 0.62, 1),
                                     f"A server restart is required to apply changes",
                                     "sync.png",
-                                    2.5,
+                                    3,
                                     {"center_x": 0.5, "center_y": 0.965}
                                 ), 0.25
                             )
@@ -11884,7 +11886,7 @@ class AddonListButton(HoverButton):
                             (0.937, 0.831, 0.62, 1),
                             f"A server restart is required to apply changes",
                             "sync.png",
-                            2.5,
+                            3,
                             {"center_x": 0.5, "center_y": 0.965}
                         ), 0.25
                     )
@@ -12204,7 +12206,7 @@ class ServerAddonScreen(MenuBackground):
                                 (0.937, 0.831, 0.62, 1),
                                 f"A server restart is required to apply changes",
                                 "sync.png",
-                                2.5,
+                                3,
                                 {"center_x": 0.5, "center_y": 0.965}
                             ), 0.25
                         )
@@ -12365,7 +12367,7 @@ class ServerAddonScreen(MenuBackground):
                     (0.937, 0.831, 0.62, 1),
                     f"A server restart is required to apply changes",
                     "sync.png",
-                    2.5,
+                    3,
                     {"center_x": 0.5, "center_y": 0.965}
                 ), 0.25
             )
@@ -12470,6 +12472,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
                     # Function to install addon
                     def install_addon(index):
+
                         selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
                         addon = selected_button.properties
                         selected_button.toggle_installed(not selected_button.installed)
@@ -12481,35 +12484,63 @@ class ServerAddonSearchScreen(MenuBackground):
 
                         # Install
                         if selected_button.installed:
-                            constants.new_server_info["addon_objects"].append(addons.get_addon_url(addon, constants.new_server_info))
+                            threading.Timer(0, functools.partial(addon_manager.download_addon, addon)).start()
 
-                            Clock.schedule_once(
-                                functools.partial(
-                                    self.show_banner,
-                                    (0.553, 0.902, 0.675, 1),
-                                    f"Added '{addon_name}' to the queue",
-                                    "add-circle-sharp.png",
-                                    2.5,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0.25
-                            )
+                            # Show banner if server is running
+                            if addon_manager.hash_changed():
+                                Clock.schedule_once(
+                                    functools.partial(
+                                        self.show_banner,
+                                        (0.937, 0.831, 0.62, 1),
+                                        f"A server restart is required to apply changes",
+                                        "sync.png",
+                                        3,
+                                        {"center_x": 0.5, "center_y": 0.965}
+                                    ), 0.25
+                                )
+
+                            else:
+                                Clock.schedule_once(
+                                    functools.partial(
+                                        self.show_banner,
+                                        (0.553, 0.902, 0.675, 1),
+                                        f"Installed '{addon_name}'",
+                                        "checkmark-circle-sharp.png",
+                                        2.5,
+                                        {"center_x": 0.5, "center_y": 0.965}
+                                    ), 0.25
+                                )
 
                         # Uninstall
                         else:
-                            for installed_addon_object in constants.new_server_info["addon_objects"]:
-                                if installed_addon_object.name == addon.name:
-                                    constants.new_server_info["addon_objects"].remove(installed_addon_object)
+                            for installed_addon in addon_manager.return_single_list():
+                                if installed_addon.name == addon.name:
+                                    addon_manager.delete_addon(installed_addon)
 
-                                    Clock.schedule_once(
-                                        functools.partial(
-                                            self.show_banner,
-                                            (0.937, 0.831, 0.62, 1),
-                                            f"Removed '{addon_name}' from the queue",
-                                            "remove-circle-sharp.png",
-                                            2.5,
-                                            {"center_x": 0.5, "center_y": 0.965}
-                                        ), 0.25
-                                    )
+                                    # Show banner if server is running
+                                    if addon_manager.hash_changed():
+                                        Clock.schedule_once(
+                                            functools.partial(
+                                                self.show_banner,
+                                                (0.937, 0.831, 0.62, 1),
+                                                f"A server restart is required to apply changes",
+                                                "sync.png",
+                                                3,
+                                                {"center_x": 0.5, "center_y": 0.965}
+                                            ), 0.25
+                                        )
+
+                                    else:
+                                        Clock.schedule_once(
+                                            functools.partial(
+                                                self.show_banner,
+                                                (1, 0.5, 0.65, 1),
+                                                f"'{addon_name}' was uninstalled",
+                                                "trash-sharp.png",
+                                                2.5,
+                                                {"center_x": 0.5, "center_y": 0.965}
+                                            ), 0.25
+                                        )
 
                                     break
 
