@@ -1937,6 +1937,13 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                         if user.lower() == op_list[x].rule.lower():
                             op_list.pop(x)
                             name_list.pop(x)
+
+                            # If server is running, check if player is online and run a command
+                            if server_name in constants.server_manager.running_servers:
+                                server_obj = constants.server_manager.running_servers[server_name]
+                                if server_obj.run_data['player-list']:
+                                    server_obj.send_command(f'deop {user}', add_to_history=False)
+
                             break
 
                 # Add users to op_list
@@ -1955,6 +1962,13 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
 
                         op_list.append(acl_object)
                         name_list.append(user['name'].lower())
+
+
+                        # If server is running, check if player is online and run a command
+                        if server_name in constants.server_manager.running_servers:
+                            server_obj = constants.server_manager.running_servers[server_name]
+                            if server_obj.run_data['player-list']:
+                                server_obj.send_command(f'op {user}', add_to_history=False)
 
         if write_file:
 
@@ -2041,6 +2055,13 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         if user.lower() == ban_list[x].rule.lower():
                             ban_list.pop(x)
                             name_list.pop(x)
+
+                            # If server is running, check if player is online and run a command
+                            if server_name in constants.server_manager.running_servers:
+                                server_obj = constants.server_manager.running_servers[server_name]
+                                if server_obj.run_data['player-list']:
+                                    server_obj.send_command(f'pardon {user}', add_to_history=False)
+
                             break
 
                 # Add users to ban_list
@@ -2069,6 +2090,12 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
 
                         ban_list.append(acl_object)
                         name_list.append(user['name'].lower())
+
+                        # If server is running, check if player is online and run a command
+                        if server_name in constants.server_manager.running_servers:
+                            server_obj = constants.server_manager.running_servers[server_name]
+                            if server_obj.run_data['player-list']:
+                                server_obj.send_command(f'ban {user}', add_to_history=False)
 
 
             # If rule is an IP or a subnet
@@ -2146,6 +2173,13 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         if user.lower() == subnet_list[x].rule.lower():
                             subnet_list.pop(x)
                             ip_list.pop(x)
+
+                            # If server is running, check if player is online and run a command
+                            if server_name in constants.server_manager.running_servers:
+                                server_obj = constants.server_manager.running_servers[server_name]
+                                if server_obj.run_data['player-list']:
+                                    server_obj.send_command(f'pardon-ip {user}', add_to_history=False)
+
                             break
 
                 # Add IPs to subnet_list
@@ -2163,6 +2197,12 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
 
                         subnet_list.append(acl_object)
                         ip_list.append(user.lower())
+
+                        # If server is running, check if player is online and run a command
+                        if server_name in constants.server_manager.running_servers:
+                            server_obj = constants.server_manager.running_servers[server_name]
+                            if server_obj.run_data['player-list']:
+                                server_obj.send_command(f'ban-ip {user}', add_to_history=False)
 
         if write_file:
 
