@@ -122,12 +122,12 @@ def dump_config(server_name: str, new_server=False):
     }
 
     backup_stats = {
-        'backup_path': constants.backupFolder,
-        'auto_backup': 'prompt',
-        'max_backup': '5',
-        'latest_backup': None,
-        'total_size': convert_size(0),
-        'backup_list': []
+        'backup-path': constants.backupFolder,
+        'auto-backup': 'prompt',
+        'max-backup': '5',
+        'latest-backup': None,
+        'total-size': convert_size(0),
+        'backup-list': []
     }
 
 
@@ -140,23 +140,23 @@ def dump_config(server_name: str, new_server=False):
         # Only pickup server as valid with good config
         if server_name == server_config.get("general", "serverName"):
             server_dict['version'] = server_config.get("general", "serverVersion")
-            backup_stats['backup_path'] = str(server_config.get("bkup", "bkupDir"))
-            backup_stats['auto_backup'] = str(server_config.get("bkup", "bkupAuto").lower())
-            backup_stats['max_backup'] = str(server_config.get("bkup", "bkupMax"))
+            backup_stats['backup-path'] = str(server_config.get("bkup", "bkupDir"))
+            backup_stats['auto-backup'] = str(server_config.get("bkup", "bkupAuto").lower())
+            backup_stats['max-backup'] = str(server_config.get("bkup", "bkupMax"))
 
 
     # Generate backup list and metadata
     if constants.server_path(server_name):
 
-        backup_stats['backup_list'] = sorted([[file, os.stat(file).st_size, convert_date_str(file)] for file in glob(os.path.join(backup_stats['backup_path'], f'{server_dict["name"]}__*'))], key=lambda x: x[2], reverse=True)
+        backup_stats['backup-list'] = sorted([[file, os.stat(file).st_size, convert_date_str(file)] for file in glob(os.path.join(backup_stats['backup-path'], f'{server_dict["name"]}__*'))], key=lambda x: x[2], reverse=True)
 
         try:
-            backup_stats['latest_backup'] = backup_stats['backup_list'][0][2].strftime("%a %#I:%M %p %#m/%#d/%Y")
-            backup_stats['total_size'] = convert_size(reduce(lambda x, y: x+y, [z[1] for z in backup_stats['backup_list']]))
+            backup_stats['latest-backup'] = backup_stats['backup-list'][0][2].strftime("%a %#I:%M %p %#m/%#d/%Y")
+            backup_stats['total-size'] = convert_size(reduce(lambda x, y: x+y, [z[1] for z in backup_stats['backup-list']]))
         except IndexError:
             pass
 
-        backup_stats['backup_list'] = [[file[0], convert_size(file[1]), file[2].strftime("%a %#I:%M %p %#m/%#d/%Y")] for file in backup_stats['backup_list']]
+        backup_stats['backup-list'] = [[file[0], convert_size(file[1]), file[2].strftime("%a %#I:%M %p %#m/%#d/%Y")] for file in backup_stats['backup-list']]
 
 
     return server_dict, backup_stats
@@ -173,7 +173,7 @@ def backup_server(name: str, backup_stats=None):
 
     cwd = os.path.abspath(os.curdir)
     time = dt.now().strftime("%H.%M %m-%d-%y")
-    backup_path = backup_stats["backup_path"]
+    backup_path = backup_stats["backup-path"]
     file_name = f"{name}__{time}.amb"
     backup_file = os.path.join(backup_path, file_name)
 
@@ -189,9 +189,9 @@ def backup_server(name: str, backup_stats=None):
 
 
     # Clear old backups if there's a limit in auto-mcs.ini
-    if backup_stats['max_backup'] != "unlimited":
+    if backup_stats['max-backup'] != "unlimited":
 
-        keep = int(backup_stats['max_backup'])
+        keep = int(backup_stats['max-backup'])
         backup_list = sorted([[file, os.stat(file).st_mtime] for file in glob(os.path.join(backup_path, f'{name}__*'))], key=lambda x: x[1])
 
         delete = len(backup_list) - keep
@@ -213,7 +213,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
         backup_stats = dump_config(name)[1]
 
     cwd = os.path.abspath(os.curdir)
-    backup_path = backup_stats["backup_path"]
+    backup_path = backup_stats["backup-path"]
 
     # Reset backup path if imported to another OS
     if (':\\' in backup_path and constants.os_name != 'windows') or '/' in backup_path and constants.os_name == 'windows':
@@ -221,7 +221,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 
 
     # If there are backups listed, restore to server
-    if (len(backup_stats['backup_list']) > 0) and (os.path.basename(backup_name) in [os.path.basename(backup[0]) for backup in backup_stats['backup_list']]):
+    if (len(backup_stats['backup-list']) > 0) and (os.path.basename(backup_name) in [os.path.basename(backup[0]) for backup in backup_stats['backup-list']]):
 
         os.chdir(constants.server_path(name))
         file_path = os.path.join(backup_path, os.path.basename(backup_name))
@@ -264,8 +264,6 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
         properties = {'name': name, 'type': config_file.get('general', 'serverType'), 'version': config_file.get('general', 'serverVersion')}
         constants.generate_run_script(properties)
 
-
-
         os.chdir(cwd)
 
         return [os.path.basename(backup_name), convert_size(os.stat(file_path).st_size), convert_date(os.stat(file_path).st_mtime)]
@@ -294,7 +292,6 @@ def set_backup_directory(name: str, new_dir: str):
             # Update bkupDir
             config_file.set('bkup', 'bkupDir', new_dir)
             constants.server_config(name, config_file)
-
 
             return new_dir
 

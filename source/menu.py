@@ -11267,7 +11267,7 @@ class MenuTaskbar(RelativeLayout):
         self.item_list = [
             ('back',            os.path.join(icon_path, 'back-outline.png'),  '#FF6FB4'),
             ('launch',          os.path.join(icon_path, 'terminal.png'),      '#817EFF',  'ServerViewScreen'),
-            ('back-ups',        os.path.join(icon_path, 'backup.png'),        '#56E6FF',  'NextScreen'),
+            ('back-ups',        os.path.join(icon_path, 'backup.png'),        '#56E6FF',  'ServerBackupScreen'),
             ('access control',  os.path.join(icon_path, 'acl.png'),           '#00FFB2',  'ServerAclScreen'),
             ('add-ons',         os.path.join(icon_path, 'addon.png'),         '#42FF5E',  'ServerAddonScreen'),
             ('amscript',        os.path.join(icon_path, 'amscript.png'),      '#BFFF2B',  'NextScreen'),
@@ -11491,6 +11491,126 @@ class ServerViewScreen(MenuBackground):
             self.console_panel = ConsolePanel(self.server.name, self.server_button)
 
         self.add_widget(self.console_panel)
+
+
+
+# Server Backup Control ------------------------------------------------------------------------------------------------
+
+class ServerBackupScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.menu_taskbar = None
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+        backup_stats = server_obj.backup.backup_stats
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.485))
+        scroll_anchor = AnchorLayout()
+        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.6
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        scroll_layout.bind(minimum_height=scroll_layout.setter('height'))
+        scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.8}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        # Back-up and restore buttons
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(main_button('Save Back-up Now', (0.5, 0.5), 'save-sharp.png'))
+        scroll_layout.add_widget(sub_layout)
+
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(main_button('Restore From Back-up', (0.5, 0.5), 'reload-sharp.png'))
+        scroll_layout.add_widget(sub_layout)
+
+
+        # Gamemode dropdown
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="gamemode"))
+        sub_layout.add_widget(DropButton('survival', (0.5, 0.5), options_list=['survival', 'adventure', 'creative'], input_name='ServerModeInput'))
+        scroll_layout.add_widget(sub_layout)
+
+        # Difficulty dropdown
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="difficulty"))
+        sub_layout.add_widget(DropButton('normal', (0.5, 0.5), options_list=['peaceful', 'easy', 'normal', 'hard', 'hardcore'], input_name='ServerDiffInput'))
+        scroll_layout.add_widget(sub_layout)
+
+        # PVP switch button
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable PVP"))
+        sub_layout.add_widget(toggle_button('pvp', (0.5, 0.5), default_state=False))
+        scroll_layout.add_widget(sub_layout)
+
+        # Spawn protection switch button
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable spawn protection"))
+        sub_layout.add_widget(toggle_button('spawn_protection', (0.5, 0.5), default_state=False))
+        scroll_layout.add_widget(sub_layout)
+
+        # Spawn creatures switch button
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="spawn creatures"))
+        sub_layout.add_widget(toggle_button('spawn_creatures', (0.5, 0.5), default_state=False))
+        scroll_layout.add_widget(sub_layout)
+
+        # Append scroll view items
+        scroll_anchor.add_widget(scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+
+        # Configure header
+        print(backup_stats)
+        backup_count = len(backup_stats['backup-list'])
+        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        header_content = "Latest Back-up  [color=#494977]-[/color]  " + ('[color=#6A6ABA]Never[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
+        sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
+        float_layout.add_widget(header_text(header_content, sub_header_content, (0, 0.89)))
+
+
+        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups"))
+
+        self.add_widget(float_layout)
+
+        # Add ManuTaskbar
+        self.menu_taskbar = MenuTaskbar(selected_item='back-ups')
+        self.add_widget(self.menu_taskbar)
 
 
 
@@ -12789,8 +12909,8 @@ class MainApp(App):
             open_server("test")
             def open_addons(*args):
                 while not constants.server_manager.current_server.addon:
-                    time.sleep(0.25)
-                screen_manager.current = "ServerAddonScreen"
+                    time.sleep(2)
+                screen_manager.current = "ServerBackupScreen"
             Clock.schedule_once(open_addons, 2)
 
 
