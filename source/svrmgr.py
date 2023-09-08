@@ -3,6 +3,7 @@ from subprocess import Popen, PIPE, run
 from kivy.utils import escape_markup
 from datetime import datetime as dt
 from threading import Timer
+from copy import deepcopy
 from glob import glob
 import psutil
 import ctypes
@@ -135,7 +136,7 @@ class ServerObject():
             },
 
             # # Dynamic content
-            # "addon_objects": self.addon.installed_addons,
+            "addon_objects": self.addon.return_single_list(),
             # "backup_object": self.backup,
             # "acl_object": self.acl
         }
@@ -460,6 +461,9 @@ class ServerObject():
             self.run_data['console-panel'] = None
             self.run_data['performance-panel'] = None
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
+            self.run_data['addon-hash'] = None
+            if self.addon:
+                self.run_data['addon-hash'] = deepcopy(self.addon.addon_hash)
 
 
             with open(script_path, 'r') as f:

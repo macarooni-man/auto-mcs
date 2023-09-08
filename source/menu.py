@@ -4033,6 +4033,55 @@ class PopupQuery(PopupWindow):
         for widget in self.window.children:
             widget.opacity = 0
 
+# Yes/No
+class PopupWarningQuery(PopupWindow):
+    def __init__(self, **kwargs):
+        self.window_color = (1, 0.56, 0.6, 1)
+        self.window_text_color = (0.2, 0.1, 0.1, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'question-circle.png')
+        super().__init__(**kwargs)
+
+        # Modal specific settings
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+        self.ok_button = None
+        with self.canvas.after:
+            self.no_button = Button()
+            self.no_button.id = "no_button"
+            self.no_button.size_hint = (None, None)
+            self.no_button.size = (229.5, 65)
+            self.no_button.border = (0, 0, 0, 0)
+            self.no_button.background_color = self.window_color
+            self.no_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.no_button.pos = (0.5, -0.3)
+            self.no_button.text = "NO"
+            self.no_button.color = self.window_text_color
+            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_size = sp(22)
+
+
+            self.yes_button = Button()
+            self.yes_button.id = "yes_button"
+            self.yes_button.size_hint = (None, None)
+            self.yes_button.size = (-229.5, 65)
+            self.yes_button.border = (0, 0, 0, 0)
+            self.yes_button.background_color = self.window_color
+            self.yes_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.yes_button.pos = (self.window_background.size[0] - 0.5, -0.3)
+            self.yes_button.text = "YES"
+            self.yes_button.color = self.window_text_color
+            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_size = sp(22)
+            self.bind(on_touch_down=self.click_event)
+
+
+        self.window.add_widget(self.no_button)
+        self.window.add_widget(self.yes_button)
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+
 
 # Big popup widgets
 class BigPopupWindow(RelativeLayout):
@@ -4635,6 +4684,7 @@ def button_action(button_name, button, specific_screen=''):
                 selection = file_popup("file", start_dir=constants.userDownloads, ext=["*.jar"], input_name=None, select_multiple=True, title=title)
 
                 if selection:
+                    banner_text = ''
                     for addon in selection:
                         if addon.endswith(".jar") and os.path.isfile(addon):
                             addon = addons.get_addon_file(addon, constants.new_server_info)
@@ -4656,6 +4706,68 @@ def button_action(button_name, button, specific_screen=''):
                             else:
                                 banner_text = f"Added {len(selection)} add-ons to the queue"
 
+                    if banner_text:
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.553, 0.902, 0.675, 1),
+                                banner_text,
+                                "add-circle-sharp.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+
+
+        elif "ServerAddonScreen" in str(screen_manager.current_screen):
+            addon_manager = constants.server_manager.current_server.addon
+
+            if "download" in button_name.lower():
+                screen_manager.current = 'ServerAddonSearchScreen'
+
+            elif "import" in button_name.lower():
+                title = "Select Add-on Files (.jar)"
+                selection = file_popup("file", start_dir=constants.userDownloads, ext=["*.jar"], input_name=None, select_multiple=True, title=title)
+
+                if selection:
+                    banner_text = ''
+                    for addon in selection:
+                        if addon.endswith(".jar") and os.path.isfile(addon):
+                            addon = addon_manager.import_addon(addon)
+                            addon_list = addon_manager.return_single_list()
+                            screen_manager.current_screen.gen_search_results(addon_manager.return_single_list(), fade_in=False, highlight=addon.hash, animate_scroll=True)
+
+                            # Switch pages if page is full
+                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(addon_list) > 0):
+                                screen_manager.current_screen.switch_page("right")
+
+                            # Show banner
+                            if len(selection) == 1:
+                                if len(addon.name) < 26:
+                                    addon_name = addon.name
+                                else:
+                                    addon_name = addon.name[:23] + "..."
+
+                                banner_text = f"Imported '{addon_name}'"
+                            else:
+                                banner_text = f"Imported {len(selection)} add-ons"
+
+                    if banner_text:
+
+                        # Show banner if server is running
+                        if addon_manager.hash_changed():
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (0.937, 0.831, 0.62, 1),
+                                    f"A server restart is required to apply changes",
+                                    "sync.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0.25
+                            )
+
+                        else:
                             Clock.schedule_once(
                                 functools.partial(
                                     screen_manager.current_screen.show_banner,
@@ -4666,6 +4778,7 @@ def button_action(button_name, button, specific_screen=''):
                                     {"center_x": 0.5, "center_y": 0.965}
                                 ), 0
                             )
+
 
         elif "CreateServerReview" in str(screen_manager.current_screen) and "create server" in button_name.lower():
             screen_manager.current = "CreateServerProgressScreen"
@@ -4775,11 +4888,12 @@ class MenuBackground(Screen):
 
     # Show popup; popup_type can be "info", "warning", "query"
     def show_popup(self, popup_type, title, content, callback=None, *args):
-        if title and content and popup_type in ["info", "warning", "query", "controls", "addon"] and (self == screen_manager.current_screen):
+        if title and content and popup_type in ["info", "warning", "query", "warning_query", "controls", "addon"] and (self == screen_manager.current_screen):
 
             # self.show_popup("info", "Title", "This is an info popup!", functools.partial(callback_func))
             # self.show_popup("warning", "Title", "This is a warning popup!", functools.partial(callback_func))
             # self.show_popup("query", "Title", "Yes or no?", (functools.partial(callback_func_no), functools.partial(callback_func_yes)))
+            # self.show_popup("warning_query", "Title", "Yes or no?", (functools.partial(callback_func_no), functools.partial(callback_func_yes)))
             # self.show_popup("controls", "Title", "Press X to do Y", functools.partial(callback_func))
             # self.show_popup("addon", "Title", "Description", (functools.partial(callback_func_web), functools.partial(callback_func_install)), addon_object)
 
@@ -4790,6 +4904,8 @@ class MenuBackground(Screen):
                     self.popup_widget = PopupWarning()
                 elif popup_type == "query":
                     self.popup_widget = PopupQuery()
+                elif popup_type == "warning_query":
+                    self.popup_widget = PopupWarningQuery()
                 elif popup_type == "controls":
                     self.popup_widget = PopupControls()
                 elif popup_type == "addon":
@@ -7836,7 +7952,7 @@ class AddonButton(HoverButton):
         self.install_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.install_label.width = 100
         self.install_label.color = (0.05, 0.08, 0.07, 1)
-        self.install_label.text = f'installed'
+        self.install_label.text = 'installed'
         self.install_label.opacity = 0
         self.add_widget(self.install_label)
 
@@ -9456,7 +9572,7 @@ class ServerManagerScreen(MenuBackground):
 
                     # Update scroll when page is bigger than list
                     if Window.height < self.scroll_layout.height:
-                        default_scroll = 1 - round(l.index(highlight) / self.page_size, 2)
+                        default_scroll = 1 - round(l.index(highlight) / len(l), 2)
                         if default_scroll < 0.2:
                             default_scroll = 0
                         if default_scroll > 0.97:
@@ -11700,7 +11816,7 @@ class AddonListButton(HoverButton):
         padding = 2.17
         self.title.pos = (self.x + (self.title.text_size[0] / padding), self.y + 31)
         self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1, self.y)
-        self.hover_text.pos = (self.x + (self.title.text_size[0] / padding) - 15, self.y + 14)
+        self.hover_text.pos = (self.x + (self.title.text_size[0] / padding) - 15, self.y + 15)
 
         # Type Banner
         if self.disabled_banner:
@@ -11711,8 +11827,18 @@ class AddonListButton(HoverButton):
         self.delete_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
         self.delete_layout.pos = (self.pos[0] + self.width - (self.delete_button.width / 1.33), self.pos[1] + 13)
 
+        # Reposition highlight border
+        self.highlight_layout.pos = self.pos
 
-    def __init__(self, properties, click_function=None, enabled=False, fade_in=0.0, **kwargs):
+    def highlight(self):
+        def next_frame(*args):
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        Clock.schedule_once(next_frame, 0)
+
+    def __init__(self, properties, click_function=None, enabled=False, fade_in=0.0, highlight=False, **kwargs):
         super().__init__(**kwargs)
 
         self.enabled = enabled
@@ -11723,13 +11849,77 @@ class AddonListButton(HoverButton):
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click_white.png')
         self.disabled_banner = None
 
 
         # Delete button
+        def delete_hover(*args):
+            def change_color(*args):
+                if self.hovered:
+                    self.hover_text.text = 'UNINSTALL ADD-ON'
+                    self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
+                    self.background_color = (1, 1, 1, 1)
+            Clock.schedule_once(change_color, 0.07)
+        def delete_on_leave(*args):
+            def change_color(*args):
+                self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
+                if self.hovered:
+                    self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
+                    self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
+            Clock.schedule_once(change_color, 0.15)
+        def delete_click(*args):
+            # Delete addon and reload list
+            def reprocess_page(*args):
+                addon_manager = constants.server_manager.current_server.addon
+                addon_manager.delete_addon(self.properties)
+                addon_screen = screen_manager.current_screen
+                addon_screen.gen_search_results(addon_manager.return_single_list(), fade_in=True)
+
+                # Show banner if server is running
+                if addon_manager.hash_changed():
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.937, 0.831, 0.62, 1),
+                            f"A server restart is required to apply changes",
+                            "sync.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0.25
+                    )
+
+                else:
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (1, 0.5, 0.65, 1),
+                            f"'{self.properties.name}' was uninstalled",
+                            "trash-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0.25
+                    )
+
+                # Switch pages if page is empty
+                if (len(addon_screen.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                    addon_screen.switch_page("left")
+
+
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_popup,
+                    "warning_query",
+                    f'Uninstall {self.properties.name}',
+                    "Do you want to permanently uninstall this add-on?\n\nYou'll need to re-import or download it again",
+                    (None, functools.partial(reprocess_page))
+                ),
+                0
+            )
         self.delete_layout = RelativeLayout(opacity=0)
-        self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'], anchor='right', click_func=None)
+        self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'], anchor='right', click_func=delete_click)
+        self.delete_button.button.bind(on_enter=delete_hover)
+        self.delete_button.button.bind(on_leave=delete_on_leave)
         self.delete_layout.add_widget(self.delete_button)
         self.add_widget(self.delete_layout)
 
@@ -11740,7 +11930,7 @@ class AddonListButton(HoverButton):
         self.hover_text.size_hint = (None, None)
         self.hover_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
-        self.hover_text.font_size = sp(25)
+        self.hover_text.font_size = sp(23)
         self.hover_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.hover_text.color = (0.1, 0.1, 0.1, 1)
         self.hover_text.halign = "center"
@@ -11787,6 +11977,23 @@ class AddonListButton(HoverButton):
         self.add_widget(self.subtitle)
 
 
+        # Highlight border
+        self.highlight_layout = RelativeLayout()
+        self.highlight_border = Image()
+        self.highlight_border.keep_ratio = False
+        self.highlight_border.allow_stretch = True
+        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+        self.highlight_border.opacity = 0
+        self.highlight_border.source = os.path.join(constants.gui_assets, 'server_button_highlight.png')
+        self.highlight_layout.add_widget(self.highlight_border)
+        self.highlight_layout.width = self.size_hint_max[0]
+        self.highlight_layout.height = self.size_hint_max[1]
+        self.add_widget(self.highlight_layout)
+
+        if highlight:
+            self.highlight()
+
+
         # If self.enabled is false, and self.properties.version, display version where "enabled" logo is
         self.bind(pos=self.resize_self)
         if not enabled:
@@ -11815,7 +12022,8 @@ class AddonListButton(HoverButton):
                 Animation(opacity=0, duration=0.13).start(self.disabled_banner)
 
             # Fade button to hover state
-            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
+            if not self.delete_button.button.hovered:
+                self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
@@ -11885,11 +12093,38 @@ class ServerAddonScreen(MenuBackground):
         self.page_switcher.update_index(self.current_page, self.max_pages)
         self.gen_search_results(self.last_results)
 
-    def gen_search_results(self, results, new_search=False, *args):
+    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True, last_scroll=None, *args):
 
         # Update page counter
-        print(results)
         # results = list(sorted(results, key=lambda d: d.name.lower()))
+        # Set to proper page on toggle
+
+        addon_manager = constants.server_manager.current_server.addon
+        default_scroll = 1
+        if highlight:
+            def divide_chunks(l, n):
+                final_list = []
+
+                for i in range(0, len(l), n):
+                    final_list.append(l[i:i + n])
+
+                return final_list
+
+            for x, l in enumerate(divide_chunks([x.hash for x in results], self.page_size), 1):
+                if highlight in l:
+                    if self.current_page != x:
+                        self.current_page = x
+
+                    # Update scroll when page is bigger than list
+                    if Window.height < self.scroll_layout.height * 1.7:
+                        default_scroll = 1 - round(l.index(highlight) / len(l), 2)
+                        if default_scroll < 0.21:
+                            default_scroll = 0
+                        if default_scroll > 0.97:
+                            default_scroll = 1
+                    break
+
+
         self.last_results = results
         self.max_pages = (len(results) / self.page_size).__ceil__()
         self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
@@ -11900,10 +12135,26 @@ class ServerAddonScreen(MenuBackground):
         self.scroll_layout.clear_widgets()
         gc.collect()
 
+
+        # Animate scrolling
+        def set_scroll(*args):
+            Animation.stop_all(self.scroll_layout.parent.parent)
+            if animate_scroll:
+                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+            else:
+                self.scroll_layout.parent.parent.scroll_y = default_scroll
+        Clock.schedule_once(set_scroll, 0)
+
+
         # Generate header
         addon_count = len(results)
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = "Installed Add-ons  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] items')
+
+        if addon_manager.hash_changed():
+            icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+            header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
+
 
         for child in self.header.children:
             if child.id == "text":
@@ -11930,53 +12181,45 @@ class ServerAddonScreen(MenuBackground):
             # Clear and add all addons
             for x, addon_object in enumerate(page_list, 1):
 
-                # Function to remove addon
-                def remove_addon(index):
-                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
-                    addon = selected_button.properties
+                # Activated when addon is clicked
+                def toggle_addon(index, *args):
+                    addon = index
 
                     if len(addon.name) < 26:
                         addon_name = addon.name
                     else:
                         addon_name = addon.name[:23] + "..."
 
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_banner,
-                            (0.937, 0.831, 0.62, 1),
-                            f"Removed '{addon_name}' from the queue",
-                            "remove-circle-sharp.png",
-                            2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0.25
-                    )
 
-                    if addon in constants.new_server_info['addon_objects']:
-                        constants.new_server_info['addon_objects'].remove(addon)
-                        self.gen_search_results(constants.new_server_info['addon_objects'])
-
-                        # Switch pages if page is empty
-                        if (len(self.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
-                            self.switch_page("left")
-
-                    return addon, selected_button.installed
+                    # Toggle addon state
+                    addon_manager.addon_state(addon, enabled=not addon.enabled)
+                    self.gen_search_results(addon_manager.return_single_list(), fade_in=False, highlight=addon.hash, animate_scroll=True)
 
 
-                # Activated when addon is clicked
-                def view_addon(addon, index, *args):
-                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index - 1]
+                    # Show banner if server is running
+                    if addon_manager.hash_changed():
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_banner,
+                                (0.937, 0.831, 0.62, 1),
+                                f"A server restart is required to apply changes",
+                                "sync.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0.25
+                        )
 
-                    # Possibly make custom popup that shows differently for Web and File addons
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_popup,
-                            "query",
-                            addon.name,
-                            "Do you want to remove this add-on from the queue?",
-                            (None, functools.partial(remove_addon, index))
-                        ),
-                        0
-                    )
+                    else:
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_banner,
+                                (1, 0.5, 0.65, 1) if addon.enabled else (0.553, 0.902, 0.675, 1),
+                                f"'{addon_name}' is now {'disabled' if addon.enabled else 'enabled'}",
+                                "close-circle-sharp.png" if addon.enabled else "checkmark-circle-sharp.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0.25
+                        )
 
 
                 # Add-on button click function
@@ -11985,9 +12228,10 @@ class ServerAddonScreen(MenuBackground):
                         widget = AddonListButton(
                             properties = addon_object,
                             enabled = addon_object.enabled,
-                            fade_in = ((x if x <= 8 else 8) / self.anim_speed),
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            highlight = (highlight == addon_object.hash),
                             click_function = functools.partial(
-                                view_addon,
+                                toggle_addon,
                                 addon_object,
                                 x
                             )
@@ -11996,7 +12240,7 @@ class ServerAddonScreen(MenuBackground):
                 )
 
             self.resize_bind()
-            self.scroll_layout.parent.parent.scroll_y = 1
+            # self.scroll_layout.parent.parent.scroll_y = 1
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -12113,6 +12357,19 @@ class ServerAddonScreen(MenuBackground):
         # Automatically generate results (installed add-ons) on page load
         self.gen_search_results(self.server.addon.return_single_list())
 
+        # Show banner if server is running
+        if constants.server_manager.current_server.addon.hash_changed():
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (0.937, 0.831, 0.62, 1),
+                    f"A server restart is required to apply changes",
+                    "sync.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0.25
+            )
+
 class ServerAddonSearchScreen(MenuBackground):
 
     def switch_page(self, direction):
@@ -12136,6 +12393,7 @@ class ServerAddonSearchScreen(MenuBackground):
         self.gen_search_results(self.last_results)
 
     def gen_search_results(self, results, new_search=False, *args):
+        addon_manager = constants.server_manager.current_server.addon
 
         # Error on failure
         if not results and isinstance(results, bool):
@@ -12189,7 +12447,7 @@ class ServerAddonSearchScreen(MenuBackground):
                 constants.hide_widget(self.blank_label, True)
 
                 # Create list of addon names
-                installed_addon_names = [addon.name for addon in constants.new_server_info["addon_objects"]]
+                installed_addon_names = [addon.name for addon in addon_manager.return_single_list()]
 
                 # Clear and add all addons
                 for x, addon_object in enumerate(page_list, 1):
@@ -12202,7 +12460,7 @@ class ServerAddonSearchScreen(MenuBackground):
                         # Cache updated addon info into button, or skip if it's already cached
                         if selected_button.properties:
                             if not selected_button.properties.versions or not selected_button.properties.description:
-                                new_addon_info = addons.get_addon_info(addon, constants.new_server_info)
+                                new_addon_info = addons.get_addon_info(addon, constants.server_manager.current_server.properties_dict())
                                 selected_button.properties = new_addon_info
 
                         Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
@@ -12380,7 +12638,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
 
         search_function = addons.search_addons
-        self.search_bar = search_input(return_function=search_function, server_info=constants.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, server_info=constants.server_manager.current_server.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -12398,8 +12656,9 @@ class ServerAddonSearchScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = f"Create '{constants.new_server_info['name']}', Add-ons, Download"
-        float_layout.add_widget(generate_title(f"Add-on Manager: '{constants.new_server_info['name']}'"))
+        server_name = constants.server_manager.current_server.name
+        menu_name = f"{server_name}, Add-ons, Download"
+        float_layout.add_widget(generate_title(f"Add-on Manager: '{server_name}'"))
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)

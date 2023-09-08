@@ -1024,14 +1024,18 @@ def validate_version(server_info: dict):
 
             elif str.lower(mcType) == "forge":
                 forge_url = f"https://files.minecraftforge.net/net/minecraftforge/forge/index_{mcVer}.html"
-
                 reqs = requests.get(forge_url)
                 soup = BeautifulSoup(reqs.text, 'html.parser')
                 div = soup.find('div', "link link-boosted")
 
                 urls = div.a.get('href').split("&url=")
 
-                url = urls[1]
+                for possible_url in urls:
+                    if ".jar" in possible_url:
+                        url = possible_url
+                        break
+                else:
+                    url = ''
 
 
             elif str.lower(mcType) == "fabric":

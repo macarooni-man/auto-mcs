@@ -4,6 +4,7 @@ from zipfile import ZipFile
 from glob import glob
 import constants
 import requests
+import base64
 import json
 import os
 import re
@@ -56,6 +57,7 @@ class AddonFileObject(AddonObject):
         self.path = addon_path
         self.addon_version = addon_version
         self.disabled = False
+        self.hash = base64.b64encode(f'{addon_name}/{addon_author}/{addon_version}'.encode())
 
 # Server addon manager object for ServerManager()
 class AddonManager():
@@ -64,18 +66,21 @@ class AddonManager():
         self.server = dump_config(server_name)
         self.installed_addons = enumerate_addons(self.server)
         self.geyser_support = self.check_geyser()
-
+        self.addon_hash = self.set_hash()
 
     # Refreshes self.installed_addons list
     def refresh_addons(self):
         self.server = dump_config(self.server['name'])
         self.installed_addons = enumerate_addons(self.server)
         self.geyser_support = self.check_geyser()
+        self.addon_hash = self.set_hash()
 
     # Imports addon directly from file path
     def import_addon(self, addon_path: str):
-        import_addon(get_addon_file(addon_path, self.server), self.server)
+        addon = get_addon_file(addon_path, self.server)
+        import_addon(addon, self.server)
         self.refresh_addons()
+        return addon
 
     # Downloads addon directly from the closest match of name
     def download_addon(self, name: str):
@@ -88,6 +93,17 @@ class AddonManager():
     def addon_state(self, addon: AddonFileObject, enabled=True):
         addon_state(addon, self.server, enabled)
         self.refresh_addons()
+
+    # Deletes addon
+    def delete_addon(self, addon: AddonFileObject):
+        try:
+            os.remove(addon.path)
+            removed = True
+        except OSError:
+            removed = False
+
+        self.refresh_addons()
+        return removed
 
     # Returns single list of all addons
     def return_single_list(self):
@@ -102,6 +118,26 @@ class AddonManager():
             return 'geyser' in [addon.id.lower() for addon in self.return_single_list()]
         else:
             return False
+
+    # Sets addon hash to determine changes
+    def set_hash(self):
+        addon_hash = ""
+
+        for addon in sorted(self.installed_addons['enabled'], key=lambda x: x.name):
+            addon_hash += addon.hash.decode()
+
+        return addon_hash
+
+    # Checks addon hash in running config to see if it's changed
+    def hash_changed(self):
+        hash_changed = False
+        server_name = self.server['name']
+
+        if server_name in constants.server_manager.running_servers:
+            hash_changed = constants.server_manager.running_servers[server_name].run_data['addon-hash'] != self.addon_hash
+
+        return hash_changed
+
 
 # -------------------------------------------- Addon File Functions ----------------------------------------------------
 
