@@ -71,6 +71,7 @@ kivy.require('2.0.0')
 from kivy.app import App
 from kivy.metrics import sp, dp
 from kivy.uix.button import Button
+from kivy.uix.slider import Slider
 from kivy.core.window import Window
 from kivy.uix.dropdown import DropDown
 from kivy.core.clipboard import Clipboard
@@ -1913,6 +1914,7 @@ class BlankInput(BaseInput):
         self.halign = "left"
         self.padding_x = 25
         self.size_hint_max = (440, 54)
+        self.hint_text_color = (0.6, 0.6, 1, 0.8)
         self.title_text = ""
         self.hint_text = ""
         self.bind(on_text_validate=self.on_enter)
@@ -1930,10 +1932,10 @@ class BlankInput(BaseInput):
     def insert_text(self, substring, from_undo=False):
         return
 def blank_input(pos_hint, hint_text):
-    drop_input = BlankInput()
-    drop_input.pos_hint = pos_hint
-    drop_input.hint_text = hint_text
-    return drop_input
+    blank = BlankInput()
+    blank.pos_hint = pos_hint
+    blank.hint_text = hint_text
+    return blank
 
 
 
@@ -3667,6 +3669,62 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     return final
 
 
+class NumberSlider(FloatLayout):
+
+    def on_value(self, *args):
+        spos = self.slider.value_pos
+        lpos = self.label.size_hint_max
+        self.label.pos = (spos[0] - (lpos[0]/2) + 0.7, spos[1] + lpos[1] + 1)
+        self.slider_val = self.slider.value.__floor__()
+        self.label.text = str(self.slider_val)
+
+        if self.function and (self.slider_val != self.last_val) and not self.init:
+            self.function(self.slider_val)
+
+        self.last_val = self.slider_val
+        self.init = False
+
+
+    def __init__(self, default_value, position, input_name, limits=(0, 100), max_infinite=False, function=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.x += 125
+        self.function = function
+        self.last_val = default_value
+        self.slider_val = default_value
+        self.init = True
+
+        # Main slider widget
+        self.slider = Slider(value=default_value, value_track=True, range=limits)
+        self.slider.background_width = 12
+        self.slider.border_horizontal = [6, 6, 6, 6]
+        self.slider.value_track_width = 5
+        self.slider.value_track_color = (0.6, 0.6, 1, 1)
+        self.slider.cursor_size = (42, 42)
+        self.slider.cursor_image = os.path.join(constants.gui_assets, 'slider_knob.png')
+        self.slider.background_horizontal = os.path.join(constants.gui_assets, 'slider_rail.png')
+        self.slider.size_hint_max_x = 205
+        self.slider.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+        self.slider.padding = 30
+        self.add_widget(self.slider)
+
+        # Number label
+        self.label = AlignLabel()
+        self.label.text = str(default_value)
+        self.label.halign = "center"
+        self.label.valign = "center"
+        self.label.size_hint_max = (30, 28)
+        self.label.color = (0.15, 0.15, 0.3, 1)
+        self.label.font_size = sp(20)
+        self.label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+        self.add_widget(self.label)
+        
+
+        # Bind to number change
+        self.slider.bind(value=self.on_value, pos=self.on_value)
+        Clock.schedule_once(self.on_value, 0)
+
+
 
 # ---------------------------------------------------- Screens ---------------------------------------------------------
 
@@ -4878,6 +4936,10 @@ class MenuBackground(Screen):
         if self.popup_widget:
             self.popup_widget.resize()
 
+        # Repos page switcher
+        if self.page_switcher:
+            self.page_switcher.resize_self()
+
     # Ignore touch events when popup is present
     def on_touch_down(self, touch):
         if self.popup_widget:
@@ -5086,6 +5148,7 @@ class MenuBackground(Screen):
 
         self.banner_widget = None
         self.popup_widget = None
+        self.page_switcher = None
 
         self._input_focused = False
         self._keyboard = None
@@ -11536,50 +11599,48 @@ class ServerBackupScreen(MenuBackground):
         scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.8}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
         scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
+
         # Generate buttons on page load
         buttons = []
         float_layout = FloatLayout()
         float_layout.id = 'content'
 
-        # Back-up and restore buttons
+        # Save back-up button
         sub_layout = ScrollItem()
         sub_layout.add_widget(main_button('Save Back-up Now', (0.5, 0.5), 'save-sharp.png'))
         scroll_layout.add_widget(sub_layout)
 
+        # Restore back-up button
         sub_layout = ScrollItem()
         sub_layout.add_widget(main_button('Restore From Back-up', (0.5, 0.5), 'reload-sharp.png'))
         scroll_layout.add_widget(sub_layout)
 
-
-        # Gamemode dropdown
+        # Auto-backup toggle
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="gamemode"))
-        sub_layout.add_widget(DropButton('survival', (0.5, 0.5), options_list=['survival', 'adventure', 'creative'], input_name='ServerModeInput'))
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="automatic back-ups"))
+        sub_layout.add_widget(toggle_button('auto-backup', (0.5, 0.5), default_state=False))
         scroll_layout.add_widget(sub_layout)
 
-        # Difficulty dropdown
+
+        # Maximum back-up slider
+        def change_backup(val):
+            print(val)
+
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="difficulty"))
-        sub_layout.add_widget(DropButton('normal', (0.5, 0.5), options_list=['peaceful', 'easy', 'normal', 'hard', 'hardcore'], input_name='ServerDiffInput'))
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="maximum back-ups"))
+        sub_layout.add_widget(NumberSlider(backup_stats['max-backup'], (0.5, 0.5), input_name='BackupMaxInput', limits=(2, 11), max_infinite=True, function=change_backup))
         scroll_layout.add_widget(sub_layout)
 
-        # PVP switch button
+        # Open back-up directory
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable PVP"))
-        sub_layout.add_widget(toggle_button('pvp', (0.5, 0.5), default_state=False))
+        sub_layout.add_widget(main_button('Open Back-up Directory', (0.5, 0.5), 'folder-outline.png'))
         scroll_layout.add_widget(sub_layout)
 
-        # Spawn protection switch button
+        # Migrate back-up directory
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="enable spawn protection"))
-        sub_layout.add_widget(toggle_button('spawn_protection', (0.5, 0.5), default_state=False))
+        sub_layout.add_widget(main_button('Migrate Back-up Directory', (0.5, 0.5), 'migrate.png'))
         scroll_layout.add_widget(sub_layout)
 
-        # Spawn creatures switch button
-        sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="spawn creatures"))
-        sub_layout.add_widget(toggle_button('spawn_creatures', (0.5, 0.5), default_state=False))
-        scroll_layout.add_widget(sub_layout)
 
         # Append scroll view items
         scroll_anchor.add_widget(scroll_layout)
@@ -12908,10 +12969,10 @@ class MainApp(App):
             screen_manager.current = "ServerManagerScreen"
             open_server("test")
             def open_addons(*args):
-                while not constants.server_manager.current_server.addon:
-                    time.sleep(2)
+                while not constants.server_manager.current_server.backup:
+                    time.sleep(1)
                 screen_manager.current = "ServerBackupScreen"
-            Clock.schedule_once(open_addons, 2)
+            Clock.schedule_once(open_addons, 3)
 
 
         screen_manager.transition = FadeTransition(duration=0.115)
