@@ -1,3 +1,4 @@
+import time
 from datetime import datetime as dt
 from functools import reduce
 from glob import glob
@@ -68,7 +69,7 @@ def convert_date(m_time: int or float):
     elif days == 1:
         fmt = "Yesterday %#I:%M %p"
     else:
-        fmt = "%a %#I:%M %p %#m/%#d/%Y"
+        fmt = "%a %#I:%M %p %#m/%#d/%y"
     return dt_obj.strftime(fmt)
 
 
@@ -151,7 +152,7 @@ def dump_config(server_name: str, new_server=False):
         backup_stats['backup-list'] = sorted([[file, os.stat(file).st_size, convert_date_str(file)] for file in glob(os.path.join(backup_stats['backup-path'], f'{server_dict["name"]}__*'))], key=lambda x: x[2], reverse=True)
 
         try:
-            backup_stats['latest-backup'] = backup_stats['backup-list'][0][2].strftime("%a %#I:%M %p %#m/%#d/%Y")
+            backup_stats['latest-backup'] = convert_date(backup_stats['backup-list'][0][2])
             backup_stats['total-size'] = convert_size(reduce(lambda x, y: x+y, [z[1] for z in backup_stats['backup-list']]))
         except IndexError:
             pass
@@ -168,105 +169,111 @@ def dump_config(server_name: str, new_server=False):
 # name --> backup to directory
 def backup_server(name: str, backup_stats=None):
 
-    if not backup_stats:
-        backup_stats = dump_config(name)[1]
+    if set_lock(name, True):
 
-    cwd = os.path.abspath(os.curdir)
-    time = dt.now().strftime("%H.%M %m-%d-%y")
-    backup_path = backup_stats["backup-path"]
-    file_name = f"{name}__{time}.amb"
-    backup_file = os.path.join(backup_path, file_name)
+        if not backup_stats:
+            backup_stats = dump_config(name)[1]
 
-    constants.folder_check(backup_path)
-    os.chdir(constants.server_path(name))
+        cwd = os.path.abspath(os.curdir)
+        time = dt.now().strftime("%H.%M %m-%d-%y")
+        backup_path = backup_stats["backup-path"]
+        file_name = f"{name}__{time}.amb"
+        backup_file = os.path.join(backup_path, file_name)
 
-    # Create backup
-    constants.run_proc(f'tar -cvf \"{os.path.join(backup_path, "bkup.amb")}\" {"*" if constants.os_name == "windows" else "* .??*"}')
-    if os.path.exists(backup_file):
-        os.remove(backup_file)
-    os.rename(os.path.join(backup_path, "bkup.amb"), backup_file)
+        constants.folder_check(backup_path)
+        os.chdir(constants.server_path(name))
 
-
-
-    # Clear old backups if there's a limit in auto-mcs.ini
-    if backup_stats['max-backup'] != "unlimited":
-
-        keep = int(backup_stats['max-backup'])
-        backup_list = sorted([[file, os.stat(file).st_mtime] for file in glob(os.path.join(backup_path, f'{name}__*'))], key=lambda x: x[1])
-
-        delete = len(backup_list) - keep
-        for y in range(0, delete):
-            os.remove(backup_list[y][0])
+        # Create backup
+        constants.run_proc(f'tar -cvf \"{os.path.join(backup_path, "bkup.amb")}\" {"*" if constants.os_name == "windows" else "* .??*"}')
+        if os.path.exists(backup_file):
+            os.remove(backup_file)
+        os.rename(os.path.join(backup_path, "bkup.amb"), backup_file)
 
 
-    os.chdir(cwd)
+        # Clear old backups if there's a limit in auto-mcs.ini
+        if backup_stats['max-backup'] != "unlimited":
 
-    return [file_name, convert_size(os.stat(backup_file).st_size), time]
+            keep = int(backup_stats['max-backup'])
+            backup_list = sorted([[file, os.stat(file).st_mtime] for file in glob(os.path.join(backup_path, f'{name}__*'))], key=lambda x: x[1])
+
+            delete = len(backup_list) - keep
+            if delete > 0:
+                for y in range(0, delete):
+                    os.remove(backup_list[y][0])
+
+
+        os.chdir(cwd)
+        set_lock(name, False)
+
+        return [file_name, convert_size(os.stat(backup_file).st_size), time]
 
 
 # name, index --> restore from file
 def restore_server(name: str, backup_name: str, backup_stats=None):
 
-    constants.java_check()
+    if set_lock(name, True):
 
-    if not backup_stats:
-        backup_stats = dump_config(name)[1]
+        constants.java_check()
 
-    cwd = os.path.abspath(os.curdir)
-    backup_path = backup_stats["backup-path"]
+        if not backup_stats:
+            backup_stats = dump_config(name)[1]
 
-    # Reset backup path if imported to another OS
-    if (':\\' in backup_path and constants.os_name != 'windows') or '/' in backup_path and constants.os_name == 'windows':
-        backup_path = constants.backupFolder
+        cwd = os.path.abspath(os.curdir)
+        backup_path = backup_stats["backup-path"]
 
-
-    # If there are backups listed, restore to server
-    if (len(backup_stats['backup-list']) > 0) and (os.path.basename(backup_name) in [os.path.basename(backup[0]) for backup in backup_stats['backup-list']]):
-
-        os.chdir(constants.server_path(name))
-        file_path = os.path.join(backup_path, os.path.basename(backup_name))
+        # Reset backup path if imported to another OS
+        if (':\\' in backup_path and constants.os_name != 'windows') or '/' in backup_path and constants.os_name == 'windows':
+            backup_path = constants.backupFolder
 
 
-        # Delete all files in server directory
-        if constants.os_name == 'windows':
-            constants.run_proc(f'del /q /s /f *')
-        else:
-            constants.run_proc('rm -rf -- ..?* .[!.]* *')
+        # If there are backups listed, restore to server
+        if (len(backup_stats['backup-list']) > 0) and (os.path.basename(backup_name) in [os.path.basename(backup[0]) for backup in backup_stats['backup-list']]):
+
+            os.chdir(constants.server_path(name))
+            file_path = os.path.join(backup_path, os.path.basename(backup_name))
 
 
-        # Restore backup
-        constants.run_proc(f'tar -xf "{file_path}"')
+            # Delete all files in server directory
+            if constants.os_name == 'windows':
+                constants.run_proc(f'del /q /s /f *')
+            else:
+                constants.run_proc('rm -rf -- ..?* .[!.]* *')
 
 
-        # Rename auto-mcs.ini to provide xplat support
-        if constants.os_name == 'windows':
-            if os.path.exists('.auto-mcs.ini'):
-                os.rename('.auto-mcs.ini', 'auto-mcs.ini')
-                constants.run_proc(f"attrib +H \"{constants.server_ini}\"")
-        else:
-            if os.path.exists('auto-mcs.ini'):
-                os.rename('auto-mcs.ini', '.auto-mcs.ini')
+            # Restore backup
+            constants.run_proc(f'tar -xf "{file_path}"')
 
 
-        # Disable auto-updates to prevent the backup from getting overwritten immediately, also keep backup path
-        config_file = constants.server_config(name)
-        config_file.set("general", "updateAuto", "false")
-        config_file.set("bkup", "bkupDir", backup_path)
-        constants.server_config(name, config_file)
+            # Rename auto-mcs.ini to provide xplat support
+            if constants.os_name == 'windows':
+                if os.path.exists('.auto-mcs.ini'):
+                    os.rename('.auto-mcs.ini', 'auto-mcs.ini')
+                    constants.run_proc(f"attrib +H \"{constants.server_ini}\"")
+            else:
+                if os.path.exists('auto-mcs.ini'):
+                    os.rename('auto-mcs.ini', '.auto-mcs.ini')
 
 
-        # Fix start.bat/start.sh
-        if os.path.exists(f'{constants.start_script_name}.bat'):
-            os.remove(f'{constants.start_script_name}.bat')
-        if os.path.exists(f'{constants.start_script_name}.sh'):
-            os.remove(f'{constants.start_script_name}.sh')
+            # Disable auto-updates to prevent the backup from getting overwritten immediately, also keep backup path
+            config_file = constants.server_config(name)
+            config_file.set("general", "updateAuto", "false")
+            config_file.set("bkup", "bkupDir", backup_path)
+            constants.server_config(name, config_file)
 
-        properties = {'name': name, 'type': config_file.get('general', 'serverType'), 'version': config_file.get('general', 'serverVersion')}
-        constants.generate_run_script(properties)
 
-        os.chdir(cwd)
+            # Fix start.bat/start.sh
+            if os.path.exists(f'{constants.start_script_name}.bat'):
+                os.remove(f'{constants.start_script_name}.bat')
+            if os.path.exists(f'{constants.start_script_name}.sh'):
+                os.remove(f'{constants.start_script_name}.sh')
 
-        return [os.path.basename(backup_name), convert_size(os.stat(file_path).st_size), convert_date(os.stat(file_path).st_mtime)]
+            properties = {'name': name, 'type': config_file.get('general', 'serverType'), 'version': config_file.get('general', 'serverVersion')}
+            constants.generate_run_script(properties)
+
+            os.chdir(cwd)
+            set_lock(name, False)
+
+            return [os.path.basename(backup_name), convert_size(os.stat(file_path).st_size), convert_date(os.stat(file_path).st_mtime)]
 
 
 # Migrate backup directory and backups
@@ -276,25 +283,29 @@ def set_backup_directory(name: str, new_dir: str):
     config_file = constants.server_config(name)
     current_dir = config_file.get('bkup', 'bkupDir')
 
-    # Don't allow any folders inside of app path unless it's the Backups directory
-    if not (constants.applicationFolder in new_dir and new_dir != os.path.join(constants.applicationFolder, 'Backups') and new_dir != current_dir):
+    if set_lock(name, True):
 
-        # Check if folder exists and is writeable
-        constants.folder_check(new_dir)
-        if os.access(new_dir, os.W_OK):
+        # Don't allow any folders inside of app path unless it's the Backups directory
+        if not (constants.applicationFolder in new_dir and new_dir != os.path.join(constants.applicationFolder, 'Backups') and new_dir != current_dir):
 
-            # Migrate backup directory and backups
-            for file in glob(os.path.join(current_dir, "*")):
-                if name in file:
-                    constants.copy(file, new_dir)
-                    os.remove(file)
+            # Check if folder exists and is writeable
+            constants.folder_check(new_dir)
+            if os.access(new_dir, os.W_OK):
 
-            # Update bkupDir
-            config_file.set('bkup', 'bkupDir', new_dir)
-            constants.server_config(name, config_file)
+                # Migrate backup directory and backups
+                for file in glob(os.path.join(current_dir, "*")):
+                    if name in file:
+                        constants.copy(file, new_dir)
+                        os.remove(file)
 
-            return new_dir
+                # Update bkupDir
+                config_file.set('bkup', 'bkupDir', new_dir)
+                constants.server_config(name, config_file)
 
+                set_lock(name, False)
+                return new_dir
+
+    set_lock(name, False)
     return current_dir
 
 
@@ -319,6 +330,27 @@ def enable_auto_backup(name: str, enabled=True):
     constants.server_config(name, config_file)
 
     return enabled
+
+
+# Set back-up lock to prevent collisions or corruption
+def set_lock(name: str, add=True):
+    if add:
+        if name not in constants.backup_lock:
+            constants.backup_lock.append(name)
+            return True
+        else:
+            timeout = 20
+            while name in constants.backup_lock:
+                time.sleep(1)
+                timeout -= 1
+                if timeout <= 0:
+                    break
+            return not (name in constants.backup_lock)
+
+    else:
+        if name in constants.backup_lock:
+            constants.backup_lock.remove(name)
+        return (name in constants.backup_lock)
 
 
 

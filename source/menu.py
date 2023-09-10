@@ -817,7 +817,7 @@ class DirectoryInput(BaseInput):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.recommended_folders = ["Users", "AppData", "Roaming", ".minecraft", "saves"]
+        self.recommended_folders = ["Users", "AppData", "Roaming", ".minecraft", "saves", "home"]
 
         # Create suggestion text
         with self.canvas.after:
@@ -1122,7 +1122,6 @@ class ServerWorldInput(DirectoryInput):
 
                     else:
                         world_valid()
-
 
 
 class ServerImportPathInput(DirectoryInput):
@@ -2782,6 +2781,100 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
     return final
 
 
+class WaitButton(FloatLayout):
+
+    def repos_icon(self, *args):
+
+        def resize(*args):
+            pos_calc = ((self.button.width/2 - 35) if self.button.center[0] > 0 else (-self.button.width/2 + 35))
+            self.icon.center[0] = self.button.center[0] + pos_calc
+            self.load_icon.center[0] = self.button.center[0] + pos_calc
+
+        Clock.schedule_once(resize, 0)
+
+    def loading(self, boolean_value, *args):
+        self.button.on_leave()
+        self.disable(boolean_value)
+        self.load_icon.color = (0.6, 0.6, 1, 1) if boolean_value else (0.6, 0.6, 1, 0)
+
+    def disable(self, disable=False, animate=True):
+        self.button.disabled = disable
+        duration = (0.12 if animate else 0)
+        Animation(color=(0.6, 0.6, 1, 0.4) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.text)
+        Animation(color=(0.6, 0.6, 1, 0) if self.button.disabled else (0.6, 0.6, 1, 1), duration=duration).start(self.icon)
+
+    def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, disabled=False, start_loading=False, **kwargs):
+        super().__init__(**kwargs)
+
+        self.id = name
+
+        self.button = HoverButton()
+        self.button.id = 'main_button'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+        self.button.size_hint = (None, None)
+        self.button.size = (dp(450 if not width else width), dp(72))
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (30, 30, 30, 30)
+        self.button.background_normal = os.path.join(constants.gui_assets, 'main_button.png')
+        self.button.background_down = os.path.join(constants.gui_assets, 'main_button_click.png')
+        self.button.background_disabled_normal = os.path.join(constants.gui_assets, 'main_button_disabled.png')
+        self.button.background_disabled_down = os.path.join(constants.gui_assets, 'main_button_disabled.png')
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.text.text = name.upper()
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 1)
+
+
+        # Button click behavior
+        self.button.on_release = functools.partial(button_action, name, self.button)
+        self.add_widget(self.button)
+
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.source = icon_path(icon_name)
+            self.icon.size = (dp(1), dp(1))
+            self.icon.color = (0.6, 0.6, 1, 1)
+            self.icon.pos_hint = {"center_y": position[1]}
+            self.icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
+            self.add_widget(self.icon)
+
+
+        # Loading icon
+        self.load_icon = AsyncImage()
+        self.load_icon.id = 'load_icon'
+        self.load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.size_hint_max_y = 40
+        self.load_icon.color = (0.6, 0.6, 1, 0)
+        self.load_icon.pos_hint = {"center_y": position[1]}
+        self.load_icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
+        self.load_icon.allow_stretch = True
+        self.load_icon.anim_delay = 0.02
+        self.add_widget(self.load_icon)
+
+
+        self.add_widget(self.text)
+
+        if auto_adjust_icon and icon_name:
+            Clock.schedule_once(self.repos_icon, 0)
+
+        if click_func:
+            self.button.bind(on_press=click_func)
+
+        if disabled:
+            self.disable(True, False)
+
+        if start_loading:
+            self.loading(True)
+
+
+
 class IconButton(FloatLayout):
 
     def resize(self, *args):
@@ -3289,9 +3382,6 @@ class NextButton(HoverButton):
 
             if "Input" in child.__class__.__name__:
                 child.focus = False
-
-
-
 def next_button(name, position, disabled=False, next_screen="MainMenuScreen", show_load_icon=False):
 
     final = FloatLayout()
@@ -3349,51 +3439,49 @@ def next_button(name, position, disabled=False, next_screen="MainMenuScreen", sh
     return final
 
 
+class HeaderText(FloatLayout):
 
-def header_text(display_text, more_text, position, fixed_x=False, no_line=False):
+    def __init__(self, display_text, more_text, position, fixed_x=False, no_line=False, **kwargs):
+        super().__init__(**kwargs)
 
-    final = FloatLayout()
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.markup = True
+        if not fixed_x:
+            self.text.pos_hint = {"center_x": 0.5, "center_y": position[1]}
+        else:
+            self.text.pos_hint = {"center_y": position[1]}
+        self.text.text = display_text
+        self.text.font_size = sp(23)
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 1)
 
-    text = Label()
-    text.id = 'text'
-    text.size_hint = (None, None)
-    text.markup = True
-    if not fixed_x:
-        text.pos_hint = {"center_x": 0.5, "center_y": position[1]}
-    else:
-        text.pos_hint = {"center_y": position[1]}
-    text.text = display_text
-    text.font_size = sp(23)
-    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-    text.color = (0.6, 0.6, 1, 1)
+        self.lower_text = Label()
+        self.lower_text.id = 'lower_text'
+        self.lower_text.size_hint = (None, None)
+        self.lower_text.markup = True
+        self.lower_text.pos_hint = {"center_x": 0.5, "center_y": position[1] - 0.07}
+        self.lower_text.text = more_text
+        self.lower_text.font_size = sp(19)
+        self.lower_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.lower_text.color = (0.6, 0.6, 1, 0.6)
 
-    lower_text = Label()
-    lower_text.id = 'lower_text'
-    lower_text.size_hint = (None, None)
-    text.markup = True
-    lower_text.pos_hint = {"center_x": 0.5, "center_y": position[1] - 0.07}
-    lower_text.text = more_text
-    lower_text.font_size = sp(19)
-    lower_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-    lower_text.color = (0.6, 0.6, 1, 0.6)
+        self.separator = Label(text="_" * 48, pos_hint={"center_y": position[1] - 0.025}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+        self.separator.id = 'separator'
+        if not no_line:
+            self.add_widget(self.separator)
+        self.add_widget(self.text)
 
-    separator = Label(text="_" * 48, pos_hint={"center_y": position[1] - 0.025}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
-    separator.id = 'separator'
-    if not no_line:
-        final.add_widget(separator)
-    final.add_widget(text)
-
-    if lower_text:
-        final.add_widget(lower_text)
-
-    return final
+        if self.lower_text:
+            self.add_widget(self.lower_text)
 
 
 
-def input_button(name, position, file=(), input_name=None, title=None, ext_list=[]):
+def input_button(name, position, file=(), input_name=None, title=None, ext_list=[], offset=0):
 
     final = FloatLayout()
-    final.x += 190
+    final.x += (190 + offset)
 
     button = HoverButton()
     button.id = 'input_button'
@@ -3674,12 +3762,28 @@ class NumberSlider(FloatLayout):
     def on_value(self, *args):
         spos = self.slider.value_pos
         lpos = self.label.size_hint_max
+        ipos = self.infinity.size_hint_max
         self.label.pos = (spos[0] - (lpos[0]/2) + 0.7, spos[1] + lpos[1] + 1)
+        self.infinity.pos = (spos[0] - (ipos[0] / 2), spos[1] + ipos[1])
         self.slider_val = self.slider.value.__floor__()
         self.label.text = str(self.slider_val)
 
-        if self.function and (self.slider_val != self.last_val) and not self.init:
-            self.function(self.slider_val)
+
+        if (self.slider_val != self.last_val) or self.init:
+
+            # Show infinity symbol if max infinite
+            if self.max_infinite:
+                if (self.slider_val == self.slider.range[1]):
+                    self.label.opacity = 0
+                    self.infinity.opacity = 1
+                else:
+                    self.label.opacity = 1
+                    self.infinity.opacity = 0
+
+            # Execute function with value if it's added
+            if self.function and not self.init:
+                self.function(self.slider_val)
+
 
         self.last_val = self.slider_val
         self.init = False
@@ -3693,6 +3797,7 @@ class NumberSlider(FloatLayout):
         self.last_val = default_value
         self.slider_val = default_value
         self.init = True
+        self.max_infinite = max_infinite
 
         # Main slider widget
         self.slider = Slider(value=default_value, value_track=True, range=limits)
@@ -3718,6 +3823,14 @@ class NumberSlider(FloatLayout):
         self.label.font_size = sp(20)
         self.label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
         self.add_widget(self.label)
+
+        # Infinity label
+        self.infinity = Image()
+        self.infinity.size_hint_max = (28, 28)
+        self.infinity.color = (0.15, 0.15, 0.3, 1)
+        self.infinity.source = os.path.join(constants.gui_assets, 'icons', 'infinite-bold.png')
+        self.infinity.opacity = 0
+        self.add_widget(self.infinity)
         
 
         # Bind to number change
@@ -5522,7 +5635,7 @@ class ProgressScreen(MenuBackground):
         float_layout = FloatLayout()
         float_layout.id = 'content'
 
-        float_layout.add_widget(header_text(self.page_contents['header'], '', (0, 0.8)))
+        float_layout.add_widget(HeaderText(self.page_contents['header'], '', (0, 0.8)))
 
         self.progress_bar = ProgressWidget(pos_hint={'center_x': 0.5, 'center_y': 0.6})
 
@@ -5647,13 +5760,13 @@ class CreateServerNameScreen(MenuBackground):
 
         # Prevent server creation if offline
         if not constants.app_online:
-            float_layout.add_widget(header_text("Server creation requires an internet connection", '', (0, 0.6)))
+            float_layout.add_widget(HeaderText("Server creation requires an internet connection", '', (0, 0.6)))
             buttons.append(exit_button('Back', (0.5, 0.35)))
 
         # Regular menus
         else:
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
-            float_layout.add_widget(header_text("What would you like to name your server?", '', (0, 0.76)))
+            float_layout.add_widget(HeaderText("What would you like to name your server?", '', (0, 0.76)))
             name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['name'])
             float_layout.add_widget(name_input)
             buttons.append(next_button('Next', (0.5, 0.24), not constants.new_server_info['name'], next_screen='CreateServerTypeScreen'))
@@ -5688,7 +5801,7 @@ class CreateServerTypeScreen(MenuBackground):
         float_layout = FloatLayout()
         float_layout.id = 'content'
 
-        float_layout.add_widget(header_text("What type of server do you wish to create?", '', (0, 0.86)))
+        float_layout.add_widget(HeaderText("What type of server do you wish to create?", '', (0, 0.86)))
 
         # Create UI buttons
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerVersionScreen'))
@@ -5744,14 +5857,14 @@ class CreateServerVersionScreen(MenuBackground):
 
         # Prevent server creation if offline
         if not constants.app_online:
-            float_layout.add_widget(header_text("Server creation requires an internet connection", '', (0, 0.6)))
+            float_layout.add_widget(HeaderText("Server creation requires an internet connection", '', (0, 0.6)))
             buttons.append(exit_button('Back', (0.5, 0.35)))
 
         # Regular menus
         else:
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
             float_layout.add_widget(page_counter(3, 7, (0, 0.768)))
-            float_layout.add_widget(header_text("What version of Minecraft do you wish to play?", '', (0, 0.76)))
+            float_layout.add_widget(HeaderText("What version of Minecraft do you wish to play?", '', (0, 0.76)))
             float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['version']))
             buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerWorldScreen', show_load_icon=True))
             buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
@@ -5796,7 +5909,7 @@ class CreateServerWorldScreen(MenuBackground):
         float_layout = FloatLayout()
         float_layout.id = 'content'
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.62}))
-        float_layout.add_widget(header_text("What world would you like to use?", '', (0, 0.76)))
+        float_layout.add_widget(HeaderText("What world would you like to use?", '', (0, 0.76)))
         float_layout.add_widget(ServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.55}))
         float_layout.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
         buttons.append(input_button('Browse...', (0.5, 0.55), ('dir', constants.saveFolder if os.path.isdir(constants.saveFolder) else constants.userDownloads), input_name='ServerWorldInput', title='Select a World File'))
@@ -5907,7 +6020,7 @@ class CreateServerNetworkScreen(MenuBackground):
         float_layout.id = 'content'
 
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.685}))
-        float_layout.add_widget(header_text("Do you wish to configure network information?", '', (0, 0.8)))
+        float_layout.add_widget(HeaderText("Do you wish to configure network information?", '', (0, 0.8)))
         float_layout.add_widget(ServerPortInput(pos_hint={"center_x": 0.5, "center_y": 0.62}, text=process_ip_text()))
         float_layout.add_widget(ServerMOTDInput(pos_hint={"center_x": 0.5, "center_y": 0.515}))
         float_layout.add_widget(main_button('Access Control Manager', (0.5, 0.4), 'shield-half-small.png', width=531))
@@ -7474,7 +7587,7 @@ class CreateServerAclScreen(MenuBackground):
         selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
         page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
         header_content = ""
-        self.header = header_text(header_content, '', (0, 0.89), fixed_x=True, no_line=True)
+        self.header = HeaderText(header_content, '', (0, 0.89), fixed_x=True, no_line=True)
 
 
         buttons = []
@@ -7730,7 +7843,7 @@ class CreateServerAclRuleScreen(MenuBackground):
             float_layout.add_widget(HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
 
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.72}))
-        float_layout.add_widget(header_text(header_message, '', (0, 0.8)))
+        float_layout.add_widget(HeaderText(header_message, '', (0, 0.8)))
         self.acl_input = AclRuleInput(pos_hint={"center_x": 0.5, "center_y": 0.64}, text="")
         float_layout.add_widget(self.acl_input)
 
@@ -7792,7 +7905,7 @@ class CreateServerOptionsScreen(MenuBackground):
         buttons = []
         float_layout = FloatLayout()
         float_layout.id = 'content'
-        float_layout.add_widget(header_text(f"Optionally, configure additional properties", '', (0, 0.86)))
+        float_layout.add_widget(HeaderText(f"Optionally, configure additional properties", '', (0, 0.86)))
 
         # If server type != vanilla, append addon manger button and extend float_layout widget
         if constants.new_server_info['type'] != 'vanilla':
@@ -8269,7 +8382,7 @@ class CreateServerAddonScreen(MenuBackground):
         addon_count = len(constants.new_server_info['addon_objects'])
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = "Add-on Queue  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] items')
-        self.header = header_text(header_content, '', (0, 0.89))
+        self.header = HeaderText(header_content, '', (0, 0.89))
 
         buttons = []
         float_layout = FloatLayout()
@@ -8566,7 +8679,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
         addon_count = 0
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = "Add-on Search"
-        self.header = header_text(header_content, '', (0, 0.89))
+        self.header = HeaderText(header_content, '', (0, 0.89))
 
         buttons = []
         float_layout = FloatLayout()
@@ -8742,7 +8855,7 @@ class CreateServerReviewScreen(MenuBackground):
         buttons = []
         float_layout = FloatLayout()
         float_layout.id = 'content'
-        float_layout.add_widget(header_text(f"Please verify your configuration", '', (0, 0.89), no_line=True))
+        float_layout.add_widget(HeaderText(f"Please verify your configuration", '', (0, 0.89), no_line=True))
 
         pgh_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
 
@@ -9090,12 +9203,12 @@ class ServerImportScreen(MenuBackground):
 
         # Prevent server creation if offline
         if not constants.app_online:
-            self.layout.add_widget(header_text("Importing a server requires an internet connection", '', (0, 0.6)))
+            self.layout.add_widget(HeaderText("Importing a server requires an internet connection", '', (0, 0.6)))
             buttons.append(exit_button('Back', (0.5, 0.35)))
 
         # Regular menus
         else:
-            self.layout.add_widget(header_text("Which server do you wish to import?", '', (0, 0.76)))
+            self.layout.add_widget(HeaderText("Which server do you wish to import?", '', (0, 0.76)))
             buttons.append(main_button('Import external server', (0.5, 0.5), 'folder-outline.png', click_func=functools.partial(self.load_input, 'external')))
             buttons.append(main_button('Import Auto-MCS back-up', (0.5, 0.38), 'backup-icon.png', click_func=functools.partial(self.load_input, 'backup')))
             self.layout.add_widget(exit_button('Back', (0.5, 0.14), cycle=True))
@@ -9778,7 +9891,7 @@ class ServerManagerScreen(MenuBackground):
 
         # Generate buttons on page load
         header_content = "Select a server in which to manage"
-        self.header = header_text(header_content, '', (0, 0.89))
+        self.header = HeaderText(header_content, '', (0, 0.89))
 
         buttons = []
         float_layout = FloatLayout()
@@ -11566,11 +11679,15 @@ class ServerBackupScreen(MenuBackground):
         self.name = self.__class__.__name__
         self.menu = 'init'
 
+        self.save_backup_button = None
+        self.header = None
         self.menu_taskbar = None
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
+        server_obj.backup.update_data()
         backup_stats = server_obj.backup.backup_stats
+        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.485))
@@ -11582,6 +11699,7 @@ class ServerBackupScreen(MenuBackground):
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
             call_widget.height = Window.height // 1.6
             grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            scroll_layout.spacing = 30 if grid_layout.cols == 2 else 10
 
             def update_grid(*args):
                 anchor_layout.size_hint_min_y = grid_layout.height
@@ -11606,8 +11724,44 @@ class ServerBackupScreen(MenuBackground):
         float_layout.id = 'content'
 
         # Save back-up button
+        def save_backup(*args):
+
+            def run_backup(*args):
+
+                # Run back-up
+                Clock.schedule_once(functools.partial(self.save_backup_button.loading, True), 0)
+                server_obj.backup.save_backup()
+
+                # Update header
+                def change_header(*args):
+                    backup_stats = server_obj.backup.backup_stats
+                    backup_count = len(backup_stats['backup-list'])
+                    header_content = "Latest Back-up  [color=#494977]-[/color]  " + ('[color=#6A6ABA]Never[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
+                    sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
+                    self.header.text.text = header_content
+                    self.header.lower_text.text = sub_header_content
+
+                Clock.schedule_once(change_header, 0)
+
+                # Show banner and update button
+                Clock.schedule_once(functools.partial(self.save_backup_button.loading, False), 0)
+
+                Clock.schedule_once(
+                    functools.partial(
+                        self.show_banner,
+                        (0.553, 0.902, 0.675, 1),
+                        f"Backed up '{server_obj.name}' successfully",
+                        "checkmark-circle-sharp.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+
+            threading.Timer(0, run_backup).start()
+
         sub_layout = ScrollItem()
-        sub_layout.add_widget(main_button('Save Back-up Now', (0.5, 0.5), 'save-sharp.png'))
+        self.save_backup_button = WaitButton('Save Back-up Now', (0.5, 0.5), 'save-sharp.png', click_func=save_backup)
+        sub_layout.add_widget(self.save_backup_button)
         scroll_layout.add_widget(sub_layout)
 
         # Restore back-up button
@@ -11615,26 +11769,48 @@ class ServerBackupScreen(MenuBackground):
         sub_layout.add_widget(main_button('Restore From Back-up', (0.5, 0.5), 'reload-sharp.png'))
         scroll_layout.add_widget(sub_layout)
 
+
         # Auto-backup toggle
+        start_value = False if str(backup_stats['auto-backup']) == 'prompt' else str(backup_stats['auto-backup']) == 'true'
+
+        def toggle_auto(var):
+            server_obj.backup.enable_auto_backup(var)
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (0.553, 0.902, 0.675, 1) if var else (0.937, 0.831, 0.62, 1),
+                    f"Automatic back-ups {'en' if var else 'dis'}abled",
+                    "checkmark-circle-sharp.png" if var else "close-circle-sharp.png",
+                    2,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="automatic back-ups"))
-        sub_layout.add_widget(toggle_button('auto-backup', (0.5, 0.5), default_state=False))
+        sub_layout.add_widget(toggle_button('auto-backup', (0.5, 0.5), default_state=start_value, custom_func=toggle_auto))
         scroll_layout.add_widget(sub_layout)
 
 
         # Maximum back-up slider
-        def change_backup(val):
-            print(val)
+        max_limit = 11
+        start_value = max_limit if str(backup_stats['max-backup']) == 'unlimited' else int(backup_stats['max-backup'])
+
+        def change_limit(val):
+            server_obj.backup.set_backup_amount('unlimited' if val == max_limit else val)
 
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="maximum back-ups"))
-        sub_layout.add_widget(NumberSlider(backup_stats['max-backup'], (0.5, 0.5), input_name='BackupMaxInput', limits=(2, 11), max_infinite=True, function=change_backup))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='BackupMaxInput', limits=(2, max_limit), max_infinite=True, function=change_limit))
         scroll_layout.add_widget(sub_layout)
+
 
         # Open back-up directory
         sub_layout = ScrollItem()
         sub_layout.add_widget(main_button('Open Back-up Directory', (0.5, 0.5), 'folder-outline.png'))
         scroll_layout.add_widget(sub_layout)
+
 
         # Migrate back-up directory
         sub_layout = ScrollItem()
@@ -11653,10 +11829,10 @@ class ServerBackupScreen(MenuBackground):
         # Configure header
         print(backup_stats)
         backup_count = len(backup_stats['backup-list'])
-        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = "Latest Back-up  [color=#494977]-[/color]  " + ('[color=#6A6ABA]Never[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
         sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
-        float_layout.add_widget(header_text(header_content, sub_header_content, (0, 0.89)))
+        self.header = HeaderText(header_content, sub_header_content, (0, 0.89))
+        float_layout.add_widget(self.header)
 
 
         buttons.append(exit_button('Back', (0.5, -1), cycle=True))
@@ -11737,7 +11913,7 @@ class ServerAclScreen(CreateServerAclScreen):
         selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
         page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
         header_content = ""
-        self.header = header_text(header_content, '', (0, 0.89), fixed_x=True, no_line=True)
+        self.header = HeaderText(header_content, '', (0, 0.89), fixed_x=True, no_line=True)
 
         buttons = []
         float_layout = FloatLayout()
@@ -11934,7 +12110,7 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
             float_layout.add_widget(HintLabel(0.425, "Use   [color=#FFFF33]!g <rule>[/color]   to apply globally on all servers"))
 
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.72}))
-        float_layout.add_widget(header_text(header_message, '', (0, 0.8)))
+        float_layout.add_widget(HeaderText(header_message, '', (0, 0.8)))
         self.acl_input = AclRuleInput(pos_hint={"center_x": 0.5, "center_y": 0.64}, text="")
         float_layout.add_widget(self.acl_input)
 
@@ -12486,7 +12662,7 @@ class ServerAddonScreen(MenuBackground):
         addon_count = len(self.server.addon.return_single_list())
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = "Installed Add-ons  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] items')
-        self.header = header_text(header_content, '', (0, 0.89))
+        self.header = HeaderText(header_content, '', (0, 0.89))
 
         buttons = []
         float_layout = FloatLayout()
@@ -12832,7 +13008,7 @@ class ServerAddonSearchScreen(MenuBackground):
         addon_count = 0
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = "Add-on Search"
-        self.header = header_text(header_content, '', (0, 0.89))
+        self.header = HeaderText(header_content, '', (0, 0.89))
 
         buttons = []
         float_layout = FloatLayout()

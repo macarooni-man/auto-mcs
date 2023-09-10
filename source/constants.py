@@ -170,6 +170,8 @@ server_manager = None
 
 import_data = {'name': None, 'path': None}
 
+backup_lock = []
+
 
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
