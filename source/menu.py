@@ -11680,6 +11680,10 @@ class ServerBackupScreen(MenuBackground):
         self.menu = 'init'
 
         self.save_backup_button = None
+        self.restore_backup_button = None
+        self.open_path_button = None
+        self.migrate_path_button = None
+
         self.header = None
         self.menu_taskbar = None
 
@@ -11766,7 +11770,8 @@ class ServerBackupScreen(MenuBackground):
 
         # Restore back-up button
         sub_layout = ScrollItem()
-        sub_layout.add_widget(main_button('Restore From Back-up', (0.5, 0.5), 'reload-sharp.png'))
+        self.restore_backup_button = WaitButton('Restore From Back-up', (0.5, 0.5), 'reload-sharp.png')
+        sub_layout.add_widget(self.restore_backup_button)
         scroll_layout.add_widget(sub_layout)
 
 
@@ -11807,14 +11812,21 @@ class ServerBackupScreen(MenuBackground):
 
 
         # Open back-up directory
+        def open_backup_dir(*args):
+            backup_stats = server_obj.backup.backup_stats
+            constants.open_folder(backup_stats['backup-path'])
+            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
         sub_layout = ScrollItem()
-        sub_layout.add_widget(main_button('Open Back-up Directory', (0.5, 0.5), 'folder-outline.png'))
+        self.open_path_button = WaitButton('Open Back-up Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_backup_dir)
+        sub_layout.add_widget(self.open_path_button)
         scroll_layout.add_widget(sub_layout)
 
 
         # Migrate back-up directory
         sub_layout = ScrollItem()
-        sub_layout.add_widget(main_button('Migrate Back-up Directory', (0.5, 0.5), 'migrate.png'))
+        self.migrate_path_button = WaitButton('Migrate Back-up Directory', (0.5, 0.5), 'migrate.png')
+        sub_layout.add_widget(self.migrate_path_button)
         scroll_layout.add_widget(sub_layout)
 
 

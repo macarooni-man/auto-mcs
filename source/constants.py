@@ -170,7 +170,7 @@ server_manager = None
 
 import_data = {'name': None, 'path': None}
 
-backup_lock = []
+backup_lock = {}
 
 
 # ---------------------------------------------- Global Functions ------------------------------------------------------
@@ -511,6 +511,14 @@ def folder_check(directory: str):
     else:
         if debug:
             print(f'"{directory}" already exists')
+
+
+# Open folder in default file browser
+def open_folder(directory: str):
+    if os_name == 'linux':
+        subprocess.Popen(['xdg-open', directory])
+    elif os_name == 'windows':
+        subprocess.Popen(['explorer', directory])
 
 
 # Extract archive

@@ -169,7 +169,7 @@ def dump_config(server_name: str, new_server=False):
 # name --> backup to directory
 def backup_server(name: str, backup_stats=None):
 
-    if set_lock(name, True):
+    if set_lock(name, True, 'save'):
 
         if not backup_stats:
             backup_stats = dump_config(name)[1]
@@ -211,7 +211,7 @@ def backup_server(name: str, backup_stats=None):
 # name, index --> restore from file
 def restore_server(name: str, backup_name: str, backup_stats=None):
 
-    if set_lock(name, True):
+    if set_lock(name, True, 'restore'):
 
         constants.java_check()
 
@@ -283,7 +283,7 @@ def set_backup_directory(name: str, new_dir: str):
     config_file = constants.server_config(name)
     current_dir = config_file.get('bkup', 'bkupDir')
 
-    if set_lock(name, True):
+    if set_lock(name, True, 'migrate'):
 
         # Don't allow any folders inside of app path unless it's the Backups directory
         if not (constants.applicationFolder in new_dir and new_dir != os.path.join(constants.applicationFolder, 'Backups') and new_dir != current_dir):
@@ -333,10 +333,10 @@ def enable_auto_backup(name: str, enabled=True):
 
 
 # Set back-up lock to prevent collisions or corruption
-def set_lock(name: str, add=True):
+def set_lock(name: str, add=True, reason=None):
     if add:
         if name not in constants.backup_lock:
-            constants.backup_lock.append(name)
+            constants.backup_lock[name] = reason
             return True
         else:
             timeout = 20
@@ -349,7 +349,7 @@ def set_lock(name: str, add=True):
 
     else:
         if name in constants.backup_lock:
-            constants.backup_lock.remove(name)
+            del constants.backup_lock[name]
         return (name in constants.backup_lock)
 
 
