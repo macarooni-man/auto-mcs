@@ -95,8 +95,8 @@ if __name__ == '__main__':
         log_dir = os.path.join(constants.applicationFolder, "Logs")
 
         # Timestamp
-        time_stamp = datetime.datetime.now().strftime("%#H-%M-%S_%#m-%#d-%y")
-        time_formatted = datetime.datetime.now().strftime("%#I:%M:%S %p  %#m/%#d/%Y")
+        time_stamp = datetime.datetime.now().strftime("%#H-%M-%S_%#m-%#d-%y" if constants.os_name == "windows" else "%-H-%M-%S_%-m-%-d-%y")
+        time_formatted = datetime.datetime.now().strftime("%#I:%M:%S %p  %#m/%#d/%Y" if constants.os_name == "windows" else "%-I:%M:%S %p  %-m/%-d/%Y")
 
         # Header
         header = f'Auto-MCS Exception:    {ame}  '

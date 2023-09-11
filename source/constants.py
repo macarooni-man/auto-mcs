@@ -822,8 +822,8 @@ def find_latest_mc():
         "vanilla": "https://mcversions.net/index.html",
         "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/index.html",
         "paper": "https://papermc.io/api/v2/projects/paper/",
-        "spigot": "http://getbukkit.org/download/spigot",
-        "craftbukkit": "http://getbukkit.org/download/craftbukkit",
+        "spigot": "https://getbukkit.org/download/spigot",
+        "craftbukkit": "https://getbukkit.org/download/craftbukkit",
         "fabric": "https://fabricmc.net/use/server/"
     }
 
@@ -973,7 +973,7 @@ def validate_version(server_info: dict):
 
 
             elif str.lower(mcType) == "craftbukkit":
-                cb_url = "http://getbukkit.org/download/craftbukkit"
+                cb_url = "https://getbukkit.org/download/craftbukkit"
 
                 # Workaround to prevent downloading Java 16 as well
                 if mcVer != "1.17":
@@ -984,18 +984,18 @@ def validate_version(server_info: dict):
                     for div in soup.find_all('div', "row vdivide"):
                         if div.h2.text == str(mcVer):
 
-                            reqs = requests.get(div.a.get('href').replace("https","http"))
+                            reqs = requests.get(div.a.get('href'))
                             soup = BeautifulSoup(reqs.text, 'html.parser')
 
                             for div in soup.find_all('div', "well"):
-                                url = div.h2.a.get('href').replace("https","http")
+                                url = div.h2.a.get('href')
                                 break
 
                             break
 
 
             elif str.lower(mcType) == "spigot":
-                cb_url = "http://getbukkit.org/download/spigot"
+                cb_url = "https://getbukkit.org/download/spigot"
 
                 # Workaround to prevent downloading Java 16 as well
                 if mcVer != "1.17":
@@ -1006,11 +1006,11 @@ def validate_version(server_info: dict):
                     for div in soup.find_all('div', "row vdivide"):
                         if div.h2.text == str(mcVer):
 
-                            reqs = requests.get(div.a.get('href').replace("https","http"))
+                            reqs = requests.get(div.a.get('href'))
                             soup = BeautifulSoup(reqs.text, 'html.parser')
 
                             for div in soup.find_all('div', "well"):
-                                url = div.h2.a.get('href').replace("https","http")
+                                url = div.h2.a.get('href')
                                 break
 
                             break

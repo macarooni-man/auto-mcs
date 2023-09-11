@@ -114,11 +114,11 @@ def convert_date(m_time: int or float):
         dt_obj = m_time
     days = (dt.now().date() - dt_obj.date()).days
     if days == 0:
-        fmt = "Today %#I:%M %p"
+        fmt = "Today %#I:%M %p" if constants.os_name == "windows" else "Today %-I:%M %p"
     elif days == 1:
-        fmt = "Yesterday %#I:%M %p"
+        fmt = "Yesterday %#I:%M %p" if constants.os_name == "windows" else "Yesterday %-I:%M %p"
     else:
-        fmt = "%a %#I:%M %p %#m/%#d/%y"
+        fmt = "%a %#I:%M %p %#m/%#d/%y" if constants.os_name == "windows" else "%a %-I:%M %p %-m/%-d/%y"
     return dt_obj.strftime(fmt)
 
 
@@ -206,7 +206,7 @@ def dump_config(server_name: str, new_server=False):
         except IndexError:
             pass
 
-        backup_stats['backup-list'] = [[file[0], convert_size(file[1]), file[2].strftime("%a %#I:%M %p %#m/%#d/%Y")] for file in backup_stats['backup-list']]
+        backup_stats['backup-list'] = [[file[0], convert_size(file[1]), file[2].strftime("%a %#I:%M %p %#m/%#d/%Y" if constants.os_name == "windows" else "%a %-I:%M %p %-m/%-d/%Y")] for file in backup_stats['backup-list']]
 
 
     return server_dict, backup_stats
