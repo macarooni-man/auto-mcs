@@ -822,8 +822,8 @@ def find_latest_mc():
         "vanilla": "https://mcversions.net/index.html",
         "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/index.html",
         "paper": "https://papermc.io/api/v2/projects/paper/",
-        "spigot": "https://getbukkit.org/download/spigot",
-        "craftbukkit": "https://getbukkit.org/download/craftbukkit",
+        "spigot": "http://getbukkit.org/download/spigot",
+        "craftbukkit": "http://getbukkit.org/download/craftbukkit",
         "fabric": "https://fabricmc.net/use/server/"
     }
 
@@ -973,7 +973,7 @@ def validate_version(server_info: dict):
 
 
             elif str.lower(mcType) == "craftbukkit":
-                cb_url = "https://getbukkit.org/download/craftbukkit"
+                cb_url = "http://getbukkit.org/download/craftbukkit"
 
                 # Workaround to prevent downloading Java 16 as well
                 if mcVer != "1.17":
@@ -984,18 +984,18 @@ def validate_version(server_info: dict):
                     for div in soup.find_all('div', "row vdivide"):
                         if div.h2.text == str(mcVer):
 
-                            reqs = requests.get(div.a.get('href'))
+                            reqs = requests.get(div.a.get('href').replace("https","http"))
                             soup = BeautifulSoup(reqs.text, 'html.parser')
 
                             for div in soup.find_all('div', "well"):
-                                url = div.h2.a.get('href')
+                                url = div.h2.a.get('href').replace("https","http")
                                 break
 
                             break
 
 
             elif str.lower(mcType) == "spigot":
-                cb_url = "https://getbukkit.org/download/spigot"
+                cb_url = "http://getbukkit.org/download/spigot"
 
                 # Workaround to prevent downloading Java 16 as well
                 if mcVer != "1.17":
@@ -1006,11 +1006,11 @@ def validate_version(server_info: dict):
                     for div in soup.find_all('div', "row vdivide"):
                         if div.h2.text == str(mcVer):
 
-                            reqs = requests.get(div.a.get('href'))
+                            reqs = requests.get(div.a.get('href').replace("https","http"))
                             soup = BeautifulSoup(reqs.text, 'html.parser')
 
                             for div in soup.find_all('div', "well"):
-                                url = div.h2.a.get('href')
+                                url = div.h2.a.get('href').replace("https","http")
                                 break
 
                             break
@@ -1685,7 +1685,44 @@ max-world-size=29999984"""
 # Create initial backup of new server
 # For existing servers, use server_manager.current_server.backup.save_backup()
 def create_backup(import_server=False, *args):
-    backup.BackupObject(new_server_info['name'] if not import_server else import_data['name']).save_backup()
+    backup.BackupManager(new_server_info['name'] if not import_server else import_data['name']).save_backup()
+    return True
+
+
+# Restore backup and track progress for ServerBackupRestoreProgressScreen
+def restore_server(file_path, progress_func=None):
+
+    # Get file count of backup
+    total_files = 0
+    proc_complete = False
+    server_name = server_manager.current_server.name
+    file_name = os.path.basename(file_path)
+
+    server_manager.current_server.backup.restore_file = None
+
+    with tarfile.open(file_path) as archive:
+        total_files = sum(1 for member in archive if member.isreg())
+
+    def thread_checker():
+        while not proc_complete:
+            time.sleep(0.5)
+            current_count = 0
+            for path, dir_count, file_count in os.walk(server_path(server_name)):
+                current_count += len(file_count)
+
+            percent = round((current_count/total_files) * 100)
+            progress_func(percent)
+
+        print("Done!")
+
+    threading.Timer(0, thread_checker).start()
+
+    server_manager.current_server.backup.restore_backup(file_name)
+    proc_complete = True
+
+    if progress_func:
+        progress_func(100)
+
     return True
 
 

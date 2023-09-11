@@ -1,21 +1,70 @@
-import time
 from datetime import datetime as dt
 from functools import reduce
 from glob import glob
 import constants
+import time
 import os
 
 
-# Auto-MCS Backup API
-# ------------------------------------------------- Backup Object ------------------------------------------------------
+# Auto-MCS Back-up API
+# ----------------------------------------------- Backup Objects -------------------------------------------------------
+
+# Instantiate backup object from file (backup_info is data from self.backup_stats['backup-list'])
+# server_name, file_path --> BackupObject
+class BackupObject():
+
+    def grab_config(self):
+        cwd = os.path.abspath(os.curdir)
+        extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
+        constants.folder_check(extract_folder)
+        os.chdir(extract_folder)
+
+        # Extract auto-mcs.ini from back-up file to grab version information
+        constants.run_proc(f'tar -xvf "{self.path}" auto-mcs.ini')
+        constants.run_proc(f'tar -xvf "{self.path}" .auto-mcs.ini')
+
+        cfg_list = glob(os.path.join(extract_folder, 'auto-mcs.ini'))
+        cfg_list.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
+
+        for cfg in cfg_list:
+            config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+            config.optionxform = str
+            config.read(cfg)
+            if config:
+
+                # If auto-mcs.ini exists, grab version and type information
+                if config.get('general', 'serverName') == self.name:
+                    self.type = config.get('general', 'serverType')
+                    self.version = config.get('general', 'serverVersion')
+
+                os.remove(cfg)
+                break
+
+        constants.safe_delete(extract_folder)
+        os.chdir(cwd)
+
+
+    def __init__(self, server_name: str, backup_info: list):
+        self.name = server_name
+
+        self.path = backup_info[0]
+        self.size = backup_info[1]
+        self.date = backup_info[2]
+
+        self.type = 'Unknown'
+        self.version = 'Unknown'
+
+        self.grab_config()
+
 
 # Instantiate class with "server_name" (case-sensitive)
 # Houses backup functions in class
-class BackupObject():
+class BackupManager():
 
     def __init__(self, server_name: str):
 
         self.server, self.backup_stats = dump_config(server_name)
+        self.restore_file = None
 
     # Refreshes self.backup_stats
     def update_data(self):
@@ -282,23 +331,54 @@ def set_backup_directory(name: str, new_dir: str):
     cwd = os.path.abspath(os.curdir)
     config_file = constants.server_config(name)
     current_dir = config_file.get('bkup', 'bkupDir')
+    current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir
+    new_dir = new_dir.replace(r"/","\\") if constants.os_name == 'windows' else new_dir
 
     if set_lock(name, True, 'migrate'):
 
         # Don't allow any folders inside of app path unless it's the Backups directory
-        if not (constants.applicationFolder in new_dir and new_dir != os.path.join(constants.applicationFolder, 'Backups') and new_dir != current_dir):
+        if ((constants.applicationFolder not in new_dir) or (new_dir == os.path.join(constants.applicationFolder, 'Backups'))) and (new_dir != current_dir):
 
             # Check if folder exists and is writeable
             constants.folder_check(new_dir)
             if os.access(new_dir, os.W_OK):
 
                 # Migrate backup directory and backups
-                for file in glob(os.path.join(current_dir, "*")):
-                    if name in file:
-                        constants.copy(file, new_dir)
-                        os.remove(file)
+                extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
+
+                # Iterate over each back-up that could be a match in current back-up directory
+                for file in glob(os.path.join(current_dir, f"{name}__*")):
+                    constants.folder_check(extract_folder)
+                    os.chdir(extract_folder)
+
+                    # Extract auto-mcs.ini from each match and check the server name just to be sure
+                    constants.run_proc(f'tar -xvf "{file}"') # *auto-mcs.ini
+
+                    for cfg in glob(os.path.join(extract_folder, '*auto-mcs.ini')):
+                        config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+                        config.optionxform = str
+                        config.read(cfg)
+                        if config:
+                            if config.get('general', 'serverName') == name:
+
+                                # Update bkupDir with new_dir in the back-ups' auto-mcs.ini
+                                config.set('bkup', 'bkupDir', new_dir)
+                                with open(cfg, 'w') as f:
+                                    config.write(f)
+
+                                constants.run_proc(f'tar -cvf \"{os.path.join(new_dir, os.path.basename(file))}\" {"*" if constants.os_name == "windows" else "* .??*"}')
+
+                                # constants.copy(file, new_dir)
+                                os.remove(file)
+                                break
+
+                    os.chdir(constants.tempDir)
+                    constants.safe_delete(extract_folder)
+
 
                 # Update bkupDir
+                os.chdir(cwd)
+                constants.safe_delete(constants.tempDir)
                 config_file.set('bkup', 'bkupDir', new_dir)
                 constants.server_config(name, config_file)
 
@@ -306,7 +386,7 @@ def set_backup_directory(name: str, new_dir: str):
                 return new_dir
 
     set_lock(name, False)
-    return current_dir
+    return None
 
 
 # Sets maximum backup limit
@@ -356,7 +436,7 @@ def set_lock(name: str, add=True, reason=None):
 
 # ----------------------------------------------- Usage Examples -------------------------------------------------------
 
-# backup_obj = BackupObject('1.17.1 Server')
+# backup_obj = BackupManager('1.17.1 Server')
 # backup_obj.save_backup()
 # backup_obj.restore_backup(r"1.17.1 Server__00.30 04-26-23.amb")
 # backup_obj.enable_auto_backup(True)

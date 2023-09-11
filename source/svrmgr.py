@@ -11,7 +11,7 @@ import time
 import os
 import re
 
-from backup import BackupObject
+from backup import BackupManager
 from addons import AddonManager
 from acl import AclObject, get_uuid
 import constants
@@ -104,7 +104,7 @@ class ServerObject():
         self.script_object = None
 
         def load_subs(*args):
-            self.backup = BackupObject(server_name)
+            self.backup = BackupManager(server_name)
             self.addon = AddonManager(server_name)
             self.acl = AclObject(server_name)
         Timer(0, load_subs).start()
@@ -286,6 +286,7 @@ class ServerObject():
                 elif "Done" in line and "For help," in line:
                     type_label = "START"
                     type_color = (0.3, 1, 0.6, 1)
+                    main_label += '. Type "!help" for Auto-MCS commands'
 
 
                 # Server stop log
