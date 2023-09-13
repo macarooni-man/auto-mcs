@@ -2438,6 +2438,7 @@ def make_update_list():
     return update_list
 
 
+# Returns active IP address of 'name'
 def get_current_ip(name):
     global public_ip, ngrok_ip
 
@@ -2546,3 +2547,17 @@ def get_current_ip(name):
     }
 
     return network_dict
+
+
+# Sets automatic update config of 'name'
+def enable_auto_update(name: str, enabled=True):
+    config_file = server_config(name)
+    config_file.set("general", "updateAuto", str(enabled).lower())
+    server_config(name, config_file)
+
+    return enabled
+
+
+# Updates server to the latest version
+def update_server(properties: dict):
+    print("I do nothing. I really don't")

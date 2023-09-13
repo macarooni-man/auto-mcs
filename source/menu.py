@@ -9936,6 +9936,42 @@ class ServerManagerScreen(MenuBackground):
 
 # Server Manager Launch ------------------------------------------------------------------------------------------------
 
+# Prompt for backups and updates on new server config
+def prompt_new_server(server_obj, *args):
+
+    # Step 3 - prompt for updates
+    def set_update(boolean):
+        constants.enable_auto_update(server_obj.name, boolean)
+        server_obj.reload_config()
+
+    def prompt_updates(*args):
+        screen_manager.current_screen.show_popup(
+            "query",
+            "Automatic Updates",
+            f"Would you like to enable automatic updates for '{server_obj.name}'?\n\nIf an update is available, Auto-MCS will update this server on launch",
+            [functools.partial(set_update, False),
+             functools.partial(set_update, True)]
+        )
+
+    # Step 2 - apply settings from backup popup and prompt for updates
+    def set_bkup_and_prompt_update(boolean):
+        server_obj.backup.enable_auto_backup(boolean)
+        if boolean:
+            threading.Timer(0, server_obj.backup.save_backup).start()
+        Clock.schedule_once(prompt_updates, 0.5)
+
+    # Step 1 - prompt for backups
+    def prompt_backup(*args):
+        screen_manager.current_screen.show_popup(
+            "query",
+            "Automatic Back-ups",
+            f"Would you like to enable automatic back-ups for '{server_obj.name}'?\n\nAuto-MCS will back up this server when closed",
+            [functools.partial(set_bkup_and_prompt_update, False),
+             functools.partial(set_bkup_and_prompt_update, True)]
+        )
+
+    prompt_backup()
+
 class PerformancePanel(RelativeLayout):
 
     def update_rect(self, *args):
@@ -10781,6 +10817,10 @@ class ConsolePanel(FloatLayout):
 
         Clock.schedule_once(reset, 0)
 
+        # Prompt new server to enable automatic backups and updates
+        if not crash and (self.server_obj.auto_update == 'prompt' or self.server_obj.backup.backup_stats['auto-backup'] == 'prompt'):
+            Clock.schedule_once(functools.partial(prompt_new_server, self.server_obj))
+
 
     # Toggles full screen on the console
     def maximize(self, maximize=True, *args):
@@ -10888,6 +10928,7 @@ class ConsolePanel(FloatLayout):
         super().__init__(**kwargs)
 
         self.server_name = server_name
+        self.server_obj = None
         self.server_button = server_button
         self.full_screen = False
         self.full_screen_offset = 95
@@ -11666,6 +11707,7 @@ class ServerViewScreen(MenuBackground):
             self.console_panel = ConsolePanel(self.server.name, self.server_button)
 
         self.add_widget(self.console_panel)
+        self.console_panel.server_obj = self.server
 
 
 
@@ -12303,9 +12345,8 @@ class ServerBackupRestoreScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = "Server Manager"
-        float_layout.add_widget(generate_title("Server Manager"))
-        float_layout.add_widget(generate_footer(menu_name))
+        float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups"))
 
         self.add_widget(float_layout)
 
@@ -13629,6 +13670,7 @@ class MainApp(App):
         if constants.ignore_close:
             return True
         else:
+            # Put function here to prompt user when a server is running, backing up, or updating
             return False
 
     Window.bind(on_request_close=exit_check)
@@ -13666,7 +13708,7 @@ class MainApp(App):
             # screen_manager.current = "CreateServerReviewScreen"
 
             screen_manager.current = "ServerManagerScreen"
-            open_server("test")
+            open_server("test 1.8.9")
             def open_addons(*args):
                 while not constants.server_manager.current_server.backup:
                     time.sleep(1)

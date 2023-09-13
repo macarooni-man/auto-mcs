@@ -1,3 +1,4 @@
+import functools
 from concurrent.futures import ThreadPoolExecutor
 from subprocess import Popen, PIPE, run
 from kivy.utils import escape_markup
@@ -110,6 +111,25 @@ class ServerObject():
         Timer(0, load_subs).start()
 
         print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
+
+    def reload_config(self):
+
+        # Server files
+        self.config_file = constants.server_config(self.name)
+        self.server_properties = constants.server_properties(self.name)
+
+        # Server properties
+        self.favorite = self.config_file.get("general", "isFavorite").lower() == 'true'
+        self.auto_update = str(self.config_file.get("general", "updateAuto").lower())
+        self.dedicated_ram = str(self.config_file.get("general", "allocatedMemory").lower())
+        self.type = self.config_file.get("general", "serverType").lower()
+        self.version = self.config_file.get("general", "serverVersion").lower()
+        self.build = None
+        try:
+            if self.config_file.get("general", "serverBuild"):
+                self.build = self.config_file.get("general", "serverBuild").lower()
+        except:
+            pass
 
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):
@@ -452,13 +472,17 @@ class ServerObject():
             self.running = True
             constants.java_check()
 
+            # Attempt to update first
+            if self.auto_update == 'true' and constants.app_online:
+                self.auto_update_func()
+
             script_path = constants.generate_run_script(self.properties_dict())
             self.run_data['launch-time'] = dt.now()
             self.run_data['player-list'] = {}
             self.run_data['network'] = {}
             self.run_data['log'] = [{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
             self.run_data['process-hooks'] = []
-            self.run_data['close-hooks'] = []
+            self.run_data['close-hooks'] = [self.auto_backup_func]
             self.run_data['console-panel'] = None
             self.run_data['performance-panel'] = None
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
@@ -467,6 +491,7 @@ class ServerObject():
                 self.run_data['addon-hash'] = deepcopy(self.addon.addon_hash)
 
 
+            # Open server script and attempt to launch
             with open(script_path, 'r') as f:
                 script_content = f.read()
                 firewall_block = False
@@ -838,6 +863,34 @@ class ServerObject():
                         final_list.append({'text': player, 'color': (0.6, 0.6, 1, 1)})
 
             self.run_data['performance']['current-players'] = final_list
+
+    # Attempts to automatically update the server
+    def auto_update_func(self, *args):
+        if self.auto_update == 'prompt':
+            return False
+
+        elif self.auto_update == 'true' and constants.app_online:
+            constants.update_server(self.properties_dict())
+            return True
+
+        else:
+            return False
+
+    # Attempts to automatically back up the server
+    def auto_backup_func(self, crash_info, *args):
+        auto_backup = self.backup.backup_stats['auto-backup']
+
+        if auto_backup == 'prompt':
+            return False
+
+        elif auto_backup == 'true':
+            self.send_log(f"Saving a back-up of '{self.name}', please wait...", 'warning')
+            self.backup.save_backup()
+            self.send_log(f"Back-up complete!", 'success')
+            return True
+
+        else:
+            return False
 
 
     # Reloads all auto-mcs scripts
