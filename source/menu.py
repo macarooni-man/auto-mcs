@@ -3759,6 +3759,14 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
 class NumberSlider(FloatLayout):
 
+    def on_touch_up(self, touch):
+
+        # Execute function with value if it's added
+        if self.function and not self.init:
+            self.function(self.slider_val)
+
+        return super().on_touch_up(touch)
+
     def on_value(self, *args):
         spos = self.slider.value_pos
         lpos = self.label.size_hint_max
@@ -3780,14 +3788,9 @@ class NumberSlider(FloatLayout):
                     self.label.opacity = 1
                     self.infinity.opacity = 0
 
-            # Execute function with value if it's added
-            if self.function and not self.init:
-                self.function(self.slider_val)
-
 
         self.last_val = self.slider_val
         self.init = False
-
 
     def __init__(self, default_value, position, input_name, limits=(0, 100), max_infinite=False, function=None, **kwargs):
         super().__init__(**kwargs)
