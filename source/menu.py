@@ -3759,40 +3759,42 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
 class NumberSlider(FloatLayout):
 
-    def on_touch_up(self, touch):
-
-        # Execute function with value if it's added
-        if self.function and not self.init:
-            self.function(self.slider_val)
-
-        return super().on_touch_up(touch)
-
     def on_value(self, *args):
         spos = self.slider.value_pos
         lpos = self.label.size_hint_max
-        ipos = self.infinity.size_hint_max
         self.label.pos = (spos[0] - (lpos[0]/2) + 0.7, spos[1] + lpos[1] + 1)
-        self.infinity.pos = (spos[0] - (ipos[0] / 2), spos[1] + ipos[1])
+
+        if self.max_icon or self.min_icon:
+            ipos = self.icon_widget.size_hint_max
+            self.icon_widget.pos = (spos[0] - (ipos[0] / 2), spos[1] + ipos[1])
+
         self.slider_val = self.slider.value.__floor__()
         self.label.text = str(self.slider_val)
 
 
         if (self.slider_val != self.last_val) or self.init:
 
-            # Show infinity symbol if max infinite
-            if self.max_infinite:
+            # Show self.icon_widget if maximum or minimum value
+            if self.max_icon:
                 if (self.slider_val == self.slider.range[1]):
                     self.label.opacity = 0
-                    self.infinity.opacity = 1
+                    self.icon_widget.opacity = 1
                 else:
                     self.label.opacity = 1
-                    self.infinity.opacity = 0
+                    self.icon_widget.opacity = 0
+            elif self.min_icon:
+                if (self.slider_val == self.slider.range[0]):
+                    self.label.opacity = 0
+                    self.icon_widget.opacity = 1
+                else:
+                    self.label.opacity = 1
+                    self.icon_widget.opacity = 0
 
 
         self.last_val = self.slider_val
         self.init = False
 
-    def __init__(self, default_value, position, input_name, limits=(0, 100), max_infinite=False, function=None, **kwargs):
+    def __init__(self, default_value, position, input_name, limits=(0, 100), max_icon=None, min_icon=None, function=None, **kwargs):
         super().__init__(**kwargs)
 
         self.x += 125
@@ -3800,7 +3802,8 @@ class NumberSlider(FloatLayout):
         self.last_val = default_value
         self.slider_val = default_value
         self.init = True
-        self.max_infinite = max_infinite
+        self.max_icon = max_icon
+        self.min_icon = min_icon
 
         # Main slider widget
         self.slider = Slider(value=default_value, value_track=True, range=limits)
@@ -3816,6 +3819,17 @@ class NumberSlider(FloatLayout):
         self.slider.padding = 30
         self.add_widget(self.slider)
 
+        # Kivy spams this function 3 times because it can't return the touch properly
+        def on_touch_up(touch):
+
+            # Execute function with value if it's added
+            if self.function and not self.init and touch.button == 'left':
+                self.function(self.slider_val)
+
+            return super(type(self.slider), self.slider).on_touch_up(touch)
+
+        self.slider.on_touch_up = on_touch_up
+
         # Number label
         self.label = AlignLabel()
         self.label.text = str(default_value)
@@ -3828,12 +3842,13 @@ class NumberSlider(FloatLayout):
         self.add_widget(self.label)
 
         # Infinity label
-        self.infinity = Image()
-        self.infinity.size_hint_max = (28, 28)
-        self.infinity.color = (0.15, 0.15, 0.3, 1)
-        self.infinity.source = os.path.join(constants.gui_assets, 'icons', 'infinite-bold.png')
-        self.infinity.opacity = 0
-        self.add_widget(self.infinity)
+        if self.max_icon or self.min_icon:
+            self.icon_widget = Image()
+            self.icon_widget.size_hint_max = (28, 28)
+            self.icon_widget.color = (0.15, 0.15, 0.3, 1)
+            self.icon_widget.source = os.path.join(constants.gui_assets, 'icons', self.max_icon if self.max_icon else self.min_icon)
+            self.icon_widget.opacity = 0
+            self.add_widget(self.icon_widget)
         
 
         # Bind to number change
@@ -9935,6 +9950,218 @@ class ServerManagerScreen(MenuBackground):
                 self.gen_search_results(constants.server_manager.server_list, highlight=highlight, animate_scroll=False)
         Clock.schedule_once(highlight_last_server, 0)
 
+class MenuTaskbar(RelativeLayout):
+
+    def resize(self, *args):
+
+        # Resize background
+        self.bg_left.x = 0
+        self.bg_right.x = self.width
+        self.bg_center.x = 0 + self.bg_left.width
+        self.bg_center.size_hint_max_x = self.width - (self.bg_left.width * 2)
+
+    def __init__(self, selected_item=None, animate=False, **kwargs):
+        super().__init__(**kwargs)
+
+        show_addons = (constants.server_manager.current_server.type != 'vanilla')
+        self.pos_hint = {"center_x": 0.5}
+
+        # Layout for icon object
+        class TaskbarItem(AnchorLayout):
+
+            def __init__(self, item_info, selected=False, **kwargs):
+                super().__init__(**kwargs)
+                new_color = constants.convert_color(item_info[2])['rgb']
+
+
+                # Icon and listed functions
+                class Icon(AnchorLayout, HoverBehavior):
+
+                    # Pretty animation if specified
+                    def animate(self, *args):
+                        def anim_in(*args):
+                            Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine').start(self.icon)
+                            if self.selected:
+                                Animation(opacity=1, duration=0.3, transition='in_out_sine').start(self.background)
+                                Animation(color=constants.brighten_color(self.hover_color, -0.87), duration=0.2, transition='in_out_sine').start(self.icon)
+
+                        def anim_out(*args):
+                            Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine').start(self.icon)
+
+                        Clock.schedule_once(anim_in, 0.1)
+                        Clock.schedule_once(anim_out, 0.25)
+
+
+                    # Execute click function
+                    def on_touch_down(self, touch):
+                        if self.hovered and not self.selected and not screen_manager.current_screen.popup_widget:
+
+                            # Animate button
+                            self.icon.color = constants.brighten_color(self.hover_color, 0.2)
+                            Animation(color=self.hover_color, duration=0.3).start(self.icon)
+
+                            constants.back_clicked = True
+
+                            # Return if back is clicked
+                            if self.data[0] == 'back':
+
+                                previous_screen()
+
+
+                            # If not back, proceed to next screen
+                            else:
+                                # Wait for data to exist on ServerAclScreen, ServerBackupScreen, And ServerAddonScreen
+                                if self.data[-1] == 'ServerAclScreen':
+                                    if not constants.server_manager.current_server.acl:
+                                        while not constants.server_manager.current_server.acl:
+                                            time.sleep(0.2)
+
+                                if self.data[-1] == 'ServerBackupScreen':
+                                    if not constants.server_manager.current_server.backup:
+                                        while not constants.server_manager.current_server.backup:
+                                            time.sleep(0.2)
+
+                                if self.data[-1] == 'ServerAddonScreen':
+                                    if not constants.server_manager.current_server.addon:
+                                        while not constants.server_manager.current_server.addon:
+                                            time.sleep(0.2)
+
+                                screen_manager.current = self.data[-1]
+
+                            constants.back_clicked = False
+
+                        # If no button is matched, return touch to super
+                        else:
+                            super().on_touch_down(touch)
+
+
+                    # Change attributes when hovered
+                    def on_enter(self):
+                        if self.ignore_hover:
+                            return
+
+                        if not self.selected:
+                            Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine', color=self.hover_color).start(self.icon)
+                        Animation(opacity=1, duration=0.25, transition='in_out_sine').start(self.parent.text)
+
+                    def on_leave(self):
+                        self.ignore_hover = False
+                        if not self.selected:
+                            Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine', color=self.default_color).start(self.icon)
+                        Animation(opacity=0, duration=0.25, transition='in_out_sine').start(self.parent.text)
+
+                    def __init__(self, **kwargs):
+                        super().__init__(**kwargs)
+
+                        self.data = item_info
+                        self.default_size = 40
+                        self.default_color = (0.8, 0.8, 1, 1)
+                        self.selected = selected
+                        self.hover_color = new_color
+                        self.size_hint_max = (self.default_size + 23, self.default_size + 23)
+                        self.icon = Image()
+                        self.icon.size_hint_max = (self.default_size, self.default_size)
+                        self.icon.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                        self.icon.source = item_info[1]
+                        self.icon.color = self.default_color
+
+
+                        # Add background and change color if selected
+                        if self.selected:
+                            self.background = Image(source=os.path.join(constants.gui_assets, 'icons', 'sm', 'selected.png'))
+                            self.background.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                            self.background.size_hint_max = self.size_hint_max
+                            self.background.color = self.hover_color
+                            self.add_widget(self.background)
+                            if animate:
+                                self.background.opacity = 0
+                            else:
+                                self.icon.color = constants.brighten_color(self.hover_color, -0.87)
+
+                        self.add_widget(self.icon)
+
+
+                        # Ignore on_hover when selected widget is already selected on page load
+                        self.ignore_hover = False
+                        def check_prehover(*args):
+                            if self.collide_point(*self.to_widget(*Window.mouse_pos)) and self.selected:
+                                self.ignore_hover = True
+                        Clock.schedule_once(check_prehover, 0)
+
+
+                self.icon = Icon()
+                self.add_widget(self.icon)
+
+                self.text = RelativeLayout(size_hint_min=(300, 50))
+                self.text.add_widget(BannerObject(pos_hint={'center_x': 0.5, 'center_y': 1.25}, text=item_info[0], size=(70, 30), color=new_color))
+                self.text.pos_hint = {'center_x': 0.5, 'center_y': 1}
+                self.text.opacity = 0
+                self.add_widget(self.text)
+
+
+        # Icon list  (name, path, color, next_screen)
+        icon_path = os.path.join(constants.gui_assets, 'icons', 'sm')
+        self.item_list = [
+            ('back',            os.path.join(icon_path, 'back-outline.png'),  '#FF6FB4'),
+            ('launch',          os.path.join(icon_path, 'terminal.png'),      '#817EFF',  'ServerViewScreen'),
+            ('back-ups',        os.path.join(icon_path, 'backup.png'),        '#56E6FF',  'ServerBackupScreen'),
+            ('access control',  os.path.join(icon_path, 'acl.png'),           '#00FFB2',  'ServerAclScreen'),
+            ('add-ons',         os.path.join(icon_path, 'addon.png'),         '#42FF5E',  'ServerAddonScreen'),
+            ('amscript',        os.path.join(icon_path, 'amscript.png'),      '#BFFF2B',  'ServerAmscriptScreen'),
+            ('advanced',        os.path.join(icon_path, 'advanced.png'),      '#FFFF44',  'ServerAdvancedScreen')
+        ]
+
+
+        self.y = 65
+        self.size_hint_max = (500 if show_addons else 430, 64)
+        self.side_width = self.size_hint_max[1] * 0.55
+        self.background_color = (0.063, 0.067, 0.141, 1)
+
+
+        # Define resizable background
+        self.bg_left = Image()
+        self.bg_left.keep_ratio = False
+        self.bg_left.allow_stretch = True
+        self.bg_left.size_hint_max = (self.side_width, self.size_hint_max[1])
+        self.bg_left.source = os.path.join(constants.gui_assets, 'taskbar_edge.png')
+        self.bg_left.color = self.background_color
+        self.add_widget(self.bg_left)
+
+        self.bg_right = Image()
+        self.bg_right.keep_ratio = False
+        self.bg_right.allow_stretch = True
+        self.bg_right.size_hint_max = (-self.side_width, self.size_hint_max[1])
+        self.bg_right.source = os.path.join(constants.gui_assets, 'taskbar_edge.png')
+        self.bg_right.color = self.background_color
+        self.add_widget(self.bg_right)
+
+        self.bg_center = Image()
+        self.bg_center.keep_ratio = False
+        self.bg_center.allow_stretch = True
+        self.bg_center.source = os.path.join(constants.gui_assets, 'taskbar_center.png')
+        self.bg_center.color = self.background_color
+        self.add_widget(self.bg_center)
+
+
+        # Taskbar layout
+        self.taskbar = BoxLayout(orientation='horizontal', padding=[5,0,5,0])
+        for x, item in enumerate(self.item_list):
+
+            if item[0] == 'add-ons' and not show_addons:
+                continue
+
+            selected = (selected_item == item[0])
+            item = TaskbarItem(item, selected=selected)
+            self.taskbar.add_widget(item)
+            if animate:
+                Clock.schedule_once(item.icon.animate, x / 15)
+
+        self.add_widget(self.taskbar)
+
+
+        self.bind(pos=self.resize, size=self.resize)
+        Clock.schedule_once(self.resize, 0)
+
 
 
 # Server Manager Launch ------------------------------------------------------------------------------------------------
@@ -9944,7 +10171,7 @@ def prompt_new_server(server_obj, *args):
 
     # Step 3 - prompt for updates
     def set_update(boolean):
-        constants.enable_auto_update(server_obj.name, boolean)
+        server_obj.enable_auto_update(boolean)
         server_obj.reload_config()
 
     def prompt_updates(*args):
@@ -11332,218 +11559,6 @@ class ConsolePanel(FloatLayout):
         self.bind(size=self.update_size)
         Clock.schedule_once(self.update_size, 0)
 
-class MenuTaskbar(RelativeLayout):
-
-    def resize(self, *args):
-
-        # Resize background
-        self.bg_left.x = 0
-        self.bg_right.x = self.width
-        self.bg_center.x = 0 + self.bg_left.width
-        self.bg_center.size_hint_max_x = self.width - (self.bg_left.width * 2)
-
-    def __init__(self, selected_item=None, animate=False, **kwargs):
-        super().__init__(**kwargs)
-
-        show_addons = (constants.server_manager.current_server.type != 'vanilla')
-        self.pos_hint = {"center_x": 0.5}
-
-        # Layout for icon object
-        class TaskbarItem(AnchorLayout):
-
-            def __init__(self, item_info, selected=False, **kwargs):
-                super().__init__(**kwargs)
-                new_color = constants.convert_color(item_info[2])['rgb']
-
-
-                # Icon and listed functions
-                class Icon(AnchorLayout, HoverBehavior):
-
-                    # Pretty animation if specified
-                    def animate(self, *args):
-                        def anim_in(*args):
-                            Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine').start(self.icon)
-                            if self.selected:
-                                Animation(opacity=1, duration=0.3, transition='in_out_sine').start(self.background)
-                                Animation(color=constants.brighten_color(self.hover_color, -0.87), duration=0.2, transition='in_out_sine').start(self.icon)
-
-                        def anim_out(*args):
-                            Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine').start(self.icon)
-
-                        Clock.schedule_once(anim_in, 0.1)
-                        Clock.schedule_once(anim_out, 0.25)
-
-
-                    # Execute click function
-                    def on_touch_down(self, touch):
-                        if self.hovered and not self.selected and not screen_manager.current_screen.popup_widget:
-
-                            # Animate button
-                            self.icon.color = constants.brighten_color(self.hover_color, 0.2)
-                            Animation(color=self.hover_color, duration=0.3).start(self.icon)
-
-                            constants.back_clicked = True
-
-                            # Return if back is clicked
-                            if self.data[0] == 'back':
-
-                                previous_screen()
-
-
-                            # If not back, proceed to next screen
-                            else:
-                                # Wait for data to exist on ServerAclScreen, ServerBackupScreen, And ServerAddonScreen
-                                if self.data[-1] == 'ServerAclScreen':
-                                    if not constants.server_manager.current_server.acl:
-                                        while not constants.server_manager.current_server.acl:
-                                            time.sleep(0.2)
-
-                                if self.data[-1] == 'ServerBackupScreen':
-                                    if not constants.server_manager.current_server.backup:
-                                        while not constants.server_manager.current_server.backup:
-                                            time.sleep(0.2)
-
-                                if self.data[-1] == 'ServerAddonScreen':
-                                    if not constants.server_manager.current_server.addon:
-                                        while not constants.server_manager.current_server.addon:
-                                            time.sleep(0.2)
-
-                                screen_manager.current = self.data[-1]
-
-                            constants.back_clicked = False
-
-                        # If no button is matched, return touch to super
-                        else:
-                            super().on_touch_down(touch)
-
-
-                    # Change attributes when hovered
-                    def on_enter(self):
-                        if self.ignore_hover:
-                            return
-
-                        if not self.selected:
-                            Animation(size_hint_max=(self.default_size + 6, self.default_size + 6), duration=0.15, transition='in_out_sine', color=self.hover_color).start(self.icon)
-                        Animation(opacity=1, duration=0.25, transition='in_out_sine').start(self.parent.text)
-
-                    def on_leave(self):
-                        self.ignore_hover = False
-                        if not self.selected:
-                            Animation(size_hint_max=(self.default_size, self.default_size), duration=0.15, transition='in_out_sine', color=self.default_color).start(self.icon)
-                        Animation(opacity=0, duration=0.25, transition='in_out_sine').start(self.parent.text)
-
-                    def __init__(self, **kwargs):
-                        super().__init__(**kwargs)
-
-                        self.data = item_info
-                        self.default_size = 40
-                        self.default_color = (0.8, 0.8, 1, 1)
-                        self.selected = selected
-                        self.hover_color = new_color
-                        self.size_hint_max = (self.default_size + 23, self.default_size + 23)
-                        self.icon = Image()
-                        self.icon.size_hint_max = (self.default_size, self.default_size)
-                        self.icon.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-                        self.icon.source = item_info[1]
-                        self.icon.color = self.default_color
-
-
-                        # Add background and change color if selected
-                        if self.selected:
-                            self.background = Image(source=os.path.join(constants.gui_assets, 'icons', 'sm', 'selected.png'))
-                            self.background.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-                            self.background.size_hint_max = self.size_hint_max
-                            self.background.color = self.hover_color
-                            self.add_widget(self.background)
-                            if animate:
-                                self.background.opacity = 0
-                            else:
-                                self.icon.color = constants.brighten_color(self.hover_color, -0.87)
-
-                        self.add_widget(self.icon)
-
-
-                        # Ignore on_hover when selected widget is already selected on page load
-                        self.ignore_hover = False
-                        def check_prehover(*args):
-                            if self.collide_point(*self.to_widget(*Window.mouse_pos)) and self.selected:
-                                self.ignore_hover = True
-                        Clock.schedule_once(check_prehover, 0)
-
-
-                self.icon = Icon()
-                self.add_widget(self.icon)
-
-                self.text = RelativeLayout(size_hint_min=(300, 50))
-                self.text.add_widget(BannerObject(pos_hint={'center_x': 0.5, 'center_y': 1.25}, text=item_info[0], size=(70, 30), color=new_color))
-                self.text.pos_hint = {'center_x': 0.5, 'center_y': 1}
-                self.text.opacity = 0
-                self.add_widget(self.text)
-
-
-        # Icon list  (name, path, color, next_screen)
-        icon_path = os.path.join(constants.gui_assets, 'icons', 'sm')
-        self.item_list = [
-            ('back',            os.path.join(icon_path, 'back-outline.png'),  '#FF6FB4'),
-            ('launch',          os.path.join(icon_path, 'terminal.png'),      '#817EFF',  'ServerViewScreen'),
-            ('back-ups',        os.path.join(icon_path, 'backup.png'),        '#56E6FF',  'ServerBackupScreen'),
-            ('access control',  os.path.join(icon_path, 'acl.png'),           '#00FFB2',  'ServerAclScreen'),
-            ('add-ons',         os.path.join(icon_path, 'addon.png'),         '#42FF5E',  'ServerAddonScreen'),
-            ('amscript',        os.path.join(icon_path, 'amscript.png'),      '#BFFF2B',  'NextScreen'),
-            ('advanced',        os.path.join(icon_path, 'advanced.png'),      '#FFFF44',  'NextScreen')
-        ]
-
-
-        self.y = 65
-        self.size_hint_max = (500 if show_addons else 430, 64)
-        self.side_width = self.size_hint_max[1] * 0.55
-        self.background_color = (0.063, 0.067, 0.141, 1)
-
-
-        # Define resizable background
-        self.bg_left = Image()
-        self.bg_left.keep_ratio = False
-        self.bg_left.allow_stretch = True
-        self.bg_left.size_hint_max = (self.side_width, self.size_hint_max[1])
-        self.bg_left.source = os.path.join(constants.gui_assets, 'taskbar_edge.png')
-        self.bg_left.color = self.background_color
-        self.add_widget(self.bg_left)
-
-        self.bg_right = Image()
-        self.bg_right.keep_ratio = False
-        self.bg_right.allow_stretch = True
-        self.bg_right.size_hint_max = (-self.side_width, self.size_hint_max[1])
-        self.bg_right.source = os.path.join(constants.gui_assets, 'taskbar_edge.png')
-        self.bg_right.color = self.background_color
-        self.add_widget(self.bg_right)
-
-        self.bg_center = Image()
-        self.bg_center.keep_ratio = False
-        self.bg_center.allow_stretch = True
-        self.bg_center.source = os.path.join(constants.gui_assets, 'taskbar_center.png')
-        self.bg_center.color = self.background_color
-        self.add_widget(self.bg_center)
-
-
-        # Taskbar layout
-        self.taskbar = BoxLayout(orientation='horizontal', padding=[5,0,5,0])
-        for x, item in enumerate(self.item_list):
-
-            if item[0] == 'add-ons' and not show_addons:
-                continue
-
-            selected = (selected_item == item[0])
-            item = TaskbarItem(item, selected=selected)
-            self.taskbar.add_widget(item)
-            if animate:
-                Clock.schedule_once(item.icon.animate, x / 15)
-
-        self.add_widget(self.taskbar)
-
-
-        self.bind(pos=self.resize, size=self.resize)
-        Clock.schedule_once(self.resize, 0)
-
 class ServerViewScreen(MenuBackground):
 
     def __init__(self, **kwargs):
@@ -11880,7 +11895,7 @@ class ServerBackupScreen(MenuBackground):
 
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="maximum back-ups"))
-        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='BackupMaxInput', limits=(2, max_limit), max_infinite=True, function=change_limit))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='BackupMaxInput', limits=(2, max_limit), max_icon='infinite-bold.png', function=change_limit))
         scroll_layout.add_widget(sub_layout)
 
 
@@ -13629,6 +13644,388 @@ class ServerAddonSearchScreen(MenuBackground):
 
 
 
+# Server Advanced Settings ---------------------------------------------------------------------------------------------
+
+class EditorLine(RelativeLayout):
+
+    def on_resize(self, *args):
+        self.key_label.size_hint_max = self.key_label.texture_size
+        self.eq_label.size_hint_max = self.eq_label.texture_size
+
+        self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4)
+        self.eq_label.x = self.key_label.x + self.key_label.size_hint_max[0] + (self.spacing * 1.05)
+        self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * 0.67)
+
+
+    def __init__(self, line, key, value, max_value, **kwargs):
+        super().__init__(**kwargs)
+
+        # Defaults
+        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+        self.font_size = dp(25)
+        self.spacing = dp(16)
+        self.size_hint_min_y = 35
+
+
+        # Create main text input
+        class EditorInput(TextInput):
+
+            def on_focus(self, *args):
+                Animation.stop_all(self.eq)
+                Animation(opacity=(0.9 if self.focused else 0.5), duration=0.2).start(self.eq)
+
+
+            # Type color and prediction
+            def on_text(self, *args):
+                self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+                self.font_size = dp(25)
+                self.foreground_color = (0.208, 0.769, 1, 1)
+                self.cursor_color = (0.158, 0.719, 1, 1)
+                self.selection_color = (0.108, 0.669, 1, 0.4)
+
+                # Boolean type prediction
+                if self.text.lower() in ['true', 'false']:
+                    self.text = self.text.lower()
+                    self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-italic"]}')
+                    self.foreground_color = (0.855, 0.251, 1, 1)
+                    self.cursor_color = (0.805, 0.201, 1, 1)
+                    self.selection_color = (0.755, 0.151, 1, 0.4)
+                    self.font_size = dp(23.8)
+
+                # Float type prediction
+                elif self.text.replace(".", "").isnumeric():
+                    self.foreground_color = (0.949, 0.451, 0.114, 1)
+                    self.cursor_color = (0.899, 0.401, 0.114, 1)
+                    self.selection_color = (0.849, 0.351, 0.114, 0.4)
+
+
+            def __init__(self, default_value, eq, **kwargs):
+                super().__init__(**kwargs)
+
+                self.text = str(default_value)
+                self.multiline = False
+                self.background_color = (0, 0, 0, 0)
+                self.cursor_width = dp(3)
+                self.eq = eq
+
+                self.bind(text=self.on_text)
+                self.bind(focused=self.on_focus)
+                Clock.schedule_once(self.on_text, 0)
+
+                self.size_hint_max = (None, None)
+
+
+        # Line number
+        self.line_number = AlignLabel()
+        self.line_number.text = str(line)
+        self.line_number.halign = 'right'
+        self.line_number.size_hint_max_x = (self.spacing * len(str(max_value)))
+        self.line_number.font_name = self.font_name
+        self.line_number.font_size = self.font_size
+        self.add_widget(self.line_number)
+
+        # Key label
+        self.key_label = Label()
+        self.key_label.text = key
+        self.key_label.font_name = self.font_name
+        self.key_label.font_size = self.font_size
+        self.key_label.color = "#595959" if key.startswith('#') else "#3E4EFF"
+        self.add_widget(self.key_label)
+
+        # '=' sign
+        self.eq_label = Label()
+        self.eq_label.text = '='
+        self.eq_label.halign = 'left'
+        self.eq_label.font_name = self.font_name
+        self.eq_label.font_size = self.font_size
+        self.eq_label.color = (1, 1, 1, 1)
+        self.eq_label.opacity = 0.5
+        if not key.startswith('#'):
+            self.add_widget(self.eq_label)
+
+        # Value label
+        self.value_label = EditorInput(default_value=value, eq=self.eq_label)
+        if not key.startswith('#'):
+            self.add_widget(self.value_label)
+
+        Clock.schedule_once(self.key_label.texture_update, -1)
+        Clock.schedule_once(self.eq_label.texture_update, -1)
+
+        self.bind(size=self.on_resize, pos=self.on_resize)
+
+        Clock.schedule_once(self.on_resize, 1)
+
+
+
+class ServerPropertiesEditScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.header = None
+        self.scroll_layout = None
+        self.fullscreen_shadow = None
+
+        self.background_color = constants.brighten_color(constants.background_color, -0.1)
+
+        # Background
+        with self.canvas.before:
+            self.color = Color(*self.background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
+        # scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, *args):
+            call_widget.height = Window.height // 1.23
+
+            self.fullscreen_shadow.y = self.height + self.x - 3
+            self.fullscreen_shadow.width = Window.width
+
+            # def update_grid(*args):
+            #     anchor_layout.size_hint_min_y = grid_layout.height
+            # Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_top.color = self.background_color
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.1}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_bottom.color = self.background_color
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+
+        # Generate editor content
+        props = server_obj.server_properties
+        for x, pair in enumerate(props.items(), 1):
+            self.scroll_layout.add_widget(EditorLine(line=x, key=pair[0], value=pair[1], max_value=len(props)))
+
+
+        # Append scroll view items
+        # scroll_anchor.add_widget(self.scroll_layout)
+        # scroll_widget.add_widget(scroll_anchor)
+        scroll_widget.add_widget(self.scroll_layout)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+
+        # Configure header
+        header_content = "Editing 'server.properties'"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+        float_layout.add_widget(self.header)
+
+
+        # Fullscreen shadow
+        self.fullscreen_shadow = Image()
+        self.fullscreen_shadow.allow_stretch = True
+        self.fullscreen_shadow.keep_ratio = False
+        self.fullscreen_shadow.size_hint_max = (None, 50)
+        self.fullscreen_shadow.color = (0, 0, 0, 1)
+        self.fullscreen_shadow.opacity = 0
+        self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
+        float_layout.add_widget(self.fullscreen_shadow)
+
+
+        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title(f"Advanced Settings: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced", color='EFD49E'))
+
+        self.add_widget(float_layout)
+
+
+
+class ServerAdvancedScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.header = None
+        self.menu_taskbar = None
+
+        self.edit_properties_button = None
+        self.open_path_button = None
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.485))
+        scroll_anchor = AnchorLayout()
+        general_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
+        network_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
+        update_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
+        modify_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.6
+            cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            general_layout.cols = cols
+            network_layout.cols = cols
+            update_layout.cols = cols
+            modify_layout.cols = cols
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = general_layout.height + network_layout.height + update_layout.height + modify_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, general_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        general_layout.bind(minimum_height=general_layout.setter('height'))
+        general_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.8}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+
+
+        # ------------------------------------------- General Settings -------------------------------------------------
+
+        # Edit properties button
+        def edit_server_properties(*args):
+            screen_manager.current = 'ServerPropertiesEditScreen'
+
+        sub_layout = ScrollItem()
+        self.edit_properties_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
+        sub_layout.add_widget(self.edit_properties_button)
+        general_layout.add_widget(sub_layout)
+
+
+        # RAM allocation slider (Max limit = 75% of memory capacity)
+        max_limit = constants.max_memory
+        min_limit = 0
+        start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+
+        def change_limit(val):
+            server_obj.set_ram_limit('auto' if val == min_limit else val)
+
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="allocated memory"))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
+        general_layout.add_widget(sub_layout)
+
+
+        # Open server directory
+        def open_backup_dir(*args):
+            constants.open_folder(server_obj.server_path)
+            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+        sub_layout = ScrollItem()
+        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_backup_dir)
+        sub_layout.add_widget(self.open_path_button)
+        general_layout.add_widget(sub_layout)
+
+
+
+
+
+
+        # # Auto-backup toggle
+        # start_value = False if str(backup_stats['auto-backup']) == 'prompt' else str(backup_stats['auto-backup']) == 'true'
+        #
+        # def toggle_auto(var):
+        #     server_obj.backup.enable_auto_backup(var)
+        #
+        #     Clock.schedule_once(
+        #         functools.partial(
+        #             self.show_banner,
+        #             (0.553, 0.902, 0.675, 1) if var else (0.937, 0.831, 0.62, 1),
+        #             f"Automatic back-ups {'en' if var else 'dis'}abled",
+        #             "checkmark-circle-sharp.png" if var else "close-circle-sharp.png",
+        #             2,
+        #             {"center_x": 0.5, "center_y": 0.965}
+        #         ), 0
+        #     )
+        #
+        # sub_layout = ScrollItem()
+        # sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="automatic back-ups"))
+        # sub_layout.add_widget(toggle_button('auto-backup', (0.5, 0.5), default_state=start_value, custom_func=toggle_auto))
+        # general_layout.add_widget(sub_layout)
+
+
+
+
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(general_layout)
+        scroll_anchor.add_widget(network_layout)
+        scroll_anchor.add_widget(update_layout)
+        scroll_anchor.add_widget(modify_layout)
+
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+
+        # Configure header
+        header_content = "Modify advanced server configuration"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+        float_layout.add_widget(self.header)
+
+        # if server_obj.advanced_hash_changed():
+        #     icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+        #     header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
+
+
+
+        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title(f"Advanced Settings: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced", color='EFD49E'))
+
+        self.add_widget(float_layout)
+
+        # Add ManuTaskbar
+        self.menu_taskbar = MenuTaskbar(selected_item='advanced')
+        self.add_widget(self.menu_taskbar)
+
+
+
 # </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -13712,11 +14109,10 @@ class MainApp(App):
 
             screen_manager.current = "ServerManagerScreen"
             open_server("test 1.8.9")
-            def open_addons(*args):
-                while not constants.server_manager.current_server.backup:
-                    time.sleep(1)
-                screen_manager.current = "ServerBackupScreen"
-            Clock.schedule_once(open_addons, 3)
+            def open_menu(*args):
+                screen_manager.current = "ServerAdvancedScreen"
+                Clock.schedule_once(screen_manager.current_screen.edit_properties_button.button.trigger_action, 0.5)
+            Clock.schedule_once(open_menu, 3)
 
 
         screen_manager.transition = FadeTransition(duration=0.115)

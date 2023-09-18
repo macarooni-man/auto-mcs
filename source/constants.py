@@ -173,6 +173,11 @@ import_data = {'name': None, 'path': None}
 backup_lock = {}
 
 
+# Maximum memory
+total_ram = round(psutil.virtual_memory().total / 1073741824)
+max_memory = int(round(total_ram - (total_ram / 4)))
+
+
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
 # Global banner
@@ -932,7 +937,7 @@ def generate_splash():
             "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
             "You can't run away from all your problems…\n            Not when they have ender pearls."]
 
-    session_splash = f"” {splashes[randrange(len(splashes))]} ”"
+    session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
 
 
 
@@ -2547,15 +2552,6 @@ def get_current_ip(name):
     }
 
     return network_dict
-
-
-# Sets automatic update config of 'name'
-def enable_auto_update(name: str, enabled=True):
-    config_file = server_config(name)
-    config_file.set("general", "updateAuto", str(enabled).lower())
-    server_config(name, config_file)
-
-    return enabled
 
 
 # Updates server to the latest version

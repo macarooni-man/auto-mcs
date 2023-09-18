@@ -864,6 +864,27 @@ class ServerObject():
 
             self.run_data['performance']['current-players'] = final_list
 
+    # Sets maximum allocated memory when launching
+    def set_ram_limit(self, value='auto'):
+        new_value = str(value).lower()
+        self.config_file = constants.server_config(self.name)
+        self.config_file.set("general", "allocatedMemory", new_value)
+        self.dedicated_ram = new_value
+        constants.server_config(self.name, self.config_file)
+
+        return new_value
+
+    # Sets automatic update configuration
+    def enable_auto_update(self, enabled=True):
+        new_value = str(enabled).lower()
+        self.config_file = constants.server_config(self.name)
+        self.config_file.set("general", "updateAuto", new_value)
+        self.auto_update = new_value
+        constants.server_config(self.name, self.config_file)
+
+        return enabled
+
+
     # Attempts to automatically update the server
     def auto_update_func(self, *args):
         if self.auto_update == 'prompt':
