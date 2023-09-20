@@ -438,6 +438,16 @@ class BaseInput(TextInput):
         else:
             return super().on_touch_down(touch)
 
+    # Special keypress behaviors
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if keycode[1] == "backspace" and "ctrl" in modifiers:
+            if " " not in self.text:
+                self.text = ""
+            else:
+                self.text = self.text.rsplit(" ", 1)[0]
+
 
 
 class SearchButton(HoverButton):
@@ -11365,6 +11375,13 @@ class ConsolePanel(FloatLayout):
 
                 if self.parent.run_data:
 
+                    if keycode[1] == "backspace" and "ctrl" in modifiers:
+                        if " " not in self.text:
+                            self.text = ""
+                        else:
+                            self.text = self.text.rsplit(" ", 1)[0]
+
+
                     if keycode[1] == 'up' and self.parent.run_data['command-history']:
                         if self.text != self.original_text:
                             self.history_index += 1
@@ -13657,10 +13674,11 @@ class EditorLine(RelativeLayout):
         self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * 0.67)
 
 
-    def __init__(self, line, key, value, max_value, **kwargs):
+    def __init__(self, line, key, value, max_value, index_func, **kwargs):
         super().__init__(**kwargs)
 
         # Defaults
+        self.line = line
         self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
         self.font_size = dp(25)
         self.spacing = dp(16)
@@ -13670,38 +13688,79 @@ class EditorLine(RelativeLayout):
         # Create main text input
         class EditorInput(TextInput):
 
+            def grab_focus(self):
+                def focus_later(*args):
+                    self.focus = True
+
+                Clock.schedule_once(focus_later, 0)
+
+
             def on_focus(self, *args):
                 Animation.stop_all(self.eq)
-                Animation(opacity=(0.9 if self.focused else 0.5), duration=0.2).start(self.eq)
+                Animation(opacity=(1 if self.focused else 0.5), duration=0.15).start(self.eq)
+
+                if self.focused:
+                    self.index_func(self.index)
 
 
             # Type color and prediction
             def on_text(self, *args):
                 self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
                 self.font_size = dp(25)
-                self.foreground_color = (0.208, 0.769, 1, 1)
-                self.cursor_color = (0.158, 0.719, 1, 1)
-                self.selection_color = (0.108, 0.669, 1, 0.4)
+                self.foreground_color = (0.408, 0.889, 1, 1)
+                self.cursor_color = (0.358, 0.839, 1, 1)
+                self.selection_color = (0.308, 0.789, 1, 0.4)
 
                 # Boolean type prediction
                 if self.text.lower() in ['true', 'false']:
                     self.text = self.text.lower()
                     self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-italic"]}')
-                    self.foreground_color = (0.855, 0.251, 1, 1)
-                    self.cursor_color = (0.805, 0.201, 1, 1)
-                    self.selection_color = (0.755, 0.151, 1, 0.4)
+                    self.foreground_color = (1, 0.451, 1, 1)
+                    self.cursor_color = (1, 0.401, 1, 1)
+                    self.selection_color = (0.955, 0.351, 1, 0.4)
                     self.font_size = dp(23.8)
 
                 # Float type prediction
                 elif self.text.replace(".", "").isnumeric():
-                    self.foreground_color = (0.949, 0.451, 0.114, 1)
-                    self.cursor_color = (0.899, 0.401, 0.114, 1)
-                    self.selection_color = (0.849, 0.351, 0.114, 0.4)
+                    self.foreground_color = (0.989, 0.591, 0.254, 1)
+                    self.cursor_color = (0.939, 0.541, 0.254, 1)
+                    self.selection_color = (0.889, 0.511, 0.254, 0.4)
 
 
-            def __init__(self, default_value, eq, **kwargs):
+            # Add in special key presses
+            def keyboard_on_key_down(self, window, keycode, text, modifiers):
+
+                # Ignore undo and redo for global effect
+                if keycode[1] in ['r', 'z'] and 'ctrl' in modifiers:
+                    return None
+
+
+                # Toggle boolean values with space
+                def replace_text(val, *args):
+                    self.text = val
+
+                if keycode[1] == "spacebar" and self.text == 'true':
+                    Clock.schedule_once(functools.partial(replace_text, 'false'), 0)
+                    return
+                elif keycode[1] == "spacebar" and self.text == 'false':
+                    Clock.schedule_once(functools.partial(replace_text, 'true'), 0)
+                    return
+
+
+                super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+                if keycode[1] == "backspace" and "ctrl" in modifiers:
+                    if " " not in self.text:
+                        self.text = ""
+                    else:
+                        self.text = self.text.rsplit(" ", 1)[0]
+
+
+            def __init__(self, default_value, eq, index, index_func, **kwargs):
                 super().__init__(**kwargs)
 
+                self.index = index
+                self.index_func = index_func
                 self.text = str(default_value)
                 self.multiline = False
                 self.background_color = (0, 0, 0, 0)
@@ -13726,10 +13785,10 @@ class EditorLine(RelativeLayout):
 
         # Key label
         self.key_label = Label()
-        self.key_label.text = key
+        self.key_label.text = ('# ' + key[1:].strip()) if key.startswith('#') else key
         self.key_label.font_name = self.font_name
         self.key_label.font_size = self.font_size
-        self.key_label.color = "#595959" if key.startswith('#') else "#3E4EFF"
+        self.key_label.color = "#636363" if key.startswith('#') else "#5E6BFF"
         self.add_widget(self.key_label)
 
         # '=' sign
@@ -13744,7 +13803,7 @@ class EditorLine(RelativeLayout):
             self.add_widget(self.eq_label)
 
         # Value label
-        self.value_label = EditorInput(default_value=value, eq=self.eq_label)
+        self.value_label = EditorInput(default_value=value, eq=self.eq_label, index=(line-1), index_func=index_func)
         if not key.startswith('#'):
             self.add_widget(self.value_label)
 
@@ -13765,6 +13824,9 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.menu = 'init'
 
         self.header = None
+        self.line_list = None
+        self.current_line = None
+        self.scroll_widget = None
         self.scroll_layout = None
         self.fullscreen_shadow = None
 
@@ -13775,12 +13837,29 @@ class ServerPropertiesEditScreen(MenuBackground):
             self.color = Color(*self.background_color, mode='rgba')
             self.rect = Rectangle(pos=self.pos, size=self.size)
 
+    def set_index(self, index, **kwargs):
+        self.current_line = index
+
+    def switch_input(self, position):
+        new_list = self.line_list[position:] if self.line_list[position:] else self.line_list
+        for editor_line in new_list:
+
+            # if editor_line.key_label.text.startswith("#"):
+            #     continue
+
+            try:
+                editor_line.value_label.grab_focus()
+                self.scroll_widget.scroll_to(editor_line.value_label, padding=30, animate=True)
+                break
+
+            except AttributeError:
+                continue
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
 
         # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
+        self.scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
         # scroll_anchor = AnchorLayout()
         self.scroll_layout = GridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30])
 
@@ -13797,7 +13876,7 @@ class ServerPropertiesEditScreen(MenuBackground):
             # Clock.schedule_once(update_grid, 0)
 
 
-        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout), 0)
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
@@ -13805,9 +13884,9 @@ class ServerPropertiesEditScreen(MenuBackground):
 
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
         scroll_top.color = self.background_color
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.1}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.1}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
         scroll_bottom.color = self.background_color
 
         # Generate buttons on page load
@@ -13818,23 +13897,27 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Generate editor content
         props = server_obj.server_properties
+        self.line_list = []
+        self.current_line = 0
         for x, pair in enumerate(props.items(), 1):
-            self.scroll_layout.add_widget(EditorLine(line=x, key=pair[0], value=pair[1], max_value=len(props)))
+            line = EditorLine(line=x, key=pair[0], value=pair[1], max_value=len(props), index_func=self.set_index)
+            self.line_list.append(line)
+            self.scroll_layout.add_widget(line)
 
 
         # Append scroll view items
         # scroll_anchor.add_widget(self.scroll_layout)
         # scroll_widget.add_widget(scroll_anchor)
-        scroll_widget.add_widget(self.scroll_layout)
-        float_layout.add_widget(scroll_widget)
+        self.scroll_widget.add_widget(self.scroll_layout)
+        float_layout.add_widget(self.scroll_widget)
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
 
 
-        # Configure header
-        header_content = "Editing 'server.properties'"
-        self.header = HeaderText(header_content, '', (0, 0.89))
-        float_layout.add_widget(self.header)
+        # # Configure header
+        # header_content = "Editing 'server.properties'"
+        # self.header = HeaderText(header_content, '', (0, 0.89))
+        # float_layout.add_widget(self.header)
 
 
         # Fullscreen shadow
@@ -13857,6 +13940,48 @@ class ServerPropertiesEditScreen(MenuBackground):
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced", color='EFD49E'))
 
         self.add_widget(float_layout)
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        # print('The key', keycode, 'have been pressed')
+        # print(' - text is %r' % text)
+        # print(' - modifiers are %r' % modifiers)
+
+        # Ignore key presses when popup is visible
+        if self.popup_widget:
+            return
+
+        # Keycode is composed of an integer + a string
+        # If we hit escape, release the keyboard
+        # On ESC, click on back button if it exists
+        if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
+            for button in self.walk():
+                try:
+                    if button.id == "exit_button":
+                        button.force_click()
+                        break
+                except AttributeError:
+                    continue
+            keyboard.release()
+
+
+        # Focus text input if server is started
+        if (keycode[1] == 'down' and 'down' not in self._ignore_keys):
+            index = self.current_line + 1
+            # if self.current_line == self.line_list:
+            #     index = 0
+            self.switch_input(index)
+
+        # Focus text input if server is started
+        if (keycode[1] == 'up' and 'up' not in self._ignore_keys):
+            index = self.current_line - 1
+            # if self.current_line == 0:
+            #     index = len(self.line_list)
+            self.switch_input(index)
+
+
+        # Return True to accept the key. Otherwise, it will be used by the system.
+        return True
+
 
 
 
