@@ -13669,7 +13669,7 @@ class EditorLine(RelativeLayout):
         self.key_label.size_hint_max = self.key_label.texture_size
         self.eq_label.size_hint_max = self.eq_label.texture_size
 
-        self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4)
+        self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4) + 10
         self.eq_label.x = self.key_label.x + self.key_label.size_hint_max[0] + (self.spacing * 1.05)
         self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * 0.67)
 
@@ -13698,6 +13698,7 @@ class EditorLine(RelativeLayout):
             def on_focus(self, *args):
                 Animation.stop_all(self.eq)
                 Animation(opacity=(1 if self.focused else 0.5), duration=0.15).start(self.eq)
+                Animation(opacity=(1 if self.focused else 0.35), duration=0.15).start(self.line)
 
                 if self.focused:
                     self.index_func(self.index)
@@ -13756,7 +13757,7 @@ class EditorLine(RelativeLayout):
                         self.text = self.text.rsplit(" ", 1)[0]
 
 
-            def __init__(self, default_value, eq, index, index_func, **kwargs):
+            def __init__(self, default_value, line, index, index_func, **kwargs):
                 super().__init__(**kwargs)
 
                 self.index = index
@@ -13765,7 +13766,8 @@ class EditorLine(RelativeLayout):
                 self.multiline = False
                 self.background_color = (0, 0, 0, 0)
                 self.cursor_width = dp(3)
-                self.eq = eq
+                self.eq = line.eq_label
+                self.line = line.line_number
 
                 self.bind(text=self.on_text)
                 self.bind(focused=self.on_focus)
@@ -13781,6 +13783,8 @@ class EditorLine(RelativeLayout):
         self.line_number.size_hint_max_x = (self.spacing * len(str(max_value)))
         self.line_number.font_name = self.font_name
         self.line_number.font_size = self.font_size
+        self.line_number.opacity = 0.35
+        self.line_number.color = (0.7, 0.7, 1, 1)
         self.add_widget(self.line_number)
 
         # Key label
@@ -13803,7 +13807,7 @@ class EditorLine(RelativeLayout):
             self.add_widget(self.eq_label)
 
         # Value label
-        self.value_label = EditorInput(default_value=value, eq=self.eq_label, index=(line-1), index_func=index_func)
+        self.value_label = EditorInput(default_value=value, line=self, index=(line-1), index_func=index_func)
         if not key.startswith('#'):
             self.add_widget(self.value_label)
 
@@ -13841,22 +13845,51 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.current_line = index
 
     def switch_input(self, position):
-        new_list = self.line_list[position:] if self.line_list[position:] else self.line_list
-        for editor_line in new_list:
+        index = 0
 
-            # if editor_line.key_label.text.startswith("#"):
-            #     continue
+        # Set initial index
+        if position == 'up':
+            index = self.current_line - 1
 
-            try:
-                editor_line.value_label.grab_focus()
-                self.scroll_widget.scroll_to(editor_line.value_label, padding=30, animate=True)
-                break
+        elif position == 'down':
+            index = self.current_line + 1
 
-            except AttributeError:
-                continue
+        elif position in ['pagedown', 'end']:
+            position = 'pagedown'
+            index = len(self.line_list) - 1
+
+        elif position in ['pageup', 'home']:
+            position = 'pageup'
+            index = 0
+
+
+        # Loop over indexes until next match to support rollover
+        found_input = False
+        while not found_input:
+
+            # Rollover indexes
+            if index >= len(self.line_list):
+                index = 0
+            elif index <= 0 and 'page' not in position:
+                index = len(self.line_list) - 1
+
+            new_input = self.line_list[index]
+
+            if not new_input.key_label.text.startswith("#"):
+
+                try:
+                    new_input.value_label.grab_focus()
+                    self.scroll_widget.scroll_to(new_input.value_label, padding=30, animate=True)
+                    break
+
+                except AttributeError:
+                    pass
+
+            index = index + (-1 if position == 'up' else 1)
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
+        server_obj.reload_config()
 
         # Scroll list
         self.scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
@@ -13965,18 +13998,8 @@ class ServerPropertiesEditScreen(MenuBackground):
 
 
         # Focus text input if server is started
-        if (keycode[1] == 'down' and 'down' not in self._ignore_keys):
-            index = self.current_line + 1
-            # if self.current_line == self.line_list:
-            #     index = 0
-            self.switch_input(index)
-
-        # Focus text input if server is started
-        if (keycode[1] == 'up' and 'up' not in self._ignore_keys):
-            index = self.current_line - 1
-            # if self.current_line == 0:
-            #     index = len(self.line_list)
-            self.switch_input(index)
+        if (keycode[1] in ['down', 'up', 'pagedown', 'pageup', 'home', 'end']):
+            self.switch_input(keycode[1])
 
 
         # Return True to accept the key. Otherwise, it will be used by the system.

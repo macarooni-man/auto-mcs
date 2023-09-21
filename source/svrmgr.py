@@ -112,6 +112,7 @@ class ServerObject():
 
         print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
 
+    # Reloads server information from static files
     def reload_config(self):
 
         # Server files
