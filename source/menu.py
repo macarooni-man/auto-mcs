@@ -1915,6 +1915,9 @@ class AclRuleInput(BaseInput):
 
 
 
+
+
+
 class BlankInput(BaseInput):
 
     def __init__(self, **kwargs):
@@ -13822,6 +13825,67 @@ class EditorLine(RelativeLayout):
 
 class ServerPropertiesEditScreen(MenuBackground):
 
+    # Command input at the bottom
+    class PropertiesSearchInput(TextInput):
+
+        def _on_focus(self, instance, value, *largs):
+
+            # Update screen focus value on next frame
+            def update_focus(*args):
+                screen_manager.current_screen._input_focused = self.focus
+
+            Clock.schedule_once(update_focus, 0)
+
+            super(type(self), self)._on_focus(instance, value)
+            Animation.stop_all(self.parent.input_background)
+            Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.original_text = ''
+            self.history_index = 0
+
+            self.multiline = False
+            self.halign = "left"
+            self.hint_text = "search for text..."
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.foreground_color = (0.6, 0.6, 1, 1)
+            self.background_color = (0, 0, 0, 0)
+            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+            self.font_size = sp(24)
+            self.padding_y = (12, 12)
+            self.padding_x = (70, 12)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.cursor_width = dp(3)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
+
+            self.bind(on_text_validate=self.on_enter)
+
+        def grab_focus(self):
+            def focus_later(*args):
+                self.focus = True
+
+            Clock.schedule_once(focus_later, 0)
+
+        def on_enter(self, value):
+            self.grab_focus()
+
+
+        # Input validation
+        def insert_text(self, substring, from_undo=False):
+            return super().insert_text(substring, from_undo=from_undo)
+
+        # Manipulate command history
+        def keyboard_on_key_down(self, window, keycode, text, modifiers):
+            super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+            if keycode[1] == "backspace" and "ctrl" in modifiers:
+                if " " not in self.text:
+                    self.text = ""
+                else:
+                    self.text = self.text.rsplit(" ", 1)[0]
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
@@ -13829,10 +13893,14 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         self.header = None
         self.line_list = None
+        self.search_bar = None
         self.current_line = None
         self.scroll_widget = None
         self.scroll_layout = None
+        self.input_background = None
         self.fullscreen_shadow = None
+
+        self.undo_history = []
 
         self.background_color = constants.brighten_color(constants.background_color, -0.1)
 
@@ -13844,7 +13912,17 @@ class ServerPropertiesEditScreen(MenuBackground):
     def set_index(self, index, **kwargs):
         self.current_line = index
 
+    def focus_input(self, new_input=None):
+        if not new_input:
+            new_input = self.line_list[self.current_line]
+
+        new_input.value_label.grab_focus()
+        self.scroll_widget.scroll_to(new_input.value_label, padding=30, animate=True)
+
     def switch_input(self, position):
+        if self.current_line is None:
+            self.set_index(0)
+
         index = 0
 
         # Set initial index
@@ -13878,8 +13956,7 @@ class ServerPropertiesEditScreen(MenuBackground):
             if not new_input.key_label.text.startswith("#"):
 
                 try:
-                    new_input.value_label.grab_focus()
-                    self.scroll_widget.scroll_to(new_input.value_label, padding=30, animate=True)
+                    self.focus_input(new_input)
                     break
 
                 except AttributeError:
@@ -13893,7 +13970,6 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Scroll list
         self.scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
-        # scroll_anchor = AnchorLayout()
         self.scroll_layout = GridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30])
 
 
@@ -13904,9 +13980,10 @@ class ServerPropertiesEditScreen(MenuBackground):
             self.fullscreen_shadow.y = self.height + self.x - 3
             self.fullscreen_shadow.width = Window.width
 
-            # def update_grid(*args):
-            #     anchor_layout.size_hint_min_y = grid_layout.height
-            # Clock.schedule_once(update_grid, 0)
+            search_pos = 47
+
+            self.search_bar.pos = (self.x, search_pos)
+            self.input_background.pos = (self.search_bar.pos[0] - 15, self.search_bar.pos[1] + 8)
 
 
         self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
@@ -13919,8 +13996,10 @@ class ServerPropertiesEditScreen(MenuBackground):
         # Scroll gradient
         scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
         scroll_top.color = self.background_color
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.1}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
         scroll_bottom.color = self.background_color
+        scroll_bottom.y = 115
+
 
         # Generate buttons on page load
         buttons = []
@@ -13930,8 +14009,9 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Generate editor content
         props = server_obj.server_properties
+        self.current_line = None
+        self.undo_history = []
         self.line_list = []
-        self.current_line = 0
         for x, pair in enumerate(props.items(), 1):
             line = EditorLine(line=x, key=pair[0], value=pair[1], max_value=len(props), index_func=self.set_index)
             self.line_list.append(line)
@@ -13939,8 +14019,6 @@ class ServerPropertiesEditScreen(MenuBackground):
 
 
         # Append scroll view items
-        # scroll_anchor.add_widget(self.scroll_layout)
-        # scroll_widget.add_widget(scroll_anchor)
         self.scroll_widget.add_widget(self.scroll_layout)
         float_layout.add_widget(self.scroll_widget)
         float_layout.add_widget(scroll_top)
@@ -13970,9 +14048,25 @@ class ServerPropertiesEditScreen(MenuBackground):
             float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Advanced Settings: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced", color='EFD49E'))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced, Edit 'server.properties'"))
 
         self.add_widget(float_layout)
+
+
+        # Add search bar
+        self.search_bar = self.PropertiesSearchInput(size_hint_max_y=50)
+        self.add_widget(self.search_bar)
+
+        # Input icon
+        self.input_background = Image()
+        self.input_background.default_opacity = 0.35
+        self.input_background.color = self.search_bar.foreground_color
+        self.input_background.opacity = self.input_background.default_opacity
+        self.input_background.allow_stretch = True
+        self.input_background.size_hint = (None, None)
+        self.input_background.height = self.search_bar.size_hint_max_y / 1.45
+        self.input_background.source = os.path.join(constants.gui_assets, 'icons', 'search.png')
+        self.add_widget(self.input_background)
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         # print('The key', keycode, 'have been pressed')
@@ -13986,20 +14080,31 @@ class ServerPropertiesEditScreen(MenuBackground):
         # Keycode is composed of an integer + a string
         # If we hit escape, release the keyboard
         # On ESC, click on back button if it exists
-        if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
-            for button in self.walk():
-                try:
-                    if button.id == "exit_button":
-                        button.force_click()
-                        break
-                except AttributeError:
-                    continue
-            keyboard.release()
+        if not self._input_focused:
+            if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
+                for button in self.walk():
+                    try:
+                        if button.id == "exit_button":
+                            button.force_click()
+                            break
+                    except AttributeError:
+                        continue
+                keyboard.release()
+
+        # Exiting search bar
+        elif keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
+            if self.current_line is not None:
+                self.focus_input()
 
 
         # Focus text input if server is started
         if (keycode[1] in ['down', 'up', 'pagedown', 'pageup', 'home', 'end']):
             self.switch_input(keycode[1])
+
+
+        # Ctrl-F to search
+        if keycode[1] == 'f' and 'ctrl' in modifiers:
+            self.search_bar.grab_focus()
 
 
         # Return True to accept the key. Otherwise, it will be used by the system.

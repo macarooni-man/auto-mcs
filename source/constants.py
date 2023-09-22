@@ -2232,31 +2232,43 @@ def server_properties(server_name: str, write_object=None):
     # Read only if no config object provided
     else:
         config = {}
+        no_file = False
 
-        with open(properties_file, 'r') as f:
-            for line in f.readlines():
-                line_object = line.split("=")
+        try:
+            with open(properties_file, 'r') as f:
+                for line in f.readlines():
+                    line_object = line.split("=")
 
-                # Convert content to a typed dictionary
-                try:
-                    # Check for boolean value
-                    if (line_object[1].strip().lower() == 'true') and (line_object[0].strip() not in force_strings):
-                        config[line_object[0].strip()] = True
-                    elif (line_object[1].strip().lower() == 'false') and (line_object[0].strip() not in force_strings):
-                        config[line_object[0].strip()] = False
+                    # Convert content to a typed dictionary
+                    try:
+                        # Check for boolean value
+                        if (line_object[1].strip().lower() == 'true') and (line_object[0].strip() not in force_strings):
+                            config[line_object[0].strip()] = True
+                        elif (line_object[1].strip().lower() == 'false') and (line_object[0].strip() not in force_strings):
+                            config[line_object[0].strip()] = False
 
-                    # Check for integers
-                    else:
-                        try:
-                            config[line_object[0].strip()] = int(float(line_object[1].strip()))
+                        # Check for integers
+                        else:
+                            try:
+                                config[line_object[0].strip()] = int(float(line_object[1].strip()))
 
-                    # Normal strings
-                        except ValueError:
-                            config[line_object[0].strip()] = line_object[1].strip()
+                        # Normal strings
+                            except ValueError:
+                                config[line_object[0].strip()] = line_object[1].strip()
 
 
-                except IndexError:
-                    config[line_object[0].strip()] = ""
+                    except IndexError:
+                        config[line_object[0].strip()] = ""
+
+        except OSError:
+            no_file = True
+        except TypeError:
+            no_file = True
+
+        # Re-generate 'server.properties' if the file does not exist
+        if no_file or not config:
+            fix_empty_properties(server_name)
+            config = server_properties(server_name)
 
         return config
 
@@ -2552,6 +2564,64 @@ def get_current_ip(name):
     }
 
     return network_dict
+
+
+# Fixes empty 'server.properties' file
+def fix_empty_properties(name):
+    path = server_path(name)
+
+    timeStamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
+
+    eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
+{timeStamp}
+eula=true"""
+
+    # EULA
+    with open(os.path.join(path, 'eula.txt'), "w+") as f:
+        f.write(eula)
+
+    # server.properties
+    serverProperties = f"""#Minecraft server properties
+{timeStamp}
+view-distance=10
+max-build-height=256
+server-ip=
+level-seed=
+gamemode=0
+server-port=25565
+enable-command-block=false
+allow-nether=true
+enable-rcon=false
+op-permission-level=4
+enable-query=false
+generator-settings=
+resource-pack=
+player-idle-timeout=0
+level-name=world
+motd=
+announce-player-achievements=true
+force-gamemode=false
+hardcore=false
+white-list=false
+pvp=true
+spawn-npcs=true
+generate-structures=true
+spawn-animals=true
+snooper-enabled=true
+difficulty=1
+network-compression-threshold=256
+level-type=DEFAULT
+spawn-monsters=true
+max-tick-time=60000
+max-players=20
+spawn-protection=20
+online-mode=true
+allow-flight=false
+resource-pack-hash=
+max-world-size=29999984"""
+
+    with open(os.path.join(path, 'server.properties'), "w+") as f:
+        f.write(serverProperties)
 
 
 # Updates server to the latest version
