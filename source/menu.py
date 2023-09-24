@@ -13859,7 +13859,7 @@ class EditorLine(RelativeLayout):
                     return None
 
                 # Undo functionality
-                elif (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (keycode[1] == 'v' and 'ctrl' in modifiers):
+                elif (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (keycode[1] == 'v' and 'ctrl' in modifiers) or (keycode[1] == 'backspace' and 'ctrl' in modifiers):
                     self.undo_func(save=True)
 
                 # Toggle boolean values with space
@@ -14081,11 +14081,13 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.input_background = None
         self.fullscreen_shadow = None
         self.match_label = None
+        self.server_properties = None
 
         self.undo_history = []
         self.redo_history = []
         self.last_search = ''
         self.match_list = []
+        self.modified = False
 
         self.background_color = constants.brighten_color(constants.background_color, -0.1)
 
@@ -14213,6 +14215,7 @@ class ServerPropertiesEditScreen(MenuBackground):
 
             if not same_line:
                 self.undo_history.append((line.line, line.value_label.original_text))
+                self.set_banner_status(True)
 
         else:
             if undo:
@@ -14228,7 +14231,7 @@ class ServerPropertiesEditScreen(MenuBackground):
                 self.undo_history.append([line[0], line_obj.value_label.original_text])
                 line_obj.value_label.text = line[1]
                 self.redo_history.pop(-1)
-
+            self.set_banner_status(not self.check_data())
             self.focus_input(line_obj, highlight=True)
 
         print(self.undo_history, self.redo_history)
@@ -14243,6 +14246,10 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.redo_history = []
         self.last_search = ''
         self.match_list = []
+        self.modified = False
+
+        with open(constants.server_path(server_obj.name, 'server.properties'), 'r') as f:
+            self.server_properties = f.read().strip()
 
 
         # Scroll list
@@ -14291,6 +14298,7 @@ class ServerPropertiesEditScreen(MenuBackground):
         props = server_obj.server_properties
         self.current_line = None
         self.undo_history = []
+        self.redo_history = []
         self.line_list = []
         for x, pair in enumerate(props.items(), 1):
             line = EditorLine(line=x, key=pair[0], value=pair[1], max_value=len(props), index_func=self.set_index, undo_func=self.undo)
@@ -14363,17 +14371,15 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.add_widget(self.input_background)
 
 
-        # # Header
-        # self.version_banner = BannerObject(
-        #     pos_hint={"center_x": (0.5 if not self.installed else 0.36), "center_y": 0.877},
-        #     size=(250, 40),
-        #     color=(0.4, 0.682, 1, 1) if addon_supported else (1, 0.53, 0.58, 1),
-        #     text=version_text,
-        #     icon="information-circle.png"
-        # )
-
-
-
+        # Header
+        self.header = BannerObject(
+            pos_hint = {"center_x": (0.5), "center_y": 0.9},
+            size = (250, 40),
+            color = (0.4, 0.682, 1, 1),
+            text = "Viewing 'server.properties'",
+            icon = "eye-outline.png"
+        )
+        self.add_widget(self.header)
 
     # Writes config to server.properties file, and reloads it in the server manager if the server is not running
     def save_config(self):
@@ -14394,6 +14400,12 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         constants.server_properties(server_obj.name, write_object=final_config)
         server_obj.reload_config()
+
+        # Reload config
+        with open(constants.server_path(server_obj.name, 'server.properties'), 'r') as f:
+            self.server_properties = f.read().strip()
+
+        self.set_banner_status(False)
 
         # Show banner if server is running
         if server_obj.running:
@@ -14420,6 +14432,79 @@ class ServerPropertiesEditScreen(MenuBackground):
                 ), 0
             )
 
+    # Reset results of all cells
+    def reset_data(self):
+        server_obj = constants.server_manager.current_server
+        props = server_obj.server_properties
+        self.undo_history = []
+
+        for x, pair in enumerate(props.items(), 0):
+            line = self.line_list[x]
+            key, value = pair
+            if key.startswith("#"):
+                key = key.replace("#", "# ", 1)
+                line.key_label.text = key.strip()
+            else:
+                line.key_label.text = key.strip()
+                if isinstance(value, bool):
+                    value = str(value).lower().strip()
+
+                if line.value_label.text != str(value):
+                    self.redo_history.append((x+1, line.value_label.text))
+
+                line.value_label.text = str(value)
+
+        self.set_banner_status(False)
+
+    # Checks if data in editor matches saved file
+    def check_data(self):
+
+        for line in self.line_list:
+            key = line.key_label.original_text
+            value = line.value_label.text
+
+            if not (key or value):
+                continue
+
+            if key.startswith("# "):
+                line = "#" + key[1:].strip()
+            else:
+                line = f"{key}={value}"
+
+            if line not in self.server_properties:
+                return False
+
+        return True
+
+    def set_banner_status(self, changed=False):
+
+        if changed != self.modified:
+            # Change header
+            self.remove_widget(self.header)
+            del self.header
+
+            if changed:
+                self.header = BannerObject(
+                    pos_hint = {"center_x": (0.5), "center_y": 0.9},
+                    size = (250, 40),
+                    color = "#F3ED61",
+                    text = "Editing 'server.properties'",
+                    icon = "pencil-sharp.png",
+                    animate = True
+                )
+                self.add_widget(self.header)
+            else:
+                self.header = BannerObject(
+                    pos_hint = {"center_x": (0.5), "center_y": 0.9},
+                    size = (250, 40),
+                    color = (0.4, 0.682, 1, 1),
+                    text = "Viewing 'server.properties'",
+                    icon = "eye-outline.png",
+                    animate = True
+                )
+                self.add_widget(self.header)
+
+        self.modified = changed
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         # print('The key', keycode, 'have been pressed')
@@ -14442,7 +14527,7 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         def return_to_input():
             if self.current_line is not None:
-                self.focus_input(highlight=True)
+                self.focus_input()
 
         # Keycode is composed of an integer + a string
         # If we hit escape, release the keyboard
@@ -14484,9 +14569,12 @@ class ServerPropertiesEditScreen(MenuBackground):
         if keycode[1] == 'z' and 'ctrl' in modifiers and self.undo_history:
             self.undo(save=False, undo=True)
 
+        elif keycode[1] == 'z' and 'ctrl' in modifiers and not self.undo_history:
+            if not self.check_data():
+                self.reset_data()
+
         if keycode[1] in ['r', 'y'] and 'ctrl' in modifiers and self.redo_history:
             self.undo(save=False, undo=False)
-
 
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
