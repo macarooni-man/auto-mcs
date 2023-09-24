@@ -3836,7 +3836,7 @@ class NumberSlider(FloatLayout):
         def on_touch_up(touch):
 
             # Execute function with value if it's added
-            if self.function and not self.init and touch.button == 'left':
+            if self.function and not self.init and touch.button == 'left' and self.slider.collide_point(*touch.pos):
                 self.function(self.slider_val)
 
             return super(type(self.slider), self.slider).on_touch_up(touch)
@@ -12452,7 +12452,6 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
 
 
 
-
 # Server Access Control ------------------------------------------------------------------------------------------------
 
 class ServerAclScreen(CreateServerAclScreen):
@@ -13764,7 +13763,7 @@ class EditorLine(RelativeLayout):
 
         return self.line_matched
 
-    def __init__(self, line, key, value, max_value, index_func, **kwargs):
+    def __init__(self, line, key, value, max_value, index_func, undo_func, **kwargs):
         super().__init__(**kwargs)
 
         # Defaults
@@ -13806,11 +13805,16 @@ class EditorLine(RelativeLayout):
 
             # Type color and prediction
             def on_text(self, *args):
+                Animation.stop_all(self)
+                Animation.stop_all(self.search)
                 self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
                 self.font_size = dp(25)
                 self.foreground_color = (0.408, 0.889, 1, 1)
                 self.cursor_color = (0.358, 0.839, 1, 1)
                 self.selection_color = (0.308, 0.789, 1, 0.4)
+
+                # Input validation
+                self.text = self.text.replace("\n","").replace("\r","")
 
                 # Boolean type prediction
                 if self.text.lower() in ['true', 'false']:
@@ -13851,8 +13855,12 @@ class EditorLine(RelativeLayout):
             def keyboard_on_key_down(self, window, keycode, text, modifiers):
 
                 # Ignore undo and redo for global effect
-                if keycode[1] in ['r', 'z'] and 'ctrl' in modifiers:
+                if keycode[1] in ['r', 'z', 'y'] and 'ctrl' in modifiers:
                     return None
+
+                # Undo functionality
+                elif (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (keycode[1] == 'v' and 'ctrl' in modifiers):
+                    self.undo_func(save=True)
 
                 # Toggle boolean values with space
                 def replace_text(val, *args):
@@ -13882,7 +13890,8 @@ class EditorLine(RelativeLayout):
                 if self.cursor_pos[0] < (self.x):
                     self.scroll_x = 0
 
-            def __init__(self, default_value, line, index, index_func, **kwargs):
+
+            def __init__(self, default_value, line, index, index_func, undo_func, **kwargs):
                 super().__init__(**kwargs)
 
                 with self.canvas.after:
@@ -13899,6 +13908,7 @@ class EditorLine(RelativeLayout):
                 self.font_kerning = False
                 self.index = index
                 self.index_func = index_func
+                self.undo_func = undo_func
                 self.text = str(default_value)
                 self.original_text = str(default_value)
                 self.multiline = False
@@ -13942,7 +13952,8 @@ class EditorLine(RelativeLayout):
         self.key_label.font_name = self.font_name
         self.key_label.font_size = self.font_size
         self.key_label.markup = True
-        self.key_label.color = "#636363" if key.startswith('#') else "#5E6BFF"
+        self.key_label.default_color = "#636363" if key.startswith('#') else "#5E6BFF"
+        self.key_label.color = self.key_label.default_color
         self.add_widget(self.key_label)
 
         # '=' sign
@@ -13957,7 +13968,7 @@ class EditorLine(RelativeLayout):
             self.add_widget(self.eq_label)
 
         # Value label
-        self.value_label = EditorInput(default_value=value, line=self, index=(line-1), index_func=index_func)
+        self.value_label = EditorInput(default_value=value, line=self, index=(line-1), index_func=index_func, undo_func=undo_func)
         if not key.startswith('#'):
             self.add_widget(self.value_label)
 
@@ -13967,8 +13978,6 @@ class EditorLine(RelativeLayout):
         self.bind(size=self.on_resize, pos=self.on_resize)
 
         Clock.schedule_once(self.on_resize, 1)
-
-
 
 class ServerPropertiesEditScreen(MenuBackground):
 
@@ -14018,11 +14027,17 @@ class ServerPropertiesEditScreen(MenuBackground):
         def on_enter(self, value):
             self.grab_focus()
 
-        # Highlight matches when typing
+        # Input validation
         def insert_text(self, substring, from_undo=False):
+            substring = substring.replace("\n", "").replace("\r", "")
             return super().insert_text(substring, from_undo=from_undo)
 
         def keyboard_on_key_down(self, window, keycode, text, modifiers):
+
+            # Ignore undo and redo for global effect
+            if keycode[1] in ['r', 'z', 'y'] and 'ctrl' in modifiers:
+                return None
+
             super().keyboard_on_key_down(window, keycode, text, modifiers)
 
             if keycode[1] == "backspace" and "ctrl" in modifiers:
@@ -14068,6 +14083,7 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.match_label = None
 
         self.undo_history = []
+        self.redo_history = []
         self.last_search = ''
         self.match_list = []
 
@@ -14082,13 +14098,29 @@ class ServerPropertiesEditScreen(MenuBackground):
     def set_index(self, index, **kwargs):
         self.current_line = index
 
-    def focus_input(self, new_input=None):
+    def focus_input(self, new_input=None, highlight=False):
         if not new_input:
             new_input = self.line_list[self.current_line]
+
+        # Highlight focused input
+        if highlight:
+            original_colors = [constants.convert_color(new_input.key_label.default_color)['rgb'], new_input.value_label.last_color]
+            new_input.key_label.color = constants.brighten_color(original_colors[0], 0.2)
+            Animation.stop_all(new_input.key_label)
+            Animation(color=original_colors[0], duration=0.5).start(new_input.key_label)
+            if new_input.value_label.search.opacity == 0:
+                new_input.value_label.foreground_color = constants.brighten_color(original_colors[1], 0.2)
+                Animation.stop_all(new_input.value_label)
+                Animation(foreground_color=original_colors[1], duration=0.5).start(new_input.value_label)
+            else:
+                new_input.value_label.search.color = constants.brighten_color(original_colors[1], 0.2)
+                Animation.stop_all(new_input.value_label.search)
+                Animation(color=original_colors[0], duration=0.5).start(new_input.value_label.search)
 
         new_input.value_label.grab_focus()
         self.scroll_widget.scroll_to(new_input.value_label, padding=30, animate=True)
 
+    # Changes input on different keypresses
     def switch_input(self, position):
         if self.current_line is None:
             self.set_index(0)
@@ -14168,12 +14200,50 @@ class ServerPropertiesEditScreen(MenuBackground):
         except AttributeError:
             pass
 
+    # Saves info to self.undo/redo_history, and handles changing values
+    def undo(self, save=False, undo=False):
+        if save:
+            self.redo_history = []
+            line = self.line_list[self.current_line]
+            same_line = False
 
+            if self.undo_history:
+                if self.undo_history[-1][0] == line.line:
+                    same_line = True
 
+            if not same_line:
+                self.undo_history.append((line.line, line.value_label.original_text))
+
+        else:
+            if undo:
+                line = self.undo_history[-1]
+                line_obj = self.line_list[line[0]-1]
+                self.redo_history.append([line[0], line_obj.value_label.original_text])
+                line_obj.value_label.text = line[1]
+                self.undo_history.pop(-1)
+
+            else:
+                line = self.redo_history[-1]
+                line_obj = self.line_list[line[0]-1]
+                self.undo_history.append([line[0], line_obj.value_label.original_text])
+                line_obj.value_label.text = line[1]
+                self.redo_history.pop(-1)
+
+            self.focus_input(line_obj, highlight=True)
+
+        print(self.undo_history, self.redo_history)
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
         server_obj.reload_config()
+
+        # Reset values
+        self.match_label = None
+        self.undo_history = []
+        self.redo_history = []
+        self.last_search = ''
+        self.match_list = []
+
 
         # Scroll list
         self.scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
@@ -14223,7 +14293,7 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.undo_history = []
         self.line_list = []
         for x, pair in enumerate(props.items(), 1):
-            line = EditorLine(line=x, key=pair[0], value=pair[1], max_value=len(props), index_func=self.set_index)
+            line = EditorLine(line=x, key=pair[0], value=pair[1], max_value=len(props), index_func=self.set_index, undo_func=self.undo)
             self.line_list.append(line)
             self.scroll_layout.add_widget(line)
 
@@ -14292,6 +14362,65 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.input_background.source = os.path.join(constants.gui_assets, 'icons', 'search.png')
         self.add_widget(self.input_background)
 
+
+        # # Header
+        # self.version_banner = BannerObject(
+        #     pos_hint={"center_x": (0.5 if not self.installed else 0.36), "center_y": 0.877},
+        #     size=(250, 40),
+        #     color=(0.4, 0.682, 1, 1) if addon_supported else (1, 0.53, 0.58, 1),
+        #     text=version_text,
+        #     icon="information-circle.png"
+        # )
+
+
+
+
+    # Writes config to server.properties file, and reloads it in the server manager if the server is not running
+    def save_config(self):
+        server_obj = constants.server_manager.current_server
+        final_config = {}
+
+        for line in self.line_list:
+            key = line.key_label.original_text
+            value = line.value_label.text
+
+            if not (key or value):
+                continue
+
+            if key.startswith("# "):
+                final_config["#" + key[1:].strip()] = ''
+            else:
+                final_config[key] = value.strip()
+
+        constants.server_properties(server_obj.name, write_object=final_config)
+        server_obj.reload_config()
+
+        # Show banner if server is running
+        if server_obj.running:
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_banner,
+                    (0.937, 0.831, 0.62, 1),
+                    f"A server restart is required to apply changes",
+                    "sync.png",
+                    3,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0.25
+            )
+
+        else:
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_banner,
+                    (0.553, 0.902, 0.675, 1),
+                    "'server.properties' was saved successfully",
+                    "checkmark-circle-sharp.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         # print('The key', keycode, 'have been pressed')
         # print(' - text is %r' % text)
@@ -14313,7 +14442,7 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         def return_to_input():
             if self.current_line is not None:
-                self.focus_input()
+                self.focus_input(highlight=True)
 
         # Keycode is composed of an integer + a string
         # If we hit escape, release the keyboard
@@ -14328,6 +14457,7 @@ class ServerPropertiesEditScreen(MenuBackground):
             return_to_input()
 
 
+        # Quit and prompt to save if file was changed
         if keycode[1] == 'q' and 'ctrl' in modifiers:
             quit_to_menu()
 
@@ -14345,10 +14475,21 @@ class ServerPropertiesEditScreen(MenuBackground):
                 return_to_input()
 
 
+        # Save config file
+        if keycode[1] == 's' and 'ctrl' in modifiers:
+            self.save_config()
+
+
+        # Undo / Redo functionality
+        if keycode[1] == 'z' and 'ctrl' in modifiers and self.undo_history:
+            self.undo(save=False, undo=True)
+
+        if keycode[1] in ['r', 'y'] and 'ctrl' in modifiers and self.redo_history:
+            self.undo(save=False, undo=False)
+
+
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
-
-
 
 class ServerAdvancedScreen(MenuBackground):
 

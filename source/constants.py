@@ -2237,6 +2237,9 @@ def server_properties(server_name: str, write_object=None):
         try:
             with open(properties_file, 'r') as f:
                 for line in f.readlines():
+                    if not line.strip():
+                        continue
+
                     line_object = line.split("=")
 
                     # Convert content to a typed dictionary
