@@ -13575,7 +13575,6 @@ class ServerAddonSearchScreen(MenuBackground):
                 except AttributeError:
                     pass
 
-
     def generate_menu(self, **kwargs):
 
         # Scroll list
@@ -13675,7 +13674,95 @@ class EditorLine(RelativeLayout):
         self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4) + 10
         self.eq_label.x = self.key_label.x + self.key_label.size_hint_max[0] + (self.spacing * 1.05)
         self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * 0.67)
+        self.value_label.search.x = self.value_label.x + 5.3
+        self.value_label.search.y = self.value_label.y + 0.3 if 'italic' in self.value_label.font_name.lower() else 2
 
+        self.value_label.size_hint_min_x = Window.width - self.value_label.x - 30
+        self.value_label.size_hint_max_x = self.value_label.size_hint_min_x
+
+    def highlight_text(self, text):
+        self.last_search = text
+        self.key_label.text = self.key_label.original_text
+        self.line_matched = False
+
+        # Draws highlight around a match
+        def draw_highlight_box(label, *args):
+            def get_x(lb, ref_x):
+                """ Return the x value of the ref/anchor relative to the canvas """
+                return lb.center_x - lb.texture_size[0] * 0.5 + ref_x
+            def get_y(lb, ref_y):
+                """ Return the y value of the ref/anchor relative to the canvas """
+                # Note the inversion of direction, as y values start at the top of
+                # the texture and increase downwards
+                return lb.center_y + lb.texture_size[1] * 0.5 - ref_y
+
+            # Draw a green surround around the refs. Note the sizes y inversion
+            label.canvas.before.clear()
+            for name, boxes in label.refs.items():
+                for box in boxes:
+                    with label.canvas.before:
+                        Color(*self.select_color)
+                        Rectangle(pos=(get_x(label, box[0]), get_y(label, box[1])), size=(box[2] - box[0], box[1] - box[3]))
+
+
+        if text.strip():
+            text = text.strip()
+
+            if "=" in text:
+                key_text, value_text = [x.strip() for x in text.split("=", 1)]
+            else:
+                key_text = ''
+                value_text = ''
+
+            # Check if search matches in key label
+            if text in self.key_label.text:
+                self.key_label.text = f'[color=#000000][ref=0]{text}[/ref][/color]'.join([x for x in self.key_label.original_text.split(text)])
+                self.line_matched = True
+            elif key_text and self.key_label.text.endswith(key_text) and self.value_label.original_text.startswith(value_text):
+                self.key_label.text = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join([x for x in self.key_label.original_text.rsplit(key_text, 1)])
+                self.line_matched = True
+            else:
+                self.key_label.text = self.key_label.original_text
+                Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
+
+
+            # Check if search matches in value input/ghost label
+            if text in self.value_label.text:
+                self.value_label.search.text = f'[color=#000000][ref=0]{text}[/ref][/color]'.join([x for x in self.value_label.text.split(text)])
+                self.line_matched = True
+            elif value_text and self.value_label.text.startswith(value_text) and self.key_label.original_text.endswith(key_text):
+                self.value_label.search.text = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join([x for x in self.value_label.text.split(value_text, 1)])
+                self.line_matched = True
+            else:
+                self.value_label.search.text = self.value_label.text
+                Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
+
+
+        # Highlight matches
+        if self.line_matched:
+            self.line_number.text = f'[color=#4CFF99]{self.line}[/color]'
+            self.line_number.opacity = 1
+
+            Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
+            Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
+            self.value_label.foreground_color = (0, 0, 0, 0)
+            self.value_label.search.opacity = 1
+
+        # Reset labels
+        else:
+            self.line_number.text = str(self.line)
+            self.line_number.opacity = 1 if self.value_label.focused else 0.35
+
+            self.value_label.search.opacity = 0
+            self.value_label.foreground_color = self.value_label.last_color
+
+            # Reset labels
+            Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
+            Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
+            self.value_label.search.text = self.value_label.text
+            self.key_label.text = self.key_label.original_text
+
+        return self.line_matched
 
     def __init__(self, line, key, value, max_value, index_func, **kwargs):
         super().__init__(**kwargs)
@@ -13686,7 +13773,9 @@ class EditorLine(RelativeLayout):
         self.font_size = dp(25)
         self.spacing = dp(16)
         self.size_hint_min_y = 35
-
+        self.last_search = ''
+        self.line_matched = False
+        self.select_color = (0.3, 1, 0.6, 1)
 
         # Create main text input
         class EditorInput(TextInput):
@@ -13697,15 +13786,23 @@ class EditorLine(RelativeLayout):
 
                 Clock.schedule_once(focus_later, 0)
 
-
             def on_focus(self, *args):
                 Animation.stop_all(self.eq)
                 Animation(opacity=(1 if self.focused else 0.5), duration=0.15).start(self.eq)
-                Animation(opacity=(1 if self.focused else 0.35), duration=0.15).start(self.line)
+                try:
+                    Animation(opacity=(1 if self.focused or self.parent.line_matched else 0.35), duration=0.15).start(self.line)
+                except AttributeError:
+                    pass
 
                 if self.focused:
                     self.index_func(self.index)
 
+                    if (len(self.text) * (self.font_size/1.85)) > self.width:
+                        self.do_cursor_movement('cursor_end', True)
+                        Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+                        Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+                else:
+                    self.scroll_x = 0
 
             # Type color and prediction
             def on_text(self, *args):
@@ -13730,6 +13827,25 @@ class EditorLine(RelativeLayout):
                     self.cursor_color = (0.939, 0.541, 0.254, 1)
                     self.selection_color = (0.889, 0.511, 0.254, 0.4)
 
+                self.last_color = self.foreground_color
+                self.original_text = str(self.text)
+                self.search.text = str(self.text)
+                self.search.color = self.foreground_color
+                self.search.font_size = self.font_size
+                self.search.font_name = self.font_name
+                self.search.text_size = self.search.size
+                self.search.x = self.x + 5.3
+                self.search.y = self.y + 0.3 if 'italic' in self.font_name.lower() else 2
+
+                if self.search.opacity == 1:
+                    self.foreground_color = (0, 0, 0, 0)
+
+                def highlight(*args):
+                    try:
+                        self.parent.highlight_text(self.parent.last_search)
+                    except AttributeError:
+                        pass
+                Clock.schedule_once(highlight, 0)
 
             # Add in special key presses
             def keyboard_on_key_down(self, window, keycode, text, modifiers):
@@ -13737,7 +13853,6 @@ class EditorLine(RelativeLayout):
                 # Ignore undo and redo for global effect
                 if keycode[1] in ['r', 'z'] and 'ctrl' in modifiers:
                     return None
-
 
                 # Toggle boolean values with space
                 def replace_text(val, *args):
@@ -13759,18 +13874,39 @@ class EditorLine(RelativeLayout):
                     else:
                         self.text = self.text.rsplit(" ", 1)[0]
 
+                # Fix overscroll
+                if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
+                    self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.05))
+
+                # Fix overscroll
+                if self.cursor_pos[0] < (self.x):
+                    self.scroll_x = 0
 
             def __init__(self, default_value, line, index, index_func, **kwargs):
                 super().__init__(**kwargs)
 
+                with self.canvas.after:
+                    self.search = AlignLabel()
+                    self.search.halign = "left"
+                    self.search.color = (1, 1, 1, 1)
+                    self.search.markup = True
+                    self.search.font_name = self.font_name
+                    self.search.font_size = self.font_size
+                    self.search.text_size = self.search.size
+                    self.search.width = 10000
+                    self.search.font_kerning = False
+
+                self.font_kerning = False
                 self.index = index
                 self.index_func = index_func
                 self.text = str(default_value)
+                self.original_text = str(default_value)
                 self.multiline = False
                 self.background_color = (0, 0, 0, 0)
                 self.cursor_width = dp(3)
                 self.eq = line.eq_label
                 self.line = line.line_number
+                self.last_color = (0, 0, 0, 0)
 
                 self.bind(text=self.on_text)
                 self.bind(focused=self.on_focus)
@@ -13778,11 +13914,20 @@ class EditorLine(RelativeLayout):
 
                 self.size_hint_max = (None, None)
 
+            # Ignore touch events when popup is present
+            def on_touch_down(self, touch):
+                popup_widget = screen_manager.current_screen.popup_widget
+                if popup_widget:
+                    return
+                else:
+                    return super().on_touch_down(touch)
+
 
         # Line number
         self.line_number = AlignLabel()
         self.line_number.text = str(line)
         self.line_number.halign = 'right'
+        self.line_number.markup = True
         self.line_number.size_hint_max_x = (self.spacing * len(str(max_value)))
         self.line_number.font_name = self.font_name
         self.line_number.font_size = self.font_size
@@ -13793,8 +13938,10 @@ class EditorLine(RelativeLayout):
         # Key label
         self.key_label = Label()
         self.key_label.text = ('# ' + key[1:].strip()) if key.startswith('#') else key
+        self.key_label.original_text = ('# ' + key[1:].strip()) if key.startswith('#') else key
         self.key_label.font_name = self.font_name
         self.key_label.font_size = self.font_size
+        self.key_label.markup = True
         self.key_label.color = "#636363" if key.startswith('#') else "#5E6BFF"
         self.add_widget(self.key_label)
 
@@ -13825,7 +13972,7 @@ class EditorLine(RelativeLayout):
 
 class ServerPropertiesEditScreen(MenuBackground):
 
-    # Command input at the bottom
+    # Search bar input at the bottom
     class PropertiesSearchInput(TextInput):
 
         def _on_focus(self, instance, value, *largs):
@@ -13871,12 +14018,10 @@ class ServerPropertiesEditScreen(MenuBackground):
         def on_enter(self, value):
             self.grab_focus()
 
-
-        # Input validation
+        # Highlight matches when typing
         def insert_text(self, substring, from_undo=False):
             return super().insert_text(substring, from_undo=from_undo)
 
-        # Manipulate command history
         def keyboard_on_key_down(self, window, keycode, text, modifiers):
             super().keyboard_on_key_down(window, keycode, text, modifiers)
 
@@ -13885,6 +14030,27 @@ class ServerPropertiesEditScreen(MenuBackground):
                     self.text = ""
                 else:
                     self.text = self.text.rsplit(" ", 1)[0]
+
+            # Fix overscroll
+            if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
+                self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.05))
+
+            # Fix overscroll
+            if self.cursor_pos[0] < (self.x):
+                self.scroll_x = 0
+
+        def fix_overscroll(self, *args):
+
+            if self.cursor_pos[0] < (self.x):
+                self.scroll_x = 0
+
+        # Ignore touch events when popup is present
+        def on_touch_down(self, touch):
+            popup_widget = screen_manager.current_screen.popup_widget
+            if popup_widget:
+                return
+            else:
+                return super().on_touch_down(touch)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -13899,8 +14065,11 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.scroll_layout = None
         self.input_background = None
         self.fullscreen_shadow = None
+        self.match_label = None
 
         self.undo_history = []
+        self.last_search = ''
+        self.match_list = []
 
         self.background_color = constants.brighten_color(constants.background_color, -0.1)
 
@@ -13909,6 +14078,7 @@ class ServerPropertiesEditScreen(MenuBackground):
             self.color = Color(*self.background_color, mode='rgba')
             self.rect = Rectangle(pos=self.pos, size=self.size)
 
+    # index_func
     def set_index(self, index, **kwargs):
         self.current_line = index
 
@@ -13944,6 +14114,7 @@ class ServerPropertiesEditScreen(MenuBackground):
         # Loop over indexes until next match to support rollover
         found_input = False
         while not found_input:
+            ignore_input = False
 
             # Rollover indexes
             if index >= len(self.line_list):
@@ -13953,7 +14124,14 @@ class ServerPropertiesEditScreen(MenuBackground):
 
             new_input = self.line_list[index]
 
-            if not new_input.key_label.text.startswith("#"):
+
+            # Ignore result if not a search match
+            if self.match_list and self.last_search:
+                if not new_input.line_matched:
+                    ignore_input = True
+
+
+            if not new_input.key_label.text.startswith("#") and not ignore_input:
 
                 try:
                     self.focus_input(new_input)
@@ -13963,6 +14141,35 @@ class ServerPropertiesEditScreen(MenuBackground):
                     pass
 
             index = index + (-1 if position == 'up' else 1)
+
+    def search_text(self, obj, text, *args):
+        self.last_search = text
+        self.match_list = []
+        first_match = None
+
+        for line in self.line_list:
+            result = line.highlight_text(text)
+            if result:
+                self.match_list.append(line)
+
+            if result and not first_match:
+                first_match = line
+
+        if first_match:
+            self.set_index(first_match.line-1)
+            self.scroll_widget.scroll_to(first_match, padding=30, animate=True)
+
+        # Handle match text
+        try:
+            Animation.stop_all(self.match_label)
+            Animation(opacity=(1 if text and self.match_list else 0.35 if text else 0), duration=0.1).start(self.match_label)
+            matches = len(self.match_list)
+            self.match_label.text = f'{matches} match{"" if matches == 1 else "es"}'
+        except AttributeError:
+            pass
+
+
+
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
@@ -13984,6 +14191,9 @@ class ServerPropertiesEditScreen(MenuBackground):
 
             self.search_bar.pos = (self.x, search_pos)
             self.input_background.pos = (self.search_bar.pos[0] - 15, self.search_bar.pos[1] + 8)
+
+            self.search_bar.size_hint_max_x = Window.width - self.search_bar.x - 200
+
 
 
         self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
@@ -14055,7 +14265,21 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Add search bar
         self.search_bar = self.PropertiesSearchInput(size_hint_max_y=50)
+        self.search_bar.bind(text=self.search_text)
         self.add_widget(self.search_bar)
+
+        # Match label
+        self.match_label = AlignLabel()
+        self.match_label.text = '0 matches'
+        self.match_label.halign = "right"
+        self.match_label.color = (0.6, 0.6, 1, 1)
+        self.match_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+        self.match_label.font_size = sp(24)
+        self.match_label.y = 60
+        self.match_label.padding_x = 10
+        self.match_label.opacity = 0
+        self.add_widget(self.match_label)
+
 
         # Input icon
         self.input_background = Image()
@@ -14077,24 +14301,35 @@ class ServerPropertiesEditScreen(MenuBackground):
         if self.popup_widget:
             return
 
+        def quit_to_menu():
+            for button in self.walk():
+                try:
+                    if button.id == "exit_button":
+                        button.force_click()
+                        break
+                except AttributeError:
+                    continue
+            keyboard.release()
+
+        def return_to_input():
+            if self.current_line is not None:
+                self.focus_input()
+
         # Keycode is composed of an integer + a string
         # If we hit escape, release the keyboard
         # On ESC, click on back button if it exists
         if not self._input_focused:
-            if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
-                for button in self.walk():
-                    try:
-                        if button.id == "exit_button":
-                            button.force_click()
-                            break
-                    except AttributeError:
-                        continue
-                keyboard.release()
+            # if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
+            #     quit_to_menu()
+            pass
 
         # Exiting search bar
         elif keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
-            if self.current_line is not None:
-                self.focus_input()
+            return_to_input()
+
+
+        if keycode[1] == 'q' and 'ctrl' in modifiers:
+            quit_to_menu()
 
 
         # Focus text input if server is started
@@ -14104,12 +14339,14 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Ctrl-F to search
         if keycode[1] == 'f' and 'ctrl' in modifiers:
-            self.search_bar.grab_focus()
+            if not self.search_bar.focused:
+                self.search_bar.grab_focus()
+            else:
+                return_to_input()
 
 
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
-
 
 
 
