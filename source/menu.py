@@ -14215,7 +14215,6 @@ class ServerPropertiesEditScreen(MenuBackground):
 
             if not same_line:
                 self.undo_history.append((line.line, line.value_label.original_text))
-                self.set_banner_status(True)
 
         else:
             if undo:
@@ -14231,10 +14230,9 @@ class ServerPropertiesEditScreen(MenuBackground):
                 self.undo_history.append([line[0], line_obj.value_label.original_text])
                 line_obj.value_label.text = line[1]
                 self.redo_history.pop(-1)
-            self.set_banner_status(not self.check_data())
             self.focus_input(line_obj, highlight=True)
 
-        print(self.undo_history, self.redo_history)
+        # print(self.undo_history, self.redo_history)
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
@@ -14471,7 +14469,7 @@ class ServerPropertiesEditScreen(MenuBackground):
             else:
                 line = f"{key}={value}"
 
-            if line not in self.server_properties:
+            if line not in self.server_properties.splitlines():
                 return False
 
         return True
@@ -14515,7 +14513,7 @@ class ServerPropertiesEditScreen(MenuBackground):
         if self.popup_widget:
             return
 
-        def quit_to_menu():
+        def quit_to_menu(*a):
             for button in self.walk():
                 try:
                     if button.id == "exit_button":
@@ -14524,6 +14522,10 @@ class ServerPropertiesEditScreen(MenuBackground):
                 except AttributeError:
                     continue
             keyboard.release()
+
+        def save_and_quit(*a):
+            self.save_config()
+            quit_to_menu()
 
         def return_to_input():
             if self.current_line is not None:
@@ -14544,11 +14546,19 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Quit and prompt to save if file was changed
         if keycode[1] == 'q' and 'ctrl' in modifiers:
-            quit_to_menu()
+            if self.modified:
+                self.show_popup(
+                    "query",
+                    "Unsaved Changes",
+                    'There are unsaved changes in your configuration.\n\nWould you like to save the file before quitting?',
+                    [functools.partial(Clock.schedule_once, quit_to_menu, 0.25), functools.partial(Clock.schedule_once, save_and_quit, 0.25)]
+                )
+            else:
+                quit_to_menu()
 
 
         # Focus text input if server is started
-        if (keycode[1] in ['down', 'up', 'pagedown', 'pageup', 'home', 'end']):
+        if (keycode[1] in ['down', 'up', 'pagedown', 'pageup']):
             self.switch_input(keycode[1])
 
 
@@ -14561,7 +14571,7 @@ class ServerPropertiesEditScreen(MenuBackground):
 
 
         # Save config file
-        if keycode[1] == 's' and 'ctrl' in modifiers:
+        if keycode[1] == 's' and 'ctrl' in modifiers and self.modified:
             self.save_config()
 
 
@@ -14575,6 +14585,13 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         if keycode[1] in ['r', 'y'] and 'ctrl' in modifiers and self.redo_history:
             self.undo(save=False, undo=False)
+
+
+        # Check if data is updated on keypress
+        def set_banner(*a):
+            self.set_banner_status(not self.check_data())
+        Clock.schedule_once(set_banner, 0)
+
 
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
