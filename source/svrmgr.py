@@ -1,4 +1,3 @@
-import functools
 from concurrent.futures import ThreadPoolExecutor
 from subprocess import Popen, PIPE, run
 from kivy.utils import escape_markup
@@ -43,6 +42,7 @@ class ServerObject():
         # Server files
         self.config_file = constants.server_config(server_name)
         self.server_properties = constants.server_properties(server_name)
+        self.properties_hash = hash(frozenset(self.server_properties.items()))
 
 
         # Server properties
@@ -118,6 +118,7 @@ class ServerObject():
         # Server files
         self.config_file = constants.server_config(self.name)
         self.server_properties = constants.server_properties(self.name)
+        self.properties_hash = hash(frozenset(self.server_properties.items()))
 
         # Server properties
         self.favorite = self.config_file.get("general", "isFavorite").lower() == 'true'
@@ -487,6 +488,9 @@ class ServerObject():
             self.run_data['console-panel'] = None
             self.run_data['performance-panel'] = None
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
+
+            # Run data hashes to check for configuration changes post launch
+            self.run_data['properties-hash'] = self.properties_hash
             self.run_data['addon-hash'] = None
             if self.addon:
                 self.run_data['addon-hash'] = deepcopy(self.addon.addon_hash)

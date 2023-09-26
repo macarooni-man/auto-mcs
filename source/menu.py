@@ -3912,7 +3912,6 @@ class PopupWindow(RelativeLayout):
 
 
     def click_event(self, *args):
-
         if not self.clicked:
 
             rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
@@ -5244,6 +5243,17 @@ class MenuBackground(Screen):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
+            if keycode[1] in ['escape', 'n']:
+                try:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
+                except AttributeError:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
+
+            elif keycode[1] in ['enter', 'return', 'y']:
+                try:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.yes_button)
+                except AttributeError:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
             return
 
         # Ignore ESC commands while input focused
@@ -7267,6 +7277,9 @@ class CreateServerAclScreen(MenuBackground):
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        if keycode[1] == 'h' and 'ctrl' in modifiers and not self.popup_widget:
+            self.controls_button.button.trigger_action()
 
         # Press
         if keycode[1] == 'tab' and not self._input_focused and self.name == screen_manager.current_screen.name:
@@ -11622,6 +11635,17 @@ class ServerViewScreen(MenuBackground):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
+            if keycode[1] in ['escape', 'n']:
+                try:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
+                except AttributeError:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
+
+            elif keycode[1] in ['enter', 'return', 'y']:
+                try:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.yes_button)
+                except AttributeError:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
             return
 
         # Ignore ESC commands while input focused
@@ -13673,8 +13697,9 @@ class EditorLine(RelativeLayout):
         self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4) + 10
         self.eq_label.x = self.key_label.x + self.key_label.size_hint_max[0] + (self.spacing * 1.05)
         self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * 0.67)
+        self.value_label.y = -6
         self.value_label.search.x = self.value_label.x + 5.3
-        self.value_label.search.y = self.value_label.y + 0.3 if 'italic' in self.value_label.font_name.lower() else 2
+        self.value_label.search.y = self.value_label.y + (5 if 'italic' in self.value_label.font_name.lower() else 7)
 
         self.value_label.size_hint_min_x = Window.width - self.value_label.x - 30
         self.value_label.size_hint_max_x = self.value_label.size_hint_min_x
@@ -13702,7 +13727,6 @@ class EditorLine(RelativeLayout):
                     with label.canvas.before:
                         Color(*self.select_color)
                         Rectangle(pos=(get_x(label, box[0]), get_y(label, box[1])), size=(box[2] - box[0], box[1] - box[3]))
-
 
         if text.strip():
             text = text.strip()
@@ -13735,7 +13759,6 @@ class EditorLine(RelativeLayout):
             else:
                 self.value_label.search.text = self.value_label.text
                 Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
-
 
         # Highlight matches
         if self.line_matched:
@@ -13839,7 +13862,7 @@ class EditorLine(RelativeLayout):
                 self.search.font_name = self.font_name
                 self.search.text_size = self.search.size
                 self.search.x = self.x + 5.3
-                self.search.y = self.y + 0.3 if 'italic' in self.font_name.lower() else 2
+                self.search.y = self.y + (5 if 'italic' in self.font_name.lower() else 7)
 
                 if self.search.opacity == 1:
                     self.foreground_color = (0, 0, 0, 0)
@@ -13853,6 +13876,9 @@ class EditorLine(RelativeLayout):
 
             # Add in special key presses
             def keyboard_on_key_down(self, window, keycode, text, modifiers):
+
+                if screen_manager.current_screen.popup_widget:
+                    return
 
                 # Ignore undo and redo for global effect
                 if keycode[1] in ['r', 'z', 'y'] and 'ctrl' in modifiers:
@@ -13890,7 +13916,6 @@ class EditorLine(RelativeLayout):
                 if self.cursor_pos[0] < (self.x):
                     self.scroll_x = 0
 
-
             def __init__(self, default_value, line, index, index_func, undo_func, **kwargs):
                 super().__init__(**kwargs)
 
@@ -13917,12 +13942,25 @@ class EditorLine(RelativeLayout):
                 self.eq = line.eq_label
                 self.line = line.line_number
                 self.last_color = (0, 0, 0, 0)
+                self.valign = 'center'
 
                 self.bind(text=self.on_text)
                 self.bind(focused=self.on_focus)
                 Clock.schedule_once(self.on_text, 0)
 
                 self.size_hint_max = (None, None)
+                self.size_hint_min_y = 40
+
+                def set_scroll(*a):
+                    if self.text:
+                        self.grab_focus()
+                        self.focused = False
+                        self.on_focus()
+                        def scroll(*b):
+                            self.focused = False
+                            screen_manager.current_screen.current_line = None
+                        Clock.schedule_once(scroll, 0)
+                Clock.schedule_once(set_scroll, 0.1)
 
             # Ignore touch events when popup is present
             def on_touch_down(self, touch):
@@ -14034,6 +14072,9 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         def keyboard_on_key_down(self, window, keycode, text, modifiers):
 
+            if self.popup_widget:
+                return
+
             # Ignore undo and redo for global effect
             if keycode[1] in ['r', 'z', 'y'] and 'ctrl' in modifiers:
                 return None
@@ -14075,19 +14116,20 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.header = None
         self.line_list = None
         self.search_bar = None
-        self.current_line = None
         self.scroll_widget = None
         self.scroll_layout = None
         self.input_background = None
         self.fullscreen_shadow = None
         self.match_label = None
         self.server_properties = None
+        self.controls_button = None
 
         self.undo_history = []
         self.redo_history = []
         self.last_search = ''
         self.match_list = []
         self.modified = False
+        self.current_line = None
 
         self.background_color = constants.brighten_color(constants.background_color, -0.1)
 
@@ -14106,18 +14148,10 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Highlight focused input
         if highlight:
-            original_colors = [constants.convert_color(new_input.key_label.default_color)['rgb'], new_input.value_label.last_color]
-            new_input.key_label.color = constants.brighten_color(original_colors[0], 0.2)
+            original_color = constants.convert_color(new_input.key_label.default_color)['rgb']
+            new_input.key_label.color = constants.brighten_color(original_color, 0.2)
             Animation.stop_all(new_input.key_label)
-            Animation(color=original_colors[0], duration=0.5).start(new_input.key_label)
-            if new_input.value_label.search.opacity == 0:
-                new_input.value_label.foreground_color = constants.brighten_color(original_colors[1], 0.2)
-                Animation.stop_all(new_input.value_label)
-                Animation(foreground_color=original_colors[1], duration=0.5).start(new_input.value_label)
-            else:
-                new_input.value_label.search.color = constants.brighten_color(original_colors[1], 0.2)
-                Animation.stop_all(new_input.value_label.search)
-                Animation(color=original_colors[0], duration=0.5).start(new_input.value_label.search)
+            Animation(color=original_color, duration=0.5).start(new_input.key_label)
 
         new_input.value_label.grab_focus()
         self.scroll_widget.scroll_to(new_input.value_label, padding=30, animate=True)
@@ -14197,7 +14231,11 @@ class ServerPropertiesEditScreen(MenuBackground):
         try:
             Animation.stop_all(self.match_label)
             Animation(opacity=(1 if text and self.match_list else 0.35 if text else 0), duration=0.1).start(self.match_label)
-            matches = len(self.match_list)
+            if "=" in text:
+                new_text = '='.join([x.strip() for x in text.split("=", 1)]).strip()
+            else:
+                new_text = text.strip()
+            matches = sum([f'{x.key_label.text}={x.value_label.text}'.count(new_text) for x in self.match_list])
             self.match_label.text = f'{matches} match{"" if matches == 1 else "es"}'
         except AttributeError:
             pass
@@ -14247,7 +14285,7 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.modified = False
 
         with open(constants.server_path(server_obj.name, 'server.properties'), 'r') as f:
-            self.server_properties = f.read().strip()
+            self.server_properties = f.read().strip().splitlines()
 
 
         # Scroll list
@@ -14368,6 +14406,36 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.input_background.source = os.path.join(constants.gui_assets, 'icons', 'search.png')
         self.add_widget(self.input_background)
 
+        # Controls button
+        def show_controls():
+
+            controls_text = """This menu allows you to edit additional configuration options provided by the 'server.properties' file. Refer to the Minecraft Wiki for more information. Shortcuts are provided for ease of use:
+
+
+• Press 'CTRL+Z' to undo, and 'CTRL+R'/'CTRL+Y' to redo
+
+• Press 'CTRL+S' to save modifications
+
+• Press 'CTRL-Q' to quit the editor
+
+• Press 'CTRL+F' to search for data
+
+• Press 'SPACE' to toggle boolean values (e.g. true, false)"""
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_popup,
+                    "controls",
+                    "Controls",
+                    controls_text,
+                    (None)
+                ),
+                0
+            )
+
+        self.controls_button = IconButton('controls', {}, (70, 110), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_controls)
+        float_layout.add_widget(self.controls_button)
+
 
         # Header
         self.header = BannerObject(
@@ -14378,6 +14446,7 @@ class ServerPropertiesEditScreen(MenuBackground):
             icon = "eye-outline.png"
         )
         self.add_widget(self.header)
+
 
     # Writes config to server.properties file, and reloads it in the server manager if the server is not running
     def save_config(self):
@@ -14401,7 +14470,7 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Reload config
         with open(constants.server_path(server_obj.name, 'server.properties'), 'r') as f:
-            self.server_properties = f.read().strip()
+            self.server_properties = f.read().strip().splitlines()
 
         self.set_banner_status(False)
 
@@ -14469,7 +14538,7 @@ class ServerPropertiesEditScreen(MenuBackground):
             else:
                 line = f"{key}={value}"
 
-            if line not in self.server_properties.splitlines():
+            if line not in self.server_properties:
                 return False
 
         return True
@@ -14511,6 +14580,17 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
+            if keycode[1] in ['escape', 'n']:
+                try:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
+                except AttributeError:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
+
+            elif keycode[1] in ['enter', 'return', 'y']:
+                try:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.yes_button)
+                except AttributeError:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
             return
 
         def quit_to_menu(*a):
@@ -14538,6 +14618,11 @@ class ServerPropertiesEditScreen(MenuBackground):
             # if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
             #     quit_to_menu()
             pass
+
+
+        if keycode[1] == 'h' and 'ctrl' in modifiers and not self.popup_widget:
+            self.controls_button.button.trigger_action()
+
 
         # Exiting search bar
         elif keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
