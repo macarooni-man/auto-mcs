@@ -400,6 +400,14 @@ class BaseInput(TextInput):
         self.bind(cursor_pos=self.fix_overscroll)
 
 
+    # Ignore popup text
+    def insert_text(self, substring, from_undo=False):
+        if screen_manager.current_screen.popup_widget:
+            return None
+
+        super().insert_text(substring, from_undo)
+
+
     def valid_text(self, boolean_value, text):
         pass
 
@@ -979,7 +987,6 @@ class DirectoryInput(BaseInput):
             self.suggestion_index = 0
 
         return super().keyboard_on_key_down(window, keycode, text, modifiers)
-
 
 
 class ServerWorldInput(DirectoryInput):
@@ -1912,10 +1919,6 @@ class AclRuleInput(BaseInput):
             self.valid(True, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             return super().insert_text(s, from_undo=from_undo)
-
-
-
-
 
 
 class BlankInput(BaseInput):
@@ -11374,6 +11377,8 @@ class ConsolePanel(FloatLayout):
 
             # Input validation
             def insert_text(self, substring, from_undo=False):
+                if screen_manager.current_screen.popup_widget:
+                    return None
 
                 if not self.text and substring in [' ', '/']:
                     substring = ""
@@ -13704,6 +13709,14 @@ class EditorLine(RelativeLayout):
         self.value_label.size_hint_min_x = Window.width - self.value_label.x - 30
         self.value_label.size_hint_max_x = self.value_label.size_hint_min_x
 
+        try:
+            self.ghost_cover_left.x = -10
+            self.ghost_cover_left.size_hint_max_x = self.value_label.x + 14
+            self.ghost_cover_right.x = Window.width - 33
+            self.ghost_cover_right.size_hint_max_x = 33
+        except AttributeError:
+            pass
+
     def highlight_text(self, text):
         self.last_search = text
         self.key_label.text = self.key_label.original_text
@@ -13789,6 +13802,8 @@ class EditorLine(RelativeLayout):
     def __init__(self, line, key, value, max_value, index_func, undo_func, **kwargs):
         super().__init__(**kwargs)
 
+        background_color = constants.brighten_color(constants.background_color, -0.1)
+
         # Defaults
         self.line = line
         self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
@@ -13820,8 +13835,8 @@ class EditorLine(RelativeLayout):
                     self.index_func(self.index)
 
                     if (len(self.text) * (self.font_size/1.85)) > self.width:
-                        self.do_cursor_movement('cursor_end', True)
-                        Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+                        self.cursor = (len(self.text), self.cursor[1])
+                        Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0)
                         Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
                 else:
                     self.scroll_x = 0
@@ -13861,7 +13876,8 @@ class EditorLine(RelativeLayout):
                 self.search.font_size = self.font_size
                 self.search.font_name = self.font_name
                 self.search.text_size = self.search.size
-                self.search.x = self.x + 5.3
+                if self.scroll_x == 0:
+                    self.search.x = self.x + 5.3
                 self.search.y = self.y + (5 if 'italic' in self.font_name.lower() else 7)
 
                 if self.search.opacity == 1:
@@ -13874,11 +13890,15 @@ class EditorLine(RelativeLayout):
                         pass
                 Clock.schedule_once(highlight, 0)
 
+            # Ignore keypresses when popup exists
+            def insert_text(self, substring, from_undo=False):
+                if screen_manager.current_screen.popup_widget:
+                    return None
+
+                super().insert_text(substring, from_undo)
+
             # Add in special key presses
             def keyboard_on_key_down(self, window, keycode, text, modifiers):
-
-                if screen_manager.current_screen.popup_widget:
-                    return
 
                 # Ignore undo and redo for global effect
                 if keycode[1] in ['r', 'z', 'y'] and 'ctrl' in modifiers:
@@ -13908,13 +13928,29 @@ class EditorLine(RelativeLayout):
                     else:
                         self.text = self.text.rsplit(" ", 1)[0]
 
-                # Fix overscroll
-                if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
-                    self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.05))
+                # # Fix overscroll
+                # if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
+                #     self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.05))
 
                 # Fix overscroll
                 if self.cursor_pos[0] < (self.x):
                     self.scroll_x = 0
+
+            def scroll_search(self, *a):
+                offset = 12
+                if self.cursor_offset() - self.width + offset > 0 and self.scroll_x > 0:
+                    offset = self.cursor_offset() - self.width + offset
+                else:
+                    offset = 0
+
+                self.search.x = (self.x + 5.3) - offset
+
+                def highlight(*args):
+                    try:
+                        self.parent.highlight_text(self.parent.last_search)
+                    except AttributeError:
+                        pass
+                Clock.schedule_once(highlight, 0)
 
             def __init__(self, default_value, line, index, index_func, undo_func, **kwargs):
                 super().__init__(**kwargs)
@@ -13929,6 +13965,8 @@ class EditorLine(RelativeLayout):
                     self.search.text_size = self.search.size
                     self.search.width = 10000
                     self.search.font_kerning = False
+
+                self.bind(scroll_x=self.scroll_search)
 
                 self.font_kerning = False
                 self.index = index
@@ -13981,7 +14019,7 @@ class EditorLine(RelativeLayout):
         self.line_number.font_size = self.font_size
         self.line_number.opacity = 0.35
         self.line_number.color = (0.7, 0.7, 1, 1)
-        self.add_widget(self.line_number)
+
 
         # Key label
         self.key_label = Label()
@@ -13992,7 +14030,7 @@ class EditorLine(RelativeLayout):
         self.key_label.markup = True
         self.key_label.default_color = "#636363" if key.startswith('#') else "#5E6BFF"
         self.key_label.color = self.key_label.default_color
-        self.add_widget(self.key_label)
+
 
         # '=' sign
         self.eq_label = Label()
@@ -14002,13 +14040,23 @@ class EditorLine(RelativeLayout):
         self.eq_label.font_size = self.font_size
         self.eq_label.color = (1, 1, 1, 1)
         self.eq_label.opacity = 0.5
-        if not key.startswith('#'):
-            self.add_widget(self.eq_label)
+
 
         # Value label
         self.value_label = EditorInput(default_value=value, line=self, index=(line-1), index_func=index_func, undo_func=undo_func)
         if not key.startswith('#'):
             self.add_widget(self.value_label)
+            self.ghost_cover_left = Image(color=background_color)
+            self.ghost_cover_right = Image(color=background_color)
+            self.add_widget(self.ghost_cover_left)
+            self.add_widget(self.ghost_cover_right)
+
+        # Add everything after value
+        self.add_widget(self.line_number)
+        self.add_widget(self.key_label)
+        if not key.startswith('#'):
+            self.add_widget(self.eq_label)
+
 
         Clock.schedule_once(self.key_label.texture_update, -1)
         Clock.schedule_once(self.eq_label.texture_update, -1)
@@ -14067,13 +14115,13 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Input validation
         def insert_text(self, substring, from_undo=False):
+            if screen_manager.current_screen.popup_widget:
+                return None
+
             substring = substring.replace("\n", "").replace("\r", "")
             return super().insert_text(substring, from_undo=from_undo)
 
         def keyboard_on_key_down(self, window, keycode, text, modifiers):
-
-            if self.popup_widget:
-                return
 
             # Ignore undo and redo for global effect
             if keycode[1] in ['r', 'z', 'y'] and 'ctrl' in modifiers:
@@ -14447,7 +14495,6 @@ class ServerPropertiesEditScreen(MenuBackground):
         )
         self.add_widget(self.header)
 
-
     # Writes config to server.properties file, and reloads it in the server manager if the server is not running
     def save_config(self):
         server_obj = constants.server_manager.current_server
@@ -14591,7 +14638,7 @@ class ServerPropertiesEditScreen(MenuBackground):
                     self.popup_widget.click_event(self.popup_widget, self.popup_widget.yes_button)
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
-            return
+            return False
 
         def quit_to_menu(*a):
             for button in self.walk():
