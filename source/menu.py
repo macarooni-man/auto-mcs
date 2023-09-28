@@ -1512,7 +1512,7 @@ class ServerSeedInput(BaseInput):
 
 
 
-class ServerPortInput(BaseInput):
+class CreateServerPortInput(BaseInput):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1626,6 +1626,66 @@ class ServerPortInput(BaseInput):
             constants.new_server_info['port'] = '25565'
 
         process_ip_text()
+        self.valid(not self.stinky_text)
+
+
+class ServerPortInput(CreateServerPortInput):
+
+    def on_enter(self, value):
+        self.process_text()
+
+    def process_text(self, text=''):
+        server_obj = constants.server_manager.current_server
+        new_ip = None
+        new_port = None
+
+        typed_info = text if text else self.text
+
+        # interpret typed information
+        if ":" in typed_info:
+            new_ip, new_port = typed_info.split(":")
+        else:
+            if "." in typed_info:
+                constants.new_server_info['ip'] = typed_info.replace(":", "")
+                constants.new_server_info['port'] = "25565"
+            else:
+                constants.new_server_info['port'] = typed_info.replace(":", "")
+
+        if not str(server_obj.port):
+            new_port = "25565"
+
+        # Input validation
+        port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        ip_check = (constants.check_ip(new_ip) and '.' in typed_info)
+        self.stinky_text = ''
+        fail = False
+
+        if typed_info:
+
+            if not ip_check and ("." in typed_info or ":" in typed_info):
+                self.stinky_text = 'Invalid IPv4 address' if not port_check else 'Invalid IPv4 and port'
+                fail = True
+
+            elif port_check:
+                self.stinky_text = ' Invalid port  (use 1024-65535)'
+                fail = True
+
+        else:
+            new_ip = ''
+            new_port = '25565'
+
+        if not fail:
+            server_obj.ip = new_ip
+            server_obj.server_properties['ip'] = new_ip
+
+        if new_port and not fail:
+            server_obj.port = int(new_port)
+            server_obj.server_properties['port'] = new_port
+
+        if (new_ip or new_port) and not fail:
+            constants.server_properties(server_obj.name, write_object=server_obj.server_properties)
+
+        process_ip_text(server_obj=server_obj)
         self.valid(not self.stinky_text)
 
 
@@ -2348,7 +2408,6 @@ class ParagraphObject(RelativeLayout):
         self.text_content.size = self.size
         self.text_content.width = self.width
 
-
     def __init__(self, font, **kwargs):
         super().__init__(**kwargs)
 
@@ -2373,8 +2432,8 @@ class ParagraphObject(RelativeLayout):
             self.background_bottom.keep_ratio = False
 
             # Title
-            self.rect = Image(size=(100, 15), color=constants.background_color, allow_stretch=True, keep_ratio=False)
-            self.title = AlignLabel(halign="center", text=self.title_text, color=(0.6, 0.6, 1, 1), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
+            self.rect = Image(size=(110, 15), color=constants.background_color, allow_stretch=True, keep_ratio=False)
+            self.title = AlignLabel(halign="center", text=self.title_text, color=(0.6, 0.6, 1, 1), font_size=sp(17), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
             self.bind(pos=self.update_rect)
             self.bind(size=self.update_rect)
 
@@ -3839,7 +3898,7 @@ class NumberSlider(FloatLayout):
         def on_touch_up(touch):
 
             # Execute function with value if it's added
-            if self.function and not self.init and touch.button == 'left' and self.slider.collide_point(*touch.pos):
+            if self.function and not self.init and touch.button == 'left' and self.slider.parent.collide_point(*touch.pos):
                 self.function(self.slider_val)
 
             return super(type(self.slider), self.slider).on_touch_up(touch)
@@ -6046,13 +6105,22 @@ class CreateServerWorldScreen(MenuBackground):
 
 
 # Create Server Step 5:  Server Network --------------------------------------------------------------------------------
-def process_ip_text():
-    start_text = ''
-    if not (constants.new_server_info['port'] == '25565' and not constants.new_server_info['ip']):
-        if constants.new_server_info['ip']:
-            start_text = constants.new_server_info['ip']
-        if constants.new_server_info['port']:
-            start_text = start_text + ':' + constants.new_server_info['port'] if start_text else constants.new_server_info['port']
+def process_ip_text(server_obj=None):
+    if server_obj:
+        start_text = ''
+        if not str(server_obj.port) == '25565' and not server_obj.ip:
+            if server_obj.ip:
+                start_text = server_obj.ip
+            if str(server_obj.port):
+                start_text = start_text + ':' + str(server_obj.port) if start_text else str(server_obj.port)
+
+    else:
+        start_text = ''
+        if not (constants.new_server_info['port'] == '25565' and not constants.new_server_info['ip']):
+            if constants.new_server_info['ip']:
+                start_text = constants.new_server_info['ip']
+            if constants.new_server_info['port']:
+                start_text = start_text + ':' + constants.new_server_info['port'] if start_text else constants.new_server_info['port']
 
     return start_text
 
@@ -6072,7 +6140,7 @@ class CreateServerNetworkScreen(MenuBackground):
 
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.685}))
         float_layout.add_widget(HeaderText("Do you wish to configure network information?", '', (0, 0.8)))
-        float_layout.add_widget(ServerPortInput(pos_hint={"center_x": 0.5, "center_y": 0.62}, text=process_ip_text()))
+        float_layout.add_widget(CreateServerPortInput(pos_hint={"center_x": 0.5, "center_y": 0.62}, text=process_ip_text()))
         float_layout.add_widget(ServerMOTDInput(pos_hint={"center_x": 0.5, "center_y": 0.515}))
         float_layout.add_widget(main_button('Access Control Manager', (0.5, 0.4), 'shield-half-small.png', width=531))
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen'))
@@ -8934,7 +9002,7 @@ class CreateServerReviewScreen(MenuBackground):
 
             sub_layout = ScrollItem()
             content_size = sp(22)
-            content_height = len(content.splitlines()) * (content_size + sp(9))
+            content_height = len(text.splitlines()) * (content_size + sp(9))
             paragraph = paragraph_object(size=(485, content_height), name=name, content=text, font_size=content_size, font=pgh_font)
             sub_layout.height = paragraph.height + 60
 
@@ -13774,7 +13842,7 @@ class EditorLine(RelativeLayout):
                 Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
 
         # Highlight matches
-        if self.line_matched:
+        if self.line_matched and self.animate:
             self.line_number.text = f'[color=#4CFF99]{self.line}[/color]'
             self.line_number.opacity = 1
 
@@ -13786,7 +13854,7 @@ class EditorLine(RelativeLayout):
         # Reset labels
         else:
             self.line_number.text = str(self.line)
-            self.line_number.opacity = 1 if self.value_label.focused else 0.35
+            self.line_number.opacity = 1 if self.value_label.focused and self.animate else 0.35
 
             self.value_label.search.opacity = 0
             self.value_label.foreground_color = self.value_label.last_color
@@ -13798,6 +13866,9 @@ class EditorLine(RelativeLayout):
             self.key_label.text = self.key_label.original_text
 
         return self.line_matched
+
+    def allow_animation(self, *args):
+        self.animate = True
 
     def __init__(self, line, key, value, max_value, index_func, undo_func, **kwargs):
         super().__init__(**kwargs)
@@ -13813,6 +13884,7 @@ class EditorLine(RelativeLayout):
         self.last_search = ''
         self.line_matched = False
         self.select_color = (0.3, 1, 0.6, 1)
+        self.animate = False
 
         # Create main text input
         class EditorInput(TextInput):
@@ -14063,7 +14135,8 @@ class EditorLine(RelativeLayout):
 
         self.bind(size=self.on_resize, pos=self.on_resize)
 
-        Clock.schedule_once(self.on_resize, 1)
+        Clock.schedule_once(self.on_resize, 0)
+        Clock.schedule_once(self.allow_animation, 1)
 
 class ServerPropertiesEditScreen(MenuBackground):
 
@@ -14495,6 +14568,7 @@ class ServerPropertiesEditScreen(MenuBackground):
         )
         self.add_widget(self.header)
 
+
     # Writes config to server.properties file, and reloads it in the server manager if the server is not running
     def save_config(self):
         server_obj = constants.server_manager.current_server
@@ -14744,50 +14818,77 @@ class ServerAdvancedScreen(MenuBackground):
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
 
-
         # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.485))
+        scroll_widget = ScrollViewWidget()
         scroll_anchor = AnchorLayout()
-        general_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
-        network_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
-        update_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
-        modify_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
+        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1175, size_hint_y=None, padding=[0, -50, 0, 60])
 
 
         # Bind / cleanup height on resize
         def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
-            call_widget.height = Window.height // 1.6
-            cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
-            general_layout.cols = cols
-            network_layout.cols = cols
-            update_layout.cols = cols
-            modify_layout.cols = cols
+            call_widget.height = Window.height // 1.5
+            call_widget.pos_hint = {"center_y": 0.5}
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
 
             def update_grid(*args):
-                anchor_layout.size_hint_min_y = general_layout.height + network_layout.height + update_layout.height + modify_layout.height
+                anchor_layout.size_hint_min_y = grid_layout.height
 
             Clock.schedule_once(update_grid, 0)
 
 
-        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, general_layout, scroll_anchor), 0)
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, scroll_layout, scroll_anchor), 0)
         self.resize_bind()
         Window.bind(on_resize=self.resize_bind)
-        general_layout.bind(minimum_height=general_layout.setter('height'))
-        general_layout.id = 'scroll_content'
+        scroll_layout.bind(minimum_height=scroll_layout.setter('height'))
+        scroll_layout.id = 'scroll_content'
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.8}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.84}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
         scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
-
 
         # Generate buttons on page load
         buttons = []
         float_layout = FloatLayout()
         float_layout.id = 'content'
 
+        pgh_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+
+        # Create and add paragraphs to GridLayout
+        def create_paragraph(name, layout, cid):
+
+            # Dirty fix to anchor paragraphs to the top
+            def repos(p, s, *args):
+                if scroll_layout.cols == 2:
+                    if s.height != scroll_layout._rows[cid]:
+                        p.y = scroll_layout._rows[cid] - s.height
+
+                    if cid == 0:
+                        for child in scroll_layout.children:
+                            if child != s and child.x == s.x:
+                                p2 = child.children[0]
+                                p2.y = p.y
+                                break
+                else:
+                    p.y = 0
+
+            sub_layout = ScrollItem()
+            content_size = sp(22)
+            content_height = sum([(child.height + (layout.spacing[0]*2)) for child in layout.children])
+            paragraph = paragraph_object(size=(530, content_height), name=name, content=' ', font_size=content_size, font=pgh_font)
+            sub_layout.height = paragraph.height + 80
+
+            sub_layout.bind(pos=functools.partial(repos, paragraph, sub_layout, cid))
+            sub_layout.bind(size=functools.partial(repos, paragraph, sub_layout, cid))
+
+            sub_layout.add_widget(paragraph)
+            sub_layout.add_widget(layout)
+            layout.pos_hint = {'center_x': 0.5, 'center_y': 0.555}
+            scroll_layout.add_widget(sub_layout)
 
 
-        # ------------------------------------------- General Settings -------------------------------------------------
+        # ----------------------------------------------- General ------------------------------------------------------
+
+        general_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
         # Edit properties button
         def edit_server_properties(*args):
@@ -14814,58 +14915,168 @@ class ServerAdvancedScreen(MenuBackground):
 
 
         # Open server directory
-        def open_backup_dir(*args):
+        def open_server_dir(*args):
             constants.open_folder(server_obj.server_path)
             Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
         sub_layout = ScrollItem()
-        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_backup_dir)
+        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
         sub_layout.add_widget(self.open_path_button)
         general_layout.add_widget(sub_layout)
 
+        create_paragraph('general', general_layout, 0)
+
+        # --------------------------------------------------------------------------------------------------------------
 
 
 
+        # ----------------------------------------------- Network ------------------------------------------------------
+
+        #         # sub_layout = ScrollItem()
+        #         # sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="automatic back-ups"))
+        #         # sub_layout.add_widget(toggle_button('auto-backup', (0.5, 0.5), default_state=start_value, custom_func=toggle_auto))
+        #         # general_layout.add_widget(sub_layout)
+
+        network_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
+
+        # Edit properties button
+        def edit_server_properties(*args):
+            screen_manager.current = 'ServerPropertiesEditScreen'
+
+        sub_layout = ScrollItem()
+        port_input = ServerPortInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=process_ip_text(server_obj=server_obj))
+        sub_layout.add_widget(port_input)
+        network_layout.add_widget(sub_layout)
 
 
-        # # Auto-backup toggle
-        # start_value = False if str(backup_stats['auto-backup']) == 'prompt' else str(backup_stats['auto-backup']) == 'true'
-        #
-        # def toggle_auto(var):
-        #     server_obj.backup.enable_auto_backup(var)
-        #
-        #     Clock.schedule_once(
-        #         functools.partial(
-        #             self.show_banner,
-        #             (0.553, 0.902, 0.675, 1) if var else (0.937, 0.831, 0.62, 1),
-        #             f"Automatic back-ups {'en' if var else 'dis'}abled",
-        #             "checkmark-circle-sharp.png" if var else "close-circle-sharp.png",
-        #             2,
-        #             {"center_x": 0.5, "center_y": 0.965}
-        #         ), 0
-        #     )
-        #
-        # sub_layout = ScrollItem()
-        # sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="automatic back-ups"))
-        # sub_layout.add_widget(toggle_button('auto-backup', (0.5, 0.5), default_state=start_value, custom_func=toggle_auto))
-        # general_layout.add_widget(sub_layout)
+        # RAM allocation slider (Max limit = 75% of memory capacity)
+        max_limit = constants.max_memory
+        min_limit = 0
+        start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+
+        def change_limit(val):
+            server_obj.set_ram_limit('auto' if val == min_limit else val)
+
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="allocated memory"))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
+        network_layout.add_widget(sub_layout)
+
+
+        # Open server directory
+        def open_server_dir(*args):
+            constants.open_folder(server_obj.server_path)
+            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+        sub_layout = ScrollItem()
+        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
+        sub_layout.add_widget(self.open_path_button)
+        network_layout.add_widget(sub_layout)
+
+        create_paragraph('network', network_layout, 1)
+
+        # --------------------------------------------------------------------------------------------------------------
 
 
 
+        # ------------------------------------------------ Updates -----------------------------------------------------
+
+        update_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
+
+        # Edit properties button
+        def edit_server_properties(*args):
+            screen_manager.current = 'ServerPropertiesEditScreen'
+
+        sub_layout = ScrollItem()
+        self.edit_properties_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
+        sub_layout.add_widget(self.edit_properties_button)
+        update_layout.add_widget(sub_layout)
+
+
+        # RAM allocation slider (Max limit = 75% of memory capacity)
+        max_limit = constants.max_memory
+        min_limit = 0
+        start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+
+        def change_limit(val):
+            server_obj.set_ram_limit('auto' if val == min_limit else val)
+
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="allocated memory"))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
+        update_layout.add_widget(sub_layout)
+
+
+        # Open server directory
+        def open_server_dir(*args):
+            constants.open_folder(server_obj.server_path)
+            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+        sub_layout = ScrollItem()
+        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
+        sub_layout.add_widget(self.open_path_button)
+        update_layout.add_widget(sub_layout)
+
+        create_paragraph('updates', update_layout, 0)
+
+        # --------------------------------------------------------------------------------------------------------------
+
+
+
+        # ----------------------------------------------- Transilience -------------------------------------------------
+
+        transilience_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
+
+        # Edit properties button
+        def edit_server_properties(*args):
+            screen_manager.current = 'ServerPropertiesEditScreen'
+
+        sub_layout = ScrollItem()
+        self.edit_properties_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
+        sub_layout.add_widget(self.edit_properties_button)
+        transilience_layout.add_widget(sub_layout)
+
+
+        # RAM allocation slider (Max limit = 75% of memory capacity)
+        max_limit = constants.max_memory
+        min_limit = 0
+        start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+
+        def change_limit(val):
+            server_obj.set_ram_limit('auto' if val == min_limit else val)
+
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="allocated memory"))
+        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
+        transilience_layout.add_widget(sub_layout)
+
+
+        # Open server directory
+        def open_server_dir(*args):
+            constants.open_folder(server_obj.server_path)
+            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+        sub_layout = ScrollItem()
+        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
+        sub_layout.add_widget(self.open_path_button)
+        transilience_layout.add_widget(sub_layout)
+
+        create_paragraph('transilience', transilience_layout, 0)
+
+        # --------------------------------------------------------------------------------------------------------------
 
 
 
         # Append scroll view items
-        scroll_anchor.add_widget(general_layout)
-        scroll_anchor.add_widget(network_layout)
-        scroll_anchor.add_widget(update_layout)
-        scroll_anchor.add_widget(modify_layout)
-
+        scroll_anchor.add_widget(scroll_layout)
         scroll_widget.add_widget(scroll_anchor)
         float_layout.add_widget(scroll_widget)
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
 
+
+        # Server Preview Box
+        # float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=constants.new_server_info))
 
         # Configure header
         header_content = "Modify advanced server configuration"
@@ -14875,7 +15086,6 @@ class ServerAdvancedScreen(MenuBackground):
         # if server_obj.advanced_hash_changed():
         #     icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
         #     header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
-
 
 
         buttons.append(exit_button('Back', (0.5, -1), cycle=True))
@@ -14979,7 +15189,7 @@ class MainApp(App):
             open_server("test 1.8.9")
             def open_menu(*args):
                 screen_manager.current = "ServerAdvancedScreen"
-                Clock.schedule_once(screen_manager.current_screen.edit_properties_button.button.trigger_action, 0.5)
+                # Clock.schedule_once(screen_manager.current_screen.edit_properties_button.button.trigger_action, 0.5)
             Clock.schedule_once(open_menu, 3)
 
 
