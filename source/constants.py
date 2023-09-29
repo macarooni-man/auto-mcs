@@ -2188,6 +2188,8 @@ def create_server_config(properties: dict, temp_server=False):
     config.set('general', 'isFavorite', 'false')
     config.set('general', 'updateAuto', 'prompt')
     config.set('general', 'allocatedMemory', 'auto')
+    config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
+    config.set('general', 'enableNgrok', 'false')
 
     config.add_section('bkup')
     config.set('bkup', 'bkupAuto', 'prompt')

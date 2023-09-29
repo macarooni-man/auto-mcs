@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from PIL.ImageFilter import GaussianBlur
 from datetime import datetime as dt
 from PIL import Image as PILImage
@@ -301,17 +302,23 @@ class InputLabel(RelativeLayout):
         chosen_color = (0.3, 0.75, 1, 1) if warning else (1, 0.53, 0.58, 1)
         start_color = (0.3, 0.75, 1, 0) if warning else (1, 0.53, 0.58, 0)
 
+        def change_color(item):
+            item.color = start_color
+            Animation(color=chosen_color, duration=0.12).start(item)
+
         for child in self.children:
             if child.id == 'text':
                 child.text = text
                 child.x = self.text_x + dp(15)
-                child.color = start_color
-                Animation(color=chosen_color, duration=0.12).start(child)
+
+                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
+                    change_color(child)
             else:
                 child.source = os.path.join(constants.gui_assets, 'icons', 'alert-circle-outline.png')
                 child.x = self.icon_x - dp((len(text) * (self.text_size - 8)) / 3) - dp(20)
-                child.color = start_color
-                Animation(color=chosen_color, duration=0.12).start(child)
+
+                if [round(x, 2) for x in child.color] != [round(x, 2) for x in chosen_color]:
+                    change_color(child)
 
 
     def clear_text(self):
@@ -323,7 +330,6 @@ class InputLabel(RelativeLayout):
                 item.color = (1, 0.53, 0.58, 0)
 
             Clock.schedule_once(functools.partial(reset_color, child), 0.2)
-
 
 
 class BaseInput(TextInput):
@@ -698,10 +704,12 @@ class ServerNameInput(BaseInput):
             # Add name to current config
             constants.new_server_info['name'] = (self.text).strip()
 
-            self.valid((self.text).lower() not in constants.server_list_lower)
+            self.valid((self.text).lower().strip() not in constants.server_list_lower)
 
-        if not self.text or str.isspace(self.text):
-            self.valid(True, False)
+        def check_validity(*a):
+            if not self.text or str.isspace(self.text):
+                self.valid(True, False)
+        Clock.schedule_once(check_validity, 0)
 
 
     # Input validation
@@ -713,7 +721,7 @@ class ServerNameInput(BaseInput):
         elif len(self.text) < 25:
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
 
-            self.valid((self.text + s).lower() not in constants.server_list_lower, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            self.valid((self.text + s).lower().strip() not in constants.server_list_lower, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             # Add name to current config
             constants.new_server_info['name'] = (self.text + s).strip()
@@ -1584,7 +1592,9 @@ class CreateServerPortInput(BaseInput):
                 s = ''
 
             # Add name to current config
-            self.process_text(text=(self.text + s))
+            def process(*a):
+                self.process_text(text=(self.text))
+            Clock.schedule_once(process, 0)
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -1628,16 +1638,12 @@ class CreateServerPortInput(BaseInput):
         process_ip_text()
         self.valid(not self.stinky_text)
 
-
 class ServerPortInput(CreateServerPortInput):
-
-    def on_enter(self, value):
-        self.process_text()
-
     def process_text(self, text=''):
         server_obj = constants.server_manager.current_server
-        new_ip = None
-        new_port = None
+        new_ip = ''
+        default_port = "25565"
+        new_port = default_port
 
         typed_info = text if text else self.text
 
@@ -1645,14 +1651,14 @@ class ServerPortInput(CreateServerPortInput):
         if ":" in typed_info:
             new_ip, new_port = typed_info.split(":")
         else:
-            if "." in typed_info:
-                constants.new_server_info['ip'] = typed_info.replace(":", "")
-                constants.new_server_info['port'] = "25565"
+            if "." in typed_info or not new_port:
+                new_ip = typed_info.replace(":", "")
+                new_port = default_port
             else:
-                constants.new_server_info['port'] = typed_info.replace(":", "")
+                new_port = typed_info.replace(":", "")
 
-        if not str(server_obj.port):
-            new_port = "25565"
+        if not str(server_obj.port) or not new_port:
+            new_port = default_port
 
         # Input validation
         port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
@@ -1676,14 +1682,15 @@ class ServerPortInput(CreateServerPortInput):
 
         if not fail:
             server_obj.ip = new_ip
-            server_obj.server_properties['ip'] = new_ip
+            server_obj.server_properties['server-ip'] = new_ip
 
         if new_port and not fail:
             server_obj.port = int(new_port)
-            server_obj.server_properties['port'] = new_port
+            server_obj.server_properties['server-port'] = new_port
 
         if (new_ip or new_port) and not fail:
             constants.server_properties(server_obj.name, write_object=server_obj.server_properties)
+            server_obj.reload_config()
 
         process_ip_text(server_obj=server_obj)
         self.valid(not self.stinky_text)
@@ -1994,6 +2001,7 @@ class BlankInput(BaseInput):
         self.hint_text = ""
         self.bind(on_text_validate=self.on_enter)
 
+
     # Make the text box non-interactive
     def on_enter(self, value):
         return
@@ -2001,15 +2009,19 @@ class BlankInput(BaseInput):
     def on_touch_down(self, touch):
         self.focus = False
 
+    def disable(self, boolean):
+        self.opacity = 0.4 if boolean else 1
+
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
         return
 
     def insert_text(self, substring, from_undo=False):
         return
-def blank_input(pos_hint, hint_text):
+def blank_input(pos_hint, hint_text, disabled=False):
     blank = BlankInput()
     blank.pos_hint = pos_hint
     blank.hint_text = hint_text
+    blank.disable(disabled)
     return blank
 
 
@@ -3768,7 +3780,7 @@ class DropButton(FloatLayout):
                 self.dropdown.add_widget(end_btn)
 
 
-def toggle_button(name, position, default_state=True, x_offset=0, custom_func=None):
+def toggle_button(name, position, default_state=True, x_offset=0, custom_func=None, disabled=False):
 
     knob_limits = (156.4 + x_offset, 193 + x_offset) # (Left, Right) (156.7 on left, 191 on right with border)
     bgc = constants.background_color
@@ -3776,6 +3788,8 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
 
     # When switch is toggled
     def on_active(button_name, *args):
+        if disabled:
+            return
 
         state = args[0].state == "down"
 
@@ -3815,7 +3829,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     button.size_hint_max = (82, 42)
     button.border = (0, 0, 0, 0)
     button.background_normal = os.path.join(constants.gui_assets, 'toggle_button.png')
-    button.background_down = os.path.join(constants.gui_assets, 'toggle_button_enabled.png')
+    button.background_down = button.background_normal if disabled else os.path.join(constants.gui_assets, 'toggle_button_enabled.png')
     button.bind(on_press=functools.partial(on_active, name))
 
     knob = Image()
@@ -3826,6 +3840,8 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     knob.x = knob_limits[1] if default_state else knob_limits[0]
     knob.color = color_id[0] if default_state else color_id[1]
 
+    if disabled:
+        final.opacity = 0.4
 
     final.add_widget(button)
     final.add_widget(knob)
@@ -6106,20 +6122,21 @@ class CreateServerWorldScreen(MenuBackground):
 
 # Create Server Step 5:  Server Network --------------------------------------------------------------------------------
 def process_ip_text(server_obj=None):
+
     if server_obj:
         start_text = ''
-        if not str(server_obj.port) == '25565' and not server_obj.ip:
+        if not str(server_obj.port) == '25565' or server_obj.ip:
             if server_obj.ip:
                 start_text = server_obj.ip
-            if str(server_obj.port):
+            if str(server_obj.port) != '25565':
                 start_text = start_text + ':' + str(server_obj.port) if start_text else str(server_obj.port)
 
     else:
         start_text = ''
-        if not (constants.new_server_info['port'] == '25565' and not constants.new_server_info['ip']):
+        if not str(constants.new_server_info['port'] == '25565') or constants.new_server_info['ip']:
             if constants.new_server_info['ip']:
                 start_text = constants.new_server_info['ip']
-            if constants.new_server_info['port']:
+            if str(constants.new_server_info['port']) != '25565':
                 start_text = start_text + ':' + constants.new_server_info['port'] if start_text else constants.new_server_info['port']
 
     return start_text
@@ -13203,7 +13220,7 @@ class ServerAddonScreen(MenuBackground):
 
         # Generate header
         addon_count = len(results)
-        enabled_count = len(addon_manager.installed_addons['enabled'])
+        enabled_count = len([addon for addon in addon_manager.installed_addons['enabled'] if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))])
         disabled_count = len(addon_manager.installed_addons['disabled'])
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = "Installed Add-ons  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] items')
@@ -13250,7 +13267,8 @@ class ServerAddonScreen(MenuBackground):
 
                     # Toggle addon state
                     addon_manager.addon_state(addon, enabled=not addon.enabled)
-                    self.gen_search_results(addon_manager.return_single_list(), fade_in=False, highlight=addon.hash, animate_scroll=True)
+                    addon_list = [addon for addon in addon_manager.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
+                    self.gen_search_results(addon_list, fade_in=False, highlight=addon.hash, animate_scroll=True)
 
 
                     # Show banner if server is running
@@ -13412,7 +13430,8 @@ class ServerAddonScreen(MenuBackground):
 
 
         # Automatically generate results (installed add-ons) on page load
-        self.gen_search_results(self.server.addon.return_single_list())
+        addon_list = [addon for addon in self.server.addon.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
+        self.gen_search_results(addon_list)
 
         # Show banner if server is running
         if constants.server_manager.current_server.addon.hash_changed():
@@ -14817,6 +14836,7 @@ class ServerAdvancedScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
+        server_obj.reload_config()
 
         # Scroll list
         scroll_widget = ScrollViewWidget()
@@ -14932,38 +14952,18 @@ class ServerAdvancedScreen(MenuBackground):
 
         # ----------------------------------------------- Network ------------------------------------------------------
 
-        #         # sub_layout = ScrollItem()
-        #         # sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="automatic back-ups"))
-        #         # sub_layout.add_widget(toggle_button('auto-backup', (0.5, 0.5), default_state=start_value, custom_func=toggle_auto))
-        #         # general_layout.add_widget(sub_layout)
-
         network_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
-        # Edit properties button
-        def edit_server_properties(*args):
-            screen_manager.current = 'ServerPropertiesEditScreen'
-
+        # Edit IP/Port input
         sub_layout = ScrollItem()
+        sub_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.2}))
         port_input = ServerPortInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=process_ip_text(server_obj=server_obj))
+        port_input.size_hint_max_x = 435
         sub_layout.add_widget(port_input)
         network_layout.add_widget(sub_layout)
 
 
-        # RAM allocation slider (Max limit = 75% of memory capacity)
-        max_limit = constants.max_memory
-        min_limit = 0
-        start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
-
-        def change_limit(val):
-            server_obj.set_ram_limit('auto' if val == min_limit else val)
-
-        sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="allocated memory"))
-        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
-        network_layout.add_widget(sub_layout)
-
-
-        # Open server directory
+        # Enable ngrok
         def open_server_dir(*args):
             constants.open_folder(server_obj.server_path)
             Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
@@ -14972,6 +14972,55 @@ class ServerAdvancedScreen(MenuBackground):
         self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
         sub_layout.add_widget(self.open_path_button)
         network_layout.add_widget(sub_layout)
+
+
+        # Enable Geyser toggle switch
+        def toggle_geyser(boolean, install=True):
+            if install:
+                addon_manager = server_obj.addon
+                if boolean:
+                    with ThreadPoolExecutor(max_workers=3) as pool:
+                        pool.map(addon_manager.download_addon, addons.geyser_addons(server_obj.properties_dict()))
+                else:
+                    for a in [a for a in addon_manager.return_single_list() if (a.author == 'GeyserMC' and (a.name.startswith('Geyser') or a.name == 'floodgate'))]:
+                        addon_manager.delete_addon(a)
+
+                # Show banner if server is running
+                if addon_manager.hash_changed():
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.937, 0.831, 0.62, 1),
+                            f"A server restart is required to apply changes",
+                            "sync.png",
+                            3,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0.25
+                    )
+
+                else:
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
+                            f"Bedrock support {'en' if boolean else 'dis'}abled",
+                            "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
+
+            server_obj.config_file.set("general", "enableGeyser", str(boolean).lower())
+            constants.server_config(server_obj.name, server_obj.config_file)
+
+        # Geyser switch for bedrock support
+        sub_layout = ScrollItem()
+        disabled = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'fabric'])
+        hint_text = "bedrock (unsupported server)" if disabled else "bedrock support (geyser)"
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
+        sub_layout.add_widget(toggle_button('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.config_file.get("general", "enableGeyser").lower() == 'true') and not disabled))
+        network_layout.add_widget(sub_layout)
+
 
         create_paragraph('network', network_layout, 1)
 
@@ -15186,7 +15235,7 @@ class MainApp(App):
             # screen_manager.current = "CreateServerReviewScreen"
 
             screen_manager.current = "ServerManagerScreen"
-            open_server("test 1.8.9")
+            open_server("test")
             def open_menu(*args):
                 screen_manager.current = "ServerAdvancedScreen"
                 # Clock.schedule_once(screen_manager.current_screen.edit_properties_button.button.trigger_action, 0.5)

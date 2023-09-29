@@ -1,3 +1,4 @@
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from subprocess import Popen, PIPE, run
 from kivy.utils import escape_markup
@@ -27,8 +28,8 @@ class ServerObject():
 
     def __init__(self, server_name: str):
 
-        gamemode_dict = ['survival', 'creative', 'adventure', 'spectator']
-        difficulty_dict = ['peaceful', 'easy', 'normal', 'hard', 'hardcore']
+        self.gamemode_dict = ['survival', 'creative', 'adventure', 'spectator']
+        self.difficulty_dict = ['peaceful', 'easy', 'normal', 'hard', 'hardcore']
 
 
         self.name = server_name
@@ -57,6 +58,32 @@ class ServerObject():
                 self.build = self.config_file.get("general", "serverBuild").lower()
         except:
             pass
+        try:
+            if self.config_file.get("general", "enableNgrok"):
+                self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
+        except:
+            pass
+        try:
+            if self.config_file.get("general", "enableGeyser"):
+                self.geyser_enabled = self.config_file.get("general", "enableGeyser").lower() == 'true'
+        except:
+            # Check if Geyser actually exists
+            def thread(*a):
+                geyser = 0
+                if constants.version_check(self.version, ">=", "1.13.2") and self.type.lower() in ['spigot', 'paper', 'fabric']:
+                    while not self.addon:
+                        time.sleep(0.5)
+                    addon_list = self.addon.return_single_list()
+                    for addon in addon_list:
+                        if (addon.name.startswith('Geyser') or addon.name == 'floodgate') and addon.author == 'GeyserMC':
+                            geyser += 1
+                            if geyser == 2:
+                                break
+
+                self.config_file.set("general", "enableGeyser", str(geyser >= 2).lower())
+                constants.server_config(self.name, self.config_file)
+            threading.Timer(0.1, thread).start()
+
 
         # Check update properties for UI stuff
         self.update_string = ''
@@ -84,8 +111,8 @@ class ServerObject():
 
 
         try:
-            self.gamemode = gamemode_dict[int(float(self.server_properties['gamemode']))] if not self.server_properties['hardcore'] else 'hardcore'
-            self.difficulty = difficulty_dict[int(float(self.server_properties['difficulty']))]
+            self.gamemode = self.gamemode_dict[int(float(self.server_properties['gamemode']))] if not self.server_properties['hardcore'] else 'hardcore'
+            self.difficulty = self.difficulty_dict[int(float(self.server_properties['difficulty']))]
         except ValueError:
             self.gamemode = self.server_properties['gamemode'] if not self.server_properties['hardcore'] else 'hardcore'
             self.difficulty = self.server_properties['difficulty']
@@ -132,6 +159,54 @@ class ServerObject():
                 self.build = self.config_file.get("general", "serverBuild").lower()
         except:
             pass
+        try:
+            if self.config_file.get("general", "enableNgrok"):
+                self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
+        except:
+            pass
+        try:
+            if self.config_file.get("general", "enableGeyser"):
+                self.geyser_enabled = self.config_file.get("general", "enableGeyser").lower() == 'true'
+        except:
+            pass
+
+
+        # Check update properties for UI stuff
+        self.update_string = ''
+        self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
+        if not self.update_string and self.build:
+            self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+
+
+        try:
+            self.world = self.server_properties['level-name']
+        except KeyError:
+            self.world = None
+        try:
+            self.ip = self.server_properties['server-ip']
+        except KeyError:
+            self.ip = None
+        try:
+            self.port = self.server_properties['server-port']
+        except KeyError:
+            self.port = None
+        try:
+            self.motd = self.server_properties['motd']
+        except KeyError:
+            self.motd = None
+
+
+        try:
+            self.gamemode = self.gamemode_dict[int(float(self.server_properties['gamemode']))] if not self.server_properties['hardcore'] else 'hardcore'
+            self.difficulty = self.difficulty_dict[int(float(self.server_properties['difficulty']))]
+        except ValueError:
+            self.gamemode = self.server_properties['gamemode'] if not self.server_properties['hardcore'] else 'hardcore'
+            self.difficulty = self.server_properties['difficulty']
+        except KeyError:
+            self.gamemode = None
+            self.difficulty = None
+
+        self.last_modified = os.path.getmtime(self.server_path)
 
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):
