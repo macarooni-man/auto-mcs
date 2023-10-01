@@ -1,4 +1,3 @@
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from subprocess import Popen, PIPE, run
 from kivy.utils import escape_markup
@@ -6,6 +5,7 @@ from datetime import datetime as dt
 from threading import Timer
 from copy import deepcopy
 from glob import glob
+import threading
 import psutil
 import ctypes
 import time
@@ -62,11 +62,12 @@ class ServerObject():
             if self.config_file.get("general", "enableNgrok"):
                 self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
         except:
-            pass
+            self.ngrok_enabled = False
         try:
             if self.config_file.get("general", "enableGeyser"):
                 self.geyser_enabled = self.config_file.get("general", "enableGeyser").lower() == 'true'
         except:
+            self.geyser_enabled = False
             # Check if Geyser actually exists
             def thread(*a):
                 geyser = 0
@@ -163,12 +164,12 @@ class ServerObject():
             if self.config_file.get("general", "enableNgrok"):
                 self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
         except:
-            pass
+            self.ngrok_enabled = False
         try:
             if self.config_file.get("general", "enableGeyser"):
                 self.geyser_enabled = self.config_file.get("general", "enableGeyser").lower() == 'true'
         except:
-            pass
+            self.geyser_enabled = False
 
 
         # Check update properties for UI stuff
@@ -589,7 +590,11 @@ class ServerObject():
                                 firewall_block = True
 
                 # Check for networking conflicts and current IP
-                self.run_data['network'] = constants.get_current_ip(self.name)
+                if self.ngrok_enabled and constants.app_online:
+                    if not constants.ngrok_ip['ip']:
+                        self.run_data['ngrok'] = Popen(f'"{os.path.join(constants.applicationFolder, "Tools", constants.ngrok_exec)}" tcp {self.port}', shell=True)
+
+                self.run_data['network'] = constants.get_current_ip(self.name, get_ngrok=(self.ngrok_enabled and constants.app_online))
                 if self.run_data['network']['original_port']:
                     self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.659, 0.42, 1))})
 
@@ -836,7 +841,7 @@ class ServerObject():
         return self.run_data
 
     # Kill server and delete running configuration
-    def terminate(self):
+    def terminate(self, reboot=False):
 
         # Kill server process
         if self.run_data['process'].poll() is None:
@@ -877,15 +882,28 @@ class ServerObject():
         self.last_modified = os.path.getmtime(self.server_path)
 
 
-        # Delete log from memory (hopefully)
-        for item in self.run_data['log']:
-            self.run_data['log'].remove(item)
-            del item
+        if not reboot:
+            # Delete log from memory (hopefully)
+            for item in self.run_data['log']:
+                self.run_data['log'].remove(item)
+                del item
 
-        self.run_data.clear()
-        self.running = False
-        del constants.server_manager.running_servers[self.name]
-        # print(constants.server_manager.running_servers)
+            # Close ngrok if running
+            try:
+                if self.run_data['ngrok']:
+                    if self.run_data['network']['address']['ip'] == constants.ngrok_ip['ip']:
+                        constants.ngrok_ip = {'name': None, 'ip': None}
+                    self.run_data['ngrok'].kill()
+                    if constants.os_name == 'windows':
+                        Popen("taskkill /f /im \"ngrok-v3.exe\"", shell=False, stdout=False, stderr=False)
+            except KeyError:
+                pass
+
+            # Delete run data
+            self.run_data.clear()
+            self.running = False
+            del constants.server_manager.running_servers[self.name]
+            # print(constants.server_manager.running_servers)
 
     # Retrieves performance information
     def performance_stats(self, interval=0.5, update_players=False):
@@ -985,9 +1003,12 @@ class ServerObject():
             return False
 
         elif auto_backup == 'true':
-            self.send_log(f"Saving a back-up of '{self.name}', please wait...", 'warning')
-            self.backup.save_backup()
-            self.send_log(f"Back-up complete!", 'success')
+            if crash_info:
+                self.send_log(f"Skipping back-up due to a crash", 'error')
+            else:
+                self.send_log(f"Saving a back-up of '{self.name}', please wait...", 'warning')
+                self.backup.save_backup()
+                self.send_log(f"Back-up complete!", 'success')
             return True
 
         else:

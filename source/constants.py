@@ -33,6 +33,7 @@ import re
 
 import addons
 import backup
+import constants
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
@@ -55,7 +56,7 @@ debug = False
 app_compiled = getattr(sys, 'frozen', False)
 
 public_ip = ""
-ngrok_ip = ""
+ngrok_ip = {'name': None, 'ip': None}
 footer_path = []
 
 sub_servers = []
@@ -163,6 +164,19 @@ else:
 if os_name == 'linux':
     os.environ['SSL_CERT_DIR'] = executable_folder
     os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'ca-bundle.crt')
+
+
+# Ngrok info
+ngrok_installed = False
+ngrok_exec = 'ngrok-v3.exe' if os_name == 'windows' else 'ngrok-v3'
+
+# Checks if ngrok is installed (returns bool)
+def check_ngrok():
+    global ngrok_installed
+    ngrok_installed = os.path.exists(os.path.join(applicationFolder, 'Tools', ngrok_exec))
+    return ngrok_installed
+check_ngrok()
+
 
 
 # Bigboi server manager
@@ -2460,9 +2474,106 @@ def make_update_list():
     return update_list
 
 
+# Installs ngrok in tools directory
+def install_ngrok():
+
+    # Attempt to find download URL
+    ngrok_url = "https://dl.equinox.io/ngrok/ngrok-v3/stable"
+    final_url = None
+    file_name = None
+
+    soup = BeautifulSoup(requests.get(ngrok_url).content, features="html.parser")
+    for a in soup.find_all('a', "btn"):
+        try:
+            dl_url = a.get('href')
+            if os_name == "windows" and "stable-windows-amd64" in dl_url:
+                final_url = dl_url
+                file_name = "ngrok.zip"
+                break
+
+            if os_name == "linux" and "stable-linux-amd64" in dl_url:
+                final_url = dl_url
+                file_name = "ngrok.tgz"
+                break
+
+        except AttributeError:
+            continue
+
+    # If URL not found, error out operation
+    if not final_url:
+        return False
+
+    try:
+        # If URL found, download ngrok archive
+        tool_path = os.path.join(applicationFolder, 'Tools')
+        folder_check(downDir)
+        download_url(final_url, file_name, downDir)
+
+        # Extract executable from archive
+        folder_check(tool_path)
+        cwd = os.path.abspath(os.curdir)
+        os.chdir(tool_path)
+        archive_file = ('ngrok.exe' if os_name == 'windows' else 'ngrok')
+        run_proc(f"tar -xf \"{os.path.join(downDir, file_name)}\" \"{archive_file}\"")
+        os.rename(archive_file, ngrok_exec)
+        os.chdir(cwd)
+        safe_delete(downDir)
+
+    except Exception as e:
+        print(e)
+        return False
+
+    return os.path.exists(os.path.join(tool_path, ngrok_exec))
+
+
+# Checks for a valid ngrok config file
+def check_ngrok_creds():
+    identifier = 'authtoken:'
+
+    if os_name == 'windows':
+        config_path = os.path.join(home, 'AppData', 'Local', 'ngrok', 'ngrok.yml')
+        old_path = os.path.join(home, '.ngrok2', 'ngrok.yml')
+    else:
+        config_path = os.path.join(home, '.config', 'ngrok', 'ngrok.yml')
+        old_path = os.path.join(home, '.ngrok2', 'ngrok.yml')
+
+    if os.path.isfile(old_path):
+        run_proc(f'"{os.path.join(applicationFolder, "Tools", ngrok_exec)}" config upgrade')
+        with open(config_path, 'r') as f:
+            for line in f.readlines():
+                if line.startswith(identifier) and line.strip() != identifier:
+                    return True
+
+    if os.path.isfile(config_path):
+        with open(config_path, 'r') as f:
+            for line in f.readlines():
+                if line.startswith(identifier) and line.strip() != identifier:
+                    return True
+
+    return False
+
+# Gets current ngrok IP
+def get_ngrok_ip(server_name: str):
+    global ngrok_ip
+    retries = 0
+
+    while retries < 10:
+        try:
+            url = "http://localhost:4040/api/tunnels"
+            reqs = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+            json_obj = json.loads(reqs.text)
+            ip = json_obj["tunnels"][0]["public_url"]
+            ngrok_ip = {'name': server_name, 'ip': ip.split("tcp://")[1].strip()}
+            break
+        except:
+            time.sleep(1)
+            retries += 1
+
+
+
 # Returns active IP address of 'name'
-def get_current_ip(name):
-    global public_ip, ngrok_ip
+def get_current_ip(name: str, get_ngrok=False):
+    global public_ip
 
     private_ip = ""
     original_port = "25565"
@@ -2522,7 +2633,7 @@ def get_current_ip(name):
                 s.close()
 
 
-        if not ngrok_ip:
+        if not get_ngrok:
             if app_online and not public_ip:
                 def get_public_ip(server_name, *args):
                     global public_ip
@@ -2546,6 +2657,24 @@ def get_current_ip(name):
 
 
     # Format network info
+    if get_ngrok:
+        def get_ngk_ip(server_name, *args):
+            constants.get_ngrok_ip(server_name)
+
+            if constants.ngrok_ip['ip']:
+                # Assign ngrok IP to current running server
+                if server_manager.running_servers:
+                    try:
+                        server_obj = server_manager.running_servers[server_name]
+                        server_obj.run_data['network']['address']['ip'] = ngrok_ip['ip']
+                        server_obj.run_data['network']['public_ip'] = ngrok_ip['ip']
+                        server_obj.send_log(f"Initialized ngrok connection '{constants.ngrok_ip['ip']}'", 'success')
+                    except KeyError:
+                        pass
+
+        ip_timer = Timer(0, functools.partial(get_ngk_ip, name))
+        ip_timer.start()
+
     if public_ip:
         final_addr['ip'] = public_ip
     elif private_ip:

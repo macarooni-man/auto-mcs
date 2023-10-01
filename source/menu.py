@@ -1988,6 +1988,64 @@ class AclRuleInput(BaseInput):
             return super().insert_text(s, from_undo=from_undo)
 
 
+
+class NgrokAuthInput(BaseInput):
+
+    def check_next(self):
+        break_loop = False
+        for child in self.parent.children:
+            if break_loop:
+                break
+            for item in child.children:
+                try:
+                    if item.id == "next_button":
+                        item.disable(self.text == '')
+                        break
+                except AttributeError:
+                    pass
+
+    def on_enter(self, value):
+        break_loop = False
+        for child in self.parent.children:
+            if break_loop:
+                break
+            for item in child.children:
+                try:
+                    if item.id == "next_button":
+                        item.force_click()
+                        break
+                except AttributeError:
+                    pass
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint_max = (528, 54)
+        self.padding_x = 25
+        self.title_text = "authtoken"
+        self.hint_text = "paste your ngrok authtoken..."
+        self.padding_y = (14, 0)
+        self.text = ''
+        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+        self.bind(on_text_validate=self.on_enter)
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if keycode[1] == "backspace":
+            self.text = ''
+
+        self.check_next()
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+        if not self.text and len(substring) > 10 and '\n' not in substring:
+            self.text = substring
+        self.check_next()
+
+
+
+
 class BlankInput(BaseInput):
 
     def __init__(self, **kwargs):
@@ -3245,7 +3303,6 @@ class AnimButton(FloatLayout):
             self.bind(size=self.resize)
             self.bind(pos=self.resize)
 
-
 class BigIcon(HoverButton):
 
     def on_click(self):
@@ -3432,6 +3489,8 @@ class NextButton(HoverButton):
 
     def on_press(self):
         super().on_press()
+        if self.click_func:
+            self.click_func()
         for child in self.parent.parent.children:
             if "ServerVersionInput" in child.__class__.__name__:
                 # Reset geyser_selected if version is less than 1.13.2
@@ -3469,7 +3528,7 @@ class NextButton(HoverButton):
 
             if "Input" in child.__class__.__name__:
                 child.focus = False
-def next_button(name, position, disabled=False, next_screen="MainMenuScreen", show_load_icon=False):
+def next_button(name, position, disabled=False, next_screen="MainMenuScreen", show_load_icon=False, click_func=None):
 
     final = FloatLayout()
 
@@ -3477,6 +3536,7 @@ def next_button(name, position, disabled=False, next_screen="MainMenuScreen", sh
     button.id = 'next_button'
     button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
+    button.click_func = click_func
     button.size_hint = (None, None)
     button.size = (dp(240), dp(67))
     button.pos_hint = {"center_x": position[0], "center_y": position[1]}
@@ -3496,7 +3556,8 @@ def next_button(name, position, disabled=False, next_screen="MainMenuScreen", sh
     text.color = (0.6, 0.6, 1, 0.4) if disabled else (0.6, 0.6, 1, 1)
 
     # Button click behavior
-    button.on_release = functools.partial(button_action, name, button, next_screen)
+    if not click_func:
+        button.on_release = functools.partial(button_action, name, button, next_screen)
 
     icon = Image()
     icon.id = 'icon'
@@ -7999,6 +8060,7 @@ class CreateServerAclRuleScreen(MenuBackground):
 
         self.add_widget(float_layout)
         self.acl_input.grab_focus()
+
 
 
 # Create Server Step 6:  Server Options --------------------------------------------------------------------------------
@@ -14821,6 +14883,88 @@ class ServerPropertiesEditScreen(MenuBackground):
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
+def toggle_ngrok(boolean, *args):
+    server_obj = constants.server_manager.current_server
+
+    if boolean:
+        # Switch to screen to authenticate ngrok if toggled and authtoken is missing
+        if not constants.check_ngrok_creds():
+            screen_manager.current = "NgrokAuthScreen"
+            return
+
+    # Show banner if server is running
+    if server_obj.running:
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_banner,
+                (0.937, 0.831, 0.62, 1),
+                f"A server restart is required to apply changes",
+                "sync.png",
+                3,
+                {"center_x": 0.5, "center_y": 0.965}
+            ), 0.25
+        )
+
+    else:
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_banner,
+                (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
+                f"ngrok proxy is {'en' if boolean else 'dis'}abled",
+                "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
+                2.5,
+                {"center_x": 0.5, "center_y": 0.965}
+            ), 0
+        )
+
+    server_obj.config_file.set("general", "enableNgrok", str(boolean).lower())
+    constants.server_config(server_obj.name, server_obj.config_file)
+    server_obj.ngrok_enabled = boolean
+
+class NgrokAuthScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.authtoken_input = None
+        self.menu = 'init'
+
+    def generate_menu(self, **kwargs):
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        def open_ngrok_site(*a):
+            url = 'https://dashboard.ngrok.com/get-started/your-authtoken'
+            webbrowser.open_new_tab(url)
+
+        def authorize_ngrok(*a):
+            constants.run_proc(f'"{os.path.join(constants.applicationFolder, "Tools", constants.ngrok_exec)}" config add-authtoken {self.authtoken_input.text}')
+            if constants.check_ngrok_creds():
+                toggle_ngrok(True)
+            previous_screen()
+            constants.screen_tree.pop(-1)
+
+
+
+        float_layout.add_widget(HeaderText("Login to ngrok and paste your authtoken below", '', (0, 0.8)))
+        float_layout.add_widget(WaitButton('Login to ngrok', (0.5, 0.555), 'ngrok.png', width=531, click_func=open_ngrok_site))
+        self.authtoken_input = NgrokAuthInput(pos_hint={"center_x": 0.5, "center_y": 0.45})
+        float_layout.add_widget(self.authtoken_input)
+        buttons.append(next_button('Next', (0.5, 0.24), True, next_screen='ServerAdvancedScreen', click_func=authorize_ngrok))
+        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"Login to ngrok"
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
 class ServerAdvancedScreen(MenuBackground):
 
     def __init__(self, **kwargs):
@@ -14833,10 +14977,12 @@ class ServerAdvancedScreen(MenuBackground):
 
         self.edit_properties_button = None
         self.open_path_button = None
+        self.ngrok_button = None
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
         server_obj.reload_config()
+        constants.check_ngrok()
 
         # Scroll list
         scroll_widget = ScrollViewWidget()
@@ -14962,16 +15108,59 @@ class ServerAdvancedScreen(MenuBackground):
         sub_layout.add_widget(port_input)
         network_layout.add_widget(sub_layout)
 
+        def add_switch(index=0, fade=False, *a):
+            sub_layout = ScrollItem()
+            state = server_obj.ngrok_enabled
+            input_border = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (ngrok)', disabled=(not constants.app_online))
+            sub_layout.add_widget(input_border)
+            sub_layout.add_widget(toggle_button('ngrok', (0.5, 0.5), custom_func=toggle_ngrok, default_state=server_obj.ngrok_enabled, disabled=(not constants.app_online)))
+            network_layout.add_widget(sub_layout, index)
+            if fade:
+                input_border.opacity = 0
+                Animation(opacity=1, duration=0.5).start(input_border)
 
-        # Enable ngrok
-        def open_server_dir(*args):
-            constants.open_folder(server_obj.server_path)
-            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+        if not constants.ngrok_installed:
+            def prompt_install(*args):
+                def install_wrapper(*a):
+                    Clock.schedule_once(functools.partial(self.ngrok_button.loading, True), 0)
+                    boolean = constants.install_ngrok()
 
-        sub_layout = ScrollItem()
-        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
-        sub_layout.add_widget(self.open_path_button)
-        network_layout.add_widget(sub_layout)
+                    def add_widgets(*b):
+                        self.ngrok_button.loading(False)
+                        network_layout.remove_widget(self.ngrok_button.parent)
+                        add_switch(1, True)
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
+                                f"ngrok was {'installed successfully' if boolean else 'not installed'}",
+                                "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+                    Clock.schedule_once(add_widgets, 0)
+
+                if constants.app_online:
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_popup,
+                            "query",
+                            "Install ngrok",
+                            "ngrok is a free proxy service that creates a tunnel to the internet. It can be used to bypass ISP port blocking or conflicts in which the client refuses to connect (e.g. strict NAT).\n\nWould you like to install ngrok?",
+                            (None, threading.Timer(0, install_wrapper).start)
+                        ),
+                        0
+                    )
+                else:
+                    self.show_popup('warning', 'Error', 'An internet connection is required to install ngrok\n\nPlease check your connection and try again', (None))
+
+            sub_layout = ScrollItem()
+            self.ngrok_button = WaitButton('Install Ngrok', (0.5, 0.5), 'ngrok.png', click_func=prompt_install)
+            sub_layout.add_widget(self.ngrok_button)
+            network_layout.add_widget(sub_layout)
+        else:
+            add_switch()
 
 
         # Enable Geyser toggle switch
@@ -15017,8 +15206,10 @@ class ServerAdvancedScreen(MenuBackground):
         sub_layout = ScrollItem()
         disabled = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'fabric'])
         hint_text = "bedrock (unsupported server)" if disabled else "bedrock support (geyser)"
+        if not constants.app_online:
+            disabled = True
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
-        sub_layout.add_widget(toggle_button('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.config_file.get("general", "enableGeyser").lower() == 'true') and not disabled))
+        sub_layout.add_widget(toggle_button('geyser', (0.5, 0.5), custom_func=toggle_geyser, disabled=disabled, default_state=(server_obj.geyser_enabled) and not disabled))
         network_layout.add_widget(sub_layout)
 
 
@@ -15235,7 +15426,7 @@ class MainApp(App):
             # screen_manager.current = "CreateServerReviewScreen"
 
             screen_manager.current = "ServerManagerScreen"
-            open_server("test")
+            open_server("test 1.8.9")
             def open_menu(*args):
                 screen_manager.current = "ServerAdvancedScreen"
                 # Clock.schedule_once(screen_manager.current_screen.edit_properties_button.button.trigger_action, 0.5)
