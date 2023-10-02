@@ -33,7 +33,6 @@ import re
 
 import addons
 import backup
-import constants
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
@@ -2202,7 +2201,10 @@ def create_server_config(properties: dict, temp_server=False):
     config.set('general', 'isFavorite', 'false')
     config.set('general', 'updateAuto', 'prompt')
     config.set('general', 'allocatedMemory', 'auto')
-    config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
+    try:
+        config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
+    except:
+        config.set('general', 'enableGeyser', 'false')
     config.set('general', 'enableNgrok', 'false')
 
     config.add_section('bkup')
@@ -2552,6 +2554,7 @@ def check_ngrok_creds():
 
     return False
 
+
 # Gets current ngrok IP
 def get_ngrok_ip(server_name: str):
     global ngrok_ip
@@ -2568,7 +2571,6 @@ def get_ngrok_ip(server_name: str):
         except:
             time.sleep(1)
             retries += 1
-
 
 
 # Returns active IP address of 'name'
@@ -2659,16 +2661,16 @@ def get_current_ip(name: str, get_ngrok=False):
     # Format network info
     if get_ngrok:
         def get_ngk_ip(server_name, *args):
-            constants.get_ngrok_ip(server_name)
+            get_ngrok_ip(server_name)
 
-            if constants.ngrok_ip['ip']:
+            if ngrok_ip['ip']:
                 # Assign ngrok IP to current running server
                 if server_manager.running_servers:
                     try:
                         server_obj = server_manager.running_servers[server_name]
                         server_obj.run_data['network']['address']['ip'] = ngrok_ip['ip']
                         server_obj.run_data['network']['public_ip'] = ngrok_ip['ip']
-                        server_obj.send_log(f"Initialized ngrok connection '{constants.ngrok_ip['ip']}'", 'success')
+                        server_obj.send_log(f"Initialized ngrok connection '{ngrok_ip['ip']}'", 'success')
                     except KeyError:
                         pass
 

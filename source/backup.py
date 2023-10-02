@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
 from functools import reduce
 from glob import glob
@@ -384,6 +385,55 @@ def set_backup_directory(name: str, new_dir: str):
 
                 set_lock(name, False)
                 return new_dir
+
+    set_lock(name, False)
+    return None
+
+
+# Migrate backup names when server is renamed
+def rename_backups(name: str, new_name: str):
+
+    cwd = os.path.abspath(os.curdir)
+    config_file = constants.server_config(new_name)
+    current_dir = config_file.get('bkup', 'bkupDir')
+    current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir
+
+    if set_lock(name, True, 'migrate'):
+
+        # Migrate backup directory and backups
+        extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
+
+        # Iterate over each back-up that could be a match in current back-up directory
+        for file in glob(os.path.join(current_dir, f"{name}__*")):
+            constants.folder_check(extract_folder)
+            os.chdir(extract_folder)
+
+            # Extract auto-mcs.ini from each match and check the server name just to be sure
+            constants.run_proc(f'tar -xvf "{file}"') # *auto-mcs.ini
+
+            for cfg in glob(os.path.join(extract_folder, '*auto-mcs.ini')):
+                config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+                config.optionxform = str
+                config.read(cfg)
+                if config:
+                    if config.get('general', 'serverName') == name:
+
+                        # Update bkupDir with new_dir in the back-ups' auto-mcs.ini
+                        config.set('general', 'serverName', new_name)
+                        with open(cfg, 'w') as f:
+                            config.write(f)
+
+                        os.remove(file)
+                        constants.run_proc(f'tar -cvf \"{os.path.join(current_dir, os.path.basename(file).replace(f"{name}__",f"{new_name}__"))}\" {"*" if constants.os_name == "windows" else "* .??*"}')
+                        break
+
+            os.chdir(constants.tempDir)
+            constants.safe_delete(extract_folder)
+
+        # Cleanup
+        os.chdir(cwd)
+        constants.safe_delete(constants.tempDir)
+        set_lock(name, False)
 
     set_lock(name, False)
     return None

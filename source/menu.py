@@ -4,6 +4,7 @@ from datetime import datetime as dt
 from PIL import Image as PILImage
 from ctypes import ArgumentError
 from plyer import filechooser
+from PIL import ImageEnhance
 from random import randrange
 import simpleaudio as sa
 from pathlib import Path
@@ -367,6 +368,12 @@ class BaseInput(TextInput):
         Animation(opacity=(0.85 if self.text and self.title_text else 0), color=self.foreground_color, duration=0.06).start(self.title)
         Animation(opacity=(1 if self.text and self.title_text else 0), duration=0.08).start(self.rect)
 
+        if self.disabled:
+            Animation.stop_all(self.title)
+            c = self.foreground_color
+            self.title.opacity = 0.85
+            self.title.color = (c[0], c[1], c[2], 0.4)
+
         # Auto position cursor at end if typing
         if self.cursor_index() == len(self.text) - 1:
             self.do_cursor_movement('cursor_end', True)
@@ -377,12 +384,14 @@ class BaseInput(TextInput):
         super().__init__(**kwargs)
 
         self.title_text = "InputTitle"
+        self.is_valid = True
 
         self.multiline = False
         self.size_hint_max = (500, 54)
         self.border = (-15, -15, -15, -15)
         self.background_normal = os.path.join(constants.gui_assets, f'text_input.png')
         self.background_active = os.path.join(constants.gui_assets, f'text_input_selected.png')
+        self.background_disabled_normal = self.background_normal
 
         self.halign = "center"
         self.hint_text_color = (0.6, 0.6, 1, 0.4)
@@ -402,6 +411,11 @@ class BaseInput(TextInput):
             self.bind(text=self.update_rect)
             self.bind(foreground_color=self.update_rect)
             self.bind(focused=self.update_rect)
+
+        if self.disabled:
+            c = self.foreground_color
+            self.disabled_foreground_color = (c[0], c[1], c[2], 0.4)
+            self.background_color = (1, 1, 1, 0.4)
 
         self.bind(cursor_pos=self.fix_overscroll)
 
@@ -424,6 +438,7 @@ class BaseInput(TextInput):
 
             # Hide text
             self.valid_text(boolean_value, text)
+            self.is_valid = True
 
             self.background_normal = os.path.join(constants.gui_assets, f'text_input.png')
             self.background_active = os.path.join(constants.gui_assets, f'text_input_selected.png')
@@ -436,6 +451,7 @@ class BaseInput(TextInput):
 
             # Show error
             self.valid_text(boolean_value, text)
+            self.is_valid = False
 
             self.background_normal = os.path.join(constants.gui_assets, f'text_input_invalid.png')
             self.background_active = os.path.join(constants.gui_assets, f'text_input_invalid_selected.png')
@@ -653,7 +669,7 @@ class ServerNameInput(BaseInput):
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
 
-        elif self.text.lower() in constants.server_list_lower:
+        elif self.text.lower().strip() in constants.server_list_lower:
             self.valid(False)
 
     # Valid input
@@ -728,6 +744,90 @@ class ServerNameInput(BaseInput):
 
             return super().insert_text(s, from_undo=from_undo)
 
+
+class ServerRenameInput(BaseInput):
+
+    def _on_focus(self, instance, value, *largs):
+        super()._on_focus(instance, value)
+        if not self.focus and self.text != self.starting_text.strip():
+            self.text = self.starting_text
+            self.valid(True, True)
+
+    def __init__(self, on_validate, **kwargs):
+        super().__init__(**kwargs)
+
+        self.validate = on_validate
+        self.title_text = "rename"
+        self.hint_text = "enter a new name..."
+        self.bind(on_text_validate=self.on_enter)
+        self.is_valid = False
+        self.starting_text = self.text
+
+
+    def on_enter(self, value):
+
+    # Invalid input
+        if not self.text or str.isspace(self.text):
+            self.valid(True, False)
+
+        elif (self.text.lower().strip() in constants.server_list_lower) and (self.text.lower().strip() != self.starting_text.lower().strip()):
+            self.valid(False)
+
+        if self.is_valid and self.text.strip() and (self.text.lower().strip() != self.starting_text.lower().strip()):
+            self.starting_text = self.text.strip()
+            self.validate((self.text).strip())
+
+    def valid_text(self, boolean_value, text):
+        for child in self.parent.children:
+            try:
+                if child.id == "InputLabel":
+
+                # Empty input
+                    if not text:
+                        child.clear_text()
+                        child.disable_text(True)
+
+                # Valid input
+                    elif boolean_value:
+                        child.clear_text()
+                        child.disable_text(False)
+
+                # Invalid input
+                    else:
+                        child.update_text("This server already exists")
+                        child.disable_text(True)
+                    break
+
+            except AttributeError:
+                pass
+
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if keycode[1] == "backspace" and len(self.text) >= 1:
+            text_check = (self.text.lower().strip())
+            self.valid((text_check not in constants.server_list_lower) or (text_check == self.starting_text.lower().strip()))
+
+        def check_validity(*a):
+            if not self.text or str.isspace(self.text):
+                self.valid(True, False)
+        Clock.schedule_once(check_validity, 0)
+
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 25:
+            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
+
+            text_check = (self.text + s).lower().strip()
+            self.valid((text_check not in constants.server_list_lower) or (text_check == self.starting_text.lower().strip()), ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+
+            return super().insert_text(s, from_undo=from_undo)
 
 
 class ServerVersionInput(BaseInput):
@@ -2864,7 +2964,7 @@ def main_button(name, position, icon_name=None, width=None, icon_offset=None, au
     return final
 
 
-def color_button(name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, color=(1, 1, 1, 1)):
+def color_button(name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, color=(1, 1, 1, 1), disabled=False):
 
     def repos_icon(icon_widget, button_widget, *args):
 
@@ -2886,7 +2986,7 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
     final.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
     final.button.border = (30, 30, 30, 30)
     final.button.background_normal = os.path.join(constants.gui_assets, 'color_button.png')
-    final.button.background_down = os.path.join(constants.gui_assets, 'color_button_click.png')
+    final.button.background_down = os.path.join(constants.gui_assets, 'color_button_click.png') if not disabled else final.button.background_normal
     final.button.background_disabled_normal = os.path.join(constants.gui_assets, 'color_button.png')
     final.button.background_disabled_down = os.path.join(constants.gui_assets, 'color_button_click.png')
     final.button.background_color = final.button.color_id[1]
@@ -2913,6 +3013,8 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
         icon.color = final.button.color_id[1]
         icon.pos_hint = {"center_y": position[1]}
         icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
+        if disabled:
+            icon.opacity = 0
         final.add_widget(icon)
 
     final.add_widget(text)
@@ -2920,8 +3022,13 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
     if auto_adjust_icon and icon_name:
         Clock.schedule_once(functools.partial(repos_icon, icon, final.button), 0)
 
-    if click_func:
+    if click_func and not disabled:
         final.button.bind(on_press=click_func)
+
+    final.button.ignore_hover = disabled
+    if disabled:
+        final.opacity = 0.4
+        final.button.opacity = 0.5
 
     return final
 
@@ -4013,6 +4120,7 @@ class NumberSlider(FloatLayout):
 
 # Popup widgets
 popup_blur_amount = 7  # Originally 5
+popup_blur_darkness = 0.9
 class PopupWindow(RelativeLayout):
 
     def generate_blur_background(self, *args):
@@ -4033,6 +4141,8 @@ class PopupWindow(RelativeLayout):
 
             screen_manager.current_screen.export_to_png(image_path)
             im = PILImage.open(image_path)
+            im = ImageEnhance.Brightness(im)
+            im = im.enhance(popup_blur_darkness)
             im1 = im.filter(GaussianBlur(popup_blur_amount))
             im1.save(image_path)
             self.blur_background.reload()
@@ -4444,6 +4554,8 @@ class BigPopupWindow(RelativeLayout):
 
             screen_manager.current_screen.export_to_png(image_path)
             im = PILImage.open(image_path)
+            im = ImageEnhance.Brightness(im)
+            im = im.enhance(popup_blur_darkness)
             im1 = im.filter(GaussianBlur(popup_blur_amount))
             im1.save(image_path)
             self.blur_background.reload()
@@ -5106,7 +5218,7 @@ def button_action(button_name, button, specific_screen=''):
                                     "sync.png",
                                     3,
                                     {"center_x": 0.5, "center_y": 0.965}
-                                ), 0.25
+                                ), 0
                             )
 
                         else:
@@ -10364,7 +10476,8 @@ def prompt_new_server(server_obj, *args):
         server_obj.backup.enable_auto_backup(boolean)
         if boolean:
             threading.Timer(0, server_obj.backup.save_backup).start()
-        Clock.schedule_once(prompt_updates, 0.5)
+
+        Clock.schedule_once(prompt_updates, 0.6)
 
     # Step 1 - prompt for backups
     def prompt_backup(*args):
@@ -14686,7 +14799,7 @@ class ServerPropertiesEditScreen(MenuBackground):
                     "sync.png",
                     3,
                     {"center_x": 0.5, "center_y": 0.965}
-                ), 0.25
+                ), 0
             )
 
         else:
@@ -14902,7 +15015,7 @@ def toggle_ngrok(boolean, *args):
                 "sync.png",
                 3,
                 {"center_x": 0.5, "center_y": 0.965}
-            ), 0.25
+            ), 0
         )
 
     else:
@@ -14973,6 +15086,8 @@ class ServerAdvancedScreen(MenuBackground):
         self.menu = 'init'
 
         self.header = None
+        self.title_widget = None
+        self.footer_widget = None
         self.menu_taskbar = None
 
         self.edit_properties_button = None
@@ -15066,6 +15181,17 @@ class ServerAdvancedScreen(MenuBackground):
         general_layout.add_widget(sub_layout)
 
 
+        # Open server directory
+        def open_server_dir(*args):
+            constants.open_folder(server_obj.server_path)
+            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+        sub_layout = ScrollItem()
+        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
+        sub_layout.add_widget(self.open_path_button)
+        general_layout.add_widget(sub_layout)
+
+
         # RAM allocation slider (Max limit = 75% of memory capacity)
         max_limit = constants.max_memory
         min_limit = 0
@@ -15079,16 +15205,6 @@ class ServerAdvancedScreen(MenuBackground):
         sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
         general_layout.add_widget(sub_layout)
 
-
-        # Open server directory
-        def open_server_dir(*args):
-            constants.open_folder(server_obj.server_path)
-            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
-
-        sub_layout = ScrollItem()
-        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
-        sub_layout.add_widget(self.open_path_button)
-        general_layout.add_widget(sub_layout)
 
         create_paragraph('general', general_layout, 0)
 
@@ -15108,6 +15224,8 @@ class ServerAdvancedScreen(MenuBackground):
         sub_layout.add_widget(port_input)
         network_layout.add_widget(sub_layout)
 
+
+        # Ngrok toggle/install button
         def add_switch(index=0, fade=False, *a):
             sub_layout = ScrollItem()
             state = server_obj.ngrok_enabled
@@ -15184,7 +15302,7 @@ class ServerAdvancedScreen(MenuBackground):
                             "sync.png",
                             3,
                             {"center_x": 0.5, "center_y": 0.965}
-                        ), 0.25
+                        ), 0
                     )
 
                 else:
@@ -15205,7 +15323,7 @@ class ServerAdvancedScreen(MenuBackground):
         # Geyser switch for bedrock support
         sub_layout = ScrollItem()
         disabled = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'fabric'])
-        hint_text = "bedrock (unsupported server)" if disabled else "bedrock support (geyser)"
+        hint_text = "geyser (unsupported server)" if disabled else "bedrock support (geyser)"
         if not constants.app_online:
             disabled = True
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text=hint_text, disabled=disabled))
@@ -15223,39 +15341,50 @@ class ServerAdvancedScreen(MenuBackground):
 
         update_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
-        # Edit properties button
-        def edit_server_properties(*args):
-            screen_manager.current = 'ServerPropertiesEditScreen'
+        # Automatic updates toggle
+        def toggle_auto_update(boolean, *a):
+            server_obj.enable_auto_update(boolean)
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_banner,
+                    (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
+                    f"Automatic server updates {'en' if boolean else 'dis'}abled",
+                    "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
 
         sub_layout = ScrollItem()
-        self.edit_properties_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
-        sub_layout.add_widget(self.edit_properties_button)
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='automatic updates'))
+        sub_layout.add_widget(toggle_button('auto-update', (0.5, 0.5), custom_func=toggle_auto_update, default_state=server_obj.auto_update == 'true'))
         update_layout.add_widget(sub_layout)
 
 
-        # RAM allocation slider (Max limit = 75% of memory capacity)
-        max_limit = constants.max_memory
-        min_limit = 0
-        start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+        # Updates server
+        def update_server(*a):
+            pass
 
-        def change_limit(val):
-            server_obj.set_ram_limit('auto' if val == min_limit else val)
-
+        # Check for updates button
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="allocated memory"))
-        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
+        if constants.update_list[server_obj.name]['needsUpdate'] == 'true':
+            update_button = WaitButton('Update Now', (0.5, 0.5), 'arrow-up-circle-outline.png', disabled=server_obj.running, click_func=update_server)
+        else:
+            update_button = WaitButton('Up to date', (0.5, 0.5), 'checkmark-circle.png', disabled=True)
+            Animation.stop_all(update_button.icon)
+            update_button.icon.opacity = 0.5
+        sub_layout.add_widget(update_button)
         update_layout.add_widget(sub_layout)
 
 
-        # Open server directory
-        def open_server_dir(*args):
-            constants.open_folder(server_obj.server_path)
-            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+        # Change 'server.jar' button
+        def migrate_server(*a):
+            pass
 
         sub_layout = ScrollItem()
-        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
-        sub_layout.add_widget(self.open_path_button)
+        sub_layout.add_widget(WaitButton("Change 'server.jar'", (0.5, 0.5), 'swap-horizontal-outline.png', disabled=server_obj.running, click_func=migrate_server))
         update_layout.add_widget(sub_layout)
+
 
         create_paragraph('updates', update_layout, 0)
 
@@ -15267,39 +15396,91 @@ class ServerAdvancedScreen(MenuBackground):
 
         transilience_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
-        # Edit properties button
-        def edit_server_properties(*args):
-            screen_manager.current = 'ServerPropertiesEditScreen'
+        def rename_server(name, *args):
+
+            # Actually rename the server files
+            server_obj.rename(name)
+
+            # Change header and footer text to reflect change
+            self.remove_widget(self.title_widget)
+            self.remove_widget(self.footer_widget)
+            del self.title_widget
+            del self.footer_widget
+            self.title_widget = generate_title(f"Advanced Settings: '{name}'")
+            self.footer_widget = generate_footer(f"{name}, Advanced", color='EFD49E')
+            self.add_widget(self.title_widget)
+            self.add_widget(self.footer_widget)
+
+            # Display banner to show success
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_banner,
+                    (0.553, 0.902, 0.675, 1),
+                    f"Server renamed to '{name}' successfully!",
+                    "rename.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+        # Rename server input
+        sub_layout = ScrollItem()
+        input_label = InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.2})
+        sub_layout.add_widget(input_label)
+        rename_input = ServerRenameInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=server_obj.name, on_validate=rename_server, disabled=server_obj.running)
+        rename_input.size_hint_max_x = 435
+        sub_layout.add_widget(rename_input)
+        transilience_layout.add_widget(sub_layout)
+
+        if server_obj.running:
+            input_label.update_text("Server is running", True)
+
+
+        # Change world file
+        def change_world(*a):
+            pass
 
         sub_layout = ScrollItem()
-        self.edit_properties_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
-        sub_layout.add_widget(self.edit_properties_button)
+        sub_layout.add_widget(WaitButton("Change world file", (0.5, 0.5), 'world.png', click_func=change_world, disabled=server_obj.running))
         transilience_layout.add_widget(sub_layout)
 
 
-        # RAM allocation slider (Max limit = 75% of memory capacity)
-        max_limit = constants.max_memory
-        min_limit = 0
-        start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
+        # Delete server button
+        def delete_server(*args):
+            server_name = server_obj.name
+            server_obj.delete()
 
-        def change_limit(val):
-            server_obj.set_ram_limit('auto' if val == min_limit else val)
+            def switch_screens(*a):
+                screen_manager.current = "ServerManagerScreen"
+                constants.screen_tree = ['MainMenuScreen']
+
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        (1, 0.5, 0.65, 1),
+                        f"'{server_name}' was deleted successfully",
+                        "trash-sharp.png",
+                        3,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0.1
+                )
+            Clock.schedule_once(switch_screens, 0.5)
+        def prompt_delete(*args):
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_popup,
+                    "warning_query",
+                    f"Delete '{server_obj.name}'",
+                    "Do you want to permanently delete this server?\n\nThis action cannot be undone\n(Your server can be re-imported from a back-up later)",
+                    (None, delete_server)
+                ),
+                0
+            )
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="allocated memory"))
-        sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
+        sub_layout.add_widget(color_button('Delete Server', (0.5, 0.5), 'trash-sharp.png', click_func=prompt_delete, color=(1, 0.5, 0.65, 1), disabled=server_obj.running))
         transilience_layout.add_widget(sub_layout)
 
-
-        # Open server directory
-        def open_server_dir(*args):
-            constants.open_folder(server_obj.server_path)
-            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
-
-        sub_layout = ScrollItem()
-        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
-        sub_layout.add_widget(self.open_path_button)
-        transilience_layout.add_widget(sub_layout)
 
         create_paragraph('transilience', transilience_layout, 0)
 
@@ -15318,10 +15499,12 @@ class ServerAdvancedScreen(MenuBackground):
         # Server Preview Box
         # float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=constants.new_server_info))
 
+
         # Configure header
         header_content = "Modify advanced server configuration"
         self.header = HeaderText(header_content, '', (0, 0.89))
         float_layout.add_widget(self.header)
+
 
         # if server_obj.advanced_hash_changed():
         #     icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
@@ -15333,8 +15516,10 @@ class ServerAdvancedScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        float_layout.add_widget(generate_title(f"Advanced Settings: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced", color='EFD49E'))
+        self.title_widget = generate_title(f"Advanced Settings: '{server_obj.name}'")
+        self.footer_widget = generate_footer(f"{server_obj.name}, Advanced", color='EFD49E')
+        self.add_widget(self.title_widget)
+        self.add_widget(self.footer_widget)
 
         self.add_widget(float_layout)
 

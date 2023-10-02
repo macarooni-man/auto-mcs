@@ -12,6 +12,7 @@ import time
 import os
 import re
 
+import backup
 from backup import BackupManager
 from addons import AddonManager
 from acl import AclObject, get_uuid
@@ -132,16 +133,20 @@ class ServerObject():
         self.acl = None
         self.script_object = None
 
-        def load_subs(*args):
+        def load_backup(*args):
             self.backup = BackupManager(server_name)
+        Timer(0, load_backup).start()
+        def load_addon(*args):
             self.addon = AddonManager(server_name)
+        Timer(0, load_addon).start()
+        def load_acl(*args):
             self.acl = AclObject(server_name)
-        Timer(0, load_subs).start()
+        Timer(0, load_acl).start()
 
         print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
 
     # Reloads server information from static files
-    def reload_config(self):
+    def reload_config(self, reload_objects=False):
 
         # Server files
         self.config_file = constants.server_config(self.name)
@@ -207,7 +212,27 @@ class ServerObject():
             self.gamemode = None
             self.difficulty = None
 
+        self.server_path = constants.server_path(self.name)
         self.last_modified = os.path.getmtime(self.server_path)
+
+
+        # Special sub-objects, and defer loading in the background
+        # Make sure that menus wait until objects are fully loaded before opening
+        if reload_objects:
+            self.backup = None
+            self.addon = None
+            self.acl = None
+            self.script_object = None
+
+            def load_backup(*args):
+                self.backup = BackupManager(self.name)
+            Timer(0, load_backup).start()
+            def load_addon(*args):
+                self.addon = AddonManager(self.name)
+            Timer(0, load_addon).start()
+            def load_acl(*args):
+                self.acl = AclObject(self.name)
+            Timer(0, load_acl).start()
 
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):
@@ -981,6 +1006,42 @@ class ServerObject():
         constants.server_config(self.name, self.config_file)
 
         return enabled
+
+    # Renames server
+    def rename(self, new_name: str):
+        if not self.running:
+            original_name = self.name
+            new_name = new_name.strip()
+
+            # Change name in config
+            self.config_file.set('general', 'serverName', new_name)
+            self.write_config()
+
+            # Change folder name
+            new_path = os.path.join(constants.applicationFolder, 'Servers', new_name)
+            os.rename(self.server_path, new_path)
+            self.server_path = new_path
+            self.name = new_name
+
+            # Reset server object properties
+            backup.rename_backups(original_name, new_name)
+            self.reload_config(reload_objects=True)
+
+            # Reset constants properties
+            constants.generate_server_list()
+            constants.make_update_list()
+
+    # Deletes server
+    def delete(self):
+        if not self.running:
+
+            # Save a back-up of current server state
+            self.backup.save_backup()
+
+            # Delete server folder
+            constants.safe_delete(self.server_path)
+            del self
+
 
 
     # Attempts to automatically update the server

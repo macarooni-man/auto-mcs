@@ -796,7 +796,6 @@ class ScriptObject():
         print(player_obj)
 
 
-
 # Reconfigured ServerObject to be passed in as 'server' variable to amscripts
 class ServerScriptObject():
     def __init__(self, server_obj):
