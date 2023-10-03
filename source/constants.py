@@ -602,6 +602,8 @@ def download_url(url: str, file_name: str, output_path: str, progress_func=None)
 
 # Will attempt to delete dir tree without error
 def safe_delete(directory: str):
+    if not directory:
+        return
     try:
         if os.path.exists(directory):
             rmtree(directory)

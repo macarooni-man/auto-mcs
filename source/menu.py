@@ -1097,7 +1097,7 @@ class DirectoryInput(BaseInput):
         return super().keyboard_on_key_down(window, keycode, text, modifiers)
 
 
-class ServerWorldInput(DirectoryInput):
+class CreateServerWorldInput(DirectoryInput):
 
     # Hide input_button on focus
     def _on_focus(self, *args):
@@ -1247,6 +1247,352 @@ class ServerWorldInput(DirectoryInput):
 
                     else:
                         world_valid()
+
+class ServerWorldInput(DirectoryInput):
+
+    # Hide input_button on focus
+    def _on_focus(self, *args):
+        super()._on_focus(*args)
+
+        for child in self.parent.children:
+            for child_item in child.children:
+                try:
+                    if child_item.id == "input_button":
+
+                        if screen_manager.current_screen.new_world == "world":
+                            self.hint_text = "type a directory, or click browse..." if self.focus else "create a new world"
+
+                        # Run input validation on focus change
+                        if self.focus:
+                            self.valid(True, True)
+
+                        # If unfocused, validate text
+                        if not self.focus and self.text and child_item.height == 0:
+                            self.on_enter(self.text)
+
+                        # If box deleted and unfocused, set back to previous text
+                        elif not self.focus and not self.text and screen_manager.current_screen.new_world != "world":
+                            self.text = self.cache_text
+
+                        # If box filled in and text box clicked
+                        if self.focus and self.text:
+                            self.text = screen_manager.current_screen.new_world
+                            self.do_cursor_movement('cursor_end', True)
+                            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+                            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                        [constants.hide_widget(item, self.focus) for item in child.children]
+
+                        return
+
+                except AttributeError:
+                    continue
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.halign = "left"
+        self.padding_x = 25
+        self.size_hint_max = (528, 54)
+        self.title_text = "world file"
+        self.hint_text = "create a new world"
+        self.cache_text = ""
+        world = screen_manager.current_screen.new_world
+        self.selected_world = None if world == 'world' else world
+        self.world_verified = False
+        self.update_world(hide_popup=True)
+
+    def on_enter(self, value):
+
+        if constants.os_name == "windows" and "\\" not in self.text:
+            self.text = os.path.join(constants.saveFolder, self.text)
+
+        elif constants.os_name != "windows" and "/" not in self.text:
+            self.text = os.path.join(constants.saveFolder, self.text)
+
+        self.selected_world = self.text.replace("~", constants.home)
+        self.update_world()
+
+    # Input validation and server selection
+    def valid_text(self, boolean_value, text):
+        if not constants.version_loading:
+
+            for child in self.parent.children:
+                try:
+                    if child.id == "InputLabel":
+                    # Invalid input
+                        if not boolean_value:
+                            child.update_text('This world is invalid or corrupt')
+                            self.text = ""
+                    # Valid input
+                        else:
+                            child.clear_text()
+                        break
+                except AttributeError:
+                    pass
+
+    def update_world(self, force_ignore=False, hide_popup=False):
+        if self.selected_world == "world":
+            self.text = ''
+
+        self.scroll_x = 0
+
+        if self.selected_world:
+            self.selected_world = os.path.abspath(self.selected_world)
+
+            # Check if the selected world is invalid
+            if not (os.path.isfile(os.path.join(self.selected_world, 'level.dat')) or os.path.isfile(os.path.join(self.selected_world, 'special_level.dat'))):
+                if self.selected_world != os.path.abspath(os.curdir):
+                    try:
+                        screen_manager.current_screen.new_world = 'world'
+                        if not force_ignore:
+                            self.valid_text(False, False)
+                        self.parent.parent.toggle_new(False)
+                    except AttributeError:
+                        pass
+
+            # If world is valid, do this
+            else:
+                if screen_manager.current_screen.new_world != "world":
+                    box_text = os.path.join(
+                        *Path(os.path.abspath(screen_manager.current_screen.new_world)).parts[-2:])
+                    self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
+
+                def world_valid():
+                    box_text = os.path.join(*Path(os.path.abspath(self.selected_world)).parts[-2:])
+                    self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
+                    try:
+                        screen_manager.current_screen.new_world = self.selected_world
+                        self.valid_text(True, True)
+                        self.parent.parent.toggle_new(True)
+                    except AttributeError:
+                        pass
+
+
+                # When valid world selected, check if it matches server version
+                check_world = constants.check_world_version(self.selected_world, constants.server_manager.current_server.version)
+
+                if check_world[0] or hide_popup:
+                    world_valid()
+
+                else:
+                    content = None
+                    basename = os.path.basename(self.selected_world)
+                    basename = basename[:30] + "..." if len(basename) > 30 else basename
+
+                    if check_world[1]:
+                        content = f"'{basename}' was created in\
+ version {check_world[1]}, which is newer than your server. This may cause a crash.\
+\n\nWould you like to use this world anyway?"
+                    elif constants.version_check(constants.server_manager.current_server.version, "<", "1.9"):
+                        content = f"'{basename}' was created in a version prior to 1.9 and may be incompatible.\
+\n\nWould you like to use this world anyway?"
+
+                    if content:
+                        screen_manager.current_screen.show_popup(
+                            "query",
+                            "Potential Incompatibility",
+                            content,
+                            [None, functools.partial(world_valid)]
+                        )
+
+                    else:
+                        world_valid()
+
+
+class CreateServerSeedInput(BaseInput):
+
+    # Hide input_button on focus
+    def _on_focus(self, *args):
+        try:
+            super()._on_focus(*args)
+
+            if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+                for child in self.parent.children:
+                    for child_item in child.children:
+                        try:
+                            if "drop_button" in child_item.id:
+
+                                # If box filled in and text box clicked
+                                if self.focus and self.text:
+                                    self.text = constants.new_server_info['server_settings']['seed']
+                                    self.do_cursor_movement('cursor_end', True)
+                                    Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+                                    Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                                if not self.focus:
+                                    # If text under button, cut it off temporarily
+                                    self.scroll_x = 0
+                                    self.cursor = (len(self.text), 0)
+                                    if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+                                        self.text = constants.new_server_info['server_settings']['seed'][:16] + "..."
+                                    self.scroll_x = 0
+                                    Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                                [constants.hide_widget(item, self.focus) for item in child.children]
+
+                                return
+
+                        except AttributeError:
+                            continue
+
+        except Exception as e:
+            print(f"Warning: Failed to focus input box ({e})")
+
+    def on_enter(self, value):
+
+        constants.new_server_info['server_settings']['seed'] = (self.text).strip()
+
+        break_loop = False
+        for child in self.parent.children:
+            if break_loop:
+                break
+            for item in child.children:
+                try:
+                    if item.id == "next_button":
+                        item.force_click()
+                        break
+                except AttributeError:
+                    pass
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint_max = (528, 54)
+        self.padding_x = 25
+        self.title_text = "world seed"
+        self.hint_text = "enter a seed..."
+        self.text = constants.new_server_info['server_settings']['seed']
+        self.bind(on_text_validate=self.on_enter)
+
+        if constants.new_server_info['server_settings']['world'] == "world":
+            if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+                self.halign = "left"
+                Clock.schedule_once(functools.partial(self._on_focus, self, True), 0.0)
+                Clock.schedule_once(functools.partial(self._on_focus, self, False), 0.0)
+
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        # if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
+        #     if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+        #         self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.38))
+
+        if keycode[1] == "backspace":
+            # Add seed to current config
+            constants.new_server_info['server_settings']['seed'] = (self.text).strip()
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 32:
+            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring.splitlines()[0])
+
+            # Add name to current config
+            constants.new_server_info['server_settings']['seed'] = (self.text + s).strip()
+
+            return super().insert_text(s, from_undo=from_undo)
+
+class ServerSeedInput(BaseInput):
+
+    # Hide input_button on focus
+    def _on_focus(self, *args):
+        try:
+            super()._on_focus(*args)
+
+            if constants.version_check(constants.server_manager.current_server.version, '>=', "1.1"):
+                for child in self.parent.children:
+                    for child_item in child.children:
+                        try:
+                            if "drop_button" in child_item.id:
+
+                                # If box filled in and text box clicked
+                                if self.focus and self.text:
+                                    self.text = screen_manager.current_screen.new_seed
+                                    self.do_cursor_movement('cursor_end', True)
+                                    Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+                                    Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                                if not self.focus:
+                                    # If text under button, cut it off temporarily
+                                    self.scroll_x = 0
+                                    self.cursor = (len(self.text), 0)
+                                    if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+                                        self.text = screen_manager.current_screen.new_seed[:16] + "..."
+                                    self.scroll_x = 0
+                                    Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                                [constants.hide_widget(item, self.focus) for item in child.children]
+
+                                return
+
+                        except AttributeError:
+                            continue
+
+        except Exception as e:
+            print(f"Warning: Failed to focus input box ({e})")
+
+    def on_enter(self, value):
+
+        screen_manager.current_screen.new_seed = (self.text).strip()
+
+        break_loop = False
+        for child in self.parent.children:
+            if break_loop:
+                break
+            for item in child.children:
+                try:
+                    if item.id == "next_button":
+                        item.force_click()
+                        break
+                except AttributeError:
+                    pass
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.size_hint_max = (528, 54)
+        self.padding_x = 25
+        self.title_text = "world seed"
+        self.hint_text = "enter a seed..."
+        self.text = screen_manager.current_screen.new_seed
+        self.bind(on_text_validate=self.on_enter)
+
+        if screen_manager.current_screen.new_world == "world":
+            if constants.version_check(constants.server_manager.current_server.version, '>=', "1.1"):
+                self.halign = "left"
+                Clock.schedule_once(functools.partial(self._on_focus, self, True), 0.0)
+                Clock.schedule_once(functools.partial(self._on_focus, self, False), 0.0)
+
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        # if constants.version_check(constants.server_manager.current_server.version, '>=', "1.1"):
+        #     if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
+        #         self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.38))
+
+        if keycode[1] == "backspace":
+            # Add seed to current config
+            screen_manager.current_screen.new_seed = (self.text).strip()
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 32:
+            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring.splitlines()[0])
+
+            # Add name to current config
+            screen_manager.current_screen.new_seed = (self.text + s).strip()
+
+            return super().insert_text(s, from_undo=from_undo)
 
 
 class ServerImportPathInput(DirectoryInput):
@@ -1518,106 +1864,6 @@ class ServerImportBackupInput(DirectoryInput):
                 self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
                 self.valid_text(True, True)
                 disable_next(False)
-
-
-
-class ServerSeedInput(BaseInput):
-
-    # Hide input_button on focus
-    def _on_focus(self, *args):
-        try:
-            super()._on_focus(*args)
-
-            if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
-                for child in self.parent.children:
-                    for child_item in child.children:
-                        try:
-                            if "drop_button" in child_item.id:
-
-                                # If box filled in and text box clicked
-                                if self.focus and self.text:
-                                    self.text = constants.new_server_info['server_settings']['seed']
-                                    self.do_cursor_movement('cursor_end', True)
-                                    Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
-                                    Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
-
-                                if not self.focus:
-                                    # If text under button, cut it off temporarily
-                                    self.scroll_x = 0
-                                    self.cursor = (len(self.text), 0)
-                                    if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
-                                        self.text = constants.new_server_info['server_settings']['seed'][:16] + "..."
-                                    self.scroll_x = 0
-                                    Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
-
-                                [constants.hide_widget(item, self.focus) for item in child.children]
-
-                                return
-
-                        except AttributeError:
-                            continue
-
-        except Exception as e:
-            print(f"Warning: Failed to focus input box ({e})")
-
-    def on_enter(self, value):
-
-        constants.new_server_info['server_settings']['seed'] = (self.text).strip()
-
-        break_loop = False
-        for child in self.parent.children:
-            if break_loop:
-                break
-            for item in child.children:
-                try:
-                    if item.id == "next_button":
-                        item.force_click()
-                        break
-                except AttributeError:
-                    pass
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.size_hint_max = (528, 54)
-        self.padding_x = 25
-        self.title_text = "world seed"
-        self.hint_text = "enter a seed..."
-        self.text = constants.new_server_info['server_settings']['seed']
-        self.bind(on_text_validate=self.on_enter)
-
-        if constants.new_server_info['server_settings']['world'] == "world":
-            if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
-                self.halign = "left"
-                Clock.schedule_once(functools.partial(self._on_focus, self, True), 0.0)
-                Clock.schedule_once(functools.partial(self._on_focus, self, False), 0.0)
-
-
-    def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        super().keyboard_on_key_down(window, keycode, text, modifiers)
-
-        # if constants.version_check(constants.new_server_info['version'], '>=', "1.1"):
-        #     if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.38):
-        #         self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.38))
-
-        if keycode[1] == "backspace":
-            # Add seed to current config
-            constants.new_server_info['server_settings']['seed'] = (self.text).strip()
-
-    # Input validation
-    def insert_text(self, substring, from_undo=False):
-
-        if not self.text and substring == " ":
-            substring = ""
-
-        elif len(self.text) < 32:
-            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring.splitlines()[0])
-
-            # Add name to current config
-            constants.new_server_info['server_settings']['seed'] = (self.text + s).strip()
-
-            return super().insert_text(s, from_undo=from_undo)
-
 
 
 class CreateServerPortInput(BaseInput):
@@ -2227,7 +2473,7 @@ def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, sele
                 if break_loop:
                     break
                 if child.__class__.__name__ == input_name:
-                    if input_name == "ServerWorldInput":
+                    if "ServerWorldInput" in input_name:
                         if final_path:
                             child.selected_world = os.path.abspath(final_path)
                             child.update_world()
@@ -5043,8 +5289,11 @@ def button_action(button_name, button, specific_screen=''):
                     for child_item in item.children:
                         if break_loop:
                             break
-                        if child_item.__class__.__name__ == 'ServerWorldInput':
+                        if child_item.__class__.__name__ == 'CreateServerWorldInput':
                             child_item.selected_world = constants.new_server_info['server_settings']['world'] = 'world'
+                            child_item.update_world(force_ignore=True)
+                        elif child_item.__class__.__name__ == 'ServerWorldInput':
+                            child_item.selected_world = screen_manager.current_screen.new_world = 'world'
                             child_item.update_world(force_ignore=True)
 
         # Different behavior depending on the page
@@ -6209,9 +6458,9 @@ class CreateServerWorldScreen(MenuBackground):
         float_layout.id = 'content'
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.62}))
         float_layout.add_widget(HeaderText("What world would you like to use?", '', (0, 0.76)))
-        float_layout.add_widget(ServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.55}))
-        float_layout.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
-        buttons.append(input_button('Browse...', (0.5, 0.55), ('dir', constants.saveFolder if os.path.isdir(constants.saveFolder) else constants.userDownloads), input_name='ServerWorldInput', title='Select a World File'))
+        float_layout.add_widget(CreateServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.55}))
+        float_layout.add_widget(CreateServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
+        buttons.append(input_button('Browse...', (0.5, 0.55), ('dir', constants.saveFolder if os.path.isdir(constants.saveFolder) else constants.userDownloads), input_name='CreateServerWorldInput', title='Select a World File'))
 
         server_version = constants.new_server_info['version']
         if constants.version_check(server_version, '>=', "1.1"):
@@ -6251,7 +6500,7 @@ class CreateServerWorldScreen(MenuBackground):
                 if child.id == 'content':
                     for item in child.children:
                         try:
-                            if item.__class__.__name__ == 'ServerSeedInput':
+                            if item.__class__.__name__ == 'CreateServerSeedInput':
                                 current_input = 'input'
                                 if constants.new_server_info['server_settings']['world'] != 'world':
                                     child.remove_widget(item)
@@ -6276,7 +6525,7 @@ class CreateServerWorldScreen(MenuBackground):
 
                     # Show seed input, and clear world text
                     elif constants.new_server_info['server_settings']['world'] == 'world' and current_input == 'button':
-                        child.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
+                        child.add_widget(CreateServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
 
                         if constants.version_check(server_version, '>=', "1.1"):
                             options = ['normal', 'superflat']
@@ -15078,6 +15327,174 @@ class NgrokAuthScreen(MenuBackground):
 
         self.add_widget(float_layout)
 
+class ServerWorldScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.new_world = 'world'
+        self.new_seed = ''
+        self.new_type = 'default'
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+        self.new_world = 'world'
+        self.new_seed = ''
+        self.new_type = 'default'
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.67}))
+        float_layout.add_widget(HeaderText("What world would you like to use?", '', (0, 0.8)))
+        float_layout.add_widget(ServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.6}))
+        float_layout.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.472}))
+        buttons.append(input_button('Browse...', (0.5, 0.6), ('dir', constants.saveFolder if os.path.isdir(constants.saveFolder) else constants.userDownloads), input_name='ServerWorldInput', title='Select a World File'))
+
+        def change_type(type_name):
+            self.new_type = type_name
+
+        server_version = server_obj.version
+        if constants.version_check(server_version, '>=', "1.1"):
+            options = ['normal', 'superflat']
+            if constants.version_check(server_version, '>=', "1.3.1"):
+                options.append('large biomes')
+            if constants.version_check(server_version, '>=', "1.7.2"):
+                options.append('amplified')
+            default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
+            float_layout.add_widget(DropButton(default_name, (0.5, 0.472), options_list=options, input_name='AdvancedServerLevelTypeInput', x_offset=41, custom_func=change_type))
+
+        def change_world(*a):
+
+            # Ignore world if it's the current server world
+            if os.path.join(server_obj.server_path, server_obj.world) == self.new_world:
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        (0.937, 0.831, 0.62, 1),
+                        f"The destination world can't be the current world",
+                        "close-circle-outline.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+                return
+
+            def change_thread(*a):
+                try:
+                    screen_manager.current_screen.world_button.loading(True)
+                except:
+                    pass
+
+                # First, save backup
+                server_obj.backup.save_backup()
+
+                # Delete current world
+                constants.safe_delete(constants.server_path(server_obj.name, server_obj.world))
+
+                # Copy world to server if one is selected
+                world_name = 'world'
+                if self.new_world.strip().lower() != "world":
+                    world_name = os.path.basename(self.new_world)
+                    constants.copytree(self.new_world, os.path.join(server_obj.server_path, world_name))
+
+                # Change level-name in 'server.properties' and server_obj.world
+                server_obj.server_properties['level-name'] = world_name
+                server_obj.server_properties['level-type'] = self.new_type
+                server_obj.server_properties['level-seed'] = self.new_seed
+                server_obj.write_config()
+                server_obj.reload_config()
+
+                try:
+                    screen_manager.current_screen.world_button.loading(False)
+                except:
+                    pass
+
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        (0.553, 0.902, 0.675, 1),
+                        f"The server world has been changed successfully",
+                        "checkmark-circle-outline.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+
+            previous_screen()
+            constants.screen_tree.pop(-1)
+            threading.Timer(0, change_thread).start()
+
+        buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='ServerAdvancedScreen', click_func=change_world))
+        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title(f"Advanced Settings: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced, Change world"))
+
+        self.add_widget(float_layout)
+
+    def on_pre_enter(self, *args):
+        super().on_pre_enter()
+        self.toggle_new(True)
+
+    # Call this when world loaded, and when the 'create new world instead' button is clicked. Fix overlapping when added/removed multiple times
+    def toggle_new(self, boolean_value):
+        server_obj = constants.server_manager.current_server
+
+        current_input = ''
+        server_version = server_obj.version
+
+        for child in self.children:
+            try:
+                if child.id == 'content':
+                    for item in child.children:
+                        try:
+                            if item.__class__.__name__ == 'ServerSeedInput':
+                                current_input = 'input'
+                                if self.new_world != 'world':
+                                    child.remove_widget(item)
+
+                                    try:
+                                        if constants.version_check(server_version, '>=', "1.1"):
+                                            child.remove_widget([relative for relative in child.children if relative.__class__.__name__ == 'DropButton'][0])
+                                    except IndexError:
+                                        if constants.debug:
+                                            print("Error: 'DropButton' does not exist, can't remove")
+
+                            elif item.id == 'Create new world instead':
+                                current_input = 'button'
+                                if self.new_world == 'world':
+                                    child.remove_widget(item)
+                        except AttributeError:
+                            continue
+
+                    # Show button if true
+                    if boolean_value and self.new_world != 'world' and current_input == 'input':
+                        child.add_widget(main_button('Create new world instead', (0.5, 0.442), 'add-circle-outline.png', width=530))
+
+                    # Show seed input, and clear world text
+                    elif self.new_world == 'world' and current_input == 'button':
+                        child.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.442}))
+
+                        if constants.version_check(server_version, '>=', "1.1"):
+                            options = ['normal', 'superflat']
+                            if constants.version_check(server_version, '>=', "1.3.1"):
+                                options.append('large biomes')
+                            if constants.version_check(server_version, '>=', "1.7.2"):
+                                options.append('amplified')
+                            default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
+                            child.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='AdvancedServerLevelTypeInput', x_offset=41))
+                    break
+
+            except AttributeError:
+                pass
+
 class ServerAdvancedScreen(MenuBackground):
 
     def __init__(self, **kwargs):
@@ -15093,6 +15510,7 @@ class ServerAdvancedScreen(MenuBackground):
         self.edit_properties_button = None
         self.open_path_button = None
         self.ngrok_button = None
+        self.world_button = None
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
@@ -15438,10 +15856,11 @@ class ServerAdvancedScreen(MenuBackground):
 
         # Change world file
         def change_world(*a):
-            pass
+            screen_manager.current = 'ServerWorldScreen'
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(WaitButton("Change world file", (0.5, 0.5), 'world.png', click_func=change_world, disabled=server_obj.running))
+        self.world_button = WaitButton("Change world file", (0.5, 0.5), 'world.png', click_func=change_world, disabled=server_obj.running)
+        sub_layout.add_widget(self.world_button)
         transilience_layout.add_widget(sub_layout)
 
 
