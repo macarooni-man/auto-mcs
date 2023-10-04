@@ -832,9 +832,9 @@ class ServerRenameInput(BaseInput):
 
 class ServerVersionInput(BaseInput):
 
-    def __init__(self, **kwargs):
+    def __init__(self, enter_func=None, **kwargs):
         super().__init__(**kwargs)
-
+        self.enter_func = enter_func
         self.title_text = "version"
         self.hint_text = f"click 'next' for latest  ({constants.latestMC[constants.new_server_info['type']]})"
         self.bind(on_text_validate=self.on_enter)
@@ -856,6 +856,9 @@ class ServerVersionInput(BaseInput):
                 constants.new_server_info['version'] = (self.text).strip()
             else:
                 constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+
+            if self.enter_func:
+                self.enter_func()
 
             break_loop = False
             for child in self.parent.children:
@@ -15349,10 +15352,10 @@ class ServerWorldScreen(MenuBackground):
         float_layout = FloatLayout()
         float_layout.id = 'content'
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.67}))
-        float_layout.add_widget(HeaderText("What world would you like to use?", '', (0, 0.8)))
-        float_layout.add_widget(ServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.6}))
-        float_layout.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.472}))
-        buttons.append(input_button('Browse...', (0.5, 0.6), ('dir', constants.saveFolder if os.path.isdir(constants.saveFolder) else constants.userDownloads), input_name='ServerWorldInput', title='Select a World File'))
+        float_layout.add_widget(HeaderText("What world would you like to use?", 'This action will automatically create a back-up', (0, 0.83)))
+        float_layout.add_widget(ServerWorldInput(pos_hint={"center_x": 0.5, "center_y": 0.58}))
+        float_layout.add_widget(ServerSeedInput(pos_hint={"center_x": 0.5, "center_y": 0.462}))
+        buttons.append(input_button('Browse...', (0.5, 0.58), ('dir', constants.saveFolder if os.path.isdir(constants.saveFolder) else constants.userDownloads), input_name='ServerWorldInput', title='Select a World File'))
 
         def change_type(type_name):
             self.new_type = type_name
@@ -15365,7 +15368,7 @@ class ServerWorldScreen(MenuBackground):
             if constants.version_check(server_version, '>=', "1.7.2"):
                 options.append('amplified')
             default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
-            float_layout.add_widget(DropButton(default_name, (0.5, 0.472), options_list=options, input_name='AdvancedServerLevelTypeInput', x_offset=41, custom_func=change_type))
+            float_layout.add_widget(DropButton(default_name, (0.5, 0.462), options_list=options, input_name='AdvancedServerLevelTypeInput', x_offset=41, custom_func=change_type))
 
         def change_world(*a):
 
@@ -15778,6 +15781,7 @@ class ServerAdvancedScreen(MenuBackground):
         sub_layout.add_widget(toggle_button('auto-update', (0.5, 0.5), custom_func=toggle_auto_update, default_state=server_obj.auto_update == 'true'))
         update_layout.add_widget(sub_layout)
 
+        disabled = server_obj.running or not constants.app_online
 
         # Updates server
         def update_server(*a):
@@ -15786,7 +15790,7 @@ class ServerAdvancedScreen(MenuBackground):
         # Check for updates button
         sub_layout = ScrollItem()
         if constants.update_list[server_obj.name]['needsUpdate'] == 'true':
-            update_button = WaitButton('Update Now', (0.5, 0.5), 'arrow-up-circle-outline.png', disabled=server_obj.running, click_func=update_server)
+            update_button = WaitButton(f"Update to {server_obj.update_string}", (0.5, 0.5), 'arrow-up-circle-outline.png', disabled=disabled, click_func=update_server)
         else:
             update_button = WaitButton('Up to date', (0.5, 0.5), 'checkmark-circle.png', disabled=True)
             Animation.stop_all(update_button.icon)
@@ -15797,10 +15801,12 @@ class ServerAdvancedScreen(MenuBackground):
 
         # Change 'server.jar' button
         def migrate_server(*a):
-            pass
+            constants.new_server_init()
+            constants.new_server_info['type'] = server_obj.type
+            screen_manager.current = 'MigrateServerTypeScreen'
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(WaitButton("Change 'server.jar'", (0.5, 0.5), 'swap-horizontal-outline.png', disabled=server_obj.running, click_func=migrate_server))
+        sub_layout.add_widget(WaitButton("Change 'server.jar'", (0.5, 0.5), 'swap-horizontal-outline.png', disabled=disabled, click_func=migrate_server))
         update_layout.add_widget(sub_layout)
 
 
@@ -15946,6 +15952,229 @@ class ServerAdvancedScreen(MenuBackground):
         self.menu_taskbar = MenuTaskbar(selected_item='advanced')
         self.add_widget(self.menu_taskbar)
 
+# Update/Migrate server screens
+class MigrateServerTypeScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        float_layout.add_widget(HeaderText("Which distribution would you like to switch to?", 'This action will automatically create a back-up', (0, 0.89)))
+
+        # Create UI buttons
+        buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='MigrateServerVersionScreen'))
+        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+
+        # Create type buttons
+        content_layout = FloatLayout()
+        content_layout.current_selection = constants.new_server_info['type']
+        row_top = BoxLayout()
+        row_bottom = BoxLayout()
+        row_top.pos_hint = {"center_y": 0.65, "center_x": 0.5}
+        row_bottom.pos_hint = {"center_y": 0.395, "center_x": 0.5}
+        row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
+        row_top.orientation = row_bottom.orientation = "horizontal"
+        row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('experimental mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        content_layout.add_widget(row_top)
+        content_layout.add_widget(row_bottom)
+        float_layout.add_widget(content_layout)
+
+        float_layout.add_widget(page_counter(1, 2, (0, 0.86)))
+        float_layout.add_widget(generate_title(f"Advanced Settings: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced, Change 'server.jar'"))
+
+        self.add_widget(float_layout)
+
+class MigrateServerVersionScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.final_button = None
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        # Prevent server creation if offline
+        if not constants.app_online:
+            float_layout.add_widget(HeaderText("Changing the 'server.jar' requires an internet connection", '', (0, 0.6)))
+            buttons.append(exit_button('Back', (0.5, 0.35)))
+
+        # Regular menus
+        else:
+            def update_next(boolean_value, message):
+
+                if message:
+                    for child in float_layout.children:
+                        if "ServerVersionInput" in child.__class__.__name__:
+                            child.focus = False
+                            child.valid(boolean_value, message)
+
+                self.final_button.disable(not boolean_value)
+
+            def migrate_server(*a):
+
+                def start_migration(*a):
+                    print(True)
+
+                def check_version(*args, **kwargs):
+                    self.final_button.loading(True)
+                    version_data = constants.search_version(constants.new_server_info)
+                    constants.new_server_info['version'] = version_data[1]['version']
+                    constants.new_server_info['build'] = version_data[1]['build']
+                    constants.new_server_info['jar_link'] = version_data[3]
+                    self.final_button.loading(False)
+                    update_next(version_data[0], version_data[2])
+
+                    # Continue to next screen if valid input, and back button not pressed
+                    if version_data[0] and not version_data[2] and screen_manager.current == 'MigrateServerVersionScreen':
+                        if constants.version_check(constants.new_server_info['version'], '<', server_obj.version):
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_popup,
+                                    "warning_query",
+                                    f'Downgrade Warning',
+                                    "Downgrading can corrupt the save file and crash until it's replaced.\n\nDo you really wish to downgrade?",
+                                    (None, start_migration)
+                                ),
+                                0
+                            )
+                        else:
+                            start_migration()
+
+                timer = threading.Timer(0, function=check_version)
+                timer.start()
+
+            float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.57}))
+            float_layout.add_widget(page_counter(2, 2, (0, 0.77)))
+            float_layout.add_widget(HeaderText("What version of Minecraft would you like to switch to?", f'Current version:  {server_obj.version}', (0, 0.8)))
+            self.final_button = WaitButton('Migrate Server', (0.5, 0.24), 'swap-horizontal-outline.png', click_func=migrate_server)
+            float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.49}, text=constants.new_server_info['version'], enter_func=migrate_server))
+            self.add_widget(self.final_button)
+            buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title(f"Advanced Settings: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced, Change 'server.jar'"))
+
+        self.add_widget(float_layout)
+
+class MigrateServerProgressScreen(ProgressScreen):
+
+    # Only replace this function when making a child screen
+    # Set fail message in child functions to trigger an error
+    def contents(self):
+        server_obj = constants.server_manager.current_server
+
+        def before_func(*args):
+
+            # First, clean out any existing server in temp folder
+            constants.safe_delete(constants.tmpsvr)
+
+            if not constants.app_online:
+                self.execute_error(
+                    "An internet connection is required to continue\n\nVerify connectivity and try again")
+            else:
+                constants.folder_check(constants.tmpsvr)
+
+        # Original is percentage before this function, adjusted is a percent of hooked value
+        def adjust_percentage(*args):
+            original = self.last_progress
+            adjusted = args[0]
+            total = args[1] * 0.01
+            final = original + round(adjusted * total)
+            if final < 0:
+                final = original
+            self.progress_bar.update_progress(final)
+
+        self.page_contents = {
+
+            # Page name
+            'title': f"Creating '{constants.new_server_info['name']}'",
+
+            # Header text
+            'header': "Sit back and relax, it's automation time...",
+
+            # Tuple of tuples for steps (label, function, percent)
+            # Percent of all functions must total 100
+            # Functions must return True, or default error will be executed
+            'default_error': 'There was an issue, please try again later',
+
+            'function_list': (),
+
+            # Function to run before steps (like checking for an internet connection)
+            'before_function': before_func,
+
+            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
+            'after_function': functools.partial(open_server, constants.new_server_info['name'], True,
+                                                f"'{constants.new_server_info['name']}' was created successfully"),
+
+            # Screen to go to after complete
+            'next_screen': None
+        }
+
+        # Create function list
+        function_list = [
+            ('Verifying Java installation',
+             functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            ("Downloading 'server.jar'",
+             functools.partial(constants.download_jar, functools.partial(adjust_percentage, 30)), 0)
+        ]
+
+        download_addons = False
+        needs_installed = False
+
+        if constants.new_server_info['type'] != 'vanilla':
+            download_addons = constants.new_server_info['addon_objects'] or \
+                              constants.new_server_info['server_settings']['disable_chat_reporting'] or \
+                              constants.new_server_info['server_settings']['geyser_support'] or (
+                                      constants.new_server_info['type'] == 'fabric')
+            needs_installed = constants.new_server_info['type'] in ['forge', 'fabric']
+
+        if needs_installed:
+            function_list.append((f'Installing {constants.new_server_info["type"].title()}',
+                                  functools.partial(constants.install_server), 10 if download_addons else 20))
+
+        if download_addons:
+            function_list.append(('Add-oning add-ons', functools.partial(constants.iter_addons,
+                                                                         functools.partial(adjust_percentage,
+                                                                                           10 if needs_installed else 20)),
+                                  0))
+
+        function_list.append(('Applying server configuration', functools.partial(constants.generate_server_files),
+                              10 if (download_addons or needs_installed) else 20))
+
+        function_list.append(('Creating initial back-up', functools.partial(constants.create_backup),
+                              10 if (download_addons or needs_installed) else 20))
+
+        self.page_contents['function_list'] = tuple(function_list)
 
 
 # </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
