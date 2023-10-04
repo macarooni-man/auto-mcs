@@ -891,7 +891,7 @@ def get_data_versions():
             except IndexError:
                 data = None
 
-            final_data[item.find("td").a.get("title").lower().split("java edition ")[1]] = data
+            final_data[item.find("td").a.get("title").lower().replace("java edition ","")] = data
 
     # All data returned as dict
     return final_data

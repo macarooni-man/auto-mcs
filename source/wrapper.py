@@ -212,9 +212,9 @@ if __name__ == '__main__':
         try:
 
             # Find latest game versions and update data cache
-            constants.check_data_cache()
-
             constants.find_latest_mc()
+
+            constants.check_data_cache()
 
             constants.make_update_list()
 
