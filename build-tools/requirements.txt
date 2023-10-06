@@ -14,7 +14,6 @@ kivy-deps.angle==0.3.2
 kivy-deps.glew==0.3.1
 kivy-deps.sdl2==0.3.1
 Kivy-Garden==0.1.5
-mcstatus==10.0.1
 munch==3.0.0
 NBT==1.5.1
 pefile==2022.5.30

@@ -16040,7 +16040,29 @@ class MigrateServerVersionScreen(MenuBackground):
             def migrate_server(*a):
 
                 def start_migration(*a):
-                    print(True)
+                    def main_thread(*b):
+                        screen_manager.current = "MigrateServerProgressScreen"
+                    Clock.schedule_once(functools.partial(self.final_button.loading, True), 0)
+                    constants.new_server_info['name'] = server_obj.name
+
+                    # Check for Geyser and chat reporting, and prep addon objects
+                    chat_reporting = False
+                    constants.new_server_info['addon_objects'] = server_obj.addon.return_single_list()
+                    for addon in constants.new_server_info['addon_objects']:
+                        if addon.name.lower() == "freedomchat":
+                            chat_reporting = True
+                            constants.new_server_info['addon_objects'].remove(addon)
+                        if addon.name.lower() == "no-chat-reports":
+                            chat_reporting = True
+                            constants.new_server_info['addon_objects'].remove(addon)
+                        if addon.name.lower() == "viaversion":
+                            constants.new_server_info['addon_objects'].remove(addon)
+                        if addon.author.lower() == "geysermc":
+                            constants.new_server_info['addon_objects'].remove(addon)
+
+                    constants.new_server_info['server_settings']['disable_chat_reporting'] = chat_reporting
+                    constants.new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled
+                    Clock.schedule_once(main_thread, 0)
 
                 def check_version(*args, **kwargs):
                     self.final_button.loading(True)
@@ -16073,7 +16095,7 @@ class MigrateServerVersionScreen(MenuBackground):
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.57}))
             float_layout.add_widget(page_counter(2, 2, (0, 0.77)))
             float_layout.add_widget(HeaderText("What version of Minecraft would you like to switch to?", f'Current version:  {server_obj.version}', (0, 0.8)))
-            self.final_button = WaitButton('Migrate Server', (0.5, 0.24), 'swap-horizontal-outline.png', click_func=migrate_server)
+            self.final_button = WaitButton("Change 'server.jar'", (0.5, 0.24), 'swap-horizontal-outline.png', click_func=migrate_server)
             float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.49}, text=constants.new_server_info['version'], enter_func=migrate_server))
             self.add_widget(self.final_button)
             buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
@@ -16092,6 +16114,18 @@ class MigrateServerProgressScreen(ProgressScreen):
     # Set fail message in child functions to trigger an error
     def contents(self):
         server_obj = constants.server_manager.current_server
+        if constants.new_server_info['type'] != server_obj.type:
+            desc_text = "Migrating"
+            final_text = "Migrated"
+        elif constants.version_check(constants.new_server_info['version'], '>', server_obj.version):
+            desc_text = "Updating"
+            final_text = "Updated"
+        elif constants.version_check(constants.new_server_info['version'], '<', server_obj.version):
+            desc_text = "Downgrading"
+            final_text = "Downgraded"
+        else:
+            desc_text = "Reinstalling"
+            final_text = "Reinstalled"
 
         def before_func(*args):
 
@@ -16099,10 +16133,22 @@ class MigrateServerProgressScreen(ProgressScreen):
             constants.safe_delete(constants.tmpsvr)
 
             if not constants.app_online:
-                self.execute_error(
-                    "An internet connection is required to continue\n\nVerify connectivity and try again")
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
             else:
-                constants.folder_check(constants.tmpsvr)
+                # Copy over existing server and remove the files which will be replaced
+                ignore_list = (
+                    os.path.join(server_obj.server_path, 'addons'),
+                    os.path.join(server_obj.server_path, 'disabled-addons'),
+                    os.path.join(server_obj.server_path, 'mods'),
+                    os.path.join(server_obj.server_path, 'disabled-mods')
+                )
+                constants.copytree(server_obj.server_path, constants.tmpsvr, ignore=constants.ignore_patterns(*ignore_list))
+                for jar in glob(os.path.join(constants.tmpsvr, '*.jar')):
+                    os.remove(jar)
+
+        def after_func(*args):
+            constants.make_update_list()
+            open_server(server_obj.name, True, f"{final_text} '{server_obj.name}' successfully")
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -16117,7 +16163,7 @@ class MigrateServerProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Creating '{constants.new_server_info['name']}'",
+            'title': f"{desc_text} '{server_obj.name}'",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -16133,8 +16179,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(open_server, constants.new_server_info['name'], True,
-                                                f"'{constants.new_server_info['name']}' was created successfully"),
+            'after_function': after_func,
 
             # Screen to go to after complete
             'next_screen': None
@@ -16142,37 +16187,28 @@ class MigrateServerProgressScreen(ProgressScreen):
 
         # Create function list
         function_list = [
-            ('Verifying Java installation',
-             functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ("Downloading 'server.jar'",
-             functools.partial(constants.download_jar, functools.partial(adjust_percentage, 30)), 0)
+            ('Verifying Java installation', functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 30)), 0)
         ]
 
         download_addons = False
         needs_installed = False
 
         if constants.new_server_info['type'] != 'vanilla':
-            download_addons = constants.new_server_info['addon_objects'] or \
-                              constants.new_server_info['server_settings']['disable_chat_reporting'] or \
-                              constants.new_server_info['server_settings']['geyser_support'] or (
-                                      constants.new_server_info['type'] == 'fabric')
+            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] == 'fabric')
             needs_installed = constants.new_server_info['type'] in ['forge', 'fabric']
 
         if needs_installed:
-            function_list.append((f'Installing {constants.new_server_info["type"].title()}',
-                                  functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing {constants.new_server_info["type"].title()}', functools.partial(constants.install_server), 10 if download_addons else 20))
 
         if download_addons:
-            function_list.append(('Add-oning add-ons', functools.partial(constants.iter_addons,
-                                                                         functools.partial(adjust_percentage,
-                                                                                           10 if needs_installed else 20)),
-                                  0))
+            function_list.append((f'{desc_text} add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
 
-        function_list.append(('Applying server configuration', functools.partial(constants.generate_server_files),
-                              10 if (download_addons or needs_installed) else 20))
+        function_list.append(('Creating pre-install back-up', functools.partial(constants.create_backup), 5 if (download_addons or needs_installed) else 10))
 
-        function_list.append(('Creating initial back-up', functools.partial(constants.create_backup),
-                              10 if (download_addons or needs_installed) else 20))
+        function_list.append(('Applying new server configuration', functools.partial(constants.update_server_files), 10 if (download_addons or needs_installed) else 20))
+
+        function_list.append(('Creating post-install back-up', functools.partial(constants.create_backup), 5 if (download_addons or needs_installed) else 10))
 
         self.page_contents['function_list'] = tuple(function_list)
 
@@ -16243,23 +16279,8 @@ class MainApp(App):
 
         # Screen manager override
         if not constants.app_compiled:
-            pass
-            # constants.safe_delete(constants.server_path("test 1.6"))
-            # constants.new_server_init()
-            # constants.new_server_info['name'] = "test 1.6"
-            # constants.new_server_info['type'] = "forge"
-            # constants.new_server_info['version'] = "1.6.4"
-            # constants.new_server_info['build'] = "283"
-            # constants.new_server_info['server_settings']['seed'] = "loll"
-            # constants.new_server_info['acl_object'] = acl.AclObject(constants.new_server_info['name'])
-            # # constants.new_server_info['server_settings']['world'] = r"C:\Users\macarooni machine\AppData\Roaming\.minecraft\saves\Mob Apocalypse"
-            # constants.new_server_info['server_settings']['geyser_support'] = True
-            # constants.new_server_info['addon_objects'] = [item for item in [addons.get_addon_url(addons.get_addon_info(addon, constants.new_server_info), constants.new_server_info, compat_mode=True) for addon in addons.search_addons("worldedit", constants.new_server_info) if "Regions"] if item]
-            # # constants.new_server_info['addon_objects'].extend([addons.get_addon_file(addon, constants.new_server_info) for addon in glob(r'C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\pluginupdate test\plugins\*.jar')])
-            # screen_manager.current = "CreateServerReviewScreen"
-
             screen_manager.current = "ServerManagerScreen"
-            open_server("test 1.8.9")
+            open_server("test")
             def open_menu(*args):
                 screen_manager.current = "ServerAdvancedScreen"
                 # Clock.schedule_once(screen_manager.current_screen.edit_properties_button.button.trigger_action, 0.5)

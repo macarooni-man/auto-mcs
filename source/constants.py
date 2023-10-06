@@ -1,5 +1,5 @@
+from shutil import rmtree, copytree, copy, ignore_patterns
 from concurrent.futures import ThreadPoolExecutor
-from shutil import rmtree, copytree, copy
 from random import randrange, choices
 from urllib.request import Request
 from bs4 import BeautifulSoup
@@ -16,7 +16,6 @@ import functools
 import threading
 import ipaddress
 import requests
-import mcstatus
 import datetime
 import tarfile
 import zipfile
@@ -1420,7 +1419,7 @@ def download_jar(progress_func=None):
 
 # Iterates through new server addon objects and downloads/installs them to tmpsvr
 hook_lock = False
-def iter_addons(progress_func=None):
+def iter_addons(progress_func=None, update=False):
     global hook_lock
 
     all_addons = deepcopy(new_server_info['addon_objects'])
@@ -1465,14 +1464,20 @@ def iter_addons(progress_func=None):
     folder_check(os.path.join(tmpsvr, addon_folder))
     folder_check(os.path.join(tmpsvr, "disabled-" + addon_folder))
 
-    print(glob(os.path.join(tmpsvr, "*")))
-
     def process_addon(addon_object):
         # Add exception handler at some point
         try:
             if addon_object.addon_object_type == "web":
                 addons.download_addon(addon_object, new_server_info, tmpsvr=True)
             else:
+                if update:
+                    addon_web = addons.get_update_url(addon_object, constants.new_server_info['version'], constants.new_server_info['type'])
+                    downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
+                    if not downloaded:
+                        disabled_folder = "plugins" if server_manager.current_server.type in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+                        copy(addon_object.path, os.path.join(tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
+                    return True
+
                 addons.import_addon(addon_object, new_server_info, tmpsvr=True)
         except Exception as e:
             if debug:
@@ -1700,6 +1705,40 @@ max-world-size=29999984"""
             run_proc(f"attrib +H \"{os.path.join(new_path, server_ini)}\"")
             if os.path.exists(os.path.join(new_path, command_tmp)):
                 run_proc(f"attrib +H \"{os.path.join(new_path, command_tmp)}\"")
+
+        return True
+
+
+# Configures server via server info in a variety of ways
+def update_server_files(progress_func=None):
+    print(glob(os.path.join(tmpsvr, '*')))
+    new_config_path = os.path.join(tmpsvr, server_ini)
+
+    # First, generate startup script
+    generate_run_script(new_server_info, temp_server=True)
+
+
+    # Edit auto-mcs.ini
+    config_file = server_config(new_server_info['name'])
+    config_file.set("general", "serverType", new_server_info['type'])
+    config_file.set("general", "serverVersion", new_server_info['version'])
+    if new_server_info['build']:
+        config_file.set("general", "serverBuild", str(new_server_info['build']))
+    server_config(new_server_info['name'], config_file, new_config_path)
+
+
+    # Check if everything was created successfully
+    if (os.path.exists(os.path.join(tmpsvr, 'server.properties')) and os.path.exists(new_config_path) and os.path.exists(os.path.join(tmpsvr, 'eula.txt'))):
+
+        # Replace server path with tmpsvr
+        new_path = os.path.join(serverDir, new_server_info['name'])
+        safe_delete(new_path)
+        copytree(tmpsvr, new_path)
+        safe_delete(tempDir)
+        safe_delete(downDir)
+
+        if os_name == "windows":
+            run_proc(f"attrib +H \"{os.path.join(new_path, server_ini)}\"")
 
         return True
 

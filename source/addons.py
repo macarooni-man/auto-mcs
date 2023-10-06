@@ -717,9 +717,18 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
 
 # Parse addon filename to find specific version
 # AddonFileObject --> AddonWebObject
-def get_update_url(addon: AddonFileObject, new_version: str):
+def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
     addon_url = None
     new_addon = None
+
+    # Force type
+    if force_type:
+        if force_type.lower() in ['craftbukkit', 'spigot', 'paper']:
+            new_type = 'bukkit'
+        else:
+            new_type = force_type.lower()
+    else:
+        mew_type = addon.type
 
     # Possibly upgrade plugin to proper server type in case there's a mismatch
 
@@ -731,13 +740,13 @@ def get_update_url(addon: AddonFileObject, new_version: str):
 
     # First check if id is available
     if addon.id:
-        potential_url = project_urls[addon.type] + addon.id
+        potential_url = project_urls[new_type] + addon.id
         if constants.get_url(potential_url, return_response=True).status_code in [200, 302]:
             addon_url = potential_url
 
     # If id is absent, make a search for the name
     if addon.name and not addon_url:
-        potential_url = project_urls[addon.type] + addon.name
+        potential_url = project_urls[new_type] + addon.name
         if constants.get_url(potential_url, return_response=True).status_code in [200, 302]:
             addon_url = potential_url
 
@@ -746,17 +755,17 @@ def get_update_url(addon: AddonFileObject, new_version: str):
         addon_author = addon.author.lower() if addon.author else None
         addon_name = addon.name.lower() if addon.name else None
 
-        addon_results = search_addons(addon.name.lower(), {"type": addon.type})
+        addon_results = search_addons(addon.name.lower(), {"type": new_type})
         for result in addon_results:
             if (addon_author == result.author.lower()) or (addon_name == result.name.lower()) or (addon.id == result.id):
-                new_addon = result if addon.type != "bukkit" else get_addon_info(result, {"type": addon.type, "version": new_version})
+                new_addon = result if new_type != "bukkit" else get_addon_info(result, {"type": new_type, "version": new_version})
                 addon_url = project_urls[result.type] + result.id
                 break
 
     # Only return AddonWebObject if url was acquired
     if addon_url and not new_addon:
-        addon_url = addon_url.split(".com")[1] if addon.type != "bukkit" else addon_url.split(".org")[1]
-        new_addon = AddonWebObject(addon.name, addon.type, addon.author, addon.subtitle, addon_url, addon.id)
+        addon_url = addon_url.split(".com")[1] if new_type != "bukkit" else addon_url.split(".org")[1]
+        new_addon = AddonWebObject(addon.name, new_type, addon.author, addon.subtitle, addon_url, addon.id)
 
     # If new_addon has an object, request download link
     if new_addon:
@@ -788,19 +797,20 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
 
     # Check if addon is contained in a .zip file
     zip_file = False
+    addon_download = os.path.join(constants.tempDir, "addon-download")
     with ZipFile(total_path, 'r') as jar_file:
         for item in [file for file in jar_file.namelist() if "/" not in file]:
             if item.endswith(".jar"):
-                constants.folder_check(os.path.join(constants.tempDir, "addon-download"))
-                jar_file.extract(item, os.path.join(constants.tempDir, "addon-download"))
+                constants.folder_check(addon_download)
+                jar_file.extract(item, addon_download)
                 zip_file = True
                 break
 
     if zip_file:
-        new_file_name = glob(os.path.join(constants.tempDir, "addon-download", "*.jar"))[0]
+        new_file_name = glob(os.path.join(addon_download, "*.jar"))[0]
         os.remove(total_path)
         os.rename(new_file_name, total_path)
-        constants.safe_delete(constants.tempDir)
+        constants.safe_delete(addon_download)
 
     return os.path.exists(total_path)
 
