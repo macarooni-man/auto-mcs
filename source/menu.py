@@ -9859,7 +9859,7 @@ class ServerImportProgressScreen(ProgressScreen):
 # Server Manager Overview ----------------------------------------------------------------------------------------------
 
 # Opens server in panel, and updates Server Manager current_server
-def open_server(server_name, wait_page_load=False, show_banner='', *args):
+def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, *args):
     def next_screen(*args):
         print(vars(constants.server_manager.current_server))
         if constants.server_manager.current_server.name != server_name:
@@ -9882,7 +9882,22 @@ def open_server(server_name, wait_page_load=False, show_banner='', *args):
         constants.screen_tree = ['MainMenuScreen', 'ServerManagerScreen']
 
     constants.server_manager.open_server(server_name)
-    Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
+    server_obj = constants.server_manager.current_server
+
+
+    # Automatically update if available
+    if server_obj.auto_update == "true" and constants.update_list[server_obj.name]['needsUpdate'] == 'true' and constants.app_online and not ignore_update:
+        while not server_obj.addon:
+            time.sleep(0.05)
+        constants.new_server_init()
+        constants.init_update()
+        constants.new_server_info['type'] = server_obj.type
+        constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+        screen_manager.current = 'MigrateServerProgressScreen'
+
+
+    else:
+        Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
 
 class ServerButton(HoverButton):
 
@@ -10352,7 +10367,7 @@ class ServerManagerScreen(MenuBackground):
 
                     # View Server
                     if selected_button.last_touch.button == "left":
-                        open_server(server.name)
+                        open_server(server.name, ignore_update=False)
 
                     # Favorite
                     elif selected_button.last_touch.button == "middle":
@@ -10718,7 +10733,7 @@ def prompt_new_server(server_obj, *args):
         screen_manager.current_screen.show_popup(
             "query",
             "Automatic Updates",
-            f"Would you like to enable automatic updates for '{server_obj.name}'?\n\nIf an update is available, Auto-MCS will update this server on launch",
+            f"Would you like to enable automatic updates for '{server_obj.name}'?\n\nIf an update is available, Auto-MCS will update this server when opened",
             [functools.partial(set_update, False),
              functools.partial(set_update, True)]
         )
@@ -15785,7 +15800,11 @@ class ServerAdvancedScreen(MenuBackground):
 
         # Updates server
         def update_server(*a):
-            pass
+            constants.new_server_init()
+            constants.init_update()
+            constants.new_server_info['type'] = server_obj.type
+            constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+            screen_manager.current = 'MigrateServerProgressScreen'
 
         # Check for updates button
         sub_layout = ScrollItem()
@@ -16043,25 +16062,7 @@ class MigrateServerVersionScreen(MenuBackground):
                     def main_thread(*b):
                         screen_manager.current = "MigrateServerProgressScreen"
                     Clock.schedule_once(functools.partial(self.final_button.loading, True), 0)
-                    constants.new_server_info['name'] = server_obj.name
-
-                    # Check for Geyser and chat reporting, and prep addon objects
-                    chat_reporting = False
-                    constants.new_server_info['addon_objects'] = server_obj.addon.return_single_list()
-                    for addon in constants.new_server_info['addon_objects']:
-                        if addon.name.lower() == "freedomchat":
-                            chat_reporting = True
-                            constants.new_server_info['addon_objects'].remove(addon)
-                        if addon.name.lower() == "no-chat-reports":
-                            chat_reporting = True
-                            constants.new_server_info['addon_objects'].remove(addon)
-                        if addon.name.lower() == "viaversion":
-                            constants.new_server_info['addon_objects'].remove(addon)
-                        if addon.author.lower() == "geysermc":
-                            constants.new_server_info['addon_objects'].remove(addon)
-
-                    constants.new_server_info['server_settings']['disable_chat_reporting'] = chat_reporting
-                    constants.new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled
+                    constants.init_update()
                     Clock.schedule_once(main_thread, 0)
 
                 def check_version(*args, **kwargs):
@@ -16279,12 +16280,13 @@ class MainApp(App):
 
         # Screen manager override
         if not constants.app_compiled:
-            screen_manager.current = "ServerManagerScreen"
-            open_server("test")
-            def open_menu(*args):
-                screen_manager.current = "ServerAdvancedScreen"
+            # screen_manager.current = "ServerManagerScreen"
+            # open_server("test")
+            # def open_menu(*args):
+            #     screen_manager.current = "ServerAdvancedScreen"
                 # Clock.schedule_once(screen_manager.current_screen.edit_properties_button.button.trigger_action, 0.5)
-            Clock.schedule_once(open_menu, 3)
+            #Clock.schedule_once(open_menu, 3)
+            pass
 
 
         screen_manager.transition = FadeTransition(duration=0.115)

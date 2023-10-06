@@ -689,7 +689,7 @@ def copy_to(src_dir: str, dst_dir: str, new_name: str, overwrite=True):
                 final_item = copy(src_dir, final_path)
 
             elif item_type == "directory":
-                final_item = copytree(src_dir, final_path)
+                final_item = copytree(src_dir, final_path, dirs_exist_ok=True)
 
             if final_item:
                 success = True
@@ -957,7 +957,7 @@ def generate_splash():
 
 
 
-# ------------------------------------------ Server Creation/Import Functions ------------------------------------------
+# ------------------------------------ Server Creation/Import/Update Functions -----------------------------------------
 
 # For validation of server version during server creation/modification
 def validate_version(server_info: dict):
@@ -1471,7 +1471,7 @@ def iter_addons(progress_func=None, update=False):
                 addons.download_addon(addon_object, new_server_info, tmpsvr=True)
             else:
                 if update:
-                    addon_web = addons.get_update_url(addon_object, constants.new_server_info['version'], constants.new_server_info['type'])
+                    addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
                     downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
                     if not downloaded:
                         disabled_folder = "plugins" if server_manager.current_server.type in ['spigot', 'craftbukkit', 'paper'] else 'mods'
@@ -1591,7 +1591,7 @@ def generate_server_files(progress_func=None):
     # If custom world is selected, copy it to tmpsvr
     if new_server_info['server_settings']['world'] != 'world':
         world_name = os.path.basename(new_server_info['server_settings']['world'])
-        copytree(new_server_info['server_settings']['world'], os.path.join(tmpsvr, world_name))
+        copytree(new_server_info['server_settings']['world'], os.path.join(tmpsvr, world_name), dirs_exist_ok=True)
 
 
     # Create start-cmd.tmp for changing gamerules after the server starts
@@ -1697,7 +1697,7 @@ max-world-size=29999984"""
 
         # Copy folder to server path and delete tmpsvr
         new_path = os.path.join(serverDir, new_server_info['name'])
-        copytree(tmpsvr, new_path)
+        copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
 
@@ -1733,7 +1733,7 @@ def update_server_files(progress_func=None):
         # Replace server path with tmpsvr
         new_path = os.path.join(serverDir, new_server_info['name'])
         safe_delete(new_path)
-        copytree(tmpsvr, new_path)
+        copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
 
@@ -2117,7 +2117,7 @@ def finalize_import(progress_func=None, *args):
 
         # Copy folder to server path and delete tmpsvr
         new_path = os.path.join(serverDir, import_data['name'])
-        copytree(tmpsvr, new_path)
+        copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
 
@@ -2175,10 +2175,37 @@ eula=true"""
         if server_path(import_data['name'], server_ini):
             safe_delete(tempDir)
             safe_delete(downDir)
+            make_update_list()
             if progress_func:
                 progress_func(100)
             return True
 
+
+# Generates new information for an update
+def init_update():
+    server_obj = server_manager.current_server
+    new_server_info['name'] = server_obj.name
+
+    # Check for Geyser and chat reporting, and prep addon objects
+    chat_reporting = False
+    new_server_info['addon_objects'] = server_obj.addon.return_single_list()
+    for addon in new_server_info['addon_objects']:
+        try:
+            if addon.name.lower() == "freedomchat":
+                chat_reporting = True
+                new_server_info['addon_objects'].remove(addon)
+            if addon.name.lower() == "no-chat-reports":
+                chat_reporting = True
+                new_server_info['addon_objects'].remove(addon)
+            if addon.name.lower() == "viaversion":
+                new_server_info['addon_objects'].remove(addon)
+            if addon.author.lower() == "geysermc":
+                new_server_info['addon_objects'].remove(addon)
+        except AttributeError:
+            continue
+
+    new_server_info['server_settings']['disable_chat_reporting'] = chat_reporting
+    new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled
 
 
 # ------------------------------------------------ Server Functions ----------------------------------------------------
