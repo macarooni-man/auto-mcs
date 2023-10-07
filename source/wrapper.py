@@ -246,16 +246,6 @@ if __name__ == '__main__':
                 main.mainLoop()
 
             except SystemExit:
-                if constants.sub_processes:
-                    for pid in constants.sub_processes:
-                        try:
-                            if constants.os_name == "windows":
-                                os.kill(pid, signal.SIGTERM)
-                            else:
-                                os.kill(pid, signal.SIGKILL)
-                        except PermissionError:
-                            continue
-
                 exitApp = True
 
 

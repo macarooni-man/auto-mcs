@@ -191,6 +191,11 @@ max_memory = int(round(total_ram - (total_ram / 4)))
 
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
+# Restarts auto-mcs by dynamically generating script
+def restart_app():
+    print("restart test")
+
+
 # Global banner
 global_banner = None
 

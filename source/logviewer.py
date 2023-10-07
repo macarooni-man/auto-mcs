@@ -82,7 +82,11 @@ def launch_window(server_name: str, path: str, data: dict):
         min_size = (950, 600)
 
         root = Tk()
-        root.geometry(f"{min_size[0]}x{min_size[1]}")
+        width = root.winfo_screenwidth()
+        height = root.winfo_screenheight()
+        x = int((width / 2) - (min_size[0] / 2))
+        y = int((height / 2) - (min_size[1] / 2)) - 15
+        root.geometry(f"{min_size[0]}x{min_size[1]}+{x}+{y}")
         root.minsize(width=min_size[0], height=min_size[1])
         root.title(f'{data["app_title"]} - {server_name} ({os.path.basename(path)})')
         img = PhotoImage(file=file_icon)
