@@ -57,8 +57,7 @@ public_ip = ""
 ngrok_ip = {'name': None, 'ip': None}
 footer_path = []
 
-sub_servers = []
-update_list = []
+update_list = {}
 
 latestMC = {
     "vanilla": "0.0.0",

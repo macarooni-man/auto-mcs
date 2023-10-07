@@ -783,7 +783,6 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
     if not addon.download_url:
         return False
 
-    print(server_properties)
     addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
     destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else constants.server_path(server_properties['name'], addon_folder)
 

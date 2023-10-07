@@ -44,7 +44,7 @@ class ServerObject():
         # Server files
         self.config_file = constants.server_config(server_name)
         self.server_properties = constants.server_properties(server_name)
-        self.properties_hash = hash(frozenset(self.server_properties.items()))
+        self.properties_hash = self.__get_properties_hash__()
 
 
         # Server properties
@@ -151,7 +151,7 @@ class ServerObject():
         # Server files
         self.config_file = constants.server_config(self.name)
         self.server_properties = constants.server_properties(self.name)
-        self.properties_hash = hash(frozenset(self.server_properties.items()))
+        self.properties_hash = self.__get_properties_hash__()
 
         # Server properties
         self.favorite = self.config_file.get("general", "isFavorite").lower() == 'true'
@@ -591,7 +591,8 @@ class ServerObject():
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
 
             # Run data hashes to check for configuration changes post launch
-            self.run_data['properties-hash'] = self.properties_hash
+            self.run_data['properties-hash'] = self.__get_properties_hash__()
+            self.run_data['advanced-hash'] = self.__get_advanced_hash__()
             self.run_data['addon-hash'] = None
             if self.addon:
                 self.run_data['addon-hash'] = deepcopy(self.addon.addon_hash)
@@ -1041,6 +1042,15 @@ class ServerObject():
             # Delete server folder
             constants.safe_delete(self.server_path)
             del self
+
+    # Checks for modified 'server.properties'
+    def __get_properties_hash__(self):
+        # return hash(frozenset(self.server_properties.items()))
+        return ''.join([str(a).strip() for a in self.server_properties.values()])
+
+    # Checks modified advanced settings to check for a restart
+    def __get_advanced_hash__(self):
+        return str(str(self.properties_hash) + str(self.ngrok_enabled).lower()[0] + str(self.geyser_enabled).lower()[0] + str(self.dedicated_ram)).strip()
 
 
 

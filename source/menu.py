@@ -2032,6 +2032,8 @@ class ServerPortInput(CreateServerPortInput):
         if not fail:
             server_obj.ip = new_ip
             server_obj.server_properties['server-ip'] = new_ip
+            server_obj.properties_hash = server_obj.__get_properties_hash__()
+            screen_manager.current_screen.check_changes(server_obj, force_banner=True)
 
         if new_port and not fail:
             server_obj.port = int(new_port)
@@ -6011,6 +6013,7 @@ class ProgressScreen(MenuBackground):
 
         # Execute before function
         if self.page_contents['before_function']:
+            self.steps.label_2.text = "Initializing, please wait..."
             self.page_contents['before_function']()
             if self.error:
                 return
@@ -9884,9 +9887,14 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     constants.server_manager.open_server(server_name)
     server_obj = constants.server_manager.current_server
 
+    needs_update = False
+    if constants.update_list:
+        needs_update = constants.update_list[server_obj.name]['needsUpdate'] == 'true'
 
     # Automatically update if available
-    if server_obj.auto_update == "true" and constants.update_list[server_obj.name]['needsUpdate'] == 'true' and constants.app_online and not ignore_update:
+    if server_obj.running:
+        ignore_update = True
+    if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update:
         while not server_obj.addon:
             time.sleep(0.05)
         constants.new_server_init()
@@ -15272,8 +15280,13 @@ def toggle_ngrok(boolean, *args):
             screen_manager.current = "NgrokAuthScreen"
             return
 
+    # Actually make changes
+    server_obj.config_file.set("general", "enableNgrok", str(boolean).lower())
+    constants.server_config(server_obj.name, server_obj.config_file)
+    server_obj.ngrok_enabled = boolean
+
     # Show banner if server is running
-    if server_obj.running:
+    if screen_manager.current_screen.check_changes(server_obj):
         Clock.schedule_once(
             functools.partial(
                 screen_manager.current_screen.show_banner,
@@ -15296,10 +15309,6 @@ def toggle_ngrok(boolean, *args):
                 {"center_x": 0.5, "center_y": 0.965}
             ), 0
         )
-
-    server_obj.config_file.set("general", "enableNgrok", str(boolean).lower())
-    constants.server_config(server_obj.name, server_obj.config_file)
-    server_obj.ngrok_enabled = boolean
 
 class NgrokAuthScreen(MenuBackground):
 
@@ -15530,6 +15539,33 @@ class ServerAdvancedScreen(MenuBackground):
         self.ngrok_button = None
         self.world_button = None
 
+    def check_changes(self, server_obj, force_banner=False):
+        if server_obj.running:
+            print(server_obj.run_data['advanced-hash'], server_obj.__get_advanced_hash__(), sep="\n")
+            if server_obj.run_data['advanced-hash'] != server_obj.__get_advanced_hash__():
+                if "[font=" not in self.header.text.text:
+                    icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+                    self.header.text.text = f"[color=#EFD49E][font={icons}]y[/font] " + self.header.text.text + "[/color]"
+                    if force_banner:
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.937, 0.831, 0.62, 1),
+                                f"A server restart is required to apply changes",
+                                "sync.png",
+                                3,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+                return True
+
+            else:
+                if "[font=" in self.header.text.text:
+                    self.header.text.text = self.header.text.text.split("[/font] ")[1].split("[/color]")[0].strip()
+
+        return False
+
+
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
         server_obj.reload_config()
@@ -15635,6 +15671,7 @@ class ServerAdvancedScreen(MenuBackground):
 
         def change_limit(val):
             server_obj.set_ram_limit('auto' if val == min_limit else val)
+            self.check_changes(server_obj, force_banner=True)
 
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="allocated memory"))
@@ -15728,8 +15765,13 @@ class ServerAdvancedScreen(MenuBackground):
                     for a in [a for a in addon_manager.return_single_list() if (a.author == 'GeyserMC' and (a.name.startswith('Geyser') or a.name == 'floodgate'))]:
                         addon_manager.delete_addon(a)
 
+                # Actually make changes
+                server_obj.config_file.set("general", "enableGeyser", str(boolean).lower())
+                constants.server_config(server_obj.name, server_obj.config_file)
+                server_obj.geyser_enabled = boolean
+
                 # Show banner if server is running
-                if addon_manager.hash_changed():
+                if screen_manager.current_screen.check_changes(server_obj):
                     Clock.schedule_once(
                         functools.partial(
                             screen_manager.current_screen.show_banner,
@@ -15752,9 +15794,6 @@ class ServerAdvancedScreen(MenuBackground):
                             {"center_x": 0.5, "center_y": 0.965}
                         ), 0
                     )
-
-            server_obj.config_file.set("general", "enableGeyser", str(boolean).lower())
-            constants.server_config(server_obj.name, server_obj.config_file)
 
         # Geyser switch for bedrock support
         sub_layout = ScrollItem()
@@ -15947,6 +15986,7 @@ class ServerAdvancedScreen(MenuBackground):
         # Configure header
         header_content = "Modify advanced server configuration"
         self.header = HeaderText(header_content, '', (0, 0.89))
+        self.check_changes(server_obj, force_banner=True)
         float_layout.add_widget(self.header)
 
 
@@ -16280,13 +16320,12 @@ class MainApp(App):
 
         # Screen manager override
         if not constants.app_compiled:
-            # screen_manager.current = "ServerManagerScreen"
-            # open_server("test")
-            # def open_menu(*args):
-            #     screen_manager.current = "ServerAdvancedScreen"
+            screen_manager.current = "ServerManagerScreen"
+            open_server("test")
+            def open_menu(*args):
+                screen_manager.current = "ServerAdvancedScreen"
                 # Clock.schedule_once(screen_manager.current_screen.edit_properties_button.button.trigger_action, 0.5)
-            #Clock.schedule_once(open_menu, 3)
-            pass
+            Clock.schedule_once(open_menu, 3)
 
 
         screen_manager.transition = FadeTransition(duration=0.115)
