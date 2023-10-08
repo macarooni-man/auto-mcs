@@ -195,6 +195,9 @@ max_memory = int(round(total_ram - (total_ram / 4)))
 def restart_app():
     print("restart test")
 
+def show_crash_log():
+    print("view crash log")
+
 
 # Global banner
 global_banner = None

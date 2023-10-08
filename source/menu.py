@@ -16320,12 +16320,12 @@ class MainApp(App):
 
         # Screen manager override
         if not constants.app_compiled:
-            screen_manager.current = "ServerManagerScreen"
-            open_server("test")
+            #screen_manager.current = "ServerManagerScreen"
+            # open_server("test")
             def open_menu(*args):
                 screen_manager.current = "ServerAdvancedScreen"
                 # Clock.schedule_once(screen_manager.current_screen.edit_properties_button.button.trigger_action, 0.5)
-            Clock.schedule_once(open_menu, 3)
+           # Clock.schedule_once(open_menu, 3)
 
 
         screen_manager.transition = FadeTransition(duration=0.115)
