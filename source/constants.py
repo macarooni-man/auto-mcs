@@ -55,7 +55,8 @@ app_compiled = getattr(sys, 'frozen', False)
 
 public_ip = ""
 ngrok_ip = {'name': None, 'ip': None}
-footer_path = []
+footer_path = ""
+last_widget = None
 
 update_list = {}
 
@@ -143,12 +144,14 @@ tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
 cacheDir = os.path.join(applicationFolder, 'Cache')
 configDir = os.path.join(applicationFolder, 'Config')
+os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 
 server_ini = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'
 command_tmp = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'
 
 
 # App/Assets folder
+launch_path = None
 if hasattr(sys, '_MEIPASS'):
     executable_folder = sys._MEIPASS
     gui_assets = os.path.join(executable_folder, 'gui-assets')
@@ -193,10 +196,52 @@ max_memory = int(round(total_ram - (total_ram / 4)))
 
 # Restarts auto-mcs by dynamically generating script
 def restart_app():
-    print("restart test")
+    executable = os.path.basename(sys.executable)
+    script_name = 'auto-mcs-reboot'
 
-def show_crash_log():
-    print("view crash log")
+    # Generate Windows script to restart
+    if os_name == "windows":
+        script_name = f'{script_name}.bat'
+        folder_check(tempDir)
+        batch_path = os.path.join(tempDir, script_name)
+        batch_file = open(batch_path, 'w+')
+
+        if app_compiled:  # Running as compiled
+            batch_file.write(
+f"""taskkill /f /im \"{executable}\"
+start \"\" \"{os.path.join(launch_path, executable)}\"
+del \"{os.path.join(tempDir, script_name)}\""""
+            )
+
+            batch_file.close()
+            run_proc(f"\"{batch_path}\" > nul 2>&1")
+
+
+    # Generate Linux script to restart
+    else:
+        script_name = f'{script_name}.sh'
+        folder_check(tempDir)
+        shell_path = os.path.join(tempDir, script_name)
+        shell_file = open(shell_path, 'w+')
+
+        if app_compiled:  # Running as compiled
+            shell_file.write(
+f"""#!/bin/bash
+kill {os.getpid()}
+exec \"{os.path.join(launch_path, executable)}\" &
+rm \"{os.path.join(tempDir, script_name)}\""""
+            )
+
+            shell_file.close()
+            with open(shell_path, 'r') as f:
+                print(f.read())
+            run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
+    sys.exit()
+
+
+# Returns current formatted time
+def format_now():
+    return datetime.datetime.now().strftime("%#I:%M:%S %p" if os_name == "windows" else "%-I:%M:%S %p")
 
 
 # Global banner
@@ -628,6 +673,7 @@ def cleanup_old_files():
                     print(f"Deleted remnants of '{item}'")
                 except PermissionError:
                     pass
+    safe_delete(os.path.join(os_temp, '.kivy'))
 
     # Delete downloads folder
     safe_delete(downDir)
@@ -933,7 +979,7 @@ def check_data_cache():
 
 
 # Random splash message
-def generate_splash():
+def generate_splash(crash=False):
     global session_splash
 
     splashes = ["Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
@@ -960,8 +1006,11 @@ def generate_splash():
             "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
             "You can't run away from all your problems…\n            Not when they have ender pearls."]
 
-    session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
+    if crash:
+        exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
+        return f'"{exp}"'
 
+    session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
 
 
 # ------------------------------------ Server Creation/Import/Update Functions -----------------------------------------

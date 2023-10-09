@@ -1,3 +1,4 @@
+from traceback import format_exc
 import urllib.error
 import threading
 import requests
@@ -26,7 +27,7 @@ if __name__ == '__main__':
 
     # Import constants and check for debug mode
     import constants
-    import crashmgr
+    constants.launch_path = os.path.abspath(os.curdir)
 
     if "--debug" in sys.argv:
         constants.debug = True
@@ -35,11 +36,13 @@ if __name__ == '__main__':
 
     # Variables
     exitApp = False
+    crash = None
     currentDir = os.path.abspath(os.curdir)
 
 
     # Functions
     def app_crash(exception):
+        import crashmgr
         log = crashmgr.generate_log(exception)
         crashmgr.launch_window(*log)
 
@@ -71,30 +74,31 @@ if __name__ == '__main__':
 
             # Put things here to update variables in the background
             # constants.variable = x
+            if crash:
+                app_crash(crash)
 
-            if exitApp is True:
+            if exitApp is True or crash:
                 break
             else:
                 time.sleep(1)
 
 
     def foreground():
-        global exitApp
+        global exitApp, crash
 
         # Main thread
-        while exitApp is False:
+        try:
+            main.mainLoop()
+            exitApp = True
 
-            try:
-                main.mainLoop()
+        except SystemExit:
+            exitApp = True
 
-            except SystemExit:
-                exitApp = True
-
-
-            # On crash
-            # except Exception as e:
-            #     f.exception = e
-            #     app_crash(format_exc())
+        # On crash
+        except Exception as e:
+            f.exception = e
+            crash = format_exc()
+            exitApp = True
 
 
     b = threading.Thread(name='background', target=background)

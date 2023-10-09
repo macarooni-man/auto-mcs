@@ -35,7 +35,9 @@ if constants.os_name == "windows":
 # Disable Kivy logging if debug is off and app is compiled
 if constants.app_compiled and constants.debug is False:
     os.environ["KIVY_NO_CONSOLELOG"] = "1"
-    os.environ['KIVY_HOME'] = os.path.join(constants.executable_folder, ".kivy")
+    kivy_folder = os.path.join(constants.os_temp, ".kivy")
+    constants.folder_check(kivy_folder)
+    os.environ['KIVY_HOME'] = kivy_folder
 
 
 os.environ["KCFG_KIVY_LOG_LEVEL"] = "info"
@@ -239,6 +241,23 @@ class HoverButton(Button, HoverBehavior):
     def on_press(self):
         self.on_mouse_pos(self, Window.mouse_pos)
 
+        # Log for crash info
+        try:
+            widget_text = None
+            for widget in self.parent.children:
+                if "Label" in widget.__class__.__name__:
+                    widget_text = widget.text
+                    break
+            if "_" in str(self.id):
+                interaction = str(''.join([x.title() for x in self.id.split("_")]))
+            else:
+                interaction = str(self.id)
+            if widget_text:
+                interaction += f" ({widget_text.title().replace('Mcs', 'MCS')})"
+            constants.last_widget = interaction + f" @ {constants.format_now()}"
+        except:
+            pass
+
     def force_click(self, *args):
         touch = MouseMotionEvent("mouse", "mouse", Window.center)
         touch.button = 'left'
@@ -337,6 +356,16 @@ class BaseInput(TextInput):
 
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value, *largs)
+
+        # Log for crash info
+        if value:
+            try:
+                interaction = str(self.__class__.__name__)
+                if self.title.text:
+                    interaction += f" ({self.title.text.title()})"
+                constants.last_widget = interaction + f" @ {constants.format_now()}"
+            except:
+                pass
 
         # Update screen focus value on next frame
         def update_focus(*args):
@@ -2624,11 +2653,24 @@ def footer_label(path, color):
 
 def generate_footer(menu_path, color="9999FF", progress_screen=False):
 
-    constants.footer_path = " > ".join(menu_path.split(", "))
+    # Sanitize footer path for crash logs to remove server name
+    if ", Launch" in menu_path or ", Access Control" in menu_path or ", Back-ups" in menu_path or ", Add-ons" in menu_path or ", amscript" in menu_path or ", Advanced" in menu_path:
+        constants.footer_path = "Server Manager > " + " > ".join(menu_path.split(", ")[1:])
+    elif menu_path.startswith('Create'):
+        constants.footer_path = "Create new server"
+    elif menu_path.startswith('Import'):
+        constants.footer_path = "Import server"
+    elif menu_path.split(", ")[0].count("'") == 2:
+        constants.footer_path = menu_path.split(", ")[0].split("'")[0] + "Server" + " > ".join(menu_path.split(", ")[1:])
+    else:
+        constants.footer_path = " > ".join(menu_path.split(", "))
+    constants.footer_path += f" @ {constants.format_now()}"
+
 
     footer = FloatLayout()
 
     if menu_path == 'splash':
+        constants.footer_path = 'Main Menu'
 
         if constants.app_online:
             footer.add_widget(IconButton('connected', {}, (0, 5), (None, None), 'wifi-sharp.png', clickable=False))
@@ -4210,6 +4252,15 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
         if disabled:
             return
 
+        # Log for crash info
+        try:
+            interaction = "ToggleButton"
+            if name:
+                interaction += f" ({name})"
+            constants.last_widget = interaction + f" @ {constants.format_now()}"
+        except:
+            pass
+
         state = args[0].state == "down"
 
         for child in args[0].parent.children:
@@ -4335,6 +4386,15 @@ class NumberSlider(FloatLayout):
             # Execute function with value if it's added
             if self.function and not self.init and touch.button == 'left' and self.slider.parent.collide_point(*touch.pos):
                 self.function(self.slider_val)
+
+                # Log for crash info
+                try:
+                    interaction = "NumberSlider"
+                    if input_name:
+                        interaction += f" ({input_name})"
+                    constants.last_widget = interaction + f" @ {constants.format_now()}"
+                except:
+                    pass
 
             return super(type(self.slider), self.slider).on_touch_up(touch)
 
@@ -5613,6 +5673,15 @@ class MenuBackground(Screen):
             # self.show_popup("controls", "Title", "Press X to do Y", functools.partial(callback_func))
             # self.show_popup("addon", "Title", "Description", (functools.partial(callback_func_web), functools.partial(callback_func_install)), addon_object)
 
+
+            # Log for crash info
+            try:
+                interaction = f"PopupWidget ({popup_type}: {title})"
+                constants.last_widget = interaction + f" @ {constants.format_now()}"
+            except:
+                pass
+
+
             with self.canvas.after:
                 if popup_type == "info":
                     self.popup_widget = PopupInfo()
@@ -5800,6 +5869,11 @@ class MenuBackground(Screen):
             #             break
             #     except AttributeError:
             #         continue
+
+
+        # Crash test
+        if keycode[1] == 'z' and 'ctrl' in modifiers:
+            crash = float("crash")
 
 
         # Return True to accept the key. Otherwise, it will be used by the system.
@@ -10559,6 +10633,13 @@ class MenuTaskbar(RelativeLayout):
                     def on_touch_down(self, touch):
                         if self.hovered and not self.selected and not screen_manager.current_screen.popup_widget:
 
+                            # Log for crash info
+                            try:
+                                interaction = f"TaskbarButton ({self.data[0].title()})"
+                                constants.last_widget = interaction + f" @ {constants.format_now()}"
+                            except:
+                                pass
+
                             # Animate button
                             self.icon.color = constants.brighten_color(self.hover_color, 0.2)
                             Animation(color=self.hover_color, duration=0.3).start(self.icon)
@@ -11858,6 +11939,14 @@ class ConsolePanel(FloatLayout):
         class ConsoleInput(TextInput):
 
             def _on_focus(self, instance, value, *largs):
+
+                # Log for crash info
+                if value:
+                    try:
+                        interaction = f"ConsoleInput (Sub-server {list(constants.server_manager.running_servers.keys()).index(self.parent.server_name)+1})"
+                        constants.last_widget = interaction + f" @ {constants.format_now()}"
+                    except:
+                        pass
 
                 # Update screen focus value on next frame
                 def update_focus(*args):
@@ -16345,6 +16434,8 @@ def run_application():
         main_app.run()
     except ArgumentError:
         pass
+    Window.close()
+
 
 if constants.app_compiled and constants.debug is True:
     sys.stderr = open("error.log", "a")

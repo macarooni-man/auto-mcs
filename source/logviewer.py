@@ -393,12 +393,11 @@ def launch_window(server_name: str, path: str, data: dict):
         )
 
         # Highlight stuffies
-        text_info.tag_configure("highlight", foreground="white", background=convert_color((0.2, 0.2, 0.4))['hex'])
+        text_info.tag_configure("highlight", foreground="black", background="#4CFF99")
 
 
         def highlight_search():
             if root.close:
-                print(True, 1)
                 return
 
             if scrollbar.last_scrolled < 4:

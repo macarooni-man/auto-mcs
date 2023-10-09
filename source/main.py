@@ -6,6 +6,7 @@ import constants
 # Run app, eventually in wrapper
 
 def mainLoop():
+
     # Fixes display scaling on Windows - Eventually add this to the beginning of wrapper.py
     if constants.os_name == "windows":
         from ctypes import windll, c_int64
