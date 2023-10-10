@@ -20,46 +20,37 @@ def generate_log(exception):
 
     # Remove file paths from exception
     trimmed_exception = []
-    skip = False
     exception_lines = exception.splitlines()
-    for item in exception_lines:
+    last_line = None
+    for line in exception_lines:
+        # if "Traceback (" in line:
+        #     continue
+        if ("192.168" in line or "auto-mcs-gui" in line) and 'File "' in line:
+            indent, line_end = line.split('File "', 1)
+            path, line_end = line_end.split('"', 1)
+            line = f'{indent}File "{os.path.basename(path.strip())}"{line_end.strip()}'
 
-        if skip is True or "Traceback" in item:
-            skip = False
-            continue
+        elif "site-packages" in line.lower() and 'File "' in line:
+            indent, line_end = line.split('File "', 1)
+            path, line_end = line_end.split('"', 1)
+            line = f'{indent}File "site-packages{path.split("site-packages", 1)[1]}"{line_end.strip()}'
 
-        if "File \"C:\\" in item:
-            indent = item.split("File \"", 1)[0]
-            eol = "," + item.split(",", 1)[1]
-            lib_path = ""
-
-            if "Python\\Python" in item:
-                file = item.split("File \"", 1)[1].split("\"")[0]
-                file = os.path.basename("C:\\" + file)
-                lib_path = item.split("lib\\", 1)[1].split(file)[0]
-
-            else:
-                file = item.split("File \"", 1)[1].split("\"")[0]
-                file = os.path.basename("C:\\" + file)
-
-            line = indent + f"File \"{lib_path}{file}\""
-            skip = True
-
-        else:
-            line = item.split(",")[0]
-
-        if "File" in line:
-            line += "," + item.split(",")[2]
+        if ", line" in line:
+            last_line = line
 
         trimmed_exception.append(line)
 
-    trimmed_exception = "\n".join(trimmed_exception[-2:])
+    exception_summary = trimmed_exception[-1].strip() + f'\n    ({last_line.strip()})'
+    exception_code = trimmed_exception[-1].strip() + f' ({last_line.split(",", 1)[0].strip()} - {last_line.split(",")[-1].strip()})'
+    print(exception_code)
+    trimmed_exception = "\n".join(trimmed_exception)
+
 
     # Create AME code
     # Generate code with last application path and last widget interaction
     path = constants.footer_path
     interaction = constants.last_widget
-    ame = (hashlib.shake_128(path.encode()).hexdigest(1) if path else "00") + "-" + hashlib.shake_128(trimmed_exception.encode()).hexdigest(3)
+    ame = (hashlib.shake_128(path.encode()).hexdigest(1) if path else "00") + "-" + hashlib.shake_128(exception_code.encode()).hexdigest(3)
 
     # Check for 'Logs' folder in application directory
     # If it doesn't exist, create a new folder called 'Logs'
@@ -81,9 +72,12 @@ def generate_log(exception):
         cpu_arch = cpu_arch[0]
 
     header_len = 42
+    calculated_space = 0
+    splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)
+
     log = f"""{'=' * (header_len * 3)}
 {"||" + (' ' * round((header_len * 1.5) - (len(header) / 2) - 1)) + header + (' ' * round((header_len * 1.5) - (len(header)) + 14)) + "||"}
-{"||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + "||"}
+{splash_line + (((header_len * 3) - len(splash_line) - 2) * " ") + "||"}
 {'=' * (header_len * 3)}
 
 
@@ -118,8 +112,12 @@ def generate_log(exception):
     
 
     AME traceback:
+    
+        Exception Summary:
+    {textwrap.indent(exception_summary, "        ")}
 
-{textwrap.indent(exception, "        ")}"""
+{textwrap.indent(trimmed_exception, "        ")}"""
+
 
     file_name = os.path.abspath(os.path.join(log_dir, f"ame-fatal_{time_stamp}.log"))
     with open(file_name, "w") as log_file:
@@ -184,8 +182,11 @@ def launch_window(exc_code, log_path):
     root.resizable(False, False)
     root.attributes('-topmost', 1)
     root.attributes('-topmost', 0)
+    root.close = False
 
-
+    # Calculates relative font size based on OS
+    def dp(font_size: int or float):
+        return font_size if constants.os_name == "windows" else (font_size + 4)
 
     # Button class
     class HoverButton(Button):
@@ -247,7 +248,7 @@ def launch_window(exc_code, log_path):
 
 
     # Exception label
-    canvas.create_text((min_size[0]/2)+2, 145, font="Courier 14 bold", fill=text_color, text="Exception code:")
+    canvas.create_text((min_size[0]/2)+2, 145, font=f"Courier {dp(14)} bold", fill=text_color, text="Exception code:")
 
     # Exception background
     exception = Image.open(os.path.join(crash_assets, 'exception.png'))
@@ -266,11 +267,11 @@ def launch_window(exc_code, log_path):
         selectbackground = constants.convert_color((0.4, 0.4, 0.35))['hex'],
         insertbackground = constants.convert_color((0.55, 0.55, 1, 1))['hex'],
         readonlybackground = "#07071C",
-        font = "Courier 16 bold",
+        font = f"Courier {dp(16)} bold",
         state = "readonly",
         justify = "center"
     )
-    text_info.place(rely=0.344, relx=0.5, anchor=CENTER)
+    text_info.place(relx=0.5, y=210-(dp(16)/6), anchor=CENTER)
 
 
     # Quit button (Bottom to top)
@@ -290,6 +291,13 @@ def launch_window(exc_code, log_path):
         crash_sound.play()
     except:
         pass
+
+    # When window is closed
+    def on_closing():
+        root.close = True
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_closing)
 
     root.mainloop()
 

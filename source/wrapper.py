@@ -23,11 +23,13 @@ if __name__ == '__main__':
 
 
     import multiprocessing
+    multiprocessing.set_start_method("spawn")
     multiprocessing.freeze_support()
 
     # Import constants and check for debug mode
     import constants
-    constants.launch_path = os.path.abspath(os.curdir)
+    constants.launch_path = sys.executable if constants.app_compiled else __file__
+
 
     if "--debug" in sys.argv:
         constants.debug = True
@@ -37,7 +39,6 @@ if __name__ == '__main__':
     # Variables
     exitApp = False
     crash = None
-    currentDir = os.path.abspath(os.curdir)
 
 
     # Functions

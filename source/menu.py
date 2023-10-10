@@ -5872,8 +5872,8 @@ class MenuBackground(Screen):
 
 
         # Crash test
-        if keycode[1] == 'z' and 'ctrl' in modifiers:
-            crash = float("crash")
+        # if keycode[1] == 'z' and 'ctrl' in modifiers:
+        #     crash = float("crash")
 
 
         # Return True to accept the key. Otherwise, it will be used by the system.
@@ -15630,7 +15630,7 @@ class ServerAdvancedScreen(MenuBackground):
 
     def check_changes(self, server_obj, force_banner=False):
         if server_obj.running:
-            print(server_obj.run_data['advanced-hash'], server_obj.__get_advanced_hash__(), sep="\n")
+            # print(server_obj.run_data['advanced-hash'], server_obj.__get_advanced_hash__(), sep="\n")
             if server_obj.run_data['advanced-hash'] != server_obj.__get_advanced_hash__():
                 if "[font=" not in self.header.text.text:
                     icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
@@ -16434,7 +16434,9 @@ def run_application():
         main_app.run()
     except ArgumentError:
         pass
-    Window.close()
+    except Exception as e:
+        Window.close()
+        raise e
 
 
 if constants.app_compiled and constants.debug is True:

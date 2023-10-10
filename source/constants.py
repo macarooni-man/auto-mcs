@@ -196,7 +196,7 @@ max_memory = int(round(total_ram - (total_ram / 4)))
 
 # Restarts auto-mcs by dynamically generating script
 def restart_app():
-    executable = os.path.basename(sys.executable)
+    executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-reboot'
 
     # Generate Windows script to restart
@@ -209,7 +209,7 @@ def restart_app():
         if app_compiled:  # Running as compiled
             batch_file.write(
 f"""taskkill /f /im \"{executable}\"
-start \"\" \"{os.path.join(launch_path, executable)}\"
+start \"\" \"{launch_path}\"
 del \"{os.path.join(tempDir, script_name)}\""""
             )
 
@@ -223,12 +223,13 @@ del \"{os.path.join(tempDir, script_name)}\""""
         folder_check(tempDir)
         shell_path = os.path.join(tempDir, script_name)
         shell_file = open(shell_path, 'w+')
+        escaped_path = launch_path.replace(" ", "\ ")
 
         if app_compiled:  # Running as compiled
             shell_file.write(
 f"""#!/bin/bash
 kill {os.getpid()}
-exec \"{os.path.join(launch_path, executable)}\" &
+exec {escaped_path} &
 rm \"{os.path.join(tempDir, script_name)}\""""
             )
 
