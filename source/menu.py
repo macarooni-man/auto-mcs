@@ -16276,6 +16276,15 @@ class MigrateServerProgressScreen(ProgressScreen):
                 for jar in glob(os.path.join(constants.tmpsvr, '*.jar')):
                     os.remove(jar)
 
+                # Delete EULA.txt
+                def delete_eula(eula_path):
+                    if os.path.exists(eula_path):
+                        os.remove(eula_path)
+                delete_eula(os.path.join(constants.tmpsvr, 'eula.txt'))
+                delete_eula(os.path.join(constants.tmpsvr, 'EULA.txt'))
+                delete_eula(os.path.join(constants.tmpsvr, 'EULA.TXT'))
+
+
         def after_func(*args):
             constants.make_update_list()
             open_server(server_obj.name, True, f"{final_text} '{server_obj.name}' successfully")

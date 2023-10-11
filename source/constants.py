@@ -19,6 +19,7 @@ import requests
 import datetime
 import tarfile
 import zipfile
+import hashlib
 import urllib
 import string
 import psutil
@@ -35,10 +36,12 @@ import backup
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0"
+app_version = "1.0"
 app_title = f"Auto-MCS v{app_version}"
-project_link = "http://3.17.135.17/files/Upload/Coding%20Projects/auto-mcs/"
-config_link = project_link + "auto-mcs-conf.txt"
+project_link = "https://github.com/macarooni-man/auto-mcs"
+update_urls = {'windows': None, 'linux': None}
+update_md5 = {'windows': None, 'linux': None}
+update_msg = ""
 
 app_online = False
 app_latest = True
@@ -238,6 +241,51 @@ rm \"{os.path.join(tempDir, script_name)}\""""
                 print(f.read())
             run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
     sys.exit()
+
+def restart_update_app():
+    executable = os.path.basename(launch_path)
+    script_name = 'auto-mcs-reboot'
+
+    # Generate Windows script to restart
+    if os_name == "windows":
+        script_name = f'{script_name}.bat'
+        folder_check(tempDir)
+        batch_path = os.path.join(tempDir, script_name)
+        batch_file = open(batch_path, 'w+')
+
+        if app_compiled:  # Running as compiled
+            batch_file.write(
+f"""taskkill /f /im \"{executable}\"
+start \"\" \"{launch_path}\"
+del \"{os.path.join(tempDir, script_name)}\""""
+            )
+
+            batch_file.close()
+            run_proc(f"\"{batch_path}\" > nul 2>&1")
+
+
+    # Generate Linux script to restart
+    else:
+        script_name = f'{script_name}.sh'
+        folder_check(tempDir)
+        shell_path = os.path.join(tempDir, script_name)
+        shell_file = open(shell_path, 'w+')
+        escaped_path = launch_path.replace(" ", "\ ")
+
+        if app_compiled:  # Running as compiled
+            shell_file.write(
+f"""#!/bin/bash
+kill {os.getpid()}
+exec {escaped_path} &
+rm \"{os.path.join(tempDir, script_name)}\""""
+            )
+
+            shell_file.close()
+            with open(shell_path, 'r') as f:
+                print(f.read())
+            run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
+    sys.exit()
+
 
 
 # Returns current formatted time
@@ -766,26 +814,69 @@ def gen_rstring(size: int):
 
 # Check if client has an internet connection
 def check_app_updates():
-    global config_link
-    global app_version
-    global app_latest
-    global app_online
+    global project_link, app_version, app_latest, app_online, update_urls, update_md5
 
     # Check if updates are available
     try:
-        res = urllib.request.urlopen(config_link, timeout=2)
-        configSV = configparser.ConfigParser()
-        configSV.optionxform = str
-        configSV.read_string(res.read().decode('utf-8'))
-        CurrentVersion = configSV.get("global", "CurrentVersion")
+        # Grab release data
+        latest_release = f"https://api.github.com/repos{project_link.split('.com')[1]}/releases/latest"
+        req = requests.get(latest_release)
+        status_code = req.status_code
+        release_data = req.json()
+        # print(release_data)
 
-        if app_version < CurrentVersion:
+
+        # Get checksum data
+        try:
+            md5_str = release_data['body'].split("MD5 Checksums")[1]
+            checksum = ""
+            for line in md5_str.splitlines():
+                if line == '`':
+                    continue
+
+                if checksum:
+                    update_md5[checksum] = line.strip()
+                    checksum = ""
+                    continue
+
+                if "Windows" in line:
+                    checksum = "windows"
+                    continue
+
+                if "Linux" in line:
+                    checksum = "linux"
+                    continue
+        except:
+            pass
+
+
+        # Format release data
+        version = release_data['name']
+        if "-" in version:
+            latest_version = version[1:].split("-")[0].strip()
+        elif " " in version:
+            latest_version = version[1:].split("-")[0].strip()
+        else:
+            latest_version = app_version
+
+        # Download links
+        for file in release_data['assets']:
+            if 'linux' in file['name']:
+                update_urls['linux'] = file['browser_download_url']
+                continue
+            if 'windows' in file['name']:
+                update_urls['windows'] = file['browser_download_url']
+                continue
+
+        # Check if app needs to be updated, and URL was successful
+        if float(app_version) < float(latest_version):
             app_latest = False
 
-        app_online = True
+        app_online = status_code == 200
 
-    except:
-        pass
+    except Exception as e:
+        if debug:
+            print("Something went wrong checking for updates: ", e)
 
 
 # Get latest game versions
@@ -1012,6 +1103,67 @@ def generate_splash(crash=False):
         return f'"{exp}"'
 
     session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
+
+
+# Downloads the latest version of Auto-MCS if available
+def download_update(progress_func=None):
+
+    def hook(a, b, c):
+        if progress_func:
+            progress_func(round(100 * a * b / c))
+
+    update_url = update_urls['windows' if os_name == 'windows' else 'linux']
+    if not update_url:
+        return False
+
+    # Attempt at most 5 times to download server.jar
+    fail_count = 0
+    while fail_count < 5:
+
+        safe_delete(downDir)
+        folder_check(downDir)
+
+        try:
+
+            if progress_func and fail_count > 0:
+                progress_func(0)
+
+
+            # Specify names
+            binary_zip = 'auto-mcs.zip'
+            binary_name = 'auto-mcs.exe' if os_name == 'windows' else 'auto-mcs'
+
+            # Download binary zip, and extract the binary from the archive
+            download_url(update_url, binary_zip, downDir, hook)
+            update_path = os.path.join(downDir, binary_zip)
+            extract_archive(update_path, downDir)
+            binary_file = os.path.join(downDir, binary_name)
+            os.remove(update_path)
+
+
+            # If successful, copy to tmpsvr
+            if os.path.isfile(binary_file):
+
+                # If the hash matches, continue
+                if get_checksum(binary_file) == update_md5['windows' if os_name == 'windows' else 'linux']:
+
+                    if progress_func:
+                        progress_func(100)
+
+                    fail_count = 0
+                    break
+
+        except Exception as e:
+            print(e)
+            fail_count += 1
+
+
+    return fail_count < 5
+
+
+# Returns MD5 checksum of file
+def get_checksum(file_path):
+    return str(hashlib.md5(open(file_path, 'rb').read()).hexdigest())
 
 
 # ------------------------------------ Server Creation/Import/Update Functions -----------------------------------------
@@ -1773,6 +1925,7 @@ def update_server_files(progress_func=None):
 
     # First, generate startup script
     generate_run_script(new_server_info, temp_server=True)
+    path = server_path(new_server_info['name'])
 
 
     # Edit auto-mcs.ini
@@ -1782,6 +1935,20 @@ def update_server_files(progress_func=None):
     if new_server_info['build']:
         config_file.set("general", "serverBuild", str(new_server_info['build']))
     server_config(new_server_info['name'], config_file, new_config_path)
+
+
+    # Copy over EULA.txt
+    def copy_eula(eula_path):
+        if os.path.exists(eula_path):
+            copy(eula_path, os.path.join(tmpsvr, 'eula.txt'))
+            return True
+    if not copy_eula(os.path.join(path, 'eula.txt')):
+        if not copy_eula(os.path.join(path, 'EULA.txt')):
+            copy_eula(os.path.join(path, 'EULA.txt'))
+
+    # Copy server.properties back after it gets DELETED
+    if not os.path.exists(os.path.join(tmpsvr, 'server.properties')) and os.path.exists(os.path.join(path, 'server.properties')):
+        copy(os.path.join(path, 'server.properties'), os.path.join(tmpsvr, 'server.properties'))
 
 
     # Check if everything was created successfully
@@ -2238,7 +2405,7 @@ eula=true"""
             return True
 
 
-# Generates new information for an update
+# Generates new information for a server update
 def init_update():
     server_obj = server_manager.current_server
     new_server_info['name'] = server_obj.name
@@ -2885,8 +3052,3 @@ max-world-size=29999984"""
 
     with open(os.path.join(path, 'server.properties'), "w+") as f:
         f.write(serverProperties)
-
-
-# Updates server to the latest version
-def update_server(properties: dict):
-    print("I do nothing. I really don't")

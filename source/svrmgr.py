@@ -1060,7 +1060,6 @@ class ServerObject():
             return False
 
         elif self.auto_update == 'true' and constants.app_online:
-            constants.update_server(self.properties_dict())
             return True
 
         else:
