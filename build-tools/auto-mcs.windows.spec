@@ -47,6 +47,46 @@ a.datas = tuple(data_list)
 a.datas += Tree('.\\gui-assets', prefix='gui-assets', excludes=exclude_list)
 
 
+# Dynamically generate version file
+from constants import app_version
+version_file = "version.rc"
+version_tuple = [int(num) for num in app_version.split(".")]
+while len(version_tuple) < 4:
+    version_tuple.append(0)
+version_tuple = tuple(version_tuple)
+
+with open(version_file, 'w+') as f:
+    f.write(f"""# UTF-8
+VSVersionInfo(
+  ffi=FixedFileInfo(
+filevers={version_tuple},
+prodvers={version_tuple},
+mask=0x3f,
+flags=0x0,
+OS=0x4,
+fileType=0x1,
+subtype=0x0,
+date=(0, 0)
+),
+  kids=[
+StringFileInfo(
+  [
+  StringTable(
+    u'040904B0',
+    [StringStruct(u'CompanyName', u'Kaleb Efflandt'),
+    StringStruct(u'FileDescription', u'auto-mcs'),
+    StringStruct(u'FileVersion', u'{app_version}'),
+    StringStruct(u'InternalName', u'auto-mcs'),
+    StringStruct(u'LegalCopyright', u'Copyright (c) Kaleb Efflandt'),
+    StringStruct(u'OriginalFilename', u'auto-mcs.exe'),
+    StringStruct(u'ProductName', u'Auto-MCS'),
+    StringStruct(u'ProductVersion', u'{app_version}')])
+  ]), 
+VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)""")
+
+
 
 splash = Splash(
     '.\\gui-assets\\splash.png',
@@ -68,7 +108,7 @@ exe = EXE(pyz,
           splash.binaries,
           *[Tree(p) for p in (sdl2.dep_bins + glew.dep_bins)],
           name='auto-mcs.exe',
-          debug=True,
+          debug=False,
           bootloader_ignore_signals=False,
           strip=False,
           upx=True,
@@ -79,5 +119,6 @@ exe = EXE(pyz,
           target_arch=None,
           codesign_identity=None,
           entitlements_file=None,
-          icon='icon.ico'
+          icon='icon.ico',
+          version=version_file
 )

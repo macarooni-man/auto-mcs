@@ -26,11 +26,22 @@ if __name__ == '__main__':
     multiprocessing.set_start_method("spawn")
     multiprocessing.freeze_support()
 
-    # Import constants and check for debug mode
+
+    # Import constants and set variables
     import constants
     constants.launch_path = sys.executable if constants.app_compiled else __file__
 
+    try:
+        update_log = os.path.join(constants.tempDir, 'update-log')
+        if os.path.exists(update_log):
+            with open(update_log, 'r') as f:
+                constants.update_data['reboot-msg'] = f.read().strip().split("@")
+            print('Update complete: ', constants.update_data['reboot-msg'])
+    except:
+        pass
 
+
+    # Check for debug mode
     if "--debug" in sys.argv:
         constants.debug = True
     import main
@@ -122,4 +133,5 @@ if __name__ == '__main__':
             os.remove(img)
         except OSError:
             pass
-    constants.safe_delete(constants.tempDir)
+    if not os.path.exists(update_log):
+        constants.safe_delete(constants.tempDir)

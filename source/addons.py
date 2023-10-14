@@ -311,6 +311,11 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
                 constants.safe_delete(addon_tmp)
         except:
+            # Delete addon if it's corrupted
+            try:
+                os.remove(addon_path)
+            except OSError:
+                pass
             return None
 
 

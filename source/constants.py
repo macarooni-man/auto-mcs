@@ -14,7 +14,6 @@ import unicodedata
 import subprocess
 import functools
 import threading
-import ipaddress
 import requests
 import datetime
 import tarfile
@@ -34,14 +33,20 @@ import re
 import addons
 import backup
 
+
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "1.0"
+app_version = "2.0"
 app_title = f"Auto-MCS v{app_version}"
 project_link = "https://github.com/macarooni-man/auto-mcs"
-update_urls = {'windows': None, 'linux': None}
-update_md5 = {'windows': None, 'linux': None}
-update_msg = ""
+update_data = {
+    "version": '',
+    "urls": {'windows': None, 'linux': None},
+    "md5": {'windows': None, 'linux': None},
+    "desc": '',
+    "reboot-msg": [],
+    "auto-show": True
+}
 
 app_online = False
 app_latest = True
@@ -181,12 +186,9 @@ def check_ngrok():
 check_ngrok()
 
 
-
 # Bigboi server manager
 server_manager = None
-
 import_data = {'name': None, 'path': None}
-
 backup_lock = {}
 
 
@@ -198,7 +200,7 @@ max_memory = int(round(total_ram - (total_ram / 4)))
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
 # Restarts auto-mcs by dynamically generating script
-def restart_app():
+def restart_app(*a):
     executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-reboot'
 
@@ -242,9 +244,12 @@ rm \"{os.path.join(tempDir, script_name)}\""""
             run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
     sys.exit()
 
-def restart_update_app():
+# Restarts and updates auto-mcs by dynamically generating script
+def restart_update_app(*a):
     executable = os.path.basename(launch_path)
-    script_name = 'auto-mcs-reboot'
+    script_name = 'auto-mcs-update'
+    update_log = os.path.join(tempDir, 'update-log')
+    folder_check(tempDir)
 
     # Generate Windows script to restart
     if os_name == "windows":
@@ -256,6 +261,15 @@ def restart_update_app():
         if app_compiled:  # Running as compiled
             batch_file.write(
 f"""taskkill /f /im \"{executable}\"
+timeout /t 5 /nobreak
+
+copy /b /v /y "{os.path.join(downDir, 'auto-mcs.exe')}" "{launch_path}"
+if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
+    echo banner-success@Auto-MCS was updated to v{update_data['version']} successfully! > "{update_log}"
+) else (
+    echo banner-failure@Something went wrong with the update > "{update_log}"
+)
+
 start \"\" \"{launch_path}\"
 del \"{os.path.join(tempDir, script_name)}\""""
             )
@@ -276,6 +290,17 @@ del \"{os.path.join(tempDir, script_name)}\""""
             shell_file.write(
 f"""#!/bin/bash
 kill {os.getpid()}
+sleep 2
+
+/bin/cp -rf "{os.path.join(downDir, 'auto-mcs')}" "{launch_path}"
+errorlevel=$?
+if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
+    echo banner-success@Auto-MCS was updated to v{update_data['version']} successfully! > "{update_log}"
+else
+    echo banner-failure@Something went wrong with the update > "{update_log}"
+fi
+
+chmod +x "{launch_path}"
 exec {escaped_path} &
 rm \"{os.path.join(tempDir, script_name)}\""""
             )
@@ -814,7 +839,7 @@ def gen_rstring(size: int):
 
 # Check if client has an internet connection
 def check_app_updates():
-    global project_link, app_version, app_latest, app_online, update_urls, update_md5
+    global project_link, app_version, app_latest, app_online, update_data
 
     # Check if updates are available
     try:
@@ -828,14 +853,16 @@ def check_app_updates():
 
         # Get checksum data
         try:
-            md5_str = release_data['body'].split("MD5 Checksums")[1]
+            description, md5_str = release_data['body'].split("MD5 Checksums", 1)
+            update_data['desc'] = description.replace("- ", "• ").strip().replace("`","")
+
             checksum = ""
             for line in md5_str.splitlines():
                 if line == '`':
                     continue
 
                 if checksum:
-                    update_md5[checksum] = line.strip()
+                    update_data['md5'][checksum] = line.strip()
                     checksum = ""
                     continue
 
@@ -853,23 +880,23 @@ def check_app_updates():
         # Format release data
         version = release_data['name']
         if "-" in version:
-            latest_version = version[1:].split("-")[0].strip()
+            update_data['version'] = version[1:].split("-")[0].strip()
         elif " " in version:
-            latest_version = version[1:].split("-")[0].strip()
+            update_data['version'] = version[1:].split("-")[0].strip()
         else:
-            latest_version = app_version
+            update_data['version'] = app_version
 
         # Download links
         for file in release_data['assets']:
             if 'linux' in file['name']:
-                update_urls['linux'] = file['browser_download_url']
+                update_data['urls']['linux'] = file['browser_download_url']
                 continue
             if 'windows' in file['name']:
-                update_urls['windows'] = file['browser_download_url']
+                update_data['urls']['windows'] = file['browser_download_url']
                 continue
 
         # Check if app needs to be updated, and URL was successful
-        if float(app_version) < float(latest_version):
+        if float(app_version) < float(update_data['version']):
             app_latest = False
 
         app_online = status_code == 200
@@ -1112,7 +1139,7 @@ def download_update(progress_func=None):
         if progress_func:
             progress_func(round(100 * a * b / c))
 
-    update_url = update_urls['windows' if os_name == 'windows' else 'linux']
+    update_url = update_data['urls']['windows' if os_name == 'windows' else 'linux']
     if not update_url:
         return False
 
@@ -1145,13 +1172,16 @@ def download_update(progress_func=None):
             if os.path.isfile(binary_file):
 
                 # If the hash matches, continue
-                if get_checksum(binary_file) == update_md5['windows' if os_name == 'windows' else 'linux']:
+                if get_checksum(binary_file) == update_data['md5']['windows' if os_name == 'windows' else 'linux']:
 
                     if progress_func:
                         progress_func(100)
 
                     fail_count = 0
                     break
+
+                else:
+                    fail_count += 1
 
         except Exception as e:
             print(e)

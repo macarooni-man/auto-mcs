@@ -518,6 +518,10 @@ class ServerObject():
             if log_line:
                 log_line = format_log(log_line)
             if text and log_line:
+
+                if not self.run_data:
+                    return
+
                 formatted_line = {'text': log_line}
                 if formatted_line not in self.run_data['log'] and formatted_line['text']:
                     self.run_data['log'].append(formatted_line)

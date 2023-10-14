@@ -27,7 +27,6 @@ import addons
 import backup
 import acl
 
-
 if constants.os_name == "windows":
     import tkinter as tk
     from tkinter import filedialog
@@ -2651,7 +2650,7 @@ def footer_label(path, color):
 
 
 
-def generate_footer(menu_path, color="9999FF", progress_screen=False):
+def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=False):
 
     # Sanitize footer path for crash logs to remove server name
     if ", Launch" in menu_path or ", Access Control" in menu_path or ", Back-ups" in menu_path or ", Add-ons" in menu_path or ", amscript" in menu_path or ", Advanced" in menu_path:
@@ -2678,9 +2677,21 @@ def generate_footer(menu_path, color="9999FF", progress_screen=False):
             if constants.app_latest:
                 footer.add_widget(IconButton('up to date', {}, (51, 5), (None, None), 'checkmark-sharp.png', clickable=False))
             else:
-                footer.add_widget(IconButton('update now', {}, (51, 5), (None, None), 'sync.png', clickable=True, force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green']))
+                click_func = None
+                try:
+                    if func_dict:
+                        click_func = func_dict['update']
+                except:
+                    pass
+                footer.add_widget(IconButton('update now', {}, (51, 5), (None, None), 'sync.png', clickable=True, click_func=click_func, force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green']))
 
-            footer.add_widget(IconButton('view changelog', {}, (102, 5), (None, None), 'document-text-outline.png', clickable=True))
+            click_func = None
+            try:
+                if func_dict:
+                    click_func = func_dict['changelog']
+            except:
+                pass
+            footer.add_widget(IconButton('view changelog', {}, (102, 5), (None, None), 'document-text-outline.png', clickable=True, click_func=click_func))
 
         else:
             footer.add_widget(IconButton('no connection', {}, (0, 5), (None, None), 'ban.png', clickable=True, force_color=[[(0.07, 0.07, 0.07, 1), (0.7, 0.7, 0.7, 1)], 'gray']))
@@ -4941,12 +4952,17 @@ class BigPopupWindow(RelativeLayout):
                         Animation(background_color=self.window_text_color, duration=0.3).start(self.body_button)
 
                         # Open link in browser
-                        if self.addon_object:
-                            if self.addon_object.type in ["forge", "fabric"]:
-                                url = "https://www.curseforge.com" + self.addon_object.url
-                            else:
-                                url = "https://dev.bukkit.org" + self.addon_object.url
+                        if self.__class__.__name__ == "PopupAddon":
+                            if self.addon_object:
+                                if self.addon_object.type in ["forge", "fabric"]:
+                                    url = "https://www.curseforge.com" + self.addon_object.url
+                                else:
+                                    url = "https://dev.bukkit.org" + self.addon_object.url
 
+                                webbrowser.open_new_tab(url)
+
+                        elif self.__class__.__name__ == "PopupUpdate":
+                            url = f'{constants.project_link}/releases/latest'
                             webbrowser.open_new_tab(url)
 
 
@@ -5296,7 +5312,116 @@ class PopupAddon(BigPopupWindow):
         for widget in self.window.children:
             widget.opacity = 0
 
+# Update popup
+class PopupUpdate(BigPopupWindow):
+    def __init__(self, **kwargs):
+        self.window_color = (0.42, 0.475, 1, 1)
+        self.window_text_color = (0.1, 0.1, 0.2, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'cloud-download.png')
 
+        # Assign update info to popup
+        if constants.update_data:
+            self.update_data = constants.update_data
+        else:
+            self.update_data = None
+            del self
+            return
+
+        if not self.update_data['version']:
+            del self
+            return
+
+        super().__init__(**kwargs)
+
+
+        # Title
+        self.window_title.text_size[0] = (self.window_background.size[0] * 0.7)
+        self.window_title.halign = "center"
+        self.window_title.shorten = True
+        self.window_title.markup = True
+        self.window_title.shorten_from = "right"
+        self.window_title.text = f"Auto-MCS Update Available"
+
+
+        # Description
+        self.window_content.text = "" if not self.update_data['desc'] else ("\n\n" + self.update_data['desc'])
+        if not self.window_content.text.strip():
+            self.window_content.text = "description unavailable"
+        else:
+            self.window_content.halign = "left"
+            self.window_content.valign = "top"
+            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.4}
+        self.window_content.max_lines = 14 # Cuts off the beginning of content??
+
+
+        # Modal specific settings
+        self.window_sound = None
+        self.ok_button = None
+        with self.canvas.after:
+
+            # Body Button (Open in browser)
+            self.body_button = Button()
+            self.body_button.id = "body_button"
+            self.body_button.size_hint = (None, None)
+            self.body_button.size = (200, 40)
+            self.body_button.border = (0, 0, 0, 0)
+            self.body_button.background_color = self.window_text_color
+            self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
+            self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
+            self.body_button.text = "click to view more"
+            self.body_button.color = self.window_color
+            self.body_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.body_button.font_size = sp(20)
+
+
+            self.no_button = Button()
+            self.no_button.id = "no_button"
+            self.no_button.size_hint = (None, None)
+            self.no_button.size = (327, 65)
+            self.no_button.border = (0, 0, 0, 0)
+            self.no_button.background_color = self.window_color
+            self.no_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.no_button.pos = (0, -0.3)
+            self.no_button.text = "BACK"
+            self.no_button.color = self.window_text_color
+            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_size = sp(22)
+
+            self.yes_button = Button()
+            self.yes_button.id = "install_button"
+            self.yes_button.size_hint = (None, None)
+            self.yes_button.size = (-327, 65)
+            self.yes_button.border = (0, 0, 0, 0)
+            self.yes_button.background_color = self.window_color
+            self.yes_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.yes_button.pos = (self.window_background.size[0] + 1, -0.3)
+            self.yes_button.text = "INSTALL"
+            self.yes_button.color = self.window_text_color
+            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_size = sp(22)
+
+            self.version_banner = BannerObject(
+                pos_hint = {"center_x": 0.5, "center_y": 0.877},
+                size = (150, 40),
+                color = (0.4, 0.682, 1, 1),
+                text = f"v{self.update_data['version']}",
+                icon = "information-circle.png"
+            )
+            self.version_banner.id = "version_banner"
+
+
+        self.window.add_widget(self.no_button)
+        self.window.add_widget(self.yes_button)
+        self.window.add_widget(self.body_button)
+        self.window.add_widget(self.version_banner)
+
+        self.bind(on_touch_down=self.click_event)
+
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
 
 
 # Screen widgets
@@ -5664,7 +5789,7 @@ class MenuBackground(Screen):
 
     # Show popup; popup_type can be "info", "warning", "query"
     def show_popup(self, popup_type, title, content, callback=None, *args):
-        if title and content and popup_type in ["info", "warning", "query", "warning_query", "controls", "addon"] and (self == screen_manager.current_screen):
+        if ((popup_type == "update") or (title and content and popup_type in ["info", "warning", "query", "warning_query", "controls", "addon"])) and (self == screen_manager.current_screen):
 
             # self.show_popup("info", "Title", "This is an info popup!", functools.partial(callback_func))
             # self.show_popup("warning", "Title", "This is a warning popup!", functools.partial(callback_func))
@@ -5672,6 +5797,7 @@ class MenuBackground(Screen):
             # self.show_popup("warning_query", "Title", "Yes or no?", (functools.partial(callback_func_no), functools.partial(callback_func_yes)))
             # self.show_popup("controls", "Title", "Press X to do Y", functools.partial(callback_func))
             # self.show_popup("addon", "Title", "Description", (functools.partial(callback_func_web), functools.partial(callback_func_install)), addon_object)
+            # self.show_popup("update", (None, functools.partial(callback_func_install)))
 
 
             # Log for crash info
@@ -5702,6 +5828,10 @@ class MenuBackground(Screen):
                         content = "There is no data available for this add-on"
                         callback = None
                         self.popup_widget = PopupWarning()
+                elif popup_type == "update":
+                    self.popup_widget = PopupUpdate()
+                    title = ""
+                    content = ""
 
             self.popup_widget.generate_blur_background()
 
@@ -5908,7 +6038,6 @@ class MenuBackground(Screen):
 
         self.resize_bind = None
         self.popup_bind = None
-
 
 
 # Template for loading/busy screens
@@ -6330,6 +6459,40 @@ class MainMenuScreen(MenuBackground):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
 
+    # Prompt update/show banner when starting up
+    def on_enter(self, *args):
+        if constants.update_data['reboot-msg']:
+            message = constants.update_data['reboot-msg']
+            fail = message[0] == "banner-failure"
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (1, 0.5, 0.65, 1) if fail else (0.553, 0.902, 0.675, 1),
+                    message[1],
+                    "close-circle-sharp.png" if fail else "checkmark-circle-sharp.png",
+                    3,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0.1
+            )
+            constants.update_data['reboot-msg'] = []
+            constants.update_data['auto-show'] = False
+        else:
+            Clock.schedule_once(functools.partial(self.prompt_update, False), 0.5)
+
+    def prompt_update(self, force=False, *args):
+
+        if (not constants.app_latest) and (constants.update_data['auto-show'] or force):
+
+            # Installs update and restarts
+            def install_update(*a):
+                def change_screen(*b):
+                    screen_manager.current = 'UpdateAppProgressScreen'
+                check_running(change_screen)
+
+            if constants.app_online:
+                self.show_popup("update", title=None, content=None, callback=(None, install_update))
+            constants.update_data['auto-show'] = False
+
     def generate_menu(self, **kwargs):
         # Generate buttons on page load
         buttons = []
@@ -6359,9 +6522,72 @@ class MainMenuScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        float_layout.add_widget(generate_footer('splash'))
+        float_layout.add_widget(generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True)}))
 
         self.add_widget(float_layout)
+
+class UpdateAppProgressScreen(ProgressScreen):
+
+    # Only replace this function when making a child screen
+    # Set fail message in child functions to trigger an error
+    def contents(self):
+
+        def before_func(*args):
+
+            # First, clean out any existing files in temp or downloads
+            constants.safe_delete(constants.tempDir)
+            constants.safe_delete(constants.downDir)
+
+            if not constants.app_online:
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+
+
+        def after_func(*args):
+            self.steps.label_2.text = "Update complete! Restarting... " + self.steps.label_2.text.rsplit(" ", 1)[1]
+            Clock.schedule_once(constants.restart_update_app, 1)
+
+        # Original is percentage before this function, adjusted is a percent of hooked value
+        def adjust_percentage(*args):
+            original = self.last_progress
+            adjusted = args[0]
+            total = args[1] * 0.01
+            final = original + round(adjusted * total)
+            if final < 0:
+                final = original
+            self.progress_bar.update_progress(final)
+
+        self.page_contents = {
+
+            # Page name
+            'title': f"Updating Auto-MCS",
+
+            # Header text
+            'header': "Sit back and relax, it's automation time...",
+
+            # Tuple of tuples for steps (label, function, percent)
+            # Percent of all functions must total 100
+            # Functions must return True, or default error will be executed
+            'default_error': 'There was an issue, please try again later',
+
+            'function_list': (),
+
+            # Function to run before steps (like checking for an internet connection)
+            'before_function': before_func,
+
+            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
+            'after_function': after_func,
+
+            # Screen to go to after complete
+            'next_screen': None
+        }
+
+        # Create function list
+        function_list = [
+            (f'Downloading Auto-MCS v{constants.update_data["version"]}', functools.partial(constants.download_update, functools.partial(adjust_percentage, 100)), 0)
+        ]
+
+        self.page_contents['function_list'] = tuple(function_list)
+
 
 # </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -11616,7 +11842,7 @@ class ConsolePanel(FloatLayout):
                             "close-circle-sharp.png",
                             2.5,
                             {"center_x": 0.5, "center_y": 0.965}
-                        ), 0.25
+                        ), 0
                     )
 
             # Ignore if screen isn't visible or a different server
@@ -16368,6 +16594,46 @@ kv_file = '''
 
 
 # Run application and startup preferences
+def check_running(final_func):
+    running = constants.server_manager.running_servers
+
+    # Issue stop command to all running servers to quit gracefully
+    def close_servers(*args):
+        for server in running.values():
+            threading.Timer(0, functools.partial(server.silent_command, "stop")).start()
+
+        if final_func:
+            final_func()
+
+    # If there are running servers, prompt user before exiting
+    if running:
+        server_count = len(list(running.keys()))
+
+        if server_count == 1:
+            desc = "There is currently 1 server running. To continue, it will be closed.\n\nAre you sure you want to continue?"
+        else:
+            desc = f"There are currently {server_count} servers running. To continue, they will be closed.\n\nAre you sure you want to continue?"
+
+        popup = screen_manager.current_screen.popup_widget
+        if popup:
+            popup.self_destruct(screen_manager.current_screen, False)
+            screen_manager.current_screen.canvas.after.clear()
+
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_popup,
+                "warning_query",
+                f'Sever Warning',
+                desc,
+                (None, close_servers)
+            ),
+            1 if popup else 0
+        )
+
+    # If there aren't running server, execute function normally
+    elif final_func:
+        final_func()
+
 class MainApp(App):
 
     # Disable F1 menu when compiled
@@ -16392,11 +16658,19 @@ class MainApp(App):
     Builder.load_string(kv_file)
 
     # Prevent window from closing during certain situations
-    def exit_check(*args):
+    def exit_check(self, force_close=False, *args):
+        if force_close:
+            print(force_close)
+            return False
+
         if constants.ignore_close:
             return True
+
+        elif constants.server_manager.running_servers:
+            check_running(Window.close)
+            return True
+
         else:
-            # Put function here to prompt user when a server is running, backing up, or updating
             return False
 
     Window.bind(on_request_close=exit_check)
