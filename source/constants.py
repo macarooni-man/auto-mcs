@@ -322,10 +322,15 @@ def format_now():
 global_banner = None
 
 # Replacement for run_proc to prevent CMD flashing
-def run_proc(cmd):
-    return_code = subprocess.call(cmd, shell=True)
-    print(f'{cmd}: returned exit code {return_code}')
-    return return_code
+def run_proc(cmd, return_text=False):
+    if return_text:
+        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
+        print(f'{cmd}: returned exit code {result.returncode}')
+        return result.stdout.decode()
+    else:
+        return_code = subprocess.call(cmd, shell=True)
+        print(f'{cmd}: returned exit code {return_code}')
+        return return_code
 
 
 # Hide kivy widgets

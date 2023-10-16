@@ -2,6 +2,7 @@ from traceback import format_exc
 import urllib.error
 import threading
 import requests
+import ctypes
 import glob
 import time
 import sys
@@ -31,6 +32,7 @@ if __name__ == '__main__':
     import constants
     constants.launch_path = sys.executable if constants.app_compiled else __file__
 
+    # Check for update log
     try:
         update_log = os.path.join(constants.tempDir, 'update-log')
         if os.path.exists(update_log):
@@ -44,6 +46,25 @@ if __name__ == '__main__':
     # Check for debug mode
     if "--debug" in sys.argv:
         constants.debug = True
+
+
+    # Check if application is already open
+    #try:
+    if constants.os_name == "windows":
+        if constants.os_name == "windows":
+            user32 = ctypes.WinDLL('user32')
+            if hwnd := user32.FindWindowW(None, constants.app_title):
+                if not user32.IsZoomed(hwnd):
+                    user32.ShowWindow(hwnd, 1)
+                user32.SetForegroundWindow(hwnd)
+                sys.exit()
+    # Linux
+    else:
+        if len(constants.run_proc(f'ps -e | grep {os.path.basename(constants.launch_path)}', True).strip().splitlines()) > 2:
+            sys.exit()
+    # except:
+    #     pass
+
     import main
 
 
