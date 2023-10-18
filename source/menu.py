@@ -33,7 +33,6 @@ if constants.os_name == "windows":
 
 # Disable Kivy logging if debug is off and app is compiled
 if constants.app_compiled and constants.debug is False:
-    os.environ["KIVY_NO_CONSOLELOG"] = "1"
     kivy_folder = os.path.join(constants.os_temp, ".kivy")
     constants.folder_check(kivy_folder)
     os.environ['KIVY_HOME'] = kivy_folder
@@ -6522,7 +6521,13 @@ class MainMenuScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        float_layout.add_widget(generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True)}))
+        # Opens release changelog
+        def changelog(*a):
+            if constants.app_online:
+                url = f'{constants.project_link}/releases/latest'
+                webbrowser.open_new_tab(url)
+
+        float_layout.add_widget(generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True), 'changelog': changelog}))
 
         self.add_widget(float_layout)
 
@@ -10896,6 +10901,11 @@ class MenuTaskbar(RelativeLayout):
                                         while not constants.server_manager.current_server.addon:
                                             time.sleep(0.2)
 
+                                if self.data[-1] == 'ServerAmscriptScreen':
+                                    if not constants.server_manager.current_server.script_manager:
+                                        while not constants.server_manager.current_server.script_manager:
+                                            time.sleep(0.2)
+
                                 screen_manager.current = self.data[-1]
 
                             constants.back_clicked = False
@@ -14543,6 +14553,608 @@ class ServerAddonSearchScreen(MenuBackground):
 
 
 
+# amscript Manager ------------------------------------------------------------------------------------------------
+
+class AmscriptListButton(HoverButton):
+
+    def toggle_enabled(self, enabled, *args):
+        self.enabled = enabled
+        self.title.text_size = (self.size_hint_max[0] * (0.7 if enabled else 0.94), self.size_hint_max[1])
+        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png')
+
+        # If disabled, add banner as such
+        if not self.enabled:
+            self.disabled_banner = BannerObject(
+                pos_hint = {"center_x": 0.5, "center_y": 0.5},
+                size = (125, 32),
+                color = (1, 0.53, 0.58, 1),
+                text = "disabled",
+                icon = "close-circle.png",
+                icon_side = "right"
+            )
+            self.add_widget(self.disabled_banner)
+
+        self.resize_self()
+
+    def animate_addon(self, image, color, **kwargs):
+        image_animate = Animation(duration=0.05)
+
+        def f(w):
+            w.background_normal = image
+
+        Animation(color=color, duration=0.06).start(self.title)
+        Animation(color=color, duration=0.06).start(self.subtitle)
+
+        a = Animation(duration=0.0)
+        a.on_complete = functools.partial(f)
+
+        image_animate += a
+
+        image_animate.start(self)
+
+    def resize_self(self, *args):
+
+        # Title and description
+        padding = 2.17
+        self.title.pos = (self.x + (self.title.text_size[0] / padding), self.y + 31)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1, self.y)
+        self.hover_text.pos = (self.x + (self.title.text_size[0] / padding) - 15, self.y + 15)
+
+        # Type Banner
+        if self.disabled_banner:
+            self.disabled_banner.pos_hint = {"center_x": None, "center_y": None}
+            self.disabled_banner.pos = (self.width + self.x - self.disabled_banner.width - 18, self.y + 38.5)
+
+        # Delete button
+        self.delete_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
+        self.delete_layout.pos = (self.pos[0] + self.width - (self.delete_button.width / 1.33), self.pos[1] + 13)
+
+        # Reposition highlight border
+        self.highlight_layout.pos = self.pos
+
+    def highlight(self):
+        def next_frame(*args):
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        Clock.schedule_once(next_frame, 0)
+
+    def __init__(self, properties, click_function=None, enabled=False, fade_in=0.0, highlight=False, **kwargs):
+        super().__init__(**kwargs)
+
+        self.enabled = enabled
+        self.properties = properties
+        self.border = (-5, -5, -5, -5)
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.enabled else [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
+        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+        self.size_hint_max = (580, 80)
+        self.id = "addon_button"
+        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
+        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click_white.png')
+        self.disabled_banner = None
+
+
+        # Delete button
+        def delete_hover(*args):
+            def change_color(*args):
+                if self.hovered:
+                    self.hover_text.text = 'UNINSTALL ADD-ON'
+                    self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
+                    self.background_color = (1, 1, 1, 1)
+            Clock.schedule_once(change_color, 0.07)
+        def delete_on_leave(*args):
+            def change_color(*args):
+                self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
+                if self.hovered:
+                    self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
+                    self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
+            Clock.schedule_once(change_color, 0.15)
+        def delete_click(*args):
+            # Delete addon and reload list
+            def reprocess_page(*args):
+                addon_manager = constants.server_manager.current_server.addon
+                addon_manager.delete_addon(self.properties)
+                addon_screen = screen_manager.current_screen
+                addon_screen.gen_search_results(addon_manager.return_single_list(), fade_in=True)
+
+                # Show banner if server is running
+                if addon_manager.hash_changed():
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.937, 0.831, 0.62, 1),
+                            f"A server restart is required to apply changes",
+                            "sync.png",
+                            3,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0.25
+                    )
+
+                else:
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (1, 0.5, 0.65, 1),
+                            f"'{self.properties.name}' was uninstalled",
+                            "trash-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0.25
+                    )
+
+                # Switch pages if page is empty
+                if (len(addon_screen.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                    addon_screen.switch_page("left")
+
+
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_popup,
+                    "warning_query",
+                    f'Uninstall {self.properties.name}',
+                    "Do you want to permanently uninstall this add-on?\n\nYou'll need to re-import or download it again",
+                    (None, functools.partial(reprocess_page))
+                ),
+                0
+            )
+        self.delete_layout = RelativeLayout(opacity=0)
+        self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'], anchor='right', click_func=delete_click)
+        self.delete_button.button.bind(on_enter=delete_hover)
+        self.delete_button.button.bind(on_leave=delete_on_leave)
+        self.delete_layout.add_widget(self.delete_button)
+        self.add_widget(self.delete_layout)
+
+
+        # Hover text
+        self.hover_text = Label()
+        self.hover_text.id = 'hover_text'
+        self.hover_text.size_hint = (None, None)
+        self.hover_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
+        self.hover_text.font_size = sp(23)
+        self.hover_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.hover_text.color = (0.1, 0.1, 0.1, 1)
+        self.hover_text.halign = "center"
+        self.hover_text.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.hover_text.opacity = 0
+        self.add_widget(self.hover_text)
+
+
+        # Loading stuffs
+        self.original_subtitle = self.properties.subtitle if self.properties.subtitle else "Description unavailable"
+        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Title of Addon
+        self.title = Label()
+        self.title.id = "title"
+        self.title.halign = "left"
+        self.title.color = self.color_id[1]
+        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_size = sp(25)
+        self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.title.shorten = True
+        self.title.markup = True
+        self.title.shorten_from = "right"
+        self.title.max_lines = 1
+        self.title.text = f"{self.properties.name}  [color=#434368]-[/color]  {self.properties.author if self.properties.author else 'Unknown'}"
+        self.add_widget(self.title)
+
+
+        # Description of Addon
+        self.subtitle = Label()
+        self.subtitle.id = "subtitle"
+        self.subtitle.halign = "left"
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.font_name = self.original_font
+        self.subtitle.font_size = sp(21)
+        self.default_subtitle_opacity = 0.56
+        self.subtitle.opacity = self.default_subtitle_opacity
+        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.shorten = True
+        self.subtitle.shorten_from = "right"
+        self.subtitle.max_lines = 1
+        self.subtitle.text = self.original_subtitle
+        self.add_widget(self.subtitle)
+
+
+        # Highlight border
+        self.highlight_layout = RelativeLayout()
+        self.highlight_border = Image()
+        self.highlight_border.keep_ratio = False
+        self.highlight_border.allow_stretch = True
+        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+        self.highlight_border.opacity = 0
+        self.highlight_border.source = os.path.join(constants.gui_assets, 'server_button_highlight.png')
+        self.highlight_layout.add_widget(self.highlight_border)
+        self.highlight_layout.width = self.size_hint_max[0]
+        self.highlight_layout.height = self.size_hint_max[1]
+        self.add_widget(self.highlight_layout)
+
+        if highlight:
+            self.highlight()
+
+
+        # If self.enabled is false, and self.properties.version, display version where "enabled" logo is
+        self.bind(pos=self.resize_self)
+        if not enabled:
+            self.toggle_enabled(enabled)
+
+        # If click_function
+        if click_function:
+            self.bind(on_press=click_function)
+
+        # Animate opacity
+        if fade_in > 0:
+            self.opacity = 0
+            self.title.opacity = 0
+
+            Animation(opacity=1, duration=fade_in).start(self)
+            Animation(opacity=1, duration=fade_in).start(self.title)
+            Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
+
+    def on_enter(self, *args):
+        if not self.ignore_hover:
+
+            # Hide disabled banner if it exists
+            if self.disabled_banner:
+                Animation.stop_all(self.disabled_banner)
+                Animation(opacity=0, duration=0.13).start(self.disabled_banner)
+
+            # Fade button to hover state
+            if not self.delete_button.button.hovered:
+                self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
+
+            # Show delete button
+            Animation.stop_all(self.delete_layout)
+            Animation(opacity=1, duration=0.13).start(self.delete_layout)
+
+            # Hide text
+            Animation(opacity=0, duration=0.13).start(self.title)
+            Animation(opacity=0, duration=0.13).start(self.subtitle)
+            Animation(opacity=1, duration=0.13).start(self.hover_text)
+
+            # Change button color based on state
+            self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
+
+    def on_leave(self, *args):
+        if not self.ignore_hover:
+
+            # Hide disabled banner if it exists
+            if self.disabled_banner:
+                Animation.stop_all(self.disabled_banner)
+                Animation(opacity=1, duration=0.13).start(self.disabled_banner)
+
+            # Fade button to default state
+            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
+
+            # Hide delete button
+            Animation.stop_all(self.delete_layout)
+            Animation(opacity=0, duration=0.13).start(self.delete_layout)
+
+            # Show text
+            Animation(opacity=1, duration=0.13).start(self.title)
+            Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
+            Animation(opacity=0, duration=0.13).start(self.hover_text)
+
+            # Reset button color
+            def reset_color(*args):
+                self.background_color = (1, 1, 1, 1)
+            Clock.schedule_once(reset_color, 0.1)
+
+    def loading(self, load_state, *args):
+        if load_state:
+            self.subtitle.text = "Loading add-on info..."
+            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        else:
+            self.subtitle.text = self.original_subtitle
+            self.subtitle.font_name = self.original_font
+
+class ServerAmscriptScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True, last_scroll=None, *args):
+
+        # Update page counter
+        # results = list(sorted(results, key=lambda d: d.name.lower()))
+        # Set to proper page on toggle
+
+        addon_manager = constants.server_manager.current_server.addon
+        default_scroll = 1
+        if highlight:
+            def divide_chunks(l, n):
+                final_list = []
+
+                for i in range(0, len(l), n):
+                    final_list.append(l[i:i + n])
+
+                return final_list
+
+            for x, l in enumerate(divide_chunks([x.hash for x in results], self.page_size), 1):
+                if highlight in l:
+                    if self.current_page != x:
+                        self.current_page = x
+
+                    # Update scroll when page is bigger than list
+                    if Window.height < self.scroll_layout.height * 1.7:
+                        default_scroll = 1 - round(l.index(highlight) / len(l), 2)
+                        if default_scroll < 0.21:
+                            default_scroll = 0
+                        if default_scroll > 0.97:
+                            default_scroll = 1
+                    break
+
+
+        self.last_results = results
+        self.max_pages = (len(results) / self.page_size).__ceil__()
+        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+        self.scroll_layout.clear_widgets()
+        # gc.collect()
+
+
+        # Animate scrolling
+        def set_scroll(*args):
+            Animation.stop_all(self.scroll_layout.parent.parent)
+            if animate_scroll:
+                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+            else:
+                self.scroll_layout.parent.parent.scroll_y = default_scroll
+        Clock.schedule_once(set_scroll, 0)
+
+
+        # Generate header
+        addon_count = len(results)
+        enabled_count = len([addon for addon in addon_manager.installed_addons['enabled'] if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))])
+        disabled_count = len(addon_manager.installed_addons['disabled'])
+        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        header_content = "Installed Add-ons  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] items')
+
+        if addon_manager.hash_changed():
+            icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+            header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
+
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                break
+
+
+        # If there are no addons, say as much with a label
+        if addon_count == 0:
+            self.blank_label.text = "Import or Download add-ons below"
+            constants.hide_widget(self.blank_label, False)
+            self.blank_label.opacity = 0
+            Animation(opacity=1, duration=0.2).start(self.blank_label)
+            self.max_pages = 0
+            self.current_page = 0
+
+        # If there are addons, display them here
+        else:
+            constants.hide_widget(self.blank_label, True)
+
+            # Create list of addon names
+            installed_addon_names = [addon.name for addon in self.server.addon.return_single_list()]
+
+            # Clear and add all addons
+            for x, addon_object in enumerate(page_list, 1):
+
+                # Activated when addon is clicked
+                def toggle_addon(index, *args):
+                    addon = index
+
+                    if len(addon.name) < 26:
+                        addon_name = addon.name
+                    else:
+                        addon_name = addon.name[:23] + "..."
+
+
+                    # Toggle addon state
+                    addon_manager.addon_state(addon, enabled=not addon.enabled)
+                    addon_list = [addon for addon in addon_manager.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
+                    self.gen_search_results(addon_list, fade_in=False, highlight=addon.hash, animate_scroll=True)
+
+
+                    # Show banner if server is running
+                    if addon_manager.hash_changed():
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_banner,
+                                (0.937, 0.831, 0.62, 1),
+                                f"A server restart is required to apply changes",
+                                "sync.png",
+                                3,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0.25
+                        )
+
+                    else:
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_banner,
+                                (1, 0.5, 0.65, 1) if addon.enabled else (0.553, 0.902, 0.675, 1),
+                                f"'{addon_name}' is now {'disabled' if addon.enabled else 'enabled'}",
+                                "close-circle-sharp.png" if addon.enabled else "checkmark-circle-sharp.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0.25
+                        )
+
+
+                # Add-on button click function
+                self.scroll_layout.add_widget(
+                    ScrollItem(
+                        widget = AddonListButton(
+                            properties = addon_object,
+                            enabled = addon_object.enabled,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            highlight = (highlight == addon_object.hash),
+                            click_function = functools.partial(
+                                toggle_addon,
+                                addon_object,
+                                x
+                            )
+                        )
+                    )
+                )
+
+            self.resize_bind()
+            # self.scroll_layout.parent.parent.scroll_y = 1
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.page_switcher = None
+        self.menu_taskbar = None
+
+        self.last_results = []
+        self.page_size = 20
+        self.current_page = 0
+        self.max_pages = 0
+        self.anim_speed = 10
+
+        self.server = None
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+
+    def generate_menu(self, **kwargs):
+        self.server = constants.server_manager.current_server
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.85
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.27}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        script_count = len(self.server.script_manager.return_single_list())
+        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        header_content = "Installed Scripts  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] item' if script_count == 1 else f'[font={very_bold_font}]{script_count}[/font] items')
+        self.header = HeaderText(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+
+        # Add blank label to the center, then load self.gen_search_results()
+        self.blank_label = Label()
+        self.blank_label.text = "Manage scripts below"
+        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.55}
+        self.blank_label.font_size = sp(24)
+        self.blank_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.blank_label)
+
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.page_switcher)
+
+        bottom_buttons = RelativeLayout()
+        bottom_buttons.size_hint_max_x = 312
+        bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        bottom_buttons.add_widget(main_button('Import', (0, 0.5), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        # bottom_buttons.add_widget(main_button('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+        float_layout.add_widget(bottom_buttons)
+
+        menu_name = f"{self.server.name}, amscript"
+        float_layout.add_widget(generate_title(f"Script Manager: '{self.server.name}'"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+
+        # Add ManuTaskbar
+        self.menu_taskbar = MenuTaskbar(selected_item='amscript')
+        self.add_widget(self.menu_taskbar)
+
+
+        # Automatically generate results (installed scripts) on page load
+        self.gen_search_results(self.server.script_manager.return_single_list())
+
+        # Show banner if server is running
+        if constants.server_manager.current_server.addon.hash_changed():
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (0.937, 0.831, 0.62, 1),
+                    f"A server restart is required to apply changes",
+                    "sync.png",
+                    3,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0.25
+            )
+
+
+
 # Server Advanced Settings ---------------------------------------------------------------------------------------------
 
 class EditorLine(RelativeLayout):
@@ -16578,6 +17190,7 @@ class MigrateServerProgressScreen(ProgressScreen):
         self.page_contents['function_list'] = tuple(function_list)
 
 
+
 # </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -16692,12 +17305,11 @@ class MainApp(App):
 
         # Screen manager override
         if not constants.app_compiled:
-            #screen_manager.current = "ServerManagerScreen"
-            # open_server("test")
+            screen_manager.current = "ServerManagerScreen"
+            open_server("test")
             def open_menu(*args):
-                screen_manager.current = "ServerAdvancedScreen"
-                # Clock.schedule_once(screen_manager.current_screen.edit_properties_button.button.trigger_action, 0.5)
-           # Clock.schedule_once(open_menu, 3)
+                screen_manager.current = "ServerAmscriptScreen"
+            Clock.schedule_once(open_menu, 3)
 
 
         screen_manager.transition = FadeTransition(duration=0.115)

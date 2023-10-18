@@ -37,8 +37,10 @@ import backup
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
 app_version = "2.0"
+ams_version = "1.0"
 app_title = f"Auto-MCS v{app_version}"
 project_link = "https://github.com/macarooni-man/auto-mcs"
+website = "https://auto-mcs.com"
 update_data = {
     "version": '',
     "urls": {'windows': None, 'linux': None},
@@ -152,6 +154,7 @@ tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
 cacheDir = os.path.join(applicationFolder, 'Cache')
 configDir = os.path.join(applicationFolder, 'Config')
+scriptDir = os.path.join(configDir, 'amscript')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 
 server_ini = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'

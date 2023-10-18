@@ -6,6 +6,7 @@ from threading import Timer
 from copy import deepcopy
 from glob import glob
 import threading
+import hashlib
 import psutil
 import ctypes
 import time
@@ -131,6 +132,7 @@ class ServerObject():
         self.backup = None
         self.addon = None
         self.acl = None
+        self.script_manager = None
         self.script_object = None
 
         def load_backup(*args):
@@ -142,6 +144,9 @@ class ServerObject():
         def load_acl(*args):
             self.acl = AclObject(server_name)
         Timer(0, load_acl).start()
+        def load_scriptmgr(*args):
+            self.script_manager = amscript.ScriptManager(self.name)
+        Timer(0, load_scriptmgr).start()
 
         print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
 
@@ -222,6 +227,7 @@ class ServerObject():
             self.backup = None
             self.addon = None
             self.acl = None
+            self.script_manager = None
             self.script_object = None
 
             def load_backup(*args):
@@ -233,6 +239,9 @@ class ServerObject():
             def load_acl(*args):
                 self.acl = AclObject(self.name)
             Timer(0, load_acl).start()
+            def load_scriptmgr(*args):
+                self.script_manager = amscript.ScriptManager(self.name)
+            Timer(0, load_scriptmgr).start()
 
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):
@@ -1021,6 +1030,18 @@ class ServerObject():
             # Change name in config
             self.config_file.set('general', 'serverName', new_name)
             self.write_config()
+
+            # Rename persistent configuration for amscript
+            config_path = os.path.join(constants.configDir, 'amscript', 'pstconf')
+            old_hash = int(hashlib.sha1(original_name.encode("utf-8")).hexdigest(), 16) % (10 ** 12)
+            old_path = os.path.join(config_path, f"{old_hash}.json")
+            if os.path.isfile(old_path):
+                new_hash = int(hashlib.sha1(new_name.encode("utf-8")).hexdigest(), 16) % (10 ** 12)
+                new_path = os.path.join(config_path, f"{new_hash}.json")
+                try:
+                    os.rename(old_path, new_path)
+                except:
+                    pass
 
             # Change folder name
             new_path = os.path.join(constants.applicationFolder, 'Servers', new_name)

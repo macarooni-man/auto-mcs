@@ -32,6 +32,9 @@ if __name__ == '__main__':
     import constants
     constants.launch_path = sys.executable if constants.app_compiled else __file__
 
+    if constants.app_compiled:
+        os.environ["KIVY_NO_CONSOLELOG"] = "1"
+
     # Check for update log
     try:
         update_log = os.path.join(constants.tempDir, 'update-log')
@@ -107,7 +110,9 @@ if __name__ == '__main__':
 
             # Put things here to update variables in the background
             # constants.variable = x
-            if crash:
+
+            # Use crash handler when app is compiled
+            if crash and constants.app_compiled:
                 app_crash(crash)
 
             if exitApp is True or crash:
@@ -132,6 +137,10 @@ if __name__ == '__main__':
             f.exception = e
             crash = format_exc()
             exitApp = True
+
+            # Normal Python behavior when testing
+            if not constants.app_compiled:
+                raise e
 
 
     b = threading.Thread(name='background', target=background)

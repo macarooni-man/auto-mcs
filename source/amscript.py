@@ -8,6 +8,7 @@ import constants
 import traceback
 import functools
 import hashlib
+import base64
 import json
 import time
 import ast
@@ -19,6 +20,101 @@ import gc
 
 # Auto-MCS Scripting API
 # ------------------------------------------------- Script Object ------------------------------------------------------
+
+# House an .ams file and relevant details
+class AmsFileObject():
+    def __init__(self, path, disabled=True):
+        self.path = path
+        self.title = os.path.basename(path).replace(".ams","")
+        self.author = "Unknown"
+        self.version = "Unknown"
+        self.description = "Unknown"
+        self.disabled = disabled
+
+
+        # Try and grab header information from .ams file
+        try:
+            with open(path, 'r') as f:
+                header_data = [line.replace("#","").strip() for line in f.read().split("#!")[1].splitlines() if line]
+                for line in header_data:
+
+                    # Get title of script
+                    if line.lower().startswith("title:"):
+                        self.title = line.split("title:", 1)[1].strip()
+                        continue
+
+                    # Get author of script
+                    elif line.lower().startswith("author:"):
+                        self.author = line.split("author:", 1)[1].strip()
+                        continue
+
+                    # Get version of script
+                    elif line.lower().startswith("version:"):
+                        self.version = line.split("version:", 1)[1].strip()
+                        continue
+
+                    # Get description of script
+                    elif line.lower().startswith("description:"):
+                        self.description = line.split("description:", 1)[1].strip()
+                        continue
+
+        except IndexError:
+            pass
+
+        self.hash = base64.b64encode(f'{self.title}/{self.author}/{self.version}'.encode())
+
+
+# For managing .ams files and toggling them in the menu
+class ScriptManager():
+
+    def __init__(self, server_name):
+        self.server_name = server_name
+        self.server_path = constants.server_path(server_name)
+        self.script_path = constants.scriptDir
+        self.json_path = os.path.join(self.server_path, 'amscript.json')
+        self.installed_scripts = {'enabled': [], 'disabled': []}
+        self.enumerate_scripts()
+
+    # Checks for enabled scrips and adds them to the list
+    def enumerate_scripts(self, single_list=False):
+        all_scripts = glob(os.path.join(self.script_path, '*.ams'))
+        ams_dict = {'enabled': [], 'disabled': []}
+
+        # Cross-reference enabled scripts in json_path
+        if os.path.isfile(self.json_path):
+            try:
+                with open(self.json_path, 'r') as f:
+                    enabled_list = json.load(f)['enabled']
+                    for path in all_scripts:
+                        for enabled in enabled_list:
+                            if path.lower().endswith(enabled.strip().lower()):
+                                ams_dict['enabled'].append(AmsFileObject(path, disabled=False))
+                                break
+                        else:
+                            ams_dict['disabled'].append(AmsFileObject(path, disabled=True))
+            except:
+                os.remove(self.json_path)
+
+
+        # If no scripts are explicitly allowed in the .json file, disable all scripts
+        if not os.path.isfile(self.json_path):
+            ams_dict['disabled'] = all_scripts
+
+        self.installed_scripts = ams_dict
+
+        # If single list, concatenate enabled and disabled lists
+        if single_list:
+            final_list = deepcopy(ams_dict['enabled'])
+            final_list.extend(ams_dict['disabled'])
+            return final_list
+        else:
+            return ams_dict
+
+
+    # Returns single list of all scripts
+    def return_single_list(self):
+        return self.enumerate_scripts(single_list=True)
+
 
 
 # For processing .ams files and running them in the wrapper
@@ -35,7 +131,7 @@ class ScriptObject():
         self.server_id = ("#" + server_obj._hash)
 
         # File stuffs
-        self.script_path = os.path.join(constants.configDir, 'amscript')
+        self.script_path = constants.scriptDir
         self.scripts = None
 
         # Yummy stuffs
@@ -59,8 +155,9 @@ class ScriptObject():
 
         # First, gather all script files
         constants.folder_check(self.script_path)
+        self.server.script_manager.enumerate_scripts()
         self.scripts = [os.path.join(constants.executable_folder, 'baselib.ams')]
-        self.scripts.extend(glob(os.path.join(self.script_path, '*.ams')))
+        self.scripts.extend(self.server.script_manager.installed_scripts['enabled'])
 
         # If script returns None it's valid, else will return error message
         # 1. Iterate over every line and check for valid events, and protect global variables and functions
@@ -573,7 +670,7 @@ class ScriptObject():
         total_count = loaded_count = len(self.scripts) - 1
 
         if total_count > 0:
-            self.server.amscript_log(f'Compiling amscripts, please wait...', 'info')
+            self.server.amscript_log(f'[amscript v{constants.ams_version}] amscript is compiling, please wait...', 'info')
 
         for script in self.scripts:
             success = process_file(script)
@@ -583,13 +680,13 @@ class ScriptObject():
         # Report stats to console
         if total_count > 0:
             if loaded_count < total_count:
-                self.server.amscript_log(f'Loaded ({loaded_count}/{total_count}) scripts: check errors above for more info', 'warning')
+                self.server.amscript_log(f'Loaded ({loaded_count}/{total_count}) script(s): check errors above for more info', 'warning')
 
             elif loaded_count == 0:
                 self.server.amscript_log(f'No scripts were loaded: check errors above for more info', 'error')
 
             else:
-                self.server.amscript_log(f'Loaded ({loaded_count}/{total_count}) scripts successfully!', 'success')
+                self.server.amscript_log(f'Loaded ({loaded_count}/{total_count}) script(s) successfully!', 'success')
 
         return loaded_count, total_count
 
@@ -810,6 +907,7 @@ class ServerScriptObject():
         self.log = server_obj.send_log
         self.aliases = {}
         self.player_list = server_obj.run_data['player-list']
+        self.ams_version = constants.ams_version
 
         # Properties
         self.name = server_obj.name
