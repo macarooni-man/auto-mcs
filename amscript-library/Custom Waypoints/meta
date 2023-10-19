@@ -1,0 +1,12 @@
+title: Custom Waypoints
+author: Kaleb Efflandt
+version: 1.0
+description: A utility to create and teleport to waypoints
+
+Usage:
+
+----- Set a waypoint "Home" -----
+>>  !setwarp Home
+
+----- Teleport to "Home" --------
+>>  !warp Home
