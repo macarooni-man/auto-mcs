@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+import distutils.sysconfig as sysconfig
+from urllib.parse import quote
 from threading import Timer
 from textwrap import indent
 from copy import deepcopy
@@ -7,6 +10,7 @@ from nbt import nbt
 import constants
 import traceback
 import functools
+import requests
 import hashlib
 import base64
 import json
@@ -18,18 +22,20 @@ import re
 import gc
 
 
+
 # Auto-MCS Scripting API
 # ------------------------------------------------- Script Object ------------------------------------------------------
 
 # House an .ams file and relevant details
 class AmsFileObject():
-    def __init__(self, path, disabled=True):
+    def __init__(self, path, enabled=False):
         self.path = path
-        self.title = os.path.basename(path).replace(".ams","")
-        self.author = "Unknown"
-        self.version = "Unknown"
-        self.description = "Unknown"
-        self.disabled = disabled
+        self.file_name = os.path.basename(path)
+        self.title = self.file_name.replace(".ams","")
+        self.author = None
+        self.version = None
+        self.description = None
+        self.enabled = enabled
 
 
         # Try and grab header information from .ams file
@@ -44,25 +50,78 @@ class AmsFileObject():
                         continue
 
                     # Get author of script
-                    elif line.lower().startswith("author:"):
+                    elif line.lower().startswith("author:") and not self.author:
                         self.author = line.split("author:", 1)[1].strip()
                         continue
 
                     # Get version of script
-                    elif line.lower().startswith("version:"):
+                    elif line.lower().startswith("version:") and not self.version:
                         self.version = line.split("version:", 1)[1].strip()
                         continue
 
                     # Get description of script
-                    elif line.lower().startswith("description:"):
+                    elif line.lower().startswith("description:") and not self.description:
                         self.description = line.split("description:", 1)[1].strip()
                         continue
 
-        except IndexError:
+        except:
             pass
+
+        if not self.author:
+            self.author = "Unknown"
+        if not self.version:
+            self.version = "Unknown"
+        if not self.description:
+            self.description = "No description"
 
         self.hash = base64.b64encode(f'{self.title}/{self.author}/{self.version}'.encode())
 
+# House an .ams file in the online repository
+class AmsWebObject():
+    def __init__(self, data: tuple or list):
+
+        meta = None
+        self.title = data[0]
+        data = data[1]
+
+        self.url = data['url']
+        self.download_url = None
+        self.author = None
+        self.version = None
+        self.description = None
+
+        # Retrieve metadata
+        for name, url in data.items():
+            if name == 'meta':
+                meta = requests.get(url).content.decode()
+                for line in meta.splitlines():
+
+                    # Get title of script
+                    if line.lower().startswith("title:") and not self.title:
+                        self.title = line.split("title:", 1)[1].strip()
+                        continue
+
+                    # Get author of script
+                    elif line.lower().startswith("author:") and not self.author:
+                        self.author = line.split("author:", 1)[1].strip()
+                        continue
+
+                    # Get version of script
+                    elif line.lower().startswith("version:") and not self.version:
+                        self.version = line.split("version:", 1)[1].strip()
+                        continue
+
+                self.description = meta.split('description:')[1].strip()
+
+            elif name.endswith(".ams"):
+                self.download_url = url
+
+        if not self.author:
+            self.author = "Unknown"
+        if not self.version:
+            self.version = "Unknown"
+        if not self.description:
+            self.description = "No description"
 
 # For managing .ams files and toggling them in the menu
 class ScriptManager():
@@ -71,7 +130,7 @@ class ScriptManager():
         self.server_name = server_name
         self.server_path = constants.server_path(server_name)
         self.script_path = constants.scriptDir
-        self.json_path = os.path.join(self.server_path, 'amscript.json')
+        self.json_path = os.path.join(self.server_path, json_name)
         self.installed_scripts = {'enabled': [], 'disabled': []}
         self.enumerate_scripts()
 
@@ -88,17 +147,17 @@ class ScriptManager():
                     for path in all_scripts:
                         for enabled in enabled_list:
                             if path.lower().endswith(enabled.strip().lower()):
-                                ams_dict['enabled'].append(AmsFileObject(path, disabled=False))
+                                ams_dict['enabled'].append(AmsFileObject(path, enabled=True))
                                 break
                         else:
-                            ams_dict['disabled'].append(AmsFileObject(path, disabled=True))
+                            ams_dict['disabled'].append(AmsFileObject(path, enabled=False))
             except:
                 os.remove(self.json_path)
 
 
         # If no scripts are explicitly allowed in the .json file, disable all scripts
         if not os.path.isfile(self.json_path):
-            ams_dict['disabled'] = all_scripts
+            ams_dict['disabled'] = [AmsFileObject(script, enabled=False) for script in all_scripts]
 
         self.installed_scripts = ams_dict
 
@@ -110,11 +169,36 @@ class ScriptManager():
         else:
             return ams_dict
 
-
     # Returns single list of all scripts
     def return_single_list(self):
         return self.enumerate_scripts(single_list=True)
 
+    # Enables/Disables scripts
+    def script_state(self, script: AmsFileObject, enabled=True):
+        script_state(self.server_name, script, enabled)
+
+        # Reload script data
+        self.enumerate_scripts()
+
+    # Deletes script
+    def delete_script(self, script: AmsFileObject):
+
+        # Remove script from every server in which it's enabled
+        for server in glob(os.path.join(constants.applicationFolder, 'Servers', '*')):
+            server_name = os.path.basename(server)
+            json_path = constants.server_path(server_name, json_name)
+            if json_path:
+                script_state(server_name, script, enabled=False)
+
+        # Delete script from .ams path
+        try:
+            os.remove(script.path)
+            removed = True
+        except OSError:
+            removed = False
+
+        self.enumerate_scripts()
+        return removed
 
 
 # For processing .ams files and running them in the wrapper
@@ -138,7 +222,7 @@ class ScriptObject():
         self.protected_variables = ["server", "acl", "backup", "addon"]
         self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
         self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@server.on_start", "@server.on_stop"]
-        self.valid_imports = ['time', 'os', 'glob', 'datetime', 'concurrent.futures', 'tkinter', 'json', 'subprocess']
+        self.valid_imports = std_libs
         self.valid_imports.extend(['requests', 'bs4', 'nbt'])
         self.valid_imports.extend([os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.script_path, '*.py'))])
         self.aliases = {}
@@ -157,7 +241,7 @@ class ScriptObject():
         constants.folder_check(self.script_path)
         self.server.script_manager.enumerate_scripts()
         self.scripts = [os.path.join(constants.executable_folder, 'baselib.ams')]
-        self.scripts.extend(self.server.script_manager.installed_scripts['enabled'])
+        self.scripts.extend([script.path for script in self.server.script_manager.installed_scripts['enabled']])
 
         # If script returns None it's valid, else will return error message
         # 1. Iterate over every line and check for valid events, and protect global variables and functions
@@ -274,8 +358,7 @@ class ScriptObject():
                     # Grab import statements
                     elif line.startswith("from ") or line.startswith("import "):
                         for i in self.valid_imports:
-                            if i in line:
-                                alias = i
+                            if re.search(r'\b' + i + r'\b', line):
                                 if line not in global_variables:
                                     global_variables = global_variables + line.strip() + "\n"
                                 if f"import {i} as " in line and "from " not in line:
@@ -1456,6 +1539,7 @@ class PlayerScriptObject():
 # --------------------------------------------- General Functions ------------------------------------------------------
 
 # Conversion dict for effect IDs
+json_name = "amscript.json"
 id_dict = {
     'effect': {
         1:  'speed',
@@ -1995,6 +2079,97 @@ id_dict = {
     }
 }
 
+
+# Retrieve Python standard libraries for module whitelist
+std_lib = sysconfig.get_python_lib(standard_lib=True)
+libs = []
+for top, dirs, files in os.walk(std_lib):
+    for nm in files:
+        prefix = top[len(std_lib)+1:]
+        if prefix[:13] == 'site-packages':
+            continue
+        if nm == '__init__.py':
+            libs.append(top[len(std_lib)+1:].replace(os.path.sep,'.'))
+        elif nm[-3:] == '.py':
+            libs.append(os.path.join(prefix, nm)[:-3].replace(os.path.sep,'.'))
+        elif nm[-3:] == '.so' and top[-11:] == 'lib-dynload':
+            libs.append(nm[0:-3])
+
+for builtin in sys.builtin_module_names:
+    libs.append(builtin)
+
+# Filter out libraries
+std_libs = []
+for lib in list(set(libs)):
+    if lib.startswith("test") or "test." in lib:
+        continue
+    if lib.startswith("_"):
+        continue
+    std_libs.append(lib)
+del libs
+
+
+# Enables or disables script for a specific server
+def script_state(server_name: str, script: AmsFileObject, enabled=True):
+    json_path = constants.server_path(os.path.basename(server_name), json_name)
+
+    # Get script whitelist data if it exists
+    json_data = {'enabled': []}
+    if os.path.isfile(json_path):
+        with open(json_path, 'r') as f:
+            json_data = json.loads(f.read())
+
+    # Add file to json list
+    if enabled:
+        if script.file_name not in json_data['enabled']:
+            json_data['enabled'].append(script.file_name)
+
+    # Remove file from json list
+    else:
+        if script.file_name in json_data['enabled']:
+            json_data['enabled'].remove(script.file_name)
+
+        # Delete file if it's empty
+        if not json_data['enabled']:
+            if os.path.isfile(json_path):
+                os.remove(json_path)
+
+    # Write to json file if there are scripts
+    if json_data['enabled']:
+        with open(json_path, 'w') as f:
+            f.write(json.dumps(json_data, indent=2))
+
+# Grabs amscript files from GitHub repo for downloading internally
+def retrieve_repo_scripts():
+    latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
+    ams_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
+
+    script_dict = {}
+    ams_list = []
+    root_url = "https://raw.githubusercontent.com/macarooni-man/auto-mcs/main/"
+
+    # Organize all script files
+    for file in ams_data['tree']:
+        if file['path'].startswith('amscript-library'):
+            if "/" in file['path']:
+                root_name = file['path'].split("/")[1]
+                if root_name not in script_dict:
+                    script_dict[root_name] = {
+                        'url': f'https://github.com/macarooni-man/auto-mcs/tree/main/{quote(file["path"])}'}
+                if root_name + "/" in file['path']:
+                    script_dict[root_name][os.path.basename(file['path'])] = f"{root_url}{quote(file['path'])}"
+
+    # Concurrently add scripts to ams_list
+    def add_to_list(script, *args):
+        ams_list.append(AmsWebObject(script))
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        pool.map(add_to_list, script_dict.items())
+
+    # Sort list by title
+    ams_list = sorted(ams_list, key=lambda x: x.title, reverse=True)
+    return ams_list
+
 # Gets and formats value for old NBT values
 def fmt(obj):
     return round(float(obj.value), 4)
@@ -2256,7 +2431,7 @@ class PersistenceManager():
 
         self._name = server_name
         self._hash = int(hashlib.sha1(self._name.encode("utf-8")).hexdigest(), 16) % (10 ** 12)
-        self._config_path = os.path.join(constants.configDir, 'amscript', 'pstconf')
+        self._config_path = os.path.join(constants.scriptDir, 'pstconf')
         self._path = os.path.join(self._config_path, f"{self._hash}.json")
         self._data = None
 

@@ -902,7 +902,7 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True):
 # ---------------------------------------- Extraneous Addon Functions --------------------------------------------------
 
 # name --> version, path
-def dump_config(server_name: str, new_server=False):
+def dump_config(server_name: str):
 
     server_dict = {
         'name': server_name,

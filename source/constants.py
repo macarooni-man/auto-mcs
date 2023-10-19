@@ -154,7 +154,7 @@ tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
 cacheDir = os.path.join(applicationFolder, 'Cache')
 configDir = os.path.join(applicationFolder, 'Config')
-scriptDir = os.path.join(configDir, 'amscript')
+scriptDir = os.path.join(applicationFolder, 'Tools', 'amscript')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 
 server_ini = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'

@@ -13723,7 +13723,8 @@ class AddonListButton(HoverButton):
                 addon_manager = constants.server_manager.current_server.addon
                 addon_manager.delete_addon(self.properties)
                 addon_screen = screen_manager.current_screen
-                addon_screen.gen_search_results(addon_manager.return_single_list(), fade_in=True)
+                new_list = addon_manager.return_single_list()
+                addon_screen.gen_search_results(new_list, fade_in=True)
 
                 # Show banner if server is running
                 if addon_manager.hash_changed():
@@ -13751,7 +13752,7 @@ class AddonListButton(HoverButton):
                     )
 
                 # Switch pages if page is empty
-                if (len(addon_screen.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                if (len(addon_screen.scroll_layout.children) == 0) and (len(new_list) > 0):
                     addon_screen.switch_page("left")
 
 
@@ -14620,7 +14621,68 @@ class AmscriptListButton(HoverButton):
 
         Clock.schedule_once(next_frame, 0)
 
+    def on_enter(self, *args):
+        if not self.ignore_hover:
+
+            # Hide disabled banner if it exists
+            if self.disabled_banner:
+                Animation.stop_all(self.disabled_banner)
+                Animation(opacity=0, duration=0.13).start(self.disabled_banner)
+
+            # Fade button to hover state
+            if not self.delete_button.button.hovered:
+                self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
+
+            # Show delete button
+            Animation.stop_all(self.delete_layout)
+            Animation(opacity=1, duration=0.13).start(self.delete_layout)
+
+            # Hide text
+            Animation(opacity=0, duration=0.13).start(self.title)
+            Animation(opacity=0, duration=0.13).start(self.subtitle)
+            Animation(opacity=1, duration=0.13).start(self.hover_text)
+
+            # Change button color based on state
+            self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
+
+    def on_leave(self, *args):
+        if not self.ignore_hover:
+
+            # Hide disabled banner if it exists
+            if self.disabled_banner:
+                Animation.stop_all(self.disabled_banner)
+                Animation(opacity=1, duration=0.13).start(self.disabled_banner)
+
+            # Fade button to default state
+            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
+
+            # Hide delete button
+            Animation.stop_all(self.delete_layout)
+            Animation(opacity=0, duration=0.13).start(self.delete_layout)
+
+            # Show text
+            Animation(opacity=1, duration=0.13).start(self.title)
+            Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
+            Animation(opacity=0, duration=0.13).start(self.hover_text)
+
+            # Reset button color
+            def reset_color(*args):
+                self.background_color = (1, 1, 1, 1)
+            Clock.schedule_once(reset_color, 0.1)
+
+    def loading(self, load_state, *args):
+        if load_state:
+            self.subtitle.text = "Loading script info..."
+            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        else:
+            self.subtitle.text = self.original_subtitle
+            self.subtitle.font_name = self.original_font
+
     def __init__(self, properties, click_function=None, enabled=False, fade_in=0.0, highlight=False, **kwargs):
+
+        properties.name = properties.title
+        properties.subtitle = properties.description
+
         super().__init__(**kwargs)
 
         self.enabled = enabled
@@ -14639,13 +14701,13 @@ class AmscriptListButton(HoverButton):
         def delete_hover(*args):
             def change_color(*args):
                 if self.hovered:
-                    self.hover_text.text = 'UNINSTALL ADD-ON'
+                    self.hover_text.text = 'UNINSTALL SCRIPT'
                     self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
                     self.background_color = (1, 1, 1, 1)
             Clock.schedule_once(change_color, 0.07)
         def delete_on_leave(*args):
             def change_color(*args):
-                self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
+                self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
                 if self.hovered:
                     self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
                     self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
@@ -14653,39 +14715,40 @@ class AmscriptListButton(HoverButton):
         def delete_click(*args):
             # Delete addon and reload list
             def reprocess_page(*args):
-                addon_manager = constants.server_manager.current_server.addon
-                addon_manager.delete_addon(self.properties)
-                addon_screen = screen_manager.current_screen
-                addon_screen.gen_search_results(addon_manager.return_single_list(), fade_in=True)
+                script_manager = constants.server_manager.current_server.script_manager
+                script_manager.delete_script(self.properties)
+                script_screen = screen_manager.current_screen
+                new_list = script_manager.return_single_list()
+                script_screen.gen_search_results(new_list, fade_in=True)
 
                 # Show banner if server is running
-                if addon_manager.hash_changed():
-                    Clock.schedule_once(
-                        functools.partial(
-                            screen_manager.current_screen.show_banner,
-                            (0.937, 0.831, 0.62, 1),
-                            f"A server restart is required to apply changes",
-                            "sync.png",
-                            3,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0.25
-                    )
+                # if script_manager.hash_changed():
+                #     Clock.schedule_once(
+                #         functools.partial(
+                #             screen_manager.current_screen.show_banner,
+                #             (0.937, 0.831, 0.62, 1),
+                #             f"A server restart is required to apply changes",
+                #             "sync.png",
+                #             3,
+                #             {"center_x": 0.5, "center_y": 0.965}
+                #         ), 0.25
+                #     )
 
-                else:
-                    Clock.schedule_once(
-                        functools.partial(
-                            screen_manager.current_screen.show_banner,
-                            (1, 0.5, 0.65, 1),
-                            f"'{self.properties.name}' was uninstalled",
-                            "trash-sharp.png",
-                            2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0.25
-                    )
+                # else:
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        (1, 0.5, 0.65, 1),
+                        f"'{self.properties.name}' was uninstalled",
+                        "trash-sharp.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0.25
+                )
 
                 # Switch pages if page is empty
-                if (len(addon_screen.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
-                    addon_screen.switch_page("left")
+                if (len(script_screen.scroll_layout.children) == 0) and (len(new_list) > 0):
+                    script_screen.switch_page("left")
 
 
             Clock.schedule_once(
@@ -14693,7 +14756,7 @@ class AmscriptListButton(HoverButton):
                     screen_manager.current_screen.show_popup,
                     "warning_query",
                     f'Uninstall {self.properties.name}',
-                    "Do you want to permanently uninstall this add-on?\n\nYou'll need to re-import or download it again",
+                    "Uninstalling this script will render it unavailable for every server.\n\nDo you want to permanently uninstall this script?",
                     (None, functools.partial(reprocess_page))
                 ),
                 0
@@ -14711,7 +14774,7 @@ class AmscriptListButton(HoverButton):
         self.hover_text.id = 'hover_text'
         self.hover_text.size_hint = (None, None)
         self.hover_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
+        self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
         self.hover_text.font_size = sp(23)
         self.hover_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.hover_text.color = (0.1, 0.1, 0.1, 1)
@@ -14738,7 +14801,7 @@ class AmscriptListButton(HoverButton):
         self.title.markup = True
         self.title.shorten_from = "right"
         self.title.max_lines = 1
-        self.title.text = f"{self.properties.name}  [color=#434368]-[/color]  {self.properties.author if self.properties.author else 'Unknown'}"
+        self.title.text = f"{self.properties.name}{('  [color=#434368]-[/color]  ' + self.properties.author) if self.properties.author.lower().strip() != 'unknown' else ''}"
         self.add_widget(self.title)
 
 
@@ -14794,63 +14857,6 @@ class AmscriptListButton(HoverButton):
             Animation(opacity=1, duration=fade_in).start(self.title)
             Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
 
-    def on_enter(self, *args):
-        if not self.ignore_hover:
-
-            # Hide disabled banner if it exists
-            if self.disabled_banner:
-                Animation.stop_all(self.disabled_banner)
-                Animation(opacity=0, duration=0.13).start(self.disabled_banner)
-
-            # Fade button to hover state
-            if not self.delete_button.button.hovered:
-                self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
-
-            # Show delete button
-            Animation.stop_all(self.delete_layout)
-            Animation(opacity=1, duration=0.13).start(self.delete_layout)
-
-            # Hide text
-            Animation(opacity=0, duration=0.13).start(self.title)
-            Animation(opacity=0, duration=0.13).start(self.subtitle)
-            Animation(opacity=1, duration=0.13).start(self.hover_text)
-
-            # Change button color based on state
-            self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
-
-    def on_leave(self, *args):
-        if not self.ignore_hover:
-
-            # Hide disabled banner if it exists
-            if self.disabled_banner:
-                Animation.stop_all(self.disabled_banner)
-                Animation(opacity=1, duration=0.13).start(self.disabled_banner)
-
-            # Fade button to default state
-            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
-
-            # Hide delete button
-            Animation.stop_all(self.delete_layout)
-            Animation(opacity=0, duration=0.13).start(self.delete_layout)
-
-            # Show text
-            Animation(opacity=1, duration=0.13).start(self.title)
-            Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
-            Animation(opacity=0, duration=0.13).start(self.hover_text)
-
-            # Reset button color
-            def reset_color(*args):
-                self.background_color = (1, 1, 1, 1)
-            Clock.schedule_once(reset_color, 0.1)
-
-    def loading(self, load_state, *args):
-        if load_state:
-            self.subtitle.text = "Loading add-on info..."
-            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-        else:
-            self.subtitle.text = self.original_subtitle
-            self.subtitle.font_name = self.original_font
-
 class ServerAmscriptScreen(MenuBackground):
 
     def switch_page(self, direction):
@@ -14879,7 +14885,7 @@ class ServerAmscriptScreen(MenuBackground):
         # results = list(sorted(results, key=lambda d: d.name.lower()))
         # Set to proper page on toggle
 
-        addon_manager = constants.server_manager.current_server.addon
+        script_manager = constants.server_manager.current_server.script_manager
         default_scroll = 1
         if highlight:
             def divide_chunks(l, n):
@@ -14927,15 +14933,15 @@ class ServerAmscriptScreen(MenuBackground):
 
 
         # Generate header
-        addon_count = len(results)
-        enabled_count = len([addon for addon in addon_manager.installed_addons['enabled'] if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))])
-        disabled_count = len(addon_manager.installed_addons['disabled'])
+        script_count = len(results)
+        enabled_count = len(script_manager.installed_scripts['enabled'])
+        disabled_count = len(script_manager.installed_scripts['disabled'])
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Installed Add-ons  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] items')
+        header_content = "Installed Scripts  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] item' if script_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] items')
 
-        if addon_manager.hash_changed():
-            icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
-            header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
+        # if script_manager.hash_changed():
+        #     icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+        #     header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
 
 
         for child in self.header.children:
@@ -14944,78 +14950,59 @@ class ServerAmscriptScreen(MenuBackground):
                 break
 
 
-        # If there are no addons, say as much with a label
-        if addon_count == 0:
-            self.blank_label.text = "Import or Download add-ons below"
+        # If there are no scripts, say as much with a label
+        if script_count == 0:
+            self.blank_label.text = "Import Scripts Below"
             constants.hide_widget(self.blank_label, False)
             self.blank_label.opacity = 0
             Animation(opacity=1, duration=0.2).start(self.blank_label)
             self.max_pages = 0
             self.current_page = 0
 
-        # If there are addons, display them here
+        # If there are scripts, display them here
         else:
             constants.hide_widget(self.blank_label, True)
 
-            # Create list of addon names
-            installed_addon_names = [addon.name for addon in self.server.addon.return_single_list()]
+            # Clear and add all scripts
+            for x, script_object in enumerate(page_list, 1):
 
-            # Clear and add all addons
-            for x, addon_object in enumerate(page_list, 1):
+                # Activated when script is clicked
+                def toggle_script(index, *args):
+                    script = index
 
-                # Activated when addon is clicked
-                def toggle_addon(index, *args):
-                    addon = index
-
-                    if len(addon.name) < 26:
-                        addon_name = addon.name
+                    if len(script.title) < 26:
+                        script_name = script.title
                     else:
-                        addon_name = addon.name[:23] + "..."
+                        script_name = script.title[:23] + "..."
 
 
-                    # Toggle addon state
-                    addon_manager.addon_state(addon, enabled=not addon.enabled)
-                    addon_list = [addon for addon in addon_manager.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
-                    self.gen_search_results(addon_list, fade_in=False, highlight=addon.hash, animate_scroll=True)
+                    # Toggle script state
+                    script_manager.script_state(script, enabled=not script.enabled)
+                    self.gen_search_results(script_manager.return_single_list(), fade_in=False, highlight=script.hash, animate_scroll=True)
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_banner,
+                            (1, 0.5, 0.65, 1) if script.enabled else (0.553, 0.902, 0.675, 1),
+                            f"'{script_name}' is now {'disabled' if script.enabled else 'enabled'}",
+                            "close-circle-sharp.png" if script.enabled else "checkmark-circle-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0.25
+                    )
 
 
-                    # Show banner if server is running
-                    if addon_manager.hash_changed():
-                        Clock.schedule_once(
-                            functools.partial(
-                                self.show_banner,
-                                (0.937, 0.831, 0.62, 1),
-                                f"A server restart is required to apply changes",
-                                "sync.png",
-                                3,
-                                {"center_x": 0.5, "center_y": 0.965}
-                            ), 0.25
-                        )
-
-                    else:
-                        Clock.schedule_once(
-                            functools.partial(
-                                self.show_banner,
-                                (1, 0.5, 0.65, 1) if addon.enabled else (0.553, 0.902, 0.675, 1),
-                                f"'{addon_name}' is now {'disabled' if addon.enabled else 'enabled'}",
-                                "close-circle-sharp.png" if addon.enabled else "checkmark-circle-sharp.png",
-                                2.5,
-                                {"center_x": 0.5, "center_y": 0.965}
-                            ), 0.25
-                        )
-
-
-                # Add-on button click function
+                # Script button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
-                        widget = AddonListButton(
-                            properties = addon_object,
-                            enabled = addon_object.enabled,
+                        widget = AmscriptListButton(
+                            properties = script_object,
+                            enabled = script_object.enabled,
                             fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            highlight = (highlight == addon_object.hash),
+                            highlight = (highlight == script_object.hash),
                             click_function = functools.partial(
-                                toggle_addon,
-                                addon_object,
+                                toggle_script,
+                                script_object,
                                 x
                             )
                         )
@@ -15117,8 +15104,8 @@ class ServerAmscriptScreen(MenuBackground):
         bottom_buttons = RelativeLayout()
         bottom_buttons.size_hint_max_x = 312
         bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        bottom_buttons.add_widget(main_button('Import', (0, 0.5), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
-        # bottom_buttons.add_widget(main_button('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(main_button('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(main_button('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
         buttons.append(exit_button('Back', (0.5, -1), cycle=True))
 
         for button in buttons:

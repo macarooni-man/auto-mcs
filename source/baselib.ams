@@ -1,3 +1,12 @@
+#!
+# title: amscript Base Library
+# author: Kaleb Efflandt
+# version: 1.0
+# description: A collection of tools to integrate Auto-MCS in-game
+#!
+
+
+
 # '!reloadscripts' command to forcefully close and reload all scripts from in game
 @player.on_alias(player, command='reloadscripts', permission='op'):
 	loaded_count, total_count = server._reload_scripts()
@@ -6,13 +15,13 @@
 	if not player.is_server and total_count > 0:
 
 		if loaded_count < total_count:
-			player.log_warning(f'[auto-mcs] Loaded ({loaded_count}/{total_count}) scripts: check the console for info')
+			player.log_warning(f'[auto-mcs] Loaded ({loaded_count}/{total_count}) script(s): check the console for info')
 
 		elif loaded_count == 0:
 			player.log_error('[auto-mcs] No scripts were loaded: check the console for info')
 
 		else:
-			player.log_success(f'[auto-mcs] Loaded ({loaded_count}/{total_count}) scripts successfully!')
+			player.log_success(f'[auto-mcs] Loaded ({loaded_count}/{total_count}) script(s) successfully!')
 
 	elif total_count == 0:
 		player.log('[auto-mcs] There are no scripts to load')
