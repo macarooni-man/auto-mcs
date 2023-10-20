@@ -2160,7 +2160,7 @@ del libs
 
 # Enables or disables script for a specific server
 def script_state(server_name: str, script: AmsFileObject, enabled=True):
-    json_path = constants.server_path(os.path.basename(server_name), json_name)
+    json_path = os.path.join(constants.server_path(server_name), json_name)
 
     # Get script whitelist data if it exists
     json_data = {'enabled': []}
@@ -2185,7 +2185,7 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
 
     # Write to json file if there are scripts
     if json_data['enabled']:
-        with open(json_path, 'w') as f:
+        with open(json_path, 'w+') as f:
             f.write(json.dumps(json_data, indent=2))
 
 # Gets and formats value for old NBT values

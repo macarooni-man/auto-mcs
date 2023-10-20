@@ -5319,6 +5319,7 @@ class PopupAddon(BigPopupWindow):
 # Script popup
 class PopupScript(BigPopupWindow):
     def __init__(self, script_object=None, **kwargs):
+
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.1, 0.1, 0.2, 1)
         self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'amscript.png')
@@ -5326,8 +5327,8 @@ class PopupScript(BigPopupWindow):
 
         # Assign addon info to popup
         if script_object:
-            self.script_object = script_object
-            self.installed = script_object.installed
+            self.script_object = script_object[1]
+            self.installed = script_object[0]
         else:
             self.script_object = None
 
@@ -5356,8 +5357,9 @@ class PopupScript(BigPopupWindow):
         else:
             self.window_content.halign = "left"
             self.window_content.valign = "top"
-            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.35}
-        self.window_content.max_lines = 13 # Cuts off the beginning of content??
+            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.35 if self.installed else 0.4}
+
+        self.window_content.max_lines = 13 if self.installed else 14 # Cuts off the beginning of content??
 
 
         # Modal specific settings
@@ -15599,7 +15601,6 @@ class ServerAmscriptSearchScreen(MenuBackground):
                         # Install
                         if selected_button.installed:
                             threading.Timer(0, functools.partial(script_manager.download_script, script)).start()
-
                             # # Show banner if server is running
                             # if script_manager.hash_changed():
                             #     Clock.schedule_once(
@@ -15663,7 +15664,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
 
                     # Activated when script is clicked
                     def view_script(script, index, *args):
-                        # selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ScriptButton"][index - 1]
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ScriptButton"][index - 1]
                         # selected_button.loading(True)
 
                         Clock.schedule_once(
@@ -15673,7 +15674,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
                                 " ",
                                 " ",
                                 (None, functools.partial(install_script, index)),
-                                script
+                                (selected_button.installed, script)
                             ),
                             0
                         )
