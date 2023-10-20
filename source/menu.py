@@ -600,7 +600,7 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
             self.previous_search = ""
 
         # Gather search results from passed in function
-        def execute_search(self, query):
+        def execute_search(self, query, *a):
             self.previous_search = query
 
             def execute():
@@ -4436,7 +4436,6 @@ class NumberSlider(FloatLayout):
         Clock.schedule_once(self.on_value, 0)
 
 
-
 # ---------------------------------------------------- Screens ---------------------------------------------------------
 
 # Popup widgets
@@ -4960,6 +4959,12 @@ class BigPopupWindow(RelativeLayout):
 
                                 webbrowser.open_new_tab(url)
 
+                        # Open link in browser
+                        elif self.__class__.__name__ == "PopupScript":
+                            if self.script_object:
+                                webbrowser.open_new_tab(self.script_object.url)
+
+
                         elif self.__class__.__name__ == "PopupUpdate":
                             url = f'{constants.project_link}/releases/latest'
                             webbrowser.open_new_tab(url)
@@ -5300,6 +5305,125 @@ class PopupAddon(BigPopupWindow):
         self.window.add_widget(self.yes_button)
         self.window.add_widget(self.body_button)
         self.window.add_widget(self.version_banner)
+        if self.installed:
+            self.window.add_widget(self.installed_banner)
+
+        self.bind(on_touch_down=self.click_event)
+
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+
+# Script popup
+class PopupScript(BigPopupWindow):
+    def __init__(self, script_object=None, **kwargs):
+        self.window_color = (0.42, 0.475, 1, 1)
+        self.window_text_color = (0.1, 0.1, 0.2, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'amscript.png')
+        self.installed = False
+
+        # Assign addon info to popup
+        if script_object:
+            self.script_object = script_object
+            self.installed = script_object.installed
+        else:
+            self.script_object = None
+
+        # If addon is unavailable, show info
+        if not self.script_object:
+            del self
+            return
+
+
+        super().__init__(**kwargs)
+
+
+        # Title
+        self.window_title.text_size[0] = (self.window_background.size[0] * 0.7)
+        self.window_title.halign = "center"
+        self.window_title.shorten = True
+        self.window_title.markup = True
+        self.window_title.shorten_from = "right"
+        self.window_title.text = f"{self.script_object.name}  [color=#3E4691]-[/color]  {self.script_object.author if self.script_object.author else 'Unknown'}"
+
+
+        # Description
+        self.window_content.text = "" if not script_object else self.script_object.description
+        if not self.window_content.text.strip():
+            self.window_content.text = "description unavailable"
+        else:
+            self.window_content.halign = "left"
+            self.window_content.valign = "top"
+            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.35}
+        self.window_content.max_lines = 13 # Cuts off the beginning of content??
+
+
+        # Modal specific settings
+        self.window_sound = None
+        self.ok_button = None
+        with self.canvas.after:
+
+            # Body Button (Open in browser)
+            self.body_button = Button()
+            self.body_button.id = "body_button"
+            self.body_button.size_hint = (None, None)
+            self.body_button.size = (200, 40)
+            self.body_button.border = (0, 0, 0, 0)
+            self.body_button.background_color = self.window_text_color
+            self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
+            self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
+            self.body_button.text = "click to view more"
+            self.body_button.color = self.window_color
+            self.body_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.body_button.font_size = sp(20)
+
+
+
+            self.no_button = Button()
+            self.no_button.id = "no_button"
+            self.no_button.size_hint = (None, None)
+            self.no_button.size = (327, 65)
+            self.no_button.border = (0, 0, 0, 0)
+            self.no_button.background_color = self.window_color
+            self.no_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.no_button.pos = (0, -0.3)
+            self.no_button.text = "BACK"
+            self.no_button.color = self.window_text_color
+            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_size = sp(22)
+
+            self.yes_button = Button()
+            self.yes_button.id = "install_button"
+            self.yes_button.size_hint = (None, None)
+            self.yes_button.size = (-327, 65)
+            self.yes_button.border = (0, 0, 0, 0)
+            self.yes_button.background_color = self.window_color
+            self.yes_button.background_normal = os.path.join(constants.gui_assets, "big_popup_half_button.png")
+            self.yes_button.pos = (self.window_background.size[0] + 1, -0.3)
+            self.yes_button.text = "INSTALL" if not self.installed else "UNINSTALL"
+            self.yes_button.color = self.window_text_color
+            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_size = sp(22)
+
+            # Installed banner
+            if self.installed:
+                self.installed_banner = BannerObject(
+                    pos_hint = {"center_x": 0.5, "center_y": 0.877},
+                    size = (150, 40),
+                    color = (0.553, 0.902, 0.675, 1),
+                    text = "installed",
+                    icon = "checkmark-circle.png",
+                    icon_side = "right"
+                )
+                self.installed_banner.id = "installed_banner"
+
+
+
+        self.window.add_widget(self.no_button)
+        self.window.add_widget(self.yes_button)
+        self.window.add_widget(self.body_button)
         if self.installed:
             self.window.add_widget(self.installed_banner)
 
@@ -5672,6 +5796,70 @@ def button_action(button_name, button, specific_screen=''):
                             )
 
 
+        elif "ServerAmscriptScreen" in str(screen_manager.current_screen):
+            script_manager = constants.server_manager.current_server.script_manager
+
+            if "download" in button_name.lower():
+                screen_manager.current = 'ServerAmscriptSearchScreen'
+
+            elif "import" in button_name.lower():
+                title = "Select amscripts (.ams)"
+                selection = file_popup("file", start_dir=constants.userDownloads, ext=["*.ams"], input_name=None, select_multiple=True, title=title)
+
+                if selection:
+                    banner_text = ''
+                    for script in selection:
+                        if script.endswith(".ams") and os.path.isfile(script):
+                            script = script_manager.import_script(script)
+                            if not script:
+                                continue
+
+                            script_list = script_manager.return_single_list()
+                            screen_manager.current_screen.gen_search_results(script_manager.return_single_list(), fade_in=False, highlight=script.hash, animate_scroll=True)
+
+                            # Switch pages if page is full
+                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(script_list) > 0):
+                                screen_manager.current_screen.switch_page("right")
+
+                            # Show banner
+                            if len(selection) == 1:
+                                if len(script.title) < 26:
+                                    script_name = script.title
+                                else:
+                                    script_name = script.title[:23] + "..."
+
+                                banner_text = f"Imported '{script_name}'"
+                            else:
+                                banner_text = f"Imported {len(selection)} scripts"
+
+                    if banner_text:
+
+                        # # Show banner if server is running
+                        # if addon_manager.hash_changed():
+                        #     Clock.schedule_once(
+                        #         functools.partial(
+                        #             screen_manager.current_screen.show_banner,
+                        #             (0.937, 0.831, 0.62, 1),
+                        #             f"A server restart is required to apply changes",
+                        #             "sync.png",
+                        #             3,
+                        #             {"center_x": 0.5, "center_y": 0.965}
+                        #         ), 0
+                        #     )
+                        #
+                        # else:
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.553, 0.902, 0.675, 1),
+                                banner_text,
+                                "add-circle-sharp.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+
+
         elif "ServerBackupScreen" in str(screen_manager.current_screen) and "restore" in button_name.lower():
             screen_manager.current = "ServerBackupRestoreScreen"
 
@@ -5788,7 +5976,7 @@ class MenuBackground(Screen):
 
     # Show popup; popup_type can be "info", "warning", "query"
     def show_popup(self, popup_type, title, content, callback=None, *args):
-        if ((popup_type == "update") or (title and content and popup_type in ["info", "warning", "query", "warning_query", "controls", "addon"])) and (self == screen_manager.current_screen):
+        if ((popup_type == "update") or (title and content and popup_type in ["info", "warning", "query", "warning_query", "controls", "addon", "script"])) and (self == screen_manager.current_screen):
 
             # self.show_popup("info", "Title", "This is an info popup!", functools.partial(callback_func))
             # self.show_popup("warning", "Title", "This is a warning popup!", functools.partial(callback_func))
@@ -5825,6 +6013,15 @@ class MenuBackground(Screen):
                     except AttributeError:
                         title = args[0].args[0].name[0:30]
                         content = "There is no data available for this add-on"
+                        callback = None
+                        self.popup_widget = PopupWarning()
+                elif popup_type == "script":
+                    self.popup_widget = PopupScript(script_object=args[0])
+                    try:
+                        self.popup_widget.window_content
+                    except AttributeError:
+                        title = args[0].args[0].name[0:30]
+                        content = "There is no data available for this script"
                         callback = None
                         self.popup_widget = PopupWarning()
                 elif popup_type == "update":
@@ -13624,9 +13821,8 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
 
 class AddonListButton(HoverButton):
 
-    def toggle_enabled(self, enabled, *args):
-        self.enabled = enabled
-        self.title.text_size = (self.size_hint_max[0] * (0.7 if enabled else 0.94), self.size_hint_max[1])
+    def toggle_enabled(self, *args):
+        self.title.text_size = (self.size_hint_max[0] * (0.94 if self.enabled else 0.7), self.size_hint_max[1])
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png')
 
         # If disabled, add banner as such
@@ -13663,9 +13859,9 @@ class AddonListButton(HoverButton):
 
         # Title and description
         padding = 2.17
-        self.title.pos = (self.x + (self.title.text_size[0] / padding), self.y + 31)
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - 6, self.y + 31)
         self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1, self.y)
-        self.hover_text.pos = (self.x + (self.title.text_size[0] / padding) - 15, self.y + 15)
+        self.hover_text.pos = (self.x + (self.size[0] / padding) - 30, self.y + 15)
 
         # Type Banner
         if self.disabled_banner:
@@ -13801,13 +13997,14 @@ class AddonListButton(HoverButton):
         self.title.color = self.color_id[1]
         self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
-        self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.title.text_size = (self.size_hint_max[0] * (0.94 if self.enabled else 0.7), self.size_hint_max[1])
         self.title.shorten = True
         self.title.markup = True
         self.title.shorten_from = "right"
         self.title.max_lines = 1
         self.title.text = f"{self.properties.name}  [color=#434368]-[/color]  {self.properties.author if self.properties.author else 'Unknown'}"
         self.add_widget(self.title)
+        Clock.schedule_once(self.toggle_enabled, 0)
 
 
         # Description of Addon
@@ -13843,11 +14040,8 @@ class AddonListButton(HoverButton):
         if highlight:
             self.highlight()
 
-
         # If self.enabled is false, and self.properties.version, display version where "enabled" logo is
         self.bind(pos=self.resize_self)
-        if not enabled:
-            self.toggle_enabled(enabled)
 
         # If click_function
         if click_function:
@@ -14069,7 +14263,7 @@ class ServerAddonScreen(MenuBackground):
                                 "close-circle-sharp.png" if addon.enabled else "checkmark-circle-sharp.png",
                                 2.5,
                                 {"center_x": 0.5, "center_y": 0.965}
-                            ), 0.25
+                            ), 0
                         )
 
 
@@ -14556,11 +14750,180 @@ class ServerAddonSearchScreen(MenuBackground):
 
 # amscript Manager ------------------------------------------------------------------------------------------------
 
+class ScriptButton(HoverButton):
+
+    def toggle_installed(self, installed, *args):
+        self.installed = installed
+        self.install_image.opacity = 1 if installed and not self.show_type else 0
+        self.install_label.opacity = 1 if installed and not self.show_type else 0
+        self.title.text_size = (self.size_hint_max[0] * (0.7 if installed else 0.94), self.size_hint_max[1])
+        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png')
+        self.resize_self()
+
+    def animate_addon(self, image, color, **kwargs):
+        image_animate = Animation(duration=0.05)
+
+        def f(w):
+            w.background_normal = image
+
+        Animation(color=color, duration=0.06).start(self.title)
+        Animation(color=color, duration=0.06).start(self.subtitle)
+
+        a = Animation(duration=0.0)
+        a.on_complete = functools.partial(f)
+
+        image_animate += a
+
+        image_animate.start(self)
+
+    def resize_self(self, *args):
+
+        # Title and description
+        padding = 2.17
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (6 if self.installed else 0), self.y + 31)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1, self.y)
+
+        # Install label
+        self.install_image.pos = (self.width + self.x - self.install_label.width - 28, self.y + 38.5)
+        self.install_label.pos = (self.width + self.x - self.install_label.width - 30, self.y + 5)
+
+        # Type Banner
+        if self.show_type:
+            self.type_banner.pos_hint = {"center_x": None, "center_y": None}
+            self.type_banner.pos = (self.width + self.x - self.type_banner.width - 18, self.y + 38.5)
+
+        # self.version_label.x = self.width+self.x-(self.padding_x[0]*offset)
+        # self.version_label.y = self.y-(self.padding_y[0]*0.85)
+
+    def __init__(self, properties, click_function=None, installed=False, show_type=False, fade_in=0.0, **kwargs):
+        properties.name = properties.title
+        properties.subtitle = properties.description
+
+        super().__init__(**kwargs)
+
+        self.installed = False
+        self.show_type = show_type
+        self.properties = properties
+        self.border = (-5, -5, -5, -5)
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
+        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+        self.size_hint_max = (580, 80)
+        self.id = "addon_button"
+        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
+        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+
+
+        # Loading stuffs
+        self.original_subtitle = self.properties.subtitle if self.properties.subtitle else "Description unavailable"
+        if "\n" in self.original_subtitle:
+            self.original_subtitle = self.original_subtitle.split("\n", 1)[0].strip()
+        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Title of Script
+        self.title = Label()
+        self.title.id = "title"
+        self.title.halign = "left"
+        self.title.color = self.color_id[1]
+        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_size = sp(25)
+        self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.title.shorten = True
+        self.title.markup = True
+        self.title.shorten_from = "right"
+        self.title.max_lines = 1
+        self.title.text = f"{self.properties.name}  [color=#434368]-[/color]  {self.properties.author if self.properties.author else 'Unknown'}"
+        self.add_widget(self.title)
+
+
+        # Description of Script
+        self.subtitle = Label()
+        self.subtitle.id = "subtitle"
+        self.subtitle.halign = "left"
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.font_name = self.original_font
+        self.subtitle.font_size = sp(21)
+        self.subtitle.opacity = 0.56
+        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.shorten = True
+        self.subtitle.shorten_from = "right"
+        self.subtitle.max_lines = 1
+        self.subtitle.text = self.original_subtitle
+        self.add_widget(self.subtitle)
+
+
+        # Installed layout
+        self.install_image = Image()
+        self.install_image.size = (110, 30)
+        self.install_image.keep_ratio = False
+        self.install_image.allow_stretch = True
+        self.install_image.source = os.path.join(constants.gui_assets, 'installed.png')
+        self.install_image.opacity = 0
+        self.add_widget(self.install_image)
+
+        self.install_label = AlignLabel()
+        self.install_label.halign = "right"
+        self.install_label.valign = "middle"
+        self.install_label.font_size = sp(18)
+        self.install_label.color = self.color_id[1]
+        self.install_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.install_label.width = 100
+        self.install_label.color = (0.05, 0.08, 0.07, 1)
+        self.install_label.text = 'installed'
+        self.install_label.opacity = 0
+        self.add_widget(self.install_label)
+
+
+        # Type Banner
+        if show_type:
+            self.type_banner = show_type
+            self.add_widget(self.type_banner)
+
+
+        # If self.installed is false, and self.properties.version, display version where "installed" logo is
+        self.bind(pos=self.resize_self)
+        if installed:
+            self.toggle_installed(installed)
+
+        # If click_function
+        if click_function:
+            self.bind(on_press=click_function)
+
+        # Animate opacity
+        if fade_in > 0:
+            self.opacity = 0
+            self.install_label.opacity = 0
+            self.install_image.opacity = 0
+            self.title.opacity = 0
+
+            Animation(opacity=1, duration=fade_in).start(self)
+            Animation(opacity=1, duration=fade_in).start(self.title)
+            Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
+
+            if installed and not self.show_type:
+                Animation(opacity=1, duration=fade_in).start(self.install_label)
+                Animation(opacity=1, duration=fade_in).start(self.install_image)
+
+    def on_enter(self, *args):
+        if not self.ignore_hover:
+            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
+
+    def on_leave(self, *args):
+        if not self.ignore_hover:
+            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}{"_installed" if self.installed and not self.show_type else ""}.png'), color=self.color_id[1], hover_action=False)
+
+    def loading(self, load_state, *args):
+        if load_state:
+            self.subtitle.text = "Loading script info..."
+            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        else:
+            self.subtitle.text = self.original_subtitle
+            self.subtitle.font_name = self.original_font
+
 class AmscriptListButton(HoverButton):
 
-    def toggle_enabled(self, enabled, *args):
-        self.enabled = enabled
-        self.title.text_size = (self.size_hint_max[0] * (0.7 if enabled else 0.94), self.size_hint_max[1])
+    def toggle_enabled(self, *args):
+        self.title.text_size = (self.size_hint_max[0] * (0.94 if self.enabled else 0.7), self.size_hint_max[1])
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png')
 
         # If disabled, add banner as such
@@ -14597,9 +14960,9 @@ class AmscriptListButton(HoverButton):
 
         # Title and description
         padding = 2.17
-        self.title.pos = (self.x + (self.title.text_size[0] / padding), self.y + 31)
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - 6, self.y + 31)
         self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1, self.y)
-        self.hover_text.pos = (self.x + (self.title.text_size[0] / padding) - 15, self.y + 15)
+        self.hover_text.pos = (self.x + (self.size[0] / padding) - 30, self.y + 15)
 
         # Type Banner
         if self.disabled_banner:
@@ -14789,20 +15152,21 @@ class AmscriptListButton(HoverButton):
         self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
 
 
-        # Title of Addon
+        # Title of Script
         self.title = Label()
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
         self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
-        self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.title.text_size = (self.size_hint_max[0] * (0.94 if self.enabled else 0.7), self.size_hint_max[1])
         self.title.shorten = True
         self.title.markup = True
         self.title.shorten_from = "right"
         self.title.max_lines = 1
         self.title.text = f"{self.properties.name}{('  [color=#434368]-[/color]  ' + self.properties.author) if self.properties.author.lower().strip() != 'unknown' else ''}"
         self.add_widget(self.title)
+        Clock.schedule_once(self.toggle_enabled, 0)
 
 
         # Description of Addon
@@ -14838,11 +15202,8 @@ class AmscriptListButton(HoverButton):
         if highlight:
             self.highlight()
 
-
         # If self.enabled is false, and self.properties.version, display version where "enabled" logo is
         self.bind(pos=self.resize_self)
-        if not enabled:
-            self.toggle_enabled(enabled)
 
         # If click_function
         if click_function:
@@ -14952,7 +15313,7 @@ class ServerAmscriptScreen(MenuBackground):
 
         # If there are no scripts, say as much with a label
         if script_count == 0:
-            self.blank_label.text = "Import Scripts Below"
+            self.blank_label.text = "Import or Download Scripts Below"
             constants.hide_widget(self.blank_label, False)
             self.blank_label.opacity = 0
             Animation(opacity=1, duration=0.2).start(self.blank_label)
@@ -14988,7 +15349,7 @@ class ServerAmscriptScreen(MenuBackground):
                             "close-circle-sharp.png" if script.enabled else "checkmark-circle-sharp.png",
                             2.5,
                             {"center_x": 0.5, "center_y": 0.965}
-                        ), 0.25
+                        ), 0
                     )
 
 
@@ -15139,6 +15500,322 @@ class ServerAmscriptScreen(MenuBackground):
                     {"center_x": 0.5, "center_y": 0.965}
                 ), 0.25
             )
+
+class ServerAmscriptSearchScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, *args):
+        script_manager = constants.server_manager.current_server.script_manager
+
+        # Error on failure
+        if not results and isinstance(results, bool):
+            self.show_popup(
+                "warning",
+                "Server Error",
+                "There was an issue reaching the add-on repository\n\nPlease try again later",
+                None
+            )
+            self.max_pages = 0
+            self.current_page = 0
+
+        # On success, rebuild results
+        else:
+
+            # Update page counter
+            self.last_results = results
+            self.max_pages = (len(results) / self.page_size).__ceil__()
+            self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+            self.page_switcher.update_index(self.current_page, self.max_pages)
+            page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+            self.scroll_layout.clear_widgets()
+            # gc.collect()
+
+
+            # Generate header
+            script_count = len(results)
+            very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+            search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
+            if isinstance(search_text, str) and not search_text:
+                header_content = f"Available Scripts  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No results[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] item' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] items')
+            else:
+                header_content = f"Search for '{search_text}'  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No results[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] item' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] items')
+
+            for child in self.header.children:
+                if child.id == "text":
+                    child.text = header_content
+                    break
+
+
+            # If there are no scripts, say as much with a label
+            if script_count == 0:
+                self.blank_label.text = "there are no items to display"
+                constants.hide_widget(self.blank_label, False)
+                self.blank_label.opacity = 0
+                Animation(opacity=1, duration=0.2).start(self.blank_label)
+                self.max_pages = 0
+                self.current_page = 0
+
+            # If there are scripts, display them here
+            else:
+                constants.hide_widget(self.blank_label, True)
+
+                # Clear and add all scripts
+                for x, script_object in enumerate(page_list, 1):
+
+
+                    # Function to install script
+                    def install_script(index):
+
+                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ScriptButton"][index-1]
+                        script = selected_button.properties
+                        selected_button.toggle_installed(not selected_button.installed)
+
+                        if len(script.name) < 26:
+                            script_name = script.name
+                        else:
+                            script_name = script.name[:23] + "..."
+
+                        # Install
+                        if selected_button.installed:
+                            threading.Timer(0, functools.partial(script_manager.download_script, script)).start()
+
+                            # # Show banner if server is running
+                            # if script_manager.hash_changed():
+                            #     Clock.schedule_once(
+                            #         functools.partial(
+                            #             self.show_banner,
+                            #             (0.937, 0.831, 0.62, 1),
+                            #             f"A server restart is required to apply changes",
+                            #             "sync.png",
+                            #             3,
+                            #             {"center_x": 0.5, "center_y": 0.965}
+                            #         ), 0.25
+                            #     )
+                            #
+                            # else:
+                            Clock.schedule_once(
+                                functools.partial(
+                                    self.show_banner,
+                                    (0.553, 0.902, 0.675, 1),
+                                    f"Installed '{script_name}'",
+                                    "checkmark-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0.25
+                            )
+
+                        # Uninstall
+                        else:
+                            for installed_script in script_manager.return_single_list():
+                                if installed_script.title == script.title:
+                                    script_manager.delete_script(installed_script)
+
+                                    # Show banner if server is running
+                                    # if script_manager.hash_changed():
+                                    #     Clock.schedule_once(
+                                    #         functools.partial(
+                                    #             self.show_banner,
+                                    #             (0.937, 0.831, 0.62, 1),
+                                    #             f"A server restart is required to apply changes",
+                                    #             "sync.png",
+                                    #             3,
+                                    #             {"center_x": 0.5, "center_y": 0.965}
+                                    #         ), 0.25
+                                    #     )
+                                    #
+                                    # else:
+                                    Clock.schedule_once(
+                                        functools.partial(
+                                            self.show_banner,
+                                            (1, 0.5, 0.65, 1),
+                                            f"'{script_name}' was uninstalled",
+                                            "trash-sharp.png",
+                                            2.5,
+                                            {"center_x": 0.5, "center_y": 0.965}
+                                        ), 0.25
+                                    )
+
+                                    break
+
+                        return script, selected_button.installed
+
+
+                    # Activated when script is clicked
+                    def view_script(script, index, *args):
+                        # selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ScriptButton"][index - 1]
+                        # selected_button.loading(True)
+
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_popup,
+                                "script",
+                                " ",
+                                " ",
+                                (None, functools.partial(install_script, index)),
+                                script
+                            ),
+                            0
+                        )
+
+
+                    # Add-on button click function
+                    self.scroll_layout.add_widget(
+                        ScrollItem(
+                            widget = ScriptButton(
+                                properties = script_object,
+                                installed = script_object.installed,
+                                fade_in = ((x if x <= 8 else 8) / self.anim_speed),
+                                click_function = functools.partial(
+                                    view_script,
+                                    script_object,
+                                    x
+                                )
+                            )
+                        )
+                    )
+
+                self.resize_bind()
+                self.scroll_layout.parent.parent.scroll_y = 1
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.search_bar = None
+        self.page_switcher = None
+
+        self.last_results = []
+        self.page_size = 20
+        self.current_page = 0
+        self.max_pages = 0
+        self.anim_speed = 10
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+        elif keycode[1] == "tab" and self.name == screen_manager.current_screen.name:
+            for widget in self.search_bar.children:
+                try:
+                    if widget.id == "search_input":
+                        widget.grab_focus()
+                        break
+                except AttributeError:
+                    pass
+
+    def generate_menu(self, **kwargs):
+        script_manager = constants.server_manager.current_server.script_manager
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.437))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.79
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.715}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.17}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        script_count = 0
+        very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
+        header_content = "Script Search"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        # Add blank label to the center
+        self.blank_label = Label()
+        self.blank_label.text = "search for scripts above"
+        self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.48}
+        self.blank_label.font_size = sp(24)
+        self.blank_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.blank_label)
+
+
+        search_function = script_manager.search_scripts
+        self.search_bar = search_input(return_function=search_function, server_info=constants.server_manager.current_server.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.search_bar)
+        float_layout.add_widget(self.page_switcher)
+
+        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        server_name = constants.server_manager.current_server.name
+        menu_name = f"{server_name}, amscript, Download"
+        float_layout.add_widget(generate_title(f"Script Manager: '{server_name}'"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+        # # Autofocus search bar
+        # for widget in self.search_bar.children:
+        #     try:
+        #         if widget.id == "search_input":
+        #             widget.grab_focus()
+        #             break
+        #     except AttributeError:
+        #         pass
+        Clock.schedule_once(functools.partial(self.search_bar.execute_search, ""), 0)
 
 
 

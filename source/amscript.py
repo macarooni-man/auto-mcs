@@ -1,6 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
 import distutils.sysconfig as sysconfig
-from urllib.parse import quote
 from threading import Timer
 from textwrap import indent
 from copy import deepcopy
@@ -86,9 +84,11 @@ class AmsWebObject():
 
         self.url = data['url']
         self.download_url = None
+        self.file_name = None
         self.author = None
         self.version = None
         self.description = None
+        self.installed = False
 
         # Retrieve metadata
         for name, url in data.items():
@@ -114,6 +114,7 @@ class AmsWebObject():
                 self.description = meta.split('description:')[1].strip()
 
             elif name.endswith(".ams"):
+                self.file_name = name
                 self.download_url = url
 
         if not self.author:
@@ -132,6 +133,7 @@ class ScriptManager():
         self.script_path = constants.scriptDir
         self.json_path = os.path.join(self.server_path, json_name)
         self.installed_scripts = {'enabled': [], 'disabled': []}
+        self.online_scripts = constants.ams_web_list
         self.enumerate_scripts()
 
     # Checks for enabled scrips and adds them to the list
@@ -180,6 +182,24 @@ class ScriptManager():
         # Reload script data
         self.enumerate_scripts()
 
+    # Checks online to view scripts from GitHub
+    def search_scripts(self, query: str, *args):
+        if not self.online_scripts:
+            constants.get_repo_scripts()
+            self.online_scripts = constants.ams_web_list
+
+        final_list = []
+        installed_list = [script.title.lower().strip() for script in self.return_single_list()]
+
+        # Filter available scripts with query
+        for script in self.online_scripts:
+            if query.lower().strip() in script.title.lower().strip() or query.lower() in script.description.lower().strip() or not query:
+                if script not in final_list:
+                    script.installed = script.title.lower().strip() in installed_list
+                    final_list.append(script)
+
+        return final_list
+
     # Deletes script
     def delete_script(self, script: AmsFileObject):
 
@@ -199,6 +219,35 @@ class ScriptManager():
 
         self.enumerate_scripts()
         return removed
+
+    # Downloads script and enables it
+    def download_script(self, script: AmsWebObject):
+        constants.download_url(script.download_url, script.file_name, constants.scriptDir)
+        new_script = AmsFileObject(os.path.join(constants.scriptDir, script.file_name))
+        self.script_state(new_script, enabled=True)
+
+    # Imports list of scripts into script folder
+    def import_script(self, script: str):
+        if not script:
+            return False
+
+        success = False
+        source_dir = os.path.dirname(script)
+        source_name = os.path.basename(script)
+
+        # Make sure the addon_path and destination_path are not the same
+        if source_dir != constants.scriptDir and source_name.endswith(".ams"):
+
+            # Copy script to proper folder if it exists
+            try:
+                constants.copy_to(script, constants.scriptDir, source_name)
+                success = AmsFileObject(os.path.join(constants.scriptDir, source_name))
+                self.script_state(success, enabled=True)
+            except OSError:
+                pass
+
+        self.enumerate_scripts()
+        return success
 
 
 # For processing .ams files and running them in the wrapper
@@ -2138,37 +2187,6 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
     if json_data['enabled']:
         with open(json_path, 'w') as f:
             f.write(json.dumps(json_data, indent=2))
-
-# Grabs amscript files from GitHub repo for downloading internally
-def retrieve_repo_scripts():
-    latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
-    ams_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
-
-    script_dict = {}
-    ams_list = []
-    root_url = "https://raw.githubusercontent.com/macarooni-man/auto-mcs/main/"
-
-    # Organize all script files
-    for file in ams_data['tree']:
-        if file['path'].startswith('amscript-library'):
-            if "/" in file['path']:
-                root_name = file['path'].split("/")[1]
-                if root_name not in script_dict:
-                    script_dict[root_name] = {
-                        'url': f'https://github.com/macarooni-man/auto-mcs/tree/main/{quote(file["path"])}'}
-                if root_name + "/" in file['path']:
-                    script_dict[root_name][os.path.basename(file['path'])] = f"{root_url}{quote(file['path'])}"
-
-    # Concurrently add scripts to ams_list
-    def add_to_list(script, *args):
-        ams_list.append(AmsWebObject(script))
-
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        pool.map(add_to_list, script_dict.items())
-
-    # Sort list by title
-    ams_list = sorted(ams_list, key=lambda x: x.title, reverse=True)
-    return ams_list
 
 # Gets and formats value for old NBT values
 def fmt(obj):

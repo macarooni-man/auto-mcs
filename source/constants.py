@@ -2,6 +2,7 @@ from shutil import rmtree, copytree, copy, ignore_patterns
 from concurrent.futures import ThreadPoolExecutor
 from random import randrange, choices
 from urllib.request import Request
+from urllib.parse import quote
 from bs4 import BeautifulSoup
 from platform import system
 from threading import Timer
@@ -32,6 +33,7 @@ import re
 
 import addons
 import backup
+import amscript
 
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
@@ -200,6 +202,47 @@ total_ram = round(psutil.virtual_memory().total / 1073741824)
 max_memory = int(round(total_ram - (total_ram / 4)))
 
 
+# Global amscripts
+
+# Grabs amscript files from GitHub repo for downloading internally
+ams_web_list = []
+def get_repo_scripts():
+    global ams_web_list
+    try:
+        latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
+        ams_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
+
+        script_dict = {}
+        ams_list = []
+        root_url = "https://raw.githubusercontent.com/macarooni-man/auto-mcs/main/"
+
+        # Organize all script files
+        for file in ams_data['tree']:
+            if file['path'].startswith('amscript-library'):
+                if "/" in file['path']:
+                    root_name = file['path'].split("/")[1]
+                    if root_name not in script_dict:
+                        script_dict[root_name] = {'url': f'https://github.com/macarooni-man/auto-mcs/tree/main/{quote(file["path"])}'}
+                    if root_name + "/" in file['path']:
+                        script_dict[root_name][os.path.basename(file['path'])] = f"{root_url}{quote(file['path'])}"
+
+        # Concurrently add scripts to ams_list
+        def add_to_list(script, *args):
+            ams_list.append(amscript.AmsWebObject(script))
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            pool.map(add_to_list, script_dict.items())
+
+        # Sort list by title
+        ams_list = sorted(ams_list, key=lambda x: x.title, reverse=True)
+    except:
+        ams_list = []
+
+    ams_web_list = ams_list
+    return ams_list
+
+
+
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
 # Restarts auto-mcs by dynamically generating script
@@ -313,8 +356,6 @@ rm \"{os.path.join(tempDir, script_name)}\""""
                 print(f.read())
             run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
     sys.exit()
-
-
 
 # Returns current formatted time
 def format_now():
