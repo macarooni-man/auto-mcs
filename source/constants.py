@@ -1,6 +1,7 @@
 from shutil import rmtree, copytree, copy, ignore_patterns
 from concurrent.futures import ThreadPoolExecutor
 from random import randrange, choices
+from packaging.version import parse
 from urllib.request import Request
 from urllib.parse import quote
 from bs4 import BeautifulSoup
@@ -41,6 +42,8 @@ import amscript
 app_version = "2.0"
 ams_version = "1.0"
 app_title = f"Auto-MCS v{app_version}"
+window_size = (850, 850)
+fullscreen = False
 project_link = "https://github.com/macarooni-man/auto-mcs"
 website = "https://auto-mcs.com"
 update_data = {
@@ -158,6 +161,7 @@ cacheDir = os.path.join(applicationFolder, 'Cache')
 configDir = os.path.join(applicationFolder, 'Config')
 scriptDir = os.path.join(applicationFolder, 'Tools', 'amscript')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
+global_conf = os.path.join(configDir, 'app-config.json')
 
 server_ini = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'
 command_tmp = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'
@@ -945,12 +949,13 @@ def check_app_updates():
                 continue
 
         # Check if app needs to be updated, and URL was successful
-        if float(app_version) < float(update_data['version']):
+        if parse(str(app_version)) < parse(str(update_data['version'])):
             app_latest = False
 
         app_online = status_code == 200
 
     except Exception as e:
+        print(e)
         if debug:
             print("Something went wrong checking for updates: ", e)
 

@@ -126,6 +126,15 @@ if __name__ == '__main__':
 
         # Main thread
         try:
+            # Get window size
+            if os.path.exists(constants.global_conf):
+                try:
+                    with open(constants.global_conf, 'r') as f:
+                        file_contents = constants.json.loads(f.read())
+                        constants.fullscreen = file_contents['fullscreen']
+                except:
+                    pass
+
             main.mainLoop()
             exitApp = True
 

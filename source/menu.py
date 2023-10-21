@@ -5836,30 +5836,30 @@ def button_action(button_name, button, specific_screen=''):
 
                     if banner_text:
 
-                        # # Show banner if server is running
-                        # if addon_manager.hash_changed():
-                        #     Clock.schedule_once(
-                        #         functools.partial(
-                        #             screen_manager.current_screen.show_banner,
-                        #             (0.937, 0.831, 0.62, 1),
-                        #             f"A server restart is required to apply changes",
-                        #             "sync.png",
-                        #             3,
-                        #             {"center_x": 0.5, "center_y": 0.965}
-                        #         ), 0
-                        #     )
-                        #
-                        # else:
-                        Clock.schedule_once(
-                            functools.partial(
-                                screen_manager.current_screen.show_banner,
-                                (0.553, 0.902, 0.675, 1),
-                                banner_text,
-                                "add-circle-sharp.png",
-                                2.5,
-                                {"center_x": 0.5, "center_y": 0.965}
-                            ), 0
-                        )
+                        # Show banner if server is running
+                        if script_manager.hash_changed():
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (0.937, 0.831, 0.62, 1),
+                                    "An amscript reload is required to apply changes",
+                                    "sync.png",
+                                    3,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0
+                            )
+
+                        else:
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (0.553, 0.902, 0.675, 1),
+                                    banner_text,
+                                    "add-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0
+                            )
 
 
         elif "ServerBackupScreen" in str(screen_manager.current_screen) and "restore" in button_name.lower():
@@ -11882,7 +11882,7 @@ class ConsolePanel(FloatLayout):
 
 
     # Updates RecycleView text with console text
-    def update_text(self, text, force_scroll=False, *args):
+    def update_text(self, text, force_scroll=False, animate_last=True, *args):
         original_scroll = self.scroll_layout.scroll_y
         original_len = len(self.scroll_layout.data)
         self.scroll_layout.data = text
@@ -11901,7 +11901,7 @@ class ConsolePanel(FloatLayout):
                     label.anim_cover.opacity = 1
                     Animation(opacity=1, duration = 0.3).start(label.main_label)
                     Animation(opacity=0, duration=0.3).start(label.anim_cover)
-        if len(text) > original_len:
+        if len(text) > original_len and animate_last:
             Clock.schedule_once(fade_animation, 0)
 
 
@@ -12831,6 +12831,8 @@ class ServerViewScreen(MenuBackground):
         # Add ConsolePanel
         if self.server.run_data:
             self.console_panel = self.server.run_data['console-panel']
+            self.console_panel.scroll_layout.data = []
+            Clock.schedule_once(functools.partial(self.console_panel.update_text, self.server.run_data['log'], True, False), 0)
         else:
             self.console_panel = ConsolePanel(self.server.name, self.server_button)
 
@@ -13936,7 +13938,7 @@ class AddonListButton(HoverButton):
                             "sync.png",
                             3,
                             {"center_x": 0.5, "center_y": 0.965}
-                        ), 0.25
+                        ), 0
                     )
 
                 else:
@@ -14255,7 +14257,7 @@ class ServerAddonScreen(MenuBackground):
                                 "sync.png",
                                 3,
                                 {"center_x": 0.5, "center_y": 0.965}
-                            ), 0.25
+                            ), 0
                         )
 
                     else:
@@ -14417,7 +14419,7 @@ class ServerAddonScreen(MenuBackground):
                     "sync.png",
                     3,
                     {"center_x": 0.5, "center_y": 0.965}
-                ), 0.25
+                ), 0
             )
 
 class ServerAddonSearchScreen(MenuBackground):
@@ -14544,7 +14546,7 @@ class ServerAddonSearchScreen(MenuBackground):
                                         "sync.png",
                                         3,
                                         {"center_x": 0.5, "center_y": 0.965}
-                                    ), 0.25
+                                    ), 0
                                 )
 
                             else:
@@ -14575,7 +14577,7 @@ class ServerAddonSearchScreen(MenuBackground):
                                                 "sync.png",
                                                 3,
                                                 {"center_x": 0.5, "center_y": 0.965}
-                                            ), 0.25
+                                            ), 0
                                         )
 
                                     else:
@@ -15089,29 +15091,29 @@ class AmscriptListButton(HoverButton):
                 script_screen.gen_search_results(new_list, fade_in=True)
 
                 # Show banner if server is running
-                # if script_manager.hash_changed():
-                #     Clock.schedule_once(
-                #         functools.partial(
-                #             screen_manager.current_screen.show_banner,
-                #             (0.937, 0.831, 0.62, 1),
-                #             f"A server restart is required to apply changes",
-                #             "sync.png",
-                #             3,
-                #             {"center_x": 0.5, "center_y": 0.965}
-                #         ), 0.25
-                #     )
+                if script_manager.hash_changed():
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.937, 0.831, 0.62, 1),
+                            "An amscript reload is required to apply changes",
+                            "sync.png",
+                            3,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
 
-                # else:
-                Clock.schedule_once(
-                    functools.partial(
-                        screen_manager.current_screen.show_banner,
-                        (1, 0.5, 0.65, 1),
-                        f"'{self.properties.name}' was uninstalled",
-                        "trash-sharp.png",
-                        2.5,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ), 0.25
-                )
+                else:
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (1, 0.5, 0.65, 1),
+                            f"'{self.properties.name}' was uninstalled",
+                            "trash-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
 
                 # Switch pages if page is empty
                 if (len(script_screen.scroll_layout.children) == 0) and (len(new_list) > 0):
@@ -15304,9 +15306,9 @@ class ServerAmscriptScreen(MenuBackground):
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = "Installed Scripts  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] item' if script_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] items')
 
-        # if script_manager.hash_changed():
-        #     icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
-        #     header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
+        if script_manager.hash_changed():
+            icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+            header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
 
 
         for child in self.header.children:
@@ -15345,16 +15347,28 @@ class ServerAmscriptScreen(MenuBackground):
                     script_manager.script_state(script, enabled=not script.enabled)
                     self.gen_search_results(script_manager.return_single_list(), fade_in=False, highlight=script.hash, animate_scroll=True)
 
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_banner,
-                            (1, 0.5, 0.65, 1) if script.enabled else (0.553, 0.902, 0.675, 1),
-                            f"'{script_name}' is now {'disabled' if script.enabled else 'enabled'}",
-                            "close-circle-sharp.png" if script.enabled else "checkmark-circle-sharp.png",
-                            2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0
-                    )
+                    if constants.server_manager.current_server.script_manager.hash_changed():
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_banner,
+                                (0.937, 0.831, 0.62, 1),
+                                "An amscript reload is required to apply changes",
+                                "sync.png",
+                                3,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+                    else:
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_banner,
+                                (1, 0.5, 0.65, 1) if script.enabled else (0.553, 0.902, 0.675, 1),
+                                f"'{script_name}' is now {'disabled' if script.enabled else 'enabled'}",
+                                "close-circle-sharp.png" if script.enabled else "checkmark-circle-sharp.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
 
 
                 # Script button click function
@@ -15394,6 +15408,8 @@ class ServerAmscriptScreen(MenuBackground):
         self.anim_speed = 10
 
         self.server = None
+        self.reload_button = None
+        self.path_button = None
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         super()._on_keyboard_down(keyboard, keycode, text, modifiers)
@@ -15489,20 +15505,46 @@ class ServerAmscriptScreen(MenuBackground):
         self.add_widget(self.menu_taskbar)
 
 
+        # Buttons in the top right corner
+        def reload_scripts(*a):
+            def timer():
+                self.server.reload_scripts()
+                Clock.schedule_once(
+                    functools.partial(
+                        self.show_banner,
+                        (0.553, 0.902, 0.675, 1),
+                        f"amscript engine was restarted successfully",
+                        "checkmark-circle-sharp.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+                Clock.schedule_once(functools.partial(self.gen_search_results, self.server.script_manager.return_single_list()), 0)
+            threading.Timer(0, timer).start()
+        self.reload_button = IconButton('reload scripts', {}, (70, 110), (None, None), 'reload-sharp.png', clickable=self.server.running, anchor='right', click_func=reload_scripts)
+        float_layout.add_widget(self.reload_button)
+
+        def open_dir(*a):
+            constants.folder_check(constants.scriptDir)
+            constants.open_folder(constants.scriptDir)
+        self.reload_button = IconButton('open directory', {}, (125, 110), (None, None), 'folder.png', clickable=True, anchor='right', click_func=open_dir, text_offset=(10, 50))
+        float_layout.add_widget(self.reload_button)
+
+
         # Automatically generate results (installed scripts) on page load
         self.gen_search_results(self.server.script_manager.return_single_list())
 
         # Show banner if server is running
-        if constants.server_manager.current_server.addon.hash_changed():
+        if constants.server_manager.current_server.script_manager.hash_changed():
             Clock.schedule_once(
                 functools.partial(
                     self.show_banner,
                     (0.937, 0.831, 0.62, 1),
-                    f"A server restart is required to apply changes",
+                    "An amscript reload is required to apply changes",
                     "sync.png",
                     3,
                     {"center_x": 0.5, "center_y": 0.965}
-                ), 0.25
+                ), 0
             )
 
 class ServerAmscriptSearchScreen(MenuBackground):
@@ -15603,30 +15645,30 @@ class ServerAmscriptSearchScreen(MenuBackground):
                         # Install
                         if selected_button.installed:
                             threading.Timer(0, functools.partial(script_manager.download_script, script)).start()
-                            # # Show banner if server is running
-                            # if script_manager.hash_changed():
-                            #     Clock.schedule_once(
-                            #         functools.partial(
-                            #             self.show_banner,
-                            #             (0.937, 0.831, 0.62, 1),
-                            #             f"A server restart is required to apply changes",
-                            #             "sync.png",
-                            #             3,
-                            #             {"center_x": 0.5, "center_y": 0.965}
-                            #         ), 0.25
-                            #     )
-                            #
-                            # else:
-                            Clock.schedule_once(
-                                functools.partial(
-                                    self.show_banner,
-                                    (0.553, 0.902, 0.675, 1),
-                                    f"Installed '{script_name}'",
-                                    "checkmark-circle-sharp.png",
-                                    2.5,
-                                    {"center_x": 0.5, "center_y": 0.965}
-                                ), 0.25
-                            )
+                            # Show banner if server is running
+                            if script_manager.hash_changed():
+                                Clock.schedule_once(
+                                    functools.partial(
+                                        self.show_banner,
+                                        (0.937, 0.831, 0.62, 1),
+                                        "An amscript reload is required to apply changes",
+                                        "sync.png",
+                                        3,
+                                        {"center_x": 0.5, "center_y": 0.965}
+                                    ), 0
+                                )
+
+                            else:
+                                Clock.schedule_once(
+                                    functools.partial(
+                                        self.show_banner,
+                                        (0.553, 0.902, 0.675, 1),
+                                        f"Installed '{script_name}'",
+                                        "checkmark-circle-sharp.png",
+                                        2.5,
+                                        {"center_x": 0.5, "center_y": 0.965}
+                                    ), 0.25
+                                )
 
                         # Uninstall
                         else:
@@ -15635,29 +15677,29 @@ class ServerAmscriptSearchScreen(MenuBackground):
                                     script_manager.delete_script(installed_script)
 
                                     # Show banner if server is running
-                                    # if script_manager.hash_changed():
-                                    #     Clock.schedule_once(
-                                    #         functools.partial(
-                                    #             self.show_banner,
-                                    #             (0.937, 0.831, 0.62, 1),
-                                    #             f"A server restart is required to apply changes",
-                                    #             "sync.png",
-                                    #             3,
-                                    #             {"center_x": 0.5, "center_y": 0.965}
-                                    #         ), 0.25
-                                    #     )
-                                    #
-                                    # else:
-                                    Clock.schedule_once(
-                                        functools.partial(
-                                            self.show_banner,
-                                            (1, 0.5, 0.65, 1),
-                                            f"'{script_name}' was uninstalled",
-                                            "trash-sharp.png",
-                                            2.5,
-                                            {"center_x": 0.5, "center_y": 0.965}
-                                        ), 0.25
-                                    )
+                                    if script_manager.hash_changed():
+                                        Clock.schedule_once(
+                                            functools.partial(
+                                                self.show_banner,
+                                                (0.937, 0.831, 0.62, 1),
+                                                "An amscript reload is required to apply changes",
+                                                "sync.png",
+                                                3,
+                                                {"center_x": 0.5, "center_y": 0.965}
+                                            ), 0
+                                        )
+
+                                    else:
+                                        Clock.schedule_once(
+                                            functools.partial(
+                                                self.show_banner,
+                                                (1, 0.5, 0.65, 1),
+                                                f"'{script_name}' was uninstalled",
+                                                "trash-sharp.png",
+                                                2.5,
+                                                {"center_x": 0.5, "center_y": 0.965}
+                                            ), 0.25
+                                        )
 
                                     break
 
@@ -17922,7 +17964,7 @@ class MainApp(App):
             pass
 
     # Window size
-    size = (850, 850)
+    size = constants.window_size
 
     # Get pos and knowing the old size calculate the new one
     top = dp((Window.top * Window.size[1] / size[1])) - dp(50)
@@ -17939,6 +17981,16 @@ class MainApp(App):
 
     # Prevent window from closing during certain situations
     def exit_check(self, force_close=False, *args):
+
+        # Write window size to global config
+        try:
+            constants.folder_check(constants.configDir)
+            with open(constants.global_conf, 'w+') as f:
+                global_conf = {'fullscreen': Window.width > (constants.window_size[0] + 100)}
+                f.write(constants.json.dumps(global_conf, indent=2))
+        except:
+            pass
+
         if force_close:
             print(force_close)
             return False
@@ -17971,13 +18023,13 @@ class MainApp(App):
         screen_manager.current = constants.startup_screen
 
         # Screen manager override
-        if not constants.app_compiled:
-            screen_manager.current = "ServerManagerScreen"
-            open_server("test")
-            def open_menu(*args):
-                screen_manager.current = "ServerAmscriptScreen"
-            Clock.schedule_once(open_menu, 3)
-
+        # if not constants.app_compiled:
+        #     screen_manager.current = "ServerManagerScreen"
+        #     open_server("test")
+        #     def open_menu(*args):
+        #         screen_manager.current = "ServerAmscriptScreen"
+        #     Clock.schedule_once(open_menu, 3)
+        #
 
         screen_manager.transition = FadeTransition(duration=0.115)
 
@@ -17986,6 +18038,8 @@ class MainApp(App):
             import pyi_splash
             pyi_splash.close()
 
+        if constants.fullscreen:
+            Window.maximize()
         Window.show()
         return screen_manager
 

@@ -134,6 +134,7 @@ class ScriptManager():
         self.json_path = os.path.join(self.server_path, json_name)
         self.installed_scripts = {'enabled': [], 'disabled': []}
         self.online_scripts = constants.ams_web_list
+        self.script_hash = None
         self.enumerate_scripts()
 
     # Checks for enabled scrips and adds them to the list
@@ -162,6 +163,7 @@ class ScriptManager():
             ams_dict['disabled'] = [AmsFileObject(script, enabled=False) for script in all_scripts]
 
         self.installed_scripts = ams_dict
+        self.script_hash = self.set_hash()
 
         # If single list, concatenate enabled and disabled lists
         if single_list:
@@ -184,6 +186,8 @@ class ScriptManager():
 
     # Checks online to view scripts from GitHub
     def search_scripts(self, query: str, *args):
+        constants.folder_check(constants.scriptDir)
+
         if not self.online_scripts:
             constants.get_repo_scripts()
             self.online_scripts = constants.ams_web_list
@@ -248,6 +252,24 @@ class ScriptManager():
 
         self.enumerate_scripts()
         return success
+
+    # Sets script hash to determine changes
+    def set_hash(self):
+        script_hash = ""
+
+        for script in sorted(self.installed_scripts['enabled'], key=lambda x: x.title):
+            script_hash += script.hash.decode()
+
+        return script_hash
+
+    # Checks script hash in running config to see if it's changed
+    def hash_changed(self):
+        hash_changed = False
+
+        if self.server_name in constants.server_manager.running_servers:
+            hash_changed = constants.server_manager.running_servers[self.server_name].run_data['script-hash'] != self.script_hash
+
+        return hash_changed
 
 
 # For processing .ams files and running them in the wrapper
