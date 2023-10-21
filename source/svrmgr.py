@@ -36,6 +36,7 @@ class ServerObject():
 
         self.name = server_name
         self.running = False
+        self.restart_flag = False
         self.crash_log = None
         self.max_log_size = 800
         self.run_data = {}
@@ -75,7 +76,7 @@ class ServerObject():
                 geyser = 0
                 if constants.version_check(self.version, ">=", "1.13.2") and self.type.lower() in ['spigot', 'paper', 'fabric']:
                     while not self.addon:
-                        time.sleep(0.5)
+                        time.sleep(0.2)
                     addon_list = self.addon.return_single_list()
                     for addon in addon_list:
                         if (addon.name.startswith('Geyser') or addon.name == 'floodgate') and addon.author == 'GeyserMC':
@@ -593,14 +594,19 @@ class ServerObject():
                 self.auto_update_func()
 
             script_path = constants.generate_run_script(self.properties_dict())
-            self.run_data['launch-time'] = dt.now()
-            self.run_data['player-list'] = {}
-            self.run_data['network'] = {}
-            self.run_data['log'] = [{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
-            self.run_data['process-hooks'] = []
-            self.run_data['close-hooks'] = [self.auto_backup_func]
-            self.run_data['console-panel'] = None
-            self.run_data['performance-panel'] = None
+
+            if not self.restart_flag:
+                self.run_data['launch-time'] = dt.now()
+                self.run_data['player-list'] = {}
+                self.run_data['network'] = {}
+                self.run_data['log'] = [{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
+                self.run_data['process-hooks'] = []
+                self.run_data['close-hooks'] = [self.auto_backup_func]
+                self.run_data['console-panel'] = None
+                self.run_data['performance-panel'] = None
+            else:
+                self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
+
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
 
             # Run data hashes to check for configuration changes post launch
@@ -877,10 +883,11 @@ class ServerObject():
                         self.send_command(cmd.strip(), add_to_history=False, log_cmd=False)
                 os.remove(cmd_tmp)
 
+            self.restart_flag = False
         return self.run_data
 
     # Kill server and delete running configuration
-    def terminate(self, reboot=False):
+    def terminate(self):
 
         # Kill server process
         if self.run_data['process'].poll() is None:
@@ -921,7 +928,7 @@ class ServerObject():
         self.last_modified = os.path.getmtime(self.server_path)
 
 
-        if not reboot:
+        if not self.restart_flag:
             # Delete log from memory (hopefully)
             for item in self.run_data['log']:
                 self.run_data['log'].remove(item)
@@ -943,6 +950,17 @@ class ServerObject():
             self.running = False
             del constants.server_manager.running_servers[self.name]
             # print(constants.server_manager.running_servers)
+
+        # Reboot server if required
+        else:
+            self.running = False
+            self.launch()
+
+
+    # Restarts server, for amscript
+    def restart(self):
+        self.restart_flag = True
+        self.send_command("stop")
 
     # Retrieves performance information
     def performance_stats(self, interval=0.5, update_players=False):
@@ -1078,7 +1096,6 @@ class ServerObject():
         return str(str(self.properties_hash) + str(self.ngrok_enabled).lower()[0] + str(self.geyser_enabled).lower()[0] + str(self.dedicated_ram)).strip()
 
 
-
     # Attempts to automatically update the server
     def auto_update_func(self, *args):
         if self.auto_update == 'prompt':
@@ -1113,7 +1130,6 @@ class ServerObject():
     # Reloads all auto-mcs scripts
     def reload_scripts(self):
         if self.script_object:
-
             # Delete ScriptObject
             self.script_object.deconstruct()
             del self.script_object
@@ -1126,6 +1142,10 @@ class ServerObject():
             return loaded_count, total_count
         else:
             return None, None
+
+    # Returns data from amscript
+    def get_ams_info(self):
+        return {'version': constants.ams_version, 'installed': self.script_manager.installed_scripts}
 
     # Methods strictly to send to amscript.ServerScriptObject
     # Castrated log function to prevent recursive events, sends only INFO, WARN, ERROR, and SUCC
@@ -1207,7 +1227,7 @@ class ServerObject():
         for log_line in text.splitlines():
             if text and log_line:
                 formatted_line = {'text': format_log(log_line)}
-                if formatted_line not in self.run_data['log'] and formatted_line['text']:
+                if formatted_line != self.run_data['log'][-1] and formatted_line['text']:
                     self.run_data['log'].append(formatted_line)
 
                     # Purge long ones

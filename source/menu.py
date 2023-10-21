@@ -12037,6 +12037,8 @@ class ConsolePanel(FloatLayout):
 
     # Called from ServerObject when process stops
     def reset_panel(self, crash=None):
+        if self.server_obj.restart_flag:
+            return
 
         def reset(*args):
 

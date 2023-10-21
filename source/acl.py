@@ -53,6 +53,11 @@ class AclRule():
         # To determine which view list the object is in
         self.list_enabled = True
 
+    # This might break something, delete if it causes crashes
+    def __str__(self):
+        return str(self.rule)
+
+
 # Instantiate class with "server_name" (case-sensitive)
 # Server ACL object to house AclRules with manipulative functions
 # self._new_server denotes cached ACL to be written when the server is created with self.write_rules()

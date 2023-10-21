@@ -1703,7 +1703,7 @@
 			"patterns": [
 				{
 					"name": "support.function.builtin.python",
-					"match": "(?x)\n  (?<!\\.) \\b(\n    __import__ | abs | aiter | all | any | anext | ascii | bin\n    | breakpoint | callable | chr | compile | copyright | credits\n    | delattr | dir | divmod | enumerate | eval | exec | exit\n    | filter | format | getattr | globals | hasattr | hash | help\n    | hex | id | input | isinstance | issubclass | iter | len\n    | license | locals | map | max | memoryview | min | next\n    | oct | open | ord | pow | print | quit | range | reload | repr\n   | reversed | round | setattr | sorted | sum | vars | zip\n  )\\b\n | (?<=\\.)(.*?)(?=\\()"
+					"match": "(?x)\n  (?<!\\.) \\b(\n    __import__ | abs | aiter | all | any | anext | ascii | bin\n    | breakpoint | callable | chr | compile | copyright | credits\n    | delattr | dir | divmod | enumerate | eval | exec | exit\n    | filter | format | getattr | globals | hasattr | hash | help\n    | hex | id | input | isinstance | issubclass | iter | len\n    | license | locals | map | max | memoryview | min | next\n    | oct | open | ord | pow | print | quit | range | reload | repr\n   | reversed | round | setattr | sorted | sum | vars | zip\n  )\\b\n | (?<=\\b)(\\w+?)(?=\\()"
 				},
 				{
 					"name": "variable.legacy.builtin.python",

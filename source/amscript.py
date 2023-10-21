@@ -344,12 +344,19 @@ class ScriptObject():
             try:
                 ast.parse(script_text)
             except Exception as e:
-                line_num = e.args[1][1] - script_text.count(f'#{id_hash}', 0, script_text.find(e.args[1][-1].strip()))
-                parse_error['file'] = os.path.basename(script_path)
-                parse_error['code'] = e.args[1][-1].strip()
-                parse_error['line'] = f"{line_num}:{e.args[1][2]}"
-                parse_error['message'] = f"({e.__class__.__name__}) {e.args[0]}"
-                parse_error['object'] = e
+                try:
+                    line_num = e.args[1][1] - script_text.count(f'#{id_hash}', 0, script_text.find(e.args[1][-1].strip()))
+                    parse_error['file'] = os.path.basename(script_path)
+                    parse_error['code'] = e.args[1][-1].strip()
+                    parse_error['line'] = f"{line_num}:{e.args[1][2]}"
+                    parse_error['message'] = f"({e.__class__.__name__}) {e.args[0]}"
+                    parse_error['object'] = e
+                except IndexError:
+                    parse_error['file'] = os.path.basename(script_path)
+                    parse_error['code'] = "Unknown"
+                    parse_error['line'] = 0
+                    parse_error['message'] = f"({e.__class__.__name__}) {e.args[0]}"
+                    parse_error['object'] = e
                 return parse_error
 
         # Converts amscripts into memory to be accessed by events
@@ -613,7 +620,7 @@ class ScriptObject():
                                             'arguments': {k:(True if (k != list(alias_keys)[-1]) else v) for (k,v) in alias_values['args'].items()},
                                             'syntax': '',
                                             'permission': alias_values['perm'],
-                                            'description': alias_values['desc'] if alias_values['desc'] else 'An Auto-MCS provided command',
+                                            'description': alias_values['desc'] if alias_values['desc'] else f"Provided by '{os.path.basename(script_path)}'",
                                             'player': alias_values['plr'],
                                             'hidden': alias_values['hide']
                                         }
@@ -630,7 +637,8 @@ class ScriptObject():
                                                 'command': alias_dict['command'],
                                                 'syntax': syntax,
                                                 'permission': alias_dict['permission'],
-                                                'description': alias_dict['description']
+                                                'description': alias_dict['description'],
+                                                'file': os.path.basename(script_path)
                                             }
                                         alias_functions[alias_dict['command']] = function
 
@@ -954,6 +962,10 @@ class ScriptObject():
     def log_error(self, error_dict: dict):
         # print(error_dict)
         self.server.amscript_log(f"Exception in '{error_dict['file']}': {error_dict['message']}", 'error')
+        if error_dict['code'].startswith("from itertools import zip_longest") and error_dict['line'] == 1:
+            return
+        if error_dict['code'].startswith("Unknown") and error_dict['line'] == 0:
+            return
         self.server.amscript_log(f"[Line {error_dict['line']}]  {error_dict['code']}", 'error')
 
 
@@ -1032,7 +1044,12 @@ class ServerScriptObject():
         self._server_id = ("#" + server_obj._hash)
         self._ams_log = server_obj.amscript_log
         self._reload_scripts = server_obj.reload_scripts
+        self._restart = server_obj.restart
+        self._ams_info = server_obj.get_ams_info()
         self._persistent_config = PersistenceManager(server_obj.name)
+        self._app_version = constants.app_version
+        self._performance = server_obj.run_data['performance']
+        self._script_state = server_obj.script_manager.script_state
 
         # Assign functions from main server object
         self.execute = server_obj.silent_command
@@ -1519,17 +1536,19 @@ class PlayerScriptObject():
 
     # Logging functions
     # Version compatible message system for local player object
-    def log(self, msg, color="gray", style='italic'):
+    def log(self, msg, color="gray", style='italic', tag=False):
         if not msg:
             return
 
         msg = str(msg)
+        if tag and not self.is_server:
+            msg = f'[auto-mcs] {msg}'
 
         style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
 
         # Use /tellraw if it's supported, else /tell
         if constants.version_check(str(self._server.version), '>=', '1.7.2') and not self.is_server:
-            msg = f'/tellraw {self.name} {{"text": "{msg}", "color": "{color}"}}'
+            msg = f'/tellraw {self.name} {{"text": {json.dumps(msg)}, "color": "{color}"}}'
             if style != 'normal':
                 msg = msg[:-1] + f', "{style}": "true"}}'
             self._server.execute(msg, log=False)
@@ -1575,13 +1594,12 @@ class PlayerScriptObject():
                     final_code += style_table[style]
                 msg = f'/tell {self.name} {final_code}{("§r "+final_code).join(msg.strip().split(" "))}§r'
                 self._server.execute(msg, log=False)
-
-    def log_warning(self, msg):
-        self.log(msg, "gold", "normal")
-    def log_error(self, msg):
-        self.log(msg, "red", "normal")
-    def log_success(self, msg):
-        self.log(msg, "green", "normal")
+    def log_warning(self, msg, tag=False):
+        self.log(msg, "gold", "normal", tag=tag)
+    def log_error(self, msg, tag=False):
+        self.log(msg, "red", "normal", tag=tag)
+    def log_success(self, msg, tag=False):
+        self.log(msg, "green", "normal", tag=tag)
 
 
 
