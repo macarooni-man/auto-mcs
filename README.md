@@ -1,7 +1,7 @@
 ![inqSerdiagram](https://github.com/macarooni-man/auto-mcs/blob/main/other/github-banner-cropped.png?raw=true)
 [![Latest Release](https://img.shields.io/github/v/release/macarooni-man/auto-mcs)](https://www.auto-mcs.com)
 # auto-mcs
-Auto-MCS is a cross-platform Minecraft server manager written in Python. Auto-MCS provides a simple and easy to digest experience for people who want to play Minecraft with their friends without the hassle of server installation and maintenance.
+Auto-MCS is a cross-platform Minecraft server manager written in Python. Auto-MCS provides a simple and easy-to-digest experience for people who want to play Minecraft with their friends without the hassle of server installation and maintenance.
 <br><br>
 
 Some notable features include:
@@ -10,7 +10,7 @@ Some notable features include:
  - Automatic server installation & updates
  - Ability to import any existing server
  - Switch worlds, versions, and distributions on the fly
- - Automatic back-up management
+ - Automatic backup management
  - Custom console with a [scripting API](https://github.com/macarooni-man/auto-mcs/blob/main/amscript-docs.md) (Compatible with Vanilla)
  - Detailed crash detection with an easily viewable report
  - Internal mod & plug-in browser/installer (Auto-MCS can update plugins as well)
@@ -20,19 +20,19 @@ Some notable features include:
 
 <br><br>
 # Installation & Setup
-To get started, download the latest verion of Auto-MCS [from the website](https://www.auto-mcs.com/download), or [from GitHub](https://github.com/macarooni-man/auto-mcs/releases/latest). Extract auto-mcs from the `.zip` file to a location of your choice and launch it. That's it, there's no installation required!
+To get started, download the latest version of Auto-MCS [from the website](https://www.auto-mcs.com/download), or [from GitHub](https://github.com/macarooni-man/auto-mcs/releases/latest). Extract auto-mcs from the `.zip` file to a location of your choice and launch it. That's it, there's no installation required!
 > Note:  If you're using Linux, you might need to run `chmod +x auto-mcs` to give the binary executable permission
 
 <br>
-To start, you can either import a server you've made on your own, or create a new one from scratch:
+To start, you can either import a server you've made on your own or create a new one from scratch:
 
 ### Create a New Server
 - For the vast majority of users, auto-mcs is preconfigured to provide optimal settings. Choose a name, and click next a few times to get started!
-- For a more advanced setup you can choose a different distribution with mods, an older version, or even choose to setup a whitelist. There's a lot of options if you wish to configure it manually.
+- For a more advanced setup you can choose a different distribution with mods, an older version, or even choose to set up a whitelist. There are a lot of options if you wish to configure it manually.
 
 ### Import a Server
-- auto-mcs can detect and manage a wide variety of servers that you have made yourself. Select the root folder of the server and click import to use all of auto-mcs' features!
-> Note: Importing will copy your server to a different directory and create a back-up. The original directory will be untouched
+- auto-mcs can detect and manage a wide variety of servers that you have made yourself. Select the root folder of the server and click import to use all of auto-mcs's features!
+> Note: Importing will copy your server to a different directory and create a backup. The original directory will be untouched
 
 <br>
 And that's it - click launch to play with your friends!
