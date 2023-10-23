@@ -10,7 +10,12 @@ def mainLoop():
     # Fixes display scaling on Windows - Eventually add this to the beginning of wrapper.py
     if constants.os_name == "windows":
         from ctypes import windll, c_int64
-        windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
+
+        # Calculate screen width and disable DPI scaling if bigger than a certain resolution
+        width = windll.user32.GetSystemMetrics(0)
+        scale = windll.shcore.GetScaleFactorForDevice(0) / 100
+        if (width * scale) < 2000:
+            windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
 
     # Cleanup temp files and generate splash text
     from menu import run_application

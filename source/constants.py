@@ -1,7 +1,6 @@
 from shutil import rmtree, copytree, copy, ignore_patterns
 from concurrent.futures import ThreadPoolExecutor
 from random import randrange, choices
-from packaging.version import parse
 from urllib.request import Request
 from urllib.parse import quote
 from bs4 import BeautifulSoup
@@ -248,6 +247,28 @@ def get_repo_scripts():
 
 
 # ---------------------------------------------- Global Functions ------------------------------------------------------
+
+# Returns true if latest is greater than current
+def check_app_version(current, latest):
+
+    # Makes list the size of the greatest list
+    def normalize(l, s):
+        if len(l) < s:
+            for x in range(s - len(l)):
+                l.append(0)
+        return l
+
+    c_list = [int(x) for x in current.split(".")]
+    l_list = [int(x) for x in latest.split(".")]
+    max_size = max(len(c_list), len(l_list))
+    normalize(c_list, max_size)
+    normalize(l_list, max_size)
+
+    for x in range(max_size):
+        if l_list[x] > c_list[x]:
+            return True
+    else:
+        return False
 
 # Restarts auto-mcs by dynamically generating script
 def restart_app(*a):
@@ -949,7 +970,7 @@ def check_app_updates():
                 continue
 
         # Check if app needs to be updated, and URL was successful
-        if parse(str(app_version)) < parse(str(update_data['version'])):
+        if check_app_version(str(app_version), str(update_data['version'])):
             app_latest = False
 
         app_online = status_code == 200
@@ -1999,6 +2020,7 @@ max-world-size=29999984"""
             if os.path.exists(os.path.join(new_path, command_tmp)):
                 run_proc(f"attrib +H \"{os.path.join(new_path, command_tmp)}\"")
 
+        make_update_list()
         return True
 
 

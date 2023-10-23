@@ -18041,6 +18041,12 @@ class MainApp(App):
         if constants.fullscreen:
             Window.maximize()
         Window.show()
+
+        # Raise window
+        def raise_window(*a):
+            Window.raise_window()
+        Clock.schedule_once(raise_window, 0)
+
         return screen_manager
 
 
