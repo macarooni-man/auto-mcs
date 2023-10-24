@@ -7876,6 +7876,10 @@ class AclRulePanel(RelativeLayout):
                     self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_inactive.png")
                     self.player_layout.access_line_3.source = os.path.join(constants.gui_assets, "access_inactive.png")
 
+                    if displayed_rule.display_data['op']:
+                        self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
+                        self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_active.png")
+
             if banned:
                 self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_inactive.png")
             elif displayed_rule.display_data['wl']:

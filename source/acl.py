@@ -214,7 +214,7 @@ class AclObject():
                 display_data['effective_access'] = "No access"
 
             else:
-                if self.server['whitelist'] and not display_data['wl']:
+                if self.server['whitelist'] and not (display_data['wl'] or display_data['op']):
                     display_data['effective_access'] = "No access"
 
                 elif display_data['op']:
