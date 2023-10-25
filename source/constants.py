@@ -1291,9 +1291,9 @@ def validate_version(server_info: dict):
 
         while foundServer is False:
             if str.lower(mcType) == "forge":
-                versionCheck = float(mcVer.replace("1.", "", 1))
-                if versionCheck < 6:
+                if version_check(mcVer, '<', '1.6'):
                     mcVer = ""
+
 
             if str.lower(mcType) == "vanilla":
 
@@ -1368,19 +1368,27 @@ def validate_version(server_info: dict):
 
 
             elif str.lower(mcType) == "forge":
-                forge_url = f"https://files.minecraftforge.net/net/minecraftforge/forge/index_{mcVer}.html"
-                reqs = requests.get(forge_url)
-                soup = BeautifulSoup(reqs.text, 'html.parser')
-                div = soup.find('div', "link link-boosted")
+                print(modifiedVersion)
+                # 1.16.3 is unavailable due to issues with Java
+                # https://www.reddit.com/r/Minecraft/comments/s7ce50/serverhosting_forge_minecraft_keeps_crashing_on/
+                if mcVer != "1.16.3":
 
-                urls = div.a.get('href').split("&url=")
+                    try:
+                        forge_url = f"https://files.minecraftforge.net/net/minecraftforge/forge/index_{mcVer}.html"
+                        reqs = requests.get(forge_url)
+                        soup = BeautifulSoup(reqs.text, 'html.parser')
+                        div = soup.find('div', "link link-boosted")
 
-                for possible_url in urls:
-                    if ".jar" in possible_url:
-                        url = possible_url
-                        break
-                else:
-                    url = ''
+                        urls = div.a.get('href').split("&url=")
+
+                        for possible_url in urls:
+                            if ".jar" in possible_url:
+                                url = possible_url
+                                break
+                        else:
+                            url = ''
+                    except:
+                        url = ''
 
 
             elif str.lower(mcType) == "fabric":

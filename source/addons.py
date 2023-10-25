@@ -876,8 +876,8 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True):
     # Define folder paths based on server info
     addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
     disabled_addon_folder = str("disabled-" + addon_folder)
-    addon_folder = constants.server_path(server_properties['name'], addon_folder)
-    disabled_addon_folder = constants.server_path(server_properties['name'], disabled_addon_folder)
+    addon_folder = os.path.join(constants.server_path(server_properties['name']), addon_folder)
+    disabled_addon_folder = os.path.join(constants.server_path(server_properties['name']), disabled_addon_folder)
 
     addon_path, addon_name = os.path.split(addon.path)
 
