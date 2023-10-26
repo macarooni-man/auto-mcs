@@ -826,7 +826,10 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
 # Searches and returns downloadable addon
 # str --> AddonWebObject
 def find_addon(name, server_properties):
-    new_addon = sorted([[addon, round(SequenceMatcher(None, addon.name.lower(), name.lower()).ratio(), 2)] for addon in search_addons(name, server_properties)], key=lambda x: x[1], reverse=True)[0][0]
+    try:
+        new_addon = sorted([[addon, round(SequenceMatcher(None, addon.name.lower(), name.lower()).ratio(), 2)] for addon in search_addons(name, server_properties)], key=lambda x: x[1], reverse=True)[0][0]
+    except IndexError:
+        return False
 
     if new_addon:
         return get_addon_url(get_addon_info(new_addon, server_properties), server_properties)

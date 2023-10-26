@@ -6446,9 +6446,11 @@ class ProgressScreen(MenuBackground):
 
         # Execute after_function
         time.sleep(0.5)
-        if "[font=" not in self.steps.label_2.text:
-            self.steps.label_2.text = self.steps.label_2.text.split('(')[0].strip() + f"   [font={icons}]å[/font]"
-        time.sleep(0.19)
+        def test(*a):
+            if "[font=" not in self.steps.label_2.text:
+                self.steps.label_2.text = self.steps.label_2.text.split('(')[0].strip() + f"   [font={icons}]å[/font]"
+        Clock.schedule_once(test, 0)
+        # time.sleep(0.19)
         Animation(color=(0.3, 1, 0.6, 1), duration=0.2, transition='out_sine').start(self.steps.label_2)
 
         # Execute after function on if there was no error
@@ -13832,7 +13834,7 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
 class AddonListButton(HoverButton):
 
     def toggle_enabled(self, *args):
-        self.title.text_size = (self.size_hint_max[0] * (0.94 if self.enabled else 0.7), self.size_hint_max[1])
+        self.title.text_size = (self.size_hint_max[0] * (0.7), self.size_hint_max[1])
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png')
 
         # If disabled, add banner as such
@@ -16926,19 +16928,7 @@ def toggle_ngrok(boolean, *args):
     server_obj.ngrok_enabled = boolean
 
     # Show banner if server is running
-    if screen_manager.current_screen.check_changes(server_obj):
-        Clock.schedule_once(
-            functools.partial(
-                screen_manager.current_screen.show_banner,
-                (0.937, 0.831, 0.62, 1),
-                f"A server restart is required to apply changes",
-                "sync.png",
-                3,
-                {"center_x": 0.5, "center_y": 0.965}
-            ), 0
-        )
-
-    else:
+    def default_message(*a):
         Clock.schedule_once(
             functools.partial(
                 screen_manager.current_screen.show_banner,
@@ -16949,6 +16939,24 @@ def toggle_ngrok(boolean, *args):
                 {"center_x": 0.5, "center_y": 0.965}
             ), 0
         )
+
+    try:
+        if screen_manager.current_screen.check_changes(server_obj):
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_banner,
+                    (0.937, 0.831, 0.62, 1),
+                    f"A server restart is required to apply changes",
+                    "sync.png",
+                    3,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+        else:
+            default_message()
+
+    except AttributeError:
+        default_message()
 
 class NgrokAuthScreen(MenuBackground):
 

@@ -246,6 +246,9 @@ class ServerObject():
 
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):
+        while not self.addon:
+            time.sleep(0.2)
+
         properties = {
             "_hash": constants.gen_rstring(8),
 
@@ -585,6 +588,8 @@ class ServerObject():
     def launch(self):
 
         if not self.running:
+            while not self.addon or not self.backup or not self.script_manager or not self.acl:
+                time.sleep(0.2)
 
             self.running = True
             constants.java_check()
