@@ -12875,7 +12875,7 @@ class ServerBackupScreen(MenuBackground):
 
         for k, v in button_dict.items():
             print(server_obj.backup.backup_stats['backup-list'])
-            if k == 'restore' and ((server_obj.running) or (not server_obj.backup.backup_stats['backup-list'])):
+            if k == 'restore' and not server_obj.backup.backup_stats['backup-list']:
                 v.disable(True)
                 continue
 
@@ -13293,7 +13293,6 @@ class BackupButton(HoverButton):
             Animation(opacity=1, duration=fade_in).start(self.title)
             Animation(opacity=self.subtitle.default_opacity, duration=fade_in).start(self.subtitle)
 
-
     def on_enter(self, *args):
         if not self.ignore_hover:
             self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}_hover.png'), color=self.color_id[0], hover_action=True)
@@ -13361,17 +13360,30 @@ class ServerBackupRestoreScreen(MenuBackground):
                 # Activated when addon is clicked
                 def restore_backup(backup_obj, index, *args):
 
-                    def restore_screen(file, *args):
+                    def restore_screen(file, stop=False, *args):
+                        server_obj = constants.server_manager.current_server
+                        if stop:
+                            server_obj.silent_command("stop")
+                            while server_obj.running:
+                                time.sleep(0.2)
                         constants.server_manager.current_server.backup.restore_file = file
                         screen_manager.current = 'ServerBackupRestoreProgressScreen'
 
                     selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "BackupButton"][index - 1]
-                    screen_manager.current_screen.show_popup(
-                        "query",
-                        "Restore Back-up",
-                        f"Are you sure you want to revert '{backup_obj.name}' to {backup_obj.date}?\n\nThis action can't be undone",
-                        [None, functools.partial(Clock.schedule_once, functools.partial(restore_screen, backup_obj), 0.25)]
-                    )
+                    if constants.server_manager.current_server.running:
+                        screen_manager.current_screen.show_popup(
+                            "query",
+                            "Stop & Restore Back-up",
+                            f"Are you sure you want to stop and revert '{backup_obj.name}' to {backup_obj.date}?\n\nThis action can't be undone",
+                            [None, functools.partial(Clock.schedule_once, functools.partial(restore_screen, backup_obj, True), 0.25)]
+                        )
+                    else:
+                        screen_manager.current_screen.show_popup(
+                            "query",
+                            "Restore Back-up",
+                            f"Are you sure you want to revert '{backup_obj.name}' to {backup_obj.date}?\n\nThis action can't be undone",
+                            [None, functools.partial(Clock.schedule_once, functools.partial(restore_screen, backup_obj, False), 0.25)]
+                        )
 
 
                 # Add-on button click function
@@ -17213,7 +17225,6 @@ class ServerAdvancedScreen(MenuBackground):
 
         return False
 
-
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
         server_obj.reload_config()
@@ -17568,7 +17579,8 @@ class ServerAdvancedScreen(MenuBackground):
 
         # Change world file
         def change_world(*a):
-            screen_manager.current = 'ServerWorldScreen'
+            if constants.server_manager.current_server:
+                screen_manager.current = 'ServerWorldScreen'
 
         sub_layout = ScrollItem()
         self.world_button = WaitButton("Change world file", (0.5, 0.5), 'world.png', click_func=change_world, disabled=server_obj.running)
@@ -17580,6 +17592,7 @@ class ServerAdvancedScreen(MenuBackground):
         def delete_server(*args):
             server_name = server_obj.name
             server_obj.delete()
+            constants.server_manager.current_server = None
 
             def switch_screens(*a):
                 screen_manager.current = "ServerManagerScreen"
@@ -17957,7 +17970,7 @@ def check_running(final_func):
             functools.partial(
                 screen_manager.current_screen.show_popup,
                 "warning_query",
-                f'Sever Warning',
+                f'Server Warning',
                 desc,
                 (None, close_servers)
             ),

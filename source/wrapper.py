@@ -106,6 +106,7 @@ if __name__ == '__main__':
                 print(e)
 
         # Background loop if needed
+        connect_counter = 0
         while True:
 
             # Put things here to update variables in the background
@@ -118,6 +119,13 @@ if __name__ == '__main__':
             if exitApp is True or crash:
                 break
             else:
+
+                # Check for network changes in the background
+                connect_counter += 1
+                if (connect_counter == 10 and not constants.app_online) or (connect_counter == 60 and constants.app_online):
+                    constants.check_app_updates()
+                    connect_counter = 0
+
                 time.sleep(1)
 
 
