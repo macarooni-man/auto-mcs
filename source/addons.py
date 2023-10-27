@@ -547,7 +547,6 @@ def get_addon_info(addon: AddonWebObject, server_properties):
             description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
             description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
             description = re.sub(r'\]\(*.+\)', '', description)
-            print(description)
 
         server_version = server_properties["version"]
         addon.description = description
