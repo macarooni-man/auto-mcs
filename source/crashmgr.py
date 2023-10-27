@@ -50,7 +50,7 @@ def generate_log(exception):
     # Generate code with last application path and last widget interaction
     path = constants.footer_path
     interaction = constants.last_widget
-    ame = (hashlib.shake_128(path.encode()).hexdigest(1) if path else "00") + "-" + hashlib.shake_128(exception_code.encode()).hexdigest(3)
+    ame = (hashlib.shake_128(path.split("@")[0].strip().encode()).hexdigest(1) if path else "00") + "-" + hashlib.shake_128(exception_code.encode()).hexdigest(3)
 
     # Check for 'Logs' folder in application directory
     # If it doesn't exist, create a new folder called 'Logs'

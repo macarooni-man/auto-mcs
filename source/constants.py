@@ -34,7 +34,7 @@ import re
 import addons
 import backup
 import amscript
-
+import constants
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
@@ -73,6 +73,7 @@ footer_path = ""
 last_widget = None
 
 update_list = {}
+addon_cache = {}
 
 latestMC = {
     "vanilla": "0.0.0",
@@ -1269,6 +1270,30 @@ def download_update(progress_func=None):
 # Returns MD5 checksum of file
 def get_checksum(file_path):
     return str(hashlib.md5(open(file_path, 'rb').read()).hexdigest())
+
+
+# Grabs addon_cache if it exists
+def load_addon_cache(write=False):
+    global addon_cache
+    file_name = "addon-db.json"
+    file_path = os.path.join(cacheDir, file_name)
+
+    # Loads data from dict
+    if not write:
+        try:
+            if os.path.isfile(file_path):
+                with open(file_path, 'r') as f:
+                    addon_cache = json.load(f)
+        except:
+            return
+    else:
+        try:
+            constants.folder_check(cacheDir)
+            with open(file_path, 'w+') as f:
+                f.write(json.dumps(addon_cache, indent=2))
+        except:
+            return
+
 
 
 # ------------------------------------ Server Creation/Import/Update Functions -----------------------------------------

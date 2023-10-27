@@ -91,8 +91,9 @@ if __name__ == '__main__':
         # Before background loop starts
 
         try:
-
             # Find latest game versions and update data cache
+            constants.load_addon_cache()
+
             constants.find_latest_mc()
 
             constants.check_data_cache()
