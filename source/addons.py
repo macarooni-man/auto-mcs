@@ -378,8 +378,8 @@ def search_addons(query: str, server_properties):
     # filter-sort=5 is filtered by number of downloads
     search_urls = {
         "bukkit": "https://dev.bukkit.org/search?projects-page=1&projects-sort=-project&providerIdent=projects&search=",
-        "forge": "https://legacy.curseforge.com/minecraft/mc-mods/search?filter-game-version=2020709689%3A7498&filter-sort=5&search=",
-        "fabric": "https://legacy.curseforge.com/minecraft/mc-mods/search?filter-game-version=2020709689%3A7499&filter-sort=5&search="
+        "forge": "https://modrinth.com/mod/",
+        "fabric": "https://modrinth.com/mod/"
     }
 
     # Determine which addons to search for
@@ -388,15 +388,16 @@ def search_addons(query: str, server_properties):
     else:
         server_type = server_properties['type']
 
-    # Grab every addon from search result and return results dict
-    url = search_urls[server_type] + query.replace(' ', '+')
-    results = []
-    page_content = constants.get_url(url)
-
 
     # If server_type is bukkit
     if server_type == "bukkit":
         results_unsorted = []
+
+        # Grab every addon from search result and return results dict
+        url = search_urls[server_type] + query.replace(' ', '+')
+        results = []
+        page_content = constants.get_url(url)
+
 
         # Function to be used in ThreadPool
         def get_page(page_number):
@@ -458,15 +459,22 @@ def search_addons(query: str, server_properties):
 
     # If server_type is forge or fabric
     else:
-        for div in page_content.find_all('div', "my-2"):
-            name = div.h3.text.strip()
-            author = div.find("a", "text-base leading-normal font-bold hover:no-underline my-auto").text.strip()
-            subtitle = div.p.text.strip()
-            link = div.find("a", "my-auto").get('href').strip()
-            file_name = link.split("/")[-1].strip()
+        # Grab every addon from search result and return results dict
+        url = f'https://api.modrinth.com/v2/search?facets=[["categories:{server_type}"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
+        results = []
+        page_content = constants.get_url(url, return_response=True).json()
+
+        for mod in page_content['hits']:
+            name = mod['title']
+            author = mod['author']
+            subtitle = mod['description'].split("\n", 1)[0]
+            link = search_urls[server_type] + mod['slug']
+            file_name = mod['slug']
 
             if link:
-                results.append(AddonWebObject(name, server_type, author, subtitle, link, file_name))
+                addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name)
+                addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                results.append(addon_obj)
 
 
     return results
@@ -485,6 +493,7 @@ def get_addon_info(addon: AddonWebObject, server_properties):
                                "]+", flags=re.UNICODE)
 
     if addon.supported == "unknown":
+        versions = []
 
         # Run specific actions for bukkit plugins
         if addon.type == "bukkit":
@@ -505,57 +514,44 @@ def get_addon_info(addon: AddonWebObject, server_properties):
             description = emoji_pattern.sub(r'', description)  # no emoji
             description = re.sub(r'(\n\s*)+\n', '\n\n', description)
 
+            # Get list of available versions
+            select = addon_map[1].find('select', attrs={'name': 'filter-game-version'})
+
+            try:
+                select.find('option')
+            except AttributeError:
+                return None
+
+            for option in select.findAll('option'):
+
+                version = ""
+
+                if addon.type == "bukkit":
+                    if "1." in option.text.strip():
+                        version = option.text.strip().replace("CB ", "").split("-")[0]
+                else:
+                    if option.text.strip().startswith("1."):
+                        version = option.text.strip()
+
+                if version not in versions and version:
+                    versions.append(version)
 
 
         # Run specific actions for forge and fabric mods
         else:
 
             # Find addon information
-            item_link = f"https://legacy.curseforge.com{addon.url}"
-            file_link = f"{item_link}/files/all"
-
-            with ThreadPoolExecutor(max_workers=10) as pool:
-                addon_map = list(pool.map(constants.get_url, [item_link, file_link]))
-
-            # Find description
-            description = ""
-            for div in addon_map[0].find_all("div", "box p-4 pb-2 project-detail__content"):
-                description = div.text
-
-            description = emoji_pattern.sub(r'', description)  # no emoji
-            description = re.sub(r'(\n\s*)+\n', '\n\n', description)
-
-
-
-        # Get list of available versions
-        versions = []
-
-        select = addon_map[1].find('select', attrs={'name': 'filter-game-version'})
-
-        try:
-            select.find('option')
-        except AttributeError:
-            return None
-
-        for option in select.findAll('option'):
-
-            version = ""
-
-            if addon.type == "bukkit":
-                if "1." in option.text.strip():
-                    version = option.text.strip().replace("CB ", "").split("-")[0]
-            else:
-                if option.text.strip().startswith("1."):
-                    version = option.text.strip()
-
-            if version not in versions and version:
-                versions.append(version)
+            file_link = f"https://api.modrinth.com/v2/project/{addon.id}"
+            page_content = constants.get_url(file_link, return_response=True).json()
+            description = emoji_pattern.sub(r'', page_content['body']).replace("*","").replace("#","").replace('&nbsp;', ' ')
+            description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
+            description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
+            description = re.sub(r'\]\(*.+\)', '', description)
+            print(description)
 
         server_version = server_properties["version"]
-
-        addon.versions = versions
         addon.description = description
-        addon.supported = "yes" if server_version in versions else "no"
+        addon.supported = "yes" if server_version in addon.versions else "no"
 
     return addon
 
@@ -651,67 +647,21 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
     else:
 
         # Iterate through every page until a match is found
-        item_link = f"https://legacy.curseforge.com{addon.url}/files/all"
-        page_content = constants.get_url(item_link)
+        file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
+        page_content = constants.get_url(file_link, return_response=True).json()
 
-
-        # Iterate through every page
-        if page_content.find('span', 'text-primary-500'):
-            pages = int(page_content.find_all('span', 'text-primary-500')[-1].text)
-
-        for page in range(1, pages + 1):
-
-            if page != 1:
-                item_link = f"https://legacy.curseforge.com{addon.url}/files/all?page={page}"
-                page_content = constants.get_url(item_link)
-
-            # compile table into version & dl link
-            table = page_content.find('table', attrs={'class': 'listing listing-project-file project-file-listing b-table b-table-a'})
-            table_body = table.find('tbody')
-            rows = table_body.find_all('tr')
-
-            for row in rows:
-                version = row.find('div', "mr-2")  # game version
-                link = row.find('a', attrs={'data-action': 'file-link'})
-
-                try:
-                    if version.text.strip().startswith("1."):
-                        version = version.text.strip()
-
-                    # Add the latest version of each plugin to link list
-                    if version not in link_list.keys() and isinstance(version, str):
-                        download_url = f"https://legacy.curseforge.com{link.get('href').replace('files', 'download')}/file"
-                        link_list[version] = download_url
-
-                    # Handle mislabeled versions if proper version is in the title
-                    if (server_version in link.text) and (server_version not in link_list.keys()) and (isinstance(version, str)) and compat_mode:
-
-                        # Compare main build numbers to be sure this doesn't trigger from the addon version
-                        version_a = version
-                        if version.count(".") > 1:
-                            version_a = version.rsplit('.', 1)[0]
-
-                        version_b = server_version
-                        if server_version.count(".") > 1:
-                            version_b = server_version.rsplit('.', 1)[0]
-
-                        if version_a == version_b:
-                            download_url = f"https://legacy.curseforge.com{link.get('href').replace('files', 'download')}/file"
-                            link_list[server_version] = download_url
-
-                except ValueError:
-                    pass
-
-            if server_version in link_list:
-                final_link = link_list[server_version]
-                final_version = server_version
-                break
+        for data in page_content:
+            files = data['files']
+            url = data['files'][-1]['url']
+            for version in data['game_versions']:
+                if version not in link_list.keys() and version.startswith("1.") and "-" not in version:
+                    link_list[version] = url
 
 
     # In case a link is not found, find the latest compatible version
     if not final_link and compat_mode:
 
-        for item in link_list.items():
+        for item in sorted(list(link_list.items()), key=lambda x: x[0], reverse=True):
             if constants.version_check(server_version, ">=", item[0]):
                 final_link = item[1]
                 final_version = item[0]
@@ -737,14 +687,14 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
         else:
             new_type = force_type.lower()
     else:
-        mew_type = addon.type
+        new_type = addon.type
 
     # Possibly upgrade plugin to proper server type in case there's a mismatch
 
     project_urls = {
         "bukkit": "https://dev.bukkit.org/projects/",
-        "forge": "https://legacy.curseforge.com/minecraft/mc-mods/",
-        "fabric": "https://legacy.curseforge.com/minecraft/mc-mods/"
+        "forge": "https://modrinth.com/mod/",
+        "fabric": "https://modrinth.com/mod/"
     }
 
     # First check if id is available
@@ -773,12 +723,12 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
 
     # Only return AddonWebObject if url was acquired
     if addon_url and not new_addon:
-        addon_url = addon_url.split(".com")[1] if new_type != "bukkit" else addon_url.split(".org")[1]
+        addon_url = addon_url if new_type != "bukkit" else addon_url.split(".org")[1]
         new_addon = AddonWebObject(addon.name, new_type, addon.author, addon.subtitle, addon_url, addon.id)
 
     # If new_addon has an object, request download link
     if new_addon:
-        new_addon = get_addon_url(new_addon, {"version": new_version}, compat_mode=True)
+        new_addon = get_addon_url(new_addon, {"version": new_version, "type": new_type}, compat_mode=True)
         new_addon = new_addon if new_addon.download_url else None
 
     return new_addon

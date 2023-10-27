@@ -4953,7 +4953,7 @@ class BigPopupWindow(RelativeLayout):
                         if self.__class__.__name__ == "PopupAddon":
                             if self.addon_object:
                                 if self.addon_object.type in ["forge", "fabric"]:
-                                    url = "https://www.curseforge.com" + self.addon_object.url
+                                    url = self.addon_object.url
                                 else:
                                     url = "https://dev.bukkit.org" + self.addon_object.url
 

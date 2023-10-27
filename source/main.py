@@ -4,7 +4,6 @@ import constants
 
 
 # Run app, eventually in wrapper
-
 def mainLoop():
 
     # Fixes display scaling on Windows - Eventually add this to the beginning of wrapper.py
