@@ -18075,11 +18075,11 @@ class MainApp(App):
         screen_manager.current = constants.startup_screen
 
         # Screen manager override
-        if not constants.app_compiled:
-            def open_menu(*args):
-                screen_manager.current = "ServerManagerScreen"
-                open_server("bedrock-test")
-            Clock.schedule_once(open_menu, 0)
+        # if not constants.app_compiled:
+        #     def open_menu(*args):
+        #         screen_manager.current = "ServerManagerScreen"
+        #         open_server("bedrock-test")
+        #     Clock.schedule_once(open_menu, 0)
 
 
         screen_manager.transition = FadeTransition(duration=0.115)
