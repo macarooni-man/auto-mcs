@@ -40,7 +40,7 @@ import constants
 
 app_version = "2.0"
 ams_version = "1.0"
-app_title = f"Auto-MCS v{app_version}"
+app_title = f"auto-mcs"
 window_size = (850, 850)
 fullscreen = False
 project_link = "https://github.com/macarooni-man/auto-mcs"
@@ -2896,8 +2896,8 @@ def make_update_list():
             current_version = jarVer
 
             if ((jarType.lower() in ["forge", "paper"]) and (jarBuild != "")) and (new_version == current_version):
-                new_version += " ᴮ" + str(latestMC["builds"][jarType.lower()])
-                current_version += " ᴮ" + str(jarBuild)
+                new_version += " b-" + str(latestMC["builds"][jarType.lower()])
+                current_version += " b-" + str(jarBuild)
 
             if (new_version != current_version):
                 serverObject[name]["needsUpdate"] = "true"

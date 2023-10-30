@@ -437,8 +437,7 @@ class AclObject():
 
 
     # Updates ACL information from server log when player joins/leaves
-    @staticmethod
-    def _process_log(log_object):
+    def _process_log(self, log_object):
 
         def generate_dict(*args):
 
@@ -469,6 +468,11 @@ class AclObject():
                     f.write(json.dumps(user_dict, indent=2))
 
             concat_db()
+
+            # Update playerdata internally
+            if log_object['logged-in']:
+                self.playerdata = self.get_playerdata()
+                self.list_items = self.__gen_list_items__()
 
         timer = threading.Timer(0, generate_dict)
         timer.start()
@@ -685,7 +689,7 @@ class AclObject():
         else:
             acl_dict = load_acl(self.server['name'], list_type, force_version, temp_server=temp_server)
 
-        self.__gen_list_items__()
+        self.list_items = self.__gen_list_items__()
         return acl_dict
 
 
@@ -883,6 +887,13 @@ class AclObject():
                 constants.server_properties(self.server['name'], new_properties)
 
             self.server['whitelist'] = value
+
+            # If server is running, reload whitelist settings in memory
+            if self.server['name'] in constants.server_manager.running_servers:
+                server_obj = constants.server_manager.running_servers[self.server['name']]
+                if server_obj.running:
+                    server_obj.silent_command(f'whitelist {"on" if value else "off"}', log=False)
+                    server_obj.silent_command(f'whitelist reload', log=False)
 
     # Adds rule list to global ACL, then to every server (use similar to the *_user functions)
     # add_global_rule("BlUe_KAZoo, kchicken, test", list_type="ops", remove=False) --> self.rules
@@ -1950,8 +1961,8 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                             # If server is running, check if player is online and run a command
                             if server_name in constants.server_manager.running_servers:
                                 server_obj = constants.server_manager.running_servers[server_name]
-                                if server_obj.run_data['player-list']:
-                                    server_obj.send_command(f'deop {user}', add_to_history=False)
+                                if server_obj.running:
+                                    server_obj.silent_command(f'deop {user}', log=False)
 
                             break
 
@@ -1976,8 +1987,8 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
                         # If server is running, check if player is online and run a command
                         if server_name in constants.server_manager.running_servers:
                             server_obj = constants.server_manager.running_servers[server_name]
-                            if server_obj.run_data['player-list']:
-                                server_obj.send_command(f'op {user}', add_to_history=False)
+                            if server_obj.running:
+                                server_obj.silent_command(f'op {user["name"]}', log=False)
 
         if write_file:
 
@@ -2068,8 +2079,8 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                             # If server is running, check if player is online and run a command
                             if server_name in constants.server_manager.running_servers:
                                 server_obj = constants.server_manager.running_servers[server_name]
-                                if server_obj.run_data['player-list']:
-                                    server_obj.send_command(f'pardon {user}', add_to_history=False)
+                                if server_obj.running:
+                                    server_obj.silent_command(f'pardon {user}', log=False)
 
                             break
 
@@ -2103,8 +2114,8 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         # If server is running, check if player is online and run a command
                         if server_name in constants.server_manager.running_servers:
                             server_obj = constants.server_manager.running_servers[server_name]
-                            if server_obj.run_data['player-list']:
-                                server_obj.send_command(f'ban {user}', add_to_history=False)
+                            if server_obj.running:
+                                server_obj.silent_command(f'ban {user["name"]}', log=False)
 
 
             # If rule is an IP or a subnet
@@ -2186,8 +2197,8 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                             # If server is running, check if player is online and run a command
                             if server_name in constants.server_manager.running_servers:
                                 server_obj = constants.server_manager.running_servers[server_name]
-                                if server_obj.run_data['player-list']:
-                                    server_obj.send_command(f'pardon-ip {user}', add_to_history=False)
+                                if server_obj.running:
+                                    server_obj.silent_command(f'pardon-ip {user}', log=False)
 
                             break
 
@@ -2210,8 +2221,9 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         # If server is running, check if player is online and run a command
                         if server_name in constants.server_manager.running_servers:
                             server_obj = constants.server_manager.running_servers[server_name]
-                            if server_obj.run_data['player-list']:
-                                server_obj.send_command(f'ban-ip {user}', add_to_history=False)
+                            if server_obj.running:
+                                server_obj.silent_command(f'ban-ip {user}', log=False)
+
 
         if write_file:
 
@@ -2362,6 +2374,16 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
                         if user.lower() == wl_list[x].rule.lower():
                             wl_list.pop(x)
                             name_list.pop(x)
+
+                            # If server is running, check if player is online and run a command
+                            if server_name in constants.server_manager.running_servers:
+                                server_obj = constants.server_manager.running_servers[server_name]
+                                if server_obj.running:
+                                    server_obj.silent_command(f'whitelist remove {user}', log=False)
+                                    server_obj.silent_command(f'whitelist reload', log=False)
+                                    if server_obj.acl.server['whitelist']:
+                                        server_obj.silent_command(f'kick {user} You are not whitelisted on this server!', log=False)
+
                             break
 
                 # Add users to wl_list
@@ -2378,6 +2400,14 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
 
                         wl_list.append(acl_object)
                         name_list.append(user['name'].lower())
+
+
+                        # If server is running, check if player is online and run a command
+                        if server_name in constants.server_manager.running_servers:
+                            server_obj = constants.server_manager.running_servers[server_name]
+                            if server_obj.running:
+                                server_obj.silent_command(f'whitelist add {user["name"]}', log=False)
+                                server_obj.silent_command(f'whitelist reload', log=False)
 
         if write_file:
 

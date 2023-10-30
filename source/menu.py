@@ -8499,12 +8499,16 @@ class CreateServerAclScreen(MenuBackground):
                 child.x = Window.width / 2 + 240
                 break
 
-        # If there are no rules, say as much with a label
-        constants.hide_widget(self.list_header.global_rule, rule_count == 0)
-        constants.hide_widget(self.list_header.enabled_rule, rule_count == 0)
-        constants.hide_widget(self.list_header.disabled_rule, rule_count == 0)
 
-        if rule_count == 0:
+        display_count = len(self.acl_object.list_items[list_type]['enabled']) + len(self.acl_object.list_items[list_type]['disabled'])
+
+        # If there are no rules, say as much with a label
+        constants.hide_widget(self.list_header.global_rule, display_count == 0)
+        constants.hide_widget(self.list_header.enabled_rule, display_count == 0)
+        constants.hide_widget(self.list_header.disabled_rule, display_count == 0)
+
+
+        if display_count == 0:
             if self.blank_label.opacity < 1:
                 self.blank_label.text = "No rules available, add them above"
                 constants.hide_widget(self.blank_label, False)
@@ -11263,7 +11267,7 @@ def prompt_new_server(server_obj, *args):
         screen_manager.current_screen.show_popup(
             "query",
             "Automatic Updates",
-            f"Would you like to enable automatic updates for '{server_obj.name}'?\n\nIf an update is available, Auto-MCS will update this server when opened",
+            f"Would you like to enable automatic updates for '{server_obj.name}'?\n\nIf an update is available, auto-mcs will update this server when opened",
             [functools.partial(set_update, False),
              functools.partial(set_update, True)]
         )
@@ -11281,7 +11285,7 @@ def prompt_new_server(server_obj, *args):
         screen_manager.current_screen.show_popup(
             "query",
             "Automatic Back-ups",
-            f"Would you like to enable automatic back-ups for '{server_obj.name}'?\n\nAuto-MCS will back up this server when closed",
+            f"Would you like to enable automatic back-ups for '{server_obj.name}'?\n\nauto-mcs will back up this server when closed",
             [functools.partial(set_bkup_and_prompt_update, False),
              functools.partial(set_bkup_and_prompt_update, True)]
         )
@@ -12426,6 +12430,17 @@ class ConsolePanel(FloatLayout):
 
                 self.bind(on_text_validate=self.on_enter)
 
+            def tab_player(self):
+                player_list = self.parent.server_obj.run_data['player-list']
+
+                if self.text:
+                    key = self.text.split(" ")[-1].strip().lower()
+                    if key not in player_list:
+                        for player in player_list.keys():
+                            if player.lower().startswith(key):
+                                self.text = self.text[:-len(key)] + player
+                                break
+
             def grab_focus(self):
                 def focus_later(*args):
                     self.focus = True
@@ -12453,6 +12468,9 @@ class ConsolePanel(FloatLayout):
                 if not self.text and substring in [' ', '/']:
                     substring = ""
 
+                if substring == "\t":
+                    substring = ""
+
                 else:
                     s = substring.replace("§", "[_color_]").encode("ascii", "ignore").decode().replace("\n","").replace("\r","").replace("[_color_]", "§")
                     self.original_text = self.text + s
@@ -12466,11 +12484,14 @@ class ConsolePanel(FloatLayout):
 
                 if self.parent.run_data:
 
+                    if keycode[1] == "tab":
+                        self.tab_player()
+
                     if keycode[1] == "backspace" and "ctrl" in modifiers:
                         if " " not in self.text:
                             self.text = ""
                         else:
-                            self.text = self.text.rsplit(" ", 1)[0]
+                            self.text = self.text.rsplit(" ", 1)[0].strip() + " "
 
 
                     if keycode[1] == 'up' and self.parent.run_data['command-history']:
@@ -17505,6 +17526,8 @@ class ServerAdvancedScreen(MenuBackground):
             constants.init_update()
             constants.new_server_info['type'] = server_obj.type
             constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+            if server_obj.type in ['forge', 'paper']:
+                constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
             screen_manager.current = 'MigrateServerProgressScreen'
 
         # Check for updates button
@@ -17772,6 +17795,7 @@ class MigrateServerVersionScreen(MenuBackground):
                 def check_version(*args, **kwargs):
                     self.final_button.loading(True)
                     version_data = constants.search_version(constants.new_server_info)
+                    print(version_data)
                     constants.new_server_info['version'] = version_data[1]['version']
                     constants.new_server_info['build'] = version_data[1]['build']
                     constants.new_server_info['jar_link'] = version_data[3]
@@ -17822,7 +17846,7 @@ class MigrateServerProgressScreen(ProgressScreen):
         if constants.new_server_info['type'] != server_obj.type:
             desc_text = "Migrating"
             final_text = "Migrated"
-        elif constants.version_check(constants.new_server_info['version'], '>', server_obj.version):
+        elif constants.version_check(constants.new_server_info['version'], '>', server_obj.version) or server_obj.update_string.startswith('b-'):
             desc_text = "Updating"
             final_text = "Updated"
         elif constants.version_check(constants.new_server_info['version'], '<', server_obj.version):
@@ -18051,13 +18075,12 @@ class MainApp(App):
         screen_manager.current = constants.startup_screen
 
         # Screen manager override
-        # if not constants.app_compiled:
-        #     screen_manager.current = "ServerManagerScreen"
-        #     open_server("test")
-        #     def open_menu(*args):
-        #         screen_manager.current = "ServerAmscriptScreen"
-        #     Clock.schedule_once(open_menu, 3)
-        #
+        if not constants.app_compiled:
+            def open_menu(*args):
+                screen_manager.current = "ServerManagerScreen"
+                open_server("bedrock-test")
+            Clock.schedule_once(open_menu, 0)
+
 
         screen_manager.transition = FadeTransition(duration=0.115)
 

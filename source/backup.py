@@ -125,6 +125,8 @@ def convert_date(m_time: int or float):
 
 # Convert string to date
 def convert_date_str(file_name: str):
+    if "- Copy" in file_name:
+        file_name = file_name.split("- Copy")[0].strip()
     if file_name.endswith('.tgz'):
         return dt.strptime(file_name.split("__")[1].split(".tgz")[0], "%H.%M %m-%d-%y" + (",%S" if "," in file_name else ""))
     else:
@@ -231,6 +233,8 @@ def backup_server(name: str, backup_stats=None):
         backup_file = os.path.join(backup_path, file_name)
         if os.path.exists(backup_file):
             time = dt.now().strftime("%H.%M %m-%d-%y,%S")
+            file_name = f"{name}__{time}.amb"
+            backup_file = os.path.join(backup_path, file_name)
 
         constants.folder_check(backup_path)
         os.chdir(constants.server_path(name))

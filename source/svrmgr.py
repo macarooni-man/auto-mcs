@@ -377,7 +377,7 @@ class ServerObject():
                         message = original_message
 
                 main_label = message.strip()
-
+                message = message.replace('[Not Secure]', '').strip()
 
                 # Calculate color based on log type
 
@@ -414,7 +414,7 @@ class ServerObject():
 
 
                 # Server message log
-                elif message.replace('[Not Secure]', '').strip().startswith("[Server]"):
+                elif message.strip().startswith("[Server]"):
                     type_label = "CHAT"
                     type_color = (0.439, 0.839, 1, 1)
 
