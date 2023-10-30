@@ -20,6 +20,7 @@ def mainLoop():
     from menu import run_application
     constants.cleanup_old_files()
     constants.generate_splash()
+    constants.get_refresh_rate()
 
     # Instantiate Server Manager
     constants.server_manager = ServerManager()

@@ -85,38 +85,48 @@ if __name__ == '__main__':
 
     # Main wrapper
     def background():
-        global exitApp
+        global exitApp, crash
 
+        # Check for updates
         constants.check_app_updates()
-        # Before background loop starts
+
+
+        # Find latest game versions and update data cache
+        try:
+            constants.load_addon_cache()
+        except Exception as e:
+            if constants.debug:
+                print(e)
 
         try:
-            # Find latest game versions and update data cache
-            constants.load_addon_cache()
-
             constants.find_latest_mc()
+        except Exception as e:
+            if constants.debug:
+                print(e)
 
+        try:
             constants.check_data_cache()
+        except Exception as e:
+            if constants.debug:
+                print(e)
 
+        try:
             constants.make_update_list()
+        except Exception as e:
+            if constants.debug:
+                print(e)
 
-            main.publicIP = requests.get('https://api.ipify.org').content.decode('utf-8')
-
-        except requests.HTTPError or TimeoutError or urllib.error.URLError as e:
+        try:
+            constants.public_ip = requests.get('https://api.ipify.org').content.decode('utf-8')
+        except Exception as e:
             if constants.debug:
                 print(e)
 
         # Background loop if needed
         connect_counter = 0
         while True:
-
             # Put things here to update variables in the background
             # constants.variable = x
-
-            # Use crash handler when app is compiled
-            if crash and constants.app_compiled:
-                app_crash(crash)
-
             if exitApp is True or crash:
                 break
             else:
@@ -124,7 +134,11 @@ if __name__ == '__main__':
                 # Check for network changes in the background
                 connect_counter += 1
                 if (connect_counter == 10 and not constants.app_online) or (connect_counter == 60 and constants.app_online):
-                    constants.check_app_updates()
+                    try:
+                        constants.check_app_updates()
+                    except Exception as e:
+                        if constants.debug:
+                            print(e)
                     connect_counter = 0
 
                 time.sleep(1)
@@ -155,6 +169,10 @@ if __name__ == '__main__':
             f.exception = e
             crash = format_exc()
             exitApp = True
+
+            # Use crash handler when app is compiled
+            if crash and constants.app_compiled:
+                app_crash(crash)
 
             # Normal Python behavior when testing
             if not constants.app_compiled:

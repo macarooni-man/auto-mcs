@@ -34,14 +34,16 @@ import re
 import addons
 import backup
 import amscript
-import constants
+
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
 app_version = "2.0"
 ams_version = "1.0"
-app_title = f"auto-mcs"
+app_title = "auto-mcs"
 window_size = (850, 850)
+refresh_rate = 60
+anim_speed = 1
 fullscreen = False
 project_link = "https://github.com/macarooni-man/auto-mcs"
 website = "https://auto-mcs.com"
@@ -249,6 +251,27 @@ def get_repo_scripts():
 
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
+# Retrieves the refresh rate of the display to calculate consistent animation speed
+def get_refresh_rate():
+    global refresh_rate, anim_speed
+
+    try:
+        if os_name == "windows":
+            rate = run_proc('powershell Get-WmiObject win32_videocontroller | findstr "CurrentRefreshRate"', True)
+            if "CurrentRefreshRate" in rate:
+                refresh_rate = round(float(rate.splitlines()[0].split(":")[1].strip()))
+
+        else:
+            rate = run_proc('xrandr | grep "*"', True)
+            if rate.strip().endswith("*"):
+                refresh_rate = round(float(rate.splitlines()[0].strip().split(" ", 1)[1].strip().replace("*","")))
+
+        # Modify animation speed based on refresh rate
+        anim_speed = 0.78 + round(refresh_rate * 0.002, 2)
+    except:
+        pass
+
+
 # Returns true if latest is greater than current
 def check_app_version(current, latest):
 
@@ -270,6 +293,7 @@ def check_app_version(current, latest):
             return True
     else:
         return False
+
 
 # Restarts auto-mcs by dynamically generating script
 def restart_app(*a):
@@ -315,6 +339,7 @@ rm \"{os.path.join(tempDir, script_name)}\""""
                 print(f.read())
             run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
     sys.exit()
+
 
 # Restarts and updates auto-mcs by dynamically generating script
 def restart_update_app(*a):
@@ -382,6 +407,7 @@ rm \"{os.path.join(tempDir, script_name)}\""""
                 print(f.read())
             run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
     sys.exit()
+
 
 # Returns current formatted time
 def format_now():
@@ -922,8 +948,8 @@ def check_app_updates():
         latest_release = f"https://api.github.com/repos{project_link.split('.com')[1]}/releases/latest"
         req = requests.get(latest_release)
         status_code = req.status_code
+        app_online = status_code in (200, 403)
         release_data = req.json()
-        # print(release_data)
 
 
         # Get checksum data
@@ -974,10 +1000,7 @@ def check_app_updates():
         if check_app_version(str(app_version), str(update_data['version'])):
             app_latest = False
 
-        app_online = status_code == 200
-
     except Exception as e:
-        print(e)
         if debug:
             print("Something went wrong checking for updates: ", e)
 
@@ -1128,7 +1151,16 @@ def get_data_versions():
     table = soup.find("table", {"class": "wikitable sortable jquery-tablesorter"})
 
     for item in table.find_all("tr"):
-        if "java" in item.a.get("title").lower():
+        title = None
+        try:
+            title = item.a.get("title").lower()
+        except AttributeError:
+            pass
+
+        if not title:
+            continue
+
+        if "java" in title:
 
             # Level ID = dict entry
             cols = item.find_all("td")
@@ -1138,7 +1170,7 @@ def get_data_versions():
             except IndexError:
                 data = None
 
-            final_data[item.find("td").a.get("title").lower().replace("java edition ","")] = data
+            final_data[title.replace("java edition ","")] = data
 
     # All data returned as dict
     return final_data
@@ -1288,7 +1320,7 @@ def load_addon_cache(write=False):
             return
     else:
         try:
-            constants.folder_check(cacheDir)
+            folder_check(cacheDir)
             with open(file_path, 'w+') as f:
                 f.write(json.dumps(addon_cache, indent=2))
         except:

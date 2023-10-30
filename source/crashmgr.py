@@ -55,6 +55,7 @@ def generate_log(exception):
     # Check for 'Logs' folder in application directory
     # If it doesn't exist, create a new folder called 'Logs'
     log_dir = os.path.join(constants.applicationFolder, "Logs")
+    constants.folder_check(log_dir)
 
     # Timestamp
     time_stamp = datetime.datetime.now().strftime("%#H-%M-%S_%#m-%#d-%y" if constants.os_name == "windows" else "%-H-%M-%S_%-m-%-d-%y")
@@ -63,9 +64,6 @@ def generate_log(exception):
     # Header
     header = f'Auto-MCS Exception:    {ame}  '
     splash = constants.generate_splash(True)
-
-    if not os.path.isdir(log_dir):
-        os.makedirs(log_dir)
 
     cpu_arch = architecture()
     if len(cpu_arch) > 1:
@@ -88,7 +86,7 @@ def generate_log(exception):
         Sub-servers:       {', '.join([f"{x}: {y.type} {y.version}" for x, y in enumerate(constants.server_manager.running_servers.values(), 1)]) if constants.server_manager.running_servers else "None"}
         ngrok:             {"Active" if constants.ngrok_ip['ip'] == "" else "Inactive"}
 
-        Processor info:    {psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {round((psutil.cpu_freq().max) / 1000, 2)} GHz ({cpu_arch})
+        Processor info:    {psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {round((psutil.cpu_freq().max) / 1000, 2)} GHz ({cpu_arch.replace('bit', '-bit')})
         Used memory:       {round(psutil.virtual_memory().used / 1073741824, 2)} / {round(psutil.virtual_memory().total / 1073741824)} GB
 
 

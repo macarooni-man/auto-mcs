@@ -665,7 +665,7 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
     load_icon.color = (0.6, 0.6, 1, 0)
     load_icon.pos_hint = {"center_y": pos_hint['center_y']}
     load_icon.allow_stretch = True
-    load_icon.anim_delay = 0.02
+    load_icon.anim_delay = constants.anim_speed * 0.02
 
     # Assemble layout
     final_layout.bind(pos=functools.partial(repos_button, search_bar, search_button, load_icon))
@@ -3410,7 +3410,7 @@ class WaitButton(FloatLayout):
         self.load_icon.pos_hint = {"center_y": position[1]}
         self.load_icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
         self.load_icon.allow_stretch = True
-        self.load_icon.anim_delay = 0.02
+        self.load_icon.anim_delay = constants.anim_speed * 0.02
         self.add_widget(self.load_icon)
 
 
@@ -3698,7 +3698,7 @@ class AnimButton(FloatLayout):
             self.icon.color = self.button.color_id[1]
             self.icon.pos_hint = pos_hint
             self.icon.allow_stretch = True
-            self.icon.anim_delay = 0.02
+            self.icon.anim_delay = constants.anim_speed * 0.02
 
             if position:
                 self.icon.texture_update()
@@ -3986,7 +3986,7 @@ def next_button(name, position, disabled=False, next_screen="MainMenuScreen", sh
         load_icon.pos_hint = {"center_y": position[1]}
         load_icon.pos = (-87, 200)
         load_icon.allow_stretch = True
-        load_icon.anim_delay = 0.02
+        load_icon.anim_delay = constants.anim_speed * 0.02
         final.add_widget(load_icon)
 
     final.add_widget(button)
@@ -5465,7 +5465,7 @@ class PopupUpdate(BigPopupWindow):
         self.window_title.shorten = True
         self.window_title.markup = True
         self.window_title.shorten_from = "right"
-        self.window_title.text = f"Auto-MCS Update Available"
+        self.window_title.text = f"Update auto-mcs"
 
 
         # Description
@@ -6429,13 +6429,13 @@ class ProgressScreen(MenuBackground):
             if x != 0:
                 if "[font=" not in self.steps.label_2.text:
                     self.steps.label_2.text = self.steps.label_2.text.split('(')[0].strip() + f"   [font={icons}]å[/font]"
-                time.sleep(0.6)
+                time.sleep(0.4)
             self.update_steps(step[0], x)
 
             # Execute function and check for completion
             self.last_progress = self.progress_bar.value
             test = step[1]()
-            time.sleep(0.27)
+            time.sleep(0.2)
 
             # If it failed, execute default error
             if not test:
@@ -6579,7 +6579,7 @@ class ProgressScreen(MenuBackground):
                     self.steps.label_4.text = ""
                 self.steps.label_4.y = self.steps.label_4.original_y
 
-            Clock.schedule_once(delayed_func, anim_duration+0.01 if self.start else 0)
+            Clock.schedule_once(delayed_func, anim_duration+0.2 if self.start else 0)
             self.start = True
 
 
@@ -6658,6 +6658,7 @@ class MainMenuScreen(MenuBackground):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
+        self.loaded = False
 
     # Prompt update/show banner when starting up
     def on_enter(self, *args):
@@ -6706,18 +6707,23 @@ class MainMenuScreen(MenuBackground):
         logo = Image(source=os.path.join(constants.gui_assets, 'logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
 
         splash.add_widget(logo)
-        splash.add_widget(Label(text=f"v{constants.app_version}{(8 - len(constants.app_version)) * '  '}", pos=(330, 200), pos_hint={"center_y": 0.77}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23)))
+        version = Label(text=f"v{constants.app_version}{(7 - len(constants.app_version)) * '  '}", pos=(330, 200), pos_hint={"center_y": 0.77}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
+        splash.add_widget(version)
         splash.add_widget(Label(text="_" * 50, pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25)))
         splash.add_widget(Label(text=constants.session_splash, pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25)))
 
         float_layout.add_widget(splash)
 
         if not constants.server_list:
-            buttons.append(main_button('Import a server', (0.5, 0.42), 'download-outline.png'))
+            top_button = main_button('Import a server', (0.5, 0.42), 'download-outline.png')
         else:
-            buttons.append(main_button('Manage Auto-MCS servers', (0.5, 0.42), 'settings-outline.png'))
-        buttons.append(main_button('Create a new server', (0.5, 0.32), 'duplicate-outline.png'))
-        buttons.append(exit_button('Quit', (0.5, 0.17)))
+            top_button = main_button('Manage Auto-MCS servers', (0.5, 0.42), 'settings-outline.png')
+        bottom_button = main_button('Create a new server', (0.5, 0.32), 'duplicate-outline.png')
+        quit_button = exit_button('Quit', (0.5, 0.17))
+
+        buttons.append(top_button)
+        buttons.append(bottom_button)
+        buttons.append(quit_button)
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -6728,9 +6734,37 @@ class MainMenuScreen(MenuBackground):
                 url = f'{constants.project_link}/releases/latest'
                 webbrowser.open_new_tab(url)
 
-        float_layout.add_widget(generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True), 'changelog': changelog}))
+        footer = generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True), 'changelog': changelog})
+        float_layout.add_widget(footer)
 
         self.add_widget(float_layout)
+
+        # Animate for startup yumminess
+        def animate_screen(*a):
+            if not self.loaded:
+                self.loaded = True
+
+                logo.opacity = 0
+                logo_width = logo.width
+                logo.width = logo.width * 0.97
+
+                version.opacity = 0
+                version_x = version.x
+                version.x = version.x - 10
+
+                top_button.opacity = 0
+                bottom_button.opacity = 0
+                quit_button.opacity = 0
+                footer.opacity = 0
+
+                Animation(opacity=1, duration=0.6, width=logo_width, transition='out_sine').start(logo)
+                Animation(opacity=1, duration=1, x=version_x, transition='out_sine').start(version)
+                Animation(opacity=1, duration=0.8, transition='in_out_sine').start(top_button)
+                Animation(opacity=1, duration=1, transition='in_out_sine').start(bottom_button)
+                Animation(opacity=1, duration=1.2, transition='in_out_sine').start(quit_button)
+                Animation(opacity=1, duration=0.4, transition='in_out_sine').start(footer)
+        Clock.schedule_once(animate_screen, 0)
+
 
 class UpdateAppProgressScreen(ProgressScreen):
 
@@ -13057,7 +13091,7 @@ class ServerBackupScreen(MenuBackground):
         def change_backup_dir(*args):
             backup_stats = server_obj.backup.backup_stats
             current_path = backup_stats['backup-path']
-            new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else constants.home), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
+            new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else constants.backupFolder), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
             Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
             def run_migrate(*args):
