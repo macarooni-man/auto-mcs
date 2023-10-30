@@ -1123,8 +1123,12 @@ def dump_config(server_name: str, new_server=False):
     if properties_file and os.path.isfile(properties_file):
         server_properties = constants.server_properties(server_name)
 
-        server_dict['world'] = server_properties['level-name']
-        server_dict['whitelist'] = server_properties['white-list']
+        try:
+            server_dict['world'] = server_properties['level-name']
+            server_dict['whitelist'] = server_properties['white-list']
+        except KeyError:
+            server_dict['world'] = 'world'
+            server_dict['whitelist'] = False
 
 
     if new_server:

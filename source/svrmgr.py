@@ -35,6 +35,8 @@ class ServerObject():
 
 
         self.name = server_name
+        self.server_path = constants.server_path(server_name)
+        self.last_modified = os.path.getmtime(self.server_path)
         self.running = False
         self.restart_flag = False
         self.crash_log = None
@@ -44,8 +46,20 @@ class ServerObject():
 
 
         # Server files
-        self.config_file = constants.server_config(server_name)
+        generate_properties = False
+        if not os.path.join(self.server_path, 'server.properties'):
+            generate_properties = True
+
         self.server_properties = constants.server_properties(server_name)
+        if len(self.server_properties) < 10:
+            generate_properties = True
+
+        # Repair properties if empty or broken
+        if generate_properties:
+            constants.fix_empty_properties(self.name)
+            self.server_properties = constants.server_properties(server_name)
+
+        self.config_file = constants.server_config(server_name)
         self.properties_hash = self.__get_properties_hash__()
 
 
@@ -123,9 +137,6 @@ class ServerObject():
         except KeyError:
             self.gamemode = None
             self.difficulty = None
-
-        self.server_path = constants.server_path(server_name)
-        self.last_modified = os.path.getmtime(self.server_path)
 
 
         # Special sub-objects, and defer loading in the background

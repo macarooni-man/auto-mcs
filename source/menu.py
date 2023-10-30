@@ -11584,7 +11584,10 @@ class PerformancePanel(RelativeLayout):
             def __init__(self, overview_min=270, **kwargs):
                 super().__init__(**kwargs)
 
-                self.max_players = constants.server_manager.current_server.server_properties['max-players']
+                try:
+                    self.max_players = constants.server_manager.current_server.server_properties['max-players']
+                except KeyError:
+                    self.max_players = 20
 
                 self.background = PanelFrame()
                 self.size_hint_max_x = overview_min
