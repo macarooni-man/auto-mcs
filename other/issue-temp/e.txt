@@ -4,51 +4,9 @@
 
 - Fabric crashes on Geyser install in 1.19.4 with ViaFabric
 
-(Probably fixed) - Use 'enforce-whitelist' in server.properties for newer minecraft versions
-
-- Refer to Line 5043 in Auto-MCS 1.651 for Backup Manager sorting
-
-- If server closed and backupAuto or updateAuto is set to 'prompt', prompt with menu
-
-- Completely reload Server Manager ServerObject when:
-	- Server is created/imported
-	- Backup is restored
-	- Server is renamed
-	- Server is updated/modified
-
-- Run constants.javacheck() in the following instances:
-	- Creation of new server
-	- Import of server
-	- Restoring from backup
-	- Update/migrate server
-	- Run server
-
-
-- Visual glitch in steps text animation on ProgressScreen when transitioning
-
-
 Server Manager Stuff:
 
 	- Add a right-click context menu with [rename, favorite/unfavorite, delete]
-
-	- Since AclObject, BackupObject, and AddonManager are on a thread, wait until they are initialized before loading the sub menus
-
-
-- os.system() flashes CMD window when called from compiled EXE, replace every instance of os.system with subprocess.call()
-
-- Async loading bar still flashes white for a second when loading
-
-- Make exception for importing non-vanilla 1.17.0 servers because java won't work
-
-- Finish making import Auto-MCS backup file UI
-	- auto prompt file menu when ServerImportScreen is opened and initial button is pressed to step 2
-
-- Make sure both *.amb and *.tgz files are supported in backup manager
-
-- Test importing Linux servers and backups to Windows auto-mcs, and Windows servers/backups to Linux auto-mcs
-
-- Play with delay in ProgressScreen.execute_steps() to prevent visual glitches
-
 
 - Make function to retrieve IP address in constants when server is loaded. Use ngrok IP if that's open
 - Show running symbol and IP address on ServerButton in ServerManagerScreen (Maybe display up-time and current player count in place of type/version on right)

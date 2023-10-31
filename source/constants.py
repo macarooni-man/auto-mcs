@@ -3038,6 +3038,17 @@ def get_ngrok_ip(server_name: str):
             retries += 1
 
 
+# Check if port is open on host
+def check_port(ip: str, port: int):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(120)
+    result = sock.connect_ex((ip, port))
+    return result == 0
+
+
+# Assigned from 'menu.py' to update IP text on screens
+refresh_ips = None
+
 # Returns active IP address of 'name'
 def get_current_ip(name: str, get_ngrok=False):
     global public_ip
@@ -3101,25 +3112,44 @@ def get_current_ip(name: str, get_ngrok=False):
 
 
         if not get_ngrok:
-            if app_online and not public_ip:
+            if app_online:
                 def get_public_ip(server_name, *args):
                     global public_ip
-                    try:
-                        new_ip = requests.get('http://api.ipify.org', timeout=5).content.decode('utf-8')
-                    except:
-                        new_ip = ""
 
+                    # If public IP isn't defined, retrieve it from API
+                    if public_ip:
+                        new_ip = public_ip
+                    else:
+                        try:
+                            new_ip = requests.get('http://api.ipify.org', timeout=5).content.decode('utf-8')
+                        except:
+                            new_ip = ""
+
+                    # Check if port is open
                     if new_ip and 'bad' not in new_ip.lower():
                         public_ip = new_ip
+
                         # Assign public IP to current running server
                         if server_manager.running_servers:
-                            try:
-                                server_manager.running_servers[server_name].run_data['network']['address']['ip'] = public_ip
-                                server_manager.running_servers[server_name].run_data['network']['public_ip'] = public_ip
-                            except KeyError:
-                                pass
+                            if updated_port:
+                                final_port = int(updated_port)
+                            else:
+                                final_port = int(original_port)
 
-                ip_timer = Timer(0, functools.partial(get_public_ip, name))
+                            port_check = check_port(public_ip, final_port)
+                            if port_check:
+                                try:
+                                    server_manager.running_servers[server_name].run_data['network']['address']['ip'] = public_ip
+                                    server_manager.running_servers[server_name].run_data['network']['public_ip'] = public_ip
+
+                                    # Update screen info
+                                    if refresh_ips:
+                                        refresh_ips(name)
+
+                                except KeyError:
+                                    pass
+
+                ip_timer = Timer(1, functools.partial(get_public_ip, name))
                 ip_timer.start()
 
 
@@ -3142,9 +3172,9 @@ def get_current_ip(name: str, get_ngrok=False):
         ip_timer = Timer(0, functools.partial(get_ngk_ip, name))
         ip_timer.start()
 
-    if public_ip:
-        final_addr['ip'] = public_ip
-    elif private_ip:
+    # if public_ip:
+    #     final_addr['ip'] = public_ip
+    if private_ip:
         final_addr['ip'] = private_ip
     else:
         final_addr['ip'] = '127.0.0.1'

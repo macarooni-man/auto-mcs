@@ -10476,6 +10476,13 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     else:
         Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
 
+def refresh_ips(server_name):
+    screen = screen_manager.current_screen
+    if "ServerViewScreen" in screen.name:
+        if screen.server.name == server_name:
+            screen.server_button.update_subtitle(screen.server.run_data)
+constants.refresh_ips = refresh_ips
+
 class ServerButton(HoverButton):
 
     class ParagraphLabel(Label, HoverBehavior):
