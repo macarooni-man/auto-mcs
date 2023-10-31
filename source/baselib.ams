@@ -103,7 +103,7 @@ def generate_header(text):
 		player.log_warning(f"Restarting '{server.name}', please wait...", tag=True)
 	server.log_warning(f"Restarting '{server.name}', please wait...")
 	sleep(0.5)
-	server._restart()
+	server.restart()
 
 
 
@@ -218,6 +218,8 @@ def generate_header(text):
 		player.log('- Shows amscript version and loaded scripts', 'gray', 'normal')
 		player.log('!ams enable/disable <script>/all', 'white', 'normal')
 		player.log('- Enables/disables script by name, or all', 'gray', 'normal')
+		player.log('!ams clearpst', 'white', 'normal')
+		player.log('- Deletes and resets persistent server and player configuration', 'gray', 'normal')
 		player.log('!ams reload', 'white', 'normal')
 		player.log('- Recompiles and initializes all enabled scripts', 'gray', 'normal')
 
@@ -284,6 +286,14 @@ def generate_header(text):
 			player.log_error(f"Invalid syntax: <script> is unspecified for '{cmd}'. Type '{command} help' for more info")
 
 
+	# Clears persistent configuration
+	elif cmd == "clearpst":
+		server._persistent_config.purge_config()
+		if not player.is_server:
+			player.log_error(f"[amscript] Successfully cleared all persistent data!")
+		server._ams_log(f"Successfully cleared all persistent data!", 'error')
+
+
 	# Reloads amscript engine
 	elif cmd == "reload":
 		loaded_count, total_count = server._reload_scripts()
@@ -302,6 +312,7 @@ def generate_header(text):
 
 		elif total_count == 0:
 			player.log('[amscript] There are no scripts to load')
+
 
 	# Catch all
 	else:

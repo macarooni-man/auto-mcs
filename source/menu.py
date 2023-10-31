@@ -12492,14 +12492,18 @@ class ConsolePanel(FloatLayout):
 
                 self.bind(on_text_validate=self.on_enter)
 
-            def tab_player(self):
+            def tab_player(self, *a):
                 player_list = self.parent.server_obj.run_data['player-list']
 
-                if self.text:
-                    key = self.text.split(" ")[-1].strip().lower()
+                if self.text.strip():
+                    key = self.text.split(" ")[-1].lower()
                     if key not in player_list:
                         for player in player_list.keys():
-                            if player.lower().startswith(key):
+                            if self.text.endswith(" "):
+                                self.text = self.text.strip() + " " + player
+                                break
+
+                            elif player.lower().startswith(key):
                                 self.text = self.text[:-len(key)] + player
                                 break
 
@@ -18137,11 +18141,11 @@ class MainApp(App):
         screen_manager.current = constants.startup_screen
 
         # Screen manager override
-        # if not constants.app_compiled:
-        #     def open_menu(*args):
-        #         screen_manager.current = "ServerManagerScreen"
-        #         open_server("bedrock-test")
-        #     Clock.schedule_once(open_menu, 0)
+        if not constants.app_compiled:
+            def open_menu(*args):
+                screen_manager.current = "ServerManagerScreen"
+                open_server("bedrock-test")
+            Clock.schedule_once(open_menu, 0)
 
 
         screen_manager.transition = FadeTransition(duration=0.115)

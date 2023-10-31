@@ -291,8 +291,8 @@ class ScriptObject():
 
         # Yummy stuffs
         self.protected_variables = ["server", "acl", "backup", "addon"]
-        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
-        self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_message", "@server.on_start", "@server.on_stop"]
+        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
+        self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@server.on_start", "@server.on_stop"]
         self.valid_imports = std_libs
         self.valid_imports.extend(['requests', 'bs4', 'nbt'])
         self.valid_imports.extend([os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.script_path, '*.py'))])
@@ -1041,6 +1041,15 @@ class ScriptObject():
             print('player.on_message')
             print(msg_obj)
 
+    # Fires event when a player dies
+    # {'user': player, 'content': message}
+    def death_event(self, msg_obj):
+        if msg_obj['user'] != self.server_id:
+            self.call_event('@player.on_death', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), msg_obj['content']))
+
+            print('player.on_death')
+            print(msg_obj)
+
     # Fires event when player sends a command alias
     # {'user': player, 'content': message}
     def alias_event(self, player_obj):
@@ -1063,18 +1072,21 @@ class ScriptObject():
 class ServerScriptObject():
     def __init__(self, server_obj):
         self._running = True
+
+        # Data to be used internally, don't use these in user scripts
         self._server_id = ("#" + server_obj._hash)
         self._ams_log = server_obj.amscript_log
         self._reload_scripts = server_obj.reload_scripts
-        self._restart = server_obj.restart
         self._ams_info = server_obj.get_ams_info()
         self._persistent_config = PersistenceManager(server_obj.name)
         self._app_version = constants.app_version
         self._performance = server_obj.run_data['performance']
         self._script_state = server_obj.script_manager.script_state
 
-        # Assign functions from main server object
+        # Assign callable functions from main server object
         self.execute = server_obj.silent_command
+        self.restart = server_obj.restart
+        self.stop = functools.partial(self.execute, 'stop')
         self.log = server_obj.send_log
         self.aliases = {}
         self.player_list = server_obj.run_data['player-list']

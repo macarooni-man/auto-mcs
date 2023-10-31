@@ -537,6 +537,57 @@ class ServerObject():
                     type_label = "INFO"
                     type_color = (0.6, 0.6, 1, 1)
 
+
+                    # Check for death events
+                    exclude_list = ['joined', 'left', 'Killed', 'logged', 'disconnected', 'Made', 'UUID', 'achievement']
+                    s_msg = main_label.split(" ")
+                    for word in exclude_list:
+                        if word in s_msg:
+                            break
+                    else:
+                        include_list = [
+                            'slain',
+                            'went up in flames',
+                            'fell out of the world',
+                            'drowned',
+                            'killed by',
+                            'blown up by',
+                            'suffocated in',
+                            ' lava',
+                            'hit the ground too hard',
+                            'fell ',
+                            'to fall',
+                            'walked into the danger zone',
+                            'struck by lightning',
+                            ' froze',
+                            'shot by',
+                            'pummeled by',
+                            'fireballed by',
+                            'obliterated by',
+                            'to death',
+                            'squished too much',
+                            'squished by',
+                            'withered away',
+                            ' died',
+                            'impaled by',
+                            'was killed',
+                            'left the confines of this world'
+                        ]
+                        include = False
+
+                        for phrase in include_list:
+                            if phrase in main_label.strip():
+                                include = True
+                                break
+
+                        if include:
+                            for word in s_msg:
+                                if word.strip() in self.run_data['player-list']:
+                                    type_label = "CHAT"
+                                    type_color = (0.439, 0.839, 1, 1)
+                                    self.script_object.death_event({'user': word.strip(), 'content': main_label.strip()})
+
+
                 if date_label and type_label and main_label and type_color:
                     return (date_label, type_label, main_label, type_color)
 
