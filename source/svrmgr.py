@@ -991,12 +991,19 @@ class ServerObject():
             parent = psutil.Process(self.run_data['process'].pid)
             sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
 
-            children = parent.children(recursive=True)
-            for proc in children:
-                if proc.name() == "java.exe":
-                    perc_cpu = proc.cpu_percent(interval=interval)
-                    perc_ram = round(proc.memory_info().private / 1048576, 2)
-                    break
+            # Get performance stats of cmd > java.exe
+            if constants.os_name == "windows":
+                children = parent.children(recursive=True)
+                for proc in children:
+                    if proc.name() == "java.exe":
+                        perc_cpu = proc.cpu_percent(interval=interval)
+                        perc_ram = round(proc.memory_info().private / 1048576, 2)
+                        break
+
+            # Get performance stats of forked java process
+            else:
+                perc_cpu = parent.cpu_percent(interval=interval)
+                perc_ram = round(parent.memory_info().vms / 1048576, 2)
 
             perc_cpu = round(perc_cpu / psutil.cpu_count(), 2)
             perc_ram = round(((perc_ram / sys_mem) * 100), 2)

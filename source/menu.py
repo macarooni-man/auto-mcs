@@ -6755,14 +6755,35 @@ class MainMenuScreen(MenuBackground):
                 top_button.opacity = 0
                 bottom_button.opacity = 0
                 quit_button.opacity = 0
-                footer.opacity = 0
 
-                Animation(opacity=1, duration=0.6, width=logo_width, transition='out_sine').start(logo)
+                Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(logo)
                 Animation(opacity=1, duration=1, x=version_x, transition='out_sine').start(version)
-                Animation(opacity=1, duration=0.8, transition='in_out_sine').start(top_button)
-                Animation(opacity=1, duration=1, transition='in_out_sine').start(bottom_button)
-                Animation(opacity=1, duration=1.2, transition='in_out_sine').start(quit_button)
-                Animation(opacity=1, duration=0.4, transition='in_out_sine').start(footer)
+
+                def button_1(*b):
+                    Animation(opacity=1, duration=0.8, transition='in_out_sine').start(top_button)
+                def button_2(*b):
+                    Animation(opacity=1, duration=1.1, transition='in_out_sine').start(bottom_button)
+                def button_3(*b):
+                    Animation(opacity=1, duration=1.4, transition='in_out_sine').start(quit_button)
+                Clock.schedule_once(button_1, 0)
+                Clock.schedule_once(button_2, 0.1)
+                Clock.schedule_once(button_3, 0.2)
+
+                # Animate footer items
+                def wait_anim(c, c_y, *b):
+                    Animation(duration=0.65, y=c_y, transition='out_circ').start(c)
+                def wait_anim_2(w, *b):
+                    Animation(opacity=1, duration=1, transition='out_circ').start(w)
+                for x, w in enumerate(reversed(footer.children), 0):
+                    w.opacity = 0
+                    delay = (x * 0.1) + 0.35
+                    for c in w.children:
+                        c_y = c.y
+                        c.y = c_y - 50
+                        Clock.schedule_once(functools.partial(wait_anim, c, c_y), delay)
+                    Clock.schedule_once(functools.partial(wait_anim_2, w), delay)
+
+
         Clock.schedule_once(animate_screen, 0)
 
 
