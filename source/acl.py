@@ -1503,24 +1503,28 @@ def concat_db(only_delete=False):
             for item in glob(os.path.join(temp_file, 'uuid-*.json')):
 
                 if not only_delete:
+                    try:
+                        with open(item, 'r') as f:
+                            user = json.load(f)
+                            added_items.append(user)
 
-                    with open(item, 'r') as f:
-                        user = json.load(f)
-                        added_items.append(user)
+                            if user['uuid'] in uuid_list:
+                                found_user = final_db[uuid_list.index(user['uuid'])]
+                                found_user['name'] = user['name']
+                                try:
+                                    found_user['latest-ip'] = user['latest-ip']
+                                    found_user['latest-login'] = user['latest-login']
+                                    found_user['ip-geo'] = user['ip-geo']
+                                except KeyError:
+                                    pass
 
-                        if user['uuid'] in uuid_list:
-                            found_user = final_db[uuid_list.index(user['uuid'])]
-                            found_user['name'] = user['name']
-                            try:
-                                found_user['latest-ip'] = user['latest-ip']
-                                found_user['latest-login'] = user['latest-login']
-                                found_user['ip-geo'] = user['ip-geo']
-                            except KeyError:
-                                pass
+                            else:
+                                final_db.append(user)
+                                uuid_list = [item['uuid'] for item in final_db]
+                    except Exception as e:
+                        if constants.debug:
+                            print(e)
 
-                        else:
-                            final_db.append(user)
-                            uuid_list = [item['uuid'] for item in final_db]
                 try:
                     os.remove(item)
                 except PermissionError:

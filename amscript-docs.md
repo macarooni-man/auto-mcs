@@ -366,6 +366,31 @@ Fired upon player sending a message in the chat, excluding commands.
 
 
 
+### @player.on_death
+
+Fired upon player dying to the environment or another player.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution of the victim |
+| `enemy*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution of the attacker (`None` if player was killed by the environment) |
+| `message*` | `str` of the message |
+| `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
+
+```
+@player.on_death(player, enemy, message):
+    if enemy:
+        enemy.log(f"/say Did you know: murder is a crime {enemy}?")
+        acl.ban_player(enemy)
+    else:
+        player.log(f"You should really be more careful {player}!")
+```
+
+<br>
+
+
+
 ### @player.on_alias
 
 Used for registering custom commands and augmenting existing ones.

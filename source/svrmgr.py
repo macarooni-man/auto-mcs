@@ -586,6 +586,7 @@ class ServerObject():
                                     type_label = "CHAT"
                                     type_color = (0.439, 0.839, 1, 1)
                                     self.script_object.death_event({'user': word.strip(), 'content': main_label.strip()})
+                                    break
 
 
                 if date_label and type_label and main_label and type_color:

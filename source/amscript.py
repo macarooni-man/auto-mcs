@@ -1045,7 +1045,15 @@ class ScriptObject():
     # {'user': player, 'content': message}
     def death_event(self, msg_obj):
         if msg_obj['user'] != self.server_id:
-            self.call_event('@player.on_death', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), msg_obj['content']))
+            enemy = None
+
+            # Attempt to find attacker if player was killed by another player
+            for word in reversed(msg_obj['content'].split(' ')):
+                if word.strip() != msg_obj['user'] and word.strip() in self.server.run_data['player-list']:
+                    enemy = PlayerScriptObject(self.server_script_obj, word.strip())
+                    break
+
+            self.call_event('@player.on_death', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), enemy, msg_obj['content']))
 
             print('player.on_death')
             print(msg_obj)
@@ -1351,8 +1359,13 @@ class PlayerScriptObject():
                     # print(log_data)
 
                     # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
-                    new_nbt = re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: json_regex(x), nbt_data).replace(";",",").replace("'{", '"{').replace("}'", '}"')
-                    new_nbt = json.loads(re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
+                    try:
+                        new_nbt = re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: json_regex(x), nbt_data).replace(";",",").replace("'{", '"{').replace("}'", '}"')
+                        new_nbt = json.loads(re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
+                    except json.decoder.JSONDecodeError:
+                        if constants.debug:
+                            print('Failed to process NBT data')
+                        pass
 
             # If log doesn't contain entity content, revert NBT
             except IndexError:
