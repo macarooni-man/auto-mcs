@@ -11,6 +11,8 @@ import json
 import re
 import os
 
+from amscript import PlayerScriptObject
+
 
 # Auto-MCS Access Control API
 # ----------------------------------------------- Global Variables -----------------------------------------------------
@@ -808,7 +810,8 @@ class AclObject():
 
     # op_player("BlUe_KAZoo, kchicken, test")
     # "Rule1, Rule2" --> [AclObject1, AclObject2]
-    def op_player(self, rule_list: str or list, remove=False, force_version=None, temp_server=False):
+    def op_player(self, rule_list: str or list or PlayerScriptObject, remove=False, force_version=None, temp_server=False):
+        rule_list = convert_obj_to_str(rule_list)
 
         # Ignore removal of global rules
         if remove:
@@ -829,7 +832,8 @@ class AclObject():
 
     # ban_player("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.0-37")
     # "Rule1, Rule2" --> [AclObject1, AclObject2]
-    def ban_player(self, rule_list: str or list, remove=False, force_version=None, temp_server=False):
+    def ban_player(self, rule_list: str or list or PlayerScriptObject, remove=False, force_version=None, temp_server=False):
+        rule_list = convert_obj_to_str(rule_list)
 
         # Ignore removal of global rules
         if remove:
@@ -851,7 +855,8 @@ class AclObject():
 
     # whitelist_player("BlUe_KAZoo, kchicken, test")
     # "Rule1, Rule2" --> [AclObject1, AclObject2]
-    def whitelist_player(self, rule_list: str or list, remove=False, force_version=None, temp_server=False):
+    def whitelist_player(self, rule_list: str or list or PlayerScriptObject, remove=False, force_version=None, temp_server=False):
+        rule_list = convert_obj_to_str(rule_list)
 
         # Ignore removal of global rules
         if remove:
@@ -898,7 +903,8 @@ class AclObject():
     # Adds rule list to global ACL, then to every server (use similar to the *_user functions)
     # add_global_rule("BlUe_KAZoo, kchicken, test", list_type="ops", remove=False) --> self.rules
     # List Types: ops, bans, wl
-    def add_global_rule(self, rule_list: str or list, list_type: str, remove=False):
+    def add_global_rule(self, rule_list: str or list or PlayerScriptObject, list_type: str, remove=False):
+        rule_list = convert_obj_to_str(rule_list)
 
         add_global_rule(rule_list, list_type, remove)
 
@@ -940,7 +946,8 @@ class AclObject():
 
     # Operates similarly to *_user rules, but only edits self.rules[list_type]
     # List Types: ops, bans, wl
-    def edit_list(self, list_type: str, rule_list: str or list, remove=False, overwrite=False):
+    def edit_list(self, list_type: str, rule_list: str or list or PlayerScriptObject, remove=False, overwrite=False):
+        rule_list = convert_obj_to_str(rule_list)
 
         list_type = 'bans' if list_type == 'subnets' else list_type
 
@@ -2455,6 +2462,15 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
     concat_db()
     return wl_list, new_op_list
 
+
+# Converts PlayerScriptObject or list of PlayerScriptObjects to str
+def convert_obj_to_str(rule_list: str or list or PlayerScriptObject):
+    if isinstance(rule_list, list):
+        if isinstance(rule_list[0], PlayerScriptObject):
+            rule_list = [p.name for p in rule_list]
+    elif isinstance(rule_list, PlayerScriptObject):
+        rule_list = rule_list.name
+    return rule_list
 
 
 # ---------------------------------------------- Usage Examples --------------------------------------------------------
