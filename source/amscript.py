@@ -1139,10 +1139,35 @@ class ServerScriptObject():
         return constants.version_check(self.version, operand, version)
 
     # Returns PlayerScriptObject that matches selector
-    def get_player(self, username):
+    def get_player(self, tag):
 
-        if username in self.player_list:
-            obj = PlayerScriptObject(self, username, _get_player=True)
+        # First check if there's a user selector
+        if tag.startswith("@p") or tag.startswith("@r"):
+            user = None
+
+            if self.version_check(">", "1.13"):
+                try:
+                    log_data = self.execute(f'data get entity {tag}', log=False, _capture=f" has the following entity data: ", _send_twice=True)
+                    user = log_data.split(" has the following entity data: ")[0].rsplit(":",1)[1].strip()
+                except:
+                    user = None
+
+            elif self.version_check(">=", "1.8") and self.version_check("<", "1.13"):
+                try:
+                    log_data = self.execute(f'execute {tag} ~ ~ ~ tp @p ~ ~ ~', log=False, _capture=f"Teleported ", _send_twice=True)
+                    user = log_data.split("Teleported ")[1].split(" to")[0].strip()
+                except:
+                    user = None
+
+            if user:
+                tag = user
+            else:
+                return None
+
+        # Then check if username is in player list
+        if tag in self.player_list:
+            obj = PlayerScriptObject(self, tag, _get_player=True)
+
         else:
             obj = None
 
@@ -1229,25 +1254,6 @@ class PlayerScriptObject():
         # If newer version, use "/data get" to gather updated playerdata
         if self._version_check(">", "1.13"):
 
-            # Gives strings quotes that don't have any, and formats numbers
-            def json_regex(match):
-                if match.group(2):
-                    # print(match.group(2), re.match(r'^-?\d+.?\d*(f|L|b|d)?$', match.group(2)))
-
-                    if re.match(r'^-?\d+.?\d*(f|L|b|d)?$', match.group(2)):
-                        if "." in match.group(2):
-                            final_str = str(round(float(re.sub(r'[^0-9.-]', '', match.group(2))), 4))
-                        else:
-                            final_str = re.sub(r'[^0-9-]', '', match.group(2))
-                    else:
-                        final_str = f'"{match.group(2).lower()}"'
-
-                else:
-                    final_str = match.group(1).replace('minecraft:', '')
-
-                return final_str
-
-
             # Attempt to intercept player's entity data
             try:
                 if not self._send_command:
@@ -1267,8 +1273,7 @@ class PlayerScriptObject():
                         pass
 
                     try:
-                        self.motion = CoordinateObject({'x': fmt(new_nbt['Motion'][0]), 'y': fmt(new_nbt['Motion'][1]),
-                                                        'z': fmt(new_nbt['Motion'][2])})
+                        self.motion = CoordinateObject({'x': fmt(new_nbt['Motion'][0]), 'y': fmt(new_nbt['Motion'][1]), 'z': fmt(new_nbt['Motion'][2])})
                     except:
                         pass
 
@@ -1330,18 +1335,13 @@ class PlayerScriptObject():
                         pass
 
                     try:
-                        self.dimension = {0: 'overworld', -1: 'the_nether', 1: 'the_end'}.get(
-                            int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:', '')
+                        self.dimension = {0: 'overworld', -1: 'the_nether', 1: 'the_end'}.get(int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:', '')
                     except:
                         pass
 
                     try:
                         self.active_effects = {
-                            id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): EffectObject(
-                                {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value),
-                                 'show_particles': (item[1].value == 1)},
-                                name=id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', '')) for
-                            item in new_nbt['ActiveEffects'].tags}
+                            id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): EffectObject({'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)}, name=id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', '')) for item in new_nbt['ActiveEffects'].tags}
                     except:
                         pass
 
@@ -2222,6 +2222,24 @@ for lib in list(set(libs)):
     std_libs.append(lib)
 del libs
 
+
+# Gives strings quotes that don't have any, and formats numbers
+def json_regex(match):
+    if match.group(2):
+        # print(match.group(2), re.match(r'^-?\d+.?\d*(f|L|b|d)?$', match.group(2)))
+
+        if re.match(r'^-?\d+.?\d*(f|L|b|d)?$', match.group(2)):
+            if "." in match.group(2):
+                final_str = str(round(float(re.sub(r'[^0-9.-]', '', match.group(2))), 4))
+            else:
+                final_str = re.sub(r'[^0-9-]', '', match.group(2))
+        else:
+            final_str = f'"{match.group(2).lower()}"'
+
+    else:
+        final_str = match.group(1).replace('minecraft:', '')
+
+    return final_str
 
 # Enables or disables script for a specific server
 def script_state(server_name: str, script: AmsFileObject, enabled=True):
