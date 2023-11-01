@@ -10512,19 +10512,33 @@ class ServerButton(HoverButton):
         # Normal stuffies
         def on_ref_press(self, *args):
             if not self.disabled:
-                Clock.schedule_once(
-                    functools.partial(
-                        screen_manager.current_screen.show_banner,
-                        (0.85, 0.65, 1, 1),
-                        "Copied IP address to clipboard",
-                        "link-sharp.png",
-                        2,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ), 0
-                )
+                def click(*a):
+                    clipboard_text = re.sub("\[.*?\]", "", self.text.split(" ")[-1].strip())
+                    if self.parent.button_pressed == "left":
+                        banner_text = "Copied IP address  (right-click for LAN)"
 
-                Clipboard.copy(re.sub("\[.*?\]","",self.text.split(" ")[-1].strip()))
+                    else:
+                        server_obj = self.parent.properties
+                        if server_obj.running:
+                            clipboard_text = server_obj.run_data['network']['private_ip'] + ':' + server_obj.run_data['network']['address']['port']
 
+                        banner_text = "Copied LAN IP address  (left-click for public)"
+
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.85, 0.65, 1, 1),
+                            banner_text,
+                            "link-sharp.png",
+                            2,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
+
+                    Clipboard.copy(clipboard_text)
+
+                Clock.schedule_once(click, 0)
 
         def ref_text(self, *args):
 
@@ -10532,7 +10546,6 @@ class ServerButton(HoverButton):
                 self.text = f'[ref=none]{self.text.strip()}[/ref]'
             elif '[/ref]' in self.text:
                 self.text = self.text.replace("[/ref]", "") + "[/ref]"
-
 
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
@@ -15074,7 +15087,7 @@ class AmscriptListButton(HoverButton):
 
         # Title and description
         padding = 2.17
-        self.title.pos = (self.x + (self.title.text_size[0] / padding) - 6, self.y + 31)
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (6 if self.disabled_banner else 0), self.y + 31)
         self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1, self.y)
         self.hover_text.pos = (self.x + (self.size[0] / padding) - 30, self.y + 15)
 

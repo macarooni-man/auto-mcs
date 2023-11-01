@@ -149,7 +149,7 @@ class ScriptManager():
                     enabled_list = json.load(f)['enabled']
                     for path in all_scripts:
                         for enabled in enabled_list:
-                            if path.lower().endswith(enabled.strip().lower()):
+                            if os.path.basename(path.lower()) == enabled.strip().lower():
                                 ams_dict['enabled'].append(AmsFileObject(path, enabled=True))
                                 break
                         else:
@@ -2250,6 +2250,8 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
     if os.path.isfile(json_path):
         with open(json_path, 'r') as f:
             json_data = json.loads(f.read())
+
+    print(script.file_name, json_data)
 
     # Add file to json list
     if enabled:
