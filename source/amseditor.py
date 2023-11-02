@@ -1132,10 +1132,83 @@ def launch_window(path: str, data: dict):
                     self.delete(f"{current_pos}-{length}c", current_pos)
                     return 'break'
 
+                else:
+                    current_pos = self.index(INSERT)
+                    next_pos = self.index(f"{current_pos}+1c")
+                    left = line_text[-1:]
+                    right = self.get(current_pos, next_pos)
+                    print(left, right)
 
-            # Insert spaces instead of tab character
+                    # Delete symbol pairs
+                    if left == '(' and right == ')':
+                        self.delete(current_pos, next_pos)
+
+                    elif left == '{' and right == '}':
+                        self.delete(current_pos, next_pos)
+
+                    elif left == '[' and right == ']':
+                        self.delete(current_pos, next_pos)
+
+                    elif left == "'" and right == "'":
+                        self.delete(current_pos, next_pos)
+
+                    elif left == '"' and right == '"':
+                        self.delete(current_pos, next_pos)
+
+
+            # Move cursor right
+            def move_cursor_right(self):
+                current_pos = self.index(INSERT)
+                new_pos = self.index(f"{current_pos}+1c")
+                self.mark_set(INSERT, new_pos)
+
+
+            # Insert spaces instead of tab character and finish brackets/quotes
             def insert_spaces(self, event):
-                if event.keysym == 'Tab':
+                current_pos = self.index(INSERT)
+                right = self.get(current_pos, self.index(f"{current_pos}+1c"))
+
+                # Skip right if pressed
+                if event.keysym == 'parenright' and right == ')':
+                    self.move_cursor_right()
+                    return 'break'
+
+                elif event.keysym == 'braceright' and right == '}':
+                    self.move_cursor_right()
+                    return 'break'
+
+                elif event.keysym == 'bracketright' and right == ']':
+                    self.move_cursor_right()
+                    return 'break'
+
+
+                # Insert symbol pairs
+                elif event.keysym == 'parenleft' and right != ')':
+                    self.insert(INSERT, "()")
+                    self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
+                    return 'break'
+
+                elif event.keysym == 'braceleft' and right != '}':
+                    self.insert(INSERT, "{}")
+                    self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
+                    return 'break'
+
+                elif event.keysym == 'bracketleft' and right != ']':
+                    self.insert(INSERT, "[]")
+                    self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
+                    return 'break'
+
+                elif event.keysym == 'quoteright' and right != "'":
+                    self.insert(INSERT, "''")
+                    self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
+                    return 'break'
+
+                elif event.keysym == 'quotedbl' and right != '"':
+                    self.insert(INSERT, '""')
+                    self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
+                    return 'break'
+
+                elif event.keysym == 'Tab':
                     self.insert(INSERT, tab_str)
                     return 'break'  # Prevent default behavior of the Tab key
 
