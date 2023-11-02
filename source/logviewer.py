@@ -1,4 +1,4 @@
-from tkinter import Tk, Text, Entry, Label, Canvas, RIGHT, BOTTOM, X, Y, BOTH, DISABLED, END, IntVar, Frame, PhotoImage
+from tkinter import Tk, Text, Entry, Label, Canvas, RIGHT, BOTTOM, X, Y, BOTH, DISABLED, END, IntVar, Frame, PhotoImage, INSERT
 from PIL import ImageTk, Image
 import multiprocessing
 import functools
@@ -107,6 +107,7 @@ def launch_window(server_name: str, path: str, data: dict):
 
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
+                self.bind("<Control-BackSpace>", self.ctrl_bs)
 
                 self.put_placeholder()
 
@@ -125,11 +126,17 @@ def launch_window(server_name: str, path: str, data: dict):
                     self.put_placeholder()
                 self.has_focus = False
 
+            def ctrl_bs(self, event, *_):
+                ent = event.widget
+                end_idx = ent.index(INSERT)
+                start_idx = ent.get().rfind(" ", None, end_idx)
+                ent.selection_range(start_idx, end_idx)
+
         search_frame = Frame(root, height=1)
         search_frame.pack(fill=X, side=BOTTOM)
         search_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
         search = EntryPlaceholder(search_frame, placeholder='search for text')
-        search.pack(fill=BOTH, expand=True, padx=(55, 5), pady=(10, 3), side=BOTTOM, ipady=5, anchor='s')
+        search.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
         search.configure(
             bg = background_color,
             borderwidth = 0,
@@ -138,7 +145,7 @@ def launch_window(server_name: str, path: str, data: dict):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = "Courier 16 bold",
+            font = "Consolas 16 bold",
         )
 
         # Bind CTRL-F to focus search box
@@ -229,7 +236,6 @@ def launch_window(server_name: str, path: str, data: dict):
                     else:
                         self.hidden = False
                 root.after(0, lambda *_: check_hidden())
-
 
             def move_on_click(self, event):
                 if self.orient == 'vertical':
@@ -333,7 +339,7 @@ def launch_window(server_name: str, path: str, data: dict):
                     fg = convert_color((0.3, 0.3, 0.65))['hex'],
                     bg = background_color,
                     borderwidth = 0,
-                    font = "Courier 14 bold"
+                    font = "Consolas 15 bold"
                 )
 
             def highlight_pattern(self, pattern, tag, start="1.0", end="end", regexp=False):
@@ -387,7 +393,7 @@ def launch_window(server_name: str, path: str, data: dict):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = "Courier 14",
+            font = "Consolas 15",
             state = DISABLED,
             spacing1 = 10
         )
@@ -417,7 +423,7 @@ def launch_window(server_name: str, path: str, data: dict):
         # Search icon
         icon = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'color-search.png')))
         search_icon = Label(image=icon, bg=background_color)
-        search_icon.place(anchor='nw', in_=search, x=-45, y=-2)
+        search_icon.place(anchor='nw', in_=search, x=-50, y=-2)
 
         scrollbar.command = text_info.yview
 
@@ -443,11 +449,11 @@ def open_log(server_name: str, path: str, data: dict, *args):
 
 # if __name__ == '__main__':
 #     import constants
+#
 #     data_dict = {
 #         'app_title': constants.app_title,
 #         'gui_assets': constants.gui_assets,
 #         'background_color': constants.background_color
 #     }
-#     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\test\crash-reports\crash-2023-06-10_00.17.17-server.txt"
-#     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\test\crash-reports\crash-2023-05-08_12.37.24-server.txt"
+#     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\Cunt Buiscut\crash-reports\crash-2017-08-01_18.03.13-server.txt"
 #     launch_window('test', path, data_dict)
