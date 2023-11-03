@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from tkinter import Tk, Text, Entry, Label, Canvas, RIGHT, BOTTOM, X, Y, BOTH, DISABLED, END, IntVar, Frame, PhotoImage, font, ttk, INSERT, BaseWidget, Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean
+from tkinter import Tk, Text, Entry, Label, Canvas, RIGHT, BOTTOM,\
+    X, Y, BOTH, DISABLED, END, IntVar, Frame, PhotoImage, font, ttk,\
+    INSERT, BaseWidget, Event, Misc, TclError, Text, ttk, RIGHT, Y,\
+    getboolean, SEL_FIRST, SEL_LAST
 from typing import Any, Callable, Optional, Type, Union
 from contextlib import suppress
 from PIL import ImageTk, Image
@@ -13,6 +16,7 @@ import functools
 import pygments
 import inspect
 import os
+import re
 
 LexerType = Union[Type[pygments.lexer.Lexer], pygments.lexer.Lexer]
 tab_str = '    '
@@ -887,20 +891,21 @@ def launch_window(path: str, data: dict):
                 self.mark_set("insert", "end")
                 return "break"
 
+            def recalc_lexer(self):
+                self.after(0, self.highlight_all)
+                self.after(0, self.scroll_line_update)
+
             def redo(self, *_):
                 self.edit_redo()
-                self.highlight_all()
-                self.scroll_line_update()
+                self.recalc_lexer()
 
             def undo(self, *_):
                 self.edit_undo()
-                self.highlight_all()
-                self.scroll_line_update()
+                self.recalc_lexer()
 
             def ctrl_bs(self, event, *_):
                 self.delete("insert-1c wordstart", "insert")
-                self.highlight_all()
-                self.scroll_line_update()
+                self.recalc_lexer()
                 return "break"
 
             def _paste(self, *_):
@@ -962,7 +967,7 @@ def launch_window(path: str, data: dict):
                 for key, value in tags.items():
                     if isinstance(value, str):
                         # Italicize certain values
-                        if key.lower().startswith('keyword'):
+                        if key.lower().startswith('keyword') or "comment" in key.lower():
                             self.tag_configure(f"Token.{key}", foreground=value, font=self['font'] + ' italic')
                         else:
                             self.tag_configure(f"Token.{key}", foreground=value)
@@ -1098,6 +1103,126 @@ def launch_window(path: str, data: dict):
                 # self.bind("<<ContentChanged>>", self.fix_tabs)
                 self.bind("<BackSpace>", self.delete_spaces)
                 self.bind('<KeyPress>', self.insert_spaces)
+                self.bind('<Control-slash>', self.block_comment)
+                self.bind('<Shift-Tab>', lambda *_: self.block_indent(False))
+
+
+            # Gets text and range of line
+            def get_line_text(self, l):
+                line_start = f"{l}.0"
+                line_end = self.index(f"{line_start} lineend")
+                line_text = self.get(line_start, line_end)
+                return (line_start, line_end), line_text
+
+
+            @staticmethod
+            def get_indent(line):
+                count = 0
+                for char in line:
+                    if char == ' ':
+                        count += 1
+                    else:
+                        break
+                if count:
+                    count = count // 4
+                return count
+
+            # Indent/Dedent block
+            def block_indent(self, indent):
+                sel_start = self.index(SEL_FIRST)
+                sel_end = self.index(SEL_LAST)
+
+                # If selection
+                if sel_start and sel_end:
+
+                    # Get selection range
+                    line_range = range(int(sel_start.split(".")[0]), int(sel_end.split(".")[0]) + 1)
+
+                    # Replace data in lines
+                    for line in line_range:
+                        lr, text = self.get_line_text(line)
+
+                        # Process the line
+                        if text.strip():
+                            text = ((self.get_indent(text) + (1 if indent else -1)) * tab_str) + text.strip()
+                            self.replace(lr[0], lr[1], text)
+
+                    # Extend selection range
+                    self.tag_remove("sel", "sel.first", "sel.last")
+                    self.tag_add("sel", f'{int(sel_start.split(".")[0])}.0', f'{sel_end} lineend')
+                    self.recalc_lexer()
+                    return "break"
+
+            # Comment/Uncomment selection
+            def block_comment(self, *_):
+                sel_start = self.index(SEL_FIRST)
+                sel_end = self.index(SEL_LAST)
+
+                # If selection
+                if sel_start and sel_end:
+
+                    # Get selection range
+                    line_range = range(int(sel_start.split(".")[0]), int(sel_end.split(".")[0])+1)
+                    is_comment = True
+                    indent_list = []
+                    lowest_indent = 0
+
+                    # First, check if any lines start with a comment decorator
+                    for line in line_range:
+                        lr, text = self.get_line_text(line)
+                        indent_list.append(self.get_indent(text))
+
+                        if not text.strip():
+                            continue
+
+                        # Check if text is already commented
+                        if not text.strip().startswith("#"):
+                            is_comment = False
+
+                        # Get lowest indent
+                        lowest_indent = min(indent_list)
+
+                    # Second, replace data in lines
+                    for line in line_range:
+                        lr, text = self.get_line_text(line)
+
+                        # Process the line
+                        if is_comment:
+                            if text.strip() and "#" in text:
+                                s_text = text.split("#", 1)
+                                text = (self.get_indent(s_text[0])*tab_str) + (self.get_indent(s_text[1])*tab_str) + s_text[1].strip()
+                                self.replace(lr[0], lr[1], text)
+                        else:
+                            self.replace(lr[0], lr[1], f"{lowest_indent * tab_str}# {text[lowest_indent*len(tab_str):]}")
+
+                    # Extend selection range
+                    self.tag_remove("sel", "sel.first", "sel.last")
+                    self.tag_add("sel", f'{int(sel_start.split(".")[0])}.0', f'{sel_end} lineend')
+
+
+                # If index and no selection
+                else:
+                    current_line = self.index(INSERT)
+                    line = int(current_line.split(".")[0])
+
+                    lr, text = self.get_line_text(line)
+                    is_comment = text.strip().startswith("#")
+                    indent = self.get_indent(text)
+
+                    # Process the line
+                    if is_comment:
+                        if text.strip() and "#" in text:
+                            s_text = text.split("#", 1)
+                            text = (self.get_indent(s_text[0]) * tab_str) + (self.get_indent(s_text[1]) * tab_str) + s_text[1].strip()
+                            self.replace(lr[0], lr[1], text)
+                    else:
+                        if text.strip():
+                            self.replace(lr[0], lr[1], f"{indent * tab_str}# {text[indent * len(tab_str):]}")
+                    self.mark_set(INSERT, self.index(f"{line}.0+1l"))
+                    self.see(INSERT)
+
+                self.recalc_lexer()
+                return "break"
 
             # Replaces all tabs with 4 spaces
             def fix_tabs(self, *_):
@@ -1133,11 +1258,9 @@ def launch_window(path: str, data: dict):
                     return 'break'
 
                 else:
-                    current_pos = self.index(INSERT)
                     next_pos = self.index(f"{current_pos}+1c")
                     left = line_text[-1:]
                     right = self.get(current_pos, next_pos)
-                    print(left, right)
 
                     # Delete symbol pairs
                     if left == '(' and right == ')':
@@ -1155,45 +1278,72 @@ def launch_window(path: str, data: dict):
                     elif left == '"' and right == '"':
                         self.delete(current_pos, next_pos)
 
-
             # Move cursor right
             def move_cursor_right(self):
                 current_pos = self.index(INSERT)
                 new_pos = self.index(f"{current_pos}+1c")
                 self.mark_set(INSERT, new_pos)
 
-
             # Insert spaces instead of tab character and finish brackets/quotes
             def insert_spaces(self, event):
+                sel_start = self.index(SEL_FIRST)
+                sel_end = self.index(SEL_LAST)
+
+                # If selection
+                if sel_start and sel_end and event.keysym == 'Tab':
+                    self.block_indent(True)
+                    return "break"
+
+
                 current_pos = self.index(INSERT)
                 right = self.get(current_pos, self.index(f"{current_pos}+1c"))
 
+                # Check if bidirectional contiguous symbol pairs match from the cursor
+                def equal_symbols(cr, lr, rr):
+                    line = current_pos.split('.')[0]
+                    before = self.get(f"{line}.0", current_pos) + cr
+                    after = self.get(current_pos, self.index(f"{line}.end"))
+                    pattern = f'\\{lr}*?\\{rr}*?'
+                    before_matches = ''.join(reversed([z for z in re.findall(pattern, before[::-1]) if z]))
+                    after_matches = ''.join([z for z in re.findall(pattern, after) if z])
+                    final = before_matches + after_matches
+                    return final.count(lr) == final.count(rr)
+
                 # Skip right if pressed
-                if event.keysym == 'parenright' and right == ')':
+                if event.keysym == 'parenright' and (right == ')' and not equal_symbols(')', '(', ')')):
                     self.move_cursor_right()
                     return 'break'
 
-                elif event.keysym == 'braceright' and right == '}':
+                elif event.keysym == 'braceright' and (right == '}' and not equal_symbols('}', '{', '}')):
                     self.move_cursor_right()
                     return 'break'
 
-                elif event.keysym == 'bracketright' and right == ']':
+                elif event.keysym == 'bracketright' and (right == ']' and not equal_symbols(']', '[', ']')):
                     self.move_cursor_right()
                     return 'break'
+
+                elif event.keysym == 'quoteright' and right == "'":
+                    self.move_cursor_right()
+                    return 'break'
+
+                elif event.keysym == 'quotedbl' and right == '"':
+                    self.move_cursor_right()
+                    return 'break'
+
 
 
                 # Insert symbol pairs
-                elif event.keysym == 'parenleft' and right != ')':
+                elif event.keysym == 'parenleft' and (right != ')' or equal_symbols('()', '(', ')')):
                     self.insert(INSERT, "()")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
 
-                elif event.keysym == 'braceleft' and right != '}':
+                elif event.keysym == 'braceleft' and (right != '}' or equal_symbols('{}', '{', '}')):
                     self.insert(INSERT, "{}")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
 
-                elif event.keysym == 'bracketleft' and right != ']':
+                elif event.keysym == 'bracketleft' and (right != ']' or equal_symbols('[]', '[', ']')):
                     self.insert(INSERT, "[]")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
