@@ -696,6 +696,8 @@ def launch_window(path: str, data: dict):
                     )
 
             def redraw_allow(self):
+                if self.textwidget.index_label:
+                    self.textwidget.index_label.configure(text=self.textwidget.index(INSERT).replace('.',':'))
                 self.allow_highlight = True
                 self.redraw()
 
@@ -1102,6 +1104,7 @@ def launch_window(path: str, data: dict):
 
             def __init__(self, *args, **kwargs):
                 CodeView.__init__(self, *args, **kwargs)
+                self.content_changed = False
                 self.last_search = ""
                 self.font_size = 13
                 self.match_counter = Label(justify='right', anchor='se')
@@ -1113,6 +1116,15 @@ def launch_window(path: str, data: dict):
                     font = f"Consolas {self.font_size} bold"
                 )
 
+                self.index_label = Label(justify='right', anchor='se')
+                self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0)
+                self.index_label.configure(
+                    fg = convert_color((0.6, 0.6, 1))['hex'],
+                    bg = background_color,
+                    borderwidth = 0,
+                    font = f"Consolas {self.font_size}"
+                )
+
                 self.error_label = Label(justify='right', anchor='se')
                 self.error_label.configure(
                     fg = convert_color((1, 0.6, 0.6))['hex'],
@@ -1120,6 +1132,7 @@ def launch_window(path: str, data: dict):
                     borderwidth = 0,
                     font = f"Consolas {self.font_size} bold"
                 )
+
 
                 # self.bind("<<ContentChanged>>", self.fix_tabs)
                 self.bind("<BackSpace>", self.delete_spaces)
@@ -1132,9 +1145,11 @@ def launch_window(path: str, data: dict):
                 self.bind("<Button-1>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Up>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Down>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
+                self.bind("<Left>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
+                self.bind("<Right>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
                 root.bind('<Configure>', self.set_error)
-                self.default_timer = 1
+                self.default_timer = 0.5
                 self.error_timer = 0
                 self.timer_lock = False
                 self.error = None
@@ -1152,16 +1167,30 @@ def launch_window(path: str, data: dict):
                     if len(text) > max_size:
                         text = text[:max_size] + "..."
                     self.error_label.configure(text=text)
+                    pattern = self.error['code'].strip()
+                    regex = False
+                    if pattern == 'Unknown':
+                        pattern = ''
                     try:
-                        line_index = round(float(self.error['line'].replace(':','.')) - 0.1, 1)
-                        code_editor.highlight_pattern(self.error['code'].strip(), "error", start=line_index, end=f"{int(line_index) + 1}.0", regexp=False)
+                        print(self.error)
+                        line, char = self.error['line'].split(':')
+                        if int(char) == 1:
+                            char = 0
+                        if int(char) > len(pattern):
+                            pattern = r"( +)?\n"
+                            regex = True
+                        print(f"{line}.{char}", len(pattern))
+                        code_editor.highlight_pattern(pattern, "error", start=f"{line}.{char}", end=f"{int(line) + 1}.0", regexp=regex)
                     except:
+                        pass
                 else:
                     self.error_label.place_forget()
                     self.error_label.configure(text="")
                 self._line_numbers.redraw()
 
             def check_syntax(self, event):
+                self.content_changed = True
+
                 if self.timer_lock:
                     self.error_timer = self.default_timer
                     return None
@@ -1169,8 +1198,8 @@ def launch_window(path: str, data: dict):
                 def wait_for_break(*a):
                     self.timer_lock = True
                     while self.error_timer > 0:
-                        time.sleep(1)
-                        self.error_timer -= 1
+                        time.sleep(0.5)
+                        self.error_timer -= 0.5
 
                     self.error_timer = self.default_timer
                     self.error = data_dict['script_obj'].is_valid([self.get("1.0",END), path])
@@ -1619,7 +1648,9 @@ def launch_window(path: str, data: dict):
                         text=f'{x} result(s)',
                         fg = text_color if x > 0 else convert_color((0.3, 0.3, 0.65))['hex']
                     )
+                    self.index_label.place_forget()
                 else:
+                    self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0)
                     self.match_counter.configure(text='')
 
         code_editor = HighlightText(
@@ -1639,7 +1670,7 @@ def launch_window(path: str, data: dict):
 
         # Highlight stuffies
         code_editor.tag_configure("highlight", foreground="black", background="#4CFF99")
-        code_editor.tag_configure("error", background=convert_color((0.4, 0.1, 0.1))['hex'])
+        code_editor.tag_configure("error", background=convert_color((0.3, 0.1, 0.13))['hex'])
 
         def highlight_search():
             if root.close:
@@ -1651,9 +1682,11 @@ def launch_window(path: str, data: dict):
                     code_editor._vs.fade_out()
 
             search_text = search.get()
-            if search_text:
+            if code_editor.last_search != search_text or code_editor.content_changed:
+                code_editor.content_changed = False
                 code_editor.tag_remove("highlight", "1.0", "end")
                 code_editor.highlight_pattern(search.get(), "highlight", regexp=False)
+
 
             root.after(250, highlight_search)
         highlight_search()

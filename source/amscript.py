@@ -319,6 +319,7 @@ class ScriptObject():
             id_hash = constants.gen_rstring(10)
 
             for x, line in iterator:
+                line.replace("\r","")
                 if not line.endswith("\n"):
                     line = line + "\n"
 
