@@ -2,16 +2,21 @@ from __future__ import annotations
 
 from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, IntVar, Frame, PhotoImage, INSERT, BaseWidget,\
     Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST
+
 from typing import Any, Callable, Optional, Type, Union
+from pygments.filters import NameHighlightFilter
+from pygments.token import Keyword, Number, Name
 from contextlib import suppress
 from PIL import ImageTk, Image
 from tkinter.font import Font
+from threading import Timer
 import pygments.lexers
 import multiprocessing
 import pygments.lexers
 import pygments.lexer
 import functools
 import pygments
+import time
 import os
 import re
 
@@ -251,20 +256,17 @@ def _parse_scheme(color_scheme: dict[str, dict[str, str | int]]) -> tuple[dict, 
 
 
 # Changes colors for specific attributes
-from pygments.filters import NameHighlightFilter
-from pygments.token import Keyword, Number, Name
-
 class AmsLexer(pygments.lexers.PythonLexer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
         hl_filter = NameHighlightFilter(
-            names=["on_join", "on_leave", "on_death", "on_message", "on_alias", "on_start", "on_stop", "on_loop"],
+            names=[e.split('.')[1] for e in data_dict['script_obj'].valid_events],
             tokentype=Keyword.Event,
         )
 
         var_filter = NameHighlightFilter(
-            names=["server", "acl", "backup", "addon"],
+            names=data_dict['script_obj'].protected_variables,
             tokentype=Keyword.MajorClass,
         )
 
@@ -600,6 +602,7 @@ def launch_window(path: str, data: dict):
                 self.colors = colors
                 self.cancellable_after: Optional[str] = None
                 self.click_pos: None = None
+                self.allow_highlight = False
                 self.x: int | None = None
                 self.y: int | None = None
 
@@ -644,7 +647,20 @@ def launch_window(path: str, data: dict):
                     self.textwidget.index(f"@0,{self.textwidget.winfo_height()}").split(".")[0]
                 )
 
-                index = int(self.textwidget.index(INSERT).split(".")[0])
+                index = -1
+                if self.allow_highlight:
+                    index = int(self.textwidget.index(INSERT).split(".")[0])
+
+                err_index = -1
+                try:
+                    if code_editor.error:
+                        line = code_editor.error['line']
+                        if ":" in line:
+                            err_index = int(line.split(':')[0].strip())
+                        else:
+                            err_index = int(line.strip())
+                except NameError:
+                    pass
 
                 # Draw the line numbers looping through the lines
                 for lineno in range(first_line, last_line + 1):
@@ -674,8 +690,14 @@ def launch_window(path: str, data: dict):
                         text=f" {lineno} " if self.justify != "center" else f"{lineno}",
                         anchor={"left": "nw", "right": "ne", "center": "n"}[self.justify],
                         font=self.textwidget.cget("font"),
-                        fill='#AAAAFF' if index == lineno else self.foreground_color
+                        fill=convert_color((1, 0.65, 0.65))['hex'] if err_index == lineno
+                        else '#AAAAFF' if index == lineno
+                        else self.foreground_color
                     )
+
+            def redraw_allow(self):
+                self.allow_highlight = True
+                self.redraw()
 
             def mouse_scroll(self, event: Event) -> None:
                 """Scrolls the text widget when the mouse wheel is scrolled -- Internal use only"""
@@ -1081,13 +1103,22 @@ def launch_window(path: str, data: dict):
             def __init__(self, *args, **kwargs):
                 CodeView.__init__(self, *args, **kwargs)
                 self.last_search = ""
+                self.font_size = 13
                 self.match_counter = Label(justify='right', anchor='se')
-                self.match_counter.place(in_=search, relwidth=0.2, relx=0.8, rely=0.2)
+                self.match_counter.place(in_=search, relwidth=0.2, relx=0.795, rely=0)
                 self.match_counter.configure(
                     fg = convert_color((0.3, 0.3, 0.65))['hex'],
                     bg = background_color,
                     borderwidth = 0,
-                    font = "Consolas 13 bold"
+                    font = f"Consolas {self.font_size} bold"
+                )
+
+                self.error_label = Label(justify='right', anchor='se')
+                self.error_label.configure(
+                    fg = convert_color((1, 0.6, 0.6))['hex'],
+                    bg = background_color,
+                    borderwidth = 0,
+                    font = f"Consolas {self.font_size} bold"
                 )
 
                 # self.bind("<<ContentChanged>>", self.fix_tabs)
@@ -1098,12 +1129,55 @@ def launch_window(path: str, data: dict):
                 self.bind("<Control-BackSpace>", self.ctrl_bs)
 
                 # Redraw lineno
-                self.bind("<Button-1>", lambda *_: self.after(0, self._line_numbers.redraw))
-                self.bind("<Up>", lambda *_: self.after(0, self._line_numbers.redraw))
-                self.bind("<Down>", lambda *_: self.after(0, self._line_numbers.redraw))
+                self.bind("<Button-1>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
+                self.bind("<Up>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
+                self.bind("<Down>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
+                self.bind("<<ContentChanged>>", self.check_syntax, add=True)
+                root.bind('<Configure>', self.set_error)
+                self.default_timer = 1
+                self.error_timer = 0
+                self.timer_lock = False
+                self.error = None
 
                 self.bind(f"<Control-c>", self._copy, add=True)
                 self.bind(f"<Control-v>", self._paste, add=True)
+
+            def set_error(self, *a):
+                code_editor.tag_remove("error", "1.0", "end")
+
+                if self.error:
+                    self.error_label.place(in_=search, relwidth=0.7, relx=0.295, rely=0)
+                    text = f"[Line {self.error['line']}] {self.error['message']}"
+                    max_size = round((root.winfo_width() // self.font_size)*0.65)
+                    if len(text) > max_size:
+                        text = text[:max_size] + "..."
+                    self.error_label.configure(text=text)
+                    try:
+                        line_index = round(float(self.error['line'].replace(':','.')) - 0.1, 1)
+                        code_editor.highlight_pattern(self.error['code'].strip(), "error", start=line_index, end=f"{int(line_index) + 1}.0", regexp=False)
+                    except:
+                else:
+                    self.error_label.place_forget()
+                    self.error_label.configure(text="")
+                self._line_numbers.redraw()
+
+            def check_syntax(self, event):
+                if self.timer_lock:
+                    self.error_timer = self.default_timer
+                    return None
+
+                def wait_for_break(*a):
+                    self.timer_lock = True
+                    while self.error_timer > 0:
+                        time.sleep(1)
+                        self.error_timer -= 1
+
+                    self.error_timer = self.default_timer
+                    self.error = data_dict['script_obj'].is_valid([self.get("1.0",END), path])
+                    self.after(0, lambda *_: self.set_error())
+                    self.timer_lock = False
+
+                Timer(0, wait_for_break).start()
 
             def _paste(self, *_):
                 insert = self.index(f"@0,0 + {self.cget('height') // 2} lines")
@@ -1116,8 +1190,6 @@ def launch_window(path: str, data: dict):
                     last_line = self.get(f"{line_num}.0", f"{line_num}.end")
                     indent = self.get_indent(last_line)
                     text = self.clipboard_get().replace('\t', tab_str).splitlines()
-
-                    print(last_line)
 
                     if len(text) == 1:
                         self.insert("insert", text[0].strip())
@@ -1532,10 +1604,15 @@ def launch_window(path: str, data: dict):
                     if index == "1.0":
                         break
 
-                    if x == 0:
-                        self.see(index)
-                        self.last_search = search.get()
+                    if x == 0 and tag == 'highlight':
+                        new_search = search.get()
+                        if new_search != self.last_search:
+                            self.see(index)
+                        self.last_search = new_search
                     x += 1
+
+                if tag != 'highlight':
+                    return
 
                 if search.has_focus or x > 0:
                     self.match_counter.configure(
@@ -1562,6 +1639,7 @@ def launch_window(path: str, data: dict):
 
         # Highlight stuffies
         code_editor.tag_configure("highlight", foreground="black", background="#4CFF99")
+        code_editor.tag_configure("error", background=convert_color((0.4, 0.1, 0.1))['hex'])
 
         def highlight_search():
             if root.close:
@@ -1607,6 +1685,7 @@ def open_log(path: str, data: dict, *args):
 
 if __name__ == '__main__':
     import constants
+    import amscript
 
     from ctypes import windll, c_int64
     windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
@@ -1614,7 +1693,8 @@ if __name__ == '__main__':
     data_dict = {
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
-        'background_color': constants.background_color
+        'background_color': constants.background_color,
+        'script_obj': amscript.ScriptObject()
     }
     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Tools\amscript\test2.ams"
     launch_window(path, data_dict)

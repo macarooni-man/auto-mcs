@@ -368,8 +368,10 @@ def launch_window(server_name: str, path: str, data: dict):
                         break
 
                     if x == 0:
-                        self.see(index)
-                        self.last_search = search.get()
+                        new_search = search.get()
+                        if new_search != self.last_search:
+                            self.see(index)
+                        self.last_search = new_search
                     x += 1
 
                 if search.has_focus or x > 0:
