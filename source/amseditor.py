@@ -307,7 +307,7 @@ def launch_window(path: str, data: dict):
 
         style = {
             'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': '#1b2733',
-                'caret': convert_color((0.7, 0.7, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': "Consolas 15 italic"},
+                'caret': convert_color((0.7, 0.7, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': "Consolas 14 italic"},
             'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': '#b3b1ad', 'keyword': '#FB71FB',
                 'name': '#819CE6', 'string': '#95e6cb', 'punctuation': '#68E3FF'},
             'keyword': {'constant': '#FB71FB', 'declaration': '#FB71FB', 'namespace': '#FB71FB', 'pseudo': '#FB71FB',
@@ -377,7 +377,7 @@ def launch_window(path: str, data: dict):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = "Consolas 15",
+            font = "Consolas 14",
         )
 
         # Bind CTRL-F to focus search box
@@ -644,6 +644,8 @@ def launch_window(path: str, data: dict):
                     self.textwidget.index(f"@0,{self.textwidget.winfo_height()}").split(".")[0]
                 )
 
+                index = int(self.textwidget.index(INSERT).split(".")[0])
+
                 # Draw the line numbers looping through the lines
                 for lineno in range(first_line, last_line + 1):
                     # Check if line is elided
@@ -660,6 +662,7 @@ def launch_window(path: str, data: dict):
                     if dlineinfo is None or line_elided:
                         continue
 
+
                     # Create the line number
                     self.create_text(
                         0
@@ -667,11 +670,11 @@ def launch_window(path: str, data: dict):
                         else int(self["width"])
                         if self.justify == "right"
                         else int(self["width"]) / 2,
-                        dlineinfo[1],
+                        dlineinfo[1] + 6.5,
                         text=f" {lineno} " if self.justify != "center" else f"{lineno}",
                         anchor={"left": "nw", "right": "ne", "center": "n"}[self.justify],
                         font=self.textwidget.cget("font"),
-                        fill=self.foreground_color,
+                        fill='#AAAAFF' if index == lineno else self.foreground_color
                     )
 
             def mouse_scroll(self, event: Event) -> None:
@@ -892,8 +895,6 @@ def launch_window(path: str, data: dict):
                     tabs=Font(font=kwargs["font"]).measure(" " * tab_width),
                 )
 
-                self.bind(f"<Control-c>", self._copy, add=True)
-                self.bind(f"<Control-v>", self._paste, add=True)
                 self.bind(f"<Control-a>", self._select_all, add=True)
                 self.bind(f"<Control-z>", self.undo, add=True)
                 self.bind(f"<Control-r>", self.redo, add=True)
@@ -924,29 +925,6 @@ def launch_window(path: str, data: dict):
             def undo(self, *_):
                 self.edit_undo()
                 self.recalc_lexer()
-
-            def _paste(self, *_):
-                insert = self.index(f"@0,0 + {self.cget('height') // 2} lines")
-
-                with suppress(TclError):
-                    self.delete("sel.first", "sel.last")
-                    self.tag_remove("sel", "1.0", "end")
-                    self.insert("insert", self.clipboard_get())
-
-                self.see(insert)
-
-                return "break"
-
-            def _copy(self, *_):
-                text = self.get("sel.first", "sel.last")
-                if not text:
-                    text = self.get("insert linestart", "insert lineend")
-
-                root.clipboard_clear()
-                root.clipboard_append(text)
-                root.update()
-
-                return "break"
 
             def _cmd_proxy(self, command: str, *args) -> Any:
                 try:
@@ -1109,7 +1087,7 @@ def launch_window(path: str, data: dict):
                     fg = convert_color((0.3, 0.3, 0.65))['hex'],
                     bg = background_color,
                     borderwidth = 0,
-                    font = "Consolas 14 bold"
+                    font = "Consolas 13 bold"
                 )
 
                 # self.bind("<<ContentChanged>>", self.fix_tabs)
@@ -1118,6 +1096,77 @@ def launch_window(path: str, data: dict):
                 self.bind('<Control-slash>', self.block_comment)
                 self.bind('<Shift-Tab>', lambda *_: self.block_indent(False))
                 self.bind("<Control-BackSpace>", self.ctrl_bs)
+
+                # Redraw lineno
+                self.bind("<Button-1>", lambda *_: self.after(0, self._line_numbers.redraw))
+                self.bind("<Up>", lambda *_: self.after(0, self._line_numbers.redraw))
+                self.bind("<Down>", lambda *_: self.after(0, self._line_numbers.redraw))
+
+                self.bind(f"<Control-c>", self._copy, add=True)
+                self.bind(f"<Control-v>", self._paste, add=True)
+
+            def _paste(self, *_):
+                insert = self.index(f"@0,0 + {self.cget('height') // 2} lines")
+
+                with suppress(TclError):
+                    self.delete("sel.first", "sel.last")
+                    self.tag_remove("sel", "1.0", "end")
+
+                    line_num = int(self.index(INSERT).split('.')[0])
+                    last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                    indent = self.get_indent(last_line)
+                    text = self.clipboard_get().replace('\t', tab_str).splitlines()
+
+                    print(last_line)
+
+                    if len(text) == 1:
+                        self.insert("insert", text[0].strip())
+                    else:
+                        indent_list = []
+                        lowest_indent = 0
+
+                        # First, get lowest indent of clipboard
+                        for line in text:
+                            if not line.strip():
+                                continue
+                            indent_list.append(self.get_indent(line))
+
+                            # Get lowest indent
+                            lowest_indent = min(indent_list)
+
+
+                        final_text = []
+
+                        if not last_line.strip():
+                            self.delete(f'{line_num}.0', f'{line_num}.0 lineend')
+
+                        for line in text:
+                            line = line[lowest_indent*len(tab_str):]
+                            li = self.get_indent(line)
+                            if not last_line.strip():
+                                final_indent = indent + li
+                                if final_indent < 1:
+                                    final_indent = 0
+                                final_text.append((final_indent * tab_str) + line.strip())
+                            else:
+                                final_text.append(line)
+
+                        self.insert("insert", '\n'.join(final_text))
+
+                self.see(insert)
+                self.recalc_lexer()
+                return "break"
+
+            def _copy(self, *_):
+                text = self.get("sel.first", "sel.last")
+                if not text:
+                    text = self.get("insert linestart", "insert lineend")
+
+                root.clipboard_clear()
+                root.clipboard_append(text)
+                root.update()
+
+                return "break"
 
             # Delete things
             def ctrl_bs(self, event, *_):
@@ -1156,6 +1205,12 @@ def launch_window(path: str, data: dict):
             def block_indent(self, indent):
                 sel_start = self.index(SEL_FIRST)
                 sel_end = self.index(SEL_LAST)
+
+                if not indent and not (sel_start and sel_end):
+                    current_index = int(self.index(INSERT).split(".")[0])
+                    self.tag_add("sel", f'{current_index}.0', f'{current_index}.0 lineend')
+                    sel_start = self.index(SEL_FIRST)
+                    sel_end = self.index(SEL_LAST)
 
                 # If selection
                 if sel_start and sel_end:
@@ -1493,7 +1548,7 @@ def launch_window(path: str, data: dict):
         code_editor = HighlightText(
             root,
             color_scheme = style,
-            font = "Consolas 15",
+            font = "Consolas 14",
             linenums_theme = ('#3E3E63', background_color),
             scrollbar=Scrollbar
         )
@@ -1502,7 +1557,7 @@ def launch_window(path: str, data: dict):
         code_editor.insert(END, ams_data)
         code_editor.config(autoseparator=True, maxundo=-1, undo=True)
         code_editor._line_numbers.config(borderwidth=0, highlightthickness=0)
-        code_editor.config(spacing3=10, wrap='word')
+        code_editor.config(spacing1=5, spacing3=5, wrap='word')
 
 
         # Highlight stuffies

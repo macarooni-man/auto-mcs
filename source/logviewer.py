@@ -145,7 +145,7 @@ def launch_window(server_name: str, path: str, data: dict):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = "Consolas 16 bold",
+            font = "Consolas 17 bold",
         )
 
         # Bind CTRL-F to focus search box
