@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from tkinter import Tk, Text, Entry, Label, Canvas, RIGHT, BOTTOM,\
-    X, Y, BOTH, DISABLED, END, IntVar, Frame, PhotoImage, font, ttk,\
-    INSERT, BaseWidget, Event, Misc, TclError, Text, ttk, RIGHT, Y,\
-    getboolean, SEL_FIRST, SEL_LAST
+from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, IntVar, Frame, PhotoImage, INSERT, BaseWidget,\
+    Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST
 from typing import Any, Callable, Optional, Type, Union
 from contextlib import suppress
 from PIL import ImageTk, Image
@@ -14,9 +12,9 @@ import pygments.lexers
 import pygments.lexer
 import functools
 import pygments
-import inspect
 import os
 import re
+
 
 LexerType = Union[Type[pygments.lexer.Lexer], pygments.lexer.Lexer]
 tab_str = '    '
@@ -120,6 +118,9 @@ def _parse_scheme(color_scheme: dict[str, dict[str, str | int]]) -> tuple[dict, 
         "Keyword.Pseudo": "pseudo",
         "Keyword.Reserved": "reserved",
         "Keyword.Type": "type",
+        "Keyword.Event": "event",
+        "Keyword.MajorClass": "major_class",
+        "Keyword.Argument": "argument"
     }
 
     _names = {
@@ -249,6 +250,32 @@ def _parse_scheme(color_scheme: dict[str, dict[str, str | int]]) -> tuple[dict, 
     return editor, tags
 
 
+# Changes colors for specific attributes
+from pygments.filters import NameHighlightFilter
+from pygments.token import Keyword, Number, Name
+
+class AmsLexer(pygments.lexers.PythonLexer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        hl_filter = NameHighlightFilter(
+            names=["on_join", "on_leave", "on_death", "on_message", "on_alias", "on_start", "on_stop", "on_loop"],
+            tokentype=Keyword.Event,
+        )
+
+        var_filter = NameHighlightFilter(
+            names=["server", "acl", "backup", "addon"],
+            tokentype=Keyword.MajorClass,
+        )
+
+        self.add_filter(hl_filter)
+        self.add_filter(var_filter)
+AmsLexer.tokens['root'].insert(-2, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?\)$)', Name.Function))
+AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\d+\.?\d*?(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Number.Float))
+AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\w+(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Keyword.Argument))
+# AmsLexer.tokens['classname'] = [('(?<=class ).+?(?=\()', Name.Class, '#pop')]
+
+
 # Opens a crash log in a read-only text editor
 def launch_window(path: str, data: dict):
 
@@ -284,13 +311,13 @@ def launch_window(path: str, data: dict):
             'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': '#b3b1ad', 'keyword': '#FB71FB',
                 'name': '#819CE6', 'string': '#95e6cb', 'punctuation': '#68E3FF'},
             'keyword': {'constant': '#FB71FB', 'declaration': '#FB71FB', 'namespace': '#FB71FB', 'pseudo': '#FB71FB',
-                'reserved': '#FB71FB', 'type': '#FB71FB'},
-            'name': {'attr': '#819CE6', 'builtin': '#819CE6', 'builtin_pseudo': '#e6b450', 'class': '#819CE6',
+                'reserved': '#FB71FB', 'type': '#FB71FB', 'event': "#FF00A8", 'major_class': '#6769F1', 'argument': '#FC9741'},
+            'name': {'attr': '#819CE6', 'builtin': '#819CE6', 'builtin_pseudo': '#e6b450', 'class': '#FFCD38',
                 'class_variable': '#819CE6', 'constant': '#ffee99', 'decorator': '#68E3FF', 'entity': '#819CE6',
                 'exception': '#819CE6', 'function': '#819CE6', 'global_variable': '#819CE6',
                 'instance_variable': '#819CE6', 'label': '#819CE6', 'magic_function': '#819CE6',
                 'magic_variable': '#819CE6', 'namespace': '#b3b1ad', 'tag': '#819CE6', 'variable': '#819CE6'},
-            'operator': {'symbol': '#68E3FF', 'word': '#68E3FF'},
+            'operator': {'symbol': '#68E3FF', 'word': '#FB71FB'},
             'string': {'affix': '#68E3FF', 'char': '#95e6cb', 'delimeter': '#c2d94c', 'doc': '#c2d94c',
                 'double': '#c2d94c', 'escape': '#68E3FF', 'heredoc': '#c2d94c', 'interpol': '#68E3FF',
                 'regex': '#95e6cb', 'single': '#c2d94c', 'symbol': '#c2d94c'},
@@ -835,7 +862,6 @@ def launch_window(path: str, data: dict):
             def __init__(
                 self,
                 master: Misc | None = None,
-                lexer: LexerType = pygments.lexers.TextLexer,
                 color_scheme: dict[str, dict[str, str | int]] | str | None = None,
                 tab_width: int = 4,
                 linenums_theme: Callable[[], tuple[str, str]] | tuple[str, str] | None = None,
@@ -857,15 +883,12 @@ def launch_window(path: str, data: dict):
                 )
 
                 self._vs = scrollbar(master, width=7, command=self.yview)
-                # self._hs = ttk.Scrollbar(self._frame, orient="horizontal", command=self.xview)
 
                 self._line_numbers.grid(row=0, column=0, sticky="ns", ipadx=20)
                 self._vs.pack(side=RIGHT, fill=Y, padx=(6, 0))
-                # self._hs.grid(row=1, column=1, sticky="we")
 
                 super().configure(
                     yscrollcommand=self.vertical_scroll,
-                    xscrollcommand=self.horizontal_scroll,
                     tabs=Font(font=kwargs["font"]).measure(" " * tab_width),
                 )
 
@@ -877,13 +900,12 @@ def launch_window(path: str, data: dict):
                 self.bind(f"<Control-y>", self.redo, add=True)
                 self.bind("<<ContentChanged>>", self.scroll_line_update, add=True)
                 self.bind("<Button-1>", self._line_numbers.redraw, add=True)
-                self.bind("<Control-BackSpace>", self.ctrl_bs)
 
                 self._orig = f"{self._w}_widget"
                 self.tk.call("rename", self._w, self._orig)
                 self.tk.createcommand(self._w, self._cmd_proxy)
 
-                self._set_lexer(lexer)
+                self._set_lexer()
                 self._set_color_scheme(color_scheme)
 
             def _select_all(self, *_) -> str:
@@ -902,11 +924,6 @@ def launch_window(path: str, data: dict):
             def undo(self, *_):
                 self.edit_undo()
                 self.recalc_lexer()
-
-            def ctrl_bs(self, event, *_):
-                self.delete("insert-1c wordstart", "insert")
-                self.recalc_lexer()
-                return "break"
 
             def _paste(self, *_):
                 insert = self.index(f"@0,0 + {self.cget('height') // 2} lines")
@@ -1028,8 +1045,8 @@ def launch_window(path: str, data: dict):
 
                 self.highlight_all()
 
-            def _set_lexer(self, lexer: LexerType) -> None:
-                self._lexer = lexer() if inspect.isclass(lexer) else lexer
+            def _set_lexer(self) -> None:
+                self._lexer = AmsLexer()
                 self.highlight_all()
 
             def __setitem__(self, key: str, value) -> None:
@@ -1075,16 +1092,11 @@ def launch_window(path: str, data: dict):
                     BaseWidget.destroy(widget)
                 BaseWidget.destroy(self._frame)
 
-            def horizontal_scroll(self, first: str | float, last: str | float) -> CodeView:
-                # self._hs.set(first, last)
-                pass
-
             def vertical_scroll(self, first: str | float, last: str | float) -> CodeView:
                 self._vs.set(first, last)
                 self._line_numbers.redraw()
 
             def scroll_line_update(self, event: Event | None = None) -> CodeView:
-                self.horizontal_scroll(*self.xview())
                 self.vertical_scroll(*self.yview())
         class HighlightText(CodeView):
 
@@ -1102,10 +1114,24 @@ def launch_window(path: str, data: dict):
 
                 # self.bind("<<ContentChanged>>", self.fix_tabs)
                 self.bind("<BackSpace>", self.delete_spaces)
-                self.bind('<KeyPress>', self.insert_spaces)
+                self.bind('<KeyPress>', self.process_keys)
                 self.bind('<Control-slash>', self.block_comment)
                 self.bind('<Shift-Tab>', lambda *_: self.block_indent(False))
+                self.bind("<Control-BackSpace>", self.ctrl_bs)
 
+            # Delete things
+            def ctrl_bs(self, event, *_):
+                current_pos = self.index(INSERT)
+                line_start = self.index(f"{current_pos} linestart")
+                line_text = self.get(line_start, current_pos)
+
+                if line_text.isspace():
+                    self.delete(line_start, current_pos)
+
+                self.delete("insert-1c wordstart", "insert")
+
+                self.recalc_lexer()
+                return "break"
 
             # Gets text and range of line
             def get_line_text(self, l):
@@ -1113,7 +1139,6 @@ def launch_window(path: str, data: dict):
                 line_end = self.index(f"{line_start} lineend")
                 line_text = self.get(line_start, line_end)
                 return (line_start, line_end), line_text
-
 
             @staticmethod
             def get_indent(line):
@@ -1284,10 +1309,56 @@ def launch_window(path: str, data: dict):
                 new_pos = self.index(f"{current_pos}+1c")
                 self.mark_set(INSERT, new_pos)
 
-            # Insert spaces instead of tab character and finish brackets/quotes
-            def insert_spaces(self, event):
+            # Surrounds text in l, r
+            def surround_text(self, current_pos, sel_start, sel_end, l, r):
+                selected_text = self.get(sel_start, sel_end)
+                modified_text = l + selected_text + r
+                self.delete(sel_start, sel_end)
+                self.insert(sel_start, modified_text)
+                self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
+                self.tag_remove("sel", "sel.first", "sel.last")
+                line_break = '\n'
+                self.tag_add("sel", self.index(f"{current_pos}+1c"), f"{sel_end}{'+1c' if line_break not in selected_text else ''}")
+                self.recalc_lexer()
+
+            # Process individual keypress rules
+            def process_keys(self, event):
                 sel_start = self.index(SEL_FIRST)
                 sel_end = self.index(SEL_LAST)
+                current_pos = self.index(INSERT)
+                right = self.get(current_pos, self.index(f"{current_pos}+1c"))
+
+                # Checks if symbol exists for inserting pairs
+                def check_text(char, ex=''):
+                    pattern = f'[^a-zA-Z0-9.{ex}]'
+                    match = re.sub(pattern, '', char)
+                    return not match
+
+
+                # Press return with last indent level
+                if event.keysym == 'Return':
+                    line_num = int(current_pos.split('.')[0])
+                    if line_num > 0:
+                        last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                        indent = self.get_indent(last_line)
+
+                        # Indent rules
+                        test = last_line.strip()
+                        if test.endswith(":"):
+                            indent += 1
+
+                        for kw in ['return', 'continue', 'break', 'yield', 'raise', 'pass']:
+                            if test.startswith(f"{kw} ") or test.endswith(kw):
+                                indent -= 1
+                                break
+
+                        if indent > 0:
+                            self.after(0, lambda *_: self.insert(INSERT, tab_str*indent))
+                        return "Return"
+
+
+
+                # Insert spaces instead of tab character and finish brackets/quotes
 
                 # If selection
                 if sel_start and sel_end and event.keysym == 'Tab':
@@ -1295,8 +1366,27 @@ def launch_window(path: str, data: dict):
                     return "break"
 
 
-                current_pos = self.index(INSERT)
-                right = self.get(current_pos, self.index(f"{current_pos}+1c"))
+                # Outline selection in symbols
+                elif sel_start and sel_end and event.keysym == 'parenleft':
+                    self.surround_text(current_pos, sel_start, sel_end, '(', ')')
+                    return "break"
+
+                elif sel_start and sel_end and event.keysym == 'braceleft':
+                    self.surround_text(current_pos, sel_start, sel_end, '{', '}')
+                    return "break"
+
+                elif sel_start and sel_end and event.keysym == 'bracketleft':
+                    self.surround_text(current_pos, sel_start, sel_end, '[', ']')
+                    return "break"
+
+                elif sel_start and sel_end and event.keysym == 'quoteright':
+                    self.surround_text(current_pos, sel_start, sel_end, "'", "'")
+                    return "break"
+
+                elif sel_start and sel_end and event.keysym == 'quotedbl':
+                    self.surround_text(current_pos, sel_start, sel_end, '"', '"')
+                    return "break"
+
 
                 # Check if bidirectional contiguous symbol pairs match from the cursor
                 def equal_symbols(cr, lr, rr):
@@ -1331,29 +1421,28 @@ def launch_window(path: str, data: dict):
                     return 'break'
 
 
-
                 # Insert symbol pairs
-                elif event.keysym == 'parenleft' and (right != ')' or equal_symbols('()', '(', ')')):
+                elif event.keysym == 'parenleft' and (check_text(right) and equal_symbols('()', '(', ')')):
                     self.insert(INSERT, "()")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
 
-                elif event.keysym == 'braceleft' and (right != '}' or equal_symbols('{}', '{', '}')):
+                elif event.keysym == 'braceleft' and (check_text(right) and equal_symbols('{}', '{', '}')):
                     self.insert(INSERT, "{}")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
 
-                elif event.keysym == 'bracketleft' and (right != ']' or equal_symbols('[]', '[', ']')):
+                elif event.keysym == 'bracketleft' and (check_text(right) and equal_symbols('[]', '[', ']')):
                     self.insert(INSERT, "[]")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
 
-                elif event.keysym == 'quoteright' and right != "'":
+                elif event.keysym == 'quoteright' and check_text(right, "'"):
                     self.insert(INSERT, "''")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
 
-                elif event.keysym == 'quotedbl' and right != '"':
+                elif event.keysym == 'quotedbl' and check_text(right, '"'):
                     self.insert(INSERT, '""')
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
@@ -1362,6 +1451,7 @@ def launch_window(path: str, data: dict):
                     self.insert(INSERT, tab_str)
                     return 'break'  # Prevent default behavior of the Tab key
 
+            # Highlight find text
             def highlight_pattern(self, pattern, tag, start="1.0", end="end", regexp=False):
                 start = self.index(start)
                 end = self.index(end)
@@ -1402,7 +1492,6 @@ def launch_window(path: str, data: dict):
 
         code_editor = HighlightText(
             root,
-            lexer = pygments.lexers.PythonLexer,
             color_scheme = style,
             font = "Consolas 15",
             linenums_theme = ('#3E3E63', background_color),
@@ -1413,6 +1502,7 @@ def launch_window(path: str, data: dict):
         code_editor.insert(END, ams_data)
         code_editor.config(autoseparator=True, maxundo=-1, undo=True)
         code_editor._line_numbers.config(borderwidth=0, highlightthickness=0)
+        code_editor.config(spacing3=10, wrap='word')
 
 
         # Highlight stuffies
