@@ -374,6 +374,28 @@ class ScriptObject():
                     parse_error['line'] = 0
                     parse_error['message'] = f"({e.__class__.__name__}) {e.args[0]}"
                     parse_error['object'] = e
+
+                # Reformat if it starts with an event
+                error = parse_error['code']
+                try:
+                    if error.startswith('def') or error.startswith('on_'):
+                        for event in self.valid_events:
+                            if event.endswith(error.replace('def ','',1).split('(')[0].strip()):
+                                old, same = error.split('(', 1)
+                                pattern = event + '(' + same
+                                if ':' in parse_error['line']:
+                                    line, char = parse_error['line'].split(':')
+                                    char = str(int(char) - len(old) + len(event))
+                                    parse_error['line'] = f'{line}:{char}'
+                                parse_error['code'] = pattern
+                                args = list(parse_error['object'].args)
+                                args1 = list(args[1])
+                                args1[-1] = pattern
+                                args[1] = tuple(args1)
+                                parse_error['object'].args = tuple(args)
+                                break
+                except ValueError:
+                    pass
                 return parse_error
 
 

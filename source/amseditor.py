@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, IntVar, Frame, PhotoImage, INSERT, BaseWidget,\
-    Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST
+    Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, Button, SUNKEN
 
 from typing import Any, Callable, Optional, Type, Union
 from pygments.filters import NameHighlightFilter
@@ -257,16 +257,16 @@ def _parse_scheme(color_scheme: dict[str, dict[str, str | int]]) -> tuple[dict, 
 
 # Changes colors for specific attributes
 class AmsLexer(pygments.lexers.PythonLexer):
-    def __init__(self, **kwargs):
+    def __init__(self, data, **kwargs):
         super().__init__(**kwargs)
 
         hl_filter = NameHighlightFilter(
-            names=[e.split('.')[1] for e in data_dict['script_obj'].valid_events],
+            names=[e.split('.')[1] for e in data['script_obj'].valid_events],
             tokentype=Keyword.Event,
         )
 
         var_filter = NameHighlightFilter(
-            names=data_dict['script_obj'].protected_variables,
+            names=data['script_obj'].protected_variables,
             tokentype=Keyword.MajorClass,
         )
 
@@ -625,6 +625,8 @@ def launch_window(path: str, data: dict):
                 self.bind("<Button1-Leave>", self.mouse_off_screen_scroll, add=True)
                 self.bind("<Button1-Enter>", self.stop_mouse_off_screen_scroll, add=True)
 
+                self.textwidget.bind("<<ContentChanged>>", self.get_cursor, add=True)
+
                 # Set the yscrollcommand of the text widget to redraw the widget
                 textwidget["yscrollcommand"] = self.redraw
 
@@ -695,11 +697,15 @@ def launch_window(path: str, data: dict):
                         else self.foreground_color
                     )
 
-            def redraw_allow(self):
-                if self.textwidget.index_label:
+            def get_cursor(self, *a):
+                if self.textwidget.index_label and self.allow_highlight:
                     self.textwidget.index_label.configure(text=self.textwidget.index(INSERT).replace('.',':'))
+
+            def redraw_allow(self):
+                ac.hide()
                 self.allow_highlight = True
                 self.redraw()
+                self.get_cursor()
 
             def mouse_scroll(self, event: Event) -> None:
                 """Scrolls the text widget when the mouse wheel is scrolled -- Internal use only"""
@@ -948,6 +954,19 @@ def launch_window(path: str, data: dict):
 
             def undo(self, *_):
                 self.edit_undo()
+
+                def check_at(*a):
+                    current_pos = self.index(INSERT)
+                    line_num = int(current_pos.split('.')[0])
+                    last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                    if last_line.startswith("@"):
+                        x, y = self.bbox(INSERT)[:2]
+                        ac.show(x, y)
+                        ac.update_results(last_line)
+                    else:
+                        ac.hide()
+                self.after(1, check_at)
+
                 self.recalc_lexer()
 
             def _cmd_proxy(self, command: str, *args) -> Any:
@@ -1048,7 +1067,7 @@ def launch_window(path: str, data: dict):
                 self.highlight_all()
 
             def _set_lexer(self) -> None:
-                self._lexer = AmsLexer()
+                self._lexer = AmsLexer(data)
                 self.highlight_all()
 
             def __setitem__(self, key: str, value) -> None:
@@ -1143,13 +1162,15 @@ def launch_window(path: str, data: dict):
 
                 # Redraw lineno
                 self.bind("<Button-1>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
+                self.bind("<Up>", lambda *_: self.check_ac(False))
+                self.bind("<Down>", lambda *_: self.check_ac(True))
                 self.bind("<Up>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Down>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Left>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Right>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
                 root.bind('<Configure>', self.set_error)
-                self.default_timer = 0.5
+                self.default_timer = 0.25
                 self.error_timer = 0
                 self.timer_lock = False
                 self.error = None
@@ -1157,32 +1178,57 @@ def launch_window(path: str, data: dict):
                 self.bind(f"<Control-c>", self._copy, add=True)
                 self.bind(f"<Control-v>", self._paste, add=True)
 
+            def check_ac(self, key, *a):
+                if ac.visible:
+                    ac.iterate_selection(key)
+                    return "break"
+
             def set_error(self, *a):
                 code_editor.tag_remove("error", "1.0", "end")
 
                 if self.error:
+
+                    # Update error label
                     self.error_label.place(in_=search, relwidth=0.7, relx=0.295, rely=0)
                     text = f"[Line {self.error['line']}] {self.error['message']}"
                     max_size = round((root.winfo_width() // self.font_size)*0.65)
                     if len(text) > max_size:
                         text = text[:max_size] + "..."
                     self.error_label.configure(text=text)
-                    pattern = self.error['code'].strip()
+
+                    # Configure text highlighting
+                    pattern = self.error['object'].args[1][-1].rstrip()
                     regex = False
                     if pattern == 'Unknown':
                         pattern = ''
                     try:
-                        print(self.error)
+                        # print(self.error)
                         line, char = self.error['line'].split(':')
+
+                        # Reformat line to start at the beginning
                         if int(char) == 1:
                             char = 0
-                        if int(char) > len(pattern):
+
+                        # Reformat pattern if it goes to the next line
+                        elif int(char) > len(pattern):
                             pattern = r"( +)?\n"
                             regex = True
-                        print(f"{line}.{char}", len(pattern))
+
+                        # Reformat index if pattern is in the middle of the line
+                        elif int(char) > 1 and pattern:
+                            test = pattern.startswith((int(char)) * ' ')
+                            if test:
+                                print(True, True, True)
+                                pattern = pattern.strip()
+                            else:
+                                char = int(char) - 1
+                                pattern = pattern[int(char):]
+
+                        # print(pattern)
+                        # print(f"{line}.{char}", f"{int(line) + 1}.0")
                         code_editor.highlight_pattern(pattern, "error", start=f"{line}.{char}", end=f"{int(line) + 1}.0", regexp=regex)
-                    except:
-                        pass
+                    except Exception as e:
+                        print(e)
                 else:
                     self.error_label.place_forget()
                     self.error_label.configure(text="")
@@ -1198,11 +1244,11 @@ def launch_window(path: str, data: dict):
                 def wait_for_break(*a):
                     self.timer_lock = True
                     while self.error_timer > 0:
-                        time.sleep(0.5)
-                        self.error_timer -= 0.5
+                        time.sleep(0.25)
+                        self.error_timer -= 0.25
 
                     self.error_timer = self.default_timer
-                    self.error = data_dict['script_obj'].is_valid([self.get("1.0",END), path])
+                    self.error = data['script_obj'].is_valid([self.get("1.0",END), path])
                     self.after(0, lambda *_: self.set_error())
                     self.timer_lock = False
 
@@ -1275,6 +1321,16 @@ def launch_window(path: str, data: dict):
                 line_start = self.index(f"{current_pos} linestart")
                 line_text = self.get(line_start, current_pos)
 
+                # Check if @ was deleted to hide menu
+                def test_at(*a):
+                    line_num = int(current_pos.split('.')[0])
+                    last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                    if last_line.startswith("@"):
+                        ac.update_results(last_line)
+                    else:
+                        ac.hide()
+                self.after(0, test_at)
+
                 if line_text.isspace():
                     self.delete(line_start, current_pos)
 
@@ -1304,6 +1360,8 @@ def launch_window(path: str, data: dict):
 
             # Indent/Dedent block
             def block_indent(self, indent):
+                ac.hide()
+
                 sel_start = self.index(SEL_FIRST)
                 sel_end = self.index(SEL_LAST)
 
@@ -1459,6 +1517,16 @@ def launch_window(path: str, data: dict):
                     elif left == '"' and right == '"':
                         self.delete(current_pos, next_pos)
 
+                # Check if @ was deleted to hide menu
+                def test_at(*a):
+                    line_num = int(current_pos.split('.')[0])
+                    last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                    if last_line.startswith("@"):
+                        ac.update_results(last_line)
+                    else:
+                        ac.hide()
+                self.after(0, test_at)
+
             # Move cursor right
             def move_cursor_right(self):
                 current_pos = self.index(INSERT)
@@ -1484,6 +1552,33 @@ def launch_window(path: str, data: dict):
                 current_pos = self.index(INSERT)
                 right = self.get(current_pos, self.index(f"{current_pos}+1c"))
 
+
+                # Show suggestions
+                if event.keysym == "at":
+                    line_num = int(current_pos.split('.')[0])
+                    last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                    if not last_line:
+                        x, y = self.bbox(INSERT)[:2]
+                        ac.show(x, y)
+                else:
+                    def get_text(*a):
+                        line_num = int(current_pos.split('.')[0])
+                        last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                        if last_line.startswith("@"):
+                            ac.update_results(last_line)
+                    if ac.visible:
+                        self.after(0, get_text)
+
+                if event.keysym == 'parenleft':
+                    ac.hide()
+
+
+                # Toggle suggestions
+                if event.keysym == "Tab" and ac.visible:
+                    ac.click()
+                    return "break"
+
+
                 # Checks if symbol exists for inserting pairs
                 def check_text(char, ex=''):
                     pattern = f'[^a-zA-Z0-9.{ex}]'
@@ -1493,6 +1588,10 @@ def launch_window(path: str, data: dict):
 
                 # Press return with last indent level
                 if event.keysym == 'Return':
+                    if ac.visible:
+                        ac.click()
+                        return "break"
+
                     line_num = int(current_pos.split('.')[0])
                     if line_num > 0:
                         last_line = self.get(f"{line_num}.0", f"{line_num}.end")
@@ -1695,6 +1794,147 @@ def launch_window(path: str, data: dict):
         icon = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'color-search.png')))
         search_icon = Label(image=icon, bg=background_color)
         search_icon.place(anchor='nw', in_=search, x=-50, y=-2)
+
+        # Auto-complete widget
+        class AutoComplete(Frame):
+            def __init__(self):
+                super().__init__()
+                self.background = "#0C0C1F"
+                self.configure(height=100, width=70, bg=self.background)
+                self.button_list = []
+                self.last_matches = []
+                self.suggestions = data['script_obj'].valid_events
+                self.visible = False
+
+            def add_buttons(self, matches):
+                print(len(matches), len(self.button_list))
+                if len(matches) == len(self.button_list):
+                    for x, b in enumerate(self.button_list, 0):
+                        item = matches[x]
+                        b.config(text=item, command=functools.partial(self.click_func, item))
+
+                else:
+                    for b in self.button_list:
+                        b.grid_forget()
+                    self.button_list = []
+
+                    for item in matches:
+                        button = Button(self, text=item, font="Consolas 14 italic", background=self.background)
+                        button.config(
+                            command = functools.partial(self.click_func, item),
+                            borderwidth = 5,
+                            relief = SUNKEN,
+                            foreground = text_color,
+                            highlightthickness = 0,
+                            bd = 0,
+                            activebackground = "#AAAAFF",
+                            width=18,
+                            anchor='w',
+                            padx=10,
+                            pady=5
+                        )
+                        button.grid(sticky="w")
+                        self.button_list.append(button)
+
+            def show(self, x, y):
+                self.last_matches = []
+                self.visible = True
+                self.update_results("@")
+                self.place(in_=code_editor, x=x-13, y=y+(code_editor.font_size*2.3))
+
+            def hide(self):
+                self.place_forget()
+                self.visible = False
+
+            def update_results(self, text):
+                if text == "@":
+                    matches = ["@player.on_alias", "@player.on_join", "@player.on_leave", "@server.on_loop"]
+                else:
+                    matches = [x for x in self.suggestions if x.startswith(text)][:4]
+                if not matches:
+                    self.hide()
+                if matches != self.last_matches:
+                    self.add_buttons(matches)
+                self.last_matches = matches
+
+            def iterate_selection(self, forward=True):
+                if self.visible:
+                    active_x = -1
+                    if forward:
+                        for x, b in enumerate(ac.button_list, 0):
+                            if b['state'] == "active":
+                                active_x = x
+                                b['state'] = "normal"
+                                break
+
+                        for x, b in enumerate(ac.button_list, 0):
+                            if x > active_x:
+                                b['state'] = "active"
+                                break
+                        else:
+                            ac.button_list[0]['state'] = "active"
+
+                    else:
+                        for x, b in enumerate(reversed(ac.button_list), 0):
+                            if b['state'] == "active":
+                                active_x = x
+                                b['state'] = "normal"
+                                break
+
+                        for x, b in enumerate(reversed(ac.button_list), 0):
+                            if x > active_x:
+                                b['state'] = "active"
+                                break
+                        else:
+                            ac.button_list[-1]['state'] = "active"
+
+            def click(self, *a):
+                active_x = -1
+
+                for b in self.button_list:
+                    if b['state'] == "active":
+                        b.invoke()
+                        break
+                else:
+                    self.button_list[0].invoke()
+
+            def click_func(self, val):
+                self.hide()
+
+                line_num = int(code_editor.index(INSERT).split('.')[0])
+                code_editor.delete(f'{line_num}.0', f'{line_num}.0 lineend')
+
+                if val == "@player.on_alias":
+                    code_editor.insert(f'{line_num}.0', f"@player.on_alias(player, command='', arguments={{}}, permission='op', description=''):")
+
+                elif val == "@player.on_message":
+                    code_editor.insert(f'{line_num}.0', f"@player.on_message(player, message):")
+
+                elif val == "@player.on_join":
+                    code_editor.insert(f'{line_num}.0', f"@player.on_join(player, data):")
+
+                elif val == "@player.on_leave":
+                    code_editor.insert(f'{line_num}.0', f"@player.on_leave(player, data):")
+
+                elif val == "@player.on_death":
+                    code_editor.insert(f'{line_num}.0', f"@player.on_death(player, enemy, message):")
+
+                elif val == "@server.on_loop":
+                    code_editor.insert(f'{line_num}.0', f"@server.on_loop(interval=1, unit='minute'):")
+
+                elif val == "@server.on_start":
+                    code_editor.insert(f'{line_num}.0', f"@server.on_start(data, delay=0):")
+
+                elif val == "@server.on_stop":
+                    code_editor.insert(f'{line_num}.0', f"@server.on_stop(data, delay=0):")
+
+                def newline(*a):
+                    code_editor.insert(code_editor.index(INSERT), f'\n{tab_str}')
+                    code_editor.recalc_lexer()
+                code_editor.after(1, newline)
+
+
+        ac = AutoComplete()
 
 
         # # When window is closed
