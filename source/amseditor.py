@@ -290,16 +290,18 @@ def launch_window(path: str, data: dict):
 
         # Init Tk window
         background_color = '#040415'
+        error_bg = convert_color((0.3, 0.1, 0.13))['hex']
         text_color = convert_color((0.6, 0.6, 1))['hex']
         file_icon = os.path.join(data['gui_assets'], "big-icon.png")
         min_size = (950, 600)
+        start_size = (1100, 700)
 
         root = Tk()
         width = root.winfo_screenwidth()
         height = root.winfo_screenheight()
-        x = int((width / 2) - (min_size[0] / 2))
-        y = int((height / 2) - (min_size[1] / 2)) - 15
-        root.geometry(f"{min_size[0]}x{min_size[1]}+{x}+{y}")
+        x = int((width / 2) - (start_size[0] / 2))
+        y = int((height / 2) - (start_size[1] / 2)) - 15
+        root.geometry(f"{start_size[0]}x{start_size[1]}+{x}+{y}")
         root.minsize(width=min_size[0], height=min_size[1])
         root.title(f'{data["app_title"]} - amscript ({os.path.basename(path)})')
         img = PhotoImage(file=file_icon)
@@ -330,20 +332,57 @@ def launch_window(path: str, data: dict):
         }
 
         # Configure search box
-        class EntryPlaceholder(Entry):
-            def __init__(self, master=None, placeholder="PLACEHOLDER", color=convert_color((0.3, 0.3, 0.65))['hex']):
+        class SearchBox(Entry):
+            def __init__(self, master=None, placeholder="PLACEHOLDER", color='#444477'):
                 super().__init__(master)
 
                 self.placeholder = placeholder
                 self.placeholder_color = color
                 self.default_fg_color = text_color
                 self.has_focus = False
+                self.last_index = 0
 
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
                 self.bind("<Control-BackSpace>", self.ctrl_bs)
+                self.bind('<Escape>', lambda *_: toggle_focus(False))
+                self.bind('<Escape>', lambda *_: toggle_focus2(False))
+                self.bind('<KeyPress>', self.process_keys)
+                self.bind("<Control-h>", lambda *_: toggle_focus2(True))
+                self.bind('<Shift-Return>', lambda *_: trigger_replace())
 
                 self.put_placeholder()
+
+            def see_index(self, index):
+                code_editor.see(f"{index}.0")
+                self.last_index = index
+                replace.last_index = index
+
+            def iterate_selection(self, forward=True):
+                if len(code_editor.match_list) > 1:
+                    if forward:
+                        for i in code_editor.match_list:
+                            if i > self.last_index:
+                                self.see_index(i)
+                                break
+                        else:
+                            self.see_index(code_editor.match_list[0])
+
+                    else:
+                        for i in reversed(code_editor.match_list):
+                            if i < self.last_index:
+                                self.see_index(i)
+                                break
+                        else:
+                            self.see_index(code_editor.match_list[-1])
+
+
+            def process_keys(self, event):
+                if event.keysym == "Return":
+                    if event.state == 33:
+                        self.iterate_selection(False)
+                    else:
+                        self.iterate_selection(True)
 
             def put_placeholder(self):
                 self.insert(0, self.placeholder)
@@ -369,7 +408,7 @@ def launch_window(path: str, data: dict):
         search_frame = Frame(root, height=1)
         search_frame.pack(fill=X, side=BOTTOM)
         search_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
-        search = EntryPlaceholder(search_frame, placeholder='search for text')
+        search = SearchBox(search_frame, placeholder='search for text')
         search.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
         search.configure(
             bg = background_color,
@@ -381,9 +420,193 @@ def launch_window(path: str, data: dict):
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
             font = "Consolas 14",
         )
+        def toggle_focus(fs=True):
+            if str(search.focus_get()).endswith('searchbox') or not fs:
+                code_editor.focus_force()
+                code_editor.see(code_editor.index(INSERT))
+            else:
+                search.focus_force()
+            return 'break'
+        root.bind('<Control-f>', lambda *_: toggle_focus(True))
 
-        # Bind CTRL-F to focus search box
-        root.bind('<Control-f>', lambda x: search.focus_force())
+
+        # Configure replace box
+        class ReplaceBox(Entry):
+            def __init__(self, master=None, placeholder="PLACEHOLDER", color='#444477'):
+                super().__init__(master)
+
+                self.placeholder = placeholder
+                self.placeholder_color = color
+                self.default_fg_color = text_color
+                self.has_focus = False
+                self.visible = False
+                self.last_index = 0
+
+                self.bind("<FocusIn>", self.foc_in)
+                self.bind("<FocusOut>", self.foc_out)
+                self.bind("<Control-BackSpace>", self.ctrl_bs)
+                self.bind('<Escape>', lambda *_: toggle_focus2(False))
+                self.bind('<KeyPress>', self.process_keys)
+                self.bind("<Control-h>", lambda *_: toggle_focus2(False))
+                self.bind('<Shift-Return>', lambda *_: trigger_replace())
+
+                self.put_placeholder()
+
+            def see_index(self, index):
+                code_editor.see(f"{index}.0")
+                self.last_index = index
+                search.last_index = index
+                current_line = index
+                pattern = search.get()
+                replace = self.get()
+                start = f"{current_line}.0"
+                end = f"{current_line}.end"
+                pos = code_editor.search(pattern, start, stopindex=end, nocase=True)
+
+                if pos:
+                    line_start = code_editor.index(f"{pos.split('.')[0]}.0")
+                    line_end = code_editor.index(f"{line_start} lineend")
+                    line = code_editor.get(line_start, line_end)
+                    match = re.search(pattern, line, flags=re.IGNORECASE)
+
+                    if match:
+                        match_start = line_start + f"+{match.start()}c"
+                        match_end = line_start + f"+{match.end()}c"
+                        code_editor.delete(match_start, match_end)
+                        code_editor.insert(match_start, replace)
+
+            def iterate_selection(self, forward=True):
+                if len(code_editor.match_list) > 1:
+                    if forward:
+                        for i in code_editor.match_list:
+                            if i > self.last_index:
+                                self.see_index(i)
+                                break
+                        else:
+                            self.see_index(code_editor.match_list[0])
+
+                    else:
+                        for i in reversed(code_editor.match_list):
+                            if i < self.last_index:
+                                self.see_index(i)
+                                break
+                        else:
+                            self.see_index(code_editor.match_list[-1])
+
+                elif code_editor.match_list:
+                    self.see_index(code_editor.match_list[0])
+                code_editor.after(1, code_editor._line_numbers.redraw)
+                code_editor.after(1, code_editor.recalc_lexer)
+
+            def replace_all(self):
+                while code_editor.match_list:
+                    for x in code_editor.match_list:
+                        self.see_index(x)
+                    update_search()
+                code_editor.after(1, code_editor._line_numbers.redraw)
+                code_editor.after(1, code_editor.recalc_lexer)
+
+            def process_keys(self, event):
+                if event.keysym == "Return":
+                    if event.state == 33:
+                        self.iterate_selection(False)
+                    else:
+                        self.iterate_selection(True)
+
+            def put_placeholder(self):
+                self.insert(0, self.placeholder)
+                self['fg'] = self.placeholder_color
+
+            def foc_in(self, *args):
+                if self['fg'] == self.placeholder_color:
+                    self.delete('0', 'end')
+                    self['fg'] = self.default_fg_color
+                self.has_focus = True
+
+            def foc_out(self, *args):
+                if not self.get():
+                    self.put_placeholder()
+                self.has_focus = False
+
+            def ctrl_bs(self, event, *_):
+                ent = event.widget
+                end_idx = ent.index(INSERT)
+                start_idx = ent.get().rfind(" ", None, end_idx)
+                ent.selection_range(start_idx, end_idx)
+        class HoverButton(Button):
+
+            def click_func(self, *a):
+                self.config(image=self.background_click)
+                self.function()
+                self.after(100, self.on_enter)
+
+            def on_enter(self, *a):
+                self.config(image=self.background_hover)
+
+            def on_leave(self, *a):
+                self.config(image=self.background_image)
+
+            def __init__(self, button_id, click_func, **args):
+                super().__init__(**args)
+                self.master = root
+                self.id = button_id
+                self.background_image = PhotoImage(file=os.path.join(data['gui_assets'], f'{self.id}.png'))
+                self.background_hover = PhotoImage(file=os.path.join(data['gui_assets'], f'{self.id}_hover.png'))
+                self.background_click = PhotoImage(file=os.path.join(data['gui_assets'], f'{self.id}_click.png'))
+                self.function = click_func
+                self['image'] = self.background_image
+
+                # Import the image using PhotoImage function
+                self.config(
+                    command=self.click_func,
+                    borderwidth=5,
+                    relief=SUNKEN,
+                    foreground=background_color,
+                    background=background_color,
+                    highlightthickness=0,
+                    bd=0,
+                    activebackground=background_color
+                )
+
+                # Bind hover events
+                self.bind('<Enter>', self.on_enter)
+                self.bind('<Leave>', self.on_leave)
+
+        replace = ReplaceBox(search_frame, placeholder='replace with...')
+        replace.configure(
+            bg = background_color,
+            borderwidth = 0,
+            highlightthickness = 0,
+            selectforeground = convert_color((0.75, 0.75, 1))['hex'],
+            selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
+            insertwidth = 3,
+            insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
+            font = "Consolas 14",
+        )
+
+        # Replace All Button
+        replace_button = HoverButton('replace_button', click_func=replace.replace_all)
+        replace_button.config(anchor='se')
+
+        def toggle_focus2(fs=True):
+            if replace.visible or not fs:
+                replace.pack_forget()
+                code_editor.focus_force()
+                code_editor.see(code_editor.index(INSERT))
+                replace.visible = False
+            else:
+                replace.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s', before=search)
+                replace_button.place(in_=replace, relwidth=0.2, relx=0.795, y=-9)
+                replace.visible = True
+            return 'break'
+
+        def trigger_replace(*a):
+            if replace.visible and replace.get() and search.get():
+                replace_button.invoke()
+                root.after(100, replace_button.on_leave)
+                return "break"
+
+        root.bind('<Control-h>', lambda *_: toggle_focus2())
 
 
         class Scrollbar(Canvas):
@@ -661,11 +884,20 @@ def launch_window(path: str, data: dict):
                             err_index = int(line.split(':')[0].strip())
                         else:
                             err_index = int(line.strip())
-                except NameError:
+                except:
                     pass
+
 
                 # Draw the line numbers looping through the lines
                 for lineno in range(first_line, last_line + 1):
+
+                    # Check if it's searched
+                    search_match = False
+                    try:
+                        search_match = lineno in code_editor.match_list
+                    except:
+                        pass
+
                     # Check if line is elided
                     tags: tuple[str] = self.textwidget.tag_names(f"{lineno}.0")
                     elide_values: tuple[str] = (self.textwidget.tag_cget(tag, "elide") for tag in tags)
@@ -688,11 +920,12 @@ def launch_window(path: str, data: dict):
                         else int(self["width"])
                         if self.justify == "right"
                         else int(self["width"]) / 2,
-                        dlineinfo[1] + 6.5,
+                        dlineinfo[1] + 5.5,
                         text=f" {lineno} " if self.justify != "center" else f"{lineno}",
                         anchor={"left": "nw", "right": "ne", "center": "n"}[self.justify],
                         font=self.textwidget.cget("font"),
                         fill=convert_color((1, 0.65, 0.65))['hex'] if err_index == lineno
+                        else '#4CFF99' if search_match
                         else '#AAAAFF' if index == lineno
                         else self.foreground_color
                     )
@@ -1125,6 +1358,7 @@ def launch_window(path: str, data: dict):
                 CodeView.__init__(self, *args, **kwargs)
                 self.content_changed = False
                 self.last_search = ""
+                self.match_list = []
                 self.font_size = 13
                 self.match_counter = Label(justify='right', anchor='se')
                 self.match_counter.place(in_=search, relwidth=0.2, relx=0.795, rely=0)
@@ -1168,8 +1402,13 @@ def launch_window(path: str, data: dict):
                 self.bind("<Down>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Left>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Right>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
+                self.bind("<Control-h>", lambda *_: toggle_focus2(True))
+                self.bind("<Control-k>", lambda *_: "break")
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
+                self.bind("<<Selection>>", self.redo_search, add=True)
                 root.bind('<Configure>', self.set_error)
+                self.error_label.bind("<Button-1>", lambda *_: self.after(0, self.view_error), add=True)
+
                 self.default_timer = 0.25
                 self.error_timer = 0
                 self.timer_lock = False
@@ -1178,10 +1417,16 @@ def launch_window(path: str, data: dict):
                 self.bind(f"<Control-c>", self._copy, add=True)
                 self.bind(f"<Control-v>", self._paste, add=True)
 
+            def redo_search(self, *a):
+                self.content_changed = True
+
             def check_ac(self, key, *a):
                 if ac.visible:
                     ac.iterate_selection(key)
                     return "break"
+
+            def view_error(self, *a):
+                self.see(self.error['line'].replace(':','.'))
 
             def set_error(self, *a):
                 code_editor.tag_remove("error", "1.0", "end")
@@ -1197,7 +1442,11 @@ def launch_window(path: str, data: dict):
                     self.error_label.configure(text=text)
 
                     # Configure text highlighting
-                    pattern = self.error['object'].args[1][-1].rstrip()
+                    # print(self.error)
+                    try:
+                        pattern = self.error['object'].args[1][-1].rstrip()
+                    except:
+                        pattern = self.error['code']
                     regex = False
                     if pattern == 'Unknown':
                         pattern = ''
@@ -1218,7 +1467,6 @@ def launch_window(path: str, data: dict):
                         elif int(char) > 1 and pattern:
                             test = pattern.startswith((int(char)) * ' ')
                             if test:
-                                print(True, True, True)
                                 pattern = pattern.strip()
                             else:
                                 char = int(char) - 1
@@ -1552,6 +1800,13 @@ def launch_window(path: str, data: dict):
                 current_pos = self.index(INSERT)
                 right = self.get(current_pos, self.index(f"{current_pos}+1c"))
 
+                line_num = int(current_pos.split('.')[0])
+                last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+
+                # Hide auto-complete menu
+                if event.keysym == "Escape":
+                    if ac.visible:
+                        ac.hide()
 
                 # Show suggestions
                 if event.keysym == "at":
@@ -1716,6 +1971,8 @@ def launch_window(path: str, data: dict):
 
                 count = IntVar()
                 x = 0
+                if tag == "highlight":
+                    self.match_list = []
                 while True:
                     try:
                         index = self.search(pattern, "matchEnd", "searchLimit", count=count, regexp=regexp, nocase=True)
@@ -1730,27 +1987,40 @@ def launch_window(path: str, data: dict):
                     self.tag_add(tag, "matchStart", "matchEnd")
 
                     if index == "1.0":
+                        if tag == "highlight":
+                            self.match_list = []
                         break
 
                     if x == 0 and tag == 'highlight':
                         new_search = search.get()
                         if new_search != self.last_search:
                             self.see(index)
+                            self.match_list = []
                         self.last_search = new_search
+                    if tag == 'highlight':
+                        index = int(self.index("matchStart").split(".")[0])
+                        if index not in self.match_list:
+                            self.match_list.append(index)
                     x += 1
+
+                    if not pattern:
+                        if tag == "highlight":
+                            self.match_list = []
+                        break
 
                 if tag != 'highlight':
                     return
 
-                if search.has_focus or x > 0:
+                if search.has_focus or replace.has_focus or x > 0:
                     self.match_counter.configure(
                         text=f'{x} result(s)',
-                        fg = text_color if x > 0 else convert_color((0.3, 0.3, 0.65))['hex']
+                        fg = text_color if x > 0 else '#444477'
                     )
                     self.index_label.place_forget()
                 else:
                     self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0)
                     self.match_counter.configure(text='')
+                self._line_numbers.redraw()
 
         code_editor = HighlightText(
             root,
@@ -1766,10 +2036,24 @@ def launch_window(path: str, data: dict):
         code_editor._line_numbers.config(borderwidth=0, highlightthickness=0)
         code_editor.config(spacing1=5, spacing3=5, wrap='word')
 
-
         # Highlight stuffies
         code_editor.tag_configure("highlight", foreground="black", background="#4CFF99")
-        code_editor.tag_configure("error", background=convert_color((0.3, 0.1, 0.13))['hex'])
+        code_editor.tag_configure("error", background=error_bg)
+
+        def update_search(search_text=None):
+            if not search_text:
+                search_text = search.get()
+            search.last_index = 0
+            code_editor.content_changed = False
+            sel_start = code_editor.index(SEL_FIRST)
+            sel_end = code_editor.index(SEL_LAST)
+            code_editor.tag_remove("highlight", "1.0", "end")
+            if sel_start and sel_end:
+                code_editor.highlight_pattern(search.get(), "highlight", start=sel_start, end=sel_end, regexp=False)
+            else:
+                code_editor.highlight_pattern(search.get(), "highlight", regexp=False)
+            code_editor.last_search = search_text
+            code_editor._line_numbers.redraw()
 
         def highlight_search():
             if root.close:
@@ -1782,10 +2066,7 @@ def launch_window(path: str, data: dict):
 
             search_text = search.get()
             if code_editor.last_search != search_text or code_editor.content_changed:
-                code_editor.content_changed = False
-                code_editor.tag_remove("highlight", "1.0", "end")
-                code_editor.highlight_pattern(search.get(), "highlight", regexp=False)
-
+                update_search(search_text)
 
             root.after(250, highlight_search)
         highlight_search()
@@ -1807,7 +2088,7 @@ def launch_window(path: str, data: dict):
                 self.visible = False
 
             def add_buttons(self, matches):
-                print(len(matches), len(self.button_list))
+                # print(len(matches), len(self.button_list))
                 if len(matches) == len(self.button_list):
                     for x, b in enumerate(self.button_list, 0):
                         item = matches[x]
@@ -1932,17 +2213,14 @@ def launch_window(path: str, data: dict):
                     code_editor.insert(code_editor.index(INSERT), f'\n{tab_str}')
                     code_editor.recalc_lexer()
                 code_editor.after(1, newline)
-
-
         ac = AutoComplete()
 
-
-        # # When window is closed
-        # def on_closing():
-        #     root.close = True
-        #     root.destroy()
-        #
-        # root.protocol("WM_DELETE_WINDOW", on_closing)
+        # When window is closed
+        def on_closing():
+            # Auto-save
+            root.close = True
+            root.destroy()
+        root.protocol("WM_DELETE_WINDOW", on_closing)
 
         root.mainloop()
 

@@ -325,7 +325,11 @@ class ScriptObject():
 
                 # Throw error if server variable is reassigned
                 for var in self.protected_variables:
-                    if line.strip().replace(' ', '').startswith(f"{var}=") or ("def" in line and f" {var}(" in line):
+                    stripped = line.strip().replace(' ', '')
+                    if stripped.startswith(f"{var}=") or\
+                    ("def" in line and f" {var}(" in line) or\
+                    (line.strip().startswith("import ") and line.strip().endswith(f"as {var}")) or \
+                    ((stripped.startswith(f"{var},") or f",{var}," in stripped or f",{var}=" in stripped) and "=" in line):
                         parse_error['file'] = file_name
                         parse_error['code'] = line.rstrip()
                         parse_error['line'] = f'{x}:{line.find(f"{var}") + 1}'
@@ -369,11 +373,20 @@ class ScriptObject():
                     parse_error['message'] = f"({e.__class__.__name__}) {e.args[0]}"
                     parse_error['object'] = e
                 except IndexError:
-                    parse_error['file'] = file_name
-                    parse_error['code'] = "Unknown"
-                    parse_error['line'] = 0
-                    parse_error['message'] = f"({e.__class__.__name__}) {e.args[0]}"
-                    parse_error['object'] = e
+                    try:
+                        line_num = str(e).rsplit("line ", 1)[1].replace(")", "")
+                        parse_error['file'] = file_name
+                        parse_error['line'] = f"{line_num}:0"
+                        parse_error['code'] = script_text.splitlines()[int(line_num)-1].strip()
+                        parse_error['message'] = f"({e.__class__.__name__}) {e.args[0]}"
+                        parse_error['object'] = e
+                        parse_error['object'].args = (e.args[0], ('<unknown>', int(line_num), 0, parse_error['code']))
+                    except IndexError:
+                        parse_error['file'] = file_name
+                        parse_error['code'] = "Unknown"
+                        parse_error['line'] = "0:0"
+                        parse_error['message'] = f"({e.__class__.__name__}) {e.args[0]}"
+                        parse_error['object'] = e
 
                 # Reformat if it starts with an event
                 error = parse_error['code']

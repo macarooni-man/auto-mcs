@@ -96,8 +96,8 @@ def launch_window(server_name: str, path: str, data: dict):
 
 
         # Configure search box
-        class EntryPlaceholder(Entry):
-            def __init__(self, master=None, placeholder="PLACEHOLDER", color=convert_color((0.3, 0.3, 0.65))['hex']):
+        class SearchBox(Entry):
+            def __init__(self, master=None, placeholder="PLACEHOLDER", color='#444477'):
                 super().__init__(master)
 
                 self.placeholder = placeholder
@@ -135,7 +135,7 @@ def launch_window(server_name: str, path: str, data: dict):
         search_frame = Frame(root, height=1)
         search_frame.pack(fill=X, side=BOTTOM)
         search_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
-        search = EntryPlaceholder(search_frame, placeholder='search for text')
+        search = SearchBox(search_frame, placeholder='search for text')
         search.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
         search.configure(
             bg = background_color,
@@ -377,7 +377,7 @@ def launch_window(server_name: str, path: str, data: dict):
                 if search.has_focus or x > 0:
                     text_info.match_counter.configure(
                         text=f'{x} result(s)',
-                        fg = text_color if x > 0 else convert_color((0.3, 0.3, 0.65))['hex']
+                        fg = text_color if x > 0 else '#444477'
                     )
                 else:
                     text_info.match_counter.configure(text='')
