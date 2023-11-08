@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, IntVar, Frame, PhotoImage, INSERT, BaseWidget,\
+from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, FIRST, IntVar, Frame, PhotoImage, INSERT, BaseWidget,\
     Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, Button, SUNKEN
 
 from typing import Any, Callable, Optional, Type, Union
@@ -1233,6 +1233,8 @@ def launch_window(path: str, data: dict):
                 self.bind("<<Selection>>", self.redo_search, add=True)
                 root.bind('<Configure>', self.set_error)
                 self.error_label.bind("<Button-1>", lambda *_: self.after(0, self.view_error), add=True)
+                self.bind("<KeyRelease>", lambda *_: self.after(0, self.highlight_matching_parentheses))
+                self.bind("<Button-1>", lambda *_: self.after(0, self.highlight_matching_parentheses))
 
                 self.default_timer = 0.25
                 self.error_timer = 0
@@ -1241,6 +1243,110 @@ def launch_window(path: str, data: dict):
 
                 self.bind(f"<Control-c>", self._copy, add=True)
                 self.bind(f"<Control-v>", self._paste, add=True)
+
+            def highlight_matching_parentheses(self, event=None):
+                self.tag_remove("parentheses", "1.0", END)
+                cursor_pos = self.index(INSERT)
+
+                stack = {"(": [], "{": [], "[": [], ")": [], "}": [], "]": []}
+                levels = {"(": 0, "{": 0, "[": 0, ")": 0, "}": 0, "]": 0}
+
+                looking_for = ''
+
+                left = self.get(self.index(f"{cursor_pos}-1c"))
+                right = self.get(cursor_pos)
+
+                o = "({["
+                c = ")}]"
+
+                # Check for starting index
+                if (left in o and right in c):
+                    cursor_pos = self.index(f"{INSERT}-1c")
+                    looking_for = left
+                    invert = False
+
+                elif (left in c and right in c):
+                    looking_for = left
+                    cursor_pos = self.index(f"{INSERT}-1c")
+                    invert = True
+
+                elif (right in o and left not in c):
+                    looking_for = right
+                    invert = False
+
+                elif (right in c and left not in o):
+                    looking_for = right
+                    invert = True
+
+                elif (left in o and right not in c):
+                    looking_for = left
+                    cursor_pos = self.index(f"{INSERT}-1c")
+                    invert = False
+
+                elif (left in c and right not in o):
+                    looking_for = left
+                    cursor_pos = self.index(f"{INSERT}-1c")
+                    invert = True
+
+
+                if looking_for:
+                    for char, index in self.iterate_characters(cursor_pos, '1.0' if invert else END, invert):
+                        if char == looking_for:
+                            stack[char].append(index)
+                            levels[char] += 1
+                        elif char == self.get_opposite(looking_for):
+                            if stack[looking_for] and self.is_matching(looking_for, char, invert):
+                                if levels[looking_for] == 1:
+                                    start_opening = stack[looking_for][0]
+                                    start_closing = index
+                                    end_opening = f"{start_opening}+1c"
+                                    end_closing = f"{start_closing}+1c"
+                                    o_tag = self.tag_names(start_opening)[0]
+                                    c_tag = self.tag_names(start_closing)[0]
+                                    for tag in ('Comment', 'String.Single', 'String.Double'):
+                                        if tag in o_tag or tag in c_tag:
+                                            break
+                                    else:
+                                        self.tag_add("parentheses", start_opening, end_opening)
+                                        self.tag_add("parentheses", start_closing, end_closing)
+                                        stack[looking_for].pop()
+                                        return
+                                levels[looking_for] -= 1
+
+            @staticmethod
+            def is_matching(opening, closing, invert=False):
+                if invert:
+                    return (opening == ")" and closing == "(" or
+                            opening == "]" and closing == "[" or
+                            opening == "}" and closing == "{")
+                else:
+                    return (opening == "(" and closing == ")" or
+                            opening == "[" and closing == "]" or
+                            opening == "{" and closing == "}")
+
+            @staticmethod
+            def get_opposite(char):
+                if char == '(':
+                    return ')'
+                elif char == ')':
+                    return '('
+                elif char == '}':
+                    return '{'
+                elif char == '{':
+                    return '}'
+                elif char == ']':
+                    return '['
+                elif char == '[':
+                    return ']'
+
+            def iterate_characters(self, start, end, invert=False):
+                while True:
+                    char = self.get(start)
+                    if char == "" or start == end:
+                        break
+                    yield char, start
+                    start = self.index(f"{start}{'-' if invert else '+'}1c")
+
 
             def redo_search(self, *a):
                 self.content_changed = True
@@ -1864,6 +1970,8 @@ def launch_window(path: str, data: dict):
         # Highlight stuffies
         code_editor.tag_configure("highlight", foreground="black", background="#4CFF99")
         code_editor.tag_configure("error", background=error_bg)
+        code_editor.tag_configure("parentheses", background="#34344C", underline=True, underlinefg="yellow") # 2D2D42
+
 
         # Configure replace box
         class ReplaceBox(Entry):
@@ -2087,7 +2195,7 @@ def launch_window(path: str, data: dict):
         highlight_search()
 
         # Search icon
-        icon = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'color-search.png')))
+        icon = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'color-search.png')).convert("RGBA"))
         search_icon = Label(image=icon, bg=background_color)
         search_icon.place(anchor='nw', in_=search, x=-50, y=1)
         search_frame.tkraise(code_editor)
