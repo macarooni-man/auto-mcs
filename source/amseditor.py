@@ -331,6 +331,10 @@ def launch_window(path: str, data: dict):
                 'single': '#636363', 'special': '#636363'}
         }
 
+        placeholder_frame = Frame(root, height=40)
+        placeholder_frame.pack(fill=X, side=BOTTOM)
+        placeholder_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
+
         # Configure search box
         class SearchBox(Entry):
             def __init__(self, master=None, placeholder="PLACEHOLDER", color='#444477'):
@@ -345,13 +349,21 @@ def launch_window(path: str, data: dict):
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
                 self.bind("<Control-BackSpace>", self.ctrl_bs)
-                self.bind('<Escape>', lambda *_: toggle_focus(False))
-                self.bind('<Escape>', lambda *_: toggle_focus2(False))
+                self.bind('<Escape>', lambda *_: self.toggle_focus(False))
+                self.bind('<Escape>', lambda *_: replace.toggle_focus(False))
                 self.bind('<KeyPress>', self.process_keys)
-                self.bind("<Control-h>", lambda *_: toggle_focus2(True))
+                self.bind("<Control-h>", lambda *_: replace.toggle_focus(True))
                 self.bind('<Shift-Return>', lambda *_: trigger_replace())
 
                 self.put_placeholder()
+
+            def toggle_focus(self, fs=True):
+                if str(self.focus_get()).endswith('searchbox') or not fs:
+                    code_editor.focus_force()
+                    code_editor.see(code_editor.index(INSERT))
+                else:
+                    self.focus_force()
+                return 'break'
 
             def see_index(self, index):
                 code_editor.see(f"{index}.0")
@@ -406,8 +418,8 @@ def launch_window(path: str, data: dict):
                 ent.selection_range(start_idx, end_idx)
 
         search_frame = Frame(root, height=1)
-        search_frame.pack(fill=X, side=BOTTOM)
         search_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
+        search_frame.place(rely=1, y=-45, relwidth=1, height=50)
         search = SearchBox(search_frame, placeholder='search for text')
         search.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
         search.configure(
@@ -420,194 +432,7 @@ def launch_window(path: str, data: dict):
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
             font = "Consolas 14",
         )
-        def toggle_focus(fs=True):
-            if str(search.focus_get()).endswith('searchbox') or not fs:
-                code_editor.focus_force()
-                code_editor.see(code_editor.index(INSERT))
-            else:
-                search.focus_force()
-            return 'break'
-        root.bind('<Control-f>', lambda *_: toggle_focus(True))
-
-
-        # Configure replace box
-        class ReplaceBox(Entry):
-            def __init__(self, master=None, placeholder="PLACEHOLDER", color='#444477'):
-                super().__init__(master)
-
-                self.placeholder = placeholder
-                self.placeholder_color = color
-                self.default_fg_color = text_color
-                self.has_focus = False
-                self.visible = False
-                self.last_index = 0
-
-                self.bind("<FocusIn>", self.foc_in)
-                self.bind("<FocusOut>", self.foc_out)
-                self.bind("<Control-BackSpace>", self.ctrl_bs)
-                self.bind('<Escape>', lambda *_: toggle_focus2(False))
-                self.bind('<KeyPress>', self.process_keys)
-                self.bind("<Control-h>", lambda *_: toggle_focus2(False))
-                self.bind('<Shift-Return>', lambda *_: trigger_replace())
-
-                self.put_placeholder()
-
-            def see_index(self, index):
-                code_editor.see(f"{index}.0")
-                self.last_index = index
-                search.last_index = index
-                current_line = index
-                pattern = search.get()
-                replace = self.get()
-                start = f"{current_line}.0"
-                end = f"{current_line}.end"
-                pos = code_editor.search(pattern, start, stopindex=end, nocase=True)
-
-                if pos:
-                    line_start = code_editor.index(f"{pos.split('.')[0]}.0")
-                    line_end = code_editor.index(f"{line_start} lineend")
-                    line = code_editor.get(line_start, line_end)
-                    match = re.search(pattern, line, flags=re.IGNORECASE)
-
-                    if match:
-                        match_start = line_start + f"+{match.start()}c"
-                        match_end = line_start + f"+{match.end()}c"
-                        code_editor.delete(match_start, match_end)
-                        code_editor.insert(match_start, replace)
-
-            def iterate_selection(self, forward=True):
-                if len(code_editor.match_list) > 1:
-                    if forward:
-                        for i in code_editor.match_list:
-                            if i > self.last_index:
-                                self.see_index(i)
-                                break
-                        else:
-                            self.see_index(code_editor.match_list[0])
-
-                    else:
-                        for i in reversed(code_editor.match_list):
-                            if i < self.last_index:
-                                self.see_index(i)
-                                break
-                        else:
-                            self.see_index(code_editor.match_list[-1])
-
-                elif code_editor.match_list:
-                    self.see_index(code_editor.match_list[0])
-                code_editor.after(1, code_editor._line_numbers.redraw)
-                code_editor.after(1, code_editor.recalc_lexer)
-
-            def replace_all(self):
-                while code_editor.match_list:
-                    for x in code_editor.match_list:
-                        self.see_index(x)
-                    update_search()
-                code_editor.after(1, code_editor._line_numbers.redraw)
-                code_editor.after(1, code_editor.recalc_lexer)
-
-            def process_keys(self, event):
-                if event.keysym == "Return":
-                    if event.state == 33:
-                        self.iterate_selection(False)
-                    else:
-                        self.iterate_selection(True)
-
-            def put_placeholder(self):
-                self.insert(0, self.placeholder)
-                self['fg'] = self.placeholder_color
-
-            def foc_in(self, *args):
-                if self['fg'] == self.placeholder_color:
-                    self.delete('0', 'end')
-                    self['fg'] = self.default_fg_color
-                self.has_focus = True
-
-            def foc_out(self, *args):
-                if not self.get():
-                    self.put_placeholder()
-                self.has_focus = False
-
-            def ctrl_bs(self, event, *_):
-                ent = event.widget
-                end_idx = ent.index(INSERT)
-                start_idx = ent.get().rfind(" ", None, end_idx)
-                ent.selection_range(start_idx, end_idx)
-        class HoverButton(Button):
-
-            def click_func(self, *a):
-                self.config(image=self.background_click)
-                self.function()
-                self.after(100, self.on_enter)
-
-            def on_enter(self, *a):
-                self.config(image=self.background_hover)
-
-            def on_leave(self, *a):
-                self.config(image=self.background_image)
-
-            def __init__(self, button_id, click_func, **args):
-                super().__init__(**args)
-                self.master = root
-                self.id = button_id
-                self.background_image = PhotoImage(file=os.path.join(data['gui_assets'], f'{self.id}.png'))
-                self.background_hover = PhotoImage(file=os.path.join(data['gui_assets'], f'{self.id}_hover.png'))
-                self.background_click = PhotoImage(file=os.path.join(data['gui_assets'], f'{self.id}_click.png'))
-                self.function = click_func
-                self['image'] = self.background_image
-
-                # Import the image using PhotoImage function
-                self.config(
-                    command=self.click_func,
-                    borderwidth=5,
-                    relief=SUNKEN,
-                    foreground=background_color,
-                    background=background_color,
-                    highlightthickness=0,
-                    bd=0,
-                    activebackground=background_color
-                )
-
-                # Bind hover events
-                self.bind('<Enter>', self.on_enter)
-                self.bind('<Leave>', self.on_leave)
-
-        replace = ReplaceBox(search_frame, placeholder='replace with...')
-        replace.configure(
-            bg = background_color,
-            borderwidth = 0,
-            highlightthickness = 0,
-            selectforeground = convert_color((0.75, 0.75, 1))['hex'],
-            selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
-            insertwidth = 3,
-            insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = "Consolas 14",
-        )
-
-        # Replace All Button
-        replace_button = HoverButton('replace_button', click_func=replace.replace_all)
-        replace_button.config(anchor='se')
-
-        def toggle_focus2(fs=True):
-            if replace.visible or not fs:
-                replace.pack_forget()
-                code_editor.focus_force()
-                code_editor.see(code_editor.index(INSERT))
-                replace.visible = False
-            else:
-                replace.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s', before=search)
-                replace_button.place(in_=replace, relwidth=0.2, relx=0.795, y=-9)
-                replace.visible = True
-            return 'break'
-
-        def trigger_replace(*a):
-            if replace.visible and replace.get() and search.get():
-                replace_button.invoke()
-                root.after(100, replace_button.on_leave)
-                return "break"
-
-        root.bind('<Control-h>', lambda *_: toggle_focus2())
-
+        root.bind('<Control-f>', lambda *_: search.toggle_focus(True))
 
         class Scrollbar(Canvas):
 
@@ -1361,7 +1186,7 @@ def launch_window(path: str, data: dict):
                 self.match_list = []
                 self.font_size = 13
                 self.match_counter = Label(justify='right', anchor='se')
-                self.match_counter.place(in_=search, relwidth=0.2, relx=0.795, rely=0)
+                self.match_counter.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=7)
                 self.match_counter.configure(
                     fg = convert_color((0.3, 0.3, 0.65))['hex'],
                     bg = background_color,
@@ -1370,7 +1195,7 @@ def launch_window(path: str, data: dict):
                 )
 
                 self.index_label = Label(justify='right', anchor='se')
-                self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0)
+                self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=7)
                 self.index_label.configure(
                     fg = convert_color((0.6, 0.6, 1))['hex'],
                     bg = background_color,
@@ -1402,7 +1227,7 @@ def launch_window(path: str, data: dict):
                 self.bind("<Down>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Left>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Right>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
-                self.bind("<Control-h>", lambda *_: toggle_focus2(True))
+                self.bind("<Control-h>", lambda *_: replace.toggle_focus(True))
                 self.bind("<Control-k>", lambda *_: "break")
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
                 self.bind("<<Selection>>", self.redo_search, add=True)
@@ -1434,7 +1259,7 @@ def launch_window(path: str, data: dict):
                 if self.error:
 
                     # Update error label
-                    self.error_label.place(in_=search, relwidth=0.7, relx=0.295, rely=0)
+                    self.error_label.place(in_=search, relwidth=0.7, relx=0.295, rely=0, y=5)
                     text = f"[Line {self.error['line']}] {self.error['message']}"
                     max_size = round((root.winfo_width() // self.font_size)*0.65)
                     if len(text) > max_size:
@@ -2018,7 +1843,7 @@ def launch_window(path: str, data: dict):
                     )
                     self.index_label.place_forget()
                 else:
-                    self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0)
+                    self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=7)
                     self.match_counter.configure(text='')
                 self._line_numbers.redraw()
 
@@ -2039,6 +1864,196 @@ def launch_window(path: str, data: dict):
         # Highlight stuffies
         code_editor.tag_configure("highlight", foreground="black", background="#4CFF99")
         code_editor.tag_configure("error", background=error_bg)
+
+        # Configure replace box
+        class ReplaceBox(Entry):
+            def __init__(self, master=None, placeholder="PLACEHOLDER", color='#444477'):
+                super().__init__(master)
+
+                self.placeholder = placeholder
+                self.placeholder_color = color
+                self.default_fg_color = text_color
+                self.has_focus = False
+                self.visible = False
+                self.last_index = 0
+
+                self.bind("<FocusIn>", self.foc_in)
+                self.bind("<FocusOut>", self.foc_out)
+                self.bind("<Control-BackSpace>", self.ctrl_bs)
+                self.bind('<Escape>', lambda *_: self.toggle_focus(False))
+                self.bind('<KeyPress>', self.process_keys)
+                self.bind("<Control-h>", lambda *_: self.toggle_focus(False))
+                self.bind('<Shift-Return>', lambda *_: trigger_replace())
+
+                self.put_placeholder()
+
+            def toggle_focus(self, fs=True):
+                if self.visible or not fs:
+                    replace_frame.place_forget()
+                    search_frame.place_configure(y=-45)
+                    # root.after(-1, lambda *_: placeholder_frame.configure(height=40))
+                    if not search.has_focus:
+                        code_editor.focus_force()
+                        code_editor.see(code_editor.index(INSERT))
+                    self.visible = False
+                else:
+                    replace_frame.place(rely=1, y=-45, relwidth=1, height=50)
+                    search_frame.place_configure(y=-85)
+                    # root.after(-1, lambda *_: placeholder_frame.configure(height=80))
+                    if not search.has_focus:
+                        root.focus_force()
+                    self.visible = True
+                return 'break'
+
+            def see_index(self, index):
+                code_editor.see(f"{index}.0")
+                self.last_index = index
+                search.last_index = index
+                current_line = index
+                pattern = search.get()
+                replace = self.get()
+                start = f"{current_line}.0"
+                end = f"{current_line}.end"
+                pos = code_editor.search(pattern, start, stopindex=end, nocase=True)
+
+                if pos:
+                    line_start = code_editor.index(f"{pos.split('.')[0]}.0")
+                    line_end = code_editor.index(f"{line_start} lineend")
+                    line = code_editor.get(line_start, line_end)
+                    match = re.search(pattern, line, flags=re.IGNORECASE)
+
+                    if match:
+                        match_start = line_start + f"+{match.start()}c"
+                        match_end = line_start + f"+{match.end()}c"
+                        code_editor.delete(match_start, match_end)
+                        code_editor.insert(match_start, replace)
+
+            def iterate_selection(self, forward=True):
+                if len(code_editor.match_list) > 1:
+                    if forward:
+                        for i in code_editor.match_list:
+                            if i > self.last_index:
+                                self.see_index(i)
+                                break
+                        else:
+                            self.see_index(code_editor.match_list[0])
+
+                    else:
+                        for i in reversed(code_editor.match_list):
+                            if i < self.last_index:
+                                self.see_index(i)
+                                break
+                        else:
+                            self.see_index(code_editor.match_list[-1])
+
+                elif code_editor.match_list:
+                    self.see_index(code_editor.match_list[0])
+                code_editor.after(1, code_editor._line_numbers.redraw)
+                code_editor.after(1, code_editor.recalc_lexer)
+
+            def replace_all(self):
+                while code_editor.match_list:
+                    for x in code_editor.match_list:
+                        self.see_index(x)
+                    update_search()
+                code_editor.after(1, code_editor._line_numbers.redraw)
+                code_editor.after(1, code_editor.recalc_lexer)
+
+            def process_keys(self, event):
+                if event.keysym == "Return":
+                    if event.state == 33:
+                        self.iterate_selection(False)
+                    else:
+                        self.iterate_selection(True)
+
+            def put_placeholder(self):
+                self.insert(0, self.placeholder)
+                self['fg'] = self.placeholder_color
+
+            def foc_in(self, *args):
+                if self['fg'] == self.placeholder_color:
+                    self.delete('0', 'end')
+                    self['fg'] = self.default_fg_color
+                self.has_focus = True
+
+            def foc_out(self, *args):
+                if not self.get():
+                    self.put_placeholder()
+                self.has_focus = False
+
+            def ctrl_bs(self, event, *_):
+                ent = event.widget
+                end_idx = ent.index(INSERT)
+                start_idx = ent.get().rfind(" ", None, end_idx)
+                ent.selection_range(start_idx, end_idx)
+        class HoverButton(Button):
+
+            def click_func(self, *a):
+                self.config(image=self.background_click)
+                self.function()
+                self.after(100, self.on_enter)
+
+            def on_enter(self, *a):
+                self.config(image=self.background_hover)
+
+            def on_leave(self, *a):
+                self.config(image=self.background_image)
+
+            def __init__(self, button_id, click_func, **args):
+                super().__init__(**args)
+                self.master = root
+                self.id = button_id
+                self.background_image = PhotoImage(file=os.path.join(data['gui_assets'], f'{self.id}.png'))
+                self.background_hover = PhotoImage(file=os.path.join(data['gui_assets'], f'{self.id}_hover.png'))
+                self.background_click = PhotoImage(file=os.path.join(data['gui_assets'], f'{self.id}_click.png'))
+                self.function = click_func
+                self['image'] = self.background_image
+
+                # Import the image using PhotoImage function
+                self.config(
+                    command=self.click_func,
+                    borderwidth=5,
+                    relief=SUNKEN,
+                    foreground=background_color,
+                    background=background_color,
+                    highlightthickness=0,
+                    bd=0,
+                    activebackground=background_color
+                )
+
+                # Bind hover events
+                self.bind('<Enter>', self.on_enter)
+                self.bind('<Leave>', self.on_leave)
+
+        replace_frame = Frame(root, height=1)
+        replace_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
+        replace = ReplaceBox(replace_frame, placeholder='replace with...')
+        replace.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
+        replace.bind('<Tab>', lambda *_: root.after(0, lambda *_: search.focus_force()))
+        replace.configure(
+            bg = background_color,
+            borderwidth = 0,
+            highlightthickness = 0,
+            selectforeground = convert_color((0.75, 0.75, 1))['hex'],
+            selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
+            insertwidth = 3,
+            insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
+            font = "Consolas 14",
+        )
+
+        # Replace All Button
+        replace_button = HoverButton('replace_button', click_func=replace.replace_all)
+        replace_button.config(anchor='se')
+        replace_button.place(in_=replace, relwidth=0.2, relx=0.798, x=-2, y=-4)
+
+        def trigger_replace(*a):
+            if replace.visible and replace.get() and search.get():
+                replace_button.invoke()
+                root.after(100, replace_button.on_leave)
+                return "break"
+
+        root.bind('<Control-h>', lambda *_: replace.toggle_focus())
+
 
         def update_search(search_text=None):
             if not search_text:
@@ -2074,7 +2089,8 @@ def launch_window(path: str, data: dict):
         # Search icon
         icon = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'color-search.png')))
         search_icon = Label(image=icon, bg=background_color)
-        search_icon.place(anchor='nw', in_=search, x=-50, y=-2)
+        search_icon.place(anchor='nw', in_=search, x=-50, y=1)
+        search_frame.tkraise(code_editor)
 
         # Auto-complete widget
         class AutoComplete(Frame):
