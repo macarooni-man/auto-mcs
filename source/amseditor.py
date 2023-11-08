@@ -1234,7 +1234,7 @@ def launch_window(path: str, data: dict):
                 root.bind('<Configure>', self.set_error)
                 self.error_label.bind("<Button-1>", lambda *_: self.after(0, self.view_error), add=True)
                 self.bind("<KeyRelease>", lambda *_: self.after(0, self.highlight_matching_parentheses))
-                self.bind("<Button-1>", lambda *_: self.after(0, self.highlight_matching_parentheses))
+                self.bind("<Button-1>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
 
                 self.default_timer = 0.25
                 self.error_timer = 0
@@ -2000,9 +2000,8 @@ def launch_window(path: str, data: dict):
                     replace_frame.place_forget()
                     search_frame.place_configure(y=-45)
                     # root.after(-1, lambda *_: placeholder_frame.configure(height=40))
-                    if not search.has_focus:
-                        code_editor.focus_force()
-                        code_editor.see(code_editor.index(INSERT))
+                    code_editor.focus_force()
+                    code_editor.see(code_editor.index(INSERT))
                     self.visible = False
                 else:
                     replace_frame.place(rely=1, y=-45, relwidth=1, height=50)
