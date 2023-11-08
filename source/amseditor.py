@@ -272,7 +272,7 @@ class AmsLexer(pygments.lexers.PythonLexer):
 
         self.add_filter(hl_filter)
         self.add_filter(var_filter)
-AmsLexer.tokens['root'].insert(-2, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?\)$)', Name.Function))
+AmsLexer.tokens['root'].insert(-2, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Name.Function))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\d+\.?\d*?(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Number.Float))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\w+(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Keyword.Argument))
 # AmsLexer.tokens['classname'] = [('(?<=class ).+?(?=\()', Name.Class, '#pop')]
@@ -310,7 +310,7 @@ def launch_window(path: str, data: dict):
         root.close = False
 
         style = {
-            'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': '#1b2733',
+            'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_fg': "#CCCCFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': '#1b2733',
                 'caret': convert_color((0.7, 0.7, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': "Consolas 14 italic"},
             'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': '#b3b1ad', 'keyword': '#FB71FB',
                 'name': '#819CE6', 'string': '#95e6cb', 'punctuation': '#68E3FF'},
@@ -327,8 +327,8 @@ def launch_window(path: str, data: dict):
                 'regex': '#95e6cb', 'single': '#c2d94c', 'symbol': '#c2d94c'},
             'number': {'binary': '#FC9741', 'float': '#FC9741', 'hex': '#FC9741', 'integer': '#FC9741', 'long': '#FC9741',
                 'octal': '#FC9741'},
-            'comment': {'hashbang': '#636363', 'multiline': '#636363', 'preproc': '#ff7700', 'preprocfile': '#c2d94c',
-                'single': '#636363', 'special': '#636363'}
+            'comment': {'hashbang': '#3F4875', 'multiline': '#3F4875', 'preproc': '#3F4875', 'preprocfile': '#3F4875',
+                'single': '#3F4875', 'special': '#3F4875'}
         }
 
         placeholder_frame = Frame(root, height=40)
@@ -751,7 +751,7 @@ def launch_window(path: str, data: dict):
                         font=self.textwidget.cget("font"),
                         fill=convert_color((1, 0.65, 0.65))['hex'] if err_index == lineno
                         else '#4CFF99' if search_match
-                        else '#AAAAFF' if index == lineno
+                        else '#CCCCFF' if index == lineno
                         else self.foreground_color
                     )
 
@@ -1063,10 +1063,10 @@ def launch_window(path: str, data: dict):
                 for key, value in tags.items():
                     if isinstance(value, str):
                         # Italicize certain values
-                        if key.lower().startswith('keyword') or "comment" in key.lower():
-                            self.tag_configure(f"Token.{key}", foreground=value, font=self['font'] + ' italic')
+                        if key.lower().startswith('keyword') or "comment" in key.lower() or 'builtin' in key.lower():
+                            self.tag_configure(f"Token.{key}", foreground=value, font=self['font'] + ' italic', selectforeground='#CCCCFF')
                         else:
-                            self.tag_configure(f"Token.{key}", foreground=value)
+                            self.tag_configure(f"Token.{key}", foreground=value, selectforeground='#CCCCFF')
 
             def highlight_line(self, index: str) -> None:
                 line_num = int(self.index(index).split(".")[0])
@@ -1231,10 +1231,12 @@ def launch_window(path: str, data: dict):
                 self.bind("<Control-k>", lambda *_: "break")
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
                 self.bind("<<Selection>>", self.redo_search, add=True)
+                self.bind("<<Selection>>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
                 root.bind('<Configure>', self.set_error)
                 self.error_label.bind("<Button-1>", lambda *_: self.after(0, self.view_error), add=True)
                 self.bind("<KeyRelease>", lambda *_: self.after(0, self.highlight_matching_parentheses))
                 self.bind("<Button-1>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
+                self.hl_pair = (None, None)
 
                 self.default_timer = 0.25
                 self.error_timer = 0
@@ -1246,6 +1248,7 @@ def launch_window(path: str, data: dict):
 
             def highlight_matching_parentheses(self, event=None):
                 self.tag_remove("parentheses", "1.0", END)
+                self.hl_pair = (None, None)
                 cursor_pos = self.index(INSERT)
 
                 stack = {"(": [], "{": [], "[": [], ")": [], "}": [], "]": []}
@@ -1309,6 +1312,7 @@ def launch_window(path: str, data: dict):
                                     else:
                                         self.tag_add("parentheses", start_opening, end_opening)
                                         self.tag_add("parentheses", start_closing, end_closing)
+                                        self.hl_pair = (start_closing, start_opening) if invert else (start_opening, start_closing)
                                         stack[looking_for].pop()
                                         return
                                 levels[looking_for] -= 1
@@ -1342,11 +1346,25 @@ def launch_window(path: str, data: dict):
             def iterate_characters(self, start, end, invert=False):
                 while True:
                     char = self.get(start)
-                    if char == "" or start == end:
+                    if char == "" or (start == '1.0' and invert):
                         break
                     yield char, start
                     start = self.index(f"{start}{'-' if invert else '+'}1c")
 
+                    # Break if start exceeds end
+                    s1, s2 = start.split('.', 1)
+                    e1, e2 = self.index(end).split('.', 1)
+
+                    if invert:
+                        if int(e1) > int(s1):
+                            break
+                        elif (int(e1) >= int(s1)) and (int(e2) > int(s2)):
+                            break
+                    else:
+                        if int(s1) > int(e1):
+                            break
+                        elif (int(s1) >= int(e1)) and (int(s2) > int(e2)):
+                            break
 
             def redo_search(self, *a):
                 self.content_changed = True
@@ -1730,6 +1748,7 @@ def launch_window(path: str, data: dict):
                 sel_end = self.index(SEL_LAST)
                 current_pos = self.index(INSERT)
                 right = self.get(current_pos, self.index(f"{current_pos}+1c"))
+                left = self.get(self.index(f"{current_pos}-1c"), current_pos)
 
                 line_num = int(current_pos.split('.')[0])
                 last_line = self.get(f"{line_num}.0", f"{line_num}.end")
@@ -1757,6 +1776,77 @@ def launch_window(path: str, data: dict):
 
                 if event.keysym == 'parenleft':
                     ac.hide()
+
+                # Replace selected parentheses and quote pairs
+                if sel_start and sel_end:
+                    if not len(self.get(sel_start, sel_end)) == 1:
+                        return
+
+                    def is_within_range(index, start, end):
+                        comparison_start = self.compare(index, ">=", start)
+                        comparison_end = self.compare(index, "<=", end)
+                        return comparison_start and comparison_end
+                    self.after(0, self.recalc_lexer)
+                    get_text = self.get(sel_start, sel_end)
+                    if (get_text in "'\"") and (event.keysym in ('quotedbl', 'quoteright')):
+
+                        name = "Single" if get_text == "'" else "Double"
+                        replace_with = '"' if event.keysym == 'quotedbl' else "'"
+                        after = self.tag_nextrange(f'Token.Literal.String.{name}', current_pos)
+                        before = self.tag_prevrange(f'Token.Literal.String.{name}', current_pos)
+
+                        final_range = None
+
+                        if is_within_range(sel_start, after[0], after[1]) or is_within_range(sel_end, after[0], after[1]):
+                            final_range = after
+
+                        elif is_within_range(sel_start, before[0], before[1]) or is_within_range(sel_end, before[0], before[1]):
+                            final_range = before
+
+                        if final_range:
+                            start = self.get(final_range[0])
+                            end = self.get(f'{final_range[1]}-1c')
+                            if start == end:
+                                text = self.get(final_range[0], final_range[1])
+                                self.delete(final_range[0], final_range[1])
+                                self.insert(final_range[0], replace_with + text[1:-1] + replace_with)
+                                self.mark_set(INSERT, current_pos)
+                                return 'break'
+                    elif sel_start == self.hl_pair[0] or sel_end == self.hl_pair[0]:
+                        text = self.get(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                        if event.keysym == 'parenleft':
+                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                            self.insert(self.hl_pair[0], f'({text[1:-1]})')
+                            self.mark_set(INSERT, current_pos)
+                            return 'break'
+                        elif event.keysym == 'braceleft':
+                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                            self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
+                            self.mark_set(INSERT, current_pos)
+                            return 'break'
+                        elif event.keysym == 'bracketleft':
+                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                            self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
+                            self.mark_set(INSERT, current_pos)
+                            return 'break'
+                    elif sel_start == self.hl_pair[1] or sel_end == self.hl_pair[1]:
+                        text = self.get(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                        if event.keysym == 'parenright':
+                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                            self.insert(self.hl_pair[0], f'({text[1:-1]})')
+                            self.mark_set(INSERT, current_pos)
+                            return 'break'
+                        elif event.keysym == 'braceright':
+                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                            self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
+                            self.mark_set(INSERT, current_pos)
+                            return 'break'
+                        elif event.keysym == 'bracketright':
+                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                            self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
+                            self.mark_set(INSERT, current_pos)
+                            return 'break'
+
 
 
                 # Toggle suggestions
@@ -1815,15 +1905,12 @@ def launch_window(path: str, data: dict):
                 elif sel_start and sel_end and event.keysym == 'braceleft':
                     self.surround_text(current_pos, sel_start, sel_end, '{', '}')
                     return "break"
-
                 elif sel_start and sel_end and event.keysym == 'bracketleft':
                     self.surround_text(current_pos, sel_start, sel_end, '[', ']')
                     return "break"
-
                 elif sel_start and sel_end and event.keysym == 'quoteright':
                     self.surround_text(current_pos, sel_start, sel_end, "'", "'")
                     return "break"
-
                 elif sel_start and sel_end and event.keysym == 'quotedbl':
                     self.surround_text(current_pos, sel_start, sel_end, '"', '"')
                     return "break"
@@ -1844,19 +1931,15 @@ def launch_window(path: str, data: dict):
                 if event.keysym == 'parenright' and (right == ')' and not equal_symbols(')', '(', ')')):
                     self.move_cursor_right()
                     return 'break'
-
                 elif event.keysym == 'braceright' and (right == '}' and not equal_symbols('}', '{', '}')):
                     self.move_cursor_right()
                     return 'break'
-
                 elif event.keysym == 'bracketright' and (right == ']' and not equal_symbols(']', '[', ']')):
                     self.move_cursor_right()
                     return 'break'
-
                 elif event.keysym == 'quoteright' and right == "'":
                     self.move_cursor_right()
                     return 'break'
-
                 elif event.keysym == 'quotedbl' and right == '"':
                     self.move_cursor_right()
                     return 'break'
@@ -1878,12 +1961,12 @@ def launch_window(path: str, data: dict):
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
 
-                elif event.keysym == 'quoteright' and check_text(right, "'"):
+                elif event.keysym == 'quoteright' and (check_text(right, "'") and check_text(left, "'")):
                     self.insert(INSERT, "''")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
 
-                elif event.keysym == 'quotedbl' and check_text(right, '"'):
+                elif event.keysym == 'quotedbl' and (check_text(right, '"') and check_text(left, '"')):
                     self.insert(INSERT, '""')
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
@@ -2017,23 +2100,27 @@ def launch_window(path: str, data: dict):
                 self.last_index = index
                 search.last_index = index
                 current_line = index
-                pattern = search.get()
-                replace = self.get()
+                pattern_text = search.get()
+                replace_text = self.get()
+
+                if replace_text in ('replace with...', ''):
+                    return
+
                 start = f"{current_line}.0"
                 end = f"{current_line}.end"
-                pos = code_editor.search(pattern, start, stopindex=end, nocase=True)
+                pos = code_editor.search(pattern_text, start, stopindex=end, nocase=True)
 
                 if pos:
                     line_start = code_editor.index(f"{pos.split('.')[0]}.0")
                     line_end = code_editor.index(f"{line_start} lineend")
                     line = code_editor.get(line_start, line_end)
-                    match = re.search(pattern, line, flags=re.IGNORECASE)
+                    match = re.search(pattern_text, line, flags=re.IGNORECASE)
 
                     if match:
                         match_start = line_start + f"+{match.start()}c"
                         match_end = line_start + f"+{match.end()}c"
                         code_editor.delete(match_start, match_end)
-                        code_editor.insert(match_start, replace)
+                        code_editor.insert(match_start, replace_text)
 
             def iterate_selection(self, forward=True):
                 if len(code_editor.match_list) > 1:
@@ -2059,10 +2146,17 @@ def launch_window(path: str, data: dict):
                 code_editor.after(1, code_editor.recalc_lexer)
 
             def replace_all(self):
-                while code_editor.match_list:
-                    for x in code_editor.match_list:
+                replace_text = self.get()
+                search_text = search.get()
+
+                if replace_text in ('replace with...', ''):
+                    return
+
+                for x in code_editor.match_list:
+                    for y in range(0, code_editor.get_line_text(x)[-1].lower().count(search_text.lower())):
                         self.see_index(x)
-                    update_search()
+
+                update_search(search_text)
                 code_editor.after(1, code_editor._line_numbers.redraw)
                 code_editor.after(1, code_editor.recalc_lexer)
 
@@ -2231,7 +2325,7 @@ def launch_window(path: str, data: dict):
                             foreground = text_color,
                             highlightthickness = 0,
                             bd = 0,
-                            activebackground = "#AAAAFF",
+                            activebackground = "#CCCCFF",
                             width=18,
                             anchor='w',
                             padx=10,
@@ -2254,7 +2348,7 @@ def launch_window(path: str, data: dict):
                 if text == "@":
                     matches = ["@player.on_alias", "@player.on_join", "@player.on_leave", "@server.on_loop"]
                 else:
-                    matches = [x for x in self.suggestions if x.startswith(text)][:4]
+                    matches = [x for x in self.suggestions if text[1:] in x][:4]
                 if not matches:
                     self.hide()
                 if matches != self.last_matches:
@@ -2349,7 +2443,7 @@ def launch_window(path: str, data: dict):
 
 
 
-def open_log(path: str, data: dict, *args):
+def open_log(server_obj: Any, path: str, data: dict, *args):
     if path:
         process = multiprocessing.Process(target=functools.partial(launch_window, path, data), daemon=True)
         process.start()
@@ -2361,14 +2455,41 @@ if __name__ == '__main__':
     import constants
     import amscript
 
+    from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
+    from svrmgr import ServerObject
+    server_obj = ServerObject('test')
+    while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
+        time.sleep(0.2)
+
     from ctypes import windll, c_int64
     windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
+    # DELETE ABOVE
+
+
+
+    # Gets list of functions and
+    def iter_attr(obj):
+        final_list = []
+        for attr in dir(obj):
+            if not attr.startswith('_'):
+                if callable(getattr(obj, attr)):
+                    final_list.append(attr + '()')
+                else:
+                    final_list.append(attr)
+        final_list = sorted(final_list, key=lambda x: x.endswith('()'), reverse=True)
+        return final_list
+
+
+    server = ServerScriptObject(server_obj)
+    iter_attr(server)
+
 
     data_dict = {
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
-        'script_obj': amscript.ScriptObject()
+        'script_obj': amscript.ScriptObject(),
+        'server_obj': server_obj
     }
     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Tools\amscript\test2.ams"
     launch_window(path, data_dict)

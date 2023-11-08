@@ -292,7 +292,7 @@ class ScriptObject():
         self.scripts = None
 
         # Yummy stuffs
-        self.protected_variables = ["server", "acl", "backup", "addon"]
+        self.protected_variables = ["server", "acl", "backup", "addon", "amscript"]
         self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
         self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@server.on_start", "@server.on_stop"]
         self.valid_imports = std_libs
@@ -438,7 +438,8 @@ class ScriptObject():
                 'server': self.server_script_obj,
                 'acl': self.server.acl,
                 'backup': self.server.backup,
-                'addon': self.server.addon
+                'addon': self.server.addon,
+                'amscript': self.server.script_manager
             }
 
             try:
@@ -1136,7 +1137,6 @@ class ServerScriptObject():
         self._ams_info = server_obj.get_ams_info()
         self._persistent_config = PersistenceManager(server_obj.name)
         self._app_version = constants.app_version
-        self._performance = server_obj.run_data['performance']
         self._script_state = server_obj.script_manager.script_state
 
         # Assign callable functions from main server object
@@ -1145,7 +1145,6 @@ class ServerScriptObject():
         self.stop = functools.partial(self.execute, 'stop')
         self.log = server_obj.send_log
         self.aliases = {}
-        self.player_list = server_obj.run_data['player-list']
         self.ams_version = constants.ams_version
 
         # Properties
@@ -1159,8 +1158,12 @@ class ServerScriptObject():
         self.persistent = self._persistent_config._data.server
 
         if server_obj.run_data:
+            self._performance = server_obj.run_data['performance']
+            self.player_list = server_obj.run_data['player-list']
             self.network = server_obj.run_data['network']['address']
         else:
+            self._performance = {}
+            self.player_list = {}
             self.network = {'ip': None, 'port': None}
 
     def __del__(self):

@@ -21,6 +21,7 @@ import re
 
 
 # Local imports
+from amscript import ServerScriptObject, PlayerScriptObject
 import logviewer
 import constants
 import addons
