@@ -2345,6 +2345,7 @@ def launch_window(path: str, data: dict):
                 self.button_list = []
                 self.last_matches = []
                 self.suggestions = data['script_obj'].valid_events
+                self.suggestions = data['script_obj'].valid_events
                 self.visible = False
 
             def add_buttons(self, matches):
