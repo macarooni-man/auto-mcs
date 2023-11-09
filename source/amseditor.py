@@ -1014,17 +1014,20 @@ def launch_window(path: str, data: dict):
             def undo(self, *_):
                 self.edit_undo()
 
-                def check_at(*a):
+                def check_suggestions(*a):
                     current_pos = self.index(INSERT)
                     line_num = int(current_pos.split('.')[0])
                     last_line = self.get(f"{line_num}.0", f"{line_num}.end")
-                    if last_line.startswith("@"):
-                        x, y = self.bbox(INSERT)[:2]
-                        ac.show(x, y)
-                        ac.update_results(last_line)
+                    text = last_line.rsplit(' ', 1)[-1].strip()
+                    for k, v in ac.suggestions.items():
+                        if text.startswith(k):
+                            x, y = self.bbox(INSERT)[:2]
+                            ac.show(text, x, y)
+                            ac.update_results(text)
+                            break
                     else:
                         ac.hide()
-                self.after(1, check_at)
+                self.after(1, check_suggestions)
 
                 self.recalc_lexer()
 
@@ -1729,14 +1732,17 @@ def launch_window(path: str, data: dict):
                         self.delete(current_pos, next_pos)
 
                 # Check if @ was deleted to hide menu
-                def test_at(*a):
+                def check_suggestions(*a):
                     line_num = int(current_pos.split('.')[0])
                     last_line = self.get(f"{line_num}.0", f"{line_num}.end")
-                    if last_line.startswith("@"):
-                        ac.update_results(last_line)
+                    text = last_line.rsplit(' ', 1)[-1].strip()
+                    for k, v in ac.suggestions.items():
+                        if text.startswith(k):
+                            ac.update_results(text)
+                            break
                     else:
                         ac.hide()
-                self.after(0, test_at)
+                self.after(0, check_suggestions)
 
             def in_docstring(self):
                 current_pos = self.index(INSERT)
@@ -1794,18 +1800,27 @@ def launch_window(path: str, data: dict):
                         ac.hide()
 
                 # Show suggestions
-                if event.keysym == "at":
-                    line_num = int(current_pos.split('.')[0])
-                    last_line = self.get(f"{line_num}.0", f"{line_num}.end")
-                    if not last_line:
-                        x, y = self.bbox(INSERT)[:2]
-                        ac.show(x, y)
+                if event.keysym in ("at", "period"):
+                    x, y = self.bbox(INSERT)[:2]
+                    if event.keysym == "period":
+                        x += 13
+                    def show_panel(*a):
+                        line_num = int(current_pos.split('.')[0])
+                        last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                        text = last_line.rsplit(' ', 1)[-1].strip()
+                        if text in ac.suggestions:
+                            ac.show(text, x, y)
+                    if not ac.visible:
+                        self.after(0, show_panel)
                 else:
                     def get_text(*a):
                         line_num = int(current_pos.split('.')[0])
                         last_line = self.get(f"{line_num}.0", f"{line_num}.end")
-                        if last_line.startswith("@"):
-                            ac.update_results(last_line)
+                        text = last_line.rsplit(' ', 1)[-1].strip()
+                        for k, v in ac.suggestions.items():
+                            if text.startswith(k):
+                                ac.update_results(text)
+                                break
                     if ac.visible:
                         self.after(0, get_text)
 
@@ -2344,8 +2359,7 @@ def launch_window(path: str, data: dict):
                 self.configure(height=100, width=70, bg=self.background)
                 self.button_list = []
                 self.last_matches = []
-                self.suggestions = data['script_obj'].valid_events
-                self.suggestions = data['script_obj'].valid_events
+                self.suggestions = data['suggestions']
                 self.visible = False
 
             def add_buttons(self, matches):
@@ -2369,7 +2383,7 @@ def launch_window(path: str, data: dict):
                             foreground = text_color,
                             highlightthickness = 0,
                             bd = 0,
-                            activebackground = "#DDDDFF",
+                            activebackground = "#AAAAFF",
                             width=18,
                             anchor='w',
                             padx=10,
@@ -2378,10 +2392,10 @@ def launch_window(path: str, data: dict):
                         button.grid(sticky="w")
                         self.button_list.append(button)
 
-            def show(self, x, y):
+            def show(self, start, x, y):
                 self.last_matches = []
                 self.visible = True
-                self.update_results("@")
+                self.update_results(start)
                 self.place(in_=code_editor, x=x-13, y=y+(code_editor.font_size*2.3))
 
             def hide(self):
@@ -2389,10 +2403,16 @@ def launch_window(path: str, data: dict):
                 self.visible = False
 
             def update_results(self, text):
-                if text == "@":
+                if text == '@':
                     matches = ["@player.on_alias", "@player.on_join", "@player.on_leave", "@server.on_loop"]
                 else:
-                    matches = [x for x in self.suggestions if text[1:] in x][:4]
+                    for k, v in self.suggestions.items():
+                        if text.startswith(k):
+                            if k == '@':
+                                tag = text[1:]
+                            else:
+                                tag = text[len(k + '.'):]
+                            matches = [x for x in self.suggestions[k] if tag in x][:5]
                 if not matches:
                     self.hide()
                 if matches != self.last_matches:
@@ -2444,36 +2464,51 @@ def launch_window(path: str, data: dict):
                 self.hide()
 
                 line_num = int(code_editor.index(INSERT).split('.')[0])
-                code_editor.delete(f'{line_num}.0', f'{line_num}.0 lineend')
 
-                if val == "@player.on_alias":
-                    code_editor.insert(f'{line_num}.0', f"@player.on_alias(player, command='', arguments={{}}, permission='op', description=''):")
+                if val.startswith("@"):
+                    code_editor.delete(f'{line_num}.0', f'{line_num}.0 lineend')
 
-                elif val == "@player.on_message":
-                    code_editor.insert(f'{line_num}.0', f"@player.on_message(player, message):")
+                    if val == "@player.on_alias":
+                        code_editor.insert(f'{line_num}.0', f"@player.on_alias(player, command='', arguments={{}}, permission='op', description=''):")
 
-                elif val == "@player.on_join":
-                    code_editor.insert(f'{line_num}.0', f"@player.on_join(player, data):")
+                    elif val == "@player.on_message":
+                        code_editor.insert(f'{line_num}.0', f"@player.on_message(player, message):")
 
-                elif val == "@player.on_leave":
-                    code_editor.insert(f'{line_num}.0', f"@player.on_leave(player, data):")
+                    elif val == "@player.on_join":
+                        code_editor.insert(f'{line_num}.0', f"@player.on_join(player, data):")
 
-                elif val == "@player.on_death":
-                    code_editor.insert(f'{line_num}.0', f"@player.on_death(player, enemy, message):")
+                    elif val == "@player.on_leave":
+                        code_editor.insert(f'{line_num}.0', f"@player.on_leave(player, data):")
 
-                elif val == "@server.on_loop":
-                    code_editor.insert(f'{line_num}.0', f"@server.on_loop(interval=1, unit='minute'):")
+                    elif val == "@player.on_death":
+                        code_editor.insert(f'{line_num}.0', f"@player.on_death(player, enemy, message):")
 
-                elif val == "@server.on_start":
-                    code_editor.insert(f'{line_num}.0', f"@server.on_start(data, delay=0):")
+                    elif val == "@server.on_loop":
+                        code_editor.insert(f'{line_num}.0', f"@server.on_loop(interval=1, unit='minute'):")
 
-                elif val == "@server.on_stop":
-                    code_editor.insert(f'{line_num}.0', f"@server.on_stop(data, delay=0):")
+                    elif val == "@server.on_start":
+                        code_editor.insert(f'{line_num}.0', f"@server.on_start(data, delay=0):")
 
-                def newline(*a):
-                    code_editor.insert(code_editor.index(INSERT), f'\n{tab_str}')
-                    code_editor.recalc_lexer()
-                code_editor.after(1, newline)
+                    elif val == "@server.on_stop":
+                        code_editor.insert(f'{line_num}.0', f"@server.on_stop(data, delay=0):")
+
+                    def newline(*a):
+                        code_editor.insert(code_editor.index(INSERT), f'\n{tab_str}')
+                        code_editor.recalc_lexer()
+                    code_editor.after(1, newline)
+
+                else:
+                    cursor_pos = code_editor.index(INSERT)
+                    last_line, delete = code_editor.get(f"{line_num}.0", cursor_pos).rsplit('.')
+                    code_editor.delete(f'{cursor_pos}-{len(delete)}c', f'{line_num}.{len(delete)} lineend')
+                    code_editor.insert(cursor_pos, val)
+
+                    def newline(*a):
+                        if val.endswith('()'):
+                            code_editor.mark_set(INSERT, f'{code_editor.index(INSERT)}-1c')
+                        code_editor.recalc_lexer()
+                    code_editor.after(0, newline)
+
         ac = AutoComplete()
 
         # When window is closed
@@ -2501,30 +2536,34 @@ if __name__ == '__main__':
     # DELETE ABOVE
 
 
-
     # Gets list of functions and
-    def iter_attr(obj):
+    def iter_attr(obj, a_start=''):
         final_list = []
         for attr in dir(obj):
             if not attr.startswith('_'):
                 if callable(getattr(obj, attr)):
-                    final_list.append(attr + '()')
+                    final_list.append(a_start + attr + '()')
                 else:
-                    final_list.append(attr)
+                    final_list.append(a_start + attr)
         final_list = sorted(final_list, key=lambda x: x.endswith('()'), reverse=True)
         return final_list
-
-
-    server = ServerScriptObject(server_obj)
-    iter_attr(server)
-
 
     data_dict = {
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
         'script_obj': amscript.ScriptObject(),
-        'server_obj': server_obj
+        'server_obj': server_obj,
+        'suggestions': {}
     }
+
+    server = ServerScriptObject(server_obj)
+    data_dict['suggestions']['@'] = data_dict['script_obj'].valid_events
+    data_dict['suggestions']['server.'] = iter_attr(server)
+    data_dict['suggestions']['acl.'] = iter_attr(server_obj.acl)
+    data_dict['suggestions']['addon.'] = iter_attr(server_obj.addon)
+    data_dict['suggestions']['backup.'] = iter_attr(server_obj.backup)
+    data_dict['suggestions']['amscript.'] = iter_attr(server_obj.script_manager)
+
     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Tools\amscript\test2.ams"
     launch_window(path, data_dict)
