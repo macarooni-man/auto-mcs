@@ -3,9 +3,9 @@ from __future__ import annotations
 from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, FIRST, IntVar, Frame, PhotoImage, INSERT, BaseWidget,\
     Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, Button, SUNKEN
 
+from pygments.token import Keyword, Number, Name, Literal
 from typing import Any, Callable, Optional, Type, Union
 from pygments.filters import NameHighlightFilter
-from pygments.token import Keyword, Number, Name
 from contextlib import suppress
 from PIL import ImageTk, Image
 from tkinter.font import Font
@@ -19,6 +19,7 @@ import pygments
 import time
 import os
 import re
+
 
 
 LexerType = Union[Type[pygments.lexer.Lexer], pygments.lexer.Lexer]
@@ -310,10 +311,10 @@ def launch_window(path: str, data: dict):
         root.close = False
 
         style = {
-            'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_fg': "#CCCCFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': '#1b2733',
+            'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_fg': "#DDDDFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': '#1b2733',
                 'caret': convert_color((0.7, 0.7, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': "Consolas 14 italic"},
             'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': '#b3b1ad', 'keyword': '#FB71FB',
-                'name': '#819CE6', 'string': '#95e6cb', 'punctuation': '#68E3FF'},
+                'name': '#819CE6', 'string': '#c2d94c', 'punctuation': '#68E3FF'},
             'keyword': {'constant': '#FB71FB', 'declaration': '#FB71FB', 'namespace': '#FB71FB', 'pseudo': '#FB71FB',
                 'reserved': '#FB71FB', 'type': '#FB71FB', 'event': "#FF00A8", 'major_class': '#6769F1', 'argument': '#FC9741'},
             'name': {'attr': '#819CE6', 'builtin': '#819CE6', 'builtin_pseudo': '#e6b450', 'class': '#FFCD38',
@@ -751,7 +752,7 @@ def launch_window(path: str, data: dict):
                         font=self.textwidget.cget("font"),
                         fill=convert_color((1, 0.65, 0.65))['hex'] if err_index == lineno
                         else '#4CFF99' if search_match
-                        else '#CCCCFF' if index == lineno
+                        else '#DDDDFF' if index == lineno
                         else self.foreground_color
                     )
 
@@ -1064,9 +1065,9 @@ def launch_window(path: str, data: dict):
                     if isinstance(value, str):
                         # Italicize certain values
                         if key.lower().startswith('keyword') or "comment" in key.lower() or 'builtin' in key.lower():
-                            self.tag_configure(f"Token.{key}", foreground=value, font=self['font'] + ' italic', selectforeground='#CCCCFF')
+                            self.tag_configure(f"Token.{key}", foreground=value, font=self['font'] + ' italic', selectforeground='#DDDDFF')
                         else:
-                            self.tag_configure(f"Token.{key}", foreground=value, selectforeground='#CCCCFF')
+                            self.tag_configure(f"Token.{key}", foreground=value, selectforeground='#DDDDFF')
 
             def highlight_line(self, index: str) -> None:
                 line_num = int(self.index(index).split(".")[0])
@@ -1304,9 +1305,12 @@ def launch_window(path: str, data: dict):
                                     start_closing = index
                                     end_opening = f"{start_opening}+1c"
                                     end_closing = f"{start_closing}+1c"
-                                    o_tag = self.tag_names(start_opening)[0]
-                                    c_tag = self.tag_names(start_closing)[0]
-                                    for tag in ('Comment', 'String.Single', 'String.Double'):
+                                    try:
+                                        o_tag = self.tag_names(start_opening)[0]
+                                        c_tag = self.tag_names(start_closing)[0]
+                                    except IndexError:
+                                        continue
+                                    for tag in ('Comment', 'String.Single', 'String.Double', 'String.Doc', 'String.Heredoc'):
                                         if tag in o_tag or tag in c_tag:
                                             break
                                     else:
@@ -1681,6 +1685,16 @@ def launch_window(path: str, data: dict):
                 current_pos = self.index(INSERT)
                 line_start = self.index(f"{current_pos} linestart")
                 line_text = self.get(line_start, current_pos)
+                self.after(0, self.recalc_lexer)
+
+
+                # Check for docstring
+                indexes = self.get(self.index(f'{current_pos}-3c'), self.index(f'{current_pos}+3c'))
+                in_docstring = indexes in ('""""""', "''''''")
+                if in_docstring:
+                    self.delete(self.index(f'{current_pos}-3c'), self.index(f'{current_pos}+3c'))
+                    return 'break'
+
 
                 if len(line_text) >= 4:
                     compare = line_text[-4:]
@@ -1724,6 +1738,21 @@ def launch_window(path: str, data: dict):
                         ac.hide()
                 self.after(0, test_at)
 
+            def in_docstring(self):
+                current_pos = self.index(INSERT)
+                after = self.tag_nextrange(f'Token.Literal.String.Doc', current_pos)
+                before = self.tag_prevrange(f'Token.Literal.String.Doc', current_pos)
+
+                final_range = None
+
+                if after and self.is_within_range(current_pos, after[0], after[1]):
+                    final_range = after
+
+                elif before and self.is_within_range(current_pos, before[0], before[1]):
+                    final_range = before
+
+                return bool(final_range)
+
             # Move cursor right
             def move_cursor_right(self):
                 current_pos = self.index(INSERT)
@@ -1742,6 +1771,11 @@ def launch_window(path: str, data: dict):
                 self.tag_add("sel", self.index(f"{current_pos}+1c"), f"{sel_end}{'+1c' if line_break not in selected_text else ''}")
                 self.recalc_lexer()
 
+            def is_within_range(self, index, start, end):
+                comparison_start = self.compare(index, ">=", start)
+                comparison_end = self.compare(index, "<=", end)
+                return comparison_start and comparison_end
+
             # Process individual keypress rules
             def process_keys(self, event):
                 sel_start = self.index(SEL_FIRST)
@@ -1752,6 +1786,7 @@ def launch_window(path: str, data: dict):
 
                 line_num = int(current_pos.split('.')[0])
                 last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+
 
                 # Hide auto-complete menu
                 if event.keysym == "Escape":
@@ -1777,82 +1812,95 @@ def launch_window(path: str, data: dict):
                 if event.keysym == 'parenleft':
                     ac.hide()
 
+
                 # Replace selected parentheses and quote pairs
                 if sel_start and sel_end:
-                    if not len(self.get(sel_start, sel_end)) == 1:
-                        return
+                    if len(self.get(sel_start, sel_end)) == 1:
+                        self.after(0, self.recalc_lexer)
+                        get_text = self.get(sel_start, sel_end)
+                        if (get_text in "'\"") and (event.keysym in ('quotedbl', 'quoteright')):
 
-                    def is_within_range(index, start, end):
-                        comparison_start = self.compare(index, ">=", start)
-                        comparison_end = self.compare(index, "<=", end)
-                        return comparison_start and comparison_end
-                    self.after(0, self.recalc_lexer)
-                    get_text = self.get(sel_start, sel_end)
-                    if (get_text in "'\"") and (event.keysym in ('quotedbl', 'quoteright')):
+                            name = "Single" if get_text == "'" else "Double"
+                            replace_with = '"' if event.keysym == 'quotedbl' else "'"
+                            after = self.tag_nextrange(f'Token.Literal.String.{name}', current_pos)
+                            before = self.tag_prevrange(f'Token.Literal.String.{name}', current_pos)
 
-                        name = "Single" if get_text == "'" else "Double"
-                        replace_with = '"' if event.keysym == 'quotedbl' else "'"
-                        after = self.tag_nextrange(f'Token.Literal.String.{name}', current_pos)
-                        before = self.tag_prevrange(f'Token.Literal.String.{name}', current_pos)
+                            final_range = None
 
-                        final_range = None
+                            if after and (self.is_within_range(sel_start, after[0], after[1]) or self.is_within_range(sel_end, after[0], after[1])):
+                                final_range = after
 
-                        if is_within_range(sel_start, after[0], after[1]) or is_within_range(sel_end, after[0], after[1]):
-                            final_range = after
+                            elif before and (self.is_within_range(sel_start, before[0], before[1]) or self.is_within_range(sel_end, before[0], before[1])):
+                                final_range = before
 
-                        elif is_within_range(sel_start, before[0], before[1]) or is_within_range(sel_end, before[0], before[1]):
-                            final_range = before
-
-                        if final_range:
-                            start = self.get(final_range[0])
-                            end = self.get(f'{final_range[1]}-1c')
-                            if start == end:
-                                text = self.get(final_range[0], final_range[1])
-                                self.delete(final_range[0], final_range[1])
-                                self.insert(final_range[0], replace_with + text[1:-1] + replace_with)
+                            if final_range:
+                                start = self.get(final_range[0])
+                                end = self.get(f'{final_range[1]}-1c')
+                                if start == end:
+                                    text = self.get(final_range[0], final_range[1])
+                                    self.delete(final_range[0], final_range[1])
+                                    self.insert(final_range[0], replace_with + text[1:-1] + replace_with)
+                                    self.mark_set(INSERT, current_pos)
+                                    return 'break'
+                        elif sel_start == self.hl_pair[0] or sel_end == self.hl_pair[0]:
+                            text = self.get(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                            if event.keysym == 'parenleft':
+                                self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                                self.insert(self.hl_pair[0], f'({text[1:-1]})')
                                 self.mark_set(INSERT, current_pos)
                                 return 'break'
-                    elif sel_start == self.hl_pair[0] or sel_end == self.hl_pair[0]:
-                        text = self.get(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
-                        if event.keysym == 'parenleft':
-                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
-                            self.insert(self.hl_pair[0], f'({text[1:-1]})')
-                            self.mark_set(INSERT, current_pos)
-                            return 'break'
-                        elif event.keysym == 'braceleft':
-                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
-                            self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
-                            self.mark_set(INSERT, current_pos)
-                            return 'break'
-                        elif event.keysym == 'bracketleft':
-                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
-                            self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
-                            self.mark_set(INSERT, current_pos)
-                            return 'break'
-                    elif sel_start == self.hl_pair[1] or sel_end == self.hl_pair[1]:
-                        text = self.get(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
-                        if event.keysym == 'parenright':
-                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
-                            self.insert(self.hl_pair[0], f'({text[1:-1]})')
-                            self.mark_set(INSERT, current_pos)
-                            return 'break'
-                        elif event.keysym == 'braceright':
-                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
-                            self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
-                            self.mark_set(INSERT, current_pos)
-                            return 'break'
-                        elif event.keysym == 'bracketright':
-                            self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
-                            self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
-                            self.mark_set(INSERT, current_pos)
-                            return 'break'
-
+                            elif event.keysym == 'braceleft':
+                                self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                                self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
+                                self.mark_set(INSERT, current_pos)
+                                return 'break'
+                            elif event.keysym == 'bracketleft':
+                                self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                                self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
+                                self.mark_set(INSERT, current_pos)
+                                return 'break'
+                        elif sel_start == self.hl_pair[1] or sel_end == self.hl_pair[1]:
+                            text = self.get(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                            if event.keysym == 'parenright':
+                                self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                                self.insert(self.hl_pair[0], f'({text[1:-1]})')
+                                self.mark_set(INSERT, current_pos)
+                                return 'break'
+                            elif event.keysym == 'braceright':
+                                self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                                self.insert(self.hl_pair[0], f'{{{text[1:-1]}}}')
+                                self.mark_set(INSERT, current_pos)
+                                return 'break'
+                            elif event.keysym == 'bracketright':
+                                self.delete(self.hl_pair[0], f"{self.hl_pair[1]}+1c")
+                                self.insert(self.hl_pair[0], f'[{text[1:-1]}]')
+                                self.mark_set(INSERT, current_pos)
+                                return 'break'
 
 
                 # Toggle suggestions
                 if event.keysym == "Tab" and ac.visible:
                     ac.click()
                     return "break"
+
+
+                # Add docstring
+                if self.in_docstring():
+                    self.recalc_lexer()
+                else:
+                    if last_line.strip().startswith('""') and event.keysym == 'quotedbl':
+                        current = self.get(f'{current_pos}-2c') + left
+                        if current == '""':
+                            self.insert(current_pos, '"""')
+                            self.mark_set(INSERT, current_pos)
+                            self.recalc_lexer()
+
+                    elif last_line.strip().startswith("''") and event.keysym == 'quoteright':
+                        current = self.get(f'{current_pos}-2c') + left
+                        if current == "''":
+                            self.insert(current_pos, "'''")
+                            self.mark_set(INSERT, current_pos)
+                            self.recalc_lexer()
 
 
                 # Checks if symbol exists for inserting pairs
@@ -1885,6 +1933,7 @@ def launch_window(path: str, data: dict):
 
                         if indent > 0:
                             self.after(0, lambda *_: self.insert(INSERT, tab_str*indent))
+                        self.after(0, lambda *_: self.recalc_lexer())
                         return "Return"
 
 
@@ -1901,7 +1950,6 @@ def launch_window(path: str, data: dict):
                 elif sel_start and sel_end and event.keysym == 'parenleft':
                     self.surround_text(current_pos, sel_start, sel_end, '(', ')')
                     return "break"
-
                 elif sel_start and sel_end and event.keysym == 'braceleft':
                     self.surround_text(current_pos, sel_start, sel_end, '{', '}')
                     return "break"
@@ -1950,27 +1998,22 @@ def launch_window(path: str, data: dict):
                     self.insert(INSERT, "()")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
-
                 elif event.keysym == 'braceleft' and (check_text(right) and equal_symbols('{}', '{', '}')):
                     self.insert(INSERT, "{}")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
-
                 elif event.keysym == 'bracketleft' and (check_text(right) and equal_symbols('[]', '[', ']')):
                     self.insert(INSERT, "[]")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
-
                 elif event.keysym == 'quoteright' and (check_text(right, "'") and check_text(left, "'")):
                     self.insert(INSERT, "''")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
-
                 elif event.keysym == 'quotedbl' and (check_text(right, '"') and check_text(left, '"')):
                     self.insert(INSERT, '""')
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
-
                 elif event.keysym == 'Tab':
                     self.insert(INSERT, tab_str)
                     return 'break'  # Prevent default behavior of the Tab key
@@ -2325,7 +2368,7 @@ def launch_window(path: str, data: dict):
                             foreground = text_color,
                             highlightthickness = 0,
                             bd = 0,
-                            activebackground = "#CCCCFF",
+                            activebackground = "#DDDDFF",
                             width=18,
                             anchor='w',
                             padx=10,
@@ -2440,15 +2483,6 @@ def launch_window(path: str, data: dict):
         root.protocol("WM_DELETE_WINDOW", on_closing)
 
         root.mainloop()
-
-
-
-def open_log(server_obj: Any, path: str, data: dict, *args):
-    if path:
-        process = multiprocessing.Process(target=functools.partial(launch_window, path, data), daemon=True)
-        process.start()
-        data['sub_processes'].append(process.pid)
-
 
 
 if __name__ == '__main__':
