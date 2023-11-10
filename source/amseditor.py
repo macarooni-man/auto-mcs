@@ -3,15 +3,14 @@ from __future__ import annotations
 from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, FIRST, IntVar, Frame, PhotoImage, INSERT, BaseWidget,\
     Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, Button, SUNKEN
 
-from pygments.token import Keyword, Number, Name, Literal
 from typing import Any, Callable, Optional, Type, Union
+from pygments.token import Keyword, Number, Name
 from pygments.filters import NameHighlightFilter
+from difflib import SequenceMatcher
 from contextlib import suppress
 from PIL import ImageTk, Image
 from tkinter.font import Font
 from threading import Timer
-import pygments.lexers
-import multiprocessing
 import pygments.lexers
 import pygments.lexer
 import functools
@@ -256,6 +255,11 @@ def _parse_scheme(color_scheme: dict[str, dict[str, str | int]]) -> tuple[dict, 
     return editor, tags
 
 
+# Checks for string similarity
+def similarity(a, b):
+    return round(SequenceMatcher(None, a, b).ratio(), 2)
+
+
 # Changes colors for specific attributes
 class AmsLexer(pygments.lexers.PythonLexer):
     def __init__(self, data, **kwargs):
@@ -273,9 +277,9 @@ class AmsLexer(pygments.lexers.PythonLexer):
 
         self.add_filter(hl_filter)
         self.add_filter(var_filter)
-AmsLexer.tokens['root'].insert(-2, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Name.Function))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\d+\.?\d*?(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Number.Float))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\w+(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Keyword.Argument))
+AmsLexer.tokens['builtins'].insert(0, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Name.Function))
 # AmsLexer.tokens['classname'] = [('(?<=class ).+?(?=\()', Name.Class, '#pop')]
 
 
@@ -752,7 +756,7 @@ def launch_window(path: str, data: dict):
                         font=self.textwidget.cget("font"),
                         fill=convert_color((1, 0.65, 0.65))['hex'] if err_index == lineno
                         else '#4CFF99' if search_match
-                        else '#DDDDFF' if index == lineno
+                        else '#AAAAFF' if index == lineno
                         else self.foreground_color
                     )
 
@@ -1231,6 +1235,8 @@ def launch_window(path: str, data: dict):
                 self.bind("<Down>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Left>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Right>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
+                self.bind("<Control-Left>", self.scroll_text)
+                self.bind("<Control-Right>", self.scroll_text)
                 self.bind("<Control-h>", lambda *_: replace.toggle_focus(True))
                 self.bind("<Control-k>", lambda *_: "break")
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
@@ -1249,6 +1255,79 @@ def launch_window(path: str, data: dict):
 
                 self.bind(f"<Control-c>", self._copy, add=True)
                 self.bind(f"<Control-v>", self._paste, add=True)
+
+
+            @staticmethod
+            def is_matching(opening, closing, invert=False):
+                if invert:
+                    return (opening == ")" and closing == "(" or
+                            opening == "]" and closing == "[" or
+                            opening == "}" and closing == "{")
+                else:
+                    return (opening == "(" and closing == ")" or
+                            opening == "[" and closing == "]" or
+                            opening == "{" and closing == "}")
+
+            @staticmethod
+            def get_opposite(char):
+                if char == '(':
+                    return ')'
+                elif char == ')':
+                    return '('
+                elif char == '}':
+                    return '{'
+                elif char == '{':
+                    return '}'
+                elif char == ']':
+                    return '['
+                elif char == '[':
+                    return ']'
+
+            def scroll_text(self, *args):
+                sel_start = self.index(SEL_FIRST)
+                sel_end = self.index(SEL_LAST)
+
+                key = args[0].keysym.lower()
+                select = args[0].state == 262181
+
+                current_pos = self.index(INSERT)
+                start_pos = current_pos
+
+                while True:
+                    index = self.index(f"{current_pos}{'-' if key == 'left' else '+'}1c")
+                    if not index or not self.get(index).isspace():
+                        break
+                    else:
+                        self.mark_set(INSERT, current_pos)
+                    current_pos = index
+
+                if key == "left":
+                    self.mark_set(INSERT, "insert-1c wordstart")
+                    current_pos = self.index(INSERT)
+                    if select:
+                        try:
+                            if sel_end and self.compare(current_pos, "<=", sel_end) and self.compare(current_pos, ">=", sel_start):
+                                self.tag_remove("sel", "1.0", "end")
+                                self.tag_add("sel", sel_start, current_pos)
+                                return "break"
+                        except:
+                            pass
+                        self.tag_remove("sel", "1.0", "end")
+                        self.tag_add("sel", current_pos, start_pos if not sel_end else sel_end)
+                else:
+                    self.mark_set(INSERT, "insert+1c wordend")
+                    current_pos = self.index(INSERT)
+                    if select:
+                        try:
+                            if sel_start and self.compare(current_pos, ">=", sel_start) and self.compare(current_pos, "<=", sel_end):
+                                self.tag_remove("sel", "1.0", "end")
+                                self.tag_add("sel", current_pos, sel_end)
+                                return "break"
+                        except:
+                            pass
+                        self.tag_remove("sel", "1.0", "end")
+                        self.tag_add("sel", start_pos if not sel_start else sel_start, current_pos)
+                return "break"
 
             def highlight_matching_parentheses(self, event=None):
                 self.tag_remove("parentheses", "1.0", END)
@@ -1313,7 +1392,7 @@ def launch_window(path: str, data: dict):
                                         c_tag = self.tag_names(start_closing)[0]
                                     except IndexError:
                                         continue
-                                    for tag in ('Comment', 'String.Single', 'String.Double', 'String.Doc', 'String.Heredoc'):
+                                    for tag in ('Comment', 'String.Single', 'String.Double', 'String.Doc', 'String.Heredoc', 'sel'):
                                         if tag in o_tag or tag in c_tag:
                                             break
                                     else:
@@ -1323,32 +1402,6 @@ def launch_window(path: str, data: dict):
                                         stack[looking_for].pop()
                                         return
                                 levels[looking_for] -= 1
-
-            @staticmethod
-            def is_matching(opening, closing, invert=False):
-                if invert:
-                    return (opening == ")" and closing == "(" or
-                            opening == "]" and closing == "[" or
-                            opening == "}" and closing == "{")
-                else:
-                    return (opening == "(" and closing == ")" or
-                            opening == "[" and closing == "]" or
-                            opening == "{" and closing == "}")
-
-            @staticmethod
-            def get_opposite(char):
-                if char == '(':
-                    return ')'
-                elif char == ')':
-                    return '('
-                elif char == '}':
-                    return '{'
-                elif char == '{':
-                    return '}'
-                elif char == ']':
-                    return '['
-                elif char == '[':
-                    return ']'
 
             def iterate_characters(self, start, end, invert=False):
                 while True:
@@ -1538,7 +1591,9 @@ def launch_window(path: str, data: dict):
                 if line_text.isspace():
                     self.delete(line_start, current_pos)
 
-                self.delete("insert-1c wordstart", "insert")
+                else:
+                    if not self.delete_spaces():
+                        self.delete("insert-1c wordstart", "insert")
 
                 self.recalc_lexer()
                 return "break"
@@ -1698,7 +1753,6 @@ def launch_window(path: str, data: dict):
                     self.delete(self.index(f'{current_pos}-3c'), self.index(f'{current_pos}+3c'))
                     return 'break'
 
-
                 if len(line_text) >= 4:
                     compare = line_text[-4:]
                     length = 4
@@ -1803,7 +1857,7 @@ def launch_window(path: str, data: dict):
                 if event.keysym in ("at", "period"):
                     x, y = self.bbox(INSERT)[:2]
                     if event.keysym == "period":
-                        x += 13
+                        x += 15
                     def show_panel(*a):
                         line_num = int(current_pos.split('.')[0])
                         last_line = self.get(f"{line_num}.0", f"{line_num}.end")
@@ -1950,7 +2004,6 @@ def launch_window(path: str, data: dict):
                             self.after(0, lambda *_: self.insert(INSERT, tab_str*indent))
                         self.after(0, lambda *_: self.recalc_lexer())
                         return "Return"
-
 
 
                 # Insert spaces instead of tab character and finish brackets/quotes
@@ -2361,36 +2414,38 @@ def launch_window(path: str, data: dict):
                 self.last_matches = []
                 self.suggestions = data['suggestions']
                 self.visible = False
+                self.max_size = 5
+                self.add_buttons()
 
-            def add_buttons(self, matches):
-                # print(len(matches), len(self.button_list))
-                if len(matches) == len(self.button_list):
-                    for x, b in enumerate(self.button_list, 0):
+            def update_buttons(self, matches):
+                for x, b in enumerate(self.button_list, 0):
+                    visible = b.winfo_ismapped()
+                    try:
                         item = matches[x]
                         b.config(text=item, command=functools.partial(self.click_func, item))
+                        if not visible:
+                            b.grid(sticky="w")
+                    except IndexError:
+                        if visible:
+                            b.grid_remove()
 
-                else:
-                    for b in self.button_list:
-                        b.grid_forget()
-                    self.button_list = []
-
-                    for item in matches:
-                        button = Button(self, text=item, font="Consolas 14 italic", background=self.background)
-                        button.config(
-                            command = functools.partial(self.click_func, item),
-                            borderwidth = 5,
-                            relief = SUNKEN,
-                            foreground = text_color,
-                            highlightthickness = 0,
-                            bd = 0,
-                            activebackground = "#AAAAFF",
-                            width=18,
-                            anchor='w',
-                            padx=10,
-                            pady=5
-                        )
-                        button.grid(sticky="w")
-                        self.button_list.append(button)
+            def add_buttons(self):
+                for item in range(self.max_size):
+                    button = Button(self, text=item, font="Consolas 14 italic", background=self.background)
+                    button.config(
+                        command = functools.partial(self.click_func, item),
+                        borderwidth = 5,
+                        relief = SUNKEN,
+                        foreground = text_color,
+                        highlightthickness = 0,
+                        bd = 0,
+                        activebackground = "#AAAAFF",
+                        width=18,
+                        anchor='w',
+                        padx=10,
+                        pady=5
+                    )
+                    self.button_list.append(button)
 
             def show(self, start, x, y):
                 self.last_matches = []
@@ -2403,20 +2458,46 @@ def launch_window(path: str, data: dict):
                 self.visible = False
 
             def update_results(self, text):
+                matches = None
                 if text == '@':
-                    matches = ["@player.on_alias", "@player.on_join", "@player.on_leave", "@server.on_loop"]
+                    matches = ["@player.on_alias", "@player.on_join", "@player.on_leave", "@server.on_loop", "@server.on_start"]
                 else:
                     for k, v in self.suggestions.items():
                         if text.startswith(k):
+
+                            # Check tags
                             if k == '@':
                                 tag = text[1:]
                             else:
-                                tag = text[len(k + '.'):]
-                            matches = [x for x in self.suggestions[k] if tag in x][:5]
+                                tag = text[len(k + '.')-1:]
+
+                            # Get list of matches/partial matches
+                            matches = []
+                            for x in self.suggestions[k]:
+                                if tag in x:
+                                    matches.append((x, 1))
+                                    continue
+
+                                else:
+                                    try:
+                                        tag_index = x.index(tag)
+                                    except ValueError:
+                                        tag_index = 0
+
+                                    sml = similarity(tag.lower(), x.lower()[tag_index:tag_index + len(tag)])
+                                    if sml > 0.7:
+                                        print(tag.lower(), x.lower()[tag_index:tag_index + len(tag)], x, sml)
+                                        matches.append((x, sml))
+
+                            matches = sorted([x[0] for x in matches], key=lambda x: x[1], reverse=True)
+
+
+                            # matches = [x for x in self.suggestions[k] if tag in x or similarity(tag.lower(), x.lower()[len(tag):]) > 0.5][:self.max_size]
+
                 if not matches:
                     self.hide()
                 if matches != self.last_matches:
-                    self.add_buttons(matches)
+                    self.update_buttons(matches)
                 self.last_matches = matches
 
             def iterate_selection(self, forward=True):
