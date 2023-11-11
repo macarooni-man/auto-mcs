@@ -20,7 +20,6 @@ import re
 import gc
 
 
-
 # Auto-MCS Scripting API
 # ------------------------------------------------- Script Object ------------------------------------------------------
 
@@ -2302,7 +2301,7 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
         with open(json_path, 'r') as f:
             json_data = json.loads(f.read())
 
-    print(script.file_name, json_data)
+    # print(script.file_name, json_data)
 
     # Add file to json list
     if enabled:
@@ -2595,7 +2594,7 @@ class PersistenceManager():
             with open(self._path, 'r+') as f:
                 try:
                     self._data = self.PersistenceObject(json.load(f, cls=self.ObjectDecoder))
-                    print(self._data)
+                    # print(self._data)
                 except json.JSONDecodeError:
                     pass
 

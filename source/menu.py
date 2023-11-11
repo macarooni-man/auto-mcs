@@ -21,9 +21,10 @@ import re
 
 
 # Local imports
-from amscript import ServerScriptObject, PlayerScriptObject
+import amseditor
 import logviewer
 import constants
+import amscript
 import addons
 import backup
 import acl
@@ -14878,6 +14879,20 @@ class ServerAddonSearchScreen(MenuBackground):
 
 # amscript Manager ------------------------------------------------------------------------------------------------
 
+script_obj = amscript.ScriptObject()
+def edit_script(edit_button, server_obj, script_path):
+    data_dict = {
+        'app_title': constants.app_title,
+        'gui_assets': constants.gui_assets,
+        'background_color': constants.background_color,
+        'script_obj': script_obj,
+        'server_obj': server_obj,
+        'server_script_obj': amscript.ServerScriptObject(server_obj)
+    }
+    Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict), 0.1)
+    #self.controls.log_button.button.on_leave()
+    #self.controls.log_button.button.on_release()
+
 class ScriptButton(HoverButton):
 
     def toggle_installed(self, installed, *args):
@@ -15188,76 +15203,125 @@ class AmscriptListButton(HoverButton):
         self.disabled_banner = None
 
 
-        # Delete button
-        def delete_hover(*args):
-            def change_color(*args):
-                if self.hovered:
-                    self.hover_text.text = 'UNINSTALL SCRIPT'
-                    self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
-                    self.background_color = (1, 1, 1, 1)
-            Clock.schedule_once(change_color, 0.07)
-        def delete_on_leave(*args):
-            def change_color(*args):
-                self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
-                if self.hovered:
-                    self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
-                    self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
-            Clock.schedule_once(change_color, 0.15)
-        def delete_click(*args):
-            # Delete addon and reload list
-            def reprocess_page(*args):
-                script_manager = constants.server_manager.current_server.script_manager
-                script_manager.delete_script(self.properties)
-                script_screen = screen_manager.current_screen
-                new_list = script_manager.return_single_list()
-                script_screen.gen_search_results(new_list, fade_in=True)
+        if self.enabled:
 
-                # Show banner if server is running
-                if script_manager.hash_changed():
-                    Clock.schedule_once(
-                        functools.partial(
-                            screen_manager.current_screen.show_banner,
-                            (0.937, 0.831, 0.62, 1),
-                            "An amscript reload is required to apply changes",
-                            "sync.png",
-                            3,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0
-                    )
-
-                else:
-                    Clock.schedule_once(
-                        functools.partial(
-                            screen_manager.current_screen.show_banner,
-                            (1, 0.5, 0.65, 1),
-                            f"'{self.properties.name}' was uninstalled",
-                            "trash-sharp.png",
-                            2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0
-                    )
-
-                # Switch pages if page is empty
-                if (len(script_screen.scroll_layout.children) == 0) and (len(new_list) > 0):
-                    script_screen.switch_page("left")
+            # Edit button
+            def edit_hover(*args):
+                def change_color(*args):
+                    if self.hovered:
+                        self.hover_text.text = 'EDIT SCRIPT'
+                        self.background_normal = os.path.join(constants.gui_assets, "server_button_hover.png")
+                        self.background_color = (1, 1, 1, 1)
+                Clock.schedule_once(change_color, 0.07)
+            def edit_on_leave(*args):
+                def change_color(*args):
+                    self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
+                    if self.hovered:
+                        self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
+                        self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
+                Clock.schedule_once(change_color, 0.15)
+            def edit_click(*args):
+                # Delete addon and reload list
+                def reprocess_page(*args):
+                    server_obj = constants.server_manager.current_server
+                    script_manager = server_obj.script_manager
+                    edit_script(self, server_obj, self.properties.path)
 
 
-            Clock.schedule_once(
-                functools.partial(
-                    screen_manager.current_screen.show_popup,
-                    "warning_query",
-                    f'Uninstall {self.properties.name}',
-                    "Uninstalling this script will render it unavailable for every server.\n\nDo you want to permanently uninstall this script?",
-                    (None, functools.partial(reprocess_page))
-                ),
-                0
-            )
-        self.delete_layout = RelativeLayout(opacity=0)
-        self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'], anchor='right', click_func=delete_click)
-        self.delete_button.button.bind(on_enter=delete_hover)
-        self.delete_button.button.bind(on_leave=delete_on_leave)
-        self.delete_layout.add_widget(self.delete_button)
-        self.add_widget(self.delete_layout)
+                    # Show banner if server is running
+                    if script_manager.hash_changed():
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.937, 0.831, 0.62, 1),
+                                "An amscript reload is required to apply changes",
+                                "sync.png",
+                                3,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+
+                Clock.schedule_once(functools.partial(reprocess_page), 0)
+            self.delete_layout = RelativeLayout(opacity=0)
+            self.delete_button = IconButton('', {}, (0, 0), (None, None), 'edit-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], ''], anchor='right', click_func=edit_click)
+            self.delete_button.button.bind(on_enter=edit_hover)
+            self.delete_button.button.bind(on_leave=edit_on_leave)
+            self.delete_layout.add_widget(self.delete_button)
+            self.add_widget(self.delete_layout)
+
+        else:
+
+            # Delete button
+            def delete_hover(*args):
+                def change_color(*args):
+                    if self.hovered:
+                        self.hover_text.text = 'UNINSTALL SCRIPT'
+                        self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
+                        self.background_color = (1, 1, 1, 1)
+
+                Clock.schedule_once(change_color, 0.07)
+            def delete_on_leave(*args):
+                def change_color(*args):
+                    self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
+                    if self.hovered:
+                        self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
+                        self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
+
+                Clock.schedule_once(change_color, 0.15)
+            def delete_click(*args):
+                # Delete addon and reload list
+                def reprocess_page(*args):
+                    script_manager = constants.server_manager.current_server.script_manager
+                    script_manager.delete_script(self.properties)
+                    script_screen = screen_manager.current_screen
+                    new_list = script_manager.return_single_list()
+                    script_screen.gen_search_results(new_list, fade_in=True)
+
+                    # Show banner if server is running
+                    if script_manager.hash_changed():
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.937, 0.831, 0.62, 1),
+                                "An amscript reload is required to apply changes",
+                                "sync.png",
+                                3,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+
+                    else:
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (1, 0.5, 0.65, 1),
+                                f"'{self.properties.name}' was uninstalled",
+                                "trash-sharp.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+
+                    # Switch pages if page is empty
+                    if (len(script_screen.scroll_layout.children) == 0) and (len(new_list) > 0):
+                        script_screen.switch_page("left")
+
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_popup,
+                        "warning_query",
+                        f'Uninstall {self.properties.name}',
+                        "Uninstalling this script will render it unavailable for every server.\n\nDo you want to permanently uninstall this script?",
+                        (None, functools.partial(reprocess_page))
+                    ),
+                    0
+                )
+            self.delete_layout = RelativeLayout(opacity=0)
+            self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'], anchor='right', click_func=delete_click)
+            self.delete_button.button.bind(on_enter=delete_hover)
+            self.delete_button.button.bind(on_leave=delete_on_leave)
+            self.delete_layout.add_widget(self.delete_button)
+            self.add_widget(self.delete_layout)
 
 
         # Hover text
@@ -18155,11 +18219,13 @@ class MainApp(App):
         screen_manager.current = constants.startup_screen
 
         # Screen manager override
-        # if not constants.app_compiled:
-        #     def open_menu(*args):
-        #         screen_manager.current = "ServerManagerScreen"
-        #         open_server("bedrock-test")
-        #     Clock.schedule_once(open_menu, 0)
+        if not constants.app_compiled:
+            def open_menu(*args):
+                open_server("bedrock-test")
+                def open_ams(*args):
+                    screen_manager.current = "ServerAmscriptScreen"
+                Clock.schedule_once(open_ams, 1)
+            Clock.schedule_once(open_menu, 0)
 
 
         screen_manager.transition = FadeTransition(duration=0.115)

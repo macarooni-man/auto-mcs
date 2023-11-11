@@ -1379,6 +1379,7 @@ class ServerObject():
             hook(self.run_data['log'])
 
 
+    # Sends a command that doesn't show up in the console
     def silent_command(self, cmd, log=True, _capture=None, _send_twice=False):
 
         self.send_command(cmd, False, log, True)
@@ -1400,6 +1401,7 @@ class ServerObject():
                 else:
                     self.update_log(line)
                     return ""
+
 
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():

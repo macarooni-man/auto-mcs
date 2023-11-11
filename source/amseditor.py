@@ -11,6 +11,7 @@ from contextlib import suppress
 from PIL import ImageTk, Image
 from tkinter.font import Font
 from threading import Timer
+import multiprocessing
 import pygments.lexers
 import pygments.lexer
 import functools
@@ -23,6 +24,9 @@ import re
 
 LexerType = Union[Type[pygments.lexer.Lexer], pygments.lexer.Lexer]
 tab_str = '    '
+suggestions = {}
+font_size = 16
+
 
 # Converts between HEX and RGB decimal colors
 def convert_color(color: str or tuple):
@@ -260,6 +264,19 @@ def similarity(a, b):
     return round(SequenceMatcher(None, a, b).ratio(), 2)
 
 
+# Gets list of functions and attributes
+def iter_attr(obj, a_start=''):
+    final_list = []
+    for attr in dir(obj):
+        if not attr.startswith('_'):
+            if callable(getattr(obj, attr)):
+                final_list.append(a_start + attr + '()')
+            else:
+                final_list.append(a_start + attr)
+    final_list = sorted(final_list, key=lambda x: x.endswith('()'), reverse=True)
+    return final_list
+
+
 # Changes colors for specific attributes
 class AmsLexer(pygments.lexers.PythonLexer):
     def __init__(self, data, **kwargs):
@@ -283,8 +300,160 @@ AmsLexer.tokens['builtins'].insert(0, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Na
 # AmsLexer.tokens['classname'] = [('(?<=class ).+?(?=\()', Name.Class, '#pop')]
 
 
-# Opens a crash log in a read-only text editor
-def launch_window(path: str, data: dict):
+# Main window widget
+window = None
+process = None
+close_window = False
+currently_open = []
+background_color = '#040415'
+color_search = None
+
+
+# Init Tk window
+def create_root(data, wdata, name=''):
+    global window, close_window, currently_open
+
+    if not window:
+
+        file_icon = os.path.join(data['gui_assets'], "big-icon.png")
+        min_size = (950, 600)
+        start_size = (1100, 700)
+
+        window = Tk()
+        width = window.winfo_screenwidth()
+        height = window.winfo_screenheight()
+        x = int((width / 2) - (start_size[0] / 2))
+        y = int((height / 2) - (start_size[1] / 2)) - 15
+        window.geometry(f"{start_size[0]}x{start_size[1]}+{x}+{y}")
+        window.minsize(width=min_size[0], height=min_size[1])
+        window.title(f'{data["app_title"]} - amscript IDE')
+        img = PhotoImage(file=file_icon)
+        window.tk.call('wm', 'iconphoto', window._w, img)
+        window.configure(bg=background_color)
+        close_window = False
+
+        # When window is closed
+        def on_closing():
+            global close_window
+            # Auto-save
+            close_window = True
+            window.destroy()
+        window.protocol("WM_DELETE_WINDOW", on_closing)
+
+        class CloseNotebook(ttk.Notebook):
+            """A ttk Notebook with close buttons on each tab"""
+
+            __initialized = False
+
+            def __init__(self, *args, **kwargs):
+                if not self.__initialized:
+                    self.__initialize_custom_style()
+                    self.__inititialized = True
+
+                kwargs["style"] = "CustomNotebook"
+                ttk.Notebook.__init__(self, *args, **kwargs)
+
+                self._active = None
+
+                self.bind("<ButtonPress-1>", self.on_close_press, True)
+                self.bind("<ButtonRelease-1>", self.on_close_release)
+
+            def on_close_press(self, event):
+                """Called when the button is pressed over the close button"""
+
+                element = self.identify(event.x, event.y)
+
+                if "close" in element:
+                    index = self.index("@%d,%d" % (event.x, event.y))
+                    self.state(['pressed'])
+                    self._active = index
+                    return "break"
+
+            def on_close_release(self, event):
+                """Called when the button is released"""
+                if not self.instate(['pressed']):
+                    return
+
+                element = self.identify(event.x, event.y)
+                if "close" not in element:
+                    # user moved the mouse off of the close button
+                    return
+
+                index = self.index("@%d,%d" % (event.x, event.y))
+
+                if self._active == index:
+                    self.forget(index)
+                    self.event_generate("<<NotebookTabClosed>>")
+
+                self.state(["!pressed"])
+                self._active = None
+
+            def __initialize_custom_style(self):
+                style = ttk.Style()
+                self.images = (
+                    PhotoImage("img_close", data='''
+                        R0lGODlhCAAIAMIBAAAAADs7O4+Pj9nZ2Ts7Ozs7Ozs7Ozs7OyH+EUNyZWF0ZWQg
+                        d2l0aCBHSU1QACH5BAEKAAQALAAAAAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU
+                        5kEJADs=
+                        '''),
+                    PhotoImage("img_closeactive", data='''
+                        R0lGODlhCAAIAMIEAAAAAP/SAP/bNNnZ2cbGxsbGxsbGxsbGxiH5BAEKAAQALAAA
+                        AAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU5kEJADs=
+                        '''),
+                    PhotoImage("img_closepressed", data='''
+                        R0lGODlhCAAIAMIEAAAAAOUqKv9mZtnZ2Ts7Ozs7Ozs7Ozs7OyH+EUNyZWF0ZWQg
+                        d2l0aCBHSU1QACH5BAEKAAQALAAAAAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU
+                        5kEJADs=
+                    ''')
+                )
+
+                style.element_create("close", "image", "img_close", ("active", "pressed", "!disabled", "img_closepressed"), ("active", "!disabled", "img_closeactive"), border=10, sticky='')
+                style.layout("CustomNotebook", [("CustomNotebook.client", {"sticky": "nswe"})])
+                style.layout("CustomNotebook.Tab", [
+                    ("CustomNotebook.tab", {
+                        "sticky": "nswe",
+                        "children": [
+                            ("CustomNotebook.padding", {
+                                "side": "top",
+                                "sticky": "nswe",
+                                "children": [
+                                    ("CustomNotebook.focus", {
+                                        "side": "top",
+                                        "sticky": "nswe",
+                                        "children": [
+                                            ("CustomNotebook.label", {"side": "left", "sticky": ''}),
+                                            ("CustomNotebook.close", {"side": "left", "sticky": ''}),
+                                        ]
+                                    })
+                                ]
+                            })
+                        ]
+                    })
+                ])
+                style.layout("CustomNotebook", [])
+                style.configure("CustomNotebook", tabmargins=0, borderwidth=0, highlightthickness=0)
+
+        window.root = CloseNotebook(window)
+        window.root.pack(expand=1, fill='both')
+
+        def check_new():
+            global close_window, currently_open
+            if close_window:
+                return
+
+            script_path = wdata.value
+            if script_path not in currently_open:
+                launch_window(script_path, data)
+                currently_open.append(script_path)
+            window.after(1000, check_new)
+
+        check_new()
+        window.mainloop()
+
+
+# Opens the amscript editor with the specified path in a new tab
+def launch_window(path: str, data: dict, *a):
+    global window, color_search
 
     # Get text
     ams_data = ''
@@ -293,30 +462,12 @@ def launch_window(path: str, data: dict):
         with open(path, 'r') as f:
             ams_data = f.read().replace('\t', tab_str)
 
-        # Init Tk window
-        background_color = '#040415'
         error_bg = convert_color((0.3, 0.1, 0.13))['hex']
         text_color = convert_color((0.6, 0.6, 1))['hex']
-        file_icon = os.path.join(data['gui_assets'], "big-icon.png")
-        min_size = (950, 600)
-        start_size = (1100, 700)
-
-        root = Tk()
-        width = root.winfo_screenwidth()
-        height = root.winfo_screenheight()
-        x = int((width / 2) - (start_size[0] / 2))
-        y = int((height / 2) - (start_size[1] / 2)) - 15
-        root.geometry(f"{start_size[0]}x{start_size[1]}+{x}+{y}")
-        root.minsize(width=min_size[0], height=min_size[1])
-        root.title(f'{data["app_title"]} - amscript ({os.path.basename(path)})')
-        img = PhotoImage(file=file_icon)
-        root.tk.call('wm', 'iconphoto', root._w, img)
-        root.configure(bg=background_color)
-        root.close = False
 
         style = {
             'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_fg': "#DDDDFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': '#1b2733',
-                'caret': convert_color((0.7, 0.7, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': "Consolas 14 italic"},
+                'caret': convert_color((0.7, 0.7, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': f"Consolas {font_size} italic"},
             'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': '#b3b1ad', 'keyword': '#FB71FB',
                 'name': '#819CE6', 'string': '#c2d94c', 'punctuation': '#68E3FF'},
             'keyword': {'constant': '#FB71FB', 'declaration': '#FB71FB', 'namespace': '#FB71FB', 'pseudo': '#FB71FB',
@@ -336,7 +487,9 @@ def launch_window(path: str, data: dict):
                 'single': '#3F4875', 'special': '#3F4875'}
         }
 
-        placeholder_frame = Frame(root, height=40)
+        root = Frame(padx=0, pady=0, bg=background_color)
+
+        placeholder_frame = Frame(root, height=40, highlightbackground=background_color, background=background_color)
         placeholder_frame.pack(fill=X, side=BOTTOM)
         placeholder_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
 
@@ -435,7 +588,7 @@ def launch_window(path: str, data: dict):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = "Consolas 14",
+            font = f"Consolas {font_size}",
         )
         root.bind('<Control-f>', lambda *_: search.toggle_focus(True))
 
@@ -753,7 +906,7 @@ def launch_window(path: str, data: dict):
                         dlineinfo[1] + 5.5,
                         text=f" {lineno} " if self.justify != "center" else f"{lineno}",
                         anchor={"left": "nw", "right": "ne", "center": "n"}[self.justify],
-                        font=self.textwidget.cget("font"),
+                        font=f"Consolas {font_size}",
                         fill=convert_color((1, 0.65, 0.65))['hex'] if err_index == lineno
                         else '#4CFF99' if search_match
                         else '#AAAAFF' if index == lineno
@@ -1192,7 +1345,7 @@ def launch_window(path: str, data: dict):
                 self.content_changed = False
                 self.last_search = ""
                 self.match_list = []
-                self.font_size = 13
+                self.font_size = font_size - 1
                 self.match_counter = Label(justify='right', anchor='se')
                 self.match_counter.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=7)
                 self.match_counter.configure(
@@ -2150,7 +2303,7 @@ def launch_window(path: str, data: dict):
         code_editor = HighlightText(
             root,
             color_scheme = style,
-            font = "Consolas 14",
+            font = f"Consolas {font_size}",
             linenums_theme = ('#3E3E63', background_color),
             scrollbar=Scrollbar
         )
@@ -2350,7 +2503,7 @@ def launch_window(path: str, data: dict):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = "Consolas 14",
+            font = f"Consolas {font_size}",
         )
 
         # Replace All Button
@@ -2383,7 +2536,8 @@ def launch_window(path: str, data: dict):
             code_editor._line_numbers.redraw()
 
         def highlight_search():
-            if root.close:
+            global close_window
+            if close_window:
                 return
 
             if code_editor._vs.last_scrolled < 4:
@@ -2399,9 +2553,10 @@ def launch_window(path: str, data: dict):
         highlight_search()
 
         # Search icon
-        icon = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'color-search.png')).convert("RGBA"))
-        search_icon = Label(image=icon, bg=background_color)
-        search_icon.place(anchor='nw', in_=search, x=-50, y=1)
+        if not color_search:
+            color_search = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'color-search.png')))
+        search_icon = Label(image=color_search, bg=background_color)
+        search_icon.place(anchor='nw', in_=search, x=-45, y=1)
         search_frame.tkraise(code_editor)
 
         # Auto-complete widget
@@ -2431,7 +2586,7 @@ def launch_window(path: str, data: dict):
 
             def add_buttons(self):
                 for item in range(self.max_size):
-                    button = Button(self, text=item, font="Consolas 14 italic", background=self.background)
+                    button = Button(self, text=item, font=f"Consolas {font_size} italic", background=self.background)
                     button.config(
                         command = functools.partial(self.click_func, item),
                         borderwidth = 5,
@@ -2592,14 +2747,48 @@ def launch_window(path: str, data: dict):
 
         ac = AutoComplete()
 
-        # When window is closed
-        def on_closing():
-            # Auto-save
-            root.close = True
-            root.destroy()
-        root.protocol("WM_DELETE_WINDOW", on_closing)
+        # Add tab to window
+        window.after(0, lambda *_: window.root.add(root, text=os.path.basename(path)))
 
-        root.mainloop()
+
+wlist = None
+def edit_script(script_path: str, data: dict, *args):
+    global suggestions, process, wlist
+
+    if script_path:
+        if suggestions:
+            data['suggestions'] = suggestions
+        else:
+            data['suggestions'] = {
+                '@': data['script_obj'].valid_events,
+                'server.': iter_attr(data['server_script_obj']),
+                'acl.': iter_attr(data['server_obj'].acl),
+                'addon.': iter_attr(data['server_obj'].addon),
+                'backup.': iter_attr(data['server_obj'].backup),
+                'amscript.': iter_attr(data['server_obj'].script_manager)
+            }
+
+        if not process:
+            mgr = multiprocessing.Manager()
+            wlist = mgr.Value('window_list', [])
+            process = multiprocessing.Process(target=functools.partial(create_root, data), args=(wlist, 'window_list'), daemon=True)
+            process.start()
+
+        wlist.value = script_path
+        #functools.partial(launch_window, script_path, data)
+
+
+if os.name == 'nt':
+    from ctypes import windll, c_int64
+
+    # Calculate screen width and disable DPI scaling if bigger than a certain resolution
+    width = windll.user32.GetSystemMetrics(0)
+    scale = windll.shcore.GetScaleFactorForDevice(0) / 100
+    if (width * scale) < 2000:
+        windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
+
+    font_size = 14
+
 
 
 if __name__ == '__main__':
@@ -2616,18 +2805,6 @@ if __name__ == '__main__':
     windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
     # DELETE ABOVE
 
-
-    # Gets list of functions and
-    def iter_attr(obj, a_start=''):
-        final_list = []
-        for attr in dir(obj):
-            if not attr.startswith('_'):
-                if callable(getattr(obj, attr)):
-                    final_list.append(a_start + attr + '()')
-                else:
-                    final_list.append(a_start + attr)
-        final_list = sorted(final_list, key=lambda x: x.endswith('()'), reverse=True)
-        return final_list
 
     data_dict = {
         'app_title': constants.app_title,
@@ -2646,5 +2823,7 @@ if __name__ == '__main__':
     data_dict['suggestions']['backup.'] = iter_attr(server_obj.backup)
     data_dict['suggestions']['amscript.'] = iter_attr(server_obj.script_manager)
 
-    path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Tools\amscript\test2.ams"
-    launch_window(path, data_dict)
+    path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Tools\amscript"
+    class Test():
+        value = os.path.join(path, 'test2.ams')
+    create_root(data_dict, Test())

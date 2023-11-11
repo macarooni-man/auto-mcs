@@ -16,6 +16,7 @@ def mainLoop():
         if (width * scale) < 2000:
             windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
 
+
     # Cleanup temp files and generate splash text
     from menu import run_application
     constants.cleanup_old_files()
