@@ -300,7 +300,7 @@ AmsLexer.tokens['builtins'].insert(0, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Na
 # AmsLexer.tokens['classname'] = [('(?<=class ).+?(?=\()', Name.Class, '#pop')]
 
 
-# Main window widget
+# Main window data
 window = None
 process = None
 close_window = False
@@ -315,11 +315,93 @@ def create_root(data, wdata, name=''):
 
     if not window:
 
+        drag_code = """namespace eval tabdrag {}
+bind TNotebook <Destroy> {+tabdrag::destroy %W}
+bind TNotebook <Button-1> {+tabdrag::click %W %x %y}
+bind TNotebook <ButtonRelease-1> {+tabdrag::release %W %x %y}
+bind TNotebook <B1-Motion> {+tabdrag::move %W %x %y}
+
+proc ::tabdrag::destroy {win} {
+  variable winstate;
+
+  array unset winstate ?,$win
+}
+
+proc ::tabdrag::click {win x y} {
+  variable winstate;
+
+  set what [$win identify tab $x $y]
+  if { $what eq "" || [$win index end] <= 1} {
+       return;
+     }
+
+  set winstate(x,$win) $x
+  set winstate(t,$win) [lindex [$win tabs] $what]
+  set winstate(e,$win) 0
+}
+
+proc ::tabdrag::release {win x y} {
+  variable winstate;
+
+  array unset winstate ?,$win
+}
+
+proc ::tabdrag::move {win x y} {
+  variable winstate;
+
+  if { ![info exists winstate(x,$win)] || ![info exists winstate(t,$win)] || $winstate(t,$win) eq "" } {
+       return;
+     }
+
+  set where [$win identify tab $x $y]
+  if { [info exists winstate(a,$win)] } {
+       if { $x < $winstate(a,$win) && $where < $winstate(i,$win) } {
+            unset -nocomplain winstate(a,$win) winstate(i,$win) winstate(j,$win)
+          } elseif { $x > $winstate(a,$win) && $where > $winstate(i,$win) } {
+            unset -nocomplain winstate(a,$win) winstate(i,$win) winstate(j,$win)
+          }
+     }
+  if { $where ne "" } {
+       set what [lindex [$win tabs] $where]
+     } else {
+       set what ""
+     }
+  if { $what eq $winstate(t,$win) } {
+       return;
+     }
+  if { $what eq "" } {
+       # Not over a tab - check to see if we're before or after where we started
+       if { $winstate(e,$win) } {
+            return;
+          }
+       set winstate(e,$win) 1
+       if { $x < $winstate(x,$win) } {
+            $win insert 0 $winstate(t,$win)
+          } else {
+            $win insert end $winstate(t,$win)
+          }
+       #unset -nocomplain winstate(j,$win) winstate(a,$win) winstate(i,$win)
+       set winstate(x,$win) $x
+     } else {
+       set winstate(e,$win) 0
+       if { [info exists winstate(j,$win)] && $what eq $winstate(j,$win) } {
+            if { (($x > $winstate(x,$win) && $x > $winstate(a,$win)) || ($x < $winstate(x,$win) && $x < $winstate(a,$win))) } {
+                 return;# avoid stuttering when jumping a bigger tab
+               }
+          }
+       $win insert $what $winstate(t,$win)
+       set winstate(j,$win) $what
+       set winstate(a,$win) $x
+       set winstate(i,$win) $where
+     }
+}"""
+
         file_icon = os.path.join(data['gui_assets'], "big-icon.png")
         min_size = (950, 600)
         start_size = (1100, 700)
 
         window = Tk()
+        window.tk.eval(drag_code)
         width = window.winfo_screenwidth()
         height = window.winfo_screenheight()
         x = int((width / 2) - (start_size[0] / 2))
@@ -334,7 +416,7 @@ def create_root(data, wdata, name=''):
 
         # When window is closed
         def on_closing():
-            global close_window
+            global close_window, currently_open, process
             # Auto-save
             close_window = True
             window.destroy()
@@ -392,22 +474,50 @@ def create_root(data, wdata, name=''):
                 style = ttk.Style()
                 self.images = (
                     PhotoImage("img_close", data='''
-                        R0lGODlhCAAIAMIBAAAAADs7O4+Pj9nZ2Ts7Ozs7Ozs7Ozs7OyH+EUNyZWF0ZWQg
-                        d2l0aCBHSU1QACH5BAEKAAQALAAAAAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU
-                        5kEJADs=
+                        iVBORw0KGgoAAAANSUhEUgAAAAsAAAALCAYAAACprHcmAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZ
+                        cwAADsMAAA7DAcdvqGQAAACuSURBVChTfZCxDYMwEEUPVkiRBSKaFKlDixQpqzAQq6BYYogU6YKUloId8t/JQWCsfOn7
+                        fPf/+WwbuN3bq3jwJAF1dPaFNrViEN9iE/puRgDxgEE8kZZaRvEjXsThN2FlpI4+FloQjgoIZ/EpNjHH+CLXxMnNINOw
+                        MSraYgbJ6I0RcGdHxsiER6w73Jw7MUby5dHln9G7Bk6uRP5xbbSkAR2fX6MW+Y0dqKObmX0BAJRJ/Lu+BmEAAAAASUVO
+                        RK5CYII=
                         '''),
                     PhotoImage("img_closeactive", data='''
-                        R0lGODlhCAAIAMIEAAAAAP/SAP/bNNnZ2cbGxsbGxsbGxsbGxiH5BAEKAAQALAAA
-                        AAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU5kEJADs=
+                        iVBORw0KGgoAAAANSUhEUgAAAAsAAAALCAYAAACprHcmAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZ
+                        cwAADsMAAA7DAcdvqGQAAADTSURBVChTY7S1tWVw88yyZGBguLVr+7S3QBoFAOWEgZQaUO44Y3PbcisgZxcQ3wFiZ2QN
+                        UIV7gVgFxGUCEneB+AEQ6wPxXqgCZIUgcZD8XeY/v159VVY1XQvkeAKxLhC7A/mrgTRM4VUgBtn4EmQyA4gBEoBKgG2A
+                        0nCFQJoBrBgEoAL2QHwRiDEUggBcMZobQQq1gXgnzA8gAFaMRSGKk2AamLApxOYHkDqQyWpADApHZIXongbJq4GC7gkw
+                        qA4AOROQPQMCd++chgXr1l3bpx0HAEBwZFFBTrWkAAAAAElFTkSuQmCC
                         '''),
                     PhotoImage("img_closepressed", data='''
-                        R0lGODlhCAAIAMIEAAAAAOUqKv9mZtnZ2Ts7Ozs7Ozs7Ozs7OyH+EUNyZWF0ZWQg
-                        d2l0aCBHSU1QACH5BAEKAAQALAAAAAAIAAgAAAMVGDBEA0qNJyGw7AmxmuaZhWEU
-                        5kEJADs=
-                    ''')
+                        iVBORw0KGgoAAAANSUhEUgAAAAsAAAALCAYAAACprHcmAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZ
+                        cwAADsMAAA7DAcdvqGQAAADdSURBVChTY6yqqmJw88yyZGBguLVr+7S3QBoFAOWEgZQaUO4444HDT6yAnF1AfAeInZE1
+                        QBXuBWIVEJcJSNwF4gdArA/Ee6EKkBWCxEHyd5mlJDm+KquargVyPIFYF4jdgfzVQBqm8CoQg2x8CTKZAcQACUAlwDZA
+                        abhCIM0AVgwCUAF7IL4IxBgKQQCuGM2NIIXaQLwT5gcQACvGohDFSTANoKDDUAiyGqhAHCoOsgHkNGeQyWpADApHFDdC
+                        aZgNIHk1UNA9AQbVASBnArJnQODundOwYN26a/u04wCEqmHekyLrLQAAAABJRU5ErkJggg==
+                        ''')
                 )
 
-                style.element_create("close", "image", "img_close", ("active", "pressed", "!disabled", "img_closepressed"), ("active", "!disabled", "img_closeactive"), border=10, sticky='')
+                style.theme_create('flat', settings={
+                    "CustomNotebook.Tab": {
+                        "configure": {
+                            "foreground": "#AAAADD",
+                            "background": '#242435',  # tab color when not selected
+                            "expand": [1, 1, 1, 0],
+                            "padding": [10, 2],
+                            # [space between text and horizontal tab-button border, space between text and vertical tab_button border]
+                            "font": f"Verdana {font_size-3}",
+                            "relief": SUNKEN,
+                            "borderwidth": 0
+                        },
+                        "map": {
+                            "foreground": [("selected", "#AAAAFF")],
+                            "background": [("selected", background_color)],  # Tab color when selected
+                            "expand": [("selected", [1, 1, 1, 0])],  # text margins
+                            "relief": [("selected", SUNKEN)]
+                        }
+                    }
+                })
+                style.theme_use('flat')
+                style.element_create("close", "image", "img_close", ("active", "pressed", "!disabled", "img_closepressed"), ("active", "!disabled", "img_closeactive"), sticky='e', padding=(35, 35, 0, 0))
                 style.layout("CustomNotebook", [("CustomNotebook.client", {"sticky": "nswe"})])
                 style.layout("CustomNotebook.Tab", [
                     ("CustomNotebook.tab", {
@@ -431,7 +541,7 @@ def create_root(data, wdata, name=''):
                     })
                 ])
                 style.layout("CustomNotebook", [])
-                style.configure("CustomNotebook", tabmargins=0, borderwidth=0, highlightthickness=0)
+                style.configure("CustomNotebook", tabmargins=0, borderwidth=0, highlightthickness=0, background='#121223', relief=SUNKEN)
 
         window.root = CloseNotebook(window)
         window.root.pack(expand=1, fill='both')
@@ -590,7 +700,7 @@ def launch_window(path: str, data: dict, *a):
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
             font = f"Consolas {font_size}",
         )
-        root.bind('<Control-f>', lambda *_: search.toggle_focus(True))
+        window.bind('<Control-f>', lambda *_: search.toggle_focus(True))
 
         class Scrollbar(Canvas):
 
@@ -2641,7 +2751,7 @@ def launch_window(path: str, data: dict, *a):
 
                                     sml = similarity(tag.lower(), x.lower()[tag_index:tag_index + len(tag)])
                                     if sml > 0.7:
-                                        print(tag.lower(), x.lower()[tag_index:tag_index + len(tag)], x, sml)
+                                        # print(tag.lower(), x.lower()[tag_index:tag_index + len(tag)], x, sml)
                                         matches.append((x, sml))
 
                             matches = sorted([x[0] for x in matches], key=lambda x: x[1], reverse=True)
@@ -2749,6 +2859,8 @@ def launch_window(path: str, data: dict, *a):
 
         # Add tab to window
         window.after(0, lambda *_: window.root.add(root, text=os.path.basename(path)))
+        window.after(0, lambda *_: window.root.select(root))
+
 
 
 wlist = None
@@ -2768,7 +2880,12 @@ def edit_script(script_path: str, data: dict, *args):
                 'amscript.': iter_attr(data['server_obj'].script_manager)
             }
 
-        if not process:
+        try:
+            running = process.is_alive()
+        except:
+            running = False
+
+        if not running:
             mgr = multiprocessing.Manager()
             wlist = mgr.Value('window_list', [])
             process = multiprocessing.Process(target=functools.partial(create_root, data), args=(wlist, 'window_list'), daemon=True)
@@ -2801,8 +2918,6 @@ if __name__ == '__main__':
     while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
         time.sleep(0.2)
 
-    from ctypes import windll, c_int64
-    windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
     # DELETE ABOVE
 
 
@@ -2825,5 +2940,10 @@ if __name__ == '__main__':
 
     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Tools\amscript"
     class Test():
-        value = os.path.join(path, 'test2.ams')
+        def __init__(self):
+            self.value = os.path.join(path, 'test2.ams')
+            import threading
+            def test():
+                self.value = os.path.join(path, 'custom-waypoints.ams')
+            threading.Timer(1, test).start()
     create_root(data_dict, Test())
