@@ -313,6 +313,20 @@ color_search = None
 replace_shown = False
 
 
+# Saves script to disk
+def save_script(script_path, *a):
+    global open_frames, currently_open
+    script_name = os.path.basename(script_path)
+    if script_path in currently_open:
+        script_contents = open_frames[script_name].code_editor.get("1.0", 'end-1c')
+
+        try:
+            with open(script_path, 'w+') as f:
+                f.write(script_contents)
+        except Exception as e:
+            print(e)
+
+
 # Init Tk window
 def create_root(data, wdata, name=''):
     global window, close_window, currently_open
@@ -420,11 +434,14 @@ proc ::tabdrag::move {win x y} {
 
         # When window is closed
         def on_closing():
-            global close_window, currently_open, process
-            # Auto-save
+            global close_window, currently_open, open_frames
             close_window = True
+            for s in open_frames.values():
+                s.save()
             window.destroy()
+
         window.protocol("WM_DELETE_WINDOW", on_closing)
+        window.close = on_closing
 
         class CloseNotebook(ttk.Notebook):
             """A ttk Notebook with close buttons on each tab"""
@@ -443,6 +460,15 @@ proc ::tabdrag::move {win x y} {
 
                 self.bind("<ButtonPress-1>", self.on_close_press, True)
                 self.bind("<ButtonRelease-1>", self.on_close_release)
+
+            def remove_tab(self, tab):
+                global currently_open, open_frames
+
+                script_path = self.nametowidget(self.tabs()[tab]).path
+                save_script(script_path)
+
+                currently_open.remove(script_path)
+                del open_frames[os.path.basename(script_path)]
 
             def on_close_press(self, event):
                 """Called when the button is pressed over the close button"""
@@ -468,11 +494,16 @@ proc ::tabdrag::move {win x y} {
                 index = self.index("@%d,%d" % (event.x, event.y))
 
                 if self._active == index:
+                    self.remove_tab(index)
                     self.forget(index)
                     self.event_generate("<<NotebookTabClosed>>")
 
                 self.state(["!pressed"])
                 self._active = None
+
+                if not self.tabs():
+                    window.close()
+
 
             def __initialize_custom_style(self):
                 style = ttk.Style()
@@ -559,16 +590,18 @@ proc ::tabdrag::move {win x y} {
         logo_frame = Label(window, image=logo, bg=frame_background)
         logo_frame.place(anchor='nw', in_=window, x=-174, rely=0, relx=1, y=7)
 
-
         def check_new():
-            global close_window, currently_open
+            global close_window, currently_open, open_frames
             if close_window:
                 return
 
             script_path = wdata.value
-            if script_path not in currently_open:
+            if script_path and script_path not in currently_open:
                 launch_window(script_path, data)
                 currently_open.append(script_path)
+                wdata.value = ''
+            elif script_path and script_path in currently_open:
+                window.root.select(open_frames[os.path.basename(script_path)])
                 wdata.value = ''
             window.after(1000, check_new)
 
@@ -613,6 +646,15 @@ def launch_window(path: str, data: dict, *a):
         }
 
         root = Frame(padx=0, pady=0, bg=background_color)
+        root.path = path
+        root.save = functools.partial(save_script, root.path)
+
+        def save_current(*a):
+            current_tab_index = window.root.index(window.root.select())
+            current_frame = list(open_frames.values())[current_tab_index]
+            current_frame.save()
+
+        root.bind_all('<Control-s>', save_current)
 
         placeholder_frame = Frame(root, height=40, highlightbackground=frame_background, background=frame_background)
         placeholder_frame.pack(fill=X, side=BOTTOM)
@@ -1529,6 +1571,7 @@ def launch_window(path: str, data: dict, *a):
                 self.bind("<Control-h>", lambda *_: replace.toggle_focus(True))
                 self.bind("<Control-k>", lambda *_: "break")
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
+                self.bind("<<ContentChanged>>", self.autosave, add=True)
                 self.bind("<<Selection>>", self.redo_search, add=True)
                 self.bind("<<Selection>>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
                 root.bind('<Configure>', self.set_error)
@@ -1542,9 +1585,13 @@ def launch_window(path: str, data: dict, *a):
                 self.timer_lock = False
                 self.error = None
 
+                self.save_interval = 3
+                self.save_timer = 0
+                self.save_lock = False
+                self.first_run = True
+
                 self.bind(f"<Control-c>", self._copy, add=True)
                 self.bind(f"<Control-v>", self._paste, add=True)
-
 
             @staticmethod
             def is_matching(opening, closing, invert=False):
@@ -1571,6 +1618,30 @@ def launch_window(path: str, data: dict, *a):
                     return '['
                 elif char == '[':
                     return ']'
+
+            def autosave(self, event):
+                if self.save_lock:
+                    self.save_timer = self.save_interval
+                    return None
+
+                def wait_for_break(*a):
+                    self.save_lock = True
+                    while self.save_timer > 0:
+                        time.sleep(1)
+                        self.save_timer -= 1
+                        if close_window:
+                            return
+
+                    self.save_timer = self.save_interval
+                    self.save_lock = False
+
+                    if self.first_run:
+                        self.first_run = False
+                        return
+
+                    self.after(0, lambda *_: root.save())
+
+                Timer(0, wait_for_break).start()
 
             def scroll_text(self, *args):
                 sel_start = self.index(SEL_FIRST)
@@ -2468,6 +2539,7 @@ def launch_window(path: str, data: dict, *a):
                 self.has_focus = False
                 self.visible = False
                 self.last_index = 0
+                self.animating = False
 
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
@@ -2479,27 +2551,56 @@ def launch_window(path: str, data: dict, *a):
 
                 self.put_placeholder()
 
-            def toggle_focus(self, fs=True, r=0):
+            def toggle_focus(self, fs=True, r=0, anim=True):
                 global replace_shown
+
+                def reset_animate(*a):
+                    self.animating = False
+
+                if self.animating:
+                    return
+
+                self.animating = True
+
+                def animate(start, end, item):
+                    max_frames = 12
+                    def move(frame):
+                        if frame <= max_frames:
+                            new_y = start + ((frame / (max_frames)) * end)
+                            item.place_configure(y=new_y)
+                            root.after(10, lambda *_: move(frame + 1))
+
+                    root.after(10, lambda *_: move(1))
 
                 if r == 0:
                     replace_shown = self.visible or fs
                     for frame in open_frames.values():
-                        print(frame.replace, self)
                         if str(frame.replace) != str(self):
-                            frame.replace.toggle_focus(replace_shown, r=1)
+                            frame.replace.toggle_focus(replace_shown, r=1, anim=False)
 
                 if self.visible or not fs:
-                    replace_frame.place_forget()
-                    search_frame.place_configure(y=-45)
-                    # root.after(-1, lambda *_: placeholder_frame.configure(height=40))
+                    if anim:
+                        animate(-45, 40, replace_frame)
+                        animate(-85, 40, search_frame)
+                        self.after(130, replace_frame.place_forget)
+                        self.after(200, reset_animate)
+                    else:
+                        replace_frame.place_forget()
+                        search_frame.place_configure(y=-45)
+                        reset_animate()
                     code_editor.focus_force()
                     code_editor.see(code_editor.index(INSERT))
                     self.visible = False
                 else:
-                    replace_frame.place(rely=1, y=-45, relwidth=1, height=50)
-                    search_frame.place_configure(y=-85)
-                    # root.after(-1, lambda *_: placeholder_frame.configure(height=80))
+                    replace_frame.place(rely=1, y=(-5 if anim else -45), relwidth=1, height=50)
+                    if anim:
+                        animate(-5, -40, replace_frame)
+                        animate(-45, -40, search_frame)
+                        self.after(200, reset_animate)
+                    else:
+                        search_frame.place_configure(y=-85)
+                        reset_animate()
+
                     if not search.has_focus:
                         root.focus_force()
                     self.visible = True
@@ -2666,7 +2767,7 @@ def launch_window(path: str, data: dict, *a):
 
         root.bind('<Control-h>', lambda *_: replace.toggle_focus())
         if replace_shown:
-            replace.toggle_focus(True, r=1)
+            replace.toggle_focus(True, r=1, anim=False)
 
 
         def update_search(search_text=None):
@@ -2758,7 +2859,7 @@ def launch_window(path: str, data: dict, *a):
                 self.update_results(start)
                 self.place(in_=code_editor, x=x-13, y=y+(code_editor.font_size*2.3))
 
-            def hide(self):
+            def hide(self, *a):
                 self.place_forget()
                 self.visible = False
 
@@ -2895,13 +2996,14 @@ def launch_window(path: str, data: dict, *a):
                         code_editor.recalc_lexer()
                     code_editor.after(0, newline)
 
-        ac = AutoComplete()
+        root.ac = AutoComplete()
+        ac = root.ac
+        window.root.bind("<<NotebookTabChanged>>", ac.hide, add=True)
 
         # Add tab to window
         window.after(0, lambda *_: window.root.add(root, text=os.path.basename(path)))
         window.after(0, lambda *_: window.root.select(root))
         open_frames[os.path.basename(path)] = root
-
 
 
 wlist = None
@@ -2933,7 +3035,6 @@ def edit_script(script_path: str, data: dict, *args):
             process.start()
 
         wlist.value = script_path
-        #functools.partial(launch_window, script_path, data)
 
 
 if os.name == 'nt':
@@ -2990,4 +3091,7 @@ if __name__ == '__main__':
             def test():
                 self.value = os.path.join(path, 'test.ams')
             threading.Timer(2, test).start()
+            def test():
+                self.value = os.path.join(path, 'test2.ams')
+            threading.Timer(3, test).start()
     create_root(data_dict, Test())
