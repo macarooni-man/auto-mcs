@@ -14881,6 +14881,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
 script_obj = amscript.ScriptObject()
 def edit_script(edit_button, server_obj, script_path):
+    "amscript-icon.png"
     data_dict = {
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,

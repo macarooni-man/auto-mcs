@@ -305,8 +305,12 @@ window = None
 process = None
 close_window = False
 currently_open = []
+open_frames = {}
 background_color = '#040415'
+frame_background = '#121223'
+faded_text = '#4A4A70' # '#444477'
 color_search = None
+replace_shown = False
 
 
 # Init Tk window
@@ -396,7 +400,7 @@ proc ::tabdrag::move {win x y} {
      }
 }"""
 
-        file_icon = os.path.join(data['gui_assets'], "big-icon.png")
+        file_icon = os.path.join(data['gui_assets'], "amscript-icon.png")
         min_size = (950, 600)
         start_size = (1100, 700)
 
@@ -493,6 +497,10 @@ proc ::tabdrag::move {win x y} {
                         QBXuBWIVEJcJSNwF4gdArA/Ee6EKkBWCxEHyd5mlJDm+KquargVyPIFYF4jdgfzVQBqm8CoQg2x8CTKZAcQACUAlwDZA
                         abhCIM0AVgwCUAF7IL4IxBgKQQCuGM2NIIXaQLwT5gcQACvGohDFSTANoKDDUAiyGqhAHCoOsgHkNGeQyWpADApHFDdC
                         aZgNIHk1UNA9AQbVASBnArJnQODundOwYN26a/u04wCEqmHekyLrLQAAAABJRU5ErkJggg==
+                        '''),
+                    PhotoImage("img_divide", data='''
+                        iVBORw0KGgoAAAANSUhEUgAAAAEAAAAQCAIAAABY/YLgAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZ
+                        cwAADsMAAA7DAcdvqGQAAAAUSURBVBhXY2BlEWNiYGAgDzMwAAALcQA+nHogLQAAAABJRU5ErkJggg==
                         ''')
                 )
 
@@ -502,16 +510,16 @@ proc ::tabdrag::move {win x y} {
                             "foreground": "#AAAADD",
                             "background": '#242435',  # tab color when not selected
                             "expand": [1, 1, 1, 0],
-                            "padding": [10, 2],
+                            "padding": [15, 2, 10, 2],
                             # [space between text and horizontal tab-button border, space between text and vertical tab_button border]
                             "font": f"Verdana {font_size-3}",
-                            "relief": SUNKEN,
+                            "relief": "flat",
                             "borderwidth": 0
                         },
                         "map": {
                             "foreground": [("selected", "#AAAAFF")],
                             "background": [("selected", background_color)],  # Tab color when selected
-                            "expand": [("selected", [1, 1, 1, 0])],  # text margins
+                            # "expand": [("selected", [1, 1, 1, 0])],  # text margins
                             "relief": [("selected", SUNKEN)]
                         }
                     }
@@ -532,7 +540,7 @@ proc ::tabdrag::move {win x y} {
                                         "sticky": "nswe",
                                         "children": [
                                             ("CustomNotebook.label", {"side": "left", "sticky": ''}),
-                                            ("CustomNotebook.close", {"side": "left", "sticky": ''}),
+                                            ("CustomNotebook.close", {"side": "left", "sticky": ''})
                                         ]
                                     })
                                 ]
@@ -541,10 +549,16 @@ proc ::tabdrag::move {win x y} {
                     })
                 ])
                 style.layout("CustomNotebook", [])
-                style.configure("CustomNotebook", tabmargins=0, borderwidth=0, highlightthickness=0, background='#121223', relief=SUNKEN)
+                style.configure("CustomNotebook", tabmargins=(9, 9, 9, 7), borderwidth=0, highlightthickness=0, background=frame_background, relief=SUNKEN)
 
-        window.root = CloseNotebook(window)
+        window.root = CloseNotebook(window, takefocus=False)
         window.root.pack(expand=1, fill='both')
+
+        # Add logo
+        logo = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'amscript-banner.png')))
+        logo_frame = Label(window, image=logo, bg=frame_background)
+        logo_frame.place(anchor='nw', in_=window, x=-174, rely=0, relx=1, y=7)
+
 
         def check_new():
             global close_window, currently_open
@@ -555,6 +569,7 @@ proc ::tabdrag::move {win x y} {
             if script_path not in currently_open:
                 launch_window(script_path, data)
                 currently_open.append(script_path)
+                wdata.value = ''
             window.after(1000, check_new)
 
         check_new()
@@ -563,7 +578,7 @@ proc ::tabdrag::move {win x y} {
 
 # Opens the amscript editor with the specified path in a new tab
 def launch_window(path: str, data: dict, *a):
-    global window, color_search
+    global window, color_search, open_frames, replace_shown
 
     # Get text
     ams_data = ''
@@ -599,13 +614,13 @@ def launch_window(path: str, data: dict, *a):
 
         root = Frame(padx=0, pady=0, bg=background_color)
 
-        placeholder_frame = Frame(root, height=40, highlightbackground=background_color, background=background_color)
+        placeholder_frame = Frame(root, height=40, highlightbackground=frame_background, background=frame_background)
         placeholder_frame.pack(fill=X, side=BOTTOM)
-        placeholder_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
+        placeholder_frame.configure(bg=frame_background, borderwidth=0, highlightthickness=0)
 
         # Configure search box
         class SearchBox(Entry):
-            def __init__(self, master=None, placeholder="PLACEHOLDER", color='#444477'):
+            def __init__(self, master=None, placeholder="PLACEHOLDER", color=faded_text):
                 super().__init__(master)
 
                 self.placeholder = placeholder
@@ -626,11 +641,21 @@ def launch_window(path: str, data: dict, *a):
                 self.put_placeholder()
 
             def toggle_focus(self, fs=True):
-                if str(self.focus_get()).endswith('searchbox') or not fs:
-                    code_editor.focus_force()
-                    code_editor.see(code_editor.index(INSERT))
+
+                # Get the currently selected tab index
+                current_tab_index = window.root.index(window.root.select())
+
+                # Get the currently visible frame
+                current_frame = list(open_frames.values())[current_tab_index]
+
+                s = current_frame.search
+                c = current_frame.code_editor
+
+                if s.has_focus or not fs:
+                    c.focus_force()
+                    c.see(c.index(INSERT))
                 else:
-                    self.focus_force()
+                    s.focus_force()
                 return 'break'
 
             def see_index(self, index):
@@ -655,7 +680,6 @@ def launch_window(path: str, data: dict, *a):
                                 break
                         else:
                             self.see_index(code_editor.match_list[-1])
-
 
             def process_keys(self, event):
                 if event.keysym == "Return":
@@ -686,12 +710,13 @@ def launch_window(path: str, data: dict, *a):
                 ent.selection_range(start_idx, end_idx)
 
         search_frame = Frame(root, height=1)
-        search_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
-        search_frame.place(rely=1, y=-45, relwidth=1, height=50)
-        search = SearchBox(search_frame, placeholder='search for text')
+        search_frame.configure(bg=frame_background, borderwidth=0, highlightthickness=0)
+        search_frame.place(rely=1, y=-45, relwidth=1, height=55)
+        root.search = SearchBox(search_frame, placeholder='search for text')
+        search = root.search
         search.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
         search.configure(
-            bg = background_color,
+            bg = frame_background,
             borderwidth = 0,
             highlightthickness = 0,
             selectforeground = convert_color((0.75, 0.75, 1))['hex'],
@@ -874,6 +899,7 @@ def launch_window(path: str, data: dict, *a):
                         root.after(10, lambda *_: reduce_opacity(frame + 1))
 
                 root.after(10, lambda *_: reduce_opacity(1))
+
 
         # Configure background text
         class TkLineNumbers(Canvas):
@@ -1460,7 +1486,7 @@ def launch_window(path: str, data: dict, *a):
                 self.match_counter.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=7)
                 self.match_counter.configure(
                     fg = convert_color((0.3, 0.3, 0.65))['hex'],
-                    bg = background_color,
+                    bg = frame_background,
                     borderwidth = 0,
                     font = f"Consolas {self.font_size} bold"
                 )
@@ -1469,7 +1495,7 @@ def launch_window(path: str, data: dict, *a):
                 self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=7)
                 self.index_label.configure(
                     fg = convert_color((0.6, 0.6, 1))['hex'],
-                    bg = background_color,
+                    bg = frame_background,
                     borderwidth = 0,
                     font = f"Consolas {self.font_size}"
                 )
@@ -1477,7 +1503,7 @@ def launch_window(path: str, data: dict, *a):
                 self.error_label = Label(justify='right', anchor='se')
                 self.error_label.configure(
                     fg = convert_color((1, 0.6, 0.6))['hex'],
-                    bg = background_color,
+                    bg = frame_background,
                     borderwidth = 0,
                     font = f"Consolas {self.font_size} bold"
                 )
@@ -2402,7 +2428,7 @@ def launch_window(path: str, data: dict, *a):
                 if search.has_focus or replace.has_focus or x > 0:
                     self.match_counter.configure(
                         text=f'{x} result(s)',
-                        fg = text_color if x > 0 else '#444477'
+                        fg = text_color if x > 0 else faded_text
                     )
                     self.index_label.place_forget()
                 else:
@@ -2410,13 +2436,14 @@ def launch_window(path: str, data: dict, *a):
                     self.match_counter.configure(text='')
                 self._line_numbers.redraw()
 
-        code_editor = HighlightText(
+        root.code_editor = HighlightText(
             root,
             color_scheme = style,
             font = f"Consolas {font_size}",
             linenums_theme = ('#3E3E63', background_color),
             scrollbar=Scrollbar
         )
+        code_editor = root.code_editor
         code_editor.pack(fill="both", expand=True, pady=10)
         code_editor.config(autoseparator=False, maxundo=0, undo=False)
         code_editor.insert(END, ams_data)
@@ -2432,7 +2459,7 @@ def launch_window(path: str, data: dict, *a):
 
         # Configure replace box
         class ReplaceBox(Entry):
-            def __init__(self, master=None, placeholder="PLACEHOLDER", color='#444477'):
+            def __init__(self, master=None, placeholder="PLACEHOLDER", color=faded_text):
                 super().__init__(master)
 
                 self.placeholder = placeholder
@@ -2452,7 +2479,16 @@ def launch_window(path: str, data: dict, *a):
 
                 self.put_placeholder()
 
-            def toggle_focus(self, fs=True):
+            def toggle_focus(self, fs=True, r=0):
+                global replace_shown
+
+                if r == 0:
+                    replace_shown = self.visible or fs
+                    for frame in open_frames.values():
+                        print(frame.replace, self)
+                        if str(frame.replace) != str(self):
+                            frame.replace.toggle_focus(replace_shown, r=1)
+
                 if self.visible or not fs:
                     replace_frame.place_forget()
                     search_frame.place_configure(y=-45)
@@ -2589,11 +2625,11 @@ def launch_window(path: str, data: dict, *a):
                     command=self.click_func,
                     borderwidth=5,
                     relief=SUNKEN,
-                    foreground=background_color,
-                    background=background_color,
+                    foreground=frame_background,
+                    background=frame_background,
                     highlightthickness=0,
                     bd=0,
-                    activebackground=background_color
+                    activebackground=frame_background
                 )
 
                 # Bind hover events
@@ -2601,12 +2637,13 @@ def launch_window(path: str, data: dict, *a):
                 self.bind('<Leave>', self.on_leave)
 
         replace_frame = Frame(root, height=1)
-        replace_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
-        replace = ReplaceBox(replace_frame, placeholder='replace with...')
+        replace_frame.configure(bg=frame_background, borderwidth=0, highlightthickness=0)
+        root.replace = ReplaceBox(replace_frame, placeholder='replace with...')
+        replace = root.replace
         replace.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
         replace.bind('<Tab>', lambda *_: root.after(0, lambda *_: search.focus_force()))
         replace.configure(
-            bg = background_color,
+            bg = frame_background,
             borderwidth = 0,
             highlightthickness = 0,
             selectforeground = convert_color((0.75, 0.75, 1))['hex'],
@@ -2628,6 +2665,8 @@ def launch_window(path: str, data: dict, *a):
                 return "break"
 
         root.bind('<Control-h>', lambda *_: replace.toggle_focus())
+        if replace_shown:
+            replace.toggle_focus(True, r=1)
 
 
         def update_search(search_text=None):
@@ -2665,9 +2704,10 @@ def launch_window(path: str, data: dict, *a):
         # Search icon
         if not color_search:
             color_search = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'color-search.png')))
-        search_icon = Label(image=color_search, bg=background_color)
-        search_icon.place(anchor='nw', in_=search, x=-45, y=1)
+        search_icon = Label(image=color_search, bg=frame_background)
+        search_icon.place(anchor='nw', in_=search, x=-47, y=3.5)
         search_frame.tkraise(code_editor)
+        search_frame.tkraise(code_editor._vs)
 
         # Auto-complete widget
         class AutoComplete(Frame):
@@ -2860,6 +2900,7 @@ def launch_window(path: str, data: dict, *a):
         # Add tab to window
         window.after(0, lambda *_: window.root.add(root, text=os.path.basename(path)))
         window.after(0, lambda *_: window.root.select(root))
+        open_frames[os.path.basename(path)] = root
 
 
 
@@ -2888,7 +2929,7 @@ def edit_script(script_path: str, data: dict, *args):
         if not running:
             mgr = multiprocessing.Manager()
             wlist = mgr.Value('window_list', [])
-            process = multiprocessing.Process(target=functools.partial(create_root, data), args=(wlist, 'window_list'), daemon=True)
+            process = multiprocessing.Process(target=functools.partial(create_root, data), args=(wlist, 'window_list'), daemon=False)
             process.start()
 
         wlist.value = script_path
@@ -2946,4 +2987,7 @@ if __name__ == '__main__':
             def test():
                 self.value = os.path.join(path, 'custom-waypoints.ams')
             threading.Timer(1, test).start()
+            def test():
+                self.value = os.path.join(path, 'test.ams')
+            threading.Timer(2, test).start()
     create_root(data_dict, Test())
