@@ -671,11 +671,16 @@ def launch_window(path: str, data: dict, *a):
                 self.has_focus = False
                 self.last_index = 0
 
+                def hide_replace(*a):
+                    if replace.visible:
+                        replace.toggle_focus(False)
+                    else:
+                        self.toggle_focus(False)
+
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
                 self.bind("<Control-BackSpace>", self.ctrl_bs)
-                self.bind('<Escape>', lambda *_: self.toggle_focus(False))
-                self.bind('<Escape>', lambda *_: replace.toggle_focus(False))
+                self.bind('<Escape>', lambda *_: hide_replace(), add=True)
                 self.bind('<KeyPress>', self.process_keys)
                 self.bind("<Control-h>", lambda *_: replace.toggle_focus(True))
                 self.bind('<Shift-Return>', lambda *_: trigger_replace())
