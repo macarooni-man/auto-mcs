@@ -316,8 +316,10 @@ class ScriptObject():
             parse_error = {}
             script_text = ""
             id_hash = constants.gen_rstring(10)
+            max_lines = 0
 
             for x, line in iterator:
+                max_lines = x
                 line.replace("\r","")
                 if not line.endswith("\n"):
                     line = line + "\n"
@@ -397,7 +399,10 @@ class ScriptObject():
                                 pattern = event + '(' + same
                                 if ':' in parse_error['line']:
                                     line, char = parse_error['line'].split(':')
-                                    char = str(int(char) - len(old) + len(event))
+                                    if parse_error['message'] == '(IndentationError) expected an indented block':
+                                        char = 1
+                                    else:
+                                        char = str(int(char) - len(old) + len(event))
                                     parse_error['line'] = f'{line}:{char}'
                                 parse_error['code'] = pattern
                                 args = list(parse_error['object'].args)
@@ -408,6 +413,12 @@ class ScriptObject():
                                 break
                 except ValueError:
                     pass
+
+                if ':' in parse_error['line']:
+                    line, char = parse_error['line'].split(":")
+                    if int(line) > max_lines:
+                        parse_error['line'] = f"{max_lines}:{char}"
+
                 return parse_error
 
 

@@ -287,8 +287,10 @@ class AmsLexer(pygments.lexers.PythonLexer):
             tokentype=Keyword.Event,
         )
 
+        names = data['script_obj'].protected_variables
+        names.extend(['player', 'enemy'])
         var_filter = NameHighlightFilter(
-            names=data['script_obj'].protected_variables,
+            names=names,
             tokentype=Keyword.MajorClass,
         )
 
@@ -297,7 +299,6 @@ class AmsLexer(pygments.lexers.PythonLexer):
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\d+\.?\d*?(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Number.Float))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\w+(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Keyword.Argument))
 AmsLexer.tokens['builtins'].insert(0, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Name.Function))
-# AmsLexer.tokens['classname'] = [('(?<=class ).+?(?=\()', Name.Class, '#pop')]
 
 
 # Main window data
@@ -325,6 +326,26 @@ def save_script(script_path, *a):
                 f.write(script_contents)
         except Exception as e:
             print(e)
+
+
+# Changes font size in editor
+def change_font_size(direction):
+    global font_size, open_frames
+
+    def change_all(*a):
+        for frame in open_frames.values():
+            frame.code_editor.configure(font=f'Consolas {font_size}')
+            frame.code_editor._set_color_scheme(frame.code_editor._color_scheme)
+            frame.code_editor.recalc_lexer()
+
+    if direction == 'up':
+        if font_size < 50:
+            font_size += 1
+            change_all()
+    else:
+        if font_size > 5:
+            font_size -= 1
+            change_all()
 
 
 # Init Tk window
@@ -449,6 +470,8 @@ proc ::tabdrag::move {win x y} {
             __initialized = False
 
             def __init__(self, *args, **kwargs):
+                self._style = None
+
                 if not self.__initialized:
                     self.__initialize_custom_style()
                     self.__inititialized = True
@@ -503,7 +526,6 @@ proc ::tabdrag::move {win x y} {
 
                 if not self.tabs():
                     window.close()
-
 
             def __initialize_custom_style(self):
                 style = ttk.Style()
@@ -581,6 +603,7 @@ proc ::tabdrag::move {win x y} {
                 ])
                 style.layout("CustomNotebook", [])
                 style.configure("CustomNotebook", tabmargins=(9, 9, 9, 7), borderwidth=0, highlightthickness=0, background=frame_background, relief=SUNKEN)
+                self._style = style
 
         window.root = CloseNotebook(window, takefocus=False)
         window.root.pack(expand=1, fill='both')
@@ -588,7 +611,7 @@ proc ::tabdrag::move {win x y} {
         # Add logo
         logo = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'amscript-banner.png')))
         logo_frame = Label(window, image=logo, bg=frame_background)
-        logo_frame.place(anchor='nw', in_=window, x=-174, rely=0, relx=1, y=7)
+        logo_frame.place(anchor='nw', in_=window, x=-100, rely=0, relx=1, y=8)
 
         def check_new():
             global close_window, currently_open, open_frames
@@ -604,6 +627,9 @@ proc ::tabdrag::move {win x y} {
                 window.root.select(open_frames[os.path.basename(script_path)])
                 wdata.value = ''
             window.after(1000, check_new)
+
+        window.bind_all('<Control-equal>', lambda *_: change_font_size('up'))
+        window.bind_all('<Control-minus>', lambda *_: change_font_size('down'))
 
         check_new()
         window.mainloop()
@@ -1300,6 +1326,7 @@ def launch_window(path: str, data: dict, *a):
                 scrollbar=ttk.Scrollbar,
                 **kwargs,
             ) -> None:
+                self._color_scheme = color_scheme
                 self._frame = ttk.Frame(master)
                 self._frame.grid_rowconfigure(0, weight=1)
                 self._frame.grid_columnconfigure(1, weight=1)
@@ -1357,8 +1384,7 @@ def launch_window(path: str, data: dict, *a):
                 def check_suggestions(*a):
                     current_pos = self.index(INSERT)
                     line_num = int(current_pos.split('.')[0])
-                    last_line = self.get(f"{line_num}.0", f"{line_num}.end")
-                    text = last_line.rsplit(' ', 1)[-1].strip()
+                    text = self.get_event(line_num)
                     for k, v in ac.suggestions.items():
                         if text.startswith(k):
                             x, y = self.bbox(INSERT)[:2]
@@ -1530,7 +1556,7 @@ def launch_window(path: str, data: dict, *a):
                 self.match_list = []
                 self.font_size = font_size - 1
                 self.match_counter = Label(justify='right', anchor='se')
-                self.match_counter.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=7)
+                self.match_counter.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
                 self.match_counter.configure(
                     fg = convert_color((0.3, 0.3, 0.65))['hex'],
                     bg = frame_background,
@@ -1539,7 +1565,7 @@ def launch_window(path: str, data: dict, *a):
                 )
 
                 self.index_label = Label(justify='right', anchor='se')
-                self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=7)
+                self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
                 self.index_label.configure(
                     fg = convert_color((0.6, 0.6, 1))['hex'],
                     bg = frame_background,
@@ -1623,6 +1649,16 @@ def launch_window(path: str, data: dict, *a):
                     return '['
                 elif char == '[':
                     return ']'
+
+            # Processes line to determine last event
+            def get_event(self, line):
+                current_pos = self.index(INSERT)
+                tag = self.tag_prevrange('Token.Keyword.MajorClass', current_pos, f'{current_pos.split(".")[0]}.0')
+                if not tag:
+                    last_line = self.get(f"{line}.0", f"{line}.end")
+                    return last_line.rsplit(' ', 1)[-1].strip()
+                else:
+                    return self.get(tag[0], current_pos)
 
             def autosave(self, event):
                 if self.save_lock:
@@ -1805,10 +1841,13 @@ def launch_window(path: str, data: dict, *a):
             def set_error(self, *a):
                 code_editor.tag_remove("error", "1.0", "end")
 
+                # script_path = window.root.nametowidget(self.tabs()[tab]).path
+                # save_script(script_path)
+
                 if self.error:
 
                     # Update error label
-                    self.error_label.place(in_=search, relwidth=0.7, relx=0.295, rely=0, y=5)
+                    self.error_label.place(in_=search, relwidth=0.7, relx=0.295, rely=0, y=8)
                     text = f"[Line {self.error['line']}] {self.error['message']}"
                     max_size = round((root.winfo_width() // self.font_size)*0.65)
                     if len(text) > max_size:
@@ -2153,8 +2192,7 @@ def launch_window(path: str, data: dict, *a):
                 # Check if @ was deleted to hide menu
                 def check_suggestions(*a):
                     line_num = int(current_pos.split('.')[0])
-                    last_line = self.get(f"{line_num}.0", f"{line_num}.end")
-                    text = last_line.rsplit(' ', 1)[-1].strip()
+                    text = self.get_event(line_num)
                     for k, v in ac.suggestions.items():
                         if text.startswith(k):
                             ac.update_results(text)
@@ -2225,8 +2263,7 @@ def launch_window(path: str, data: dict, *a):
                         x += 15
                     def show_panel(*a):
                         line_num = int(current_pos.split('.')[0])
-                        last_line = self.get(f"{line_num}.0", f"{line_num}.end")
-                        text = last_line.rsplit(' ', 1)[-1].strip()
+                        text = self.get_event(line_num)
                         if text in ac.suggestions:
                             ac.show(text, x, y)
                     if not ac.visible:
@@ -2234,8 +2271,7 @@ def launch_window(path: str, data: dict, *a):
                 else:
                     def get_text(*a):
                         line_num = int(current_pos.split('.')[0])
-                        last_line = self.get(f"{line_num}.0", f"{line_num}.end")
-                        text = last_line.rsplit(' ', 1)[-1].strip()
+                        text = self.get_event(line_num)
                         for k, v in ac.suggestions.items():
                             if text.startswith(k):
                                 ac.update_results(text)
@@ -2508,7 +2544,7 @@ def launch_window(path: str, data: dict, *a):
                     )
                     self.index_label.place_forget()
                 else:
-                    self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=7)
+                    self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
                     self.match_counter.configure(text='')
                 self._line_numbers.redraw()
 
@@ -2563,7 +2599,7 @@ def launch_window(path: str, data: dict, *a):
                     self.animating = False
 
                 if self.animating:
-                    return
+                    return 'break'
 
                 self.animating = True
 
@@ -2587,7 +2623,7 @@ def launch_window(path: str, data: dict, *a):
                     if anim:
                         animate(-45, 40, replace_frame)
                         animate(-85, 40, search_frame)
-                        self.after(130, replace_frame.place_forget)
+                        self.after(150, replace_frame.place_forget)
                         self.after(200, reset_animate)
                     else:
                         replace_frame.place_forget()
@@ -2824,6 +2860,7 @@ def launch_window(path: str, data: dict, *a):
                 self.button_list = []
                 self.last_matches = []
                 self.suggestions = data['suggestions']
+                self.current_key = ''
                 self.visible = False
                 self.max_size = 5
                 self.add_buttons()
@@ -2867,6 +2904,7 @@ def launch_window(path: str, data: dict, *a):
             def hide(self, *a):
                 self.place_forget()
                 self.visible = False
+                self.current_key = ''
 
             def update_results(self, text):
                 matches = None
@@ -2877,6 +2915,7 @@ def launch_window(path: str, data: dict, *a):
                         if text.startswith(k):
 
                             # Check tags
+                            threshold = 0.7
                             if k == '@':
                                 tag = text[1:]
                             else:
@@ -2885,8 +2924,10 @@ def launch_window(path: str, data: dict, *a):
                             # Get list of matches/partial matches
                             matches = []
                             for x in self.suggestions[k]:
-                                if tag in x:
+                                if x == tag:
                                     matches.append((x, 1))
+                                elif tag in x:
+                                    matches.append((x, 0.99))
                                     continue
 
                                 else:
@@ -2896,14 +2937,14 @@ def launch_window(path: str, data: dict, *a):
                                         tag_index = 0
 
                                     sml = similarity(tag.lower(), x.lower()[tag_index:tag_index + len(tag)])
-                                    if sml > 0.7:
+                                    if sml > threshold:
                                         # print(tag.lower(), x.lower()[tag_index:tag_index + len(tag)], x, sml)
                                         matches.append((x, sml))
 
-                            matches = sorted([x[0] for x in matches], key=lambda x: x[1], reverse=True)
-
-
-                            # matches = [x for x in self.suggestions[k] if tag in x or similarity(tag.lower(), x.lower()[len(tag):]) > 0.5][:self.max_size]
+                            matches = sorted(matches, key=lambda x: (x[1] == 1, x[0].startswith('()'), x[1]), reverse=True)
+                            matches = [x[0] for x in matches]
+                            self.current_key = k
+                            break
 
                 if not matches:
                     self.hide()
@@ -2955,7 +2996,15 @@ def launch_window(path: str, data: dict, *a):
             def click_func(self, val):
                 self.hide()
 
-                line_num = int(code_editor.index(INSERT).split('.')[0])
+                cursor_pos = code_editor.index(INSERT)
+                line_num = int(cursor_pos.split('.')[0])
+
+                def del_suggest():
+                    before = code_editor.get(f'{line_num}.0', cursor_pos)
+                    last_dot_index = before.rfind('.')
+                    if last_dot_index != -1:
+                        dot_index = f"{line_num}.{last_dot_index + 1}"
+                        code_editor.delete(dot_index, INSERT)
 
                 if val.startswith("@"):
                     code_editor.delete(f'{line_num}.0', f'{line_num}.0 lineend')
@@ -2989,17 +3038,27 @@ def launch_window(path: str, data: dict, *a):
                         code_editor.recalc_lexer()
                     code_editor.after(1, newline)
 
-                else:
+                elif val in ['log()', 'execute()'] or val.startswith('log_'):
+                    del_suggest()
                     cursor_pos = code_editor.index(INSERT)
-                    last_line, delete = code_editor.get(f"{line_num}.0", cursor_pos).rsplit('.')
-                    code_editor.delete(f'{cursor_pos}-{len(delete)}c', f'{line_num}.{len(delete)} lineend')
+                    code_editor.insert(cursor_pos, val.replace("()", "(f'')"))
+
+                    def move_cursor(*a):
+                        if val.endswith('()'):
+                            code_editor.mark_set(INSERT, f'{code_editor.index(INSERT)}-2c')
+                        code_editor.recalc_lexer()
+                    code_editor.after(0, move_cursor)
+
+                else:
+                    del_suggest()
+                    cursor_pos = code_editor.index(INSERT)
                     code_editor.insert(cursor_pos, val)
 
-                    def newline(*a):
+                    def move_cursor(*a):
                         if val.endswith('()'):
                             code_editor.mark_set(INSERT, f'{code_editor.index(INSERT)}-1c')
                         code_editor.recalc_lexer()
-                    code_editor.after(0, newline)
+                    code_editor.after(0, move_cursor)
 
         root.ac = AutoComplete()
         ac = root.ac
@@ -3025,7 +3084,9 @@ def edit_script(script_path: str, data: dict, *args):
                 'acl.': iter_attr(data['server_obj'].acl),
                 'addon.': iter_attr(data['server_obj'].addon),
                 'backup.': iter_attr(data['server_obj'].backup),
-                'amscript.': iter_attr(data['server_obj'].script_manager)
+                'amscript.': iter_attr(data['server_obj'].script_manager),
+                'player.': iter_attr(data['player_script_obj']),
+                'enemy.': data['suggestions']['player.']
             }
 
         try:
@@ -3078,12 +3139,15 @@ if __name__ == '__main__':
     }
 
     server = ServerScriptObject(server_obj)
+    player = PlayerScriptObject(server, server._server_id)
     data_dict['suggestions']['@'] = data_dict['script_obj'].valid_events
     data_dict['suggestions']['server.'] = iter_attr(server)
     data_dict['suggestions']['acl.'] = iter_attr(server_obj.acl)
     data_dict['suggestions']['addon.'] = iter_attr(server_obj.addon)
     data_dict['suggestions']['backup.'] = iter_attr(server_obj.backup)
     data_dict['suggestions']['amscript.'] = iter_attr(server_obj.script_manager)
+    data_dict['suggestions']['player.'] = iter_attr(player)
+    data_dict['suggestions']['enemy.'] = data_dict['suggestions']['player.']
 
     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Tools\amscript"
     class Test():
@@ -3093,10 +3157,10 @@ if __name__ == '__main__':
             def test():
                 self.value = os.path.join(path, 'custom-waypoints.ams')
             threading.Timer(1, test).start()
-            def test():
-                self.value = os.path.join(path, 'test.ams')
-            threading.Timer(2, test).start()
-            def test():
-                self.value = os.path.join(path, 'test2.ams')
-            threading.Timer(3, test).start()
+            # def test():
+            #     self.value = os.path.join(path, 'test.ams')
+            # threading.Timer(2, test).start()
+            # def test():
+            #     self.value = os.path.join(path, 'test2.ams')
+            # threading.Timer(3, test).start()
     create_root(data_dict, Test())

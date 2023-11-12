@@ -14882,13 +14882,16 @@ class ServerAddonSearchScreen(MenuBackground):
 script_obj = amscript.ScriptObject()
 def edit_script(edit_button, server_obj, script_path):
     "amscript-icon.png"
+    server_so = amscript.ServerScriptObject(server_obj)
+    player_so = amscript.PlayerScriptObject(server_so, server_so._server_id)
     data_dict = {
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
         'script_obj': script_obj,
         'server_obj': server_obj,
-        'server_script_obj': amscript.ServerScriptObject(server_obj)
+        'server_script_obj': server_so,
+        'player_script_obj': player_so
     }
     Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict), 0.1)
     #self.controls.log_button.button.on_leave()
