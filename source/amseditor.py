@@ -129,7 +129,8 @@ def _parse_scheme(color_scheme: dict[str, dict[str, str | int]]) -> tuple[dict, 
         "Keyword.Type": "type",
         "Keyword.Event": "event",
         "Keyword.MajorClass": "major_class",
-        "Keyword.Argument": "argument"
+        "Keyword.Argument": "argument",
+        "Keyword.Header": "header"
     }
 
     _names = {
@@ -296,6 +297,7 @@ class AmsLexer(pygments.lexers.PythonLexer):
 
         self.add_filter(hl_filter)
         self.add_filter(var_filter)
+AmsLexer.tokens['root'].insert(0, (r'#![\s\S]*#!', Keyword.Header))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\d+\.?\d*?(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Number.Float))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\w+(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Keyword.Argument))
 AmsLexer.tokens['builtins'].insert(0, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Name.Function))
@@ -656,7 +658,7 @@ def launch_window(path: str, data: dict, *a):
             'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': '#b3b1ad', 'keyword': '#FB71FB',
                 'name': '#819CE6', 'string': '#c2d94c', 'punctuation': '#68E3FF'},
             'keyword': {'constant': '#FB71FB', 'declaration': '#FB71FB', 'namespace': '#FB71FB', 'pseudo': '#FB71FB',
-                'reserved': '#FB71FB', 'type': '#FB71FB', 'event': "#FF00A8", 'major_class': '#6769F1', 'argument': '#FC9741'},
+                'reserved': '#FB71FB', 'type': '#FB71FB', 'event': "#FF00A8", 'major_class': '#6769F1', 'argument': '#FC9741', 'header': '#9999FF'},
             'name': {'attr': '#819CE6', 'builtin': '#819CE6', 'builtin_pseudo': '#e6b450', 'class': '#FFCD38',
                 'class_variable': '#819CE6', 'constant': '#ffee99', 'decorator': '#68E3FF', 'entity': '#819CE6',
                 'exception': '#819CE6', 'function': '#819CE6', 'global_variable': '#819CE6',
@@ -2221,6 +2223,21 @@ def launch_window(path: str, data: dict, *a):
 
                 return bool(final_range)
 
+            def in_header(self):
+                current_pos = self.index(INSERT)
+                after = self.tag_nextrange(f'Token.Keyword.Header', current_pos)
+                before = self.tag_prevrange(f'Token.Keyword.Header', current_pos)
+
+                final_range = None
+
+                if after and self.is_within_range(current_pos, after[0], after[1]):
+                    final_range = after
+
+                elif before and self.is_within_range(current_pos, before[0], before[1]):
+                    final_range = before
+
+                return bool(final_range)
+
             # Move cursor right
             def move_cursor_right(self):
                 current_pos = self.index(INSERT)
@@ -2360,7 +2377,12 @@ def launch_window(path: str, data: dict, *a):
 
 
                 # Add docstring
-                if self.in_docstring():
+                in_header = self.in_header()
+                if self.in_docstring() or in_header:
+                    if event.keysym == 'Return' and in_header:
+                        self.insert(current_pos, '\n# ')
+                        self.recalc_lexer()
+                        return 'break'
                     self.recalc_lexer()
                 else:
                     if last_line.strip().startswith('""') and event.keysym == 'quotedbl':
