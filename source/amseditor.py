@@ -342,6 +342,12 @@ def change_font_size(direction):
             frame.code_editor.configure(font=f'Consolas {font_size}')
             frame.code_editor._set_color_scheme(frame.code_editor._color_scheme)
             frame.code_editor.recalc_lexer()
+            if frame.ac.visible:
+                frame.ac.hide()
+            for button in frame.ac.button_list:
+                button.destroy()
+            frame.ac.button_list = []
+            frame.ac.add_buttons()
 
     if direction == 'up':
         if font_size < 50:
@@ -2963,7 +2969,7 @@ def launch_window(path: str, data: dict, *a):
 
             def add_buttons(self):
                 for item in range(self.max_size):
-                    button = Button(self, text=item, font=f"Consolas {default_font_size} italic", background=self.background)
+                    button = Button(self, text=item, font=f"Consolas {font_size} italic", background=self.background)
                     button.config(
                         command = functools.partial(self.click_func, item),
                         borderwidth = 5,
@@ -2983,7 +2989,9 @@ def launch_window(path: str, data: dict, *a):
                 self.last_matches = []
                 self.visible = True
                 self.update_results(start)
-                self.place(in_=code_editor, x=x-13, y=y+(code_editor.font_size*2.3))
+                font_descriptor = Font(font=code_editor.cget("font"))
+                line_height = font_descriptor.metrics()["linespace"]
+                self.place(in_=code_editor, x=x-13, y=y+line_height+3)
 
             def hide(self, *a):
                 self.place_forget()
