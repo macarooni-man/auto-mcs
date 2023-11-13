@@ -14888,6 +14888,7 @@ def edit_script(edit_button, server_obj, script_path):
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
+        'global_conf': constants.global_conf,
         'script_obj': script_obj,
         'server_obj': server_obj,
         'server_script_obj': server_so,
@@ -18183,10 +18184,16 @@ class MainApp(App):
     def exit_check(self, force_close=False, *args):
 
         # Write window size to global config
+        global_conf = {}
         try:
             constants.folder_check(constants.configDir)
+            if os.path.exists(constants.global_conf):
+                with open(constants.global_conf, 'r') as f:
+                    conf = constants.json.loads(f.read())
+                    if conf:
+                        global_conf = conf
             with open(constants.global_conf, 'w+') as f:
-                global_conf = {'fullscreen': Window.width > (constants.window_size[0] + 100)}
+                global_conf['fullscreen'] = (Window.width > (constants.window_size[0] + 100))
                 f.write(constants.json.dumps(global_conf, indent=2))
         except:
             pass

@@ -17,6 +17,7 @@ import pygments.lexer
 import functools
 import pygments
 import time
+import json
 import os
 import re
 
@@ -25,6 +26,7 @@ import re
 LexerType = Union[Type[pygments.lexer.Lexer], pygments.lexer.Lexer]
 tab_str = '    '
 suggestions = {}
+default_font_size = 16
 font_size = 16
 
 
@@ -353,7 +355,7 @@ def change_font_size(direction):
 
 # Init Tk window
 def create_root(data, wdata, name=''):
-    global window, close_window, currently_open
+    global window, close_window, currently_open, font_size
 
     if not window:
 
@@ -438,6 +440,17 @@ proc ::tabdrag::move {win x y} {
      }
 }"""
 
+        # Get window size
+        fullscreen = False
+        if os.path.exists(data['global_conf']):
+            try:
+                with open(data['global_conf'], 'r') as f:
+                    file_contents = json.loads(f.read())
+                    fullscreen = file_contents['ide-settings']['fullscreen']
+                    font_size = file_contents['ide-settings']['font-size']
+            except:
+                pass
+
         file_icon = os.path.join(data['gui_assets'], "amscript-icon.png")
         min_size = (950, 600)
         start_size = (1100, 700)
@@ -450,6 +463,8 @@ proc ::tabdrag::move {win x y} {
         y = int((height / 2) - (start_size[1] / 2)) - 15
         window.geometry(f"{start_size[0]}x{start_size[1]}+{x}+{y}")
         window.minsize(width=min_size[0], height=min_size[1])
+        if fullscreen:
+            window.state('zoomed')
         window.title(f'{data["app_title"]} - amscript IDE')
         img = PhotoImage(file=file_icon)
         window.tk.call('wm', 'iconphoto', window._w, img)
@@ -462,6 +477,26 @@ proc ::tabdrag::move {win x y} {
             close_window = True
             for s in open_frames.values():
                 s.save()
+
+            # Write window size to global config
+            global_conf = {}
+            try:
+                configDir = os.path.dirname(data['global_conf'])
+                if not os.path.exists(configDir):
+                    os.makedirs(configDir)
+                if os.path.exists(data['global_conf']):
+                    with open(data['global_conf'], 'r') as f:
+                        conf = json.loads(f.read())
+                        if conf:
+                            global_conf = conf
+                with open(data['global_conf'], 'w+') as f:
+                    global_conf['ide-settings'] = {
+                        'fullscreen': int(window.geometry().split('x')[0]) > (start_size[0] + 100),
+                        'font-size': font_size
+                    }
+                    f.write(json.dumps(global_conf, indent=2))
+            except:
+                pass
             window.destroy()
 
         window.protocol("WM_DELETE_WINDOW", on_closing)
@@ -568,7 +603,7 @@ proc ::tabdrag::move {win x y} {
                             "expand": [1, 1, 1, 0],
                             "padding": [15, 2, 10, 2],
                             # [space between text and horizontal tab-button border, space between text and vertical tab_button border]
-                            "font": f"Verdana {font_size-3}",
+                            "font": f"Verdana {default_font_size-3}",
                             "relief": "flat",
                             "borderwidth": 0
                         },
@@ -616,19 +651,29 @@ proc ::tabdrag::move {win x y} {
         logo_frame = Label(window, image=logo, bg=frame_background)
         logo_frame.place(anchor='nw', in_=window, x=-100, rely=0, relx=1, y=8)
 
+        def bring_to_front():
+            window.attributes('-topmost', 1)
+            window.attributes('-topmost', 0)
+
         def check_new():
             global close_window, currently_open, open_frames
             if close_window:
                 return
 
-            script_path = wdata.value
+            try:
+                script_path = wdata.value
+            except BrokenPipeError:
+                return
+
             if script_path and script_path not in currently_open:
                 launch_window(script_path, data)
                 currently_open.append(script_path)
                 wdata.value = ''
+                bring_to_front()
             elif script_path and script_path in currently_open:
                 window.root.select(open_frames[os.path.basename(script_path)])
                 wdata.value = ''
+                bring_to_front()
             window.after(1000, check_new)
 
         window.bind_all('<Control-equal>', lambda *_: change_font_size('up'))
@@ -799,7 +844,7 @@ def launch_window(path: str, data: dict, *a):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = f"Consolas {font_size}",
+            font = f"Consolas {default_font_size}",
         )
         window.bind('<Control-f>', lambda *_: search.toggle_focus(True))
 
@@ -1564,7 +1609,7 @@ def launch_window(path: str, data: dict, *a):
                     fg = convert_color((0.3, 0.3, 0.65))['hex'],
                     bg = frame_background,
                     borderwidth = 0,
-                    font = f"Consolas {self.font_size} bold"
+                    font = f"Consolas {default_font_size-1} bold"
                 )
 
                 self.index_label = Label(justify='right', anchor='se')
@@ -1573,7 +1618,7 @@ def launch_window(path: str, data: dict, *a):
                     fg = convert_color((0.6, 0.6, 1))['hex'],
                     bg = frame_background,
                     borderwidth = 0,
-                    font = f"Consolas {self.font_size}"
+                    font = f"Consolas {default_font_size-1}"
                 )
 
                 self.error_label = Label(justify='right', anchor='se')
@@ -1581,9 +1626,8 @@ def launch_window(path: str, data: dict, *a):
                     fg = convert_color((1, 0.6, 0.6))['hex'],
                     bg = frame_background,
                     borderwidth = 0,
-                    font = f"Consolas {self.font_size} bold"
+                    font = f"Consolas {default_font_size-1} bold"
                 )
-
 
                 # self.bind("<<ContentChanged>>", self.fix_tabs)
                 self.bind("<BackSpace>", self.delete_spaces)
@@ -1663,7 +1707,12 @@ def launch_window(path: str, data: dict, *a):
                 else:
                     return self.get(tag[0], current_pos)
 
-            def autosave(self, event):
+            def autosave(self, *a):
+                try:
+                    context_menu.hide()
+                except:
+                    pass
+
                 if self.save_lock:
                     self.save_timer = self.save_interval
                     return None
@@ -1834,6 +1883,10 @@ def launch_window(path: str, data: dict, *a):
                 self.content_changed = True
 
             def check_ac(self, key, *a):
+                if context_menu.visible:
+                    context_menu.iterate_selection(key)
+                    return "break"
+
                 if ac.visible:
                     ac.iterate_selection(key)
                     return "break"
@@ -2273,10 +2326,43 @@ def launch_window(path: str, data: dict, *a):
                 last_line = self.get(f"{line_num}.0", f"{line_num}.end")
 
 
+                # Press return with last indent level
+                if event.keysym == 'Return':
+                    if context_menu.visible:
+                        context_menu.click()
+                        return "break"
+
+                    if ac.visible:
+                        ac.click()
+                        return "break"
+
+                    line_num = int(current_pos.split('.')[0])
+                    if line_num > 0:
+                        last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                        indent = self.get_indent(last_line)
+
+                        # Indent rules
+                        test = last_line.strip()
+                        if test.endswith(":"):
+                            indent += 1
+
+                        for kw in ['return', 'continue', 'break', 'yield', 'raise', 'pass']:
+                            if test.startswith(f"{kw} ") or test.endswith(kw):
+                                indent -= 1
+                                break
+
+                        if indent > 0:
+                            self.after(0, lambda *_: self.insert(INSERT, tab_str*indent))
+                        self.after(0, lambda *_: self.recalc_lexer())
+                        return "Return"
+
+
+
                 # Hide auto-complete menu
                 if event.keysym == "Escape":
-                    if ac.visible:
+                    if ac.visible or context_menu.visible:
                         ac.hide()
+                        context_menu.hide()
 
                 # Show suggestions
                 if event.keysym in ("at", "period"):
@@ -2405,33 +2491,6 @@ def launch_window(path: str, data: dict, *a):
                     pattern = f'[^a-zA-Z0-9.{ex}]'
                     match = re.sub(pattern, '', char)
                     return not match
-
-
-                # Press return with last indent level
-                if event.keysym == 'Return':
-                    if ac.visible:
-                        ac.click()
-                        return "break"
-
-                    line_num = int(current_pos.split('.')[0])
-                    if line_num > 0:
-                        last_line = self.get(f"{line_num}.0", f"{line_num}.end")
-                        indent = self.get_indent(last_line)
-
-                        # Indent rules
-                        test = last_line.strip()
-                        if test.endswith(":"):
-                            indent += 1
-
-                        for kw in ['return', 'continue', 'break', 'yield', 'raise', 'pass']:
-                            if test.startswith(f"{kw} ") or test.endswith(kw):
-                                indent -= 1
-                                break
-
-                        if indent > 0:
-                            self.after(0, lambda *_: self.insert(INSERT, tab_str*indent))
-                        self.after(0, lambda *_: self.recalc_lexer())
-                        return "Return"
 
 
                 # Insert spaces instead of tab character and finish brackets/quotes
@@ -2574,7 +2633,6 @@ def launch_window(path: str, data: dict, *a):
                     self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
                     self.match_counter.configure(text='')
                 self._line_numbers.redraw()
-
         root.code_editor = HighlightText(
             root,
             color_scheme = style,
@@ -2804,7 +2862,6 @@ def launch_window(path: str, data: dict, *a):
                 # Bind hover events
                 self.bind('<Enter>', self.on_enter)
                 self.bind('<Leave>', self.on_leave)
-
         replace_frame = Frame(root, height=1)
         replace_frame.configure(bg=frame_background, borderwidth=0, highlightthickness=0)
         root.replace = ReplaceBox(replace_frame, placeholder='replace with...')
@@ -2819,7 +2876,7 @@ def launch_window(path: str, data: dict, *a):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = f"Consolas {font_size}",
+            font = f"Consolas {default_font_size}",
         )
 
         # Replace All Button
@@ -2906,7 +2963,7 @@ def launch_window(path: str, data: dict, *a):
 
             def add_buttons(self):
                 for item in range(self.max_size):
-                    button = Button(self, text=item, font=f"Consolas {font_size} italic", background=self.background)
+                    button = Button(self, text=item, font=f"Consolas {default_font_size} italic", background=self.background)
                     button.config(
                         command = functools.partial(self.click_func, item),
                         borderwidth = 5,
@@ -3086,10 +3143,187 @@ def launch_window(path: str, data: dict, *a):
                             code_editor.mark_set(INSERT, f'{code_editor.index(INSERT)}-1c')
                         code_editor.recalc_lexer()
                     code_editor.after(0, move_cursor)
-
         root.ac = AutoComplete()
         ac = root.ac
         window.root.bind("<<NotebookTabChanged>>", ac.hide, add=True)
+
+        class ContextButton(Button):
+            def on_enter(self, *a):
+                self.config(
+                    foreground=self.background,
+                    background=text_color
+                )
+
+            def on_leave(self, *a):
+                self.config(
+                    foreground=text_color,
+                    background=self.background
+                )
+
+            def __init__(self, master, text, font, background, click_func, **args):
+                Button.__init__(self, master)
+                self.master = master
+                self.background = background
+
+                # Import the image using PhotoImage function
+                self.config(
+                    command=functools.partial(click_func, text),
+                    borderwidth=5,
+                    relief=SUNKEN,
+                    foreground=text_color,
+                    background=self.background,
+                    highlightthickness=0,
+                    bd=0,
+                    font=font,
+                    activebackground="#AAAAFF",
+                    width=10,
+                    anchor='w',
+                    padx=12,
+                    pady=5
+                )
+
+                # Bind hover events
+                self.bind('<Enter>', self.on_enter)
+                self.bind('<Leave>', self.on_leave)
+        class ContextMenu(Frame):
+            def __init__(self):
+                super().__init__()
+                self.background = "#0C0C1F"
+                self.configure(height=100, width=50, bg=self.background)
+                self.button_list = []
+                self.last_items = []
+                self.visible = False
+                self.max_size = 5
+                self.add_buttons()
+
+            def update_buttons(self, items):
+                for x, b in enumerate(self.button_list, 0):
+                    visible = b.winfo_ismapped()
+                    try:
+                        item = items[x]
+                        b.config(text=item, command=functools.partial(self.click_func, item))
+                        if not visible:
+                            b.grid(sticky="w")
+                    except IndexError:
+                        if visible:
+                            b.grid_remove()
+
+            def add_buttons(self):
+                for item in range(self.max_size):
+                    button = ContextButton(self, text=item, font=f"Verdana {default_font_size-3}", background=self.background, click_func=self.click_func)
+                    self.button_list.append(button)
+
+            def show(self, event):
+                self.hide()
+
+                sel_start = code_editor.index(SEL_FIRST)
+                sel_end = code_editor.index(SEL_LAST)
+
+                if sel_start or sel_end:
+                    self.update_results(['Cut', 'Copy', 'Paste', 'Comment', 'Search'])
+                else:
+                    self.update_results(['Paste', 'Comment', 'Select All', 'Zoom in', 'Zoom out'])
+
+                self.visible = True
+                self.place(in_=code_editor, x=event.x-5, y=event.y-10)
+
+                code_editor.focus_force()
+                code_editor.mark_set(INSERT, code_editor.index(f"@{event.x},{event.y}"))
+
+                ac.hide()
+
+            def hide(self, *a):
+                self.place_forget()
+                self.visible = False
+                self.current_key = ''
+
+            def update_results(self, item_list):
+                if item_list != self.last_items:
+                    self.update_buttons(item_list)
+                self.last_items = item_list
+
+            def iterate_selection(self, forward=True):
+                if self.visible:
+                    active_x = -1
+                    if forward:
+                        for x, b in enumerate(context_menu.button_list, 0):
+                            b.on_leave()
+                            if b['state'] == "active":
+                                active_x = x
+                                b['state'] = "normal"
+                                break
+
+                        for x, b in enumerate(context_menu.button_list, 0):
+                            b.on_leave()
+                            if x > active_x:
+                                b['state'] = "active"
+                                break
+                        else:
+                            context_menu.button_list[0]['state'] = "active"
+
+                    else:
+                        for x, b in enumerate(reversed(context_menu.button_list), 0):
+                            if b['state'] == "active":
+                                active_x = x
+                                b['state'] = "normal"
+                                break
+
+                        for x, b in enumerate(reversed(context_menu.button_list), 0):
+                            if x > active_x:
+                                b['state'] = "active"
+                                break
+                        else:
+                            context_menu.button_list[-1]['state'] = "active"
+
+            def click(self, *a):
+                active_x = -1
+
+                for b in self.button_list:
+                    if b['state'] == "active":
+                        b.invoke()
+                        break
+                else:
+                    self.button_list[0].invoke()
+
+            def click_func(self, val):
+                self.hide()
+
+                if val == 'Cut':
+                    code_editor.event_generate("<Control-x>")
+                elif val == 'Copy':
+                    code_editor.event_generate("<Control-c>")
+                elif val == 'Paste':
+                    code_editor.event_generate("<Control-v>")
+                elif val == 'Comment':
+                    code_editor.event_generate("<Control-slash>")
+                elif val == 'Search':
+                    sel_start = code_editor.index(SEL_FIRST)
+                    sel_end = code_editor.index(SEL_LAST)
+                    text = code_editor.get(sel_start, sel_end)
+                    search.focus_force()
+                    def set_text(*a):
+                        code_editor.content_changed = True
+                        search.delete('0', END)
+                        search.insert('0', text)
+                        code_editor.last_search = ''
+                        code_editor.tag_remove("sel", "1.0", "end")
+                        code_editor.focus_force()
+                        update_search(text)
+                    root.after(0, set_text)
+                elif val == 'Select All':
+                    code_editor.event_generate("<Control-a>")
+                elif val == 'Zoom in':
+                    code_editor.event_generate("<Control-equal>")
+                elif val == 'Zoom out':
+                    code_editor.event_generate("<Control-minus>")
+
+                return "break"
+
+        context_menu = ContextMenu()
+        root.bind_all("<Button-3>", context_menu.show, add=True)
+        root.bind_all("<Button-1>", lambda *_: root.after(100, context_menu.hide), add=True)
+        window.root.bind("<<NotebookTabChanged>>", context_menu.hide, add=True)
+
 
         # Add tab to window
         window.after(0, lambda *_: window.root.add(root, text=os.path.basename(path)))
@@ -3113,8 +3347,8 @@ def edit_script(script_path: str, data: dict, *args):
                 'backup.': iter_attr(data['server_obj'].backup),
                 'amscript.': iter_attr(data['server_obj'].script_manager),
                 'player.': iter_attr(data['player_script_obj']),
-                'enemy.': data['suggestions']['player.']
             }
+            data['suggestions']['enemy.'] = data['suggestions']['player.']
 
         try:
             running = process.is_alive()
@@ -3139,6 +3373,7 @@ if os.name == 'nt':
     if (width * scale) < 2000:
         windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
 
+    default_font_size = 14
     font_size = 14
 
 
@@ -3160,6 +3395,7 @@ if __name__ == '__main__':
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
+        'global_conf': constants.global_conf,
         'script_obj': amscript.ScriptObject(),
         'server_obj': server_obj,
         'suggestions': {}
