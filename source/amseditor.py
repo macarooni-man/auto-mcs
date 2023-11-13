@@ -311,6 +311,7 @@ background_color = '#040415'
 frame_background = '#121223'
 faded_text = '#4A4A70' # '#444477'
 color_search = None
+error_icon = None
 replace_shown = False
 
 
@@ -1839,12 +1840,15 @@ def launch_window(path: str, data: dict, *a):
                 self.see(self.error['line'].replace(':','.'))
 
             def set_error(self, *a):
+                global error_icon
+
+                if not error_icon:
+                    error_icon = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'error-icon.png')))
+
                 code_editor.tag_remove("error", "1.0", "end")
 
-                # script_path = window.root.nametowidget(self.tabs()[tab]).path
-                # save_script(script_path)
-
                 if self.error:
+                    window.root.tab(root, image=error_icon, compound='left')
 
                     # Update error label
                     self.error_label.place(in_=search, relwidth=0.7, relx=0.295, rely=0, y=8)
@@ -1891,6 +1895,7 @@ def launch_window(path: str, data: dict, *a):
                     except Exception as e:
                         print(e)
                 else:
+                    window.root.tab(root, image='')
                     self.error_label.place_forget()
                     self.error_label.configure(text="")
                 self._line_numbers.redraw()
