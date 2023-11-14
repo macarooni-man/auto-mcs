@@ -164,6 +164,7 @@ configDir = os.path.join(applicationFolder, 'Config')
 scriptDir = os.path.join(applicationFolder, 'Tools', 'amscript')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 global_conf = os.path.join(configDir, 'app-config.json')
+username = ''
 
 server_ini = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'
 command_tmp = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'

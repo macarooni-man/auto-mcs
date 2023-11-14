@@ -1,5 +1,4 @@
 from traceback import format_exc
-import urllib.error
 import threading
 import requests
 import ctypes
@@ -31,6 +30,10 @@ if __name__ == '__main__':
     # Import constants and set variables
     import constants
     constants.launch_path = sys.executable if constants.app_compiled else __file__
+    try:
+        constants.username = constants.run_proc('whoami', True).split('\\')[-1].strip()
+    except:
+        pass
 
     if constants.app_compiled:
         os.environ["KIVY_NO_CONSOLELOG"] = "1"

@@ -859,6 +859,108 @@ class ServerRenameInput(BaseInput):
             return super().insert_text(s, from_undo=from_undo)
 
 
+
+class ScriptNameInput(BaseInput):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.title_text = "name"
+        self.hint_text = "enter a name..."
+        self.bind(on_text_validate=self.on_enter)
+        self.script_list = []
+
+
+    def update_script_list(self, s_list):
+        self.script_list = [x.file_name.lower() for x in s_list]
+
+    @staticmethod
+    def convert_name(name):
+        return name.lower().strip().replace(' ', '-') + '.ams'
+
+
+    def on_enter(self, value):
+
+    # Invalid input
+        if not self.text or str.isspace(self.text):
+            self.valid(True, False)
+
+        elif self.convert_name(self.text) in self.script_list:
+            self.valid(False)
+
+    # Valid input
+        else:
+            break_loop = False
+            for child in self.parent.children:
+                if break_loop:
+                    break
+                for item in child.children:
+                    try:
+                        if item.id == "main_button":
+                            item.force_click()
+                            break_loop = True
+                            break
+                    except AttributeError:
+                        pass
+
+
+    def valid_text(self, boolean_value, text):
+        create_button = screen_manager.current_screen.create_button
+        for child in self.parent.children:
+            try:
+                if child.id == "InputLabel":
+
+                # Empty input
+                    if not text:
+                        child.clear_text()
+                        child.disable_text(True)
+                        create_button.disable(True)
+
+
+                # Valid input
+                    elif boolean_value:
+                        child.clear_text()
+                        child.disable_text(False)
+                        create_button.disable(False)
+
+                # Invalid input
+                    else:
+                        child.update_text("This script already exists")
+                        child.disable_text(True)
+                        create_button.disable(True)
+                    break
+
+            except AttributeError:
+                pass
+
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if keycode[1] == "backspace" and len(self.text) >= 1:
+            self.valid(self.convert_name(self.text) not in self.script_list)
+
+        def check_validity(*a):
+            if not self.text or str.isspace(self.text):
+                self.valid(True, False)
+        Clock.schedule_once(check_validity, 0)
+
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 25:
+            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
+
+            self.valid(self.convert_name(self.text + s) not in self.script_list, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+
+            return super().insert_text(s, from_undo=from_undo)
+
+
+
 class ServerVersionInput(BaseInput):
 
     def __init__(self, enter_func=None, **kwargs):
@@ -5806,6 +5908,9 @@ def button_action(button_name, button, specific_screen=''):
             if "download" in button_name.lower():
                 screen_manager.current = 'ServerAmscriptSearchScreen'
 
+            elif "create new" in button_name.lower():
+                screen_manager.current = 'CreateAmscriptScreen'
+
             elif "import" in button_name.lower():
                 title = "Select amscripts (.ams)"
                 selection = file_popup("file", start_dir=constants.userDownloads, ext=["*.ams"], input_name=None, select_multiple=True, title=title)
@@ -10435,7 +10540,6 @@ class ServerImportProgressScreen(ProgressScreen):
 # Opens server in panel, and updates Server Manager current_server
 def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, *args):
     def next_screen(*args):
-        print(vars(constants.server_manager.current_server))
         if constants.server_manager.current_server.name != server_name:
             while constants.server_manager.current_server.name != server_name:
                 time.sleep(0.005)
@@ -14895,8 +14999,9 @@ def edit_script(edit_button, server_obj, script_path):
         'player_script_obj': player_so
     }
     Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict), 0.1)
-    #self.controls.log_button.button.on_leave()
-    #self.controls.log_button.button.on_release()
+    if edit_button:
+        edit_button.on_leave()
+        edit_button.on_release()
 
 class ScriptButton(HoverButton):
 
@@ -15415,6 +15520,99 @@ class AmscriptListButton(HoverButton):
             Animation(opacity=1, duration=fade_in).start(self.title)
             Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
 
+class CreateAmscriptScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.name_input = None
+        self.create_button = None
+
+    def generate_menu(self, **kwargs):
+        # Generate buttons on page load
+        server_obj = constants.server_manager.current_server
+
+        def on_click(*a):
+            script_name = self.name_input.convert_name(self.name_input.text)
+            script_path = os.path.join(constants.scriptDir, script_name)
+            script_title = self.name_input.text.strip()
+
+            contents = f"""#!
+# title: {script_title}
+# author: {constants.username}
+# version: 1.0
+# description: 
+#!
+
+
+
+# Welcome to the amscript IDE!
+# Right-click > Help to learn more about the capabilities of amscript
+
+@player.on_join(player, message):
+    player.log(f"Welcome to the server {{player}}!")
+"""
+
+            with open(script_path, 'w+') as f:
+                f.write(contents)
+
+            for s in server_obj.script_manager.return_single_list():
+                if s.file_name == script_name:
+                    server_obj.script_manager.script_state(s, enabled=True)
+                    break
+            edit_script(None, server_obj, script_path)
+
+            previous_screen()
+            del constants.screen_tree[-1]
+
+            if server_obj.script_manager.hash_changed():
+                Clock.schedule_once(
+                    functools.partial(
+                        self.show_banner,
+                        (0.937, 0.831, 0.62, 1),
+                        "An amscript reload is required to apply changes",
+                        "sync.png",
+                        3,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+            else:
+                Clock.schedule_once(
+                    functools.partial(
+                        self.show_banner,
+                        (0.553, 0.902, 0.675, 1),
+                        f"'{script_name}' has been created",
+                        "checkmark-circle-sharp.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
+        float_layout.add_widget(HeaderText("What would you like to name your script?", '', (0, 0.76)))
+        self.name_input = ScriptNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5})
+        float_layout.add_widget(self.name_input)
+        self.name_input.update_script_list(server_obj.script_manager.return_single_list())
+        self.create_button = WaitButton('Create in IDE', (0.5, 0.24), 'amscript.png', width=370, icon_offset=-150, disabled=True, click_func=on_click)
+        buttons.append(self.create_button)
+        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = f"{server_obj.name}, amscript, Create script"
+        float_layout.add_widget(generate_title(f"Script Manager: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+        self.name_input.grab_focus()
+
 class ServerAmscriptScreen(MenuBackground):
 
     def switch_page(self, direction):
@@ -15674,10 +15872,11 @@ class ServerAmscriptScreen(MenuBackground):
         float_layout.add_widget(self.page_switcher)
 
         bottom_buttons = RelativeLayout()
-        bottom_buttons.size_hint_max_x = 312
+        bottom_buttons.size_hint_max_x = 512
         bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        bottom_buttons.add_widget(main_button('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
-        bottom_buttons.add_widget(main_button('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(main_button('Import', (0, 0.202), 'download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(main_button('Create New', (0.5, 0.202), '', width=245, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(main_button('Download', (1, 0.202), 'cloud-download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
         buttons.append(exit_button('Back', (0.5, -1), cycle=True))
 
         for button in buttons:

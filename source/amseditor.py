@@ -11,9 +11,11 @@ from contextlib import suppress
 from PIL import ImageTk, Image
 from tkinter.font import Font
 from threading import Timer
+from copy import deepcopy
 import multiprocessing
 import pygments.lexers
 import pygments.lexer
+import webbrowser
 import functools
 import pygments
 import time
@@ -27,7 +29,7 @@ LexerType = Union[Type[pygments.lexer.Lexer], pygments.lexer.Lexer]
 tab_str = '    '
 suggestions = {}
 default_font_size = 16
-font_size = 16
+font_size = 15
 
 
 # Converts between HEX and RGB decimal colors
@@ -290,7 +292,7 @@ class AmsLexer(pygments.lexers.PythonLexer):
             tokentype=Keyword.Event,
         )
 
-        names = data['script_obj'].protected_variables
+        names = deepcopy(data['script_obj'].protected_variables)
         names.extend(['player', 'enemy'])
         var_filter = NameHighlightFilter(
             names=names,
@@ -477,12 +479,21 @@ proc ::tabdrag::move {win x y} {
         window.configure(bg=background_color)
         close_window = False
 
-        # When window is closed
-        def on_closing():
-            global close_window, currently_open, open_frames
-            close_window = True
+        def autosave(*a):
+            global open_frames
             for s in open_frames.values():
                 s.save()
+
+        def focus_lost(*a):
+            if str(a[0].widget) == '.':
+                autosave()
+        window.bind("<FocusOut>", focus_lost)
+
+        # When window is closed
+        def on_closing():
+            global close_window, currently_open
+            close_window = True
+            autosave()
 
             # Write window size to global config
             global_conf = {}
@@ -655,7 +666,7 @@ proc ::tabdrag::move {win x y} {
         # Add logo
         logo = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'amscript-banner.png')))
         logo_frame = Label(window, image=logo, bg=frame_background)
-        logo_frame.place(anchor='nw', in_=window, x=-100, rely=0, relx=1, y=8)
+        logo_frame.place(anchor='nw', in_=window, x=-100, rely=0, relx=1, y=6.5)
 
         def bring_to_front():
             window.attributes('-topmost', 1)
@@ -885,12 +896,12 @@ def launch_window(path: str, data: dict, *a):
                     outline=self.slidercolor,
                     tags=('slider',))
                 self.bind('<ButtonPress-1>', self.move_on_click)
-
                 self.bind('<ButtonPress-1>', self.start_scroll, add='+')
                 self.bind('<B1-Motion>', self.move_on_scroll)
                 self.bind('<ButtonRelease-1>', self.end_scroll)
 
             def set(self, lo, hi):
+
                 lo = float(lo)
                 hi = float(hi)
 
@@ -1658,6 +1669,7 @@ def launch_window(path: str, data: dict, *a):
                 self.bind("<<ContentChanged>>", self.autosave, add=True)
                 self.bind("<<Selection>>", self.redo_search, add=True)
                 self.bind("<<Selection>>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
+                self.bind("<Control-S>", self.search_selection)
                 root.bind('<Configure>', self.set_error)
                 self.error_label.bind("<Button-1>", lambda *_: self.after(0, self.view_error), add=True)
                 self.bind("<KeyRelease>", lambda *_: self.after(0, self.highlight_matching_parentheses))
@@ -1702,6 +1714,30 @@ def launch_window(path: str, data: dict, *a):
                     return '['
                 elif char == '[':
                     return ']'
+
+            def search_selection(self, *a):
+                sel_start = self.index(SEL_FIRST)
+                sel_end = self.index(SEL_LAST)
+
+                if sel_start and sel_end:
+                    text = self.get(sel_start, sel_end)
+                else:
+                    text = ''
+
+                search.focus_force()
+
+                def set_text(*a):
+                    self.content_changed = True
+                    search.delete('0', END)
+                    search.insert('0', text)
+                    self.last_search = ''
+                    self.tag_remove("sel", "1.0", "end")
+                    self.focus_force()
+                    update_search(text)
+
+                root.after(0, set_text)
+
+                return 'break'
 
             # Processes line to determine last event
             def get_event(self, line):
@@ -2986,17 +3022,24 @@ def launch_window(path: str, data: dict, *a):
                     self.button_list.append(button)
 
             def show(self, start, x, y):
+                # widget_pos = ((font_size*3)*self.max_size) + y
+                # window_height = int(window.geometry().split('x')[1].split('+')[0])
+                # if widget_pos > window_height:
+                #     y = y - (widget_pos - window_height) - 20
+
+                line_height = Font(font=code_editor.cget("font")).metrics()["linespace"]
+                y = y + line_height + 3
                 self.last_matches = []
                 self.visible = True
                 self.update_results(start)
-                font_descriptor = Font(font=code_editor.cget("font"))
-                line_height = font_descriptor.metrics()["linespace"]
-                self.place(in_=code_editor, x=x-13, y=y+line_height+3)
+                self.place(in_=code_editor, x=x-13, y=y)
+                code_editor._vs.disabled = True
 
             def hide(self, *a):
                 self.place_forget()
                 self.visible = False
                 self.current_key = ''
+                code_editor._vs.disabled = False
 
             def update_results(self, text):
                 matches = None
@@ -3184,7 +3227,7 @@ def launch_window(path: str, data: dict, *a):
                     bd=0,
                     font=font,
                     activebackground="#AAAAFF",
-                    width=10,
+                    width=9,
                     anchor='w',
                     padx=12,
                     pady=5
@@ -3201,8 +3244,13 @@ def launch_window(path: str, data: dict, *a):
                 self.button_list = []
                 self.last_items = []
                 self.visible = False
-                self.max_size = 5
+                self.hovered = False
+                self.max_size = 7
                 self.add_buttons()
+
+                self.bind("<Enter>", lambda *_: self.hover(True))
+                self.bind("<Leave>", lambda *_: self.hover(False))
+
 
             def update_buttons(self, items):
                 for x, b in enumerate(self.button_list, 0):
@@ -3223,27 +3271,42 @@ def launch_window(path: str, data: dict, *a):
 
             def show(self, event):
                 self.hide()
+                widget_pos = (50*self.max_size) + event.y
+                window_height = int(window.geometry().split('x')[1].split('+')[0])
 
                 sel_start = code_editor.index(SEL_FIRST)
                 sel_end = code_editor.index(SEL_LAST)
 
                 if sel_start or sel_end:
-                    self.update_results(['Cut', 'Copy', 'Paste', 'Comment', 'Search'])
+                    self.update_results(['Cut', 'Copy', 'Paste', 'Undo', 'Redo', 'Comment', 'Search'])
                 else:
-                    self.update_results(['Paste', 'Comment', 'Select All', 'Zoom in', 'Zoom out'])
+                    self.update_results(['Paste', 'Undo', 'Redo', 'Comment', 'Zoom in', 'Zoom out', 'Help'])
 
                 self.visible = True
-                self.place(in_=code_editor, x=event.x-5, y=event.y-10)
+                y = event.y - 10
+                if widget_pos > window_height:
+                    y = event.y - (widget_pos - window_height) - 20
+                self.place(in_=code_editor, x=event.x-5, y=y)
 
                 code_editor.focus_force()
                 code_editor.mark_set(INSERT, code_editor.index(f"@{event.x},{event.y}"))
 
                 ac.hide()
+                code_editor._vs.disabled = True
+                code_editor._line_numbers.redraw()
+
 
             def hide(self, *a):
                 self.place_forget()
                 self.visible = False
-                self.current_key = ''
+                code_editor._vs.disabled = False
+
+            def hover(self, hovered=False):
+                self.hovered = hovered
+
+            def check_hover(self, *a):
+                if not self.hovered:
+                    self.hide()
 
             def update_results(self, item_list):
                 if item_list != self.last_items:
@@ -3305,31 +3368,23 @@ def launch_window(path: str, data: dict, *a):
                 elif val == 'Comment':
                     code_editor.event_generate("<Control-slash>")
                 elif val == 'Search':
-                    sel_start = code_editor.index(SEL_FIRST)
-                    sel_end = code_editor.index(SEL_LAST)
-                    text = code_editor.get(sel_start, sel_end)
-                    search.focus_force()
-                    def set_text(*a):
-                        code_editor.content_changed = True
-                        search.delete('0', END)
-                        search.insert('0', text)
-                        code_editor.last_search = ''
-                        code_editor.tag_remove("sel", "1.0", "end")
-                        code_editor.focus_force()
-                        update_search(text)
-                    root.after(0, set_text)
-                elif val == 'Select All':
-                    code_editor.event_generate("<Control-a>")
+                    code_editor.event_generate("<Control-S>")
                 elif val == 'Zoom in':
                     code_editor.event_generate("<Control-equal>")
                 elif val == 'Zoom out':
                     code_editor.event_generate("<Control-minus>")
+                elif val == 'Undo':
+                    code_editor.event_generate("<Control-z>")
+                elif val == 'Redo':
+                    code_editor.event_generate("<Control-r>")
+                elif val == 'Help':
+                    webbrowser.open('https://github.com/macarooni-man/auto-mcs/blob/main/amscript-docs.md')
 
                 return "break"
 
         context_menu = ContextMenu()
         root.bind_all("<Button-3>", context_menu.show, add=True)
-        root.bind_all("<Button-1>", lambda *_: root.after(100, context_menu.hide), add=True)
+        root.bind_all("<Button-1>", context_menu.check_hover, add=True)
         window.root.bind("<<NotebookTabChanged>>", context_menu.hide, add=True)
 
 
@@ -3382,7 +3437,7 @@ if os.name == 'nt':
         windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
 
     default_font_size = 14
-    font_size = 14
+    font_size = 13
 
 
 
