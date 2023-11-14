@@ -30,6 +30,7 @@ tab_str = '    '
 suggestions = {}
 default_font_size = 16
 font_size = 15
+dead_zone = 14
 
 
 # Converts between HEX and RGB decimal colors
@@ -327,6 +328,12 @@ def save_script(script_path, *a):
     script_name = os.path.basename(script_path)
     if script_path in currently_open:
         script_contents = open_frames[script_name].code_editor.get("1.0", 'end-1c')
+
+        dead_count = len(script_contents) - len(script_contents.rstrip())
+        if dead_count >= dead_zone:
+            script_contents = script_contents[:-dead_zone]
+
+        # print(script_contents)
 
         try:
             with open(script_path, 'w+') as f:
@@ -709,14 +716,14 @@ def launch_window(path: str, data: dict, *a):
     if path:
 
         with open(path, 'r') as f:
-            ams_data = f.read().replace('\t', tab_str)
+            ams_data = f.read().replace('\t', tab_str) + ("\n" * dead_zone)
 
         error_bg = convert_color((0.3, 0.1, 0.13))['hex']
         text_color = convert_color((0.6, 0.6, 1))['hex']
 
         style = {
-            'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_fg': "#DDDDFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': '#1b2733',
-                'caret': convert_color((0.7, 0.7, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': f"Consolas {font_size} italic"},
+            'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_fg': "#DDDDFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': convert_color((0.13, 0.13, 0.26))['hex'],
+                'caret': convert_color((0.75, 0.75, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': f"Consolas {font_size} italic"},
             'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': '#b3b1ad', 'keyword': '#FB71FB',
                 'name': '#819CE6', 'string': '#c2d94c', 'punctuation': '#68E3FF'},
             'keyword': {'constant': '#FB71FB', 'declaration': '#FB71FB', 'namespace': '#FB71FB', 'pseudo': '#FB71FB',
@@ -1144,9 +1151,13 @@ def launch_window(path: str, data: dict, *a):
                 except:
                     pass
 
+                max_lines = int(self.textwidget.index('end').split('.')[0]) - 1
 
                 # Draw the line numbers looping through the lines
                 for lineno in range(first_line, last_line + 1):
+
+                    if lineno > max_lines - dead_zone:
+                        continue
 
                     # Check if it's searched
                     search_match = False
@@ -1170,6 +1181,7 @@ def launch_window(path: str, data: dict, *a):
                         continue
 
 
+
                     # Create the line number
                     self.create_text(
                         0
@@ -1189,7 +1201,9 @@ def launch_window(path: str, data: dict, *a):
 
             def get_cursor(self, *a):
                 if self.textwidget.index_label and self.allow_highlight:
-                    self.textwidget.index_label.configure(text=self.textwidget.index(INSERT).replace('.',':'))
+                    def set_label(*a):
+                        self.textwidget.index_label.configure(text=self.textwidget.index(INSERT).replace('.', ':'))
+                    self.after(0, set_label)
 
             def redraw_allow(self):
                 ac.hide()
@@ -1227,6 +1241,10 @@ def launch_window(path: str, data: dict, *a):
                 click_pos = f"{line}.0"
 
                 # Set the insert position to the line number clicked
+                last_index = int(self.textwidget.index('end').split('.')[0]) - 1 - dead_zone
+                if int(line) > last_index:
+                    return 'break'
+
                 self.textwidget.mark_set("insert", click_pos)
 
                 # Scroll to the location of the insert position
@@ -1620,6 +1638,7 @@ def launch_window(path: str, data: dict, *a):
                 self.last_search = ""
                 self.match_list = []
                 self.font_size = font_size - 1
+                self.dead_zone = 0
                 self.match_counter = Label(justify='right', anchor='se')
                 self.match_counter.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
                 self.match_counter.configure(
@@ -1655,14 +1674,6 @@ def launch_window(path: str, data: dict, *a):
 
                 # Redraw lineno
                 self.bind("<Button-1>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
-                self.bind("<Up>", lambda *_: self.check_ac(False))
-                self.bind("<Down>", lambda *_: self.check_ac(True))
-                self.bind("<Up>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
-                self.bind("<Down>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
-                self.bind("<Left>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
-                self.bind("<Right>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
-                self.bind("<Control-Left>", self.scroll_text)
-                self.bind("<Control-Right>", self.scroll_text)
                 self.bind("<Control-h>", lambda *_: replace.toggle_focus(True))
                 self.bind("<Control-k>", lambda *_: "break")
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
@@ -1670,10 +1681,11 @@ def launch_window(path: str, data: dict, *a):
                 self.bind("<<Selection>>", self.redo_search, add=True)
                 self.bind("<<Selection>>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
                 self.bind("<Control-S>", self.search_selection)
-                root.bind('<Configure>', self.set_error)
+                root.bind('<Configure>', self.set_error, add=True)
                 self.error_label.bind("<Button-1>", lambda *_: self.after(0, self.view_error), add=True)
                 self.bind("<KeyRelease>", lambda *_: self.after(0, self.highlight_matching_parentheses))
                 self.bind("<Button-1>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
+                self.bind("<Button-3>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
                 self.hl_pair = (None, None)
 
                 self.default_timer = 0.25
@@ -1739,6 +1751,14 @@ def launch_window(path: str, data: dict, *a):
 
                 return 'break'
 
+            def check_cursor(self, event):
+                cursor_pos = self.index(INSERT)
+                last_index = int(self.index('end').split('.')[0]) - 1 - dead_zone
+                if int(cursor_pos.split('.')[0]) > last_index and last_index:
+                    self.mark_set(INSERT, f'{last_index}.0 lineend')
+                    self._line_numbers.redraw()
+                    return 'break'
+
             # Processes line to determine last event
             def get_event(self, line):
                 current_pos = self.index(INSERT)
@@ -1782,7 +1802,10 @@ def launch_window(path: str, data: dict, *a):
                 sel_start = self.index(SEL_FIRST)
                 sel_end = self.index(SEL_LAST)
 
-                key = args[0].keysym.lower()
+                try:
+                    key = args[0].keysym.lower()
+                except IndexError:
+                    return "break"
                 select = args[0].state == 262181
 
                 current_pos = self.index(INSERT)
@@ -1825,6 +1848,19 @@ def launch_window(path: str, data: dict, *a):
                 return "break"
 
             def highlight_matching_parentheses(self, event=None):
+                sel_start = self.index(SEL_FIRST)
+                sel_end = self.index(SEL_LAST)
+                if sel_start and sel_end:
+                    last_index = int(self.index('end').split('.')[0]) - 1 - dead_zone
+                    if self.compare(sel_end, ">",  f'{last_index}.0 lineend'):
+                        self.tag_remove("sel", "sel.first", "sel.last")
+                        self.tag_add("sel", sel_start, f'{last_index}.0 lineend')
+                        return 'break'
+
+
+                if self.check_cursor(event) == 'break':
+                    return 'break'
+
                 self.tag_remove("parentheses", "1.0", END)
                 self.hl_pair = (None, None)
                 cursor_pos = self.index(INSERT)
@@ -2011,7 +2047,7 @@ def launch_window(path: str, data: dict, *a):
                         self.error_timer -= 0.25
 
                     self.error_timer = self.default_timer
-                    self.error = data['script_obj'].is_valid([self.get("1.0",END), path])
+                    self.error = data['script_obj'].is_valid([self.get("1.0",END)[:-dead_zone], path])
                     self.after(0, lambda *_: self.set_error())
                     self.timer_lock = False
 
@@ -2095,7 +2131,7 @@ def launch_window(path: str, data: dict, *a):
                 self.after(0, test_at)
 
                 if line_text.isspace():
-                    self.delete(line_start, current_pos)
+                    self.delete(f'{line_start}-1c', current_pos)
 
                 else:
                     if not self.delete_spaces():
@@ -2366,6 +2402,29 @@ def launch_window(path: str, data: dict, *a):
 
                 line_num = int(current_pos.split('.')[0])
                 last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                last_index = int(self.index('end').split('.')[0]) - 1 - dead_zone
+
+
+                # Ignore dead_zone
+                if event.keysym == 'Down' and self.compare(current_pos, ">=",  f'{last_index}.0'):
+                    self.mark_set(INSERT, f'{last_index}.0 lineend')
+                    return 'break'
+
+                elif self.compare(current_pos, ">=",  f'{last_index}.0 lineend'):
+                    if event.keysym in ['Delete', 'Down', 'Right', 'Next'] or event.keycode == 17:
+                        return 'break'
+                else:
+                    if event.keysym == 'Up' and ac.visible:
+                        self.check_ac(False)
+                        return 'break'
+                    elif event.keysym == 'Down' and ac.visible:
+                        self.check_ac(True)
+                        return 'break'
+                    elif event.keysym in ['Up', 'Down', 'Right', 'Left']:
+                        self.after(0, self._line_numbers.redraw_allow)
+                        if event.state == 262180:
+                            self.scroll_text()
+
 
 
                 # Press return with last indent level
