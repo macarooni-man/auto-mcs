@@ -267,7 +267,8 @@ def launch_window(exc_code, log_path):
         readonlybackground = "#07071C",
         font = f"Courier {dp(16)} bold",
         state = "readonly",
-        justify = "center"
+        justify = "center",
+        width=10
     )
     text_info.place(relx=0.5, y=210-(dp(16)/6), anchor=CENTER)
 

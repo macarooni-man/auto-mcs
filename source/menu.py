@@ -5669,7 +5669,8 @@ def button_action(button_name, button, specific_screen=''):
     if button.button_pressed == "left":
 
         if button_name.lower() == "quit":
-            sys.exit()
+            if not main_app.exit_check():
+                sys.exit(0)
         elif button_name.lower() == "back":
             constants.back_clicked = True
             previous_screen()
@@ -14230,7 +14231,7 @@ class AddonListButton(HoverButton):
         self.title.color = self.color_id[1]
         self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
-        self.title.text_size = (self.size_hint_max[0] * (0.94 if self.enabled else 0.7), self.size_hint_max[1])
+        self.title.text_size = (self.size_hint_max[0] * (0.7), self.size_hint_max[1])
         self.title.shorten = True
         self.title.markup = True
         self.title.shorten_from = "right"
@@ -14275,6 +14276,7 @@ class AddonListButton(HoverButton):
 
         # If self.enabled is false, and self.properties.version, display version where "enabled" logo is
         self.bind(pos=self.resize_self)
+        self.resize_self()
 
         # If click_function
         if click_function:
@@ -15193,7 +15195,7 @@ class AmscriptListButton(HoverButton):
 
         self.resize_self()
 
-    def animate_addon(self, image, color, **kwargs):
+    def animate_script(self, image, color, **kwargs):
         image_animate = Animation(duration=0.05)
 
         def f(w):
@@ -15247,7 +15249,7 @@ class AmscriptListButton(HoverButton):
 
             # Fade button to hover state
             if not self.delete_button.button.hovered:
-                self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
+                self.animate_script(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
@@ -15270,7 +15272,7 @@ class AmscriptListButton(HoverButton):
                 Animation(opacity=1, duration=0.13).start(self.disabled_banner)
 
             # Fade button to default state
-            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
+            self.animate_script(image=os.path.join(constants.gui_assets, f'{self.id}{"" if self.enabled else "_disabled"}.png'), color=self.color_id[1], hover_action=False)
 
             # Hide delete button
             Animation.stop_all(self.delete_layout)
@@ -15461,7 +15463,7 @@ class AmscriptListButton(HoverButton):
         self.title.color = self.color_id[1]
         self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
-        self.title.text_size = (self.size_hint_max[0] * (0.94 if self.enabled else 0.7), self.size_hint_max[1])
+        self.title.text_size = (self.size_hint_max[0] * (0.94), self.size_hint_max[1])
         self.title.shorten = True
         self.title.markup = True
         self.title.shorten_from = "right"
@@ -15506,6 +15508,7 @@ class AmscriptListButton(HoverButton):
 
         # If self.enabled is false, and self.properties.version, display version where "enabled" logo is
         self.bind(pos=self.resize_self)
+        self.resize_self()
 
         # If click_function
         if click_function:
@@ -15554,6 +15557,7 @@ class CreateAmscriptScreen(MenuBackground):
     player.log(f"Welcome to the server {{player}}!")
 """
 
+            constants.folder_check(constants.scriptDir)
             with open(script_path, 'w+') as f:
                 f.write(contents)
 
@@ -15561,12 +15565,15 @@ class CreateAmscriptScreen(MenuBackground):
                 if s.file_name == script_name:
                     server_obj.script_manager.script_state(s, enabled=True)
                     break
-            edit_script(None, server_obj, script_path)
+
+            def later(*_):
+                edit_script(None, server_obj, script_path)
+            threading.Timer(1, later).start()
 
             previous_screen()
             del constants.screen_tree[-1]
 
-            if server_obj.script_manager.hash_changed():
+            if server_obj.running:
                 Clock.schedule_once(
                     functools.partial(
                         self.show_banner,
@@ -15588,7 +15595,6 @@ class CreateAmscriptScreen(MenuBackground):
                         {"center_x": 0.5, "center_y": 0.965}
                     ), 0
                 )
-
 
         buttons = []
         float_layout = FloatLayout()
@@ -15809,6 +15815,7 @@ class ServerAmscriptScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
         self.server = constants.server_manager.current_server
+
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
@@ -18393,12 +18400,12 @@ class MainApp(App):
                         global_conf = conf
             with open(constants.global_conf, 'w+') as f:
                 global_conf['fullscreen'] = (Window.width > (constants.window_size[0] + 100))
+                print(global_conf)
                 f.write(constants.json.dumps(global_conf, indent=2))
         except:
             pass
 
         if force_close:
-            print(force_close)
             return False
 
         if constants.ignore_close:
@@ -18429,13 +18436,13 @@ class MainApp(App):
         screen_manager.current = constants.startup_screen
 
         # Screen manager override
-        if not constants.app_compiled:
-            def open_menu(*args):
-                open_server("bedrock-test")
-                def open_ams(*args):
-                    screen_manager.current = "ServerAmscriptScreen"
-                Clock.schedule_once(open_ams, 1)
-            Clock.schedule_once(open_menu, 0)
+        # if not constants.app_compiled:
+        #     def open_menu(*args):
+        #         open_server("bedrock-test")
+        #         def open_ams(*args):
+        #             screen_manager.current = "ServerAmscriptScreen"
+        #         Clock.schedule_once(open_ams, 1)
+        #     Clock.schedule_once(open_menu, 0)
 
 
         screen_manager.transition = FadeTransition(duration=0.115)
@@ -18457,7 +18464,9 @@ class MainApp(App):
         return screen_manager
 
 
+main_app = None
 def run_application():
+    global main_app
     main_app = MainApp(title=constants.app_title)
     try:
         main_app.run()

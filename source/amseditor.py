@@ -30,7 +30,7 @@ tab_str = '    '
 suggestions = {}
 default_font_size = 16
 font_size = 15
-dead_zone = 14
+dead_zone = 10
 
 
 # Converts between HEX and RGB decimal colors
@@ -479,7 +479,10 @@ proc ::tabdrag::move {win x y} {
         window.geometry(f"{start_size[0]}x{start_size[1]}+{x}+{y}")
         window.minsize(width=min_size[0], height=min_size[1])
         if fullscreen:
-            window.state('zoomed')
+            if os.name == 'nt':
+                window.state('zoomed')
+            else:
+                window.attributes('-zoomed', True)
         window.title(f'{data["app_title"]} - amscript IDE')
         img = PhotoImage(file=file_icon)
         window.tk.call('wm', 'iconphoto', window._w, img)
@@ -677,7 +680,9 @@ proc ::tabdrag::move {win x y} {
 
         def bring_to_front():
             window.attributes('-topmost', 1)
-            window.attributes('-topmost', 0)
+            def hide(*a):
+                window.attributes('-topmost', 0)
+            window.after(100, hide)
 
         def check_new():
             global close_window, currently_open, open_frames
@@ -1679,7 +1684,7 @@ def launch_window(path: str, data: dict, *a):
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
                 self.bind("<<ContentChanged>>", self.autosave, add=True)
                 self.bind("<<Selection>>", self.redo_search, add=True)
-                self.bind("<<Selection>>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
+                self.bind("<<Selection>>", lambda *_: self.after(0, self.highlight_matching_parentheses))
                 self.bind("<Control-S>", self.search_selection)
                 root.bind('<Configure>', self.set_error, add=True)
                 self.error_label.bind("<Button-1>", lambda *_: self.after(0, self.view_error), add=True)
@@ -3479,7 +3484,7 @@ def edit_script(script_path: str, data: dict, *args):
 
         if not running:
             mgr = multiprocessing.Manager()
-            wlist = mgr.Value('window_list', [])
+            wlist = mgr.Value('window_list', '')
             process = multiprocessing.Process(target=functools.partial(create_root, data), args=(wlist, 'window_list'), daemon=False)
             process.start()
 
@@ -3534,7 +3539,7 @@ if __name__ == '__main__':
     data_dict['suggestions']['player.'] = iter_attr(player)
     data_dict['suggestions']['enemy.'] = data_dict['suggestions']['player.']
 
-    path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Tools\amscript"
+    path = constants.scriptDir
     class Test():
         def __init__(self):
             self.value = os.path.join(path, 'test2.ams')

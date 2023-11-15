@@ -1,6 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
 from subprocess import Popen, PIPE, run
-from kivy.utils import escape_markup
 from datetime import datetime as dt
 from threading import Timer
 from copy import deepcopy
@@ -13,12 +12,12 @@ import time
 import os
 import re
 
-import backup
+from acl import AclObject, get_uuid
 from backup import BackupManager
 from addons import AddonManager
-from acl import AclObject, get_uuid
 import constants
 import amscript
+import backup
 
 
 # Auto-MCS Server Manager API
@@ -1507,6 +1506,19 @@ def create_server_list():
 
     return final_list
 
+# From kivy.utils
+def escape_markup(text):
+    '''
+    Escape markup characters found in the text. Intended to be used when markup
+    text is activated on the Label::
+
+        untrusted_text = escape_markup('Look at the example [1]')
+        text = '[color=ff0000]' + untrusted_text + '[/color]'
+        w = Label(text=text, markup=True)
+
+    .. versionadded:: 1.3.0
+    '''
+    return text.replace('&', '&amp;').replace('[', '&bl;').replace(']', '&br;')
 
 
 # ---------------------------------------------- Usage Examples --------------------------------------------------------
