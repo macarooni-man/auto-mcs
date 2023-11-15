@@ -593,7 +593,11 @@ class ServerObject():
 
         for log_line in text.splitlines():
             if log_line:
-                log_line = format_log(log_line)
+                try:
+                    log_line = format_log(log_line)
+                except Exception as e:
+                    print(e)
+                    continue
             if text and log_line:
 
                 if not self.run_data:
