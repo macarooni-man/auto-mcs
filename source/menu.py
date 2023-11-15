@@ -5569,7 +5569,7 @@ class PopupUpdate(BigPopupWindow):
         self.window_title.shorten = True
         self.window_title.markup = True
         self.window_title.shorten_from = "right"
-        self.window_title.text = f"Update auto-mcs"
+        self.window_title.text = f"Update Available"
 
 
         # Description
@@ -6790,7 +6790,7 @@ class MainMenuScreen(MenuBackground):
 
     def prompt_update(self, force=False, *args):
 
-        if (not constants.app_latest) and (constants.update_data['auto-show'] or force):
+        if (not constants.app_latest) and (constants.update_data['auto-show']) or force:
 
             # Installs update and restarts
             def install_update(*a):
@@ -6894,6 +6894,74 @@ class MainMenuScreen(MenuBackground):
 
         Clock.schedule_once(animate_screen, 0)
 
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        # print('The key', keycode, 'have been pressed')
+        # print(' - text is %r' % text)
+        # print(' - modifiers are %r' % modifiers)
+
+        # Ignore key presses when popup is visible
+        if self.popup_widget:
+            if keycode[1] in ['escape', 'n']:
+                try:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
+                except AttributeError:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
+
+            elif keycode[1] in ['enter', 'return', 'y']:
+                try:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.yes_button)
+                except AttributeError:
+                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
+            return
+
+        # Ignore ESC commands while input focused
+        if not self._input_focused and self.name == screen_manager.current_screen.name:
+
+            if keycode[1] == 'u' and 'shift' in modifiers and 'alt' in modifiers and 'ctrl' in modifiers and not self.popup_widget:
+                self.prompt_update(force=True)
+
+            # Keycode is composed of an integer + a string
+            # If we hit escape, release the keyboard
+            # On ESC, click on back button if it exists
+            if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
+                for button in self.walk():
+                    try:
+                        if button.id == "exit_button":
+                            button.force_click()
+                            break
+                    except AttributeError:
+                        continue
+                keyboard.release()
+
+            # Click next button if it's not disabled
+            if keycode[1] == 'enter' and 'enter' not in self._ignore_keys:
+                for button in self.walk():
+                    try:
+                        if button.id == "next_button" and button.disabled is False:
+                            button.force_click()
+                            break
+                    except AttributeError:
+                        continue
+                keyboard.release()
+
+        # On TAB/Shift+TAB, cycle through elements
+        if keycode[1] == 'tab' and 'tab' not in self._ignore_keys:
+            pass
+            # for widget in self.walk():
+            #     try:
+            #         if "button" in widget.id or "input" in widget.id:
+            #             print(widget)
+            #             break
+            #     except AttributeError:
+            #         continue
+
+        # Crash test
+        # if keycode[1] == 'z' and 'ctrl' in modifiers:
+        #     crash = float("crash")
+
+        # Return True to accept the key. Otherwise, it will be used by the system.
+        return True
+
 
 class UpdateAppProgressScreen(ProgressScreen):
 
@@ -6912,7 +6980,8 @@ class UpdateAppProgressScreen(ProgressScreen):
 
 
         def after_func(*args):
-            self.steps.label_2.text = "Update complete! Restarting... " + self.steps.label_2.text.rsplit(" ", 1)[1]
+            icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+            self.steps.label_2.text = "Update complete! Restarting..." + f"   [font={icons}]å[/font]"
             Clock.schedule_once(constants.restart_update_app, 1)
 
         # Original is percentage before this function, adjusted is a percent of hooked value
@@ -6952,7 +7021,7 @@ class UpdateAppProgressScreen(ProgressScreen):
 
         # Create function list
         function_list = [
-            (f'Downloading Auto-MCS v{constants.update_data["version"]}', functools.partial(constants.download_update, functools.partial(adjust_percentage, 100)), 0)
+            (f'Downloading auto-mcs v{constants.update_data["version"].strip()}...', functools.partial(constants.download_update, functools.partial(adjust_percentage, 100)), 0)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)

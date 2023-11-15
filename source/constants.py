@@ -359,7 +359,7 @@ def restart_update_app(*a):
         if app_compiled:  # Running as compiled
             batch_file.write(
 f"""taskkill /f /im \"{executable}\"
-timeout /t 5 /nobreak
+timeout /t 3 /nobreak
 
 copy /b /v /y "{os.path.join(downDir, 'auto-mcs.exe')}" "{launch_path}"
 if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
