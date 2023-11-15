@@ -680,9 +680,7 @@ proc ::tabdrag::move {win x y} {
 
         def bring_to_front():
             window.attributes('-topmost', 1)
-            def hide(*a):
-                window.attributes('-topmost', 0)
-            window.after(100, hide)
+            window.attributes('-topmost', 0)
 
         def check_new():
             global close_window, currently_open, open_frames
