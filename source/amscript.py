@@ -295,7 +295,9 @@ class ScriptObject():
         self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
         self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@server.on_start", "@server.on_stop"]
         self.valid_imports = std_libs
-        self.valid_imports.extend(['requests', 'bs4', 'nbt'])
+        for library in ['requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser']:
+            if library not in self.valid_imports:
+                self.valid_imports.append(library)
         self.valid_imports.extend([os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.script_path, '*.py'))])
         self.aliases = {}
         self.src_dict = {}

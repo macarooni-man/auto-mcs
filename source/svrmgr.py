@@ -1405,6 +1405,40 @@ class ServerObject():
                     self.update_log(line)
                     return ""
 
+    # Retrieves IDE suggestions from internal objects
+    def retrieve_suggestions(self, script_obj):
+
+        # Gets list of functions and attributes
+        def iter_attr(obj, a_start=''):
+            final_list = []
+            for attr in dir(obj):
+                if not attr.startswith('_'):
+                    if callable(getattr(obj, attr)):
+                        final_list.append(a_start + attr + '()')
+                    else:
+                        final_list.append(a_start + attr)
+            final_list = sorted(final_list, key=lambda x: x.endswith('()'), reverse=True)
+            return final_list
+
+        # Prevent race condition
+        while not self.script_manager or not self.acl or not self.addon or not self.backup:
+            time.sleep(0.1)
+
+        server_so = amscript.ServerScriptObject(self)
+        player_so = amscript.PlayerScriptObject(server_so, server_so._server_id)
+        suggestions = {
+            '@': script_obj.valid_events,
+            'server.': iter_attr(server_so),
+            'acl.': iter_attr(self.acl),
+            'addon.': iter_attr(self.addon),
+            'backup.': iter_attr(self.backup),
+            'amscript.': iter_attr(self.script_manager),
+            'player.': iter_attr(player_so),
+        }
+        suggestions['enemy.'] = suggestions['player.']
+
+        return suggestions
+
 
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():

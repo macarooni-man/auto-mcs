@@ -27,7 +27,6 @@ import re
 
 LexerType = Union[Type[pygments.lexer.Lexer], pygments.lexer.Lexer]
 tab_str = '    '
-suggestions = {}
 default_font_size = 16
 font_size = 15
 dead_zone = 10
@@ -270,30 +269,17 @@ def similarity(a, b):
     return round(SequenceMatcher(None, a, b).ratio(), 2)
 
 
-# Gets list of functions and attributes
-def iter_attr(obj, a_start=''):
-    final_list = []
-    for attr in dir(obj):
-        if not attr.startswith('_'):
-            if callable(getattr(obj, attr)):
-                final_list.append(a_start + attr + '()')
-            else:
-                final_list.append(a_start + attr)
-    final_list = sorted(final_list, key=lambda x: x.endswith('()'), reverse=True)
-    return final_list
-
-
 # Changes colors for specific attributes
 class AmsLexer(pygments.lexers.PythonLexer):
     def __init__(self, data, **kwargs):
         super().__init__(**kwargs)
 
         hl_filter = NameHighlightFilter(
-            names=[e.split('.')[1] for e in data['script_obj'].valid_events],
+            names=[e.split('.')[1] for e in data['script_obj']['events']],
             tokentype=Keyword.Event,
         )
 
-        names = deepcopy(data['script_obj'].protected_variables)
+        names = deepcopy(data['script_obj']['protected'])
         names.extend(['player', 'enemy'])
         var_filter = NameHighlightFilter(
             names=names,
@@ -2050,7 +2036,7 @@ def launch_window(path: str, data: dict, *a):
                         self.error_timer -= 0.25
 
                     self.error_timer = self.default_timer
-                    self.error = data['script_obj'].is_valid([self.get("1.0",END)[:-dead_zone], path])
+                    self.error = data['script_obj']['syntax_func']([self.get("1.0",END)[:-dead_zone], path])
                     self.after(0, lambda *_: self.set_error())
                     self.timer_lock = False
 
@@ -2409,7 +2395,14 @@ def launch_window(path: str, data: dict, *a):
 
 
                 # Ignore dead_zone
-                if event.keysym == 'Down' and self.compare(current_pos, ">=",  f'{last_index}.0'):
+                if event.keysym == 'Up' and ac.visible:
+                    self.check_ac(False)
+                    return 'break'
+                elif event.keysym == 'Down' and ac.visible:
+                    self.check_ac(True)
+                    return 'break'
+
+                elif event.keysym == 'Down' and self.compare(current_pos, ">=",  f'{last_index}.0'):
                     self.mark_set(INSERT, f'{last_index}.0 lineend')
                     return 'break'
 
@@ -2417,13 +2410,7 @@ def launch_window(path: str, data: dict, *a):
                     if event.keysym in ['Delete', 'Down', 'Right', 'Next'] or event.keycode == 17:
                         return 'break'
                 else:
-                    if event.keysym == 'Up' and ac.visible:
-                        self.check_ac(False)
-                        return 'break'
-                    elif event.keysym == 'Down' and ac.visible:
-                        self.check_ac(True)
-                        return 'break'
-                    elif event.keysym in ['Up', 'Down', 'Right', 'Left']:
+                    if event.keysym in ['Up', 'Down', 'Right', 'Left']:
                         self.after(0, self._line_numbers.redraw_allow)
                         if event.state == 262180:
                             self.scroll_text()
@@ -3458,23 +3445,9 @@ def launch_window(path: str, data: dict, *a):
 
 wlist = None
 def edit_script(script_path: str, data: dict, *args):
-    global suggestions, process, wlist
+    global process, wlist
 
     if script_path:
-        if suggestions:
-            data['suggestions'] = suggestions
-        else:
-            data['suggestions'] = {
-                '@': data['script_obj'].valid_events,
-                'server.': iter_attr(data['server_script_obj']),
-                'acl.': iter_attr(data['server_obj'].acl),
-                'addon.': iter_attr(data['server_obj'].addon),
-                'backup.': iter_attr(data['server_obj'].backup),
-                'amscript.': iter_attr(data['server_obj'].script_manager),
-                'player.': iter_attr(data['player_script_obj']),
-            }
-            data['suggestions']['enemy.'] = data['suggestions']['player.']
-
         try:
             running = process.is_alive()
         except:
@@ -3503,52 +3476,52 @@ if os.name == 'nt':
 
 
 
-if __name__ == '__main__':
-    import constants
-    import amscript
-
-    from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
-    from svrmgr import ServerObject
-    server_obj = ServerObject('test')
-    while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
-        time.sleep(0.2)
-
-    # DELETE ABOVE
-
-
-    data_dict = {
-        'app_title': constants.app_title,
-        'gui_assets': constants.gui_assets,
-        'background_color': constants.background_color,
-        'global_conf': constants.global_conf,
-        'script_obj': amscript.ScriptObject(),
-        'server_obj': server_obj,
-        'suggestions': {}
-    }
-
-    server = ServerScriptObject(server_obj)
-    player = PlayerScriptObject(server, server._server_id)
-    data_dict['suggestions']['@'] = data_dict['script_obj'].valid_events
-    data_dict['suggestions']['server.'] = iter_attr(server)
-    data_dict['suggestions']['acl.'] = iter_attr(server_obj.acl)
-    data_dict['suggestions']['addon.'] = iter_attr(server_obj.addon)
-    data_dict['suggestions']['backup.'] = iter_attr(server_obj.backup)
-    data_dict['suggestions']['amscript.'] = iter_attr(server_obj.script_manager)
-    data_dict['suggestions']['player.'] = iter_attr(player)
-    data_dict['suggestions']['enemy.'] = data_dict['suggestions']['player.']
-
-    path = constants.scriptDir
-    class Test():
-        def __init__(self):
-            self.value = os.path.join(path, 'test2.ams')
-            import threading
-            def test():
-                self.value = os.path.join(path, 'custom-waypoints.ams')
-            threading.Timer(1, test).start()
-            # def test():
-            #     self.value = os.path.join(path, 'test.ams')
-            # threading.Timer(2, test).start()
-            # def test():
-            #     self.value = os.path.join(path, 'test2.ams')
-            # threading.Timer(3, test).start()
-    create_root(data_dict, Test())
+# if __name__ == '__main__':
+#     import constants
+#     import amscript
+#
+#     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
+#     from svrmgr import ServerObject
+#     server_obj = ServerObject('test')
+#     while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
+#         time.sleep(0.2)
+#
+#     # DELETE ABOVE
+#
+#
+#     data_dict = {
+#         'app_title': constants.app_title,
+#         'gui_assets': constants.gui_assets,
+#         'background_color': constants.background_color,
+#         'global_conf': constants.global_conf,
+#         'script_obj': amscript.ScriptObject(),
+#         'server_obj': server_obj,
+#         'suggestions': {}
+#     }
+#
+#     server = ServerScriptObject(server_obj)
+#     player = PlayerScriptObject(server, server._server_id)
+#     data_dict['suggestions']['@'] = data_dict['script_obj'].valid_events
+#     data_dict['suggestions']['server.'] = iter_attr(server)
+#     data_dict['suggestions']['acl.'] = iter_attr(server_obj.acl)
+#     data_dict['suggestions']['addon.'] = iter_attr(server_obj.addon)
+#     data_dict['suggestions']['backup.'] = iter_attr(server_obj.backup)
+#     data_dict['suggestions']['amscript.'] = iter_attr(server_obj.script_manager)
+#     data_dict['suggestions']['player.'] = iter_attr(player)
+#     data_dict['suggestions']['enemy.'] = data_dict['suggestions']['player.']
+#
+#     path = constants.scriptDir
+#     class Test():
+#         def __init__(self):
+#             self.value = os.path.join(path, 'test2.ams')
+#             import threading
+#             def test():
+#                 self.value = os.path.join(path, 'custom-waypoints.ams')
+#             threading.Timer(1, test).start()
+#             # def test():
+#             #     self.value = os.path.join(path, 'test.ams')
+#             # threading.Timer(2, test).start()
+#             # def test():
+#             #     self.value = os.path.join(path, 'test2.ams')
+#             # threading.Timer(3, test).start()
+#     create_root(data_dict, Test())

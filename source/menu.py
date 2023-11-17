@@ -15057,17 +15057,17 @@ class ServerAddonSearchScreen(MenuBackground):
 script_obj = amscript.ScriptObject()
 def edit_script(edit_button, server_obj, script_path):
     "amscript-icon.png"
-    server_so = amscript.ServerScriptObject(server_obj)
-    player_so = amscript.PlayerScriptObject(server_so, server_so._server_id)
     data_dict = {
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
         'global_conf': constants.global_conf,
-        'script_obj': script_obj,
-        'server_obj': server_obj,
-        'server_script_obj': server_so,
-        'player_script_obj': player_so
+        'script_obj': {
+            'syntax_func': script_obj.is_valid,
+            'protected': script_obj.protected_variables,
+            'events': script_obj.valid_events
+        },
+        'suggestions': server_obj.retrieve_suggestions(script_obj)
     }
     Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict), 0.1)
     if edit_button:
@@ -18505,13 +18505,13 @@ class MainApp(App):
         screen_manager.current = constants.startup_screen
 
         # Screen manager override
-        # if not constants.app_compiled:
-        #     def open_menu(*args):
-        #         open_server("bedrock-test")
-        #         def open_ams(*args):
-        #             screen_manager.current = "ServerAmscriptScreen"
-        #         Clock.schedule_once(open_ams, 1)
-        #     Clock.schedule_once(open_menu, 0)
+        if not constants.app_compiled:
+            def open_menu(*args):
+                open_server("bedrock-test")
+                def open_ams(*args):
+                    screen_manager.current = "ServerAmscriptScreen"
+                Clock.schedule_once(open_ams, 1)
+            Clock.schedule_once(open_menu, 0)
 
 
         screen_manager.transition = FadeTransition(duration=0.115)
