@@ -154,6 +154,7 @@ if __name__ == '__main__':
                 try:
                     with open(constants.global_conf, 'r') as f:
                         file_contents = constants.json.loads(f.read())
+                        constants.geometry = file_contents['geometry']
                         constants.fullscreen = file_contents['fullscreen']
                 except:
                     pass

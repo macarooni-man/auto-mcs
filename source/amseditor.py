@@ -26,10 +26,6 @@ import re
 
 
 LexerType = Union[Type[pygments.lexer.Lexer], pygments.lexer.Lexer]
-tab_str = '    '
-default_font_size = 16
-font_size = 15
-dead_zone = 10
 
 
 # Converts between HEX and RGB decimal colors
@@ -295,6 +291,13 @@ AmsLexer.tokens['builtins'].insert(0, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Na
 
 
 # Main window data
+min_size = (950, 600)
+start_size = (1100, 700)
+last_window = {}
+tab_str = '    '
+default_font_size = 16
+font_size = 15
+dead_zone = 10
 window = None
 process = None
 close_window = False
@@ -306,6 +309,17 @@ faded_text = '#4A4A70' # '#444477'
 color_search = None
 error_icon = None
 replace_shown = False
+
+
+# Saves last window position when not fullscreen
+def save_window_pos(*args):
+    global min_size, last_window
+    screen_data = window.geometry().split('+', 1)
+    size = [int(x) for x in screen_data[0].strip().split('x')]
+    pos = [int(x) for x in screen_data[1].strip().split('+')]
+    new_window = {'pos': [pos[1], pos[0]], 'size': size}
+    if size[0] <= (min_size[0] + 400):
+        last_window = new_window
 
 
 # Saves script to disk
@@ -356,7 +370,7 @@ def change_font_size(direction):
 
 # Init Tk window
 def create_root(data, wdata, name=''):
-    global window, close_window, currently_open, font_size
+    global window, close_window, currently_open, font_size, start_size
 
     if not window:
 
@@ -443,25 +457,38 @@ proc ::tabdrag::move {win x y} {
 
         # Get window size
         fullscreen = False
+        geometry = None
         if os.path.exists(data['global_conf']):
             try:
                 with open(data['global_conf'], 'r') as f:
                     file_contents = json.loads(f.read())
                     fullscreen = file_contents['ide-settings']['fullscreen']
                     font_size = file_contents['ide-settings']['font-size']
+                    geometry = file_contents['ide-settings']['geometry']
             except:
                 pass
 
         file_icon = os.path.join(data['gui_assets'], "amscript-icon.png")
-        min_size = (950, 600)
-        start_size = (1100, 700)
 
         window = Tk()
         window.tk.eval(drag_code)
-        width = window.winfo_screenwidth()
-        height = window.winfo_screenheight()
-        x = int((width / 2) - (start_size[0] / 2))
-        y = int((height / 2) - (start_size[1] / 2)) - 15
+
+        preconfigured = False
+        if geometry:
+            pos = geometry['pos']
+            size = geometry['size']
+
+            if (size[0] >= min_size[0] and size[1] >= min_size[1]):
+                start_size = size
+                x = pos[1]
+                y = pos[0]
+                preconfigured = True
+
+        if not preconfigured:
+            width = window.winfo_screenwidth()
+            height = window.winfo_screenheight()
+            x = int((width / 2) - (start_size[0] / 2))
+            y = int((height / 2) - (start_size[1] / 2)) - 15
         window.geometry(f"{start_size[0]}x{start_size[1]}+{x}+{y}")
         window.minsize(width=min_size[0], height=min_size[1])
         if fullscreen:
@@ -499,12 +526,17 @@ proc ::tabdrag::move {win x y} {
                     os.makedirs(configDir)
                 if os.path.exists(data['global_conf']):
                     with open(data['global_conf'], 'r') as f:
-                        conf = json.loads(f.read())
-                        if conf:
-                            global_conf = conf
+                        try:
+                            conf = json.loads(f.read())
+                            if conf:
+                                global_conf = conf
+                        except:
+                            pass
                 with open(data['global_conf'], 'w+') as f:
+                    save_window_pos()
                     global_conf['ide-settings'] = {
-                        'fullscreen': int(window.geometry().split('x')[0]) > (start_size[0] + 100),
+                        'fullscreen': int(window.geometry().split('x')[0]) > (min_size[0] + 400),
+                        'geometry': last_window,
                         'font-size': font_size
                     }
                     f.write(json.dumps(global_conf, indent=2))
@@ -687,6 +719,8 @@ proc ::tabdrag::move {win x y} {
                 window.root.select(open_frames[os.path.basename(script_path)])
                 wdata.value = ''
                 bring_to_front()
+
+            save_window_pos()
             window.after(1000, check_new)
 
         window.bind_all('<Control-equal>', lambda *_: change_font_size('up'))
@@ -3488,27 +3522,19 @@ if os.name == 'nt':
 #
 #     # DELETE ABOVE
 #
-#
+#     script_obj = amscript.ScriptObject()
 #     data_dict = {
 #         'app_title': constants.app_title,
 #         'gui_assets': constants.gui_assets,
 #         'background_color': constants.background_color,
 #         'global_conf': constants.global_conf,
-#         'script_obj': amscript.ScriptObject(),
-#         'server_obj': server_obj,
-#         'suggestions': {}
+#         'script_obj': {
+#             'syntax_func': script_obj.is_valid,
+#             'protected': script_obj.protected_variables,
+#             'events': script_obj.valid_events
+#         },
+#         'suggestions': server_obj.retrieve_suggestions(script_obj)
 #     }
-#
-#     server = ServerScriptObject(server_obj)
-#     player = PlayerScriptObject(server, server._server_id)
-#     data_dict['suggestions']['@'] = data_dict['script_obj'].valid_events
-#     data_dict['suggestions']['server.'] = iter_attr(server)
-#     data_dict['suggestions']['acl.'] = iter_attr(server_obj.acl)
-#     data_dict['suggestions']['addon.'] = iter_attr(server_obj.addon)
-#     data_dict['suggestions']['backup.'] = iter_attr(server_obj.backup)
-#     data_dict['suggestions']['amscript.'] = iter_attr(server_obj.script_manager)
-#     data_dict['suggestions']['player.'] = iter_attr(player)
-#     data_dict['suggestions']['enemy.'] = data_dict['suggestions']['player.']
 #
 #     path = constants.scriptDir
 #     class Test():

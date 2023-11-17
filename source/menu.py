@@ -5984,6 +5984,9 @@ def button_action(button_name, button, specific_screen=''):
 # <editor-fold desc="Screen Templates">
 
 # Template for any screen
+def save_window_pos(*args):
+    if Window.width <= (constants.window_size[0] + 400):
+        constants.last_window = {'pos': [Window.left, Window.top], 'size': Window.system_size}
 class MenuBackground(Screen):
 
     reload_page = True
@@ -6073,6 +6076,8 @@ class MenuBackground(Screen):
         # Repos page switcher
         if self.page_switcher:
             self.page_switcher.resize_self()
+
+        save_window_pos()
 
     # Ignore touch events when popup is present
     def on_touch_down(self, touch):
@@ -18439,19 +18444,31 @@ class MainApp(App):
         def open_settings(self, *largs):
             pass
 
+    # Check if window pos is set in config
+    preconfigured = False
+    if constants.geometry:
+        pos = constants.geometry['pos']
+        size = constants.geometry['size']
+        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1]):
+            Window.size = size
+            Window.left = pos[0]
+            Window.top = pos[1]
+            preconfigured = True
+
     # Window size
-    size = constants.window_size
+    if not preconfigured:
+        size = constants.window_size
 
-    # Get pos and knowing the old size calculate the new one
-    top = dp((Window.top * Window.size[1] / size[1])) - dp(50)
-    left = dp(Window.left * Window.size[0] / size[0])
+        # Get pos and knowing the old size calculate the new one
+        top = dp((Window.top * Window.size[1] / size[1])) - dp(50)
+        left = dp(Window.left * Window.size[0] / size[0])
 
-    Window.size = (dp(size[0]), dp(size[1]))
-    Window.top = top
-    Window.left = left
+        Window.size = (dp(size[0]), dp(size[1]))
+        Window.top = top
+        Window.left = left
     Window.on_request_close = functools.partial(sys.exit)
 
-    Window.minimum_width, Window.minimum_height = Window.size
+    Window.minimum_width, Window.minimum_height = constants.window_size
     Window.clearcolor = constants.background_color
     Builder.load_string(kv_file)
 
@@ -18463,16 +18480,21 @@ class MainApp(App):
         try:
             constants.folder_check(constants.configDir)
             if os.path.exists(constants.global_conf):
-                with open(constants.global_conf, 'r') as f:
-                    conf = constants.json.loads(f.read())
-                    if conf:
-                        global_conf = conf
+                try:
+                    with open(constants.global_conf, 'r') as f:
+                        conf = constants.json.loads(f.read())
+                        if conf:
+                            global_conf = conf
+                except:
+                    pass
             with open(constants.global_conf, 'w+') as f:
-                global_conf['fullscreen'] = (Window.width > (constants.window_size[0] + 100))
+                save_window_pos()
+                global_conf['fullscreen'] = (Window.width > (constants.window_size[0] + 400))
+                global_conf['geometry'] = constants.last_window
                 print(global_conf)
                 f.write(constants.json.dumps(global_conf, indent=2))
-        except:
-            pass
+        except Exception as e:
+            print(e)
 
         if force_close:
             return False
@@ -18488,6 +18510,7 @@ class MainApp(App):
             return False
 
     Window.bind(on_request_close=exit_check)
+    Window.bind(on_cursor_enter=save_window_pos, on_cursor_leave=save_window_pos)
 
 
     def build(self):
@@ -18505,13 +18528,13 @@ class MainApp(App):
         screen_manager.current = constants.startup_screen
 
         # Screen manager override
-        if not constants.app_compiled:
-            def open_menu(*args):
-                open_server("bedrock-test")
-                def open_ams(*args):
-                    screen_manager.current = "ServerAmscriptScreen"
-                Clock.schedule_once(open_ams, 1)
-            Clock.schedule_once(open_menu, 0)
+        # if not constants.app_compiled:
+        #     def open_menu(*args):
+        #         open_server("bedrock-test")
+        #         def open_ams(*args):
+        #             screen_manager.current = "ServerAmscriptScreen"
+        #         Clock.schedule_once(open_ams, 1)
+        #     Clock.schedule_once(open_menu, 0)
 
 
         screen_manager.transition = FadeTransition(duration=0.115)
