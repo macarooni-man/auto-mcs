@@ -55,21 +55,18 @@ if __name__ == '__main__':
 
 
     # Check if application is already open
-    #try:
     if constants.os_name == "windows":
-        if constants.os_name == "windows":
+        if len(constants.run_proc(f'tasklist | findstr {os.path.basename(constants.launch_path)}', True).strip().splitlines()) > 2:
             user32 = ctypes.WinDLL('user32')
             if hwnd := user32.FindWindowW(None, constants.app_title):
                 if not user32.IsZoomed(hwnd):
                     user32.ShowWindow(hwnd, 1)
                 user32.SetForegroundWindow(hwnd)
-                sys.exit()
+            sys.exit()
     # Linux
     else:
         if len(constants.run_proc(f'ps -e | grep {os.path.basename(constants.launch_path)}', True).strip().splitlines()) > 2:
             sys.exit()
-    # except:
-    #     pass
 
     import main
 
