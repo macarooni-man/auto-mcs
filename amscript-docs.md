@@ -76,7 +76,7 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
 #### server.version
  - `str`, Minecraft version of the server, i.e. `'1.16.3'`
 
-#### sever.build
+#### server.build
  - `str`, Only applicable for Paper/Forge, contains build number. Else will be `None`
 
 #### server.type
