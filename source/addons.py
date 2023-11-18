@@ -390,7 +390,11 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 # Imports addon to server
 # addon.jar --> AddonFileObject
 def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=False):
-    jar_name = os.path.basename(addon_path.path if isinstance(addon_path, AddonFileObject) else addon_path)
+    try:
+        jar_name = os.path.basename(addon_path.path if isinstance(addon_path, AddonFileObject) else addon_path)
+    except TypeError:
+        return False
+
     addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
     destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else constants.server_path(server_properties['name'], addon_folder)
 

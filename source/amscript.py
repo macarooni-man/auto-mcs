@@ -849,10 +849,8 @@ class ScriptObject():
                     new_func += "\n\n"
 
                     # print(new_func)
-                    exec(new_func, self.function_dict[os.path.basename(script_path)]['values'],
-                         self.function_dict[os.path.basename(script_path)]['values'])
-                    self.function_dict[os.path.basename(script_path)]['@server.on_loop'].append(
-                        self.function_dict[os.path.basename(script_path)]['values']['__on_loop__'])
+                    exec(new_func, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
+                    self.function_dict[os.path.basename(script_path)]['@server.on_loop'].append(self.function_dict[os.path.basename(script_path)]['values']['__on_loop__'])
                     self.src_dict[os.path.basename(script_path)]['@server.on_loop'].append(new_func.strip())
 
             # Remove references to function calls in the script context

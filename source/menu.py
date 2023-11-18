@@ -5979,7 +5979,6 @@ def button_action(button_name, button, specific_screen=''):
 
 
 
-
 # =============================================== Screen Templates =====================================================
 # <editor-fold desc="Screen Templates">
 
@@ -14725,6 +14724,7 @@ class ServerAddonScreen(MenuBackground):
                 ), 0
             )
 
+
 class ServerAddonSearchScreen(MenuBackground):
 
     def switch_page(self, direction):
@@ -18491,7 +18491,7 @@ class MainApp(App):
                 save_window_pos()
                 global_conf['fullscreen'] = (Window.width > (constants.window_size[0] + 400))
                 global_conf['geometry'] = constants.last_window
-                print(global_conf)
+                # print(global_conf)
                 f.write(constants.json.dumps(global_conf, indent=2))
         except Exception as e:
             print(e)
@@ -18511,9 +18511,12 @@ class MainApp(App):
 
     Window.bind(on_request_close=exit_check)
     Window.bind(on_cursor_enter=save_window_pos, on_cursor_leave=save_window_pos)
-
+    dropped_files = []
+    processing_drops = False
 
     def build(self):
+        Window.bind(on_dropfile=self.file_drop)
+
         self.icon = os.path.join(constants.gui_assets, "big-icon.png")
         Loader.loading_pickaxe = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
 
@@ -18554,6 +18557,167 @@ class MainApp(App):
         Clock.schedule_once(raise_window, 0)
 
         return screen_manager
+
+
+    # Executes function on file drop
+    def file_drop(self, w, path):
+        def process_drops(*a):
+            if not self.processing_drops and self.dropped_files:
+                self.processing_drops = True
+
+
+                if screen_manager.current == 'CreateServerAddonScreen':
+                    banner_text = ''
+                    for addon in self.dropped_files:
+                        if addon.endswith(".jar") and os.path.isfile(addon):
+                            addon = addons.get_addon_file(addon, constants.new_server_info)
+                            constants.new_server_info['addon_objects'].append(addon)
+                            screen_manager.current_screen.gen_search_results(
+                                constants.new_server_info['addon_objects'])
+
+                            # Switch pages if page is full
+                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(constants.new_server_info['addon_objects']) > 0):
+                                screen_manager.current_screen.switch_page("right")
+
+                            # Show banner
+                            if len(self.dropped_files) == 1:
+                                if len(addon.name) < 26:
+                                    addon_name = addon.name
+                                else:
+                                    addon_name = addon.name[:23] + "..."
+
+                                banner_text = f"Added '{addon_name}' to the queue"
+                            else:
+                                banner_text = f"Added {len(self.dropped_files)} add-ons to the queue"
+
+                    if banner_text:
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.553, 0.902, 0.675, 1),
+                                banner_text,
+                                "add-circle-sharp.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+
+                if screen_manager.current == 'ServerAddonScreen':
+                    addon_manager = constants.server_manager.current_server.addon
+                    banner_text = ''
+                    for addon in self.dropped_files:
+                        if addon.endswith(".jar") and os.path.isfile(addon):
+                            addon = addon_manager.import_addon(addon)
+                            addon_list = addon_manager.return_single_list()
+                            screen_manager.current_screen.gen_search_results(addon_manager.return_single_list(), fade_in=False, highlight=addon.hash, animate_scroll=True)
+
+                            # Switch pages if page is full
+                            if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(addon_list) > 0):
+                                screen_manager.current_screen.switch_page("right")
+
+                            # Show banner
+                            if len(self.dropped_files) == 1:
+                                if len(addon.name) < 26:
+                                    addon_name = addon.name
+                                else:
+                                    addon_name = addon.name[:23] + "..."
+
+                                banner_text = f"Imported '{addon_name}'"
+                            else:
+                                banner_text = f"Imported {len(self.dropped_files)} add-ons"
+
+                    if banner_text:
+
+                        # Show banner if server is running
+                        if addon_manager.hash_changed():
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (0.937, 0.831, 0.62, 1),
+                                    f"A server restart is required to apply changes",
+                                    "sync.png",
+                                    3,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0
+                            )
+
+                        else:
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (0.553, 0.902, 0.675, 1),
+                                    banner_text,
+                                    "add-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0
+                            )
+
+                if screen_manager.current == 'ServerAmscriptScreen':
+                    script_manager = constants.server_manager.current_server.script_manager
+                    if self.dropped_files:
+                        banner_text = ''
+                        for script in self.dropped_files:
+                            if script.endswith(".ams") and os.path.isfile(script):
+                                script = script_manager.import_script(script)
+                                if not script:
+                                    continue
+
+                                script_list = script_manager.return_single_list()
+                                screen_manager.current_screen.gen_search_results(script_manager.return_single_list(), fade_in=False, highlight=script.hash, animate_scroll=True)
+
+                                # Switch pages if page is full
+                                if (len(screen_manager.current_screen.scroll_layout.children) == 0) and (len(script_list) > 0):
+                                    screen_manager.current_screen.switch_page("right")
+
+                                # Show banner
+                                if len(self.dropped_files) == 1:
+                                    if len(script.title) < 26:
+                                        script_name = script.title
+                                    else:
+                                        script_name = script.title[:23] + "..."
+
+                                    banner_text = f"Imported '{script_name}'"
+                                else:
+                                    banner_text = f"Imported {len(self.dropped_files)} scripts"
+
+                        if banner_text:
+
+                            # Show banner if server is running
+                            if script_manager.hash_changed():
+                                Clock.schedule_once(
+                                    functools.partial(
+                                        screen_manager.current_screen.show_banner,
+                                        (0.937, 0.831, 0.62, 1),
+                                        "An amscript reload is required to apply changes",
+                                        "sync.png",
+                                        3,
+                                        {"center_x": 0.5, "center_y": 0.965}
+                                    ), 0
+                                )
+
+                            else:
+                                Clock.schedule_once(
+                                    functools.partial(
+                                        screen_manager.current_screen.show_banner,
+                                        (0.553, 0.902, 0.675, 1),
+                                        banner_text,
+                                        "add-circle-sharp.png",
+                                        2.5,
+                                        {"center_x": 0.5, "center_y": 0.965}
+                                    ), 0
+                                )
+
+
+                def enable(*a):
+                    self.processing_drops = False
+                self.dropped_files = []
+                Clock.schedule_once(enable, 1)
+
+
+        self.dropped_files.append(path.decode())
+        if not self.processing_drops and self.dropped_files:
+            Clock.schedule_once(process_drops, 0.1)
 
 
 main_app = None

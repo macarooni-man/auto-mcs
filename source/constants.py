@@ -1040,7 +1040,7 @@ def find_latest_mc():
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
             for div in soup.find_all('div', "title"):
-                if "download latest" in div.text.lower():
+                if "download latest" in div.text.lower() or "download recommended" in div.text.lower():
                     latestMC["forge"] = div.small.text.split(" -")[0]
                     latestMC["builds"]["forge"] = div.small.text.split(" - ")[1]
                     break

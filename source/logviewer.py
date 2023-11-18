@@ -449,6 +449,18 @@ def open_log(server_name: str, path: str, data: dict, *args):
 
 
 
+
+if os.name == 'nt':
+    from ctypes import windll, c_int64
+
+    # Calculate screen width and disable DPI scaling if bigger than a certain resolution
+    width = windll.user32.GetSystemMetrics(0)
+    scale = windll.shcore.GetScaleFactorForDevice(0) / 100
+    if (width * scale) < 2000:
+        windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
+
+
+
 # if __name__ == '__main__':
 #     import constants
 #
