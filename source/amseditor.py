@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, FIRST, IntVar, Frame, PhotoImage, INSERT, BaseWidget,\
-    Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, Button, SUNKEN
+    Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, Button, SUNKEN, CURRENT, SEL
 
 from typing import Any, Callable, Optional, Type, Union
 from pygments.token import Keyword, Number, Name
@@ -1457,10 +1457,11 @@ def launch_window(path: str, data: dict, *a):
                     tabs=Font(font=kwargs["font"]).measure(" " * tab_width),
                 )
 
-                self.bind(f"<Control-a>", self._select_all, add=True)
-                self.bind(f"<Control-z>", self.undo, add=True)
-                self.bind(f"<Control-r>", self.redo, add=True)
-                self.bind(f"<Control-y>", self.redo, add=True)
+                self.bind(f"<Control-a>", self._select_all)
+                self.bind(f"<Control-z>", self.undo)
+                self.bind(f"<Control-r>", self.redo)
+                self.bind(f"<Control-y>", self.redo)
+                self.bind(f"<Control-d>", self.duplicate_line)
                 self.bind("<<ContentChanged>>", self.scroll_line_update, add=True)
                 self.bind("<Button-1>", self._line_numbers.redraw, add=True)
 
@@ -1476,6 +1477,16 @@ def launch_window(path: str, data: dict, *a):
                 self.mark_set("insert", "end")
                 return "break"
 
+            def duplicate_line(self, *_):
+                self.tag_remove("sel", "1.0", "end")
+                cursor_pos = self.index(INSERT)
+                line_num = int(self.index(INSERT).split('.')[0])
+                last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                self.insert(f"{cursor_pos} lineend", f'\n{last_line}')
+                self.mark_set(INSERT, f"{line_num+1}.0 lineend")
+                self.recalc_lexer()
+                return 'break'
+
             def recalc_lexer(self):
                 self.after(0, self.highlight_all)
                 self.after(0, self.scroll_line_update)
@@ -1483,6 +1494,7 @@ def launch_window(path: str, data: dict, *a):
             def redo(self, *_):
                 self.edit_redo()
                 self.recalc_lexer()
+                return 'break'
 
             def undo(self, *_):
                 self.edit_undo()
@@ -1502,6 +1514,7 @@ def launch_window(path: str, data: dict, *a):
                 self.after(1, check_suggestions)
 
                 self.recalc_lexer()
+                return 'break'
 
             def _cmd_proxy(self, command: str, *args) -> Any:
                 try:
@@ -1696,18 +1709,16 @@ def launch_window(path: str, data: dict, *a):
                 self.bind("<Control-BackSpace>", self.ctrl_bs)
 
                 # Redraw lineno
-                self.bind("<Button-1>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Control-h>", lambda *_: replace.toggle_focus(True))
                 self.bind("<Control-k>", lambda *_: "break")
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
                 self.bind("<<ContentChanged>>", self.autosave, add=True)
-                self.bind("<<Selection>>", self.redo_search, add=True)
                 self.bind("<<Selection>>", lambda *_: self.after(0, self.highlight_matching_parentheses))
+                self.bind("<<Selection>>", self.redo_search, add=True)
                 self.bind("<Control-S>", self.search_selection)
                 root.bind('<Configure>', self.set_error, add=True)
                 self.error_label.bind("<Button-1>", lambda *_: self.after(0, self.view_error), add=True)
                 self.bind("<KeyRelease>", lambda *_: self.after(0, self.highlight_matching_parentheses))
-                self.bind("<Button-1>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
                 self.bind("<Button-3>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
                 self.hl_pair = (None, None)
 
@@ -1723,6 +1734,56 @@ def launch_window(path: str, data: dict, *a):
 
                 self.bind(f"<Control-c>", self._copy, add=True)
                 self.bind(f"<Control-v>", self._paste, add=True)
+
+                self.bind("<ButtonPress-1>", self.on_press)
+                self.bind("<B1-Motion>", self.on_drag)
+                self.bind("<ButtonRelease-1>", self.on_drop)
+
+                self.bind("<Button-1>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
+                self.bind("<Button-1>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
+                self.drag_data = {}
+                self.selection = False
+
+            def on_press(self, event):
+                index = self.index(CURRENT)
+                self.drag_data['start'] = index
+                sel_start = self.index(SEL_FIRST)
+                sel_end = self.index(SEL_LAST)
+                self.selection = sel_start and sel_end
+                if self.selection:
+                    mouse_pos = self.index(CURRENT)
+                    sel_start, sel_end = self.tag_ranges(SEL)
+                    if (self.compare(mouse_pos, '>=', sel_start) and self.compare(mouse_pos, '<=', sel_end)):
+                        return 'break'
+                    else:
+                        self.selection = False
+
+            def on_drag(self, event):
+                if not self.selection:
+                    current_index = self.index(CURRENT)
+                    self.tag_remove(SEL, "1.0", END)
+                    self.tag_add(SEL, self.drag_data['start'], current_index)
+                else:
+                    return 'break'
+
+            def on_drop(self, event):
+                sel_start = self.index(SEL_FIRST)
+                sel_end = self.index(SEL_LAST)
+
+                if self.selection:
+                    last_index = f"{int(self.index('end').split('.')[0]) - 1 - dead_zone}.0 lineend"
+                    position = self.index(CURRENT)
+                    text = self.get(sel_start, sel_end)
+                    if self.compare(position, '>', last_index):
+                        position = last_index
+                        text = text + ((len(text.splitlines())-1) * '\n')
+
+                    self.delete(SEL_FIRST, SEL_LAST)
+                    self.insert(position, text)
+                    self.mark_set(INSERT, CURRENT)
+                    self.recalc_lexer()
+
+                self.selection = sel_start and sel_end
 
             @staticmethod
             def is_matching(opening, closing, invert=False):
@@ -2521,7 +2582,7 @@ def launch_window(path: str, data: dict, *a):
                     if len(self.get(sel_start, sel_end)) == 1:
                         self.after(0, self.recalc_lexer)
                         get_text = self.get(sel_start, sel_end)
-                        if (get_text in "'\"") and (event.keysym in ('quotedbl', 'quoteright')):
+                        if (get_text in "'\"") and (event.keysym in ('quotedbl', 'quoteright', 'apostrophe')):
 
                             name = "Single" if get_text == "'" else "Double"
                             replace_with = '"' if event.keysym == 'quotedbl' else "'"
@@ -2603,7 +2664,7 @@ def launch_window(path: str, data: dict, *a):
                             self.mark_set(INSERT, current_pos)
                             self.recalc_lexer()
 
-                    elif last_line.strip().startswith("''") and event.keysym == 'quoteright':
+                    elif last_line.strip().startswith("''") and event.keysym in ('quoteright', 'apostrophe'):
                         current = self.get(f'{current_pos}-2c') + left
                         if current == "''":
                             self.insert(current_pos, "'''")
@@ -2612,8 +2673,8 @@ def launch_window(path: str, data: dict, *a):
 
 
                 # Checks if symbol exists for inserting pairs
-                def check_text(char, ex=''):
-                    pattern = f'[^a-zA-Z0-9.{ex}]'
+                def check_text(char, ex='', string=False):
+                    pattern = f'[^acdeghijklmnopqstvxyzA-Z0-9.{ex}]' if string else f'[^a-zA-Z0-9.{ex}]'
                     match = re.sub(pattern, '', char)
                     return not match
 
@@ -2636,7 +2697,7 @@ def launch_window(path: str, data: dict, *a):
                 elif sel_start and sel_end and event.keysym == 'bracketleft':
                     self.surround_text(current_pos, sel_start, sel_end, '[', ']')
                     return "break"
-                elif sel_start and sel_end and event.keysym == 'quoteright':
+                elif sel_start and sel_end and event.keysym in ('quoteright', 'apostrophe'):
                     self.surround_text(current_pos, sel_start, sel_end, "'", "'")
                     return "break"
                 elif sel_start and sel_end and event.keysym == 'quotedbl':
@@ -2665,7 +2726,7 @@ def launch_window(path: str, data: dict, *a):
                 elif event.keysym == 'bracketright' and (right == ']' and not equal_symbols(']', '[', ']')):
                     self.move_cursor_right()
                     return 'break'
-                elif event.keysym == 'quoteright' and right == "'":
+                elif event.keysym in ('quoteright', 'apostrophe') and right == "'":
                     self.move_cursor_right()
                     return 'break'
                 elif event.keysym == 'quotedbl' and right == '"':
@@ -2686,11 +2747,11 @@ def launch_window(path: str, data: dict, *a):
                     self.insert(INSERT, "[]")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
-                elif event.keysym == 'quoteright' and (check_text(right, "'") and check_text(left, "'")):
+                elif event.keysym in ('quoteright', 'apostrophe') and (check_text(right, "'") and check_text(left, "'", True)):
                     self.insert(INSERT, "''")
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
-                elif event.keysym == 'quotedbl' and (check_text(right, '"') and check_text(left, '"')):
+                elif event.keysym == 'quotedbl' and (check_text(right, '"') and check_text(left, '"', True)):
                     self.insert(INSERT, '""')
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
@@ -2769,6 +2830,7 @@ def launch_window(path: str, data: dict, *a):
         code_editor.pack(fill="both", expand=True, pady=10)
         code_editor.config(autoseparator=False, maxundo=0, undo=False)
         code_editor.insert(END, ams_data)
+        code_editor.check_cursor(None)
         code_editor.config(autoseparator=True, maxundo=-1, undo=True)
         code_editor._line_numbers.config(borderwidth=0, highlightthickness=0)
         code_editor.config(spacing1=5, spacing3=5, wrap='word')
@@ -3334,7 +3396,6 @@ def launch_window(path: str, data: dict, *a):
                 self.bind("<Enter>", lambda *_: self.hover(True))
                 self.bind("<Leave>", lambda *_: self.hover(False))
 
-
             def update_buttons(self, items):
                 for x, b in enumerate(self.button_list, 0):
                     visible = b.winfo_ismapped()
@@ -3377,7 +3438,6 @@ def launch_window(path: str, data: dict, *a):
                 ac.hide()
                 code_editor._vs.disabled = True
                 code_editor._line_numbers.redraw()
-
 
             def hide(self, *a):
                 self.place_forget()
@@ -3470,6 +3530,11 @@ def launch_window(path: str, data: dict, *a):
         root.bind_all("<Button-1>", context_menu.check_hover, add=True)
         window.root.bind("<<NotebookTabChanged>>", context_menu.hide, add=True)
 
+        def check_focus(*_):
+            if not code_editor._line_numbers.allow_highlight:
+                root.focus_force()
+        window.root.bind("<<NotebookTabChanged>>", lambda *_: check_focus(), add=True)
+
 
         # Add tab to window
         window.after(0, lambda *_: window.root.add(root, text=os.path.basename(path)))
@@ -3490,7 +3555,7 @@ def edit_script(script_path: str, data: dict, *args):
         if not running:
             mgr = multiprocessing.Manager()
             wlist = mgr.Value('window_list', '')
-            process = multiprocessing.Process(target=functools.partial(create_root, data), args=(wlist, 'window_list'), daemon=False)
+            process = multiprocessing.Process(target=functools.partial(create_root, data), args=(wlist, 'window_list'), daemon=True)
             process.start()
 
         wlist.value = script_path
