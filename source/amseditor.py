@@ -1771,9 +1771,16 @@ def launch_window(path: str, data: dict, *a):
                 sel_end = self.index(SEL_LAST)
 
                 if self.selection:
+                    mouse_pos = self.index(CURRENT)
+                    if (self.compare(mouse_pos, '>=', sel_start) and self.compare(mouse_pos, '<=', sel_end)):
+                        self.selection = False
+                        self.tag_remove(SEL, "1.0", END)
+                        self.mark_set(INSERT, mouse_pos)
+                        return
+
                     last_index = f"{int(self.index('end').split('.')[0]) - 1 - dead_zone}.0 lineend"
                     position = self.index(CURRENT)
-                    text = self.get(sel_start, sel_end)
+                    text = self.get(sel_start, sel_end).strip('\n')
                     if self.compare(position, '>', last_index):
                         position = last_index
                         text = text + ((len(text.splitlines())-1) * '\n')
@@ -2512,6 +2519,31 @@ def launch_window(path: str, data: dict, *a):
 
 
 
+                # Add docstring
+                in_header = self.in_header()
+                if self.in_docstring() or in_header:
+                    if event.keysym == 'Return' and in_header:
+                        self.insert(current_pos, '\n# ')
+                        self.recalc_lexer()
+                        return 'break'
+                    self.recalc_lexer()
+                else:
+                    if last_line.strip().startswith('""') and event.keysym == 'quotedbl':
+                        current = self.get(f'{current_pos}-2c') + left
+                        if current == '""':
+                            self.insert(current_pos, '"""')
+                            self.mark_set(INSERT, current_pos)
+                            self.recalc_lexer()
+
+                    elif last_line.strip().startswith("''") and event.keysym in ('quoteright', 'apostrophe'):
+                        current = self.get(f'{current_pos}-2c') + left
+                        if current == "''":
+                            self.insert(current_pos, "'''")
+                            self.mark_set(INSERT, current_pos)
+                            self.recalc_lexer()
+
+
+
                 # Press return with last indent level
                 if event.keysym == 'Return':
                     if context_menu.visible:
@@ -2646,30 +2678,6 @@ def launch_window(path: str, data: dict, *a):
                 if event.keysym == "Tab" and ac.visible:
                     ac.click()
                     return "break"
-
-
-                # Add docstring
-                in_header = self.in_header()
-                if self.in_docstring() or in_header:
-                    if event.keysym == 'Return' and in_header:
-                        self.insert(current_pos, '\n# ')
-                        self.recalc_lexer()
-                        return 'break'
-                    self.recalc_lexer()
-                else:
-                    if last_line.strip().startswith('""') and event.keysym == 'quotedbl':
-                        current = self.get(f'{current_pos}-2c') + left
-                        if current == '""':
-                            self.insert(current_pos, '"""')
-                            self.mark_set(INSERT, current_pos)
-                            self.recalc_lexer()
-
-                    elif last_line.strip().startswith("''") and event.keysym in ('quoteright', 'apostrophe'):
-                        current = self.get(f'{current_pos}-2c') + left
-                        if current == "''":
-                            self.insert(current_pos, "'''")
-                            self.mark_set(INSERT, current_pos)
-                            self.recalc_lexer()
 
 
                 # Checks if symbol exists for inserting pairs
@@ -3576,44 +3584,44 @@ if os.name == 'nt':
 
 
 
-# if __name__ == '__main__':
-#     import constants
-#     import amscript
-# 
-#     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
-#     from svrmgr import ServerObject
-#     server_obj = ServerObject('test')
-#     while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
-#         time.sleep(0.2)
-#
-#     # DELETE ABOVE
-#
-#     script_obj = amscript.ScriptObject()
-#     data_dict = {
-#         'app_title': constants.app_title,
-#         'gui_assets': constants.gui_assets,
-#         'background_color': constants.background_color,
-#         'global_conf': constants.global_conf,
-#         'script_obj': {
-#             'syntax_func': script_obj.is_valid,
-#             'protected': script_obj.protected_variables,
-#             'events': script_obj.valid_events
-#         },
-#         'suggestions': server_obj.retrieve_suggestions(script_obj)
-#     }
-#
-#     path = constants.scriptDir
-#     class Test():
-#         def __init__(self):
-#             self.value = os.path.join(path, 'test2.ams')
-#             import threading
-#             def test():
-#                 self.value = os.path.join(path, 'custom-waypoints.ams')
-#             threading.Timer(1, test).start()
-#             # def test():
-#             #     self.value = os.path.join(path, 'test.ams')
-#             # threading.Timer(2, test).start()
-#             # def test():
-#             #     self.value = os.path.join(path, 'test2.ams')
-#             # threading.Timer(3, test).start()
-#     create_root(data_dict, Test())
+if __name__ == '__main__':
+    import constants
+    import amscript
+
+    from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
+    from svrmgr import ServerObject
+    server_obj = ServerObject('test')
+    while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
+        time.sleep(0.2)
+
+    # DELETE ABOVE
+
+    script_obj = amscript.ScriptObject()
+    data_dict = {
+        'app_title': constants.app_title,
+        'gui_assets': constants.gui_assets,
+        'background_color': constants.background_color,
+        'global_conf': constants.global_conf,
+        'script_obj': {
+            'syntax_func': script_obj.is_valid,
+            'protected': script_obj.protected_variables,
+            'events': script_obj.valid_events
+        },
+        'suggestions': server_obj.retrieve_suggestions(script_obj)
+    }
+
+    path = constants.scriptDir
+    class Test():
+        def __init__(self):
+            self.value = os.path.join(path, 'test2.ams')
+            import threading
+            def test():
+                self.value = os.path.join(path, 'custom-waypoints.ams')
+            threading.Timer(1, test).start()
+            # def test():
+            #     self.value = os.path.join(path, 'test.ams')
+            # threading.Timer(2, test).start()
+            # def test():
+            #     self.value = os.path.join(path, 'test2.ams')
+            # threading.Timer(3, test).start()
+    create_root(data_dict, Test())

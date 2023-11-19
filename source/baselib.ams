@@ -255,8 +255,8 @@ def generate_header(text):
 			script_list.extend(list(tuple(server._ams_info['installed']['disabled'])))
 
 			# format argument 3 as a script name
-			all = cmd.split(" ")[1].strip().lower() == "all"
-			target = cmd.split(" ")[1].strip().lower().replace(".ams","")
+			all = cmd.split(" ", 1)[1].strip().lower() == "all"
+			target = cmd.split(" ", 1)[1].strip().lower().replace(".ams","")
 
 			# If there are no scripts, bypass this
 			if not script_list:

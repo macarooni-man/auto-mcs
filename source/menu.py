@@ -4711,7 +4711,7 @@ class PopupWindow(RelativeLayout):
 
         if animate:
             self.animate(False)
-            Clock.schedule_once(delete, 0.36)
+            Clock.schedule_once(delete, 0.4)
         else:
             delete()
 
@@ -11043,6 +11043,8 @@ class ServerManagerScreen(MenuBackground):
 
         # Show banner
         bool_favorite = bool(config_file.get('general', 'isFavorite') == 'true')
+        if server_name in constants.server_manager.running_servers:
+            constants.server_manager.running_servers[server_name].favorite = bool_favorite
 
         Clock.schedule_once(
             functools.partial(
@@ -11533,7 +11535,11 @@ def prompt_new_server(server_obj, *args):
         if boolean:
             threading.Timer(0, server_obj.backup.save_backup).start()
 
-        Clock.schedule_once(prompt_updates, 0.6)
+        def wait_timer(*a):
+            while screen_manager.current_screen.popup_widget:
+                time.sleep(0.1)
+            Clock.schedule_once(prompt_updates, 0)
+        threading.Timer(0, wait_timer).start()
 
     # Step 1 - prompt for backups
     def prompt_backup(*args):
@@ -15616,8 +15622,8 @@ class CreateAmscriptScreen(MenuBackground):
             script_title = self.name_input.text.strip()
 
             contents = f"""#!
-# title: {script_title}
-# author: {constants.username}
+# title: {script_title.title()}
+# author: {constants.username.title()}
 # version: 1.0
 # description: 
 #!

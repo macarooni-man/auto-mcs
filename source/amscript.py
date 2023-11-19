@@ -772,22 +772,19 @@ class ScriptObject():
                     syntax = self.aliases[k]['syntax']
                     hidden = self.aliases[k]['hidden']
                     argument_list = list(self.aliases[k]['arguments'].keys())
-                    req_args_list = list(
-                        [x for x in self.aliases[k]['arguments'].keys() if self.aliases[k]['arguments'][x]])
+                    req_args_list = list([x for x in self.aliases[k]['arguments'].keys() if self.aliases[k]['arguments'][x]])
                     arguments = {}
 
                     new_func += f"    {'if' if first else 'elif'} command.strip().split(' ',1)[0].strip() == '{k}': #__{self.server_id}__\n"
                     new_func += f"        if perm_dict[permission] < perm_dict['{self.aliases[k]['permission']}']:\n"
 
                     # Permission thingy
-                    new_func += (
-                        f"            player.log_error(\"You do not have permission to use this command\")\n" if not hidden else "            pass\n")
+                    new_func += (f"            player.log_error(\"You do not have permission to use this command\")\n" if not hidden else "            pass\n")
                     new_func += f"        else:\n"
                     new_func += f"            if len(command.split(' ', len({argument_list}))[1:]) < len({req_args_list}):\n"
 
                     # Syntax thingy
-                    new_func += (
-                        f"                player.log_error(\"Invalid syntax: {syntax}\")\n" if not hidden else "                pass\n")
+                    new_func += (f"                player.log_error(\"Invalid syntax: {syntax}\")\n" if not hidden else "                pass\n")
                     new_func += f"            else:\n"
                     new_func += f"                arguments = dict(zip_longest({argument_list}, command.split(' ', len({argument_list}))[1:]))\n"
                     new_func += f"                command = command.split(' ', 1)[0].strip()\n"
