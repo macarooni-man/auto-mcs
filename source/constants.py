@@ -275,6 +275,18 @@ def get_refresh_rate():
         pass
 
 
+# Check for admin rights
+def is_admin():
+    try:
+        if os_name == 'windows':
+            import ctypes
+            return ctypes.windll.shell32.IsUserAnAdmin() == 1
+        else:
+            return os.getuid() == 0
+    except:
+        return False
+
+
 # Returns true if latest is greater than current
 def check_app_version(current, latest):
 

@@ -3584,44 +3584,44 @@ if os.name == 'nt':
 
 
 
-if __name__ == '__main__':
-    import constants
-    import amscript
-
-    from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
-    from svrmgr import ServerObject
-    server_obj = ServerObject('test')
-    while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
-        time.sleep(0.2)
-
-    # DELETE ABOVE
-
-    script_obj = amscript.ScriptObject()
-    data_dict = {
-        'app_title': constants.app_title,
-        'gui_assets': constants.gui_assets,
-        'background_color': constants.background_color,
-        'global_conf': constants.global_conf,
-        'script_obj': {
-            'syntax_func': script_obj.is_valid,
-            'protected': script_obj.protected_variables,
-            'events': script_obj.valid_events
-        },
-        'suggestions': server_obj.retrieve_suggestions(script_obj)
-    }
-
-    path = constants.scriptDir
-    class Test():
-        def __init__(self):
-            self.value = os.path.join(path, 'test2.ams')
-            import threading
-            def test():
-                self.value = os.path.join(path, 'custom-waypoints.ams')
-            threading.Timer(1, test).start()
-            # def test():
-            #     self.value = os.path.join(path, 'test.ams')
-            # threading.Timer(2, test).start()
-            # def test():
-            #     self.value = os.path.join(path, 'test2.ams')
-            # threading.Timer(3, test).start()
-    create_root(data_dict, Test())
+# if __name__ == '__main__':
+#     import constants
+#     import amscript
+#
+#     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
+#     from svrmgr import ServerObject
+#     server_obj = ServerObject('test')
+#     while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
+#         time.sleep(0.2)
+#
+#     # DELETE ABOVE
+#
+#     script_obj = amscript.ScriptObject()
+#     data_dict = {
+#         'app_title': constants.app_title,
+#         'gui_assets': constants.gui_assets,
+#         'background_color': constants.background_color,
+#         'global_conf': constants.global_conf,
+#         'script_obj': {
+#             'syntax_func': script_obj.is_valid,
+#             'protected': script_obj.protected_variables,
+#             'events': script_obj.valid_events
+#         },
+#         'suggestions': server_obj.retrieve_suggestions(script_obj)
+#     }
+#
+#     path = constants.scriptDir
+#     class Test():
+#         def __init__(self):
+#             self.value = os.path.join(path, 'test2.ams')
+#             import threading
+#             def test():
+#                 self.value = os.path.join(path, 'custom-waypoints.ams')
+#             threading.Timer(1, test).start()
+#             # def test():
+#             #     self.value = os.path.join(path, 'test.ams')
+#             # threading.Timer(2, test).start()
+#             # def test():
+#             #     self.value = os.path.join(path, 'test2.ams')
+#             # threading.Timer(3, test).start()
+#     create_root(data_dict, Test())
