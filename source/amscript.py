@@ -1307,6 +1307,10 @@ class PlayerScriptObject():
     def __eq__(self, comp):
         return self.name == comp
 
+    # Overrides comparison to return string instead
+    def __neq__(self, comp):
+        return self.name != comp
+
     # Grabs latest player NBT data
     def _get_nbt(self):
         log_data = None
@@ -2345,7 +2349,11 @@ class ItemObject(Munch):
         self['$_amsclass'] = self.__class__.__name__
 
     def __str__(self):
-        return str(self['id'])
+        try:
+            item_id = str(self['id'])
+        except KeyError:
+            item_id = None
+        return item_id
 
 class EffectObject(Munch):
     def __init__(self, name, *args, **kwargs):
@@ -2361,8 +2369,76 @@ class CoordinateObject(Munch):
         super().__init__(*args, **kwargs)
         self['$_amsclass'] = self.__class__.__name__
 
+    def __do_operation__(self, operand, operator, reversed=False):
+        if isinstance(operand, CoordinateObject):
+            if len(self.keys()) != len(operand.keys()):
+                raise AttributeError("Invalid arithmetic with Vec2 and Vec3")
+
+            final_dict = {}
+            for k in list(self.keys())[:3]:
+                eval_str = f'y {operator} x' if reversed else f'x {operator} y'
+                final_dict[k] = eval(eval_str, None, {'x': self[k], 'y': operand[k]})
+            return CoordinateObject(final_dict)
+
+        elif isinstance(operand, (int, float)):
+            final_dict = {}
+            for k in list(self.keys())[:3]:
+                eval_str = f'y {operator} x' if reversed else f'x {operator} y'
+                final_dict[k] = eval(eval_str, None, {'x': self[k], 'y': operand})
+            return CoordinateObject(final_dict)
+
+        else:
+            raise TypeError('Operand must be <int> or <float>')
+
+
     def __str__(self):
         return " ".join([str(i) for k, i in self.items() if k != '$_amsclass'])
+
+    def __add__(self, other):
+        return self.__do_operation__(other, '+')
+
+    def __radd__(self, other):
+        return self.__do_operation__(other, '+', True)
+
+    def __iadd__(self, other):
+        for k, v in self.__do_operation__(other, '+').items():
+            self[k] = v
+
+    def __sub__(self, other):
+        return self.__do_operation__(other, '-')
+
+    def __mul__(self, other):
+        return self.__do_operation__(other, '*')
+
+    def __matmul__(self, other):
+        return self.__do_operation__(other, '@')
+
+    def __truediv__(self, other):
+        return self.__do_operation__(other, '/')
+
+    def __floordiv__(self, other):
+        return self.__do_operation__(other, '//')
+
+    def __mod__(self, other):
+        return self.__do_operation__(other, '%')
+
+    def __neg__(self):
+        final_dict = {}
+        for k in list(self.keys())[:3]:
+            final_dict[k] = self[k] * -1
+        return final_dict
+
+    def __pos__(self):
+        return self
+
+    def __abs__(self):
+        final_dict = {}
+        for k in list(self.keys())[:3]:
+            final_dict[k] = abs(self[k])
+        return final_dict
+
+    def __pow__(self, power, modulo=None):
+        return self.__do_operation__(power, '**')
 
 class InventoryObject():
 

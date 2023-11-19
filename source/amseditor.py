@@ -2896,7 +2896,8 @@ def launch_window(path: str, data: dict, *a):
                         animate(-45, 40, replace_frame)
                         animate(-85, 40, search_frame)
                         self.after(150, replace_frame.place_forget)
-                        self.after(200, reset_animate)
+                        self.after(200, replace_frame.place_forget)
+                        self.after(300, reset_animate)
                     else:
                         replace_frame.place_forget()
                         search_frame.place_configure(y=-45)
@@ -2909,7 +2910,7 @@ def launch_window(path: str, data: dict, *a):
                     if anim:
                         animate(-5, -40, replace_frame)
                         animate(-45, -40, search_frame)
-                        self.after(200, reset_animate)
+                        self.after(300, reset_animate)
                     else:
                         search_frame.place_configure(y=-85)
                         reset_animate()
@@ -3578,7 +3579,7 @@ if os.name == 'nt':
 # if __name__ == '__main__':
 #     import constants
 #     import amscript
-#
+# 
 #     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
 #     from svrmgr import ServerObject
 #     server_obj = ServerObject('test')
