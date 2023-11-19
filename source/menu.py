@@ -6775,12 +6775,14 @@ class MainMenuScreen(MenuBackground):
     # Prompt update/show banner when starting up
     def on_enter(self, *args):
         if constants.is_admin():
-            self.show_popup(
-                "warning",
-                "Privilege Error",
-                f"Running auto-mcs as {'administrator' if constants.os_name == 'windows' else 'root'} can expose your system to security vulnerabilities.\n\nPlease restart with standard user privileges to continue",
-                Window.close
-            )
+            def admin_error(*_):
+                self.show_popup(
+                    "warning",
+                    "Privilege Error",
+                    f"Running auto-mcs as {'administrator' if constants.os_name == 'windows' else 'root'} can expose your system to security vulnerabilities.\n\nPlease restart with standard user privileges to continue",
+                    Window.close
+                )
+            Clock.schedule_once(admin_error, 0.5)
             return
 
 
