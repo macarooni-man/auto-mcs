@@ -342,7 +342,19 @@ class ScriptObject():
 
                 # Format valid event tags as functions
                 for event in self.valid_events:
-                    if line.strip().startswith(event):
+
+                    # Invalid indentation
+                    if event in line and not line.startswith(event) and not line.startswith("#"):
+                        parsed_event = line.strip().split('(')[0]
+                        parse_error['file'] = file_name
+                        parse_error['code'] = line.split(event)[0]
+                        parse_error['line'] = f'{x}:1'
+                        parse_error['message'] = f"(IndentationError) '{parsed_event}' cannot be indented"
+                        parse_error['object'] = IndentationError(parse_error['message'].split(") ")[1])
+                        return parse_error
+
+
+                    elif line.startswith(event):
                         if event == '@player.on_alias':
                             line = line.replace(event, f'{event.split(".")[1]}').replace(":\n", f'\ndef __on_alias__(): #{id_hash}\n')
                         elif event == '@server.on_loop':
@@ -350,13 +362,14 @@ class ScriptObject():
                         else:
                             line = line.replace(event, f'def {event.split(".")[1]}')
 
+
                     # Check for invalid events
                     elif (line.startswith("@server.") or line.startswith("@player.")) and (("(") in line and ("):") in line):
                         parsed_event = line.strip().split('(')[0]
                         if parsed_event not in self.valid_events:
                             parse_error['file'] = file_name
                             parse_error['code'] = line.rstrip()
-                            parse_error['line'] = f'{x}:10'
+                            parse_error['line'] = f'{x}:1'
                             parse_error['message'] = f"(EventError) '{parsed_event}' event does not exist"
                             parse_error['object'] = NameError(parse_error['message'].split(") ")[1])
                             return parse_error
@@ -436,6 +449,65 @@ class ScriptObject():
     # 3. Pull out every @event and send them to the src_dict and function_dict for further processing
     # 4. Wrap @server.on_loop and @player.on_alias events with special code to ensure proper functionality
     def convert_script(self, script_path):
+
+        def enum_error(e, find=None):
+            s = os.path.basename(script_path)
+            ex_type, ex_value, ex_traceback = sys.exc_info()
+            parse_error = {}
+
+            # First, grab relative line number from modified code
+            tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
+
+            if find:
+                line_num = 0
+                original_code = find
+
+            else:
+                line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
+
+                # Locate original code from source
+                original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
+
+            # Use the line to find the original line number from the source
+            event_count = 0
+            func_name = f'def {tb.split("in ")[1].strip()}('
+            for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                # print(n, line, event_count, i)
+
+                if (original_code.strip() in line) and (event_count > 0):
+                    line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                    break
+
+                if line.startswith(func_name):
+                    event_count += 1
+
+            # Likely global code that's not wrapped in a function
+            else:
+                for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                    # print(n, line, event_count, i)
+
+                    if original_code.strip() in line:
+                        line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                        break
+
+                    if line.startswith(func_name):
+                        event_count += 1
+
+            # Generate error dict
+            parse_error['file'] = s
+            parse_error['code'] = original_code.strip()
+            parse_error['line'] = line_num
+            parse_error['message'] = f"({ex_type.__name__}) {ex_value}"
+            parse_error['object'] = e
+
+            print(parse_error)
+
+            del self.function_dict[s]['values']
+            del self.src_dict[s]['gbl']
+            del self.src_dict[s]['src']
+
+            return parse_error
+
         with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
 
             # Initialize self.function_dict
@@ -556,55 +628,7 @@ class ScriptObject():
 
             # Handle global variable exceptions
             except Exception as e:
-                s = os.path.basename(script_path)
-                ex_type, ex_value, ex_traceback = sys.exc_info()
-                parse_error = {}
-
-                # First, grab relative line number from modified code
-                tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if
-                      'File "<string>"' in item][-1].strip()
-                line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
-
-                # Locate original code from source
-                original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
-
-                # Use the line to find the original line number from the source
-                event_count = 0
-                func_name = f'def {tb.split("in ")[1].strip()}('
-                for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
-                    # print(n, line, event_count, i)
-
-                    if (original_code.strip() in line) and (event_count > 0):
-                        line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
-                        break
-
-                    if line.startswith(func_name):
-                        event_count += 1
-
-                # Likely global code that's not wrapped in a function
-                else:
-                    for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
-                        # print(n, line, event_count, i)
-
-                        if original_code.strip() in line:
-                            line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
-                            break
-
-                        if line.startswith(func_name):
-                            event_count += 1
-
-                # Generate error dict
-                parse_error['file'] = s
-                parse_error['code'] = original_code.strip()
-                parse_error['line'] = line_num
-                parse_error['message'] = f"({ex_type.__name__}) {ex_value}"
-                parse_error['object'] = e
-
-                del self.function_dict[s]['values']
-                del self.src_dict[s]['gbl']
-                del self.src_dict[s]['src']
-
-                return parse_error
+                return enum_error(e)
 
             # Search through script for events
             for event in self.valid_events:
@@ -637,6 +661,7 @@ class ScriptObject():
 
                                     function = function + new_line + "\n"
                                 function = function.strip()
+                                src_function_call = f"{event}({function.splitlines()[0].split('(', 1)[1]}"
                                 # print(function)
 
                                 # Check if delay is specified for events that support it, and modify the function accordingly
@@ -677,18 +702,19 @@ class ScriptObject():
 
                                     proc_func = "def process(player='player', command='', arguments={}, permission='anyone', description='', hidden=False):\n    global cmd, args, perm, desc, plr, hide\n    cmd=command\n    args=arguments\n    perm=permission\n    desc=description\n    plr=player\n    hide=hidden\n"
                                     proc_func += f"process({args})"
-                                    exec(proc_func, alias_values, alias_values)
+                                    try:
+                                        exec(proc_func, alias_values, alias_values)
+                                    except Exception as e:
+                                        return enum_error(e, find=src_function_call)
 
                                     # Only allow last argument to be optional, hence retarded dict comprehension
                                     alias_keys = alias_values['args'].keys()
                                     alias_dict = {
                                         'command': f"!{alias_values['cmd']}" if bool(re.match('^[a-zA-Z0-9]+$', alias_values['cmd'][:1])) else f"!{alias_values['cmd'][1:]}",
-                                        'arguments': {k: (True if (k != list(alias_keys)[-1]) else v) for (k, v) in
-                                                      alias_values['args'].items()},
+                                        'arguments': {k: (True if (k != list(alias_keys)[-1]) else v) for (k, v) in alias_values['args'].items()},
                                         'syntax': '',
                                         'permission': alias_values['perm'],
-                                        'description': alias_values['desc'] if alias_values[
-                                            'desc'] else f"Provided by '{os.path.basename(script_path)}'",
+                                        'description': alias_values['desc'] if alias_values['desc'] else f"Provided by '{os.path.basename(script_path)}'",
                                         'player': alias_values['plr'],
                                         'hidden': alias_values['hide']
                                     }
@@ -721,7 +747,10 @@ class ScriptObject():
                                     args = function.splitlines()[0].split('(', 1)[1].rsplit(')', 1)[0].lower()
                                     proc_func = "def process(interval=1, unit='second'):\n    global itvl, unt\n    itvl=interval\n    unt=unit\n"
                                     proc_func += f"process({args})"
-                                    exec(proc_func, loop_values, loop_values)
+                                    try:
+                                        exec(proc_func, loop_values, loop_values)
+                                    except Exception as e:
+                                        return enum_error(e, find=src_function_call)
 
                                     loop_dict = {
                                         'interval': loop_values['itvl'],
@@ -752,11 +781,12 @@ class ScriptObject():
 
 
                                 else:
-                                    exec(function, self.function_dict[os.path.basename(script_path)]['values'],
-                                         self.function_dict[os.path.basename(script_path)]['values'])
-                                    self.function_dict[os.path.basename(script_path)][event].append(
-                                        self.function_dict[os.path.basename(script_path)]['values'][func_name])
-                                    self.src_dict[os.path.basename(script_path)][event].append(function.strip())
+                                    try:
+                                        exec(function, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
+                                        self.function_dict[os.path.basename(script_path)][event].append(self.function_dict[os.path.basename(script_path)]['values'][func_name])
+                                        self.src_dict[os.path.basename(script_path)][event].append(function.strip())
+                                    except Exception as e:
+                                        return enum_error(e, find=src_function_call)
                                 break
 
             # Concatenate all aliases into one function
@@ -811,10 +841,8 @@ class ScriptObject():
                 new_func = func_header + new_func
 
                 # print(new_func)
-                exec(new_func, self.function_dict[os.path.basename(script_path)]['values'],
-                     self.function_dict[os.path.basename(script_path)]['values'])
-                self.function_dict[os.path.basename(script_path)]['@player.on_alias'].append(
-                    self.function_dict[os.path.basename(script_path)]['values']['__on_alias__'])
+                exec(new_func, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
+                self.function_dict[os.path.basename(script_path)]['@player.on_alias'].append(self.function_dict[os.path.basename(script_path)]['values']['__on_alias__'])
                 self.src_dict[os.path.basename(script_path)]['@player.on_alias'].append(new_func.strip())
 
             # Convert all loops to actual loops

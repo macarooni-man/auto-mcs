@@ -5,7 +5,7 @@ import functools
 from svrmgr import ServerObject
 
 
-server_obj = ServerObject('b1.4 MACX')
+server_obj = ServerObject('bedrock-test')
 server_obj.run_data = {
     'log': [],
     'performance': [],
@@ -20,10 +20,10 @@ so = ScriptObject(server_obj)
 # print(so.scripts)
 so.construct()
 
-# int(so.aliases)
-print(so.server_script_obj.aliases)
-player = PlayerScriptObject(so.server_script_obj, 'KChicken')
-player.inventory.hotbar[1].item = 'twwdwd'
+# # int(so.aliases)
+# print(so.server_script_obj.aliases)
+# player = PlayerScriptObject(so.server_script_obj, 'KChicken')
+# player.inventory.hotbar[1].item = 'twwdwd'
 
 
 

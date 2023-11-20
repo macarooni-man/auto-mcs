@@ -286,7 +286,7 @@ class AmsLexer(pygments.lexers.PythonLexer):
         self.add_filter(var_filter)
 AmsLexer.tokens['root'].insert(0, (r'#![\s\S]*#!', Keyword.Header))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\d+\.?\d*?(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Number.Float))
-AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\w+(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):$))\b)', Keyword.Argument))
+AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(?<!or )(?<!if )(?<!else )(?<!and )(?<!(\+|\-|\&|\||\*|\%|\/|\<|\>) )(\b(\w+(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):$))\b)', Keyword.Argument))
 AmsLexer.tokens['builtins'].insert(0, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Name.Function))
 
 
@@ -3587,7 +3587,7 @@ if os.name == 'nt':
 # if __name__ == '__main__':
 #     import constants
 #     import amscript
-# 
+#
 #     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
 #     from svrmgr import ServerObject
 #     server_obj = ServerObject('test')
