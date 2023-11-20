@@ -286,7 +286,7 @@ class AmsLexer(pygments.lexers.PythonLexer):
         self.add_filter(var_filter)
 AmsLexer.tokens['root'].insert(0, (r'#![\s\S]*#!', Keyword.Header))
 AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\d+\.?\d*?(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Number.Float))
-AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\w+(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):))\b)', Keyword.Argument))
+AmsLexer.tokens['root'].insert(-2, (r'(?<!=)(\b(\w+(?=\s*=[^,)]|\s*\)|\s*,)(?=.*\):$))\b)', Keyword.Argument))
 AmsLexer.tokens['builtins'].insert(0, (r'(?=\s*?\w+?)(\.?\w*(?=\())(?=.*?$)', Name.Function))
 
 
@@ -336,7 +336,7 @@ def save_script(script_path, *a):
         # print(script_contents)
 
         try:
-            with open(script_path, 'w+') as f:
+            with open(script_path, 'w+', encoding='utf-8', errors='ignore') as f:
                 f.write(script_contents)
         except Exception as e:
             print(e)
@@ -460,7 +460,7 @@ proc ::tabdrag::move {win x y} {
         geometry = None
         if os.path.exists(data['global_conf']):
             try:
-                with open(data['global_conf'], 'r') as f:
+                with open(data['global_conf'], 'r', encoding='utf-8', errors='ignore') as f:
                     file_contents = json.loads(f.read())
                     fullscreen = file_contents['ide-settings']['fullscreen']
                     font_size = file_contents['ide-settings']['font-size']
@@ -738,7 +738,7 @@ def launch_window(path: str, data: dict, *a):
     ams_data = ''
     if path:
 
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             ams_data = f.read().replace('\t', tab_str) + ("\n" * dead_zone)
 
         error_bg = convert_color((0.3, 0.1, 0.13))['hex']
@@ -3587,7 +3587,7 @@ if os.name == 'nt':
 # if __name__ == '__main__':
 #     import constants
 #     import amscript
-#
+# 
 #     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
 #     from svrmgr import ServerObject
 #     server_obj = ServerObject('test')
@@ -3616,7 +3616,7 @@ if os.name == 'nt':
 #             self.value = os.path.join(path, 'test2.ams')
 #             import threading
 #             def test():
-#                 self.value = os.path.join(path, 'custom-waypoints.ams')
+#                 self.value = os.path.join(path, 'wiki-search.ams')
 #             threading.Timer(1, test).start()
 #             # def test():
 #             #     self.value = os.path.join(path, 'test.ams')

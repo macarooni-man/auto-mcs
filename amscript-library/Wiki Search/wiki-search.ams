@@ -1,0 +1,149 @@
+#!
+# title: Wiki Search
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Search the Minecraft Wiki with the in-game chat
+# 
+# 
+# Usage:
+# 
+# --------- Search Wiki ---------
+# >>  !wiki <query>
+#!
+
+
+
+from difflib import SequenceMatcher
+from bs4 import BeautifulSoup
+import requests
+import re
+
+
+
+# Generates a fixed-width centered header for logging
+def generate_header(text):
+    header_len = 50
+    adjusted = round((header_len - len(text) - 2) / 2)
+    final_str = "-"*adjusted + f" {text} " + "-"*adjusted
+    if len(final_str) < header_len:
+        final_str = final_str + ("-"*(header_len-len(final_str)))
+    return final_str[:50]
+
+
+# Checks for string similarity
+def similarity(a, b):
+    return round(SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio(), 2)
+
+
+cached = {}
+
+
+@player.on_alias(player, command='wiki', arguments={'query': True}, description='Search the Minecraft Wiki in chat (Wiki Search)'):
+    global cached
+    
+    # Gather list of possible matches from the wiki
+    query = arguments['query'].split("#")[0].lower()
+    api_url = 'https://minecraft.fandom.com/api.php?'
+    search_url = f'{api_url}format=json&action=query&prop=info&inprop=url&generator=allpages&gapfrom={query}'
+    
+    if query not in cached:
+    
+        # Find the best match to query
+        try:
+            results = requests.get(search_url).json()['query']
+        except:
+            player.log_error(f'There was an issue reaching the Minecraft Wiki. Please try again later.')
+            return
+        
+        matches = [(page, similarity(query, page['title'])) for page in results['pages'].values()]
+        best_match = sorted(matches, key=lambda x: x[1], reverse=True)[0][0]
+        page_title = best_match['title']
+        page = BeautifulSoup(requests.get(best_match['fullurl']).content, features="lxml")
+
+        page_content = {}
+
+
+        # Gather infobox contents
+        info_box = page.find('aside', 'portable-infobox')
+        page_content[page_title] = ''
+        if info_box:
+            for k, v in zip(info_box.find_all('h3', 'pi-data-label'), info_box.find_all('div', 'pi-data-value')):
+                value = re.sub(r'(?<! |:|\[|\()([A-Z])', r', \1', v.text)
+                value = re.sub(r'(?<=:)([A-Z])', r' \1', value).strip(', ').replace('  ', ' ')
+                page_content[page_title] += f'{k.text}:  {value}\n'
+            page_content[page_title] += '\n'
+
+            for tag in page("aside", 'portable-infobox'):
+                tag.decompose()
+    
+    
+        # Organize page contents into a dictionary of headers and paragraphs
+        last = None
+        last_header = page_title
+        header_list = ['h1', 'h2', 'h3', 'h4']
+        for element in page.find('div', 'mw-parser-output').children:
+            text = element.text.replace('[]', '').strip()
+
+            if element.name in ['p', 'ul'] or element.name in header_list:
+                if len(element.text) > 10000:
+                    continue
+
+                if last:
+                    if last.name in header_list and element.name in header_list:
+                        continue
+
+                if text.startswith('Gallery') and element.name in header_list:
+                    break
+
+                if element.name == 'ul':
+                    text = '\n'.join([f'  - {l}' for l in element.text.splitlines() if l.strip()])
+
+                last = element
+
+                if element.name in header_list:
+                    last_header = text.lower()
+                    page_content[last_header] = ''
+                    continue
+
+                page_content[last_header] += re.sub(r'\n\n+', '\n\n', text) + '\n'
+
+
+        # Clean up content
+        for h in ['Issues', 'Sounds', 'Entity data', 'Data values']:
+            if h in page_content:
+                del page_content[h]
+    
+        for k, v in page_content.items():
+            page_content[k] = re.sub(r'(×\s\d+\.?\d+?)', r'(❤ \1)', v).strip()
+    
+        # Cache search for later
+        cached = {page_title.lower(): page_content}
+    
+    else:
+        page_title = query.title()
+        page_content = cached[query]
+
+
+    # Write content to chat
+    name = ' '
+    if "#" in arguments['query']:
+        
+        # Specifies 3rd argument
+        name = arguments['query'].split("#", 1)[1].strip().lower()
+                
+                
+    # If no header/invalid header was specified, show overview
+    for x, header in enumerate(page_content.keys()):
+        
+        if header.title() == page_title.title():
+            player.log(generate_header(f'Minecraft Wiki:  {page_title}'), 'green', 'normal')
+        else:
+            player.log(header.title(), 'yellow', 'bold')
+        
+        if x == 0 or name == 'all' or header.startswith(name):
+            for line in page_content[header].splitlines():
+                player.log(line + ' ', 'white', 'normal')
+            player.log(' ')
+    
+    if name != 'all':
+        player.log_success(f"Type '!wiki {page_title.lower()}#<header-name>' to view more")

@@ -93,14 +93,14 @@ def generate_header(text):
         
         
     
-    # '!warp' command to teleport to waypoint
-    @player.on_alias(player, command="warp", arguments={'name': True}):
-        if 'waypoint' not in player.persistent:
-            player.persistent['waypoint'] = {}
+# '!warp' command to teleport to waypoint
+@player.on_alias(player, command="warp", arguments={'name': True}, description='Teleport to a waypoint (Custom Waypoints)'):
+    if 'waypoint' not in player.persistent:
+        player.persistent['waypoint'] = {}
     
-        # Check if waypoint exists in player's persistent configuration and teleport them
-        if arguments['name'] in player.persistent['waypoint']:
-            server.execute(f"tp {player} {player.persistent['waypoint'][arguments['name']]}")
-            player.log_success(f"Warped to waypoint '{arguments['name']}'")
-        else:
-            player.log_error(f"Waypoint '{arguments['name']}' does not exist")
+    # Check if waypoint exists in player's persistent configuration and teleport them
+    if arguments['name'] in player.persistent['waypoint']:
+        server.execute(f"tp {player} {player.persistent['waypoint'][arguments['name']]}")
+        player.log_success(f"Warped to waypoint '{arguments['name']}'")
+    else:
+        player.log_error(f"Waypoint '{arguments['name']}' does not exist")

@@ -37,7 +37,7 @@ class AmsFileObject():
 
         # Try and grab header information from .ams file
         try:
-            with open(path, 'r') as f:
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                 header_data = [line.replace("#","").strip() for line in f.read().split("#!")[1].splitlines() if line]
                 for line in header_data:
 
@@ -425,7 +425,7 @@ class ScriptObject():
 
 
         if isinstance(script_path, str):
-            with open(script_path, 'r') as f:
+            with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
                 return iterate_lines(enumerate(f.readlines(), 1), file_name=os.path.basename(script_path))
         else:
             return iterate_lines(enumerate(script_path[0].splitlines(), 1), file_name=os.path.basename(script_path[1]))
@@ -436,7 +436,7 @@ class ScriptObject():
     # 3. Pull out every @event and send them to the src_dict and function_dict for further processing
     # 4. Wrap @server.on_loop and @player.on_alias events with special code to ensure proper functionality
     def convert_script(self, script_path):
-        with open(script_path, 'r') as f:
+        with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
 
             # Initialize self.function_dict
             self.function_dict[os.path.basename(script_path)] = {event: [] for event in self.valid_events}
@@ -478,7 +478,7 @@ class ScriptObject():
                     func_call = None
 
                 # Find and remove comments
-                if "#" in line.strip():
+                if line.strip().startswith('#'):
                     line = line.split("#")[0] + "\n"
 
                 # Grab import statements

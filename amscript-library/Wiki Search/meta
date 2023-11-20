@@ -1,0 +1,10 @@
+title: Wiki Search
+author: Kaleb Efflandt
+version: 1.0
+description: Search the Minecraft Wiki with the in-game chat
+
+
+Usage:
+
+--------- Search Wiki ---------
+>>  !wiki <query>

@@ -2714,7 +2714,7 @@ def server_properties(server_name: str, write_object=None):
     # If write_object, write it to file path
     if write_object:
 
-        with open(properties_file, 'w') as f:
+        with open(properties_file, 'w', encoding='utf-8', errors='ignore') as f:
             file_contents = ""
 
             for key, value in write_object.items():
@@ -2733,7 +2733,7 @@ def server_properties(server_name: str, write_object=None):
         no_file = False
 
         try:
-            with open(properties_file, 'r') as f:
+            with open(properties_file, 'r', encoding='utf-8', errors='ignore') as f:
                 for line in f.readlines():
                     if not line.strip():
                         continue

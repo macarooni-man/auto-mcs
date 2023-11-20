@@ -15650,7 +15650,7 @@ class CreateAmscriptScreen(MenuBackground):
 """
 
             constants.folder_check(constants.scriptDir)
-            with open(script_path, 'w+') as f:
+            with open(script_path, 'w+', encoding='utf-8', errors='ignore') as f:
                 f.write(contents)
 
             for s in server_obj.script_manager.return_single_list():
