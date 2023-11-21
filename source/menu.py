@@ -15634,7 +15634,7 @@ class CreateAmscriptScreen(MenuBackground):
             script_title = self.name_input.text.strip()
 
             contents = f"""#!
-# title: {script_title.title()}
+# title: {script_title}
 # author: {constants.username.title()}
 # version: 1.0
 # description: 
@@ -17804,7 +17804,7 @@ class ServerAdvancedScreen(MenuBackground):
             self.check_changes(server_obj, force_banner=True)
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="allocated memory"))
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="memory usage  (GB)"))
         sub_layout.add_widget(NumberSlider(start_value, (0.5, 0.5), input_name='RamInput', limits=(min_limit, max_limit), min_icon='auto-icon.png', function=change_limit))
         general_layout.add_widget(sub_layout)
 

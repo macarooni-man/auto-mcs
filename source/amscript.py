@@ -88,6 +88,7 @@ class AmsWebObject():
         self.version = None
         self.description = None
         self.installed = False
+        self.libs = None
 
         # Retrieve metadata
         for name, url in data.items():
@@ -115,6 +116,9 @@ class AmsWebObject():
             elif name.endswith(".ams"):
                 self.file_name = name
                 self.download_url = url
+
+            elif name == 'libs.zip':
+                self.libs = url
 
         if not self.author:
             self.author = "Unknown"
@@ -225,7 +229,14 @@ class ScriptManager():
 
     # Downloads script and enables it
     def download_script(self, script: AmsWebObject):
+        constants.folder_check(constants.scriptDir)
         constants.download_url(script.download_url, script.file_name, constants.scriptDir)
+        if script.libs:
+            lib_dir = os.path.join(constants.scriptDir, 'libs')
+            constants.folder_check(constants.downDir)
+            constants.folder_check(lib_dir)
+            constants.download_url(script.libs, 'libs.zip', constants.downDir)
+            constants.extract_archive(os.path.join(constants.downDir, 'libs.zip'), lib_dir)
         new_script = AmsFileObject(os.path.join(constants.scriptDir, script.file_name))
         self.script_state(new_script, enabled=True)
 
@@ -295,10 +306,20 @@ class ScriptObject():
         self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
         self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@server.on_start", "@server.on_stop"]
         self.valid_imports = std_libs
-        for library in ['requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser']:
+        for library in ['requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser', 'cloudscraper']:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
-        self.valid_imports.extend([os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.script_path, '*.py'))])
+
+
+        # Import external libraries
+        lib_path = os.path.join(constants.scriptDir, 'libs')
+        constants.folder_check(lib_path)
+        if lib_path not in sys.path:
+            sys.path.append(lib_path)
+        self.valid_imports.extend([os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(lib_path, '*.py'))])
+        self.valid_imports.extend([os.path.basename(x) for x in glob(os.path.join(lib_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')])
+
+
         self.aliases = {}
         self.src_dict = {}
         self.function_dict = {}
@@ -500,8 +521,6 @@ class ScriptObject():
             parse_error['message'] = f"({ex_type.__name__}) {ex_value}"
             parse_error['object'] = e
 
-            print(parse_error)
-
             del self.function_dict[s]['values']
             del self.src_dict[s]['gbl']
             del self.src_dict[s]['src']
@@ -572,12 +591,11 @@ class ScriptObject():
 
                 # Find global variables
                 elif not ((line.startswith(' ') or line.startswith('\t'))):
-
                     # Find function calls and decorators
-                    if (func_call == line.strip() or line.startswith("@")) and line.strip()[-1] != ":":
+                    if (line.startswith("@")) and line.strip()[-1] != ":": # func_call == line.strip() or
                         func_calls.append(f'{line.strip()}\n')
 
-                    elif re.match(r"[A-Za-z0-9]+.*=.*", line.strip(), re.IGNORECASE):
+                    elif not (line.strip().startswith('@') and line.strip().endswith(':')): # elif re.match(r"[A-Za-z0-9]+.*=.*", line.strip(), re.IGNORECASE)
                         global_variables = global_variables + line.strip() + "\n"
 
                 script_data = script_data + line
@@ -623,8 +641,7 @@ class ScriptObject():
 
             # Attempt to process imports, global variables, and functions
             try:
-                exec(global_variables, self.function_dict[os.path.basename(script_path)]['values'],
-                     self.function_dict[os.path.basename(script_path)]['values'])
+                exec(global_variables, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
 
             # Handle global variable exceptions
             except Exception as e:

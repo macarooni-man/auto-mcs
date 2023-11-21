@@ -1,0 +1,10 @@
+title: ChatGPT
+author: Kaleb Efflandt
+version: 1.0
+description: Talk to ChatGPT with the in-game chat
+
+
+Usage:
+
+------- Query ChatGPT -------
+>>  !gpt <prompt>

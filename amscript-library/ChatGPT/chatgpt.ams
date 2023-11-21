@@ -1,0 +1,34 @@
+#!
+# title: ChatGPT
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Talk to ChatGPT with the in-game chat
+#
+#
+# Usage:
+# ------- Query ChatGPT -------
+# >>  !gpt <prompt>
+#!
+
+
+
+
+from gradio_client import Client
+import json
+
+client = None
+
+
+# Load gradio client on server start
+@server.on_start(data, delay=0):
+    global client
+    client = Client("yuntian-deng/ChatGPT")
+
+
+# Query gradio client with command
+@player.on_alias(player, command='gpt', arguments={'prompt': True}, permission='anyone', description='Talk to ChatGPT in-game (ChatGPT)'):
+    global client
+    response = client.predict(arguments['prompt'], 1, 1, 1, None, fn_index=5)
+    with open(response[0], 'r+', encoding='utf-8', errors='ignore') as f:
+        response = json.loads(f.read())[-1][-1].replace("<br>","\n")
+        player.log(f'[ChatGPT] {response}', color='blue')
