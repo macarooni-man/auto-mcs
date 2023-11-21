@@ -231,14 +231,15 @@ class ScriptManager():
     def download_script(self, script: AmsWebObject):
         constants.folder_check(constants.scriptDir)
         constants.download_url(script.download_url, script.file_name, constants.scriptDir)
+        new_script = AmsFileObject(os.path.join(constants.scriptDir, script.file_name))
+        self.script_state(new_script, enabled=True)
+
         if script.libs:
             lib_dir = os.path.join(constants.scriptDir, 'libs')
             constants.folder_check(constants.downDir)
             constants.folder_check(lib_dir)
             constants.download_url(script.libs, 'libs.zip', constants.downDir)
             constants.extract_archive(os.path.join(constants.downDir, 'libs.zip'), lib_dir)
-        new_script = AmsFileObject(os.path.join(constants.scriptDir, script.file_name))
-        self.script_state(new_script, enabled=True)
 
     # Imports list of scripts into script folder
     def import_script(self, script: str):
@@ -306,7 +307,7 @@ class ScriptObject():
         self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
         self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@server.on_start", "@server.on_stop"]
         self.valid_imports = std_libs
-        for library in ['requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser', 'cloudscraper']:
+        for library in ['requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser', 'cloudscraper', 'json']:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
 
@@ -584,6 +585,12 @@ class ScriptObject():
                                 break
                             if f"importlib.reload({i})" not in global_variables:
                                 global_variables = global_variables + f"importlib.reload({i})\n"
+                        else:
+                            try:
+                                exec(line.strip(), {}, {})
+                            except Exception as e:
+                                return enum_error(e, find=line.strip())
+
 
                 # Tag global functions
                 elif line.startswith("def "):
