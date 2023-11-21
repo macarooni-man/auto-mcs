@@ -313,12 +313,16 @@ class ScriptObject():
 
 
         # Import external libraries
-        lib_path = os.path.join(constants.scriptDir, 'libs')
-        constants.folder_check(lib_path)
-        if lib_path not in sys.path:
-            sys.path.append(lib_path)
-        self.valid_imports.extend([os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(lib_path, '*.py'))])
-        self.valid_imports.extend([os.path.basename(x) for x in glob(os.path.join(lib_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')])
+        self.lib_path = os.path.join(constants.scriptDir, 'libs')
+        constants.folder_check(self.lib_path)
+        if self.lib_path not in sys.path:
+            sys.path.append(self.lib_path)
+        for library in [os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.lib_path, '*.py'))]:
+            if library not in self.valid_imports:
+                self.valid_imports.append(library)
+        for library in [os.path.basename(x) for x in glob(os.path.join(self.lib_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')]:
+            if library not in self.valid_imports:
+                self.valid_imports.append(library)
 
 
         self.aliases = {}
@@ -921,6 +925,19 @@ class ScriptObject():
         self.server.script_manager.enumerate_scripts()
         self.scripts = [os.path.join(constants.executable_folder, 'baselib.ams')]
         self.scripts.extend([script.path for script in self.server.script_manager.installed_scripts['enabled']])
+
+
+        # Reload external libraries
+        constants.folder_check(self.lib_path)
+        if self.lib_path not in sys.path:
+            sys.path.append(self.lib_path)
+        for library in [os.path.basename(x).rsplit(".", 1)[0] for x in glob(os.path.join(self.lib_path, '*.py'))]:
+            if library not in self.valid_imports:
+                self.valid_imports.append(library)
+        for library in [os.path.basename(x) for x in glob(os.path.join(self.lib_path, '*')) if os.path.isdir(x) and not x.endswith('pstconf')]:
+            if library not in self.valid_imports:
+                self.valid_imports.append(library)
+
 
         # Parse script file
         def process_file(script_file):

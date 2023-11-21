@@ -6546,7 +6546,11 @@ class ProgressScreen(MenuBackground):
 
             # Execute function and check for completion
             self.last_progress = self.progress_bar.value
-            test = step[1]()
+            try:
+                test = step[1]()
+            except Exception as e:
+                print(e)
+                test = False
             time.sleep(0.2)
 
             # If it failed, execute default error
@@ -10662,6 +10666,8 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         constants.init_update()
         constants.new_server_info['type'] = server_obj.type
         constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+        if server_obj.type in ['forge', 'paper']:
+            constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
         screen_manager.current = 'MigrateServerProgressScreen'
 
 
@@ -11796,9 +11802,11 @@ class PerformancePanel(RelativeLayout):
                 self.set_percent(self.percent, animate=False)
 
                 # Set text position
-                text_x = self.width - self.percentage_label.width - 45 - padding
-                self.name.pos = (text_x, self.progress_bg.pos[1] - (self.progress_bar.size_hint_max[1] / 2))
-                self.percentage_label.pos = (text_x, self.progress_bar.pos[1] + 12)
+                def move_text(*a):
+                    text_x = self.width - self.percentage_label.width - 45 - padding
+                    self.name.pos = (text_x, self.progress_bg.pos[1] - (self.progress_bar.size_hint_max[1] / 2))
+                    self.percentage_label.pos = (text_x, self.progress_bar.pos[1] + 12)
+                Clock.schedule_once(move_text, 0)
 
             def __init__(self, meter_name, meter_min=350, **kwargs):
                 super().__init__(**kwargs)
@@ -12242,9 +12250,10 @@ class ConsolePanel(FloatLayout):
         self.controls.control_shadow.pos = (self.width - shadow_size[0], self.height - shadow_size[1])
 
         # Control buttons
-        if self.controls.maximize_button and self.controls.stop_button and not self.full_screen:
+        if self.controls.maximize_button and self.controls.stop_button and self.controls.restart_button and not self.full_screen:
             self.controls.maximize_button.pos = (self.width - 90, self.height - 80)
             self.controls.stop_button.pos = (self.width - 142, self.height - 80)
+            self.controls.restart_button.pos = (self.width - 194, self.height - 80)
 
         # Fullscreen shadow
         self.fullscreen_shadow.y = self.height + self.x - 3
@@ -12274,8 +12283,10 @@ class ConsolePanel(FloatLayout):
         self.controls.log_button.disabled = True
         constants.hide_widget(self.controls.maximize_button, False)
         constants.hide_widget(self.controls.stop_button, False)
+        constants.hide_widget(self.controls.restart_button, False)
         self.controls.maximize_button.opacity = 0
         self.controls.stop_button.opacity = 0
+        self.controls.restart_button.opacity = 0
 
         self.controls.crash_text.clear_text()
 
@@ -12289,11 +12300,13 @@ class ConsolePanel(FloatLayout):
         def after_anim(*a):
             self.controls.maximize_button.disabled = False
             self.controls.stop_button.disabled = False
+            self.controls.restart_button.disabled = False
             self.controls.remove_widget(self.controls.launch_button)
             self.controls.remove_widget(self.controls.log_button)
             self.controls.launch_button.button.on_leave()
             self.controls.log_button.button.on_leave()
             Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.stop_button)
+            Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.restart_button)
 
         def update_launch_data(*args):
             if self.server_button:
@@ -12319,6 +12332,11 @@ class ConsolePanel(FloatLayout):
     @staticmethod
     def stop_server(*args):
         screen_manager.current_screen.server.silent_command("stop")
+
+    # Restart server
+    @staticmethod
+    def restart_server(*args):
+        screen_manager.current_screen.server.restart()
 
 
     # Called from ServerObject when process stops
@@ -12377,6 +12395,7 @@ class ConsolePanel(FloatLayout):
             self.maximize(False)
             constants.hide_widget(self.controls.maximize_button, True)
             constants.hide_widget(self.controls.stop_button, True)
+            constants.hide_widget(self.controls.restart_button, True)
 
 
             def after_anim(*a):
@@ -12407,6 +12426,7 @@ class ConsolePanel(FloatLayout):
                 def after_anim2(*a):
                     self.controls.maximize_button.disabled = False
                     self.controls.stop_button.disabled = False
+                    self.controls.restart_button.disabled = False
                     self.scroll_layout.data = {}
 
                 Clock.schedule_once(after_anim2, (anim_speed * 1.51))
@@ -12461,6 +12481,13 @@ class ConsolePanel(FloatLayout):
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
+            # Restart server button
+            self.controls.remove_widget(self.controls.restart_button)
+            del self.controls.restart_button
+            self.controls.restart_button = IconButton('restart server', {}, (175, 150), (None, None), 'reload-sharp.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server)
+            self.controls.restart_button.opacity = 0
+            self.controls.add_widget(self.controls.restart_button)
+
             def after_anim(*a):
                 self.full_screen = True
                 self.ignore_keypress = False
@@ -12468,6 +12495,7 @@ class ConsolePanel(FloatLayout):
                 Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                 Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                 Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
+                Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
                 fix_scroll()
 
             Clock.schedule_once(after_anim, (anim_speed*1.1))
@@ -12493,9 +12521,17 @@ class ConsolePanel(FloatLayout):
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
+            # Restart server button
+            self.controls.remove_widget(self.controls.restart_button)
+            del self.controls.restart_button
+            self.controls.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'reload-sharp.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.button_colors['stop'], click_func=self.restart_server)
+            self.controls.restart_button.opacity = 0
+            self.controls.add_widget(self.controls.restart_button)
+
             if not self.run_data:
                 constants.hide_widget(self.controls.maximize_button, True)
                 constants.hide_widget(self.controls.stop_button, True)
+                constants.hide_widget(self.controls.restart_button, True)
 
             def after_anim(*a):
                 self.full_screen = False
@@ -12504,6 +12540,7 @@ class ConsolePanel(FloatLayout):
                     self.update_size()
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
                 fix_scroll()
 
             Clock.schedule_once(after_anim, (anim_speed*1.1))
@@ -12754,7 +12791,6 @@ class ConsolePanel(FloatLayout):
                     self.history_index = 0
                     return super().insert_text(s, from_undo=from_undo)
 
-
             # Manipulate command history
             def keyboard_on_key_down(self, window, keycode, text, modifiers):
                 super().keyboard_on_key_down(window, keycode, text, modifiers)
@@ -12836,7 +12872,7 @@ class ConsolePanel(FloatLayout):
                 self.control_shadow.keep_ratio = False
                 self.control_shadow.color = background_color
                 self.control_shadow.source = os.path.join(constants.gui_assets, 'console_control_shadow.png')
-                self.control_shadow.size_hint_max = (200, 120)
+                self.control_shadow.size_hint_max = (255, 120)
                 self.add_widget(self.control_shadow)
 
 
@@ -12849,6 +12885,11 @@ class ConsolePanel(FloatLayout):
                 self.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.stop_server)
                 constants.hide_widget(self.stop_button)
                 self.add_widget(self.stop_button)
+
+                # Restart server button
+                self.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'reload-sharp.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.restart_server)
+                constants.hide_widget(self.restart_button)
+                self.add_widget(self.restart_button)
 
 
         # Popen object reference
@@ -18552,9 +18593,9 @@ class MainApp(App):
         # if not constants.app_compiled:
         #     def open_menu(*args):
         #         open_server("bedrock-test")
-        #         def open_ams(*args):
-        #             screen_manager.current = "ServerAmscriptScreen"
-        #         Clock.schedule_once(open_ams, 1)
+        #         # def open_ams(*args):
+        #         #     screen_manager.current = "ServerAmscriptScreen"
+        #         # Clock.schedule_once(open_ams, 1)
         #     Clock.schedule_once(open_menu, 0)
 
 

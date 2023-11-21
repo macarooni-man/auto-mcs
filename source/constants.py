@@ -1050,12 +1050,19 @@ def find_latest_mc():
             # Forge
             reqs = requests.get(url)
             soup = BeautifulSoup(reqs.text, 'html.parser')
+            title_list = soup.find_all('div', "title")
 
-            for div in soup.find_all('div', "title"):
-                if "download latest" in div.text.lower() or "download recommended" in div.text.lower():
+            for div in title_list:
+                if "download latest" in div.text.lower():
                     latestMC["forge"] = div.small.text.split(" -")[0]
                     latestMC["builds"]["forge"] = div.small.text.split(" - ")[1]
                     break
+            else:
+                for div in title_list:
+                    if "download recommended" in div.text.lower():
+                        latestMC["forge"] = div.small.text.split(" -")[0]
+                        latestMC["builds"]["forge"] = div.small.text.split(" - ")[1]
+                        break
 
 
         elif name == "paper":
@@ -2946,7 +2953,7 @@ def make_update_list():
                 new_version += " b-" + str(latestMC["builds"][jarType.lower()])
                 current_version += " b-" + str(jarBuild)
 
-            if (new_version != current_version):
+            if (new_version != current_version) and not current_version.startswith("0.0.0"):
                 serverObject[name]["needsUpdate"] = "true"
 
             serverObject[name]["updateAuto"] = updateAuto
