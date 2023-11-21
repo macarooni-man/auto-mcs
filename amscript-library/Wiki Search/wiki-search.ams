@@ -58,7 +58,7 @@ cached = {}
         matches = [(page, similarity(query, page['title'])) for page in results['pages'].values()]
         best_match = sorted(matches, key=lambda x: x[1], reverse=True)[0][0]
         page_title = best_match['title']
-        page = BeautifulSoup(requests.get(best_match['fullurl']).content, features="lxml")
+        page = BeautifulSoup(requests.get(best_match['fullurl']).content, features="html.parser")
 
         page_content = {}
 
