@@ -22,6 +22,7 @@
 from subprocess import Popen, PIPE
 from functools import partial
 from threading import Timer
+import time
 import os
 
 process_dict = {}
@@ -97,6 +98,7 @@ process_dict = {}
                     return_msg = f">>  '{cmd}': returned exit code {return_code}"
                     
                     if is_out:
+                        time.sleep(0.1)
                         player.log_success(return_msg) if return_code == 0 else player.log_error(return_msg)
                         del process_dict[player.name]
                     return
