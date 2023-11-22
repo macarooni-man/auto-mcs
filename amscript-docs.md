@@ -124,7 +124,7 @@ Accessed by an applicable event, or by the `server.get_player()` method
 
 Sets a custom permission for [**@player.on_alias**](#playeron_alias) events.
 
-- The `player.check_permission()` method can also be used with only the `permission` argument to return a `bool` if the player has the specified permission
+- The `player.check_permission()` method can also be used with only the `permission` argument to return a `bool` if the player has the specified permission. Note that the server console has all custom permissions.
 
 **Accepted parameters**:
 | Parameter | Description |
