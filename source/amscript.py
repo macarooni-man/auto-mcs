@@ -307,7 +307,7 @@ class ScriptObject():
         self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
         self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@server.on_start", "@server.on_stop"]
         self.valid_imports = std_libs
-        for library in ['requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib']:
+        for library in ['itertools', 'requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib']:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
 
@@ -834,7 +834,10 @@ class ScriptObject():
                     arguments = {}
 
                     new_func += f"    {'if' if first else 'elif'} command.strip().split(' ',1)[0].strip() == '{k}': #__{self.server_id}__\n"
-                    new_func += f"        if perm_dict[permission] < perm_dict['{self.aliases[k]['permission']}']:\n"
+                    if self.aliases[k]['permission'] in ['anyone', 'op', 'server']:
+                        new_func += f"        if perm_dict[permission] < perm_dict['{self.aliases[k]['permission']}']:\n"
+                    else:
+                        new_func += f"        if not player.check_permission('{self.aliases[k]['permission']}'):\n"
 
                     # Permission thingy
                     new_func += (f"            player.log_error(\"You do not have permission to use this command\")\n" if not hidden else "            pass\n")
@@ -1711,6 +1714,24 @@ class PlayerScriptObject():
         # Eventually process this to object data
         # print(new_nbt)
 
+    # Set custom player permissions
+    def set_permission(self, permission, enable=True):
+        try:
+            permissions = self.persistent['__permissions__']
+        except KeyError:
+            self.persistent['__permissions__'] = {}
+
+        self.persistent['__permissions__'][permission] = enable
+
+    # Check custom player permissions
+    def check_permission(self, permission):
+        if self.is_server:
+            return True
+        else:
+            try:
+                return self.persistent['__permissions__'][permission]
+            except KeyError:
+                return False
 
     # Logging functions
     # Version compatible message system for local player object
@@ -1765,12 +1786,12 @@ class PlayerScriptObject():
 
             # If user is server, send to server instead
             if self.is_server:
-                msg = f'{final_code}{("§r " + final_code).join(msg.strip().split(" "))}§r'
+                msg = f'{final_code}{("§r " + final_code).join(msg.rstrip().split(" "))}§r'
                 self._server.log(msg)
             else:
                 if style != 'normal':
                     final_code += style_table[style]
-                msg = f'/tell {self.name} {final_code}{("§r "+final_code).join(msg.strip().split(" "))}§r'
+                msg = f'/tell {self.name} {final_code}{("§r "+final_code).join(msg.rstrip().split(" "))}§r'
                 self._server.execute(msg, log=False)
     def log_warning(self, msg, tag=False):
         self.log(msg, "gold", "normal", tag=tag)

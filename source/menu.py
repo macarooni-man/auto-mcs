@@ -13111,6 +13111,12 @@ class ServerViewScreen(MenuBackground):
                 if stop_button.opacity == 1:
                     stop_button.button.trigger_action(0.1)
 
+            # Restart the server if it's currently running
+            if ((keycode[1] == 'r' and ('ctrl' in modifiers and 'shift' in modifiers)) and ('r' not in self._ignore_keys)) and self.server.run_data:
+                restart_button = self.console_panel.controls.restart_button
+                if restart_button.opacity == 1:
+                    restart_button.button.trigger_action(0.1)
+
 
 
         # Return True to accept the key. Otherwise, it will be used by the system.

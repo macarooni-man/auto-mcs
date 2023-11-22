@@ -1,0 +1,105 @@
+#!
+# title: OS Terminal
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Run system commands from the in-game chat
+# 
+# 
+# Usage:
+# 
+# ---- Give Permission ----
+# 
+# >> !osperm <player>
+# 
+#
+# ----- Run a command -----
+# 
+# >> !os ipconfig /all
+#!
+
+
+
+from subprocess import Popen, PIPE
+from functools import partial
+from threading import Timer
+import os
+
+process_dict = {}
+
+
+
+
+# Toggles custom permission 
+@player.on_alias(player, command='osperm', arguments={'player': True}, permission='server', description='Toggles terminal permission for specified player (OS Terminal)'):
+    target = server.get_player(arguments['player'])
+    if target:
+        if not target.check_permission('osperm'):
+            target.set_permission('osperm', True)
+            player.log_success(f"[os-term] '{target}' now has permission to run terminal commands")
+        else:
+            target.set_permission('osperm', False)
+            player.log_error(f"[os-term] '{target}' no longer has permission to run terminal commands")
+    else:
+        player.log_error(f"[os-term] '{arguments['player']}' is not a valid player")
+
+
+
+
+# Start new process from a command, and add to the STDIN if it's running. Requires custom 'osperm'
+@player.on_alias(player, command='os', arguments={'command': True}, permission='osperm', description='Run a system command (OS Terminal)'):
+    global process_dict
+    
+    # Initialize one process per player
+    cmd = arguments['command']
+    running_cmd = None
+    try:
+        running_cmd = process_dict[player.name]
+    except:
+        pass
+    
+    
+    # Check if process is still running from last command, and send to STDIN instead
+    if running_cmd:
+        player.log(f">>  Running '{cmd}'", color='green', style='normal')
+        try:
+            process_dict[player.name]['process'].stdin.write(f"{cmd}\r\n".encode('utf-8', errors='ignore').replace(b'\xc2\xa7', b'\xa7'))
+            process_dict[player.name]['process'].stdin.flush()
+        except:
+            pass
+    
+    
+    # If there's no running process, start a new one
+    else:
+        process_dict[player.name] = {'process': None, 'failcount': 0}
+        process_dict[player.name]['process'] = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE, stdin=PIPE)
+    
+        stdout = iter(process_dict[player.name]['process'].stdout.readline, "")
+        stderr = iter(process_dict[player.name]['process'].stderr.readline, "")
+        player.log(f"+  Executing '{cmd}'", color='green', style='normal')
+        
+        
+        # Iterate over STDOUT and STDERR simultaneously to get all output
+        def line_iterator(iterator, std_type=None):
+            is_out = std_type == 'stdout'
+            last_line = ''
+            for line in iterator:
+                
+                if line and not (not bool(line.decode().strip()) and not bool(last_line)):
+                    formatted_line = f'|   {line.decode().rstrip()}'
+                    player.log(formatted_line, color='gray', style='normal') if is_out else player.log_error(formatted_line)
+                
+                process_dict[player.name]['failcount'] = 0 if line else (process_dict[player.name]['failcount'] + 1)
+                last_line = line
+                
+                # Show return code from process if it ends
+                if process_dict[player.name]['failcount'] > 25:
+                    return_code = process_dict[player.name]['process'].wait()
+                    return_msg = f">>  '{cmd}': returned exit code {return_code}"
+                    
+                    if is_out:
+                        player.log_success(return_msg) if return_code == 0 else player.log_error(return_msg)
+                        del process_dict[player.name]
+                    return
+            
+        Timer(0, partial(line_iterator, stdout, 'stdout')).start()
+        Timer(0, partial(line_iterator, stderr, 'stderr')).start()

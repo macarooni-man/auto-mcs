@@ -30,5 +30,5 @@ client = None
     global client
     response = client.predict(arguments['prompt'], 1, 1, 1, None, fn_index=5)
     with open(response[0], 'r+', encoding='utf-8', errors='ignore') as f:
-        response = json.loads(f.read())[-1][-1].replace("<br>","\n")
+        response = json.loads(f.read())[-1][-1].replace("<br>","\n").replace("\u2019", "'")
         player.log(f'[ChatGPT] {response}', color='blue')

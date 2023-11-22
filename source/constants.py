@@ -432,7 +432,7 @@ def format_now():
 # Global banner
 global_banner = None
 
-# Replacement for run_proc to prevent CMD flashing
+# Replacement for os.system to prevent CMD flashing
 def run_proc(cmd, return_text=False):
     if return_text:
         result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)

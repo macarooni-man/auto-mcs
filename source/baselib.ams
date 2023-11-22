@@ -30,7 +30,13 @@ def generate_header(text):
 		player.log(generate_header('All Auto-MCS Commands'), 'green', 'normal')
 
 	for alias in server.aliases.values():
-		if perm_dict[permission] >= perm_dict[alias['permission']]:
+		has_permission = False
+		if alias['permission'] in perm_dict:
+			has_permission = perm_dict[permission] >= perm_dict[alias['permission']]
+		else:
+			has_permission = player.check_permission(alias['permission'])
+
+		if has_permission:
 			if cmd:
 				if cmd.lower() not in alias['command'].lower() and cmd.lower() not in alias['description'].lower():
 					continue

@@ -656,8 +656,8 @@ class ServerObject():
     def launch(self):
 
         if not self.running:
-            # while not self.addon or not self.backup or not self.script_manager or not self.acl:
-            #     time.sleep(0.2)
+            while not self.addon or not self.backup or not self.script_manager or not self.acl:
+                time.sleep(0.05)
 
             self.running = True
             constants.java_check()
@@ -1270,7 +1270,7 @@ class ServerObject():
                             message = message.replace(float_str, str(round(float(float_str), 2)))
 
                 if message.endswith("[m"):
-                    message = message.replace("[m", "").strip()
+                    message = message.replace("[m", "").rstrip()
 
                 # Format special color codes
                 if '§' in message:
@@ -1288,7 +1288,7 @@ class ServerObject():
                     except KeyError:
                         message = original_message
 
-                main_label = message.strip()
+                main_label = message.rstrip()
 
                 if log_type == 'warning':
                     type_label = "WARN"
@@ -1350,7 +1350,7 @@ class ServerObject():
                 message_date_obj = dt.now()
                 date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
 
-                main_label = message.strip()
+                main_label = message.rstrip()
                 type_label = "AMS"
 
                 if log_type == 'print':

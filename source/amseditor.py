@@ -1772,6 +1772,9 @@ def launch_window(path: str, data: dict, *a):
 
                 if self.selection:
                     mouse_pos = self.index(CURRENT)
+                    if not mouse_pos:
+                        return
+
                     if (self.compare(mouse_pos, '>=', sel_start) and self.compare(mouse_pos, '<=', sel_end)):
                         self.selection = False
                         self.tag_remove(SEL, "1.0", END)

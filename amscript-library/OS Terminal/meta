@@ -1,0 +1,16 @@
+title: OS Terminal
+author: Kaleb Efflandt
+version: 1.0
+description: Run system commands from the in-game chat
+
+
+Usage:
+
+---- Give Permission ----
+
+>> !osperm <player>
+
+
+----- Run a command -----
+
+>> !os ipconfig /all
