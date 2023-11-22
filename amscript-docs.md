@@ -122,7 +122,7 @@ Accessed by an applicable event, or by the `server.get_player()` method
 
 ### player.set_permission(*permission, enabled*)
 
-Sets a custom permission for [**@player.on_alias**](@playeron_alias) events.
+Sets a custom permission for [**@player.on_alias**](#playeron_alias) events.
 
 - The `player.check_permission()` method can also be used with only the `permission` argument to return a `bool` if the player has the specified permission
 
@@ -418,7 +418,7 @@ Used for registering custom commands and augmenting existing ones.
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
 | `command*` | `str` to specify the command verb |
 | `arguments` | `dict` specifying requirement for execution `{'arg1': True}` where `True` denotes a required argument. Only the last argument can be optional |
-| `permission`| `str`, used to restrict execution to privileged users. Can be `'anyone'`, `'op'`, `'server'`, or a [**custom player permission**](#playerset_permission). Defaults to `'anyone'`|
+| `permission`| `str`, used to restrict execution to privileged users. Can be `'anyone'`, `'op'`, `'server'`, or a [**custom player permission**](#playerset_permissionpermission-enabled). Defaults to `'anyone'`|
 | `description` | `str` for `!help` menu. Command will be shown to users which meet the minimum permission level |
 | `hidden` | `bool`, defaults to `False`. Hides command from all users (they can still be executed) and disables the wrapper functionality described below. Useful for augmenting existing commands |
 
