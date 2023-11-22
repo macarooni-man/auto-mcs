@@ -24,7 +24,7 @@ a = Analysis(['wrapper.py'],
                         ('/usr/lib64/libcrypt.so.1', '.'),
                         ('./gui-assets/icons/sm/*', './gui-assets/icons/sm')
                     ],
-             hiddenimports=['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder'],
+             hiddenimports=['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder', 'dataclasses'],
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],

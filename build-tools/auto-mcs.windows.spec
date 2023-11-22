@@ -14,11 +14,11 @@ a = Analysis(['wrapper.py'],
              pathex=[],
              binaries=[],
              datas = [('.\\icon.ico', '.'), ('.\\baselib.ams', '.'), ('.\\gui-assets\\icons\\sm\\*', '.\\gui-assets\\icons\\sm')],
-             hiddenimports=['plyer.platforms.win.filechooser', 'PIL._tkinter_finder'],
+             hiddenimports=['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses'],
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],
-             excludes=['pandas', 'matplotlib'],
+             excludes=['pandas', 'matplotlib', 'packaging'],
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher,
@@ -41,7 +41,7 @@ data_list = list(a.datas)
 for item in data_list:
     if "tzdata" in item[0]:
         data_list.remove(item)
-a.datas = tuple(data_list)
+a.datas = data_list
 
 # Convert modified list back to a tuple
 a.datas += Tree('.\\gui-assets', prefix='gui-assets', excludes=exclude_list)
@@ -108,7 +108,7 @@ exe = EXE(pyz,
           splash.binaries,
           *[Tree(p) for p in (sdl2.dep_bins + glew.dep_bins)],
           name='auto-mcs.exe',
-          debug=False,
+          debug=True,
           bootloader_ignore_signals=False,
           strip=False,
           upx=True,
