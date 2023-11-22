@@ -120,18 +120,33 @@ Accessed by an applicable event, or by the `server.get_player()` method
 
 
 
+### player.set_permission(*permission, enabled*)
+
+Sets a custom permission for [**@player.on_alias**](@playeron_alias) events.
+
+- The `player.check_permission()` method can also be used with only the `permission` argument to return a `bool` if the player has the specified permission
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `permission*` | `str` of username, or selector. Only players will be matched |
+| `enabled` | `bool` to enable or disable the permission. Defaults to `True` |
+
+<br>
+
+
 
 ### player.log(*message, color, style*)
 
 Sends a private message to the chat of the player with formatting support.
-Useful for command feedback with a [**@server.alias**](#serveralias) event
+Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 - `player.log_success()`, `player.log_warning()`, and `player.log_error()` methods can also be used, and only require the `message` parameter.
 
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `message*` | `str` of username, or selector. Only players will be matched |
+| `message*` | `str` of content to log to the player |
 | `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
 | `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
 
@@ -403,7 +418,7 @@ Used for registering custom commands and augmenting existing ones.
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
 | `command*` | `str` to specify the command verb |
 | `arguments` | `dict` specifying requirement for execution `{'arg1': True}` where `True` denotes a required argument. Only the last argument can be optional |
-| `permission`| `str`, used to restrict execution to privileged users. Can be `'anyone'`, `'op'`, or `'server'`. Defaults to `'anyone'`|
+| `permission`| `str`, used to restrict execution to privileged users. Can be `'anyone'`, `'op'`, `'server'`, or a [**custom player permission**](#playerset_permission). Defaults to `'anyone'`|
 | `description` | `str` for `!help` menu. Command will be shown to users which meet the minimum permission level |
 | `hidden` | `bool`, defaults to `False`. Hides command from all users (they can still be executed) and disables the wrapper functionality described below. Useful for augmenting existing commands |
 
