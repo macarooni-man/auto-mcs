@@ -18340,12 +18340,12 @@ class MigrateServerProgressScreen(ProgressScreen):
         if constants.new_server_info['type'] != server_obj.type:
             desc_text = "Migrating"
             final_text = "Migrated"
-        elif constants.version_check(constants.new_server_info['version'], '>', server_obj.version) or server_obj.update_string.startswith('b-'):
-            desc_text = "Updating"
-            final_text = "Updated"
         elif constants.version_check(constants.new_server_info['version'], '<', server_obj.version):
             desc_text = "Downgrading"
             final_text = "Downgraded"
+        elif constants.version_check(constants.new_server_info['version'], '>', server_obj.version) or server_obj.update_string.startswith('b-'):
+            desc_text = "Updating"
+            final_text = "Updated"
         else:
             desc_text = "Reinstalling"
             final_text = "Reinstalled"
