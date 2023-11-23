@@ -4587,12 +4587,18 @@ class PopupWindow(RelativeLayout):
     def click_event(self, *args):
         if not self.clicked:
 
-            rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
+            if isinstance(args[1], str):
+                force_button = args[1]
+                rel_coord = (0, Window.height)
+            else:
+                force_button = None
+                rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
+
             rel_color = self.window_background.color
 
             # Single, wide button
             if self.ok_button:
-                if rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height:
+                if force_button == 'ok' or (not force_button and (rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height)):
                     self.ok_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
                     self.resize_window()
 
@@ -4606,7 +4612,7 @@ class PopupWindow(RelativeLayout):
             elif self.no_button and self.yes_button:
 
                 # Right button
-                if rel_coord[0] > self.no_button.width + 5 and rel_coord[1] < self.yes_button.height:
+                if force_button == 'yes' or (not force_button and (rel_coord[0] > self.no_button.width + 5 and rel_coord[1] < self.yes_button.height)):
                     self.yes_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
                     self.resize_window()
 
@@ -4619,7 +4625,7 @@ class PopupWindow(RelativeLayout):
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
                 # Left button
-                elif rel_coord[0] < self.no_button.width - 5 and rel_coord[1] < self.no_button.height:
+                elif force_button == 'no' or (not force_button and (rel_coord[0] < self.no_button.width - 5 and rel_coord[1] < self.no_button.height)):
                     self.no_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
                     self.resize_window()
 
@@ -5001,12 +5007,18 @@ class BigPopupWindow(RelativeLayout):
 
         if not self.clicked:
 
-            rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
+            if isinstance(args[1], str):
+                force_button = args[1]
+                rel_coord = (0, Window.height)
+            else:
+                force_button = None
+                rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
+
             rel_color = self.window_background.color
 
             # Single, wide button
             if self.ok_button:
-                if rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height:
+                if force_button == 'ok' or (not force_button and (rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height)):
                     self.ok_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
                     self.resize_window()
 
@@ -5020,7 +5032,7 @@ class BigPopupWindow(RelativeLayout):
             elif self.no_button and self.yes_button:
 
                 # Right button
-                if rel_coord[0] > self.no_button.width + 5 and rel_coord[1] < self.yes_button.height:
+                if force_button == 'yes' or (not force_button and (rel_coord[0] > self.no_button.width + 5 and rel_coord[1] < self.yes_button.height)):
                     self.yes_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
                     self.resize_window()
 
@@ -5033,7 +5045,7 @@ class BigPopupWindow(RelativeLayout):
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
                 # Left button
-                elif rel_coord[0] < self.no_button.width - 5 and rel_coord[1] < self.no_button.height:
+                elif force_button == 'no' or (not force_button and (rel_coord[0] < self.no_button.width - 5 and rel_coord[1] < self.no_button.height)):
                     self.no_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
                     self.resize_window()
 
@@ -5045,10 +5057,9 @@ class BigPopupWindow(RelativeLayout):
 
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
-
                 # Body button if it exists
                 elif self.body_button:
-                    if (self.body_button.x < rel_coord[0] < self.body_button.x + self.body_button.width) and (self.body_button.y < rel_coord[1] < self.body_button.y + self.body_button.height):
+                    if force_button == 'body' or (not force_button and ((self.body_button.x < rel_coord[0] < self.body_button.x + self.body_button.width) and (self.body_button.y < rel_coord[1] < self.body_button.y + self.body_button.height))):
                         Animation.stop_all(self.body_button)
                         self.body_button.background_color = (self.window_text_color[0], self.window_text_color[1], self.window_text_color[2], 0.3)
                         Animation(background_color=self.window_text_color, duration=0.3).start(self.body_button)
@@ -6259,15 +6270,15 @@ class MenuBackground(Screen):
         if self.popup_widget:
             if keycode[1] in ['escape', 'n']:
                 try:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
+                    self.popup_widget.click_event(self.popup_widget, 'no')
                 except AttributeError:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
+                    self.popup_widget.click_event(self.popup_widget, 'ok')
 
             elif keycode[1] in ['enter', 'return', 'y']:
                 try:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.yes_button)
+                    self.popup_widget.click_event(self.popup_widget, 'yes')
                 except AttributeError:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
+                    self.popup_widget.click_event(self.popup_widget, 'ok')
             return
 
         # Ignore ESC commands while input focused
@@ -6923,15 +6934,21 @@ class MainMenuScreen(MenuBackground):
         if self.popup_widget:
             if keycode[1] in ['escape', 'n']:
                 try:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
+                    self.popup_widget.click_event(self.popup_widget, 'no')
                 except AttributeError:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
+                    self.popup_widget.click_event(self.popup_widget, 'ok')
 
             elif keycode[1] in ['enter', 'return', 'y']:
                 try:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.yes_button)
+                    self.popup_widget.click_event(self.popup_widget, 'yes')
                 except AttributeError:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
+                    self.popup_widget.click_event(self.popup_widget, 'ok')
+
+            elif keycode[1] == 'spacebar':
+                try:
+                    self.popup_widget.click_event(self.popup_widget, 'body')
+                except AttributeError:
+                    pass
             return
 
         # Ignore ESC commands while input focused
