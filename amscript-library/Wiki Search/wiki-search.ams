@@ -42,7 +42,7 @@ cached = {}
     global cached
     
     # Gather list of possible matches from the wiki
-    query = arguments['query'].split("#")[0].lower()
+    query = arguments['query'].split("#")[0].lower().split("?")[0]
     api_url = 'https://minecraft.fandom.com/api.php?'
     search_url = f'{api_url}format=json&action=query&prop=info&inprop=url&generator=allpages&gapfrom={query}'
     
@@ -130,6 +130,11 @@ cached = {}
         
         # Specifies 3rd argument
         name = arguments['query'].split("#", 1)[1].strip().lower()
+    
+    # Specifies query
+    search = ''
+    if "?" in arguments['query']:
+        search = arguments['query'].split("?", 1)[1].strip().lower()
                 
                 
     # If no header/invalid header was specified, show overview
@@ -140,10 +145,12 @@ cached = {}
         else:
             player.log(header.title(), 'yellow', 'bold')
         
-        if x == 0 or name == 'all' or header.startswith(name):
+        if x == 0 or name == 'all' or header.startswith(name) or (search and search in page_content[header].lower()):
             for line in page_content[header].splitlines():
                 player.log(line + ' ', 'white', 'normal')
             player.log(' ')
     
     if name != 'all':
+        player.log_success(f" ")
         player.log_success(f"Type '!wiki {page_title.lower()}#<header-name>' to view more")
+        player.log_success(f"Type '!wiki {page_title.lower()}?<search>' to search for text")

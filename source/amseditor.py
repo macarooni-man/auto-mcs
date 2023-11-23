@@ -1839,6 +1839,7 @@ def launch_window(path: str, data: dict, *a):
                     self.last_search = ''
                     self.tag_remove("sel", "1.0", "end")
                     self.focus_force()
+
                     update_search(text)
 
                 root.after(0, set_text)
@@ -2791,6 +2792,9 @@ def launch_window(path: str, data: dict, *a):
                     if index == "":
                         break
 
+                    if str(search.cget('fg')) == '#4A4A70' and search.get() == 'search for text':
+                        break
+
                     self.mark_set("matchStart", index)
                     self.mark_set("matchEnd", "%s+%sc" % (index, count.get()))
                     self.tag_add(tag, "matchStart", "matchEnd")
@@ -3097,6 +3101,10 @@ def launch_window(path: str, data: dict, *a):
         def update_search(search_text=None):
             if not search_text:
                 search_text = search.get()
+
+            if str(search.cget('fg')) == '#4A4A70' and search_text == 'search for text':
+                search_text = ''
+
             search.last_index = 0
             code_editor.content_changed = False
             sel_start = code_editor.index(SEL_FIRST)
