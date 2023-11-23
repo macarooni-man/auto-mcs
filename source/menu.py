@@ -17606,10 +17606,15 @@ class ServerWorldScreen(MenuBackground):
                     world_name = os.path.basename(self.new_world)
                     constants.copytree(self.new_world, os.path.join(server_obj.server_path, world_name))
 
+                # Fix level-type
+                if constants.version_check(server_obj.version, '>=', '1.19') and self.new_type == 'default':
+                    self.new_type = 'normal'
+
                 # Change level-name in 'server.properties' and server_obj.world
                 server_obj.server_properties['level-name'] = world_name
                 server_obj.server_properties['level-type'] = self.new_type
                 server_obj.server_properties['level-seed'] = self.new_seed
+
                 server_obj.write_config()
                 server_obj.reload_config()
 

@@ -1995,6 +1995,11 @@ def generate_server_files(progress_func=None):
         copytree(new_server_info['server_settings']['world'], os.path.join(tmpsvr, world_name), dirs_exist_ok=True)
 
 
+    # Fix level-type
+    if version_check(new_server_info['version'], '>=', '1.19') and new_server_info['server_settings']['level_type'] == 'default':
+        new_server_info['server_settings']['level_type'] = 'normal'
+
+
     # Create start-cmd.tmp for changing gamerules after the server starts
     if new_server_info['server_settings']['keep_inventory'] or new_server_info['server_settings']['daylight_weather_cycle'] or new_server_info['server_settings']['random_tick_speed'] and version_check(new_server_info['version'], '>=', '1.4.2'):
         with open(os.path.join(tmpsvr, command_tmp), 'w') as f:
