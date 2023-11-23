@@ -849,7 +849,7 @@ class ServerObject():
                                         if self.type.lower() != 'vanilla':
                                             content += f" - Disable all {'mods' if self.type.lower() in ('fabric', 'forge') else 'plugins'} in the Add-on Manager\n"
                                         content += f" - Try using a different world file\n"
-                                        content += f" - Try a different server file with the 'Change server.jar' option in Advanced\n"
+                                        content += f" - Try a different server file with the 'Change server.jar' option in the Settings tab\n"
                                         content += f"     - If this error was caused after using 'Change server.jar', there's an automatic back-up of the previous version in the Back-up Manager"
 
                                     f.write(content)

@@ -2756,7 +2756,7 @@ def footer_label(path, color):
 def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=False):
 
     # Sanitize footer path for crash logs to remove server name
-    if ", Launch" in menu_path or ", Access Control" in menu_path or ", Back-ups" in menu_path or ", Add-ons" in menu_path or ", amscript" in menu_path or ", Advanced" in menu_path:
+    if ", Launch" in menu_path or ", Access Control" in menu_path or ", Back-ups" in menu_path or ", Add-ons" in menu_path or ", amscript" in menu_path or ", Settings" in menu_path:
         constants.footer_path = "Server Manager > " + " > ".join(menu_path.split(", ")[1:])
     elif menu_path.startswith('Create'):
         constants.footer_path = "Create new server"
@@ -11472,7 +11472,7 @@ class MenuTaskbar(RelativeLayout):
             ('access control',  os.path.join(icon_path, 'acl.png'),           '#00FFB2',  'ServerAclScreen'),
             ('add-ons',         os.path.join(icon_path, 'addon.png'),         '#42FF5E',  'ServerAddonScreen'),
             ('amscript',        os.path.join(icon_path, 'amscript.png'),      '#BFFF2B',  'ServerAmscriptScreen'),
-            ('advanced',        os.path.join(icon_path, 'advanced.png'),      '#FFFF44',  'ServerAdvancedScreen')
+            ('settings',        os.path.join(icon_path, 'advanced.png'),      '#FFFF44',  'ServerSettingsScreen')
         ]
 
 
@@ -16400,7 +16400,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
 
 
 
-# Server Advanced Settings ---------------------------------------------------------------------------------------------
+# Server Settings Screen ---------------------------------------------------------------------------------------------
 
 class EditorLine(RelativeLayout):
 
@@ -17133,8 +17133,8 @@ class ServerPropertiesEditScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        float_layout.add_widget(generate_title(f"Advanced Settings: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced, Edit 'server.properties'"))
+        float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Edit 'server.properties'"))
 
         self.add_widget(float_layout)
 
@@ -17520,7 +17520,7 @@ class NgrokAuthScreen(MenuBackground):
         float_layout.add_widget(WaitButton('Login to ngrok', (0.5, 0.555), 'ngrok.png', width=531, click_func=open_ngrok_site))
         self.authtoken_input = NgrokAuthInput(pos_hint={"center_x": 0.5, "center_y": 0.45})
         float_layout.add_widget(self.authtoken_input)
-        buttons.append(next_button('Next', (0.5, 0.24), True, next_screen='ServerAdvancedScreen', click_func=authorize_ngrok))
+        buttons.append(next_button('Next', (0.5, 0.24), True, next_screen='ServerSettingsScreen', click_func=authorize_ngrok))
         buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
@@ -17570,7 +17570,7 @@ class ServerWorldScreen(MenuBackground):
             if constants.version_check(server_version, '>=', "1.7.2"):
                 options.append('amplified')
             default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
-            float_layout.add_widget(DropButton(default_name, (0.5, 0.462), options_list=options, input_name='AdvancedServerLevelTypeInput', x_offset=41, custom_func=change_type))
+            float_layout.add_widget(DropButton(default_name, (0.5, 0.462), options_list=options, input_name='ServerSettingsLevelTypeInput', x_offset=41, custom_func=change_type))
 
         def change_world(*a):
 
@@ -17633,14 +17633,14 @@ class ServerWorldScreen(MenuBackground):
             constants.screen_tree.pop(-1)
             threading.Timer(0, change_thread).start()
 
-        buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='ServerAdvancedScreen', click_func=change_world))
+        buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='ServerSettingsScreen', click_func=change_world))
         buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
 
-        float_layout.add_widget(generate_title(f"Advanced Settings: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced, Change world"))
+        float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Change world"))
 
         self.add_widget(float_layout)
 
@@ -17694,13 +17694,13 @@ class ServerWorldScreen(MenuBackground):
                             if constants.version_check(server_version, '>=', "1.7.2"):
                                 options.append('amplified')
                             default_name = self.new_type.replace("default", "normal").replace("flat", "superflat").replace("large_biomes", "large biomes")
-                            child.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='AdvancedServerLevelTypeInput', x_offset=41))
+                            child.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerSettingsLevelTypeInput', x_offset=41))
                     break
 
             except AttributeError:
                 pass
 
-class ServerAdvancedScreen(MenuBackground):
+class ServerSettingsScreen(MenuBackground):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -18067,8 +18067,8 @@ class ServerAdvancedScreen(MenuBackground):
             self.remove_widget(self.footer_widget)
             del self.title_widget
             del self.footer_widget
-            self.title_widget = generate_title(f"Advanced Settings: '{name}'")
-            self.footer_widget = generate_footer(f"{name}, Advanced", color='EFD49E')
+            self.title_widget = generate_title(f"Server Settings: '{name}'")
+            self.footer_widget = generate_footer(f"{name}, Settings", color='EFD49E')
             self.add_widget(self.title_widget)
             self.add_widget(self.footer_widget)
 
@@ -18165,7 +18165,7 @@ class ServerAdvancedScreen(MenuBackground):
 
 
         # Configure header
-        header_content = "Modify advanced server configuration"
+        header_content = "Modify server configuration"
         self.header = HeaderText(header_content, '', (0, 0.89))
         self.check_changes(server_obj, force_banner=True)
         float_layout.add_widget(self.header)
@@ -18181,15 +18181,15 @@ class ServerAdvancedScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        self.title_widget = generate_title(f"Advanced Settings: '{server_obj.name}'")
-        self.footer_widget = generate_footer(f"{server_obj.name}, Advanced", color='EFD49E')
+        self.title_widget = generate_title(f"Server Settings: '{server_obj.name}'")
+        self.footer_widget = generate_footer(f"{server_obj.name}, Settings", color='EFD49E')
         self.add_widget(self.title_widget)
         self.add_widget(self.footer_widget)
 
         self.add_widget(float_layout)
 
         # Add ManuTaskbar
-        self.menu_taskbar = MenuTaskbar(selected_item='advanced')
+        self.menu_taskbar = MenuTaskbar(selected_item='settings')
         self.add_widget(self.menu_taskbar)
 
 # Update/Migrate server screens
@@ -18238,8 +18238,8 @@ class MigrateServerTypeScreen(MenuBackground):
         float_layout.add_widget(content_layout)
 
         float_layout.add_widget(page_counter(1, 2, (0, 0.86)))
-        float_layout.add_widget(generate_title(f"Advanced Settings: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced, Change 'server.jar'"))
+        float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Change 'server.jar'"))
 
         self.add_widget(float_layout)
 
@@ -18326,8 +18326,8 @@ class MigrateServerVersionScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        float_layout.add_widget(generate_title(f"Advanced Settings: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Advanced, Change 'server.jar'"))
+        float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Change 'server.jar'"))
 
         self.add_widget(float_layout)
 
