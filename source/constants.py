@@ -932,7 +932,7 @@ def copy_to(src_dir: str, dst_dir: str, new_name: str, overwrite=True):
                 final_item = copy(src_dir, final_path)
 
             elif item_type == "directory":
-                final_item = copytree(src_dir, final_path, dirs_exist_ok=True)
+                final_item = copytree(src_dir, final_path, dirs_exist_ok=True, ignore=ignore_patterns('*session.lock'))
 
             if final_item:
                 success = True

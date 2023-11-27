@@ -82,9 +82,12 @@ class BackupManager():
 
     # Restores server from file name
     def restore_backup(self, backup_name: str):
-        backup = restore_server(self.server['name'], backup_name, self.backup_stats)
-        self.update_data()
-        return backup
+        if self.server['name'] not in constants.server_manager.running_servers:
+            backup = restore_server(self.server['name'], backup_name, self.backup_stats)
+            self.update_data()
+            return backup
+        else:
+            return None
 
     # Moves backup directory to new_path
     def set_backup_directory(self, new_path: str):
@@ -236,14 +239,31 @@ def backup_server(name: str, backup_stats=None):
             file_name = f"{name}__{time}.amb"
             backup_file = os.path.join(backup_path, file_name)
 
+        temp_backup = os.path.join(backup_path, f'{name}-bkup')
         constants.folder_check(backup_path)
-        os.chdir(constants.server_path(name))
+        server_path = constants.server_path(name)
 
-        # Create backup
-        constants.run_proc(f'tar -cvf \"{os.path.join(backup_path, "bkup.amb")}\" {"*" if constants.os_name == "windows" else "* .??*"}')
+        failed = True
+        while failed:
+            if os.path.exists(temp_backup):
+                constants.safe_delete(temp_backup)
+                constants.folder_check(temp_backup)
+            try:
+                constants.copy_to(server_path, backup_path, f'{name}-bkup')
+            except:
+                continue
+            os.chdir(temp_backup)
+
+            # Create backup
+            code = constants.run_proc(f'tar --exclude="*session.lock" -cvf \"{os.path.join(backup_path, f"{name}-bkup.amb")}\" {"*" if constants.os_name == "windows" else "* .??*"}')
+            if code != 0:
+                continue
+
+            failed = False
+
         if os.path.exists(backup_file):
             os.remove(backup_file)
-        os.rename(os.path.join(backup_path, "bkup.amb"), backup_file)
+        os.rename(os.path.join(backup_path, f"{name}-bkup.amb"), backup_file)
 
 
         # Clear old backups if there's a limit in auto-mcs.ini
@@ -259,6 +279,8 @@ def backup_server(name: str, backup_stats=None):
 
 
         os.chdir(cwd)
+        if os.path.exists(temp_backup):
+            constants.safe_delete(temp_backup)
         set_lock(name, False)
 
         return [file_name, convert_size(os.stat(backup_file).st_size), time]
