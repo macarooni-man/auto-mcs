@@ -786,8 +786,7 @@ class ScriptObject():
                                     }
 
                                     # Input validation
-                                    loop_dict['unit'] = loop_dict['unit'] if loop_dict['unit'] in (
-                                    'second', 'minute', 'hour', 'tick') else 'second'
+                                    loop_dict['unit'] = loop_dict['unit'] if loop_dict['unit'] in ('second', 'minute', 'hour', 'tick') else 'second'
 
                                     # Seconds conversion, round to nearest 0.05 step
                                     try:
@@ -1143,7 +1142,19 @@ class ScriptObject():
     # Fires event when player joins the game
     # {'user': user, 'uuid': uuid, 'ip': ip_addr, 'date': date, 'logged-in': True}
     def join_event(self, player_obj):
+        if player_obj['user'] not in self.server_script_obj.player_list:
+            self.server_script_obj.player_list[player_obj['user']] = player_obj
+            # print(self.server_script_obj.player_list)
+            # print(self.server.run_data['player-list'])
+
+        if player_obj['user'] not in self.server_script_obj.usercache:
+            try:
+                self.server_script_obj.usercache[player_obj['user']] = player_obj['uuid']
+            except KeyError:
+                self.server_script_obj.usercache[player_obj['user']] = None
+
         self.call_event('@player.on_join', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
+
         if constants.debug:
             print('player.on_join')
             print(player_obj)
@@ -1152,6 +1163,12 @@ class ScriptObject():
     # {'user': user, 'uuid': uuid, 'ip': ip_addr, 'date': date, 'logged-in': False}
     def leave_event(self, player_obj):
         self.call_event('@player.on_leave', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
+
+        if player_obj['user'] in self.server_script_obj.player_list:
+            del self.server_script_obj.player_list[player_obj['user']]
+            # print(self.server_script_obj.player_list)
+            # print(self.server.run_data['player-list'])
+
         if constants.debug:
             print('player.on_leave')
             print(player_obj)
@@ -1237,12 +1254,25 @@ class ServerScriptObject():
 
         if server_obj.run_data:
             self._performance = server_obj.run_data['performance']
-            self.player_list = server_obj.run_data['player-list']
+            self.player_list = deepcopy(server_obj.run_data['player-list'])
             self.network = server_obj.run_data['network']['address']
         else:
             self._performance = {}
             self.player_list = {}
             self.network = {'ip': None, 'port': None}
+
+        # Load usercache
+        try:
+            self.usercache = {}
+            with open(os.path.join(self.directory, 'usercache.json'), 'r') as f:
+                file = json.load(f)
+                for item in file:
+                    try:
+                        self.usercache[item['name']] = item['uuid']
+                    except KeyError:
+                        self.usercache[item['name']] = None
+        except:
+            pass
 
     def __del__(self):
         self._running = False

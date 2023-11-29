@@ -4,6 +4,7 @@ from datetime import datetime as dt
 from threading import Timer
 from copy import deepcopy
 from glob import glob
+import functools
 import threading
 import hashlib
 import psutil
@@ -321,6 +322,7 @@ class ServerObject():
             type_label = ''
             main_label = ''
             type_color = ''
+            event = None
 
             if line:
 
@@ -350,10 +352,14 @@ class ServerObject():
 
                 # Format string as needed
 
-                # Shorten coordinates because FUCK they are long
-                if "logged in with entity id" not in message:
-                    for float_str in re.findall(r"[-+]?(?:\d*\.*\d+)", message):
-                        if len(float_str) > 5 and "." in float_str:
+                # Shorten coordinates
+                addrs = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', message)
+                for float_str in re.findall(r"(?<=[ |\]|\(]|,)[-+]?(?:\d+\.\d+)", message):
+                    if len(float_str) > 5 and "." in float_str:
+                        for addr in addrs:
+                            if float_str in addr:
+                                break
+                        else:
                             message = message.replace(float_str, str(round(float(float_str), 2)))
 
                 if message.endswith("[m"):
@@ -366,6 +372,7 @@ class ServerObject():
                     try:
                         message = escape_markup(message)
                         code_list = [message[x:x + 2] for x, y in enumerate(message, 0) if y == '§']
+
                         for code in code_list:
                             message = message.replace(code, format_color(code))
 
@@ -397,7 +404,7 @@ class ServerObject():
                     user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
                     content = message.split('>', 1)[1].strip()
                     main_label = f"{user} issued server command: {content}"
-                    self.script_object.message_event({'user': user, 'content': content})
+                    event = functools.partial(self.script_object.message_event, {'user': user, 'content': content})
 
 
                 # Player message log
@@ -409,7 +416,7 @@ class ServerObject():
                         user = message.split('>', 1)[0].replace('<', '', 1).strip()
                         user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
                         content = message.split('>', 1)[1].strip()
-                        self.script_object.message_event({'user': user, 'content': content})
+                        event = functools.partial(self.script_object.message_event, {'user': user, 'content': content})
 
 
                 # Server message log
@@ -427,14 +434,14 @@ class ServerObject():
                         user = message.split('issued server command: ')[0].strip()
                         user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
                         content = message.split('issued server command: ')[1].strip()
-                        self.script_object.message_event({'user': user, 'content': content})
+                        event = functools.partial(self.script_object.message_event, {'user': user, 'content': content})
 
 
                 # Server start log
                 elif "Done" in line and "For help," in line:
                     type_label = "START"
                     type_color = (0.3, 1, 0.6, 1)
-                    main_label += '. Type "!help" for Auto-MCS commands'
+                    main_label += '. Type "!help" for auto-mcs commands'
 
 
                 # Server stop log
@@ -448,7 +455,7 @@ class ServerObject():
                     uuid = None
                     user = message.split("[/", 1)[0].strip()
                     ip = message.split("[/", 1)[1].split("]")[0].strip()
-                    main_label = f'{user} logged in from {ip} ' + message.split("]")[1].replace('logged in', '').strip()
+                    main_label = f'{user} logged in from {ip} ' + message.split("]", 1)[1].replace('logged in', '').strip()
                     try:
                         for log_item in reversed(self.run_data['log'][-10:]):
                             if user in log_item['text'][2] and "UUID" in log_item['text'][2]:
@@ -528,6 +535,9 @@ class ServerObject():
                 elif "FATAL" in line:
                     type_label = "FATAL"
                     type_color = (1, 0.5, 0.65, 1)
+                elif (main_label.endswith(' left the game') or main_label.endswith(' joined the game')):
+                    type_label = "CHAT"
+                    type_color = (0.439, 0.839, 1, 1)
                 else:
                     # Ignore NBT data updates
                     if " has the following entity data: {" in main_label or ("Teleported " in main_label and " to " in main_label):
@@ -535,7 +545,6 @@ class ServerObject():
 
                     type_label = "INFO"
                     type_color = (0.6, 0.6, 1, 1)
-
 
                     # Check for death events
                     exclude_list = ['joined', 'left', 'Killed', 'logged', 'disconnected', 'Made', 'UUID', 'achievement']
@@ -584,17 +593,18 @@ class ServerObject():
                                 if word.strip() in self.run_data['player-list']:
                                     type_label = "CHAT"
                                     type_color = (0.439, 0.839, 1, 1)
-                                    self.script_object.death_event({'user': word.strip(), 'content': main_label.strip()})
+                                    event = functools.partial(self.script_object.death_event, {'user': word.strip(), 'content': main_label.strip()})
                                     break
 
 
                 if date_label and type_label and main_label and type_color:
-                    return (date_label, type_label, main_label, type_color)
+                    return (date_label, type_label, main_label, type_color), event
 
         for log_line in text.splitlines():
+            event = None
             if log_line:
                 try:
-                    log_line = format_log(log_line)
+                    log_line, event = format_log(log_line)
                 except Exception as e:
                     print(e)
                     continue
@@ -610,6 +620,10 @@ class ServerObject():
                     # Purge long ones
                     if len(self.run_data['log']) > self.max_log_size:
                         self.run_data['log'].pop(0)
+
+                # Execute amscript event
+                if event:
+                    event()
 
     # Command handler to current server process
     def send_command(self, cmd, add_to_history=True, log_cmd=True, script=False):
@@ -634,14 +648,14 @@ class ServerObject():
 
                 new_cmd = f"/{cmd}" if bool(re.match('^[a-zA-Z0-9]+$', cmd[:1])) else cmd
 
+                # Show log
+                if log_cmd:
+                    self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'EXEC', f"Console issued server command: {new_cmd}", (1, 0.298, 0.6, 1))})
+
                 # Send script event
                 if self.script_object.enabled and not script:
                     # Check if command is in user command alias list, and if not don't send to server
                     self.script_object.message_event({'user': f'#{self._hash}', 'content': new_cmd})
-
-                # Show log
-                if log_cmd:
-                    self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'EXEC', f"Console issued server command: {new_cmd}", (1, 0.298, 0.6, 1))})
 
                 # Send to server if it doesn't start with !
                 if not cmd.startswith("!"):

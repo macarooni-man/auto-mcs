@@ -764,7 +764,10 @@ def check_subnet(addr: str):
 # Create folder if it doesn't exist
 def folder_check(directory: str):
     if not os.path.exists(directory):
-        os.makedirs(directory)
+        try:
+            os.makedirs(directory)
+        except FileExistsError:
+            pass
         if debug:
             print(f'Created "{directory}"')
     else:
@@ -848,7 +851,8 @@ def safe_delete(directory: str):
     try:
         if os.path.exists(directory):
             rmtree(directory)
-    except OSError:
+    except OSError as e:
+        print(e)
         print(f"Could not delete '{directory}'")
 
 

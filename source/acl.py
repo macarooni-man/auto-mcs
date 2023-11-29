@@ -1496,7 +1496,11 @@ def concat_db(only_delete=False):
         # Load current uuid-db.json into final_db
         try:
             with open(uuid_db, "r") as f:
-                current_db = json.load(f)
+                try:
+                    current_db = json.load(f)
+                except:
+                    print("'uuid-db.json' reset due to formatting error")
+                    current_db = {}
                 uuid_list = [item['uuid'] for item in current_db]
 
         except OSError:

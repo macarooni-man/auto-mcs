@@ -11605,10 +11605,10 @@ class PerformancePanel(RelativeLayout):
 
         meter_max = (Window.width * 0.32)
         self.meter_layout.size_hint_max_x = meter_max if meter_max >= self.meter_min else self.meter_min
+        self.meter_layout.x = self.width - self.meter_layout.width
         for child in self.meter_layout.children:
             Clock.schedule_once(child.recalculate_size, 0)
 
-        self.meter_layout.x = self.width - self.meter_layout.width
         self.player_widget.x = self.overview_widget.x + self.overview_widget.width - texture_offset + 12
         self.player_widget.size_hint_max_x = (self.width) - self.meter_layout.width - self.overview_widget.width + (texture_offset * 2) - 24
         Clock.schedule_once(self.player_widget.recalculate_size, 0)
@@ -11742,6 +11742,7 @@ class PerformancePanel(RelativeLayout):
                 self.label.markup = True
                 self.add_widget(self.label)
 
+                self.bind(pos=self.on_resize, size=self.on_resize)
                 Clock.schedule_once(self.on_resize, 0)
 
         # Hacky background for panel objects
@@ -11819,11 +11820,9 @@ class PerformancePanel(RelativeLayout):
                 self.set_percent(self.percent, animate=False)
 
                 # Set text position
-                def move_text(*a):
-                    text_x = self.width - self.percentage_label.width - 45 - padding
-                    self.name.pos = (text_x, self.progress_bg.pos[1] - (self.progress_bar.size_hint_max[1] / 2))
-                    self.percentage_label.pos = (text_x, self.progress_bar.pos[1] + 12)
-                Clock.schedule_once(move_text, 0)
+                text_x = self.width - self.percentage_label.width - 45 - padding
+                self.percentage_label.pos = (text_x, self.progress_bar.pos[1] + 12)
+                self.name.pos = (text_x, self.progress_bg.pos[1] - (self.progress_bar.size_hint_max[1] / 2))
 
             def __init__(self, meter_name, meter_min=350, **kwargs):
                 super().__init__(**kwargs)
@@ -11870,7 +11869,7 @@ class PerformancePanel(RelativeLayout):
                 )
                 self.add_widget(self.percentage_label)
 
-                self.recalculate_size()
+                Clock.schedule_once(self.recalculate_size, 0)
 
 
         class OverviewWidget(RelativeLayout):
