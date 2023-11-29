@@ -11742,7 +11742,7 @@ class PerformancePanel(RelativeLayout):
                 self.label.markup = True
                 self.add_widget(self.label)
 
-                self.bind(pos=self.on_resize, size=self.on_resize)
+                self.bind(pos=self.on_resize)
                 Clock.schedule_once(self.on_resize, 0)
 
         # Hacky background for panel objects
@@ -14804,7 +14804,6 @@ class ServerAddonScreen(MenuBackground):
                     {"center_x": 0.5, "center_y": 0.965}
                 ), 0
             )
-
 
 class ServerAddonSearchScreen(MenuBackground):
 
