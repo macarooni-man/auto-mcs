@@ -1147,13 +1147,13 @@ class ScriptObject():
             # print(self.server_script_obj.player_list)
             # print(self.server.run_data['player-list'])
 
+        self.call_event('@player.on_join', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
+
         if player_obj['user'] not in self.server_script_obj.usercache:
             try:
                 self.server_script_obj.usercache[player_obj['user']] = player_obj['uuid']
             except KeyError:
                 self.server_script_obj.usercache[player_obj['user']] = None
-
-        self.call_event('@player.on_join', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
 
         if constants.debug:
             print('player.on_join')
@@ -1162,6 +1162,10 @@ class ScriptObject():
     # Fires when player leaves the game
     # {'user': user, 'uuid': uuid, 'ip': ip_addr, 'date': date, 'logged-in': False}
     def leave_event(self, player_obj):
+
+        # Wait to process event to receive updated playerdata
+        time.sleep(0.05)
+
         self.call_event('@player.on_leave', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
 
         if player_obj['user'] in self.server_script_obj.player_list:
@@ -1397,6 +1401,9 @@ class PlayerScriptObject():
         if not self.is_server:
             self._get_nbt()
 
+    def __hash__(self):
+        return hash(self.name)
+
     # If self is printed, show string of username instead
     def __str__(self):
         return self.name
@@ -1423,6 +1430,8 @@ class PlayerScriptObject():
                     try:
                         new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
                     except FileNotFoundError:
+                        return None
+                    except PermissionError:
                         return None
                     try:
                         self.position = CoordinateObject({'x': fmt(new_nbt['Pos'][0]), 'y': fmt(new_nbt['Pos'][1]), 'z': fmt(new_nbt['Pos'][2])})

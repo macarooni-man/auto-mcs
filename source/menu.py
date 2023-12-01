@@ -15708,7 +15708,8 @@ class CreateAmscriptScreen(MenuBackground):
 # Right-click > Help to learn more about the capabilities of amscript
 
 @player.on_join(player, message):
-    player.log(f"Welcome to the server {{player}}!")
+    if player not in server.usercache:
+        player.log(f"Welcome to {{server}} {{player}}!")
 """
 
             constants.folder_check(constants.scriptDir)

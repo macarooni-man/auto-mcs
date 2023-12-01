@@ -479,14 +479,14 @@ class ServerObject():
                         self.acl._process_log(self.run_data['player-list'][username])
 
                         if self.script_object.enabled:
-                            self.script_object.join_event(self.run_data['player-list'][username])
+                            return functools.partial(self.script_object.join_event, self.run_data['player-list'][username])
 
                     try:
                         if self.run_data['player-list'][user]['date'] < message_date_obj:
-                            add_to_list(user, uuid, ip, message_date_obj)
+                            event = add_to_list(user, uuid, ip, message_date_obj)
                     except KeyError:
                         try:
-                            add_to_list(user, uuid, ip, message_date_obj)
+                            event = add_to_list(user, uuid, ip, message_date_obj)
                         except KeyError:
                             pass
 
@@ -504,14 +504,14 @@ class ServerObject():
                         self.acl._process_log(self.run_data['player-list'][user])
 
                         if self.script_object.enabled:
-                            self.script_object.leave_event(self.run_data['player-list'][user])
+                            return functools.partial(self.script_object.leave_event, self.run_data['player-list'][user])
 
                     try:
                         if self.run_data['player-list'][user]['date'] < message_date_obj:
-                            add_to_list()
+                            event = add_to_list()
                     except KeyError:
                         try:
-                            add_to_list()
+                            event = add_to_list()
                         except KeyError:
                             pass
 
