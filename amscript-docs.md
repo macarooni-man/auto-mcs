@@ -101,6 +101,10 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
  - `dict`, contains a key and a sub-dictionary for each connected player
  - The current format is `{'username': {'uuid': uuid, 'ip': ip address, 'date': datetime, 'logged-in': True}}`
 
+#### server.usercache
+ - `dict`, contains a dictionary for each player who has ever joined the server
+ - The current format is `{'username': 'uuid'}`
+
 #### server.persistent
  - `dict`, persistent variable storage for saving information between server restarts, or script reloads
  - Assigning or updating a key in the `server.persistent` dictionary will automatically save it, and can be accessed via the same key persistently until it is changed again, or deleted. Data will only be saved for the server referenced in the object.
