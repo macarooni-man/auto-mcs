@@ -1,5 +1,6 @@
 from traceback import format_exc
 import threading
+import argparse
 import requests
 import ctypes
 import glob
@@ -49,9 +50,28 @@ if __name__ == '__main__':
         pass
 
 
+
+    # Check for additional arguments
+    parser = argparse.ArgumentParser(description='CLI options for auto-mcs')
+    parser.add_argument('-d', '--debug', default='',help='execute auto-mcs with verbose console logging', action='store_true')
+    parser.add_argument('-l', '--launch', type=str, default='', help='specify a server name (or list of server names) to launch automatically', metavar='"Server 1, Server 2"')
+    args = parser.parse_args()
+
     # Check for debug mode
-    if "--debug" in sys.argv:
-        constants.debug = True
+    constants.debug = args.debug
+
+    # Check for auto-start
+    if args.launch:
+        constants.generate_server_list()
+        server_list = [s.strip() for s in args.launch.split(',')]
+        for server in server_list:
+            if server in constants.server_list_lower:
+                server = constants.server_list[constants.server_list_lower.index(server.lower())]
+                constants.boot_launches.append(server)
+            else:
+                print(f'--launch: server "{server}" does not exist')
+                sys.exit(-1)
+
 
 
     # Check if application is already open

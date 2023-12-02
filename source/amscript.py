@@ -134,7 +134,7 @@ class ScriptManager():
         self.server_name = server_name
         self.server_path = constants.server_path(server_name)
         self.script_path = constants.scriptDir
-        self.json_path = os.path.join(self.server_path, json_name)
+        self.json_path = os.path.join(self.server_path, 'amscript', json_name)
         self.installed_scripts = {'enabled': [], 'disabled': []}
         self.online_scripts = constants.ams_web_list
         self.script_hash = None
@@ -213,7 +213,7 @@ class ScriptManager():
         # Remove script from every server in which it's enabled
         for server in glob(os.path.join(constants.applicationFolder, 'Servers', '*')):
             server_name = os.path.basename(server)
-            json_path = constants.server_path(server_name, json_name)
+            json_path = constants.server_path(server_name, 'amscript', json_name)
             if json_path:
                 script_state(server_name, script, enabled=False)
 
@@ -1124,8 +1124,9 @@ class ScriptObject():
     def start_event(self, data):
         self.call_event('@server.on_start', (data))
         self.call_event('@server.on_loop', ())
-        print('server.on_start')
-        print(data)
+        if constants.debug:
+            print('server.on_start')
+            print(data)
 
     # Fires when server starts
     # Eventually add return code to see if it crashed
@@ -1133,8 +1134,9 @@ class ScriptObject():
     def shutdown_event(self, data):
         self.server_script_obj._running = False
         self.call_event('@server.on_stop', (data))
-        print('server.on_stop')
-        print(data)
+        if constants.debug:
+            print('server.on_stop')
+            print(data)
 
 
     # ----------------------- Player Events ------------------------
@@ -1185,9 +1187,10 @@ class ScriptObject():
             self.alias_event(msg_obj)
         elif msg_obj['user'] != self.server_id:
             self.call_event('@player.on_message', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), msg_obj['content']))
-
-            print('player.on_message')
-            print(msg_obj)
+            
+            if constants.debug:
+                print('player.on_message')
+                print(msg_obj)
 
     # Fires event when a player dies
     # {'user': player, 'content': message}
@@ -1843,7 +1846,7 @@ class PlayerScriptObject():
 # --------------------------------------------- General Functions ------------------------------------------------------
 
 # Conversion dict for effect IDs
-json_name = "amscript.json"
+json_name = "ams-conf.json"
 id_dict = {
     'effect': {
         1:  'speed',
@@ -2433,10 +2436,11 @@ def json_regex(match):
 
 # Enables or disables script for a specific server
 def script_state(server_name: str, script: AmsFileObject, enabled=True):
-    json_path = os.path.join(constants.server_path(server_name), json_name)
+    json_path = os.path.join(constants.server_path(server_name), 'amscript', json_name)
 
     # Get script whitelist data if it exists
     json_data = {'enabled': []}
+    constants.folder_check(os.path.join(constants.server_path(server_name), 'amscript'))
     if os.path.isfile(json_path):
         with open(json_path, 'r') as f:
             json_data = json.loads(f.read())
@@ -2795,9 +2799,8 @@ class PersistenceManager():
         # Individual players will have their own dictionary in the 'player' key
 
         self._name = server_name
-        self._hash = int(hashlib.sha1(self._name.encode("utf-8")).hexdigest(), 16) % (10 ** 12)
-        self._config_path = os.path.join(constants.scriptDir, 'pstconf')
-        self._path = os.path.join(self._config_path, f"{self._hash}.json")
+        self._config_path = os.path.join(constants.server_path(self._name), 'amscript')
+        self._path = os.path.join(self._config_path, "pst-conf.json")
         self._data = None
 
         # Retrieve data if it exists

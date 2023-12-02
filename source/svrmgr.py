@@ -670,8 +670,6 @@ class ServerObject():
     def launch(self):
 
         if not self.running:
-            while not self.addon or not self.backup or not self.script_manager or not self.acl:
-                time.sleep(0.05)
 
             self.running = True
             constants.java_check()
@@ -683,7 +681,7 @@ class ServerObject():
             script_path = constants.generate_run_script(self.properties_dict())
 
             if not self.restart_flag:
-                self.run_data['launch-time'] = dt.now()
+                self.run_data['launch-time'] = None
                 self.run_data['player-list'] = {}
                 self.run_data['network'] = {}
                 self.run_data['log'] = [{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
@@ -943,6 +941,7 @@ class ServerObject():
 
             self.run_data['thread'] = Timer(0, process_thread)
             self.run_data['thread'].start()
+            self.run_data['launch-time'] = dt.now()
 
             constants.server_manager.running_servers[self.name] = self
 
@@ -1145,16 +1144,16 @@ class ServerObject():
             self.write_config()
 
             # Rename persistent configuration for amscript
-            config_path = os.path.join(constants.configDir, 'amscript', 'pstconf')
-            old_hash = int(hashlib.sha1(original_name.encode("utf-8")).hexdigest(), 16) % (10 ** 12)
-            old_path = os.path.join(config_path, f"{old_hash}.json")
-            if os.path.isfile(old_path):
-                new_hash = int(hashlib.sha1(new_name.encode("utf-8")).hexdigest(), 16) % (10 ** 12)
-                new_path = os.path.join(config_path, f"{new_hash}.json")
-                try:
-                    os.rename(old_path, new_path)
-                except:
-                    pass
+            # config_path = os.path.join(constants.configDir, 'amscript', 'pstconf')
+            # old_hash = int(hashlib.sha1(original_name.encode("utf-8")).hexdigest(), 16) % (10 ** 12)
+            # old_path = os.path.join(config_path, f"{old_hash}.json")
+            # if os.path.isfile(old_path):
+            #     new_hash = int(hashlib.sha1(new_name.encode("utf-8")).hexdigest(), 16) % (10 ** 12)
+            #     new_path = os.path.join(config_path, f"{new_hash}.json")
+            #     try:
+            #         os.rename(old_path, new_path)
+            #     except:
+            #         pass
 
             # Change folder name
             new_path = os.path.join(constants.applicationFolder, 'Servers', new_name)

@@ -42,6 +42,7 @@ if constants.app_compiled and constants.debug is False:
 
 os.environ["KCFG_KIVY_LOG_LEVEL"] = "info"
 os.environ["KIVY_IMAGE"] = "pil,sdl2"
+os.environ['KIVY_NO_ARGS'] = '1'
 
 from kivy.config import Config
 Config.set('graphics', 'maxfps', '240')
@@ -10645,12 +10646,15 @@ class ServerImportProgressScreen(ProgressScreen):
 # Server Manager Overview ----------------------------------------------------------------------------------------------
 
 # Opens server in panel, and updates Server Manager current_server
-def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, *args):
+def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, *args):
     def next_screen(*args):
         if constants.server_manager.current_server.name != server_name:
             while constants.server_manager.current_server.name != server_name:
                 time.sleep(0.005)
         screen_manager.current = 'ServerViewScreen'
+
+        if launch:
+            Clock.schedule_once(screen_manager.current_screen.console_panel.launch_server, 0)
 
         if show_banner:
             Clock.schedule_once(
@@ -10686,7 +10690,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         if server_obj.type in ['forge', 'paper']:
             constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
         screen_manager.current = 'MigrateServerProgressScreen'
-
+        screen_manager.current_screen.page_contents['launch'] = launch
 
     else:
         Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
@@ -11996,6 +12000,10 @@ class PerformancePanel(RelativeLayout):
 
 
                 text_width = 240
+                if self.scroll_layout.width <= 50:
+                    self.recalculate_size()
+                    return
+
                 text_width = int(((self.scroll_layout.width // text_width) // 1))
                 self.player_list.cols = text_width
                 self.player_list.rows = round(data_len / text_width) + 3
@@ -12331,17 +12339,26 @@ class ConsolePanel(FloatLayout):
 
         Clock.schedule_once(after_anim, (anim_speed*1.51) if animate else 0)
 
-
         # Actually launch server
-        constants.java_check()
-        self.update_process(screen_manager.current_screen.server.launch())
+        def start_timer(*_):
+            server_obj = screen_manager.current_screen.server
 
-        # Start performance counter
-        screen_manager.current_screen.set_timer(True)
+            self.update_text(text=[{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{server_obj.name}', please wait...", (0.7,0.7,0.7,1))}])
+            while not server_obj.addon or not server_obj.backup or not server_obj.script_manager or not server_obj.acl:
+                time.sleep(0.05)
 
-        self.input.disabled = False
-        constants.server_manager.current_server.run_data['console-panel'] = self
-        constants.server_manager.current_server.run_data['performance-panel'] = screen_manager.current_screen.performance_panel
+            self.update_process(screen_manager.current_screen.server.launch())
+
+            # Start performance counter
+            try:
+                screen_manager.current_screen.set_timer(True)
+            except AttributeError:
+                pass
+
+            self.input.disabled = False
+            constants.server_manager.current_server.run_data['console-panel'] = self
+            constants.server_manager.current_server.run_data['performance-panel'] = screen_manager.current_screen.performance_panel
+        threading.Timer(0, start_timer).start()
 
 
     # Send '/stop' command to server console
@@ -18401,7 +18418,8 @@ class MigrateServerProgressScreen(ProgressScreen):
 
         def after_func(*args):
             constants.make_update_list()
-            open_server(server_obj.name, True, f"{final_text} '{server_obj.name}' successfully")
+            open_server(server_obj.name, True, f"{final_text} '{server_obj.name}' successfully", launch=self.page_contents['launch'])
+
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -18414,6 +18432,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             self.progress_bar.update_progress(final)
 
         self.page_contents = {
+            'launch': False,
 
             # Page name
             'title': f"{desc_text} '{server_obj.name}'",
@@ -18616,16 +18635,6 @@ class MainApp(App):
         screen_manager.transition = NoTransition()
         screen_manager.current = constants.startup_screen
 
-        # Screen manager override
-        # if not constants.app_compiled:
-        #     def open_menu(*args):
-        #         open_server("bedrock-test")
-        #         # def open_ams(*args):
-        #         #     screen_manager.current = "ServerAmscriptScreen"
-        #         # Clock.schedule_once(open_ams, 1)
-        #     Clock.schedule_once(open_menu, 0)
-
-
         screen_manager.transition = FadeTransition(duration=0.115)
 
         # Close splash screen if compiled
@@ -18641,6 +18650,36 @@ class MainApp(App):
         def raise_window(*a):
             Window.raise_window()
         Clock.schedule_once(raise_window, 0)
+
+
+        # Screen manager override
+        # if not constants.app_compiled:
+        #     def open_menu(*args):
+        #         open_server("bedrock-test")
+        #         # def open_ams(*args):
+        #         #     screen_manager.current = "ServerAmscriptScreen"
+        #         # Clock.schedule_once(open_ams, 1)
+        #     Clock.schedule_once(open_menu, 0.5)
+
+
+        # Process --launch flag
+        if constants.boot_launches:
+            if not constants.is_admin():
+
+                def launch_server(*_):
+                    for server in constants.boot_launches:
+                        def open_menu(*args):
+                            open_server(server, ignore_update=False, launch=True)
+                        Clock.schedule_once(open_menu, 0.5)
+
+                        if len(constants.boot_launches) > 1:
+                            while server not in constants.server_manager.running_servers:
+                                time.sleep(0.5)
+                                print(constants.server_manager.running_servers)
+                            Clock.schedule_once(previous_screen, 1)
+                            time.sleep(1.5)
+
+                threading.Timer(0, launch_server).start()
 
         return screen_manager
 

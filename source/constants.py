@@ -66,6 +66,7 @@ screen_tree = []
 back_clicked = False
 session_splash = ''
 ignore_close = False
+boot_launches = []
 
 # Global debug mode and app_compiled, set debug to false before release
 debug = False
@@ -436,11 +437,13 @@ global_banner = None
 def run_proc(cmd, return_text=False):
     if return_text:
         result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
-        print(f'{cmd}: returned exit code {result.returncode}')
+        if debug:
+            print(f'{cmd}: returned exit code {result.returncode}')
         return result.stdout.decode()
     else:
         return_code = subprocess.call(cmd, shell=True)
-        print(f'{cmd}: returned exit code {return_code}')
+        if debug:
+            print(f'{cmd}: returned exit code {return_code}')
         return return_code
 
 
@@ -1054,6 +1057,16 @@ def find_latest_mc():
             # Forge
             reqs = requests.get(url)
             soup = BeautifulSoup(reqs.text, 'html.parser')
+
+            # Get side panel latest version
+            a = soup.find('ul', 'nav-collapsible nav-collapsible-open')
+            try:
+                new_url = url.rsplit('/', 1)[0] + '/' + a.find('a').get('href')
+                reqs = requests.get(new_url)
+                soup = BeautifulSoup(reqs.text, 'html.parser')
+            except:
+                pass
+
             title_list = soup.find_all('div', "title")
 
             for div in title_list:
@@ -1098,6 +1111,7 @@ def find_latest_mc():
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
             latestMC["craftbukkit"] = soup.find('div', "row vdivide").h2.text
+
 
         elif name == "fabric":
             # Fabric
