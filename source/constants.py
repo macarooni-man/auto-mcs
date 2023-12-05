@@ -307,6 +307,10 @@ def check_app_version(current, latest):
     for x in range(max_size):
         if l_list[x] > c_list[x]:
             return True
+
+        elif c_list[0] > l_list[0]:
+            return False
+
     else:
         return False
 

@@ -6561,7 +6561,7 @@ class ProgressScreen(MenuBackground):
             try:
                 test = step[1]()
             except Exception as e:
-                print(e)
+                print(f"ProgressScreen error on Step {x + 1}: ", e)
                 test = False
             time.sleep(0.2)
 
@@ -6589,7 +6589,9 @@ class ProgressScreen(MenuBackground):
         constants.ignore_close = False
         if not self.error and self.page_contents['next_screen']:
             def next_screen(*args):
+                constants.back_clicked = True
                 screen_manager.current = self.page_contents['next_screen']
+                constants.back_clicked = False
             Clock.schedule_once(next_screen, 0.8)
 
 
@@ -14311,6 +14313,8 @@ class AddonListButton(HoverButton):
                     self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
                     self.background_color = (1, 1, 1, 1)
             Clock.schedule_once(change_color, 0.07)
+            Animation.stop_all(self.delete_button)
+            Animation(opacity=1, duration=0.25).start(self.delete_button)
         def delete_on_leave(*args):
             def change_color(*args):
                 self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
@@ -14318,13 +14322,15 @@ class AddonListButton(HoverButton):
                     self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
                     self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
             Clock.schedule_once(change_color, 0.15)
+            Animation.stop_all(self.delete_button)
+            Animation(opacity=0.65, duration=0.25).start(self.delete_button)
         def delete_click(*args):
             # Delete addon and reload list
             def reprocess_page(*args):
                 addon_manager = constants.server_manager.current_server.addon
                 addon_manager.delete_addon(self.properties)
                 addon_screen = screen_manager.current_screen
-                new_list = addon_manager.return_single_list()
+                new_list = [addon for addon in addon_manager.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
                 addon_screen.gen_search_results(new_list, fade_in=True)
 
                 # Show banner if server is running
@@ -14369,6 +14375,7 @@ class AddonListButton(HoverButton):
             )
         self.delete_layout = RelativeLayout(opacity=0)
         self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'], anchor='right', click_func=delete_click)
+        self.delete_button.opacity = 0.65
         self.delete_button.button.bind(on_enter=delete_hover)
         self.delete_button.button.bind(on_leave=delete_on_leave)
         self.delete_layout.add_widget(self.delete_button)
@@ -14518,6 +14525,115 @@ class AddonListButton(HoverButton):
         else:
             self.subtitle.text = self.original_subtitle
             self.subtitle.font_name = self.original_font
+
+class ServerAddonUpdateScreen(ProgressScreen):
+
+    # Only replace this function when making a child screen
+    # Set fail message in child functions to trigger an error
+    def contents(self):
+        server_obj = constants.server_manager.current_server
+        icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+        desc_text = "Updating"
+        final_text = "Updated"
+
+        def before_func(*args):
+
+            if not constants.app_online:
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+            else:
+                # Clear folders beforehand
+                constants.safe_delete(constants.tmpsvr)
+                constants.safe_delete(constants.tempDir)
+                constants.safe_delete(constants.downDir)
+
+                # Generate server info for downloading proper add-on versions
+                constants.new_server_init()
+                constants.new_server_info = server_obj.properties_dict()
+                constants.init_update()
+                constants.new_server_info['addon_objects'] = server_obj.addon.installed_addons['enabled']
+
+        def after_func(*args):
+            server_obj.addon.update_required = False
+            self.steps.label_2.text = "Updates complete!" + f"   [font={icons}]å[/font]"
+
+            # Clear items from addon cache to re-cache
+            for addon in server_obj.addon.installed_addons['enabled']:
+                if addon.hash in constants.addon_cache:
+                    del constants.addon_cache[addon.hash]
+            constants.load_addon_cache(True)
+
+
+            # Copy folder to server path and delete tmpsvr
+            new_path = os.path.join(constants.serverDir, constants.new_server_info['name'])
+            constants.copytree(constants.tmpsvr, new_path, dirs_exist_ok=True)
+            constants.safe_delete(constants.tempDir)
+            constants.safe_delete(constants.downDir)
+
+            constants.new_server_info = {}
+            if server_obj.running:
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        (0.937, 0.831, 0.62, 1),
+                        f"A server restart is required to apply changes",
+                        "sync.png",
+                        3,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 1
+                )
+
+            else:
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        (0.553, 0.902, 0.675, 1),
+                        f"{final_text} add-ons successfully",
+                        "checkmark-circle-sharp.png",
+                        3,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 1
+                )
+
+        # Original is percentage before this function, adjusted is a percent of hooked value
+        def adjust_percentage(*args):
+            original = self.last_progress
+            adjusted = args[0]
+            total = args[1] * 0.01
+            final = original + round(adjusted * total)
+            if final < 0:
+                final = original
+
+            count = round(len(constants.new_server_info['addon_objects']) * (final * 0.01))
+            self.steps.label_2.text = "Updating add-ons" + f"   ({count}/{len(constants.new_server_info['addon_objects'])})"
+
+            self.progress_bar.update_progress(final)
+
+        self.page_contents = {
+
+            # Page name
+            'title': f"{desc_text} add-ons",
+
+            # Header text
+            'header': "Sit back and relax, it's automation time...",
+
+            # Tuple of tuples for steps (label, function, percent)
+            # Percent of all functions must total 100
+            # Functions must return True, or default error will be executed
+            'default_error': 'There was an issue, please try again later',
+
+            'function_list': (
+                (f'{desc_text} Add-ons...', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 100), True), 0),
+            ),
+
+            # Function to run before steps (like checking for an internet connection)
+            'before_function': before_func,
+
+            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
+            'after_function': after_func,
+
+            # Screen to go to after complete
+            'next_screen': 'ServerAddonScreen'
+        }
 
 class ServerAddonScreen(MenuBackground):
 
@@ -14702,6 +14818,7 @@ class ServerAddonScreen(MenuBackground):
         self.blank_label = None
         self.page_switcher = None
         self.menu_taskbar = None
+        self.update_button = None
 
         self.last_results = []
         self.page_size = 20
@@ -14797,6 +14914,18 @@ class ServerAddonScreen(MenuBackground):
         float_layout.add_widget(generate_title(f"Add-on Manager: '{self.server.name}'"))
         float_layout.add_widget(generate_footer(menu_name))
 
+
+        # Buttons in the top right corner
+        def update_addons(*a):
+            screen_manager.current = 'ServerAddonUpdateScreen'
+
+        if addon_count > 0:
+            if not self.server.addon.update_required:
+                float_layout.add_widget(IconButton('up to date', {}, (70, 110), (None, None), 'checkmark-sharp.png', clickable=False, anchor='right', click_func=update_addons))
+            else:
+                float_layout.add_widget(IconButton('update add-ons', {}, (70, 110), (None, None), 'arrow-update.png', clickable=True, anchor='right', click_func=update_addons, force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green'], text_offset=(12, 0)))
+
+
         self.add_widget(float_layout)
 
 
@@ -14818,6 +14947,20 @@ class ServerAddonScreen(MenuBackground):
                     f"A server restart is required to apply changes",
                     "sync.png",
                     3,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+        # Show banner if updates are available
+        elif constants.server_manager.current_server.addon.update_required and not constants.server_manager.current_server.addon.update_notified:
+            constants.server_manager.current_server.addon.update_notified = True
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_banner,
+                    (0.553, 0.902, 0.675, 1),
+                    f"Add-on updates are available",
+                    "arrow-up-circle-sharp.png",
+                    2.5,
                     {"center_x": 0.5, "center_y": 0.965}
                 ), 0
             )
@@ -15496,6 +15639,8 @@ class AmscriptListButton(HoverButton):
                         self.background_normal = os.path.join(constants.gui_assets, "server_button_hover.png")
                         self.background_color = (1, 1, 1, 1)
                 Clock.schedule_once(change_color, 0.07)
+                Animation.stop_all(self.delete_button)
+                Animation(opacity=1, duration=0.25).start(self.delete_button)
             def edit_on_leave(*args):
                 def change_color(*args):
                     self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
@@ -15503,6 +15648,8 @@ class AmscriptListButton(HoverButton):
                         self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
                         self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
                 Clock.schedule_once(change_color, 0.15)
+                Animation.stop_all(self.delete_button)
+                Animation(opacity=0.65, duration=0.25).start(self.delete_button)
             def edit_click(*args):
                 # Delete addon and reload list
                 def reprocess_page(*args):
@@ -15527,6 +15674,7 @@ class AmscriptListButton(HoverButton):
                 Clock.schedule_once(functools.partial(reprocess_page), 0)
             self.delete_layout = RelativeLayout(opacity=0)
             self.delete_button = IconButton('', {}, (0, 0), (None, None), 'edit-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], ''], anchor='right', click_func=edit_click)
+            self.delete_button.opacity = 0.65
             self.delete_button.button.bind(on_enter=edit_hover)
             self.delete_button.button.bind(on_leave=edit_on_leave)
             self.delete_layout.add_widget(self.delete_button)
@@ -15541,16 +15689,18 @@ class AmscriptListButton(HoverButton):
                         self.hover_text.text = 'UNINSTALL SCRIPT'
                         self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
                         self.background_color = (1, 1, 1, 1)
-
                 Clock.schedule_once(change_color, 0.07)
+                Animation.stop_all(self.delete_button)
+                Animation(opacity=1, duration=0.25).start(self.delete_button)
             def delete_on_leave(*args):
                 def change_color(*args):
                     self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
                     if self.hovered:
                         self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
                         self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
-
                 Clock.schedule_once(change_color, 0.15)
+                Animation.stop_all(self.delete_button)
+                Animation(opacity=0.65, duration=0.25).start(self.delete_button)
             def delete_click(*args):
                 # Delete addon and reload list
                 def reprocess_page(*args):
@@ -15601,6 +15751,7 @@ class AmscriptListButton(HoverButton):
                 )
             self.delete_layout = RelativeLayout(opacity=0)
             self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'], anchor='right', click_func=delete_click)
+            self.delete_button.opacity = 0.65
             self.delete_button.button.bind(on_enter=delete_hover)
             self.delete_button.button.bind(on_leave=delete_on_leave)
             self.delete_layout.add_widget(self.delete_button)
@@ -18653,13 +18804,13 @@ class MainApp(App):
 
 
         # Screen manager override
-        # if not constants.app_compiled:
-        #     def open_menu(*args):
-        #         open_server("bedrock-test")
-        #         # def open_ams(*args):
-        #         #     screen_manager.current = "ServerAmscriptScreen"
-        #         # Clock.schedule_once(open_ams, 1)
-        #     Clock.schedule_once(open_menu, 0.5)
+        if not constants.app_compiled:
+            def open_menu(*args):
+                open_server("bedrock-test")
+                def open_ams(*args):
+                    screen_manager.current = "ServerAddonScreen"
+                Clock.schedule_once(open_ams, 1)
+            Clock.schedule_once(open_menu, 0.5)
 
 
         # Process --launch flag

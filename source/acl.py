@@ -69,6 +69,12 @@ class AclObject():
 
         # Check if banned-players.txt/.json exists to determine new server status
         self._new_server = not bool(glob(os.path.join(constants.applicationFolder, 'Servers', server_name, '*banned-players*')))
+        if self._new_server:
+            self._new_server = not bool(glob(os.path.join(constants.applicationFolder, 'Servers', server_name, '*banned-ips*')))
+        if self._new_server:
+            self._new_server = not bool(glob(os.path.join(constants.applicationFolder, 'Servers', server_name, '*ops*')))
+        if self._new_server:
+            self._new_server = not bool(glob(os.path.join(constants.applicationFolder, 'Servers', server_name, '*whitelist*')))
 
         self.server = dump_config(server_name, self._new_server)
         self.rules = self.load_acl(new_server=self._new_server)

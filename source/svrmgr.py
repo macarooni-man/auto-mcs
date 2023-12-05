@@ -152,6 +152,7 @@ class ServerObject():
         Timer(0, load_backup).start()
         def load_addon(*args):
             self.addon = AddonManager(server_name)
+            self.addon.check_for_updates()
         Timer(0, load_addon).start()
         def load_acl(*args):
             self.acl = AclObject(server_name)
@@ -247,6 +248,7 @@ class ServerObject():
             Timer(0, load_backup).start()
             def load_addon(*args):
                 self.addon = AddonManager(self.name)
+                self.addon.check_for_updates()
             Timer(0, load_addon).start()
             def load_acl(*args):
                 self.acl = AclObject(self.name)
@@ -275,7 +277,7 @@ class ServerObject():
                 "gamemode": self.gamemode,
 
                 # Checks if geyser and floodgate are installed
-                "geyser_support": False
+                "geyser_support": self.geyser_enabled
 
             },
 

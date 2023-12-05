@@ -28,7 +28,7 @@ class AddonObject():
 
 # AddonObject for housing downloadable addons
 class AddonWebObject(AddonObject):
-    def __init__(self, addon_name, addon_type, addon_author, addon_subtitle, addon_url, addon_id):
+    def __init__(self, addon_name, addon_type, addon_author, addon_subtitle, addon_url, addon_id, addon_version):
         super().__init__()
         self.addon_object_type = "web"
         self.name = addon_name
@@ -37,6 +37,7 @@ class AddonWebObject(AddonObject):
         self.subtitle = addon_subtitle
         self.url = addon_url
         self.id = addon_id
+        self.addon_version = addon_version
 
         # To be updated in get_addon_info()
         self.supported = "unknown"
@@ -71,6 +72,8 @@ class AddonManager():
         self.installed_addons = enumerate_addons(self.server)
         self.geyser_support = self.check_geyser()
         self.addon_hash = self.set_hash()
+        self.update_required = False
+        self.update_notified = False
 
         # Set addon hash if server is running
         try:
@@ -81,7 +84,6 @@ class AddonManager():
 
         # Write addons to cache
         constants.load_addon_cache(True)
-
 
     # Refreshes self.installed_addons list
     def refresh_addons(self):
@@ -129,6 +131,25 @@ class AddonManager():
 
         self.refresh_addons()
         return removed
+
+    # Checks if an update is available for any AddonFileObject
+    def check_for_updates(self):
+        if self.update_required:
+            return True
+
+        # print("Checking for updates!!!")
+        if constants.app_online:
+            for addon in self.installed_addons['enabled']:
+                try:
+                    update = get_update_url(addon, self.server['version'], self.server['type'])
+                    if constants.check_app_version(addon.addon_version, update.addon_version):
+                        print(addon.name, addon.addon_version, update.addon_version)
+                        self.update_required = True
+                        return True
+                except:
+                    continue
+
+        return False
 
     # Returns single list of all addons
     def return_single_list(self):
@@ -352,6 +373,14 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
 
             # If information was not found, use file name instead
+            try:
+                addon_version = re.search(r'\d+(\.\d+)+', addon_version).group(0)
+            except:
+                try:
+                    addon_version = re.sub("[^0-9|.]", "", addon_version.split(' ')[0])
+                except:
+                    pass
+
             if not addon_name:
 
                 new_name = jar_name.split(".jar")[0]
@@ -499,7 +528,7 @@ def search_addons(query: str, server_properties):
             # Sort list and add it to results
             for addon_dict in list(sorted(results_unsorted, key=lambda d: d['position'])):
                 if addon_dict['link']:
-                    results.append(AddonWebObject(addon_dict['name'], server_type, addon_dict['author'], addon_dict['subtitle'], addon_dict['link'], None))
+                    results.append(AddonWebObject(addon_dict['name'], server_type, addon_dict['author'], addon_dict['subtitle'], addon_dict['link'], None, None))
 
         # If no results
         except AttributeError:
@@ -521,7 +550,7 @@ def search_addons(query: str, server_properties):
             file_name = mod['slug']
 
             if link:
-                addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name)
+                addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
                 addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
                 results.append(addon_obj)
 
@@ -614,10 +643,24 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
     if not addon:
         return False
 
+    # Cleans up addon version from title
+    def format_version(raw_version: str):
+        try:
+            raw_version = re.sub(r'(\[|\(|\{).*(\)|\]|\})', '', raw_version.lower())
+            raw_version = raw_version.replace('beta', '.').replace('alpha', '.').replace('u', '.').replace('b','.').replace('a', '.')
+            raw_version = re.sub("[^0-9|.]", "", raw_version)
+            raw_version = re.search(r'\d+(\.\d+)+', raw_version).group(0)
+            # print(addon_version)
+        except:
+            raw_version = None
+        return raw_version
+
     # Instantiate required variables
     link_list = {}
+    version_list = {}
     final_link = None
     final_version = None
+    final_addon_version = None
     server_version = server_properties["version"]
 
     pages = 1
@@ -666,7 +709,15 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
                     # Add the latest version of each plugin to link list
                     if version not in link_list.keys() and isinstance(version, str):
                         download_url = f"https://dev.bukkit.org{link.get('href')}/download"
+
+                        try:
+                            addon_version = format_version(row.find(attrs={'data-name': True}).get('data-name'))
+                        except:
+                            addon_version = None
+
                         link_list[version] = download_url
+                        version_list[version] = addon_version
+
 
                     # Handle mislabeled versions if proper version is in the title
                     if (server_version in link.text) and (server_version not in link_list.keys()) and (isinstance(version, str)) and compat_mode:
@@ -682,7 +733,9 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
 
                         if version_a == version_b:
                             download_url = f"https://dev.bukkit.org{link.get('href')}/download"
+                            addon_version = format_version(link.text)
                             link_list[server_version] = download_url
+                            version_list[server_version] = addon_version
 
                 except ValueError:
                     pass
@@ -690,6 +743,7 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
             if server_version in link_list:
                 final_link = link_list[server_version]
                 final_version = server_version
+                final_addon_version = version_list[server_version]
                 break
 
 
@@ -705,7 +759,14 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
             url = data['files'][-1]['url']
             for version in data['game_versions']:
                 if version not in link_list.keys() and version.startswith("1.") and "-" not in version:
+                    addon_version = None
+                    for gv in data['game_versions']:
+                        gv_str = f'-{gv}-'
+                        if gv_str in data['version_number']:
+                            addon_version = format_version(data['version_number'].split(gv_str)[-1])
+                            break
                     link_list[version] = url
+                    version_list[version] = addon_version
 
 
     # In case a link is not found, find the latest compatible version
@@ -715,11 +776,13 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
             if constants.version_check(server_version, ">=", item[0]):
                 final_link = item[1]
                 final_version = item[0]
+                final_addon_version = version_list[final_version]
                 addon.supported = "no"
                 break
 
     addon.download_url = final_link
     addon.download_version = final_version
+    addon.addon_version = final_addon_version
 
     return addon
 
@@ -766,7 +829,7 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
 
         addon_results = search_addons(addon.name.lower(), {"type": new_type})
         for result in addon_results:
-            if (addon_author == result.author.lower()) or (addon_name == result.name.lower()) or (addon.id == result.id):
+            if (addon_author.lower() == result.author.lower()) and (addon_name.lower() == result.name.lower()) or (addon.id == result.id):
                 new_addon = result if new_type != "bukkit" else get_addon_info(result, {"type": new_type, "version": new_version})
                 addon_url = project_urls[result.type] + result.id
                 break
@@ -774,7 +837,7 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
     # Only return AddonWebObject if url was acquired
     if addon_url and not new_addon:
         addon_url = addon_url if new_type != "bukkit" else addon_url.split(".org")[1]
-        new_addon = AddonWebObject(addon.name, new_type, addon.author, addon.subtitle, addon_url, addon.id)
+        new_addon = AddonWebObject(addon.name, new_type, addon.author, addon.subtitle, addon_url, addon.id, None)
 
     # If new_addon has an object, request download link
     if new_addon:
@@ -793,7 +856,7 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
         return False
 
     addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
-    destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else constants.server_path(server_properties['name'], addon_folder)
+    destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(constants.server_path(server_properties['name']), addon_folder)
 
     # Download addon to "destination_path + file_name"
     file_name = constants.sanitize_name(addon.name if len(addon.name) < 35 else addon.name.split(' ')[0], True) + ".jar"
@@ -980,7 +1043,7 @@ def disable_report_addon(server_properties):
         link = item.a.get('href')
         file_name = name.lower().replace(" ", "-")
 
-        item = AddonWebObject(name, server_type, author, subtitle, url, file_name)
+        item = AddonWebObject(name, server_type, author, subtitle, url, file_name, None)
         item.download_url = link
 
     return item
@@ -995,34 +1058,37 @@ def geyser_addons(server_properties):
 
         # Geyser bukkit
         url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot'
-        addon = AddonWebObject('Geyser', 'bukkit', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser')
+        addon = AddonWebObject('Geyser', 'bukkit', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser', None)
         addon.download_url = url
         final_list.append(addon)
 
         # Floodgate bukkit
         url = 'https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot'
-        addon = AddonWebObject('Floodgate', 'bukkit', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate')
+        addon = AddonWebObject('Floodgate', 'bukkit', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate', None)
         addon.download_url = url
         final_list.append(addon)
 
         # ViaVersion bukkit
-        url = requests.get('https://api.github.com/repos/ViaVersion/ViaVersion/releases/latest').json()['assets'][-1]['browser_download_url']
-        addon = AddonWebObject('ViaVersion', 'bukkit', 'ViaVersion', 'Allows newer clients to connect to legacy servers', url, 'viaversion')
-        addon.download_url = url
-        final_list.append(addon)
+        try:
+            url = requests.get('https://api.github.com/repos/ViaVersion/ViaVersion/releases/latest').json()['assets'][-1]['browser_download_url']
+            addon = AddonWebObject('ViaVersion', 'bukkit', 'ViaVersion', 'Allows newer clients to connect to legacy servers', url, 'viaversion', None)
+            addon.download_url = url
+            final_list.append(addon)
+        except IndexError:
+            pass
 
 
     elif server_properties['type'] == 'fabric':
 
         # Geyser fabric
         url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/fabric'
-        addon = AddonWebObject('Geyser', 'fabric', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser')
+        addon = AddonWebObject('Geyser', 'fabric', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser', None)
         addon.download_url = url
         final_list.append(addon)
 
         # Floodgate fabric
         url = 'https://ci.opencollab.dev/job/GeyserMC/job/Floodgate-Fabric/job/master/lastSuccessfulBuild/artifact/build/libs/floodgate-fabric.jar'
-        addon = AddonWebObject('Floodgate', 'fabric', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate')
+        addon = AddonWebObject('Floodgate', 'fabric', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate', None)
         addon.download_url = url
         final_list.append(addon)
 
