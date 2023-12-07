@@ -18548,15 +18548,14 @@ class MigrateServerProgressScreen(ProgressScreen):
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
             else:
                 # Copy over existing server and remove the files which will be replaced
-                ignore_list = (
-                    os.path.join(server_obj.server_path, 'addons'),
-                    os.path.join(server_obj.server_path, 'disabled-addons'),
-                    os.path.join(server_obj.server_path, 'mods'),
-                    os.path.join(server_obj.server_path, 'disabled-mods')
-                )
-                constants.copytree(server_obj.server_path, constants.tmpsvr, ignore=constants.ignore_patterns(*ignore_list))
+                constants.copytree(server_obj.server_path, constants.tmpsvr)
                 for jar in glob(os.path.join(constants.tmpsvr, '*.jar')):
                     os.remove(jar)
+
+                constants.safe_delete(os.path.join(constants.tmpsvr, 'addons'))
+                constants.safe_delete(os.path.join(constants.tmpsvr, 'disabled-addons'))
+                constants.safe_delete(os.path.join(constants.tmpsvr, 'mods'))
+                constants.safe_delete(os.path.join(constants.tmpsvr, 'disabled-mods'))
 
                 # Delete EULA.txt
                 def delete_eula(eula_path):
