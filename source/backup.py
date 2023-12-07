@@ -442,7 +442,11 @@ def rename_backups(name: str, new_name: str):
             # Extract auto-mcs.ini from each match and check the server name just to be sure
             constants.run_proc(f'tar -xvf "{file}"') # *auto-mcs.ini
 
-            for cfg in glob(os.path.join(extract_folder, '*auto-mcs.ini')):
+            config_files = []
+            config_files.extend(glob(os.path.join(extract_folder, 'auto-mcs.ini')))
+            config_files.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
+
+            for cfg in config_files:
                 config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
                 config.optionxform = str
                 config.read(cfg)

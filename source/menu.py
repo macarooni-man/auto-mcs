@@ -18804,13 +18804,13 @@ class MainApp(App):
 
 
         # Screen manager override
-        if not constants.app_compiled:
-            def open_menu(*args):
-                open_server("bedrock-test")
-                def open_ams(*args):
-                    screen_manager.current = "ServerAddonScreen"
-                Clock.schedule_once(open_ams, 1)
-            Clock.schedule_once(open_menu, 0.5)
+        # if not constants.app_compiled:
+        #     def open_menu(*args):
+        #         open_server("bedrock-test")
+        #         def open_ams(*args):
+        #             screen_manager.current = "ServerAddonScreen"
+        #         Clock.schedule_once(open_ams, 1)
+        #     Clock.schedule_once(open_menu, 0.5)
 
 
         # Process --launch flag
