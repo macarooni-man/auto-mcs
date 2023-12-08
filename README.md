@@ -1,7 +1,7 @@
 ![inqSerdiagram](https://github.com/macarooni-man/auto-mcs/blob/main/other/github-banner-cropped.png?raw=true)
 [![Latest Release](https://img.shields.io/github/v/release/macarooni-man/auto-mcs)](https://www.auto-mcs.com)
 # auto-mcs
-Auto-MCS is a cross-platform Minecraft server manager written in Python. Auto-MCS provides a simple and easy-to-digest experience for people who want to play Minecraft with their friends without the hassle of server installation and maintenance.
+Welcome to auto-mcs! This software provides a simple and easy-to-digest experience for those who want to play Minecraft with their friends without the hassle of server installation & maintenance.
 <br><br>
 
 Some notable features include:
@@ -13,7 +13,7 @@ Some notable features include:
  - Automatic backup management
  - Custom console with a [scripting API](https://github.com/macarooni-man/auto-mcs/blob/main/amscript-docs.md) (Compatible with Vanilla)
  - Detailed crash detection with an easily viewable report
- - Internal mod & plug-in browser/installer (Auto-MCS can update plugins as well)
+ - Internal mod & plug-in browser/installer (auto-mcs can update plugins as well)
  - Firewall-like Access Control menu to manage bans, whitelist, and operators from a single page
  - Built-in `server.properties` editor for ease of use and key protection
  - And much more...
