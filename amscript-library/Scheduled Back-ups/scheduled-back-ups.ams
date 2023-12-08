@@ -1,0 +1,26 @@
+#!
+# title: Scheduled Back-ups
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Creates back-ups while the server is running
+#!
+
+
+
+
+def save_backup():
+    server.log_warning(f"Saving a back-up of '{server.name}', please wait...")
+    backup.save_backup()
+    server.log_success(f"Back-up complete!")
+
+
+# Save back-up every hour when players are connected
+@server.on_loop(interval=1, unit='hour'):
+    if server.player_list:
+        save_backup()
+        
+
+# Save back-up when a player leaves and the server is empty
+@player.on_leave(player, message):
+    if not server.player_list:
+        save_backup()
