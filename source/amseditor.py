@@ -3542,7 +3542,7 @@ def launch_window(path: str, data: dict, *a):
                 elif val == 'Redo':
                     code_editor.event_generate("<Control-r>")
                 elif val == 'Help':
-                    webbrowser.open('https://github.com/macarooni-man/auto-mcs/blob/main/amscript-docs.md')
+                    webbrowser.open('https://www.auto-mcs.com/guides/amscript')
 
                 return "break"
 
