@@ -47,18 +47,14 @@ Compares server version to `version` with the `comparator`, returns `bool`.
 
 
 
-### server.get_player(*selector*) # NEEDS IMPLEMENTATION
-
-> amscript uses a custom selector parser, and therefore tags like `@a[nbt={}]` should work in older versions
-
-server.get_players # ALSO NEEDS IMPLEMENTATION
+### server.get_player(*selector*)
 
 Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Only returns the first match.
 
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `selector*` | `str` of username, or a valid Minecraft selector. Only players will be matched |
+| `selector*` | `str` of username, or a valid Minecraft selector that returns a single value (like @p, @s, @r). Only players will be matched |
 | `reverse` | `bool` selects last match on `True`. Defaults to `False` |
 
 
