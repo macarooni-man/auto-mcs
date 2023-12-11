@@ -9,7 +9,6 @@ import constants
 import traceback
 import functools
 import requests
-import hashlib
 import base64
 import json
 import time
@@ -166,7 +165,7 @@ class ScriptManager():
             ams_dict['disabled'] = [AmsFileObject(script, enabled=False) for script in all_scripts]
 
         self.installed_scripts = ams_dict
-        self.script_hash = self.set_hash()
+        self.script_hash = self._set_hash()
 
         # If single list, concatenate enabled and disabled lists
         if single_list:
@@ -265,7 +264,7 @@ class ScriptManager():
         return success
 
     # Sets script hash to determine changes
-    def set_hash(self):
+    def _set_hash(self):
         script_hash = ""
 
         for script in sorted(self.installed_scripts['enabled'], key=lambda x: x.title):
@@ -274,7 +273,7 @@ class ScriptManager():
         return script_hash
 
     # Checks script hash in running config to see if it's changed
-    def hash_changed(self):
+    def _hash_changed(self):
         hash_changed = False
 
         if self.server_name in constants.server_manager.running_servers:
@@ -1187,7 +1186,7 @@ class ScriptObject():
             self.alias_event(msg_obj)
         elif msg_obj['user'] != self.server_id:
             self.call_event('@player.on_message', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), msg_obj['content']))
-            
+
             if constants.debug:
                 print('player.on_message')
                 print(msg_obj)

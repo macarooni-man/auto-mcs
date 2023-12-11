@@ -5890,7 +5890,7 @@ def button_action(button_name, button, specific_screen=''):
                     if banner_text:
 
                         # Show banner if server is running
-                        if addon_manager.hash_changed():
+                        if addon_manager._hash_changed():
                             Clock.schedule_once(
                                 functools.partial(
                                     screen_manager.current_screen.show_banner,
@@ -5957,7 +5957,7 @@ def button_action(button_name, button, specific_screen=''):
                     if banner_text:
 
                         # Show banner if server is running
-                        if script_manager.hash_changed():
+                        if script_manager._hash_changed():
                             Clock.schedule_once(
                                 functools.partial(
                                     screen_manager.current_screen.show_banner,
@@ -14334,7 +14334,7 @@ class AddonListButton(HoverButton):
                 addon_screen.gen_search_results(new_list, fade_in=True)
 
                 # Show banner if server is running
-                if addon_manager.hash_changed():
+                if addon_manager._hash_changed():
                     Clock.schedule_once(
                         functools.partial(
                             screen_manager.current_screen.show_banner,
@@ -14717,7 +14717,7 @@ class ServerAddonScreen(MenuBackground):
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = "Installed Add-ons  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] items')
 
-        if addon_manager.hash_changed():
+        if addon_manager._hash_changed():
             icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
             header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
 
@@ -14764,7 +14764,7 @@ class ServerAddonScreen(MenuBackground):
 
 
                     # Show banner if server is running
-                    if addon_manager.hash_changed():
+                    if addon_manager._hash_changed():
                         Clock.schedule_once(
                             functools.partial(
                                 self.show_banner,
@@ -14939,7 +14939,7 @@ class ServerAddonScreen(MenuBackground):
         self.gen_search_results(addon_list)
 
         # Show banner if server is running
-        if constants.server_manager.current_server.addon.hash_changed():
+        if constants.server_manager.current_server.addon._hash_changed():
             Clock.schedule_once(
                 functools.partial(
                     self.show_banner,
@@ -15080,7 +15080,7 @@ class ServerAddonSearchScreen(MenuBackground):
                             threading.Timer(0, functools.partial(addon_manager.download_addon, addon)).start()
 
                             # Show banner if server is running
-                            if addon_manager.hash_changed():
+                            if addon_manager._hash_changed():
                                 Clock.schedule_once(
                                     functools.partial(
                                         self.show_banner,
@@ -15111,7 +15111,7 @@ class ServerAddonSearchScreen(MenuBackground):
                                     addon_manager.delete_addon(installed_addon)
 
                                     # Show banner if server is running
-                                    if addon_manager.hash_changed():
+                                    if addon_manager._hash_changed():
                                         Clock.schedule_once(
                                             functools.partial(
                                                 self.show_banner,
@@ -15659,7 +15659,7 @@ class AmscriptListButton(HoverButton):
 
 
                     # Show banner if server is running
-                    if script_manager.hash_changed():
+                    if script_manager._hash_changed():
                         Clock.schedule_once(
                             functools.partial(
                                 screen_manager.current_screen.show_banner,
@@ -15711,7 +15711,7 @@ class AmscriptListButton(HoverButton):
                     script_screen.gen_search_results(new_list, fade_in=True)
 
                     # Show banner if server is running
-                    if script_manager.hash_changed():
+                    if script_manager._hash_changed():
                         Clock.schedule_once(
                             functools.partial(
                                 screen_manager.current_screen.show_banner,
@@ -16024,7 +16024,7 @@ class ServerAmscriptScreen(MenuBackground):
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = "Installed Scripts  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] item' if script_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] items')
 
-        if script_manager.hash_changed():
+        if script_manager._hash_changed():
             icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
             header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
 
@@ -16065,7 +16065,7 @@ class ServerAmscriptScreen(MenuBackground):
                     script_manager.script_state(script, enabled=not script.enabled)
                     self.gen_search_results(script_manager.return_single_list(), fade_in=False, highlight=script.hash, animate_scroll=True)
 
-                    if constants.server_manager.current_server.script_manager.hash_changed():
+                    if constants.server_manager.current_server.script_manager._hash_changed():
                         Clock.schedule_once(
                             functools.partial(
                                 self.show_banner,
@@ -16255,7 +16255,7 @@ class ServerAmscriptScreen(MenuBackground):
         self.gen_search_results(self.server.script_manager.return_single_list())
 
         # Show banner if server is running
-        if constants.server_manager.current_server.script_manager.hash_changed():
+        if constants.server_manager.current_server.script_manager._hash_changed():
             Clock.schedule_once(
                 functools.partial(
                     self.show_banner,
@@ -16366,7 +16366,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
                         if selected_button.installed:
                             threading.Timer(0, functools.partial(script_manager.download_script, script)).start()
                             # Show banner if server is running
-                            if script_manager.hash_changed():
+                            if script_manager._hash_changed():
                                 Clock.schedule_once(
                                     functools.partial(
                                         self.show_banner,
@@ -16397,7 +16397,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
                                     script_manager.delete_script(installed_script)
 
                                     # Show banner if server is running
-                                    if script_manager.hash_changed():
+                                    if script_manager._hash_changed():
                                         Clock.schedule_once(
                                             functools.partial(
                                                 self.show_banner,
@@ -18904,7 +18904,7 @@ class MainApp(App):
                     if banner_text:
 
                         # Show banner if server is running
-                        if addon_manager.hash_changed():
+                        if addon_manager._hash_changed():
                             Clock.schedule_once(
                                 functools.partial(
                                     screen_manager.current_screen.show_banner,
@@ -18959,7 +18959,7 @@ class MainApp(App):
                         if banner_text:
 
                             # Show banner if server is running
-                            if script_manager.hash_changed():
+                            if script_manager._hash_changed():
                                 Clock.schedule_once(
                                     functools.partial(
                                         screen_manager.current_screen.show_banner,

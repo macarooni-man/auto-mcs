@@ -71,7 +71,7 @@ class AddonManager():
         self.server = dump_config(server_name)
         self.installed_addons = enumerate_addons(self.server)
         self.geyser_support = self.check_geyser()
-        self.addon_hash = self.set_hash()
+        self.addon_hash = self._set_hash()
         self.update_required = False
         self.update_notified = False
 
@@ -90,7 +90,7 @@ class AddonManager():
         self.server = dump_config(self.server['name'])
         self.installed_addons = enumerate_addons(self.server)
         self.geyser_support = self.check_geyser()
-        self.addon_hash = self.set_hash()
+        self.addon_hash = self._set_hash()
 
     # Imports addon directly from file path
     def import_addon(self, addon_path: str):
@@ -166,7 +166,7 @@ class AddonManager():
             return False
 
     # Sets addon hash to determine changes
-    def set_hash(self):
+    def _set_hash(self):
         addon_hash = ""
 
         for addon in sorted(self.installed_addons['enabled'], key=lambda x: x.name):
@@ -175,7 +175,7 @@ class AddonManager():
         return addon_hash
 
     # Checks addon hash in running config to see if it's changed
-    def hash_changed(self):
+    def _hash_changed(self):
         hash_changed = False
         server_name = self.server['name']
 
