@@ -8650,7 +8650,7 @@ class CreateServerAclScreen(MenuBackground):
             self.user_panel.blank_label.opacity = 0
 
 
-    # Filter data from search box
+    # Filter data from search bar
     def search_filter(self, query):
 
         def lock(*args):
@@ -9018,13 +9018,13 @@ class CreateServerAclScreen(MenuBackground):
 
             controls_text = """This menu shows enabled rules from files like 'ops.json', and disabled rules as others who have joined. Global rules are applied to every server. Rules can be modified in a few different ways:
             
-• Right-click a rule to view, and more options
+• Right-click a rule to view, and see more options
 
 • Left-click a rule to toggle permission
 
 • Press middle-mouse to toggle globally
 
-Rules can be filtered with the search box, and can be added with the 'ADD RULES' button or by pressing 'TAB'. The visible list can be switched between operators, bans, and the whitelist from the drop-down at the top."""
+Rules can be filtered with the search bar, and can be added with the 'Add Rules' button or by pressing 'TAB'. The visible list can be switched between operators, bans, and the whitelist from the drop-down at the top."""
 
             Clock.schedule_once(
                 functools.partial(
@@ -11574,7 +11574,7 @@ def prompt_new_server(server_obj, *args):
     def set_bkup_and_prompt_update(boolean):
         server_obj.backup.enable_auto_backup(boolean)
         if boolean:
-            threading.Timer(0, server_obj.backup.save_backup).start()
+            threading.Timer(0, server_obj.backup.save).start()
 
         def wait_timer(*a):
             while screen_manager.current_screen.popup_widget:
@@ -13322,7 +13322,7 @@ class ServerBackupScreen(MenuBackground):
 
                 # Run back-up
                 Clock.schedule_once(functools.partial(self.solo_button, 'save', True), 0)
-                server_obj.backup.save_backup()
+                server_obj.backup.save()
 
                 # Update header
                 def change_header(*args):
@@ -13392,7 +13392,7 @@ class ServerBackupScreen(MenuBackground):
         start_value = max_limit if str(backup_stats['max-backup']) == 'unlimited' else int(backup_stats['max-backup'])
 
         def change_limit(val):
-            server_obj.backup.set_backup_amount('unlimited' if val == max_limit else val)
+            server_obj.backup.set_amount('unlimited' if val == max_limit else val)
 
         sub_layout = ScrollItem()
         sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="maximum back-ups"))
@@ -13421,7 +13421,7 @@ class ServerBackupScreen(MenuBackground):
 
             def run_migrate(*args):
                 Clock.schedule_once(functools.partial(self.solo_button, 'migrate', True), 0)
-                final_path = server_obj.backup.set_backup_directory(new_path)
+                final_path = server_obj.backup.set_directory(new_path)
 
                 # Show banner and update button
                 Clock.schedule_once(functools.partial(self.solo_button, 'migrate', False), 0)
@@ -14078,13 +14078,13 @@ class ServerAclScreen(CreateServerAclScreen):
 
             controls_text = """This menu shows enabled rules from files like 'ops.json', and disabled rules as others who have joined. Global rules are applied to every server. Rules can be modified in a few different ways:
 
-• Right-click a rule to view, and more options
+• Right-click a rule to view, and see more options
 
 • Left-click a rule to toggle permission
 
 • Press middle-mouse to toggle globally
 
-Rules can be filtered with the search box, and can be added with the 'ADD RULES' button or by pressing 'TAB'. The visible list can be switched between operators, bans, and the whitelist from the drop-down at the top."""
+Rules can be filtered with the search bar, and can be added with the 'Add Rules' button or by pressing 'TAB'. The visible list can be switched between operators, bans, and the whitelist from the drop-down above the search bar."""
 
             Clock.schedule_once(
                 functools.partial(
@@ -17779,7 +17779,7 @@ class ServerWorldScreen(MenuBackground):
                     pass
 
                 # First, save backup
-                server_obj.backup.save_backup()
+                server_obj.backup.save()
 
                 # Delete current world
                 constants.safe_delete(constants.server_path(server_obj.name, server_obj.world))

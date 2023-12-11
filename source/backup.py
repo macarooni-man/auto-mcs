@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
 from functools import reduce
 from glob import glob
@@ -75,13 +74,13 @@ class BackupManager():
     # Backup functions
 
     # Backs up server to the backup directory in auto-mcs.ini
-    def save_backup(self):
+    def save(self):
         backup = backup_server(self.server['name'], self.backup_stats)
         self.update_data()
         return backup
 
     # Restores server from file name
-    def restore_backup(self, backup_name: str):
+    def restore(self, backup_name: str):
         if self.server['name'] not in constants.server_manager.running_servers:
             backup = restore_server(self.server['name'], backup_name, self.backup_stats)
             self.update_data()
@@ -90,14 +89,14 @@ class BackupManager():
             return None
 
     # Moves backup directory to new_path
-    def set_backup_directory(self, new_path: str):
+    def set_directory(self, new_path: str):
         path = set_backup_directory(self.server['name'], new_path)
         self.update_data()
         return path
 
     # Sets maximum backup limit
     # amount: <int> or 'unlimited'
-    def set_backup_amount(self, amount):
+    def set_amount(self, amount):
         new_amt = set_backup_amount(self.server['name'], amount)
         self.update_data()
         return new_amt
@@ -229,14 +228,22 @@ def backup_server(name: str, backup_stats=None):
         if not backup_stats:
             backup_stats = dump_config(name)[1]
 
+        # If the server is running, force a save first
+        server_obj = None
+        if name in constants.server_manager.running_servers:
+            server_obj = constants.server_manager.running_servers[name]
+            server_obj.silent_command('save-all flush')
+            server_obj.silent_command('save-off')
+            time.sleep(3)
+
         cwd = os.path.abspath(os.curdir)
-        time = dt.now().strftime("%H.%M %m-%d-%y")
+        bkup_time = dt.now().strftime("%H.%M %m-%d-%y")
         backup_path = backup_stats["backup-path"]
-        file_name = f"{name}__{time}.amb"
+        file_name = f"{name}__{bkup_time}.amb"
         backup_file = os.path.join(backup_path, file_name)
         if os.path.exists(backup_file):
-            time = dt.now().strftime("%H.%M %m-%d-%y,%S")
-            file_name = f"{name}__{time}.amb"
+            bkup_time = dt.now().strftime("%H.%M %m-%d-%y,%S")
+            file_name = f"{name}__{bkup_time}.amb"
             backup_file = os.path.join(backup_path, file_name)
 
         temp_backup = os.path.join(backup_path, f'{name}-bkup')
@@ -281,9 +288,14 @@ def backup_server(name: str, backup_stats=None):
         os.chdir(cwd)
         if os.path.exists(temp_backup):
             constants.safe_delete(temp_backup)
+
+        # Enable auto save if server is running
+        if server_obj:
+            server_obj.silent_command('save-on')
+
         set_lock(name, False)
 
-        return [file_name, convert_size(os.stat(backup_file).st_size), time]
+        return [file_name, convert_size(os.stat(backup_file).st_size), bkup_time]
 
 
 # name, index --> restore from file

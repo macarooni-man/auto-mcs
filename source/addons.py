@@ -143,7 +143,7 @@ class AddonManager():
                 try:
                     update = get_update_url(addon, self.server['version'], self.server['type'])
                     if constants.check_app_version(addon.addon_version, update.addon_version):
-                        print(addon.name, addon.addon_version, update.addon_version)
+                        # print(addon.name, addon.addon_version, update.addon_version)
                         self.update_required = True
                         return True
                 except:

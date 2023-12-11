@@ -1176,7 +1176,7 @@ class ServerObject():
         if not self.running:
 
             # Save a back-up of current server state
-            self.backup.save_backup()
+            self.backup.save()
 
             # Delete server folder
             constants.safe_delete(self.server_path)
@@ -1215,7 +1215,7 @@ class ServerObject():
                 self.send_log(f"Skipping back-up due to a crash", 'error')
             else:
                 self.send_log(f"Saving a back-up of '{self.name}', please wait...", 'warning')
-                self.backup.save_backup()
+                self.backup.save()
                 self.send_log(f"Back-up complete!", 'success')
             return True
 

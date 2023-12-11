@@ -141,7 +141,7 @@ def generate_header(text):
 		if not player.is_server:
 			player.log_warning(f"Saving a back-up of '{server.name}', please wait...", tag=True)
 		server.log_warning(f"Saving a back-up of '{server.name}', please wait...")
-		backup.save_backup()
+		backup.save()
 		if not player.is_server:
 			player.log_success(f"Back-up complete!", tag=True)
 		server.log_success(f"Back-up complete!")

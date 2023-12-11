@@ -2188,9 +2188,9 @@ def update_server_files(progress_func=None):
 
 
 # Create initial backup of new server
-# For existing servers, use server_manager.current_server.backup.save_backup()
+# For existing servers, use server_manager.current_server.backup.save()
 def create_backup(import_server=False, *args):
-    backup.BackupManager(new_server_info['name'] if not import_server else import_data['name']).save_backup()
+    backup.BackupManager(new_server_info['name'] if not import_server else import_data['name']).save()
     return True
 
 
@@ -2222,7 +2222,7 @@ def restore_server(file_path, progress_func=None):
 
     threading.Timer(0, thread_checker).start()
 
-    server_manager.current_server.backup.restore_backup(file_name)
+    server_manager.current_server.backup.restore(file_name)
     proc_complete = True
 
     if progress_func:

@@ -10,7 +10,7 @@
 
 def save_backup():
     server.log_warning(f"Saving a back-up of '{server.name}', please wait...")
-    backup.save_backup()
+    backup.save()
     server.log_success(f"Back-up complete!")
 
 

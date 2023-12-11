@@ -1,0 +1,56 @@
+#!
+# title: Profanity Filter
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Prohibits the use of a specified word list
+#!
+
+
+
+
+import requests, re
+
+list_url = 'https://raw.githubusercontent.com/dsojevic/profanity-list/main/en.txt'
+word_list = requests.get(list_url).content.decode('utf-8', errors='ignore').splitlines()
+warn = 'word-warning'
+msg = 'Profanity will not be tolerated!'
+
+
+# Filter messages based on content
+@player.on_message(player, message):
+
+    # Check if a prohibited word is in the message
+    for phrase in word_list:
+        phrase = phrase.lower().strip()
+        if re.search(fr'\b{phrase}\b', message.lower()):
+            
+            # Issue warning on the first offense
+            if warn not in player.persistent:
+                player.persistent[warn] = 0
+                player.log_warning(msg)
+            
+            # Issue a kick on the second offense
+            elif player.persistent[warn] == 1:
+                acl.kick_player(player, reason=msg)
+            
+            # Issue another warning on the third offense
+            elif player.persistent[warn] == 2:
+                player.log_error('Further offense will result in a ban!')
+            
+            # Issue a ban on the fourth offense
+            elif player.persistent[warn] == 3:
+                acl.ban_player(player, reason=msg)
+            
+            player.persistent[warn] += 1
+            break
+
+
+# Decrement warning if level 1 or 3
+@player.on_leave(player, data):
+    
+    if warn in player.persistent:
+        if player.persistent[warn] == 1:
+            del player.persistent[warn]
+            
+        elif player.persistent[warn] >= 3:
+            player.persistent[warn] = 2

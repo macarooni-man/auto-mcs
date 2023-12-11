@@ -814,6 +814,27 @@ class AclObject():
 
     # Note:  the *_user functions below return the entire ACL dict, not just rule_list
 
+    # Kick a player or list of players
+    def kick_player(self, rule_list: str or list or PlayerScriptObject, reason=None):
+        if self.server['name'] not in constants.server_manager.running_servers:
+            return False
+
+        # Process rule list
+        rule_list = convert_obj_to_str(rule_list)
+        if isinstance(rule_list, str):
+            rule_list = [p.strip() for p in rule_list.split(',')]
+
+        # Format kick reason
+        if isinstance(reason, str):
+            reason = ' ' + reason
+        else:
+            reason = ''
+
+        server_obj = constants.server_manager.running_servers[self.server['name']]
+        if server_obj.running:
+            for player in rule_list:
+                server_obj.silent_command(f'kick {player}{reason}')
+
     # op_player("BlUe_KAZoo, kchicken, test")
     # "Rule1, Rule2" --> [AclObject1, AclObject2]
     def op_player(self, rule_list: str or list or PlayerScriptObject, remove=False, force_version=None, temp_server=False):
@@ -838,8 +859,14 @@ class AclObject():
 
     # ban_player("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.0-37")
     # "Rule1, Rule2" --> [AclObject1, AclObject2]
-    def ban_player(self, rule_list: str or list or PlayerScriptObject, remove=False, force_version=None, temp_server=False):
+    def ban_player(self, rule_list: str or list or PlayerScriptObject, remove=False, reason=None, force_version=None, temp_server=False):
         rule_list = convert_obj_to_str(rule_list)
+
+        # Format ban reason
+        if isinstance(reason, str) and not remove:
+            reason = ' ' + reason
+        else:
+            reason = ''
 
         # Ignore removal of global rules
         if remove:
@@ -852,7 +879,7 @@ class AclObject():
 
         # Normal behavior
         else:
-            ban_list, subnet_list = ban_user(self.server['name'], rule_list, remove, force_version, True, temp_server)
+            ban_list, subnet_list = ban_user(self.server['name'], rule_list, remove, force_version, True, temp_server, reason)
             self.rules['bans'] = ban_list
             self.rules['subnets'] = subnet_list
 
@@ -2059,7 +2086,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
 # ban_player("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.0-37")
 # "Rule1, Rule2" --> [AclObject1, AclObject2]
 # Returns: ban_list, subnet_list
-def ban_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False):
+def ban_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False, reason=None):
 
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
@@ -2127,7 +2154,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                             acl_object.extra_data['created'] = date
                             acl_object.extra_data['source'] = "Server"
                             acl_object.extra_data['expires'] = "forever"
-                            acl_object.extra_data['reason'] = "Banned by an operator."
+                            acl_object.extra_data['reason'] = reason if reason else "Banned by an operator."
 
                         ban_list.append(acl_object)
                         name_list.append(user['name'].lower())
@@ -2136,7 +2163,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         if server_name in constants.server_manager.running_servers:
                             server_obj = constants.server_manager.running_servers[server_name]
                             if server_obj.running:
-                                server_obj.silent_command(f'ban {user["name"]}', log=False)
+                                server_obj.silent_command(f'ban {user["name"]}{reason}', log=False)
 
 
             # If rule is an IP or a subnet
@@ -2234,7 +2261,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         acl_object.extra_data['created'] = date
                         acl_object.extra_data['source'] = "Server"
                         acl_object.extra_data['expires'] = "forever"
-                        acl_object.extra_data['reason'] = "Banned by an operator."
+                        acl_object.extra_data['reason'] = reason if reason else "Banned by an operator."
 
                         subnet_list.append(acl_object)
                         ip_list.append(user.lower())
@@ -2243,7 +2270,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         if server_name in constants.server_manager.running_servers:
                             server_obj = constants.server_manager.running_servers[server_name]
                             if server_obj.running:
-                                server_obj.silent_command(f'ban-ip {user}', log=False)
+                                server_obj.silent_command(f'ban-ip {user}{reason}', log=False)
 
 
         if write_file:
