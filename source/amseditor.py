@@ -2792,8 +2792,9 @@ def launch_window(path: str, data: dict, *a):
                     if index == "":
                         break
 
-                    if str(search.cget('fg')) == '#4A4A70' and search.get() == 'search for text':
-                        break
+                    if tag == "highlight":
+                        if str(search.cget('fg')) == '#4A4A70' and search.get() == 'search for text':
+                            break
 
                     self.mark_set("matchStart", index)
                     self.mark_set("matchEnd", "%s+%sc" % (index, count.get()))
