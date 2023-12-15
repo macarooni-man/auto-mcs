@@ -396,6 +396,9 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                 addon_name = new_name
                 addon_type = server_type
 
+        if not addon_id:
+            addon_id = constants.sanitize_name(addon_name.strip().lower().split(' ',1)[0])
+
         AddonObj = AddonFileObject(addon_name, addon_type, addon_author, addon_subtitle, addon_path, addon_id, addon_version)
         AddonObj.enabled = enabled
 
