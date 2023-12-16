@@ -1894,6 +1894,11 @@ def iter_addons(progress_func=None, update=False):
                 addons.download_addon(addon_object, new_server_info, tmpsvr=True)
             else:
                 if update:
+
+                    # Ignore updates for Geyser and Floodgate because they are already added
+                    if addon_object.author.lower() == 'geysermc':
+                        return True
+
                     addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
                     downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
                     if not downloaded:
