@@ -583,6 +583,10 @@ def cs_download_url(url: str, file_name: str, destination_path: str):
 
 # Removes invalid characters from a filename
 def sanitize_name(value, addon=False):
+
+    if value == 'WorldEdit for Bukkit':
+        return 'WorldEdit'
+
     value = value.split(":")[0]
     value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
     value = re.sub(r'[^\w\s-]', '', value)
