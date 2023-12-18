@@ -20,7 +20,7 @@ Some notable features include:
 
 <br><br>
 # Installation & Setup
-To get started, download the latest version of Auto-MCS [from the website](https://www.auto-mcs.com/download), or [from GitHub](https://github.com/macarooni-man/auto-mcs/releases/latest). Extract auto-mcs from the `.zip` file to a location of your choice and launch it. That's it, there's no installation required!
+To get started, download the latest version of auto-mcs [from the website](https://www.auto-mcs.com/download), or [from GitHub](https://github.com/macarooni-man/auto-mcs/releases/latest). Extract auto-mcs from the `.zip` file to a location of your choice and launch it. That's it, there's no installation required!
 > Note:  If you're using Linux, you might need to run `chmod +x auto-mcs` to give the binary executable permission
 
 <br>
