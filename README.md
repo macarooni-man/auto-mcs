@@ -39,7 +39,7 @@ And that's it - click launch to play with your friends!
 
 <br><br>
 # Advanced Configuration
-As this is a relatively new project, a lot of things have changed during development. A comprehensive documentation suite is in progress and will be available in the near future on the website. It will be available here as soon as it's released. For now, feel free to contact me directly with any questions or concerns.
+As this is a relatively new project, a lot of things have and may change during development. [Visit the website for a comprehensive overview of all the features provided by auto-mcs](https://www.auto-mcs.com/guides).
 
 
 <br><br>
