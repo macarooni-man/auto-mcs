@@ -1215,7 +1215,7 @@ class ServerObject():
                 self.send_log(f"Skipping back-up due to a crash", 'error')
             else:
                 self.send_log(f"Saving a back-up of '{self.name}', please wait...", 'warning')
-                self.backup.save()
+                self.backup.save(ignore_running=True)
                 self.send_log(f"Back-up complete!", 'success')
             return True
 

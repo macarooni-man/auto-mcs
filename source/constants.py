@@ -2392,7 +2392,7 @@ eula=true"""
 
                         # Run legacy version of java
                         if import_data['type'] == "forge":
-                            server = subprocess.Popen(f"\"{java_executable['legacy']}\" -Xmx{ram}G -Xms{ram/2}G -jar server.jar nogui", stdout=subprocess.DEVNULL, shell=True)
+                            server = subprocess.Popen(f"\"{java_executable['legacy']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar server.jar nogui", stdout=subprocess.DEVNULL, shell=True)
 
                         # Run latest version of java
                         else:
@@ -2400,7 +2400,7 @@ eula=true"""
                             if import_data['type'] == "paper":
                                 copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
-                            server = subprocess.Popen(f"\"{java_executable['modern']}\" -Xmx{ram}G -Xms{ram/2}G -jar server.jar nogui", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
+                            server = subprocess.Popen(f"\"{java_executable['modern']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar server.jar nogui", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
 
                         found_version = False
                         timeout = 0
@@ -2890,7 +2890,7 @@ def generate_run_script(properties, temp_server=False):
         java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['modern']
 
         # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
-        script = f'"{java}" -Xmx{ram}G -Xms{ram/2}G {start_flags} -Dlog4j2.formatMsgNoLookups=true'
+        script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true'
 
         if version_check(properties['version'], "<", "1.16.5") and properties['type'] == 'paper':
             script += ' -DPaper.ignoreJavaVersion=true'
@@ -2905,11 +2905,11 @@ def generate_run_script(properties, temp_server=False):
         if version_check(properties['version'], ">=", "1.17"):
             version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*"))]
             arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
-            script = f'"{java_executable["modern"]}" -Xmx{ram}G -Xms{ram/2}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+            script = f'"{java_executable["modern"]}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
 
         # 1.6 to 1.16
         elif version_check(properties['version'], ">=", "1.6") and version_check(properties['version'], "<", "1.17"):
-            script = f'"{java_executable["legacy"]}" -Xmx{ram}G -Xms{ram/2}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+            script = f'"{java_executable["legacy"]}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
 
 
     script_check = ""

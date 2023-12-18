@@ -74,8 +74,8 @@ class BackupManager():
     # Backup functions
 
     # Backs up server to the backup directory in auto-mcs.ini
-    def save(self):
-        backup = backup_server(self.server['name'], self.backup_stats)
+    def save(self, ignore_running=False):
+        backup = backup_server(self.server['name'], self.backup_stats, ignore_running)
         self.update_data()
         return backup
 
@@ -221,7 +221,7 @@ def dump_config(server_name: str, new_server=False):
 # ---------------------------------------------- Backup Functions ------------------------------------------------------
 
 # name --> backup to directory
-def backup_server(name: str, backup_stats=None):
+def backup_server(name: str, backup_stats=None, ignore_running=False):
 
     if set_lock(name, True, 'save'):
 
@@ -230,7 +230,7 @@ def backup_server(name: str, backup_stats=None):
 
         # If the server is running, force a save first
         server_obj = None
-        if name in constants.server_manager.running_servers:
+        if name in constants.server_manager.running_servers and not ignore_running:
             server_obj = constants.server_manager.running_servers[name]
             server_obj.silent_command('save-all flush')
             server_obj.silent_command('save-off')
