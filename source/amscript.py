@@ -1098,7 +1098,9 @@ class ScriptObject():
                                 parse_error['object'] = e
                                 self.log_error(parse_error)
 
-                        Timer(delay, functools.partial(error_handler, script[0], x, *args)).start()
+                        event_timer = Timer(delay, functools.partial(error_handler, script[0], x, *args))
+                        event_timer.daemon = True
+                        event_timer.start()
 
 
                 except KeyError:

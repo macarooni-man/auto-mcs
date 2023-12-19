@@ -100,7 +100,9 @@ class ServerObject():
 
                 self.config_file.set("general", "enableGeyser", str(geyser >= 2).lower())
                 constants.server_config(self.name, self.config_file)
-            threading.Timer(0.1, thread).start()
+            geyser_timer = threading.Timer(0.1, thread)
+            geyser_timer.daemon = True
+            geyser_timer.start()
 
 
         # Check update properties for UI stuff
@@ -815,6 +817,7 @@ class ServerObject():
                                         for x, log_line in enumerate(file_lines):
                                             if (("crash report" in log_line.lower()) or
                                             ("a server is already running on that port" in log_line.lower()) or
+                                            ("failed to start the minecraft server" in log_line.lower()) or
                                             ("you need to agree to the eula" in log_line.lower()) or
                                             ("FATAL]" in log_line or "encountered an unexpected exception" in log_line.lower())):
                                                 file = '\n'.join(file_lines[x:])
@@ -859,6 +862,7 @@ class ServerObject():
                                     else:
                                         content += "Description: Unknown exception\n\n"
                                         content += f"Something went wrong launching '{self.name}': an unspecified error has occurred. To troubleshoot, try the following:\n"
+                                        content += f" - Verify that the server isn't already running in another process\n"
                                         content += f" - Verify that 'EULA.txt' is set to true\n"
                                         if self.type.lower() != 'vanilla':
                                             content += f" - Disable all {'mods' if self.type.lower() in ('fabric', 'forge') else 'plugins'} in the Add-on Manager\n"
@@ -905,6 +909,7 @@ class ServerObject():
                                 elif (log[1] in ('ERROR', 'CRITICAL', 'WARN', 'SEVERE')) and (("crash report" in log[2].lower()) or
                                                                                               ("a server is already running on that port" in log[2].lower()) or
                                                                                               ("you need to agree to the eula" in log[2].lower()) or
+                                                                                              ("failed to start the minecraft server" in log[2].lower()) or
                                                                                               ("encountered an unexpected exception" in log[2].lower())):
                                     crash_info = get_latest_crash()
                                     break
@@ -942,6 +947,7 @@ class ServerObject():
 
 
             self.run_data['thread'] = Timer(0, process_thread)
+            self.run_data['thread'].daemon = True
             self.run_data['thread'].start()
             self.run_data['launch-time'] = dt.now()
 

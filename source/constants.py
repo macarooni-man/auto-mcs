@@ -38,7 +38,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0"
+app_version = "2.0.1"
 ams_version = "1.0"
 app_title = "auto-mcs"
 window_size = (850, 850)
@@ -985,7 +985,7 @@ def check_app_updates():
         # Get checksum data
         try:
             description, md5_str = release_data['body'].split("MD5 Checksums", 1)
-            update_data['desc'] = description.replace("- ", "• ").strip().replace("`","")
+            update_data['desc'] = description.replace("- ", "• ").strip().replace('<br>', '\n').replace("`", "")
 
             checksum = ""
             for line in md5_str.splitlines():
@@ -1013,9 +1013,12 @@ def check_app_updates():
         if "-" in version:
             update_data['version'] = version[1:].split("-")[0].strip()
         elif " " in version:
-            update_data['version'] = version[1:].split("-")[0].strip()
+            update_data['version'] = version[1:].split(" ")[0].strip()
+        elif "v" in version:
+            update_data['version'] = version[1:].strip()
         else:
             update_data['version'] = app_version
+
 
         # Download links
         for file in release_data['assets']:
@@ -1747,6 +1750,7 @@ def java_check(progress_func=None):
 
             if progress_func:
                 timer = Timer(0, function=avg_total)
+                timer.daemon = True
                 timer.start()  # Checks for potential crash
 
             with ThreadPoolExecutor(max_workers=2) as pool:
@@ -1935,6 +1939,7 @@ def iter_addons(progress_func=None, update=False):
                     hook_lock = False
 
                 timer = threading.Timer(0, hook)
+                timer.daemon = True
                 timer.start()
 
     if progress_func:
@@ -2229,7 +2234,9 @@ def restore_server(file_path, progress_func=None):
 
         print("Done!")
 
-    threading.Timer(0, thread_checker).start()
+    thread_check = threading.Timer(0, thread_checker)
+    thread_check.daemon = True
+    thread_check.start()
 
     server_manager.current_server.backup.restore(file_name)
     proc_complete = True
@@ -3208,6 +3215,7 @@ def get_current_ip(name: str, get_ngrok=False):
                                     pass
 
                 ip_timer = Timer(1, functools.partial(get_public_ip, name))
+                ip_timer.daemon = True
                 ip_timer.start()
 
 
@@ -3228,6 +3236,7 @@ def get_current_ip(name: str, get_ngrok=False):
                         pass
 
         ip_timer = Timer(0, functools.partial(get_ngk_ip, name))
+        ip_timer.daemon = True
         ip_timer.start()
 
     # if public_ip:
