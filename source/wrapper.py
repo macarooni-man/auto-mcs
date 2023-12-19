@@ -65,7 +65,7 @@ if __name__ == '__main__':
         constants.generate_server_list()
         server_list = [s.strip() for s in args.launch.split(',')]
         for server in server_list:
-            if server in constants.server_list_lower:
+            if server.lower() in constants.server_list_lower:
                 server = constants.server_list[constants.server_list_lower.index(server.lower())]
                 constants.boot_launches.append(server)
             else:
@@ -147,7 +147,7 @@ if __name__ == '__main__':
         while True:
             # Put things here to update variables in the background
             # constants.variable = x
-            if exitApp is True or crash:
+            if exitApp or crash:
                 break
             else:
 

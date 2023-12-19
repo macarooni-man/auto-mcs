@@ -5596,7 +5596,7 @@ class PopupUpdate(BigPopupWindow):
 
 
         # Modal specific settings
-        self.window_sound = None
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
         self.ok_button = None
         with self.canvas.after:
 
@@ -12765,6 +12765,7 @@ class ConsolePanel(FloatLayout):
                 self.hint_text_color = (0.6, 0.6, 1, 0.4)
                 self.foreground_color = (0.6, 0.6, 1, 1)
                 self.background_color = (0, 0, 0, 0)
+                self.disabled_foreground_color = (0.6, 0.6, 1, 0.4)
                 self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
                 self.font_size = sp(22)
                 self.padding_y = (12, 12)
@@ -18819,15 +18820,15 @@ class MainApp(App):
                 def launch_server(*_):
                     for server in constants.boot_launches:
                         def open_menu(*args):
-                            open_server(server, ignore_update=False, launch=True)
+                            open_server(server, wait_page_load=True, ignore_update=False, launch=True)
                         Clock.schedule_once(open_menu, 0.5)
 
                         if len(constants.boot_launches) > 1:
                             while server not in constants.server_manager.running_servers:
                                 time.sleep(0.5)
                                 print(constants.server_manager.running_servers)
-                            Clock.schedule_once(previous_screen, 1)
-                            time.sleep(1.5)
+                            Clock.schedule_once(previous_screen, 1.5)
+                            time.sleep(2)
 
                 threading.Timer(0, launch_server).start()
 
