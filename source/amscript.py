@@ -1791,7 +1791,7 @@ class PlayerScriptObject():
         if constants.version_check(str(self._server.version), '>=', '1.7.2') and not self.is_server:
             msg = f'/tellraw {self.name} {{"text": {json.dumps(msg)}, "color": "{color}"}}'
             if style != 'normal':
-                msg = msg[:-1] + f', "{style}": "true"}}'
+                msg = msg[:-1] + f', "{style}": true}}'
             self._server.execute(msg, log=False)
 
         # Pre 1.7.2
