@@ -38,7 +38,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0.1"
+app_version = "2.0.2"
 ams_version = "1.0"
 app_title = "auto-mcs"
 window_size = (850, 850)
@@ -2152,7 +2152,7 @@ max-world-size=29999984"""
         return True
 
 
-# Configures server via server info in a variety of ways
+# Configures server via server info in a variety of ways (for updates)
 def update_server_files(progress_func=None):
     print(glob(os.path.join(tmpsvr, '*')))
     new_config_path = os.path.join(tmpsvr, server_ini)

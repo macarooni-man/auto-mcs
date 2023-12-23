@@ -1343,14 +1343,28 @@ class CreateServerWorldInput(DirectoryInput):
                     self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
 
                 def world_valid():
-                    box_text = os.path.join(*Path(os.path.abspath(self.selected_world)).parts[-2:])
-                    self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
-                    try:
-                        constants.new_server_info['server_settings']['world'] = self.selected_world
-                        self.valid_text(True, True)
-                        self.parent.parent.toggle_new(True)
-                    except AttributeError:
-                        pass
+                    def execute(*a):
+                        box_text = os.path.join(*Path(os.path.abspath(self.selected_world)).parts[-2:])
+                        self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
+                        try:
+                            constants.new_server_info['server_settings']['world'] = self.selected_world
+                            self.valid_text(True, True)
+                            self.parent.parent.toggle_new(True)
+                        except AttributeError:
+                            pass
+                    Clock.schedule_once(execute, 0)
+
+                def clear_world():
+                    def execute(*a):
+                        constants.new_server_info['server_settings']['world'] = 'world'
+                        self.hint_text = "create a new world"
+                        self.text = ""
+                        self.cache_text = ""
+                        self.selected_world = None
+                        self.world_verified = False
+                        self.update_world(hide_popup=True)
+                    Clock.schedule_once(execute, 0)
+
 
 
                 # When valid world selected, check if it matches server version
@@ -1373,11 +1387,14 @@ class CreateServerWorldInput(DirectoryInput):
 \n\nWould you like to use this world anyway?"
 
                     if content:
-                        screen_manager.current_screen.show_popup(
-                            "query",
-                            "Potential Incompatibility",
-                            content,
-                            [None, functools.partial(world_valid)]
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_popup,
+                                "query",
+                                "Potential Incompatibility",
+                                content,
+                                [functools.partial(clear_world), functools.partial(world_valid)]
+                            ), 0
                         )
 
                     else:
@@ -1494,14 +1511,27 @@ class ServerWorldInput(DirectoryInput):
                     self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
 
                 def world_valid():
-                    box_text = os.path.join(*Path(os.path.abspath(self.selected_world)).parts[-2:])
-                    self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
-                    try:
-                        screen_manager.current_screen.new_world = self.selected_world
-                        self.valid_text(True, True)
-                        self.parent.parent.toggle_new(True)
-                    except AttributeError:
-                        pass
+                    def execute(*a):
+                        box_text = os.path.join(*Path(os.path.abspath(self.selected_world)).parts[-2:])
+                        self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
+                        try:
+                            screen_manager.current_screen.new_world = self.selected_world
+                            self.valid_text(True, True)
+                            self.parent.parent.toggle_new(True)
+                        except AttributeError:
+                            pass
+                    Clock.schedule_once(execute, 0)
+
+                def clear_world():
+                    def execute(*a):
+                        screen_manager.current_screen.new_world = 'world'
+                        self.hint_text = "create a new world"
+                        self.text = ""
+                        self.cache_text = ""
+                        self.selected_world = None
+                        self.world_verified = False
+                        self.update_world(hide_popup=True)
+                    Clock.schedule_once(execute, 0)
 
 
                 # When valid world selected, check if it matches server version
@@ -1524,11 +1554,14 @@ class ServerWorldInput(DirectoryInput):
 \n\nWould you like to use this world anyway?"
 
                     if content:
-                        screen_manager.current_screen.show_popup(
-                            "query",
-                            "Potential Incompatibility",
-                            content,
-                            [None, functools.partial(world_valid)]
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_popup,
+                                "query",
+                                "Potential Incompatibility",
+                                content,
+                                [functools.partial(clear_world), functools.partial(world_valid)]
+                            ), 0
                         )
 
                     else:
@@ -17783,7 +17816,13 @@ class ServerWorldScreen(MenuBackground):
                 server_obj.backup.save()
 
                 # Delete current world
-                constants.safe_delete(constants.server_path(server_obj.name, server_obj.world))
+                world_path = constants.server_path(server_obj.name, server_obj.world)
+                def delete_world(path):
+                    if os.path.exists(path):
+                        constants.safe_delete(path)
+                delete_world(world_path)
+                delete_world(world_path + "_nether")
+                delete_world(world_path + "_the_end")
 
                 # Copy world to server if one is selected
                 world_name = 'world'
