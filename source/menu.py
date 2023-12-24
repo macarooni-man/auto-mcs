@@ -11368,18 +11368,34 @@ class MenuTaskbar(RelativeLayout):
         self.bg_center.x = 0 + self.bg_left.width
         self.bg_center.size_hint_max_x = self.width - (self.bg_left.width * 2)
 
+    def show_notification(self, tile_name, show=True):
+        for tile in self.taskbar.children:
+            if tile_name == tile.name:
+                tile.show_notification(show=show)
+                break
+
     def __init__(self, selected_item=None, animate=False, **kwargs):
         super().__init__(**kwargs)
 
-        show_addons = (constants.server_manager.current_server.type != 'vanilla')
+        server_obj = constants.server_manager.current_server
+
+        show_addons = (server_obj.type != 'vanilla')
+        server_obj.taskbar = self
         self.pos_hint = {"center_x": 0.5}
 
         # Layout for icon object
-        class TaskbarItem(AnchorLayout):
+        class TaskbarItem(RelativeLayout):
+
+            def show_notification(self, show=True, animate=True):
+                if animate:
+                    Animation(opacity=(1 if show else 0), duration=0.25, transition='in_out_sine').start(self.notification)
+                else:
+                    self.notification.opacity = (1 if show else 0)
 
             def __init__(self, item_info, selected=False, **kwargs):
                 super().__init__(**kwargs)
                 new_color = constants.convert_color(item_info[2])['rgb']
+                self.name = item_info[0]
 
 
                 # Icon and listed functions
@@ -11513,10 +11529,19 @@ class MenuTaskbar(RelativeLayout):
                 self.add_widget(self.icon)
 
                 self.text = RelativeLayout(size_hint_min=(300, 50))
-                self.text.add_widget(BannerObject(pos_hint={'center_x': 0.5, 'center_y': 1.25}, text=item_info[0], size=(70, 30), color=new_color))
+                self.text.add_widget(BannerObject(pos_hint={'center_x': 0.5, 'center_y': 0.75}, text=item_info[0], size=(70, 30), color=new_color))
                 self.text.pos_hint = {'center_x': 0.5, 'center_y': 1}
                 self.text.opacity = 0
                 self.add_widget(self.text)
+
+
+                # Notification icon
+                self.notification = Image(source=os.path.join(constants.gui_assets, 'icons', 'sm', 'notification.png'))
+                self.notification.opacity = 0
+                self.notification.pos_hint = {'center_x': 0.7, 'center_y': 0.7}
+                self.notification.size_hint_max = (20, 20)
+                self.notification.color = constants.convert_color('#FFC175')['rgb']
+                self.add_widget(self.notification)
 
 
         # Icon list  (name, path, color, next_screen)
@@ -11567,14 +11592,21 @@ class MenuTaskbar(RelativeLayout):
         self.taskbar = BoxLayout(orientation='horizontal', padding=[5,0,5,0])
         for x, item in enumerate(self.item_list):
 
-            if item[0] == 'add-ons' and not show_addons:
+            name = item[0]
+
+            if name == 'add-ons' and not show_addons:
                 continue
 
-            selected = (selected_item == item[0])
+            selected = (selected_item == name)
             item = TaskbarItem(item, selected=selected)
             self.taskbar.add_widget(item)
             if animate:
                 Clock.schedule_once(item.icon.animate, x / 15)
+
+            # Show notification if appropriate
+            if name in server_obj.viewed_notifs:
+                if not server_obj.viewed_notifs[name]:
+                    item.show_notification(True, animate)
 
         self.add_widget(self.taskbar)
 
@@ -14955,8 +14987,10 @@ class ServerAddonScreen(MenuBackground):
 
         if addon_count > 0:
             if not self.server.addon.update_required:
+                self.server._view_notif('add-ons', False)
                 float_layout.add_widget(IconButton('up to date', {}, (70, 110), (None, None), 'checkmark-sharp.png', clickable=False, anchor='right', click_func=update_addons))
             else:
+                self.server._view_notif('add-ons', viewed='update')
                 float_layout.add_widget(IconButton('update add-ons', {}, (70, 110), (None, None), 'arrow-update.png', clickable=True, anchor='right', click_func=update_addons, force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green'], text_offset=(12, 0)))
 
 
@@ -18256,6 +18290,19 @@ class ServerSettingsScreen(MenuBackground):
         # Check for updates button
         sub_layout = ScrollItem()
         if constants.update_list[server_obj.name]['needsUpdate'] == 'true':
+            if 'settings' in server_obj.viewed_notifs:
+                if server_obj.viewed_notifs['settings'] != server_obj.update_string:
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_banner,
+                            (0.553, 0.902, 0.675, 1),
+                            f"A server update is available",
+                            "arrow-up-circle-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
+            server_obj._view_notif('settings', viewed=server_obj.update_string)
             update_button = WaitButton(f"Update to {server_obj.update_string}", (0.5, 0.5), 'arrow-up-circle-outline.png', disabled=disabled, click_func=update_server)
         else:
             update_button = WaitButton('Up to date', (0.5, 0.5), 'checkmark-circle.png', disabled=True)
@@ -18846,9 +18893,12 @@ class MainApp(App):
         # if not constants.app_compiled:
         #     def open_menu(*args):
         #         open_server("bedrock-test")
-        #         def open_ams(*args):
-        #             screen_manager.current = "ServerAddonScreen"
-        #         Clock.schedule_once(open_ams, 1)
+        #         def show_notif(*args):
+        #             screen_manager.current_screen.menu_taskbar.show_notification('amscript')
+        #         Clock.schedule_once(show_notif, 1)
+        #         # def open_ams(*args):
+        #         #     screen_manager.current = "ServerAddonScreen"
+        #         # Clock.schedule_once(open_ams, 1)
         #     Clock.schedule_once(open_menu, 0.5)
 
 

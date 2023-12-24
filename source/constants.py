@@ -140,7 +140,6 @@ background_color = (0.115, 0.115, 0.182, 1)
 server_list = []
 server_list_lower = []
 new_server_info = {}
-
 sub_processes = []
 
 
@@ -289,7 +288,7 @@ def is_admin():
 
 
 # Returns true if latest is greater than current
-def check_app_version(current, latest):
+def check_app_version(current, latest, limit=None):
 
     # Makes list the size of the greatest list
     def normalize(l, s):
@@ -305,12 +304,15 @@ def check_app_version(current, latest):
     normalize(l_list, max_size)
 
     for x in range(max_size):
+        if limit:
+            if x >= limit:
+                return False
+
         if l_list[x] > c_list[x]:
             return True
 
         elif c_list[0] > l_list[0]:
             return False
-
     else:
         return False
 
