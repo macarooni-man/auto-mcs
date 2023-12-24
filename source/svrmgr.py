@@ -1078,8 +1078,16 @@ class ServerObject():
 
             # Get performance stats of forked java process
             else:
-                perc_cpu = parent.cpu_percent(interval=interval)
-                perc_ram = round(parent.memory_info().vms / 1048576, 2)
+                if parent.name() == "java":
+                    perc_cpu = parent.cpu_percent(interval=interval)
+                    perc_ram = round(parent.memory_info().vms / 1048576, 2)
+                else:
+                    children = parent.children(recursive=True)
+                    for proc in children:
+                        if proc.name() == "java":
+                            perc_cpu = proc.cpu_percent(interval=interval)
+                            perc_ram = round(proc.memory_info().vms / 1048576, 2)
+                            break
 
             perc_cpu = round(perc_cpu / psutil.cpu_count(), 2)
             perc_ram = round(((perc_ram / sys_mem) * 100), 2)
