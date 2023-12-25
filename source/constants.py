@@ -38,7 +38,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0.1"
+app_version = "2.0.2"
 ams_version = "1.0"
 app_title = "auto-mcs"
 window_size = (850, 850)
@@ -140,7 +140,6 @@ background_color = (0.115, 0.115, 0.182, 1)
 server_list = []
 server_list_lower = []
 new_server_info = {}
-
 sub_processes = []
 
 
@@ -289,7 +288,7 @@ def is_admin():
 
 
 # Returns true if latest is greater than current
-def check_app_version(current, latest):
+def check_app_version(current, latest, limit=None):
 
     # Makes list the size of the greatest list
     def normalize(l, s):
@@ -305,12 +304,15 @@ def check_app_version(current, latest):
     normalize(l_list, max_size)
 
     for x in range(max_size):
+        if limit:
+            if x >= limit:
+                return False
+
         if l_list[x] > c_list[x]:
             return True
 
         elif c_list[0] > l_list[0]:
             return False
-
     else:
         return False
 
@@ -2152,7 +2154,7 @@ max-world-size=29999984"""
         return True
 
 
-# Configures server via server info in a variety of ways
+# Configures server via server info in a variety of ways (for updates)
 def update_server_files(progress_func=None):
     print(glob(os.path.join(tmpsvr, '*')))
     new_config_path = os.path.join(tmpsvr, server_ini)
@@ -2866,8 +2868,7 @@ def calculate_ram(properties):
             ram = ram + 2
 
     else:
-        ram = config_spec
-
+        ram = int(config_spec)
 
     return ram
 

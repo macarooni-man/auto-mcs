@@ -10,6 +10,7 @@ import hashlib
 import psutil
 import ctypes
 import time
+import json
 import os
 import re
 
@@ -42,6 +43,8 @@ class ServerObject():
         self.crash_log = None
         self.max_log_size = 800
         self.run_data = {}
+        self.viewed_notifs = {}
+        self.taskbar = None
         self._hash = constants.gen_rstring(8)
 
 
@@ -70,6 +73,10 @@ class ServerObject():
         self.type = self.config_file.get("general", "serverType").lower()
         self.version = self.config_file.get("general", "serverVersion").lower()
         self.build = None
+        try:
+            self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
+        except:
+            pass
         try:
             if self.config_file.get("general", "serverBuild"):
                 self.build = self.config_file.get("general", "serverBuild").lower()
@@ -111,6 +118,10 @@ class ServerObject():
         if not self.update_string and self.build:
             self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
 
+        if self.update_string:
+            self._view_notif('settings', viewed='')
+        else:
+            self._view_notif('settings', False)
 
         try:
             self.world = self.server_properties['level-name']
@@ -155,6 +166,8 @@ class ServerObject():
         def load_addon(*args):
             self.addon = AddonManager(server_name)
             self.addon.check_for_updates()
+            if self.addon.update_required and len(self.addon.return_single_list()):
+                self._view_notif('add-ons', viewed='')
         Timer(0, load_addon).start()
         def load_acl(*args):
             self.acl = AclObject(server_name)
@@ -181,6 +194,10 @@ class ServerObject():
         self.version = self.config_file.get("general", "serverVersion").lower()
         self.build = None
         try:
+            self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
+        except:
+            pass
+        try:
             if self.config_file.get("general", "serverBuild"):
                 self.build = self.config_file.get("general", "serverBuild").lower()
         except:
@@ -203,6 +220,10 @@ class ServerObject():
         if not self.update_string and self.build:
             self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
 
+        if self.update_string:
+            self._view_notif('settings', viewed='')
+        else:
+            self._view_notif('settings', False)
 
         try:
             self.world = self.server_properties['level-name']
@@ -1078,8 +1099,16 @@ class ServerObject():
 
             # Get performance stats of forked java process
             else:
-                perc_cpu = parent.cpu_percent(interval=interval)
-                perc_ram = round(parent.memory_info().vms / 1048576, 2)
+                if parent.name() == "java":
+                    perc_cpu = parent.cpu_percent(interval=interval)
+                    perc_ram = round(parent.memory_info().vms / 1048576, 2)
+                else:
+                    children = parent.children(recursive=True)
+                    for proc in children:
+                        if proc.name() == "java":
+                            perc_cpu = proc.cpu_percent(interval=interval)
+                            perc_ram = round(proc.memory_info().vms / 1048576, 2)
+                            break
 
             perc_cpu = round(perc_cpu / psutil.cpu_count(), 2)
             perc_ram = round(((perc_ram / sys_mem) * 100), 2)
@@ -1191,7 +1220,7 @@ class ServerObject():
     # Checks for modified 'server.properties'
     def __get_properties_hash__(self):
         # return hash(frozenset(self.server_properties.items()))
-        return ''.join([str(a).strip() for a in self.server_properties.values()])
+        return ''.join(sorted([str(a).strip() for a in self.server_properties.values()]))
 
     # Checks modified advanced settings to check for a restart
     def __get_advanced_hash__(self):
@@ -1459,6 +1488,28 @@ class ServerObject():
         suggestions['enemy.'] = suggestions['player.']
 
         return suggestions
+
+    # Shows taskbar notifications
+    def _view_notif(self, name, add=True, viewed=''):
+        if name and add:
+            show_notif = name not in self.viewed_notifs
+            if name in self.viewed_notifs:
+                show_notif = viewed != self.viewed_notifs[name]
+
+            if self.taskbar and show_notif:
+                self.taskbar.show_notification(name)
+
+            if name in self.viewed_notifs:
+                if not self.viewed_notifs[name]:
+                    self.viewed_notifs[name] = viewed
+            else:
+                self.viewed_notifs[name] = viewed
+
+        elif (not add) and (name in self.viewed_notifs):
+            del self.viewed_notifs[name]
+
+        self.config_file.set("general", "viewedNotifs", json.dumps(self.viewed_notifs))
+        self.write_config()
 
 
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
