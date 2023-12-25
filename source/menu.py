@@ -11389,6 +11389,12 @@ class MenuTaskbar(RelativeLayout):
             def show_notification(self, show=True, animate=True):
                 if animate:
                     Animation(opacity=(1 if show else 0), duration=0.25, transition='in_out_sine').start(self.notification)
+                    def fade_in(*a):
+                        Animation(opacity=(0.5 if show else 0), duration=0.15, transition='in_out_sine').start(self.notification_glow)
+                    Clock.schedule_once(fade_in, 0.1)
+                    def fade_out(*a):
+                        Animation(opacity=0, duration=0.5, transition='in_out_sine').start(self.notification_glow)
+                    Clock.schedule_once(fade_out, 0.35)
                 else:
                     self.notification.opacity = (1 if show else 0)
 
@@ -11536,13 +11542,19 @@ class MenuTaskbar(RelativeLayout):
 
 
                 # Notification icon
+                self.notification_glow = Image(source=os.path.join(constants.gui_assets, 'icons', 'sm', 'notification-glow.png'))
+                self.notification_glow.opacity = 0
+                self.notification_glow.pos_hint = {'center_x': 0.7, 'center_y': 0.7}
+                self.notification_glow.size_hint_max = (27, 27)
+                self.notification_glow.color = constants.convert_color('#FFC175')['rgb']
+                self.add_widget(self.notification_glow)
+
                 self.notification = Image(source=os.path.join(constants.gui_assets, 'icons', 'sm', 'notification.png'))
                 self.notification.opacity = 0
                 self.notification.pos_hint = {'center_x': 0.7, 'center_y': 0.7}
                 self.notification.size_hint_max = (20, 20)
                 self.notification.color = constants.convert_color('#FFC175')['rgb']
                 self.add_widget(self.notification)
-
 
         # Icon list  (name, path, color, next_screen)
         icon_path = os.path.join(constants.gui_assets, 'icons', 'sm')
@@ -18655,6 +18667,8 @@ class MigrateServerProgressScreen(ProgressScreen):
 
         def after_func(*args):
             constants.make_update_list()
+            server_obj._view_notif('add-ons', False)
+            server_obj._view_notif('settings', viewed=constants.new_server_info['version'])
             open_server(server_obj.name, True, f"{final_text} '{server_obj.name}' successfully", launch=self.page_contents['launch'])
 
 
@@ -18895,7 +18909,7 @@ class MainApp(App):
         #         open_server("bedrock-test")
         #         def show_notif(*args):
         #             screen_manager.current_screen.menu_taskbar.show_notification('amscript')
-        #         Clock.schedule_once(show_notif, 1)
+        #         Clock.schedule_once(show_notif, 2)
         #         # def open_ams(*args):
         #         #     screen_manager.current = "ServerAddonScreen"
         #         # Clock.schedule_once(open_ams, 1)
