@@ -1220,7 +1220,7 @@ class ServerObject():
     # Checks for modified 'server.properties'
     def __get_properties_hash__(self):
         # return hash(frozenset(self.server_properties.items()))
-        return ''.join([str(a).strip() for a in self.server_properties.values()])
+        return ''.join(sorted([str(a).strip() for a in self.server_properties.values()]))
 
     # Checks modified advanced settings to check for a restart
     def __get_advanced_hash__(self):

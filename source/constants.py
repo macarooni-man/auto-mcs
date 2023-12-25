@@ -2868,8 +2868,7 @@ def calculate_ram(properties):
             ram = ram + 2
 
     else:
-        ram = config_spec
-
+        ram = int(config_spec)
 
     return ram
 
