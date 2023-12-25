@@ -1494,7 +1494,7 @@ class ServerObject():
         if name and add:
             show_notif = name not in self.viewed_notifs
             if name in self.viewed_notifs:
-                show_notif = viewed != self.viewed_notifs[name]
+                show_notif = viewed != self.viewed_notifs[name] and viewed
 
             if self.taskbar and show_notif:
                 self.taskbar.show_notification(name)

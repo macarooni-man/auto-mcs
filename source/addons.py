@@ -146,14 +146,14 @@ class AddonManager():
                         if addon.id == 'geyser':
                             update = requests.get('https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest').json()
                             if constants.check_app_version(addon.addon_version, update['version'], limit=3):
-                                print(addon.name, addon.addon_version, update.addon_version)
+                                # print(addon.name, addon.addon_version, update.addon_version)
                                 self.update_required = True
                                 return True
 
                     # Everything else
                     update = get_update_url(addon, self.server['version'], self.server['type'])
                     if constants.check_app_version(addon.addon_version, update.addon_version, limit=3):
-                        print(addon.name, addon.addon_version, update.addon_version)
+                        # print(addon.name, addon.addon_version, update.addon_version)
                         self.update_required = True
                         return True
                 except:
