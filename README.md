@@ -11,11 +11,11 @@ Some notable features include:
  - Ability to import any existing server
  - Switch worlds, versions, and distributions on the fly
  - Automatic backup management
- - Custom console with a [scripting API](https://github.com/macarooni-man/auto-mcs/blob/main/amscript-docs.md) (Compatible with Vanilla)
- - Detailed crash detection with an easily viewable report
+ - Custom console with a universal [scripting API](https://github.com/macarooni-man/auto-mcs/blob/main/amscript-docs.md) (Compatible with Vanilla) and built-in IDE
+ - Detailed crash detection with an easy to view report
  - Internal mod & plug-in browser/installer (auto-mcs can update plugins as well)
- - Firewall-like Access Control menu to manage bans, whitelist, and operators from a single page
- - Built-in `server.properties` editor for ease of use and key protection
+ - Firewall-like Access Control menu to manage bans, the whitelist, and operators from a single page
+ - Built-in `server.properties` editor for ease of use
  - And much more...
 
 <br><br>
@@ -44,9 +44,9 @@ As this is a relatively new project, a lot of things have and may change during 
 
 <br><br>
 # Contact & Inquiries
-- If you experience a crash, please submit an issue with the bug label including the crash report provided by Auto-MCS.
+- If you experience a crash, please submit an issue with the bug label including the crash report provided by auto-mcs.
 - If you experience a bug, please submit an issue with the bug label including screenshots or a detailed description and location of the problem.
-- For all other inquiries including security issues or suggestions, please contact me directly [via email](mailto:kaleb.efflandt@gmail.com).
+- For all other inquiries including security issues or suggestions, please contact me directly [via email](mailto:help@auto-mcs.com?subject=Inquiry%20-%20).
 
 <br><br>
 # Additional Information
