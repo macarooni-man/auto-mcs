@@ -17,7 +17,6 @@ a = Analysis(['wrapper.py'],
              datas = [
                         ('./icon.ico', '.'),
                         ('./baselib.ams', '.'),
-                        ('/usr/bin/xclip', '.'),
                         ('/usr/bin/xsel', '.'),
                         ('/usr/lib64/libcrypt-2.21.so', '.'),
                         ('/usr/lib64/libcrypt.so.1', '.'),
