@@ -11442,7 +11442,8 @@ class MenuTaskbar(RelativeLayout):
                             # Return if back is clicked
                             if self.data[0] == 'back':
 
-                                previous_screen()
+                                screen_manager.current = 'ServerManagerScreen'
+                                constants.screen_tree = ['MainMenuScreen']
 
 
                             # If not back, proceed to next screen
@@ -14672,6 +14673,8 @@ class ServerAddonUpdateScreen(ProgressScreen):
                     ), 1
                 )
 
+            constants.screen_tree = ['MainMenuScreen', 'ServerManagerScreen']
+
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
             original = self.last_progress
@@ -14682,7 +14685,7 @@ class ServerAddonUpdateScreen(ProgressScreen):
                 final = original
 
             count = round(len(constants.new_server_info['addon_objects']) * (final * 0.01))
-            self.steps.label_2.text = "Updating add-ons" + f"   ({count}/{len(constants.new_server_info['addon_objects'])})"
+            self.steps.label_2.text = "Updating Add-ons" + f"   ({count}/{len(constants.new_server_info['addon_objects'])})"
 
             self.progress_bar.update_progress(final)
 

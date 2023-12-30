@@ -38,7 +38,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0.2"
+app_version = "2.0.3"
 ams_version = "1.0"
 app_title = "auto-mcs"
 window_size = (850, 850)
@@ -1914,9 +1914,11 @@ def iter_addons(progress_func=None, update=False):
                     if not downloaded:
                         disabled_folder = "plugins" if server_manager.current_server.type in ['spigot', 'craftbukkit', 'paper'] else 'mods'
                         copy(addon_object.path, os.path.join(tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
+
                     return True
 
                 addons.import_addon(addon_object, new_server_info, tmpsvr=True)
+
         except Exception as e:
             if debug:
                 print(e)

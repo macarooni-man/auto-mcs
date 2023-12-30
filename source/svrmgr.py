@@ -165,6 +165,9 @@ class ServerObject():
         Timer(0, load_backup).start()
         def load_addon(*args):
             self.addon = AddonManager(server_name)
+            if 'add-ons' in self.viewed_notifs:
+                if self.viewed_notifs['add-ons'] == 'update':
+                    self.addon.update_required = True
             self.addon.check_for_updates()
             if self.addon.update_required and len(self.addon.return_single_list()):
                 self._view_notif('add-ons', viewed='')
@@ -271,7 +274,12 @@ class ServerObject():
             Timer(0, load_backup).start()
             def load_addon(*args):
                 self.addon = AddonManager(self.name)
+                if 'add-ons' in self.viewed_notifs:
+                    if self.viewed_notifs['add-ons'] == 'update' or not self.viewed_notifs['add-ons']:
+                        self.addon.update_required = True
                 self.addon.check_for_updates()
+                if self.addon.update_required and len(self.addon.return_single_list()):
+                    self._view_notif('add-ons', viewed='')
             Timer(0, load_addon).start()
             def load_acl(*args):
                 self.acl = AclObject(self.name)
@@ -1508,6 +1516,7 @@ class ServerObject():
         elif (not add) and (name in self.viewed_notifs):
             del self.viewed_notifs[name]
 
+        self.config_file = constants.server_config(self.name)
         self.config_file.set("general", "viewedNotifs", json.dumps(self.viewed_notifs))
         self.write_config()
 
