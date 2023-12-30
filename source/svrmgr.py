@@ -1516,6 +1516,7 @@ class ServerObject():
         elif (not add) and (name in self.viewed_notifs):
             del self.viewed_notifs[name]
 
+        self.config_file = constants.server_config(self.name)
         self.config_file.set("general", "viewedNotifs", json.dumps(self.viewed_notifs))
         self.write_config()
 
