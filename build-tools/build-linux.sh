@@ -82,8 +82,6 @@ patch() {
 }
 patch $venv_path"/lib"
 patch $venv_path"/lib64"
-patch "~/.local/lib"
-patch "~/.local/lib64"
 
 
 
