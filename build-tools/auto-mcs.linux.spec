@@ -16,6 +16,7 @@ a = Analysis(['../source/wrapper.py'],
              datas = [
                         ('../source/icon.ico', '.'),
                         ('../source/baselib.ams', '.'),
+                        ('./ca-bundle.crt', '.'),
                         ('../source/gui-assets/icons/sm/*', '../source/gui-assets/icons/sm')
                     ],
              hiddenimports=['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world'],
@@ -64,7 +65,6 @@ excluded_binaries = [
 
 for binary in a.binaries:
     remove = False
-    print(binary[0])
     for exclude in excluded_binaries:
         if exclude in binary[0]:
             remove = True

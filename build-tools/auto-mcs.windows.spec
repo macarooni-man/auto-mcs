@@ -47,6 +47,8 @@ a.datas += Tree('..\\source\\gui-assets', prefix='gui-assets', excludes=exclude_
 
 
 # Dynamically generate version file
+import sys
+sys.path.insert(0, '..\\source')
 from constants import app_version
 version_file = "version.rc"
 version_tuple = [int(num) for num in app_version.split(".")]
