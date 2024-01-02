@@ -72,6 +72,12 @@ sed 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py
 sed 's/excludedimports = [modname_tkinter, ]/excludedimports = [/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
 python -m kivy.tools.packaging.pyinstaller_hooks hook $kivy_path/kivy-hook.py
 
+kivy_path=$venv_path"/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
+sed 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
+sed 's/excludedimports = [modname_tkinter, ]/excludedimports = [/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
+python -m kivy.tools.packaging.pyinstaller_hooks hook $kivy_path/kivy-hook.py
+
+
 
 # Build
 export KIVY_AUDIO=ffpyplayer
