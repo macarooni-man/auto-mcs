@@ -1,12 +1,13 @@
 #!/bin/bash
 
-# Required for installation:
-# build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev liblzma-dev tk-dev python3-dev portaudio-dev
+# Required for installation (Ubuntu):
+# build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev liblzma-dev tk-dev python3-dev portaudio19-dev
 
 
 # Global variables
 shopt -s expand_aliases
-alias python="/opt/python/3.9.18/bin/python3.9"
+python_path="/opt/python/3.9.18"
+python=$python_path"/bin/python3.9"
 venv_path="./venv"
 current=$( pwd )
 
@@ -19,7 +20,7 @@ fi
 
 
 # First, check if a valid version of Python 3.9 is installed
-version=$( python --version )
+version=$( $python --version )
 errorlevel=$?
 if [ $errorlevel -ne 0 ]; then
     echo Installing Python 3.9
@@ -29,14 +30,14 @@ if [ $errorlevel -ne 0 ]; then
 	tar xzf Python-3.9.18.tgz
 	cd Python-3.9.18
 
-	sudo ./configure --prefix=/opt/python/3.9.18/ --enable-optimizations --with-lto --with-computed-gotos --with-system-ffi --enable-shared
+	sudo ./configure --prefix=$python_path --enable-optimizations --with-lto --with-computed-gotos --with-system-ffi --enable-shared LDFLAGS="-Wl,-rpath $python_path/lib"
 	sudo make -j "$(nproc)"
 
 	sudo ./python3.9 -m test -j "$(nproc)"
 	sudo make altinstall
 	sudo rm /tmp/Python-3.9.18.tgz
 
-	sudo python -m pip install --upgrade pip setuptools wheel
+	sudo $python -m pip install --upgrade pip setuptools wheel
 	cd $current
 
 	errorlevel=$?
@@ -52,7 +53,7 @@ else
 
 	if ! [ -d $venv_path ]; then
 		echo "A virtual environment was not detected"
-		python -m venv $venv_path
+		$python -m venv $venv_path
 
 	else
 		echo "Detected virtual environment"
