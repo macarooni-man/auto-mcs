@@ -19,7 +19,7 @@ a = Analysis(['../source/wrapper.py'],
                         ('../source/gui-assets/icons/sm/*', '../source/gui-assets/icons/sm')
                     ],
              hiddenimports=['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world'],
-             hookspath=hookspath(),
+             hookspath=[],
              hooksconfig={},
              runtime_hooks=[],
              excludes=['pandas', 'matplotlib'],
