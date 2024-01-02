@@ -4,6 +4,7 @@
 # build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev liblzma-dev tk-dev python3-dev portaudio19-dev
 
 
+
 # Global variables
 shopt -s expand_aliases
 python_path="/opt/python/3.9.18"
@@ -12,11 +13,13 @@ venv_path="./venv"
 current=$( pwd )
 
 
+
 # Check for a set DISPLAY variable
 if [ ${DISPLAY:-"unset"} == "unset" ]; then
 	echo A desktop environment is required to proceed
 	exit 1
 fi
+
 
 
 # First, check if a valid version of Python 3.9 is installed
@@ -47,6 +50,8 @@ if [ $errorlevel -ne 0 ]; then
 
 fi
 
+
+
 # If Python 3.9 is installed and a DE is present, check for a virtual environment
 cd $current
 echo Detected $version
@@ -60,22 +65,25 @@ else
 fi
 
 
+
 # Install/Upgrade packages
 echo "Installing packages"
 source $venv_path/bin/activate
 pip install --upgrade -r ./reqs-linux.txt
 
 
-# Patch and install Kivy hook for Pyinstaller
-kivy_path=$venv_path"/lib64/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
-sed 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
-sed 's/excludedimports = [modname_tkinter, ]/excludedimports = [/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
-python -m kivy.tools.packaging.pyinstaller_hooks hook $kivy_path/kivy-hook.py
 
-kivy_path=$venv_path"/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
-sed 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
-sed 's/excludedimports = [modname_tkinter, ]/excludedimports = [/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
-python -m kivy.tools.packaging.pyinstaller_hooks hook $kivy_path/kivy-hook.py
+# Patch and install Kivy hook for Pyinstaller
+patch() {
+	kivy_path=$1"/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
+	sed 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
+	sed 's/excludedimports = [modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
+	kivy.tools.packaging.pyinstaller_hooks hook $kivy_path/kivy-hook.py
+}
+patch $venv_path"/lib"
+patch $venv_path"/lib64"
+patch "~/.local/lib"
+patch "~/.local/lib64"
 
 
 
