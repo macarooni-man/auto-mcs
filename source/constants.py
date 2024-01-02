@@ -38,7 +38,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0.3"
+app_version = "2.0.4"
 ams_version = "1.0"
 app_title = "auto-mcs"
 window_size = (850, 850)
@@ -384,7 +384,7 @@ timeout /t 3 /nobreak
 
 copy /b /v /y "{os.path.join(downDir, 'auto-mcs.exe')}" "{launch_path}"
 if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
-    echo banner-success@Auto-MCS was updated to v{update_data['version']} successfully! > "{update_log}"
+    echo banner-success@auto-mcs was updated to v{update_data['version']} successfully! > "{update_log}"
 ) else (
     echo banner-failure@Something went wrong with the update > "{update_log}"
 )
@@ -414,7 +414,7 @@ sleep 2
 /bin/cp -rf "{os.path.join(downDir, 'auto-mcs')}" "{launch_path}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@Auto-MCS was updated to v{update_data['version']} successfully! > "{update_log}"
+    echo banner-success@auto-mcs was updated to v{update_data['version']} successfully! > "{update_log}"
 else
     echo banner-failure@Something went wrong with the update > "{update_log}"
 fi
@@ -802,10 +802,10 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
     archive_type = None
 
     if archive_file.endswith("tar.gz"):
-        archive = tarfile.open(archive_file, "r:gz")
+        archive = tarfile.open(archive_file, "r:gz", compresslevel=6)
         archive_type = "tar"
     elif archive_file.endswith("tar"):
-        archive = tarfile.open(archive_file, "r:")
+        archive = tarfile.open(archive_file, "r:", compresslevel=6)
         archive_type = "tar"
     elif archive_file.endswith("zip"):
         archive = zipfile.ZipFile(archive_file, 'r')

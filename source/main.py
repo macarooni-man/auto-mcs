@@ -26,7 +26,6 @@ def mainLoop():
     # Instantiate Server Manager
     constants.server_manager = ServerManager()
     print("Current server_list: ", constants.server_manager.server_list)
-
     run_application()
 
 
@@ -47,13 +46,13 @@ def mainLoop():
 #   
 #   - Windows 10 1909, 20H2, 21H2
 #   - Windows 11 22H2
-#   - Manjaro KDE 2022 - 5.10, 5.16
-#   - Manjaro XFCE 2019 - 5.4.6
+#   - Manjaro KDE 2022 - 5.10, 5.16, 6.1, 6.3
 #   - Manjaro XFCE 2022 - 5.15.8  //No file dialog, requires installation of Zenity
 #   - Kali Linux 2022 - 5.15
+#   - Ubuntu 23.10 Desktop (Wayland) - 6.5
+#   - Ubuntu 22.04 Server (XFCE, LXDE) - 5.15
 #   - Ubuntu 22.04.1 Desktop (Wayland, X11) - 5.15
-#   - Ubuntu 18.04 Desktop - 5.0
-#   - Fedora 22 Workstation - 4.0
+#   - Fedora 33 Workstation - 5.8
 #   - PopOS 22.04 - 5.19
 #   - Linux Mint 21 MATE - 5.15
 #   - Garuda KDE Lite - 5.19.7
