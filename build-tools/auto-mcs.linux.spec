@@ -1,10 +1,10 @@
+# -*- mode: python ; coding: utf-8 -*-
+
 from time import sleep
 from re import findall
 from os.path import basename
 from os import environ
 from glob import glob
-
-# -*- mode: python ; coding: utf-8 -*-
 
 
 block_cipher = None
@@ -29,6 +29,7 @@ a = Analysis(['wrapper.py'],
              win_private_assemblies=False,
              cipher=block_cipher,
              noarchive=False)
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 
