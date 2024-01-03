@@ -60,8 +60,8 @@ if [ $errorlevel -ne 0 ]; then
 	wget http://prdownloads.sourceforge.net/tcl/tk8.6.13-src.tar.gz --no-check-certificate
 	tar xzf tcl8.6.13-src.tar.gz
 	tar xzf tk8.6.13-src.tar.gz
-	cp -R /tmp/tcl8.6.13 $tcl_path
-	cp -R /tmp/tk8.6.13 $tk_path
+	sudo cp -R /tmp/tcl8.6.13 $tcl_path
+	sudo cp -R /tmp/tk8.6.13 $tk_path
 
 	cd $tcl_path/unix
 	./configure --prefix=$tcl_path --exec-prefix=$tcl_path --with-freetype=$library_path/libfreetype.so.6
