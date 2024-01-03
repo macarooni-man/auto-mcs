@@ -150,12 +150,14 @@ patch $venv_path"/lib64"
 
 
 # Build
-cd $current
 export KIVY_AUDIO=ffpyplayer
-cp $spec_file ../source
-su $(logname) -c "pyinstaller ../source/"$spec_file" --upx-dir ./upx/linux --clean"
-rm -rf ../source/$spec_file
-mv ../source/dist .
+cd $current
+cp $spec_file $current/source
+cd $current/source
+su $(logname) -c "pyinstaller "$spec_file" --upx-dir "$current"/build-tools/upx/linux --clean"
+cd $current
+rm -rf $current/source/$spec_file
+mv $current/source/dist $current
 deactivate
 
 # Check if compiled
@@ -163,5 +165,4 @@ if ! [ -f .dist/auto-mcs ]; then
 	error "[FAIL] Something went wrong during compilation"
 else
 	echo [SUCCESS] Compiled binary:  \"./dist/auto-mcs\"
-	cd $current
 fi
