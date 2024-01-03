@@ -153,7 +153,7 @@ su $(logname) -c "pyinstaller ./auto-mcs.linux.spec --upx-dir ./upx/linux --clea
 deactivate
 
 # Check if compiled
-if ! [ -f /path/to/file ]; then
+if ! [ -f .dist/auto-mcs ]; then
 	error "[FAIL] Something went wrong during compilation"
 else
 	echo [SUCCESS] Compiled binary:  \"./dist/auto-mcs\"
