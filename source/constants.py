@@ -445,7 +445,7 @@ def run_proc(cmd, return_text=False):
         result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
         if debug:
             print(f'{cmd}: returned exit code {result.returncode}')
-        return result.stdout.decode()
+        return result.stdout.decode('utf-8', errors='ignore')
     else:
         return_code = subprocess.call(cmd, shell=True)
         if debug:
@@ -3189,7 +3189,7 @@ def get_current_ip(name: str, get_ngrok=False):
                         new_ip = public_ip
                     else:
                         try:
-                            new_ip = requests.get('http://api.ipify.org', timeout=5).content.decode('utf-8')
+                            new_ip = requests.get('http://api.ipify.org', timeout=5).content.decode('utf-8', errors='ignore')
                         except:
                             new_ip = ""
 

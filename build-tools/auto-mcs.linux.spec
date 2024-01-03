@@ -13,11 +13,11 @@ block_cipher = None
 a = Analysis(['wrapper.py'],
              pathex=[],
              binaries=[],
-             # Fix xsel and xclip not being recognized in shell somehow
              datas = [
                         ('./icon.ico', '.'),
                         ('./baselib.ams', '.'),
                         ('../build-tools/ca-bundle.crt', '.'),
+                        ('/usr/lib64/libcrypt.so.2', '.'),
                         ('./gui-assets/icons/sm/*', './gui-assets/icons/sm')
                     ],
              hiddenimports=['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world'],
@@ -107,4 +107,5 @@ exe = EXE(pyz,
           disable_windowed_traceback=False,
           target_arch=None,
           codesign_identity=None,
-          entitlements_file=None , icon='icon.ico')
+          entitlements_file=None
+)
