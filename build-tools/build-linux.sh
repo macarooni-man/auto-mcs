@@ -2,20 +2,6 @@
 
 
 
-error ()
-{
-    { printf '\E[31m'; echo "$@"; printf '\E[0m'; } >&2
-    exit 1
-}
-
-
-# Force script to be run as root
-if ! whoami | grep -q "root"; then
-	error "This script requires root privileges to run"
-fi
-
-
-
 # Global variables
 shopt -s expand_aliases
 python_path="/opt/python/3.9.18"
@@ -25,7 +11,23 @@ ssl_path="/opt/openssl"
 tk_path="/opt/tk"
 tcl_path="/opt/tcl"
 venv_path="./venv"
+spec_file="auto-mcs.linux.spec"
 current=$( pwd )
+
+
+
+error ()
+{
+    { printf '\E[31m'; echo "$@"; printf '\E[0m'; } >&2
+    cd $current
+    exit 1
+}
+
+
+# Force script to be run as root
+if ! whoami | grep -q "root"; then
+	error "This script requires root privileges to run"
+fi
 
 
 
@@ -148,8 +150,12 @@ patch $venv_path"/lib64"
 
 
 # Build
+cd $current
 export KIVY_AUDIO=ffpyplayer
-su $(logname) -c "pyinstaller ./auto-mcs.linux.spec --upx-dir ./upx/linux --clean"
+cp $spec_file ../source
+su $(logname) -c "pyinstaller ../source/"$spec_file" --upx-dir ./upx/linux --clean"
+rm -rf ../source/$spec_file
+mv ../source/dist .
 deactivate
 
 # Check if compiled
@@ -157,4 +163,5 @@ if ! [ -f .dist/auto-mcs ]; then
 	error "[FAIL] Something went wrong during compilation"
 else
 	echo [SUCCESS] Compiled binary:  \"./dist/auto-mcs\"
+	cd $current
 fi
