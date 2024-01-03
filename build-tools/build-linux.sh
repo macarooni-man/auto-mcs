@@ -10,7 +10,7 @@ error ()
 
 
 # Force script to be run as root
-if (whoami != root); then
+if ! whoami | grep -q "root"; then
 	error "This script requires root privileges to run"
 fi
 
