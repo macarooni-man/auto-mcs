@@ -12,6 +12,9 @@ tk_path="/opt/tk"
 tcl_path="/opt/tcl"
 venv_path="./venv"
 spec_file="auto-mcs.linux.spec"
+
+# Overwrite current directory
+cd "$(cd -P -- "$(dirname -- "$0")" && pwd -P)"
 current=$( pwd )
 
 
@@ -157,11 +160,11 @@ cd ../source
 su $(logname) -c "pyinstaller "$spec_file" --upx-dir "$current"/upx/linux --clean"
 cd $current
 rm -rf ../source/$spec_file
-mv ../source/dist .
+mv -f ../source/dist .
 deactivate
 
 # Check if compiled
-if ! [ -f .dist/auto-mcs ]; then
+if ! [ -f $current/dist/auto-mcs ]; then
 	error "[FAIL] Something went wrong during compilation"
 else
 	echo [SUCCESS] Compiled binary:  \"./dist/auto-mcs\"
