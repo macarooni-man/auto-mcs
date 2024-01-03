@@ -46,7 +46,7 @@ if [ $errorlevel -ne 0 ]; then
 	cd openssl-1.1.1g
 
 	sudo mkdir -p $ssl_path/lib
-	sudo ./configure --prefix=$ssl_path --openssldir=$ssl_path no-ssl2 LDFLAGS="-L $ssl_path/lib -Wl,-rpath,$sslpath/lib"
+	sudo ./config --prefix=$ssl_path --openssldir=$ssl_path no-ssl2 LDFLAGS="-L $ssl_path/lib -Wl,-rpath,$sslpath/lib"
 	sudo make
 	sudo make install
 
