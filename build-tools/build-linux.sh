@@ -39,6 +39,7 @@ if [ $errorlevel -ne 0 ]; then
 	tar xzf Python-3.9.18.tgz
 	cd Python-3.9.18
 
+	sudo mkdir -p $python_path/lib
 	sudo ./configure --prefix=$python_path --enable-optimizations --with-lto --with-computed-gotos --with-system-ffi --enable-shared LDFLAGS="-Wl,-rpath $python_path/lib"
 	sudo make -j "$(nproc)"
 
