@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# Required for installation (Ubuntu):
-# build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev liblzma-dev tk-dev python3-dev portaudio19-dev
-
-
 
 # Global variables
 shopt -s expand_aliases
@@ -54,7 +50,7 @@ if [ $errorlevel -ne 0 ]; then
 
 	errorlevel=$?
 	if [ $errorlevel -ne 0 ]; then
-    	echo Something went wrong installing Python, please try again (did you install all the packages\?)
+    	echo "Something went wrong installing Python, please try again (did you install all the packages?)"
     	exit 1
    	fi
 
