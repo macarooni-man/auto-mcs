@@ -103,7 +103,7 @@ if [ $errorlevel -ne 0 ]; then
 	make altinstall
 	rm /tmp/Python-3.9.18.tgz
 
-	sudo -u $(logname) $python -m pip install --upgrade pip setuptools wheel
+	su $(logname) -c $python" -m pip install --upgrade pip setuptools wheel"
 
 	errorlevel=$?
 	if [ $errorlevel -ne 0 ]; then
@@ -120,7 +120,7 @@ echo Detected $version
 
 if ! [ -d $venv_path ]; then
 	echo "A virtual environment was not detected"
-	sudo -u $(logname) $python -m venv $venv_path
+	su $(logname) -c $python" -m venv "$venv_path
 
 else
 	echo "Detected virtual environment"
@@ -131,7 +131,7 @@ fi
 # Install/Upgrade packages
 echo "Installing packages"
 source $venv_path/bin/activate
-sudo -u $(logname) pip install --upgrade -r ./reqs-linux.txt
+su $(logname) -c "pip install --upgrade -r ./reqs-linux.txt"
 
 
 
@@ -140,7 +140,7 @@ patch() {
 	kivy_path=$1"/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
 	sed 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
 	sed 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
-	sudo -u $(logname) $venv_path/bin/python3.9 -m kivy.tools.packaging.pyinstaller_hooks hook $kivy_path/kivy-hook.py
+	su $(logname) -c $venv_path"/bin/python3.9 -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path"/kivy-hook.py"
 }
 patch $venv_path"/lib"
 patch $venv_path"/lib64"
@@ -149,7 +149,7 @@ patch $venv_path"/lib64"
 
 # Build
 export KIVY_AUDIO=ffpyplayer
-sudo -u $(logname) pyinstaller ./auto-mcs.linux.spec --upx-dir ./upx/linux --clean
+su $(logname) -c "pyinstaller ./auto-mcs.linux.spec --upx-dir ./upx/linux --clean"
 deactivate
 
 # Check if compiled
