@@ -46,7 +46,7 @@ if [ $errorlevel -ne 0 ]; then
 	cd openssl-1.1.1g
 
 	sudo mkdir -p $ssl_path/lib
-	./configure --prefix=$ssl_path --openssldir=$ssl_path no-ssl2 LDFLAGS="-L $ssl_path/lib -Wl,-rpath,$sslpath/lib"
+	sudo ./configure --prefix=$ssl_path --openssldir=$ssl_path no-ssl2 LDFLAGS="-L $ssl_path/lib -Wl,-rpath,$sslpath/lib"
 	sudo make
 	sudo make install
 
@@ -64,12 +64,12 @@ if [ $errorlevel -ne 0 ]; then
 	sudo cp -R /tmp/tk8.6.13 $tk_path
 
 	cd $tcl_path/unix
-	./configure --prefix=$tcl_path --exec-prefix=$tcl_path --with-freetype=$library_path/libfreetype.so.6
+	sudo ./configure --prefix=$tcl_path --exec-prefix=$tcl_path --with-freetype=$library_path/libfreetype.so.6
 	sudo make
 	sudo make install
 
 	cd $tk_path/unix
-	./configure --prefix=$tk_path --exec-prefix=$tk_path --with-tcl=$tcl_path/unix --with-freetype=$library_path/libfreetype.so.6
+	sudo ./configure --prefix=$tk_path --exec-prefix=$tk_path --with-tcl=$tcl_path/unix --with-freetype=$library_path/libfreetype.so.6
 
 
 
