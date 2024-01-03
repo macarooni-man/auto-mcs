@@ -152,12 +152,12 @@ patch $venv_path"/lib64"
 # Build
 export KIVY_AUDIO=ffpyplayer
 cd $current
-cp $spec_file $current/source
-cd $current/source
-su $(logname) -c "pyinstaller "$spec_file" --upx-dir "$current"/build-tools/upx/linux --clean"
+cp $spec_file ../source
+cd ../source
+su $(logname) -c "pyinstaller "$spec_file" --upx-dir "$current"/upx/linux --clean"
 cd $current
-rm -rf $current/source/$spec_file
-mv $current/source/dist $current
+rm -rf ../source/$spec_file
+mv ../source/dist .
 deactivate
 
 # Check if compiled
