@@ -158,6 +158,7 @@ patch $venv_path"/lib64"
 
 
 # Build
+echo Compiling auto-mcs
 export KIVY_AUDIO=ffpyplayer
 cd $current
 cp $spec_file ../source
