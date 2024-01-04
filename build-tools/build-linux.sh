@@ -51,7 +51,7 @@ if [ $errorlevel -ne 0 ]; then
 	elif [ -x "$(command -v apt-get)" ]; then apt-get install -y build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils liblzma-dev python3-dev libfreetype-dev libfreetype6 portaudio19-dev
 	elif [ -x "$(command -v dnf)" ];     then dnf -y groupinstall "Development Tools" && sudo dnf -y install wget gcc bzip2-devel libffi-devel xz-devel freetype-devel portaudio-devel
 	elif [ -x "$(command -v yum)" ];  then yum -y groupinstall "Development Tools" && sudo dnf -y install wget gcc bzip2-devel libffi-devel xz-devel freetype-devel portaudio-devel
-	elif [ -x "$(command -v pacman)" ];  then pacman -S --noconfirm base-devel wget freetype2 portaudio
+	elif [ -x "$(command -v pacman)" ];  then pacman -S --noconfirm base-devel wget openssl-1.1 tk freetype2 portaudio
 	else echo "[WARNING] Package manager not found: You must manually install the Python 3.9 source dependencies">&2; fi
 
 
@@ -138,6 +138,11 @@ echo "Installing packages"
 source $venv_path/bin/activate
 su $(logname) -c "pip install --upgrade -r ./reqs-linux.txt"
 
+
+# Use Kivy 2.1.0 for Alpine
+if [ -x "$(command -v apk)" ]; then
+	su $(logname) -c "pip install --upgrade kivy==2.1.0"
+fi
 
 
 # Patch and install Kivy hook for Pyinstaller

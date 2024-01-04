@@ -48,6 +48,7 @@ def mainLoop():
 #   - Windows 11 22H2
 #   - Manjaro KDE 2022 - 5.10, 5.16, 6.1, 6.3
 #   - Manjaro XFCE 2022 - 5.15.8  //No file dialog, requires installation of Zenity
+#   - Arch Linux (KDE) - 6.6.9
 #   - Kali Linux 2022 - 5.15
 #   - Ubuntu 23.10 Desktop (Wayland) - 6.5
 #   - Ubuntu 22.04 Server (XFCE, LXDE) - 5.15

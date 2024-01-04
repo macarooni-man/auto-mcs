@@ -801,50 +801,56 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
     archive = None
     archive_type = None
 
-    if archive_file.endswith("tar.gz"):
-        archive = tarfile.open(archive_file, "r:gz", compresslevel=6)
-        archive_type = "tar"
-    elif archive_file.endswith("tar"):
-        archive = tarfile.open(archive_file, "r:", compresslevel=6)
-        archive_type = "tar"
-    elif archive_file.endswith("zip"):
-        archive = zipfile.ZipFile(archive_file, 'r')
-        archive_type = "zip"
+    print(f"Extracting '{archive_file}' to '{export_path}'...")
 
-    if archive and applicationFolder in os.path.split(export_path)[0]:
-        folder_check(export_path)
+    try:
+        if archive_file.endswith("tar.gz"):
+            archive = tarfile.open(archive_file, "r:gz", compresslevel=6)
+            archive_type = "tar"
+        elif archive_file.endswith("tar"):
+            archive = tarfile.open(archive_file, "r:", compresslevel=6)
+            archive_type = "tar"
+        elif archive_file.endswith("zip"):
+            archive = zipfile.ZipFile(archive_file, 'r')
+            archive_type = "zip"
 
-        # Keep integrity of archive
-        if not skip_root:
-            archive.extractall(export_path)
+        if archive and applicationFolder in os.path.split(export_path)[0]:
+            folder_check(export_path)
 
-        # Export from root folder instead
+            # Keep integrity of archive
+            if not skip_root:
+                archive.extractall(export_path)
+
+            # Export from root folder instead
+            else:
+                if archive_type == "tar":
+                    def remove_root(file):
+                        root_path = file.getmembers()[0].path
+                        if "/" in root_path:
+                            root_path = root_path.split("/", 1)[0]
+                        root_path += "/"
+                        l = len(root_path)
+
+                        for member in file.getmembers():
+                            if member.path.startswith(root_path):
+                                member.path = member.path[l:]
+                                yield member
+                    archive.extractall(export_path, members=remove_root(archive))
+
+                elif archive_type == "zip":
+                    root_path = archive.namelist()[0]
+                    for zip_info in archive.infolist():
+                        if zip_info.filename[-1] == '/':
+                            continue
+                        zip_info.filename = zip_info.filename[len(root_path):]
+                        archive.extract(zip_info, export_path)
+
+            print(f"Extracted '{archive_file}' to '{export_path}'")
         else:
-            if archive_type == "tar":
-                def remove_root(file):
-                    root_path = file.getmembers()[0].path
-                    if "/" in root_path:
-                        root_path = root_path.split("/", 1)[0]
-                    root_path += "/"
-                    l = len(root_path)
+            print(f"Archive '{archive_file}' was not found")
 
-                    for member in file.getmembers():
-                        if member.path.startswith(root_path):
-                            member.path = member.path[l:]
-                            yield member
-                archive.extractall(export_path, members=remove_root(archive))
-
-            elif archive_type == "zip":
-                root_path = archive.namelist()[0]
-                for zip_info in archive.infolist():
-                    if zip_info.filename[-1] == '/':
-                        continue
-                    zip_info.filename = zip_info.filename[len(root_path):]
-                    archive.extract(zip_info, export_path)
-
-        print(f"Extracted '{archive_file}' to '{export_path}'")
-    else:
-        print(f"Archive '{archive_file}' was not found")
+    except Exception as e:
+        print(f"Something went wrong extracting '{archive_file}': {e}")
 
 
 # Download file from URL to directory
