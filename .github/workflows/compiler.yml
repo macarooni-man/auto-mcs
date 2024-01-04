@@ -14,7 +14,7 @@ jobs:
       - name: Compile auto-mcs
         shell: pwsh
         run: |
-          powershell -noprofile -executionpolicy bypass -file .\auto-mcs-main\build-tools\build-windows.ps1
+          powershell -noprofile -executionpolicy bypass -file .\build-tools\build-windows.ps1
       - uses: actions/upload-artifact@v3
         with:
           name: auto-mcs
