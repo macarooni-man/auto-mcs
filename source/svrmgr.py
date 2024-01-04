@@ -1134,8 +1134,16 @@ class ServerObject():
             time_str = time_str.split('.')[0]
         formatted_date = f"{str(delta.days)}:{time_str.strip().zfill(8)}".zfill(11)
 
-        self.run_data['performance']['cpu'] = perc_cpu
-        self.run_data['performance']['ram'] = perc_ram
+        def limit_percent(pct):
+            if pct < 0:
+                return 0
+            if pct > 100:
+                return 100
+            else:
+                return pct
+
+        self.run_data['performance']['cpu'] = limit_percent(perc_cpu)
+        self.run_data['performance']['ram'] = limit_percent(perc_ram)
         self.run_data['performance']['uptime'] = formatted_date
 
 

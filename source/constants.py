@@ -38,7 +38,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0.3"
+app_version = "2.0.4"
 ams_version = "1.0"
 app_title = "auto-mcs"
 window_size = (850, 850)
@@ -57,7 +57,7 @@ update_data = {
     "reboot-msg": [],
     "auto-show": True
 }
-
+auto_update = True
 app_online = False
 app_latest = True
 app_loaded = False
@@ -384,7 +384,7 @@ timeout /t 3 /nobreak
 
 copy /b /v /y "{os.path.join(downDir, 'auto-mcs.exe')}" "{launch_path}"
 if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
-    echo banner-success@Auto-MCS was updated to v{update_data['version']} successfully! > "{update_log}"
+    echo banner-success@auto-mcs was updated to v{update_data['version']} successfully! > "{update_log}"
 ) else (
     echo banner-failure@Something went wrong with the update > "{update_log}"
 )
@@ -414,7 +414,7 @@ sleep 2
 /bin/cp -rf "{os.path.join(downDir, 'auto-mcs')}" "{launch_path}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@Auto-MCS was updated to v{update_data['version']} successfully! > "{update_log}"
+    echo banner-success@auto-mcs was updated to v{update_data['version']} successfully! > "{update_log}"
 else
     echo banner-failure@Something went wrong with the update > "{update_log}"
 fi
@@ -445,7 +445,7 @@ def run_proc(cmd, return_text=False):
         result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
         if debug:
             print(f'{cmd}: returned exit code {result.returncode}')
-        return result.stdout.decode()
+        return result.stdout.decode('utf-8', errors='ignore')
     else:
         return_code = subprocess.call(cmd, shell=True)
         if debug:
@@ -801,50 +801,56 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
     archive = None
     archive_type = None
 
-    if archive_file.endswith("tar.gz"):
-        archive = tarfile.open(archive_file, "r:gz")
-        archive_type = "tar"
-    elif archive_file.endswith("tar"):
-        archive = tarfile.open(archive_file, "r:")
-        archive_type = "tar"
-    elif archive_file.endswith("zip"):
-        archive = zipfile.ZipFile(archive_file, 'r')
-        archive_type = "zip"
+    print(f"Extracting '{archive_file}' to '{export_path}'...")
 
-    if archive and applicationFolder in os.path.split(export_path)[0]:
-        folder_check(export_path)
+    try:
+        if archive_file.endswith("tar.gz"):
+            archive = tarfile.open(archive_file, "r:gz", compresslevel=6)
+            archive_type = "tar"
+        elif archive_file.endswith("tar"):
+            archive = tarfile.open(archive_file, "r:", compresslevel=6)
+            archive_type = "tar"
+        elif archive_file.endswith("zip"):
+            archive = zipfile.ZipFile(archive_file, 'r')
+            archive_type = "zip"
 
-        # Keep integrity of archive
-        if not skip_root:
-            archive.extractall(export_path)
+        if archive and applicationFolder in os.path.split(export_path)[0]:
+            folder_check(export_path)
 
-        # Export from root folder instead
+            # Keep integrity of archive
+            if not skip_root:
+                archive.extractall(export_path)
+
+            # Export from root folder instead
+            else:
+                if archive_type == "tar":
+                    def remove_root(file):
+                        root_path = file.getmembers()[0].path
+                        if "/" in root_path:
+                            root_path = root_path.split("/", 1)[0]
+                        root_path += "/"
+                        l = len(root_path)
+
+                        for member in file.getmembers():
+                            if member.path.startswith(root_path):
+                                member.path = member.path[l:]
+                                yield member
+                    archive.extractall(export_path, members=remove_root(archive))
+
+                elif archive_type == "zip":
+                    root_path = archive.namelist()[0]
+                    for zip_info in archive.infolist():
+                        if zip_info.filename[-1] == '/':
+                            continue
+                        zip_info.filename = zip_info.filename[len(root_path):]
+                        archive.extract(zip_info, export_path)
+
+            print(f"Extracted '{archive_file}' to '{export_path}'")
         else:
-            if archive_type == "tar":
-                def remove_root(file):
-                    root_path = file.getmembers()[0].path
-                    if "/" in root_path:
-                        root_path = root_path.split("/", 1)[0]
-                    root_path += "/"
-                    l = len(root_path)
+            print(f"Archive '{archive_file}' was not found")
 
-                    for member in file.getmembers():
-                        if member.path.startswith(root_path):
-                            member.path = member.path[l:]
-                            yield member
-                archive.extractall(export_path, members=remove_root(archive))
-
-            elif archive_type == "zip":
-                root_path = archive.namelist()[0]
-                for zip_info in archive.infolist():
-                    if zip_info.filename[-1] == '/':
-                        continue
-                    zip_info.filename = zip_info.filename[len(root_path):]
-                    archive.extract(zip_info, export_path)
-
-        print(f"Extracted '{archive_file}' to '{export_path}'")
-    else:
-        print(f"Archive '{archive_file}' was not found")
+    except Exception as e:
+        print(f"Something went wrong extracting '{archive_file}': {e}")
 
 
 # Download file from URL to directory
@@ -972,7 +978,7 @@ def gen_rstring(size: int):
 
 # Check if client has an internet connection
 def check_app_updates():
-    global project_link, app_version, app_latest, app_online, update_data
+    global project_link, app_version, app_latest, app_online, update_data, auto_update
 
     # Check if updates are available
     try:
@@ -983,6 +989,10 @@ def check_app_updates():
         app_online = status_code in (200, 403)
         release_data = req.json()
 
+        # Don't automatically update if specified in config
+        if not auto_update:
+            app_latest = True
+            return None
 
         # Get checksum data
         try:
@@ -3189,7 +3199,7 @@ def get_current_ip(name: str, get_ngrok=False):
                         new_ip = public_ip
                     else:
                         try:
-                            new_ip = requests.get('http://api.ipify.org', timeout=5).content.decode('utf-8')
+                            new_ip = requests.get('http://api.ipify.org', timeout=5).content.decode('utf-8', errors='ignore')
                         except:
                             new_ip = ""
 

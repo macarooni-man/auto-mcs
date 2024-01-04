@@ -18799,7 +18799,7 @@ def check_running(final_func):
 class MainApp(App):
 
     # Disable F1 menu when compiled
-    if constants.app_compiled and constants.debug is False:
+    if constants.app_compiled:
         def open_settings(self, *largs):
             pass
 

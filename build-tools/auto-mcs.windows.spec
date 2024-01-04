@@ -1,10 +1,10 @@
+# -*- mode: python ; coding: utf-8 -*-
+
 from kivy_deps import sdl2, glew
 from time import sleep
 from re import findall
 from os.path import basename
 from glob import glob
-
-# -*- mode: python ; coding: utf-8 -*-
 
 
 block_cipher = None
@@ -13,8 +13,12 @@ block_cipher = None
 a = Analysis(['wrapper.py'],
              pathex=[],
              binaries=[],
-             datas = [('.\\icon.ico', '.'), ('.\\baselib.ams', '.'), ('.\\gui-assets\\icons\\sm\\*', '.\\gui-assets\\icons\\sm')],
-             hiddenimports=['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses'],
+             datas = [
+                        ('.\\icon.ico', '.'),
+                        ('.\\baselib.ams', '.'),
+                        ('.\\gui-assets\\icons\\sm\\*', '.\\gui-assets\\icons\\sm')
+                    ],
+             hiddenimports=['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world'],
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],
@@ -23,8 +27,8 @@ a = Analysis(['wrapper.py'],
              win_private_assemblies=False,
              cipher=block_cipher,
              noarchive=False)
-pyz = PYZ(a.pure, a.zipped_data,
-             cipher=block_cipher)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 
 # Import assets, and only use icons that are needed
@@ -96,7 +100,6 @@ splash = Splash(
     text_size=12,
     minify_script=True,
     always_on_top=True,
-    # max_img_size=(287, 65)
 )
 
 exe = EXE(pyz,
