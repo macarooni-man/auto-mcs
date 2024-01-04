@@ -15,9 +15,11 @@ $a = ".\auto-mcs.zip";Invoke-WebRequest https://auto-mcs.com/src -OutFile $a;Exp
 
 On Linux, first verify that you have the `git` package installed and an X11 compatible desktop environment
 
-> Note: On Linux, Kivy requires a desktop environment with X11 to install (Wayland is incompatible for compilation, but the finished binary can run under Wayland), but there's a work around
+> _Note:_   On Linux, Kivy requires a desktop environment with X11 to install, but there's a work around
+>  - It's currently not possible to compile running pure Wayland, though, the finished binary can run under Wayland
+> <br>
 >
-> Install the `xvfb` package to emulate a display, and then enable it with the following commands:
+> Install the `xvfb` package to emulate a display and enable it with the following commands:
 > ```sh
 > export DISPLAY=:0.0
 > Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
