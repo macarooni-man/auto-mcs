@@ -42,6 +42,24 @@ In both instances, the source repo will be stored in the directory that you run 
 
 Keep in mind that auto-mcs chooses to pull updates from the stable release channel. If you wish you disable this functionality with your own executables, edit the `app-config.json` file in the auto-mcs directory:
 <br><br>Linux: `~/.auto-mcs/Config/app-config.json`
-<br><br>Windows: `%APPDATA%\.auto-mcs\Config\app-config.json`
+<br>Windows: `%APPDATA%\.auto-mcs\Config\app-config.json`
+<br><br>
+In both cases, append the following key to this file to disable automatic update detection: `"auto-update": false`
 <br>
-In both cases, append the following KV pair to this file to disable automatic update detection: `"auto-update": false`
+After this edit, the config file should look something like this:
+```json
+{
+  "auto-update": false,
+  "fullscreen": false,
+  "geometry": {
+    "pos": [
+      527,
+      119
+    ],
+    "size": [
+      850.0,
+      850.0
+    ]
+  }
+}
+```
