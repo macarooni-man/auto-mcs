@@ -23,6 +23,8 @@ Some notable features include:
 To get started, download the latest version of auto-mcs [from the website](https://www.auto-mcs.com/download), or [from GitHub](https://github.com/macarooni-man/auto-mcs/releases/latest). Extract auto-mcs from the `.zip` file to a location of your choice and launch it. That's it, there's no installation required!
 > Note:  If you're using Linux, you might need to run `chmod +x auto-mcs` to give the binary executable permission
 
+If you'd like to compile auto-mcs yourself, take a peek at the [build documentation](https://github.com/macarooni-man/auto-mcs/blob/main/build-tools/README.md)!
+
 <br>
 To start, you can either import a server you've made on your own or create a new one from scratch:
 
