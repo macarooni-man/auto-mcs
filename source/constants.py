@@ -57,7 +57,7 @@ update_data = {
     "reboot-msg": [],
     "auto-show": True
 }
-
+auto_update = True
 app_online = False
 app_latest = True
 app_loaded = False
@@ -978,7 +978,7 @@ def gen_rstring(size: int):
 
 # Check if client has an internet connection
 def check_app_updates():
-    global project_link, app_version, app_latest, app_online, update_data
+    global project_link, app_version, app_latest, app_online, update_data, auto_update
 
     # Check if updates are available
     try:
@@ -989,6 +989,10 @@ def check_app_updates():
         app_online = status_code in (200, 403)
         release_data = req.json()
 
+        # Don't automatically update if specified in config
+        if not auto_update:
+            app_latest = True
+            return None
 
         # Get checksum data
         try:

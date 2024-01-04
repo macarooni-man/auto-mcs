@@ -96,6 +96,18 @@ if __name__ == '__main__':
     crash = None
 
 
+    # Get global configuration
+    if os.path.exists(constants.global_conf):
+        try:
+            with open(constants.global_conf, 'r') as f:
+                file_contents = constants.json.loads(f.read())
+                constants.geometry = file_contents['geometry']
+                constants.fullscreen = file_contents['fullscreen']
+                constants.auto_update = file_contents['auto-update']
+        except:
+            pass
+
+
     # Functions
     def app_crash(exception):
         import crashmgr
@@ -169,16 +181,6 @@ if __name__ == '__main__':
 
         # Main thread
         try:
-            # Get window size
-            if os.path.exists(constants.global_conf):
-                try:
-                    with open(constants.global_conf, 'r') as f:
-                        file_contents = constants.json.loads(f.read())
-                        constants.geometry = file_contents['geometry']
-                        constants.fullscreen = file_contents['fullscreen']
-                except:
-                    pass
-
             main.mainLoop()
             exitApp = True
 
