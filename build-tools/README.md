@@ -37,4 +37,11 @@ git clone https://github.com/macarooni-man/auto-mcs && cd auto-mcs/build-tools &
 <br><br>
 
 # Additional Notes
-In both instances, the source repo will be stored in the directory that you run the command in. From there, the compiled binary will be located in the `.\build-tools\dist\` directory.
+In both instances, the source repo will be stored in the directory that you run the command in. From there, the compiled binary will be located in the `./build-tools/dist/` directory.
+<br><br>
+
+Keep in mind that auto-mcs chooses to pull updates from the stable release channel. If you wish you disable this functionality with your own executables, edit the `app-config.json` file in the auto-mcs directory:
+Linux: `~/.auto-mcs/Config/app-config.json`
+Windows: `%APPDATA%\.auto-mcs\Config\app-config.json`
+<br>
+In both cases, append the following KV pair to this file to disable automatic update detection: `"auto-update": false`
