@@ -1,0 +1,49 @@
+---
+name: Compiler
+on:
+  push: null
+jobs:
+  windows:
+    name: Windows Release
+    runs-on: windows-2019
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Compile auto-mcs
+        shell: pwsh
+        run: |
+          powershell -noprofile -executionpolicy bypass -file .\auto-mcs-main\build-tools\build-windows.ps1
+      - uses: actions/upload-artifact@v3
+        with:
+          name: auto-mcs
+          path: build-tools/dist/
+          retention-days: 1
+  linux:
+    name: Linux Release
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: take care of xvfb, fluxbox
+        run: |
+          sudo apt update -y
+          sudo apt install xvfb fluxbox -y
+          export DISPLAY=:0.0
+          Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+          sleep 1
+          fluxbox > /dev/null 2>&1 &
+      - name: Make xvfb, Fluxbox, and run build
+        run: |
+          export DISPLAY=:0.0
+          cd build-tools
+          chmod +x build-linux.sh
+          sudo bash ./build-linux.sh
+      - uses: actions/upload-artifact@v3
+        with:
+          name: auto-mcs
+          path: build-tools/dist/
+          retention-days: 1
