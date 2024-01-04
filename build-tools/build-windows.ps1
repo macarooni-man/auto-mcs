@@ -99,5 +99,5 @@ deactivate
 if (-not (Test-Path "$current\dist\auto-mcs.exe")) {
 	error "[FAIL] Something went wrong during compilation"
 } else {
-	echo "[SUCCESS] Compiled executable:  `".\dist\auto-mcs.exe`""
+	echo "[SUCCESS] Compiled executable:  `"$current\dist\auto-mcs.exe`""
 }

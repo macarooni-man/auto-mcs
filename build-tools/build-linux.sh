@@ -173,5 +173,5 @@ deactivate
 if ! [ -f $current/dist/auto-mcs ]; then
 	error "[FAIL] Something went wrong during compilation"
 else
-	echo [SUCCESS] Compiled binary:  \"./dist/auto-mcs\"
+	echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
 fi
