@@ -90,7 +90,7 @@ cd ..\source
 pyinstaller $spec_file --upx-dir $current\upx\windows --clean
 cd $current
 Remove-Item -Force ..\source\$spec_file
-Remove-Item -Force .\dist
+Remove-Item -Force .\dist -ErrorAction SilentlyContinue
 Move-Item -Force ..\source\dist .
 deactivate
 
