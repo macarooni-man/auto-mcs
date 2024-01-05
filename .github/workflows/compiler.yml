@@ -57,9 +57,9 @@ jobs:
           
       - name: Compile auto-mcs
         run: |
-          where python3.9
-          where python
-          where python3
+          whereis python3.9
+          whereis python
+          whereis python3
           python3 --version
           python3.9 --version
           python --version
