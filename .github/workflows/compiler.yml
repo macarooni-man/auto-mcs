@@ -17,11 +17,11 @@ jobs:
         run: |
           $python_url = "https://www.python.org/ftp/python/3.9.13/python-3.9.13-amd64.exe"
           $dest_py = "$env:TEMP\python_installer-3.9.13.exe"
-          echo Downloading Python 3.9
+          echo "Downloading Python 3.9"
           Invoke-WebRequest -Uri $python_url -OutFile $dest_py
-          echo Installing Python 3.9
+          echo "Installing Python 3.9"
           Start-Process -FilePath $dest_py -ArgumentList "/S" -Wait
-          cmd /c "`"$python`" -m pip install --upgrade pip setuptools wheel"
+          cmd /c "$python -m pip install --upgrade pip setuptools wheel"
       - name: Compile auto-mcs
         shell: pwsh
         run: |
