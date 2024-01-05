@@ -63,7 +63,8 @@ jobs:
         run: |
           mkdir -p /opt/python/
           ln -s /opt/hostedtoolcache/Python/3.9.18/x64 /opt/python/3.9.18
-          sed 's/\('/usr/lib64/libcrypt.so.2', '.'\),/#/' ./build-tools/auto-mcs.linux.spec > tmp.txt && mv tmp.txt ./build-tools/auto-mcs.linux.spec
+          ln -s /usr/lib/libcrypt.so.2 /usr/lib64/libcrypt.so.2
+          # sed 's/\('/usr/lib64/libcrypt.so.2', '.'\),/#/' ./build-tools/auto-mcs.linux.spec > tmp.txt && mv tmp.txt ./build-tools/auto-mcs.linux.spec
           alias logname="echo runner"
           export DISPLAY=:0.0
           cd build-tools
