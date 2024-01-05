@@ -59,13 +59,15 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Setup upterm session
-        uses: lhotari/action-upterm@v1
+      #- name: Setup upterm session
+      #  uses: lhotari/action-upterm@v1
     
       - name: Compile auto-mcs
         run: |
           mkdir -p /opt/python/
           ln -s /opt/hostedtoolcache/Python/3.9.18/x64 /opt/python/3.9.18
+          rm -rf /usr/bin/python3
+          sudo ln -s /opt/hostedtoolcache/Python/3.9.18/x64/bin/python/bin/python3
           sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
           sudo cp -f /usr/bin/whoami /usr/bin/logname
           export DISPLAY=:0.0
