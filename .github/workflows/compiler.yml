@@ -59,8 +59,8 @@ jobs:
         with:
           python-version: '3.9'
 
-      #- name: Setup upterm session
-      #  uses: lhotari/action-upterm@v1
+      - name: Setup upterm session
+        uses: lhotari/action-upterm@v1
     
       - name: Compile auto-mcs
         run: |
