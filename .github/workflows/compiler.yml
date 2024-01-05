@@ -24,8 +24,7 @@ jobs:
           systeminfo
           $python_path = "$env:LOCALAPPDATA\Programs\Python\Python39"
           md $python_path
-          # Move-Item -Force C:\hostedtoolcache\windows\Python\3.9.13\x64\* $python_path
-          mklink /J $python_path C:\hostedtoolcache\windows\Python\3.9.13\x64
+          Move-Item -Force C:\hostedtoolcache\windows\Python\3.9.13\x64\* $python_path
           powershell -noprofile -executionpolicy bypass -file .\build-tools\build-windows.ps1
 
       - name: Upload Executable
@@ -64,6 +63,7 @@ jobs:
         run: |
           mkdir -p /opt/python/
           ln -s /opt/hostedtoolcache/Python/3.9.18/x64 /opt/python/3.9.18
+          sed 's/\('/usr/lib64/libcrypt.so.2', '.'\),/#/' ./build-tools/auto-mcs.linux.spec > tmp.txt && mv tmp.txt ./build-tools/auto-mcs.linux.spec
           alias logname="echo runner"
           export DISPLAY=:0.0
           cd build-tools
