@@ -48,7 +48,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update -y
-          sudo apt install xvfb fluxbox -y
+          sudo apt install xvfb fluxbox libcrypt-dev -y
           export DISPLAY=:0.0
           Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
           sleep 1
