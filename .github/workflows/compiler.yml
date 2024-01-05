@@ -11,6 +11,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+      - name: Gather dependencies
+        shell: pwsh
+        run: |
+          choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.MSBuildTools;includeRecommended --add Microsoft.VisualStudio.Workload.VCTools;includeRecommended --quiet" -y
+          $python_url = "https://www.python.org/ftp/python/3.9.13/python-3.9.13-amd64.exe"
+          $dest_py = "$env:TEMP\python_installer-3.9.13.exe"
+          Invoke-WebRequest -Uri $python_url -OutFile $dest_py
+          Start-Process -FilePath $dest_py -ArgumentList "/S" -Wait
+          cmd /c "`"$python`" -m pip install --upgrade pip setuptools wheel"
       - name: Compile auto-mcs
         shell: pwsh
         run: |
@@ -19,7 +28,9 @@ jobs:
         with:
           name: auto-mcs
           path: build-tools/dist/
-          retention-days: 1
+          retention-days: 5
+
+
   linux:
     name: Linux Release
     runs-on: ubuntu-20.04
@@ -28,8 +39,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      - name: Take care of xvfb & fluxbox
+      - name: Take care of deps
         run: |
+          alias logname="echo runner"
           sudo apt update -y
           sudo apt install xvfb fluxbox -y
           export DISPLAY=:0.0
@@ -46,4 +58,4 @@ jobs:
         with:
           name: auto-mcs
           path: build-tools/dist/
-          retention-days: 1
+          retention-days: 5
