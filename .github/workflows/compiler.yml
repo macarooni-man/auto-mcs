@@ -60,12 +60,9 @@ jobs:
           
       - name: Compile auto-mcs
         run: |
-          mkdir -p /opt/python/3.9.18
+          mkdir -p /opt/python/
           ls -l /opt/hostedtoolcache/Python/3.9.18/x64/*
-          mv -f /opt/hostedtoolcache/Python/3.9.18/x64/bin /opt/python/3.9.18
-          mv -f /opt/hostedtoolcache/Python/3.9.18/x64/lib /opt/python/3.9.18
-          mv -f /opt/hostedtoolcache/Python/3.9.18/x64/share /opt/python/3.9.18
-          mv -f /opt/hostedtoolcache/Python/3.9.18/x64/include /opt/python/3.9.18
+          ln -s /opt/hostedtoolcache/Python/3.9.18/x64 /opt/python/3.9.18
           alias logname="echo runner"
           export DISPLAY=:0.0
           cd build-tools
