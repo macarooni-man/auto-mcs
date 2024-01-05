@@ -59,6 +59,9 @@ jobs:
         with:
           python-version: '3.9'
 
+      - name: Setup upterm session
+        uses: lhotari/action-upterm@v1
+    
       - name: Compile auto-mcs
         run: |
           mkdir -p /opt/python/
@@ -68,9 +71,6 @@ jobs:
           cd build-tools
           chmod +x build-linux.sh
           sudo ./build-linux.sh
-      
-      - name: Setup upterm session
-        uses: lhotari/action-upterm@v1
 
       - name: Upload Binary
         uses: actions/upload-artifact@v3
