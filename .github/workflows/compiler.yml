@@ -63,7 +63,6 @@ jobs:
         run: |
           mkdir -p /opt/python/
           ln -s /opt/hostedtoolcache/Python/3.9.18/x64 /opt/python/3.9.18
-          ls /usr/lib/libcrypt*
           ls /usr/lib64/libcrypt*
           mkdir -p /usr/lib64/
           sudo ln -s /usr/lib/libcrypt.so.2 /usr/lib64/libcrypt.so.2
