@@ -21,7 +21,9 @@ jobs:
       - name: Compile auto-mcs
         shell: pwsh
         run: |
-          where python
+          $python_path = "$env:LOCALAPPDATA\Programs\Python\Python39"
+          md $python_path
+          Move-Item -Force C:\hostedtoolcache\windows\Python\3.9.13\x64\* $python_path
           powershell -noprofile -executionpolicy bypass -file .\build-tools\build-windows.ps1
 
       - name: Upload Executable
@@ -59,6 +61,7 @@ jobs:
       - name: Compile auto-mcs
         run: |
           mkdir -p /opt/python/3.9.18
+          ls -l /opt/hostedtoolcache/Python/3.9.18/x64/*
           mv -f /opt/hostedtoolcache/Python/3.9.18/x64/* /opt/python/3.9.18
           alias logname="echo runner"
           export DISPLAY=:0.0
