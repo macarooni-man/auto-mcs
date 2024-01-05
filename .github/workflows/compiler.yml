@@ -4,7 +4,7 @@ on:
   push: null
 jobs:
   windows:
-    name: Windows Release
+    name: Windows Build
     runs-on: windows-2019
     steps:
     
@@ -21,9 +21,11 @@ jobs:
       - name: Compile auto-mcs
         shell: pwsh
         run: |
+          systeminfo
           $python_path = "$env:LOCALAPPDATA\Programs\Python\Python39"
           md $python_path
-          Move-Item -Force C:\hostedtoolcache\windows\Python\3.9.13\x64\* $python_path
+          # Move-Item -Force C:\hostedtoolcache\windows\Python\3.9.13\x64\* $python_path
+          mklink /J $python_path C:\hostedtoolcache\windows\Python\3.9.13\x64
           powershell -noprofile -executionpolicy bypass -file .\build-tools\build-windows.ps1
 
       - name: Upload Executable
@@ -35,7 +37,7 @@ jobs:
 
 
   linux:
-    name: Linux Release
+    name: Linux Build
     runs-on: ubuntu-20.04
     steps:
     
@@ -61,7 +63,6 @@ jobs:
       - name: Compile auto-mcs
         run: |
           mkdir -p /opt/python/
-          ls -l /opt/hostedtoolcache/Python/3.9.18/x64/*
           ln -s /opt/hostedtoolcache/Python/3.9.18/x64 /opt/python/3.9.18
           alias logname="echo runner"
           export DISPLAY=:0.0
