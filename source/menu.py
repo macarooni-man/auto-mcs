@@ -82,7 +82,7 @@ from kivy.uix.dropdown import DropDown
 from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
-from kivy.properties import BooleanProperty, ObjectProperty, NumericProperty, ListProperty
+from kivy.properties import BooleanProperty, ObjectProperty
 
 
 def icon_path(name):
@@ -500,13 +500,15 @@ class BaseInput(TextInput):
 
     # Special keypress behaviors
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        super().keyboard_on_key_down(window, keycode, text, modifiers)
 
         if keycode[1] == "backspace" and "ctrl" in modifiers:
-            if " " not in self.text:
-                self.text = ""
-            else:
-                self.text = self.text.rsplit(" ", 1)[0]
+            original_index = self.cursor_col
+            new_text, index = constants.control_backspace(self.text, original_index)
+            self.select_text(original_index - index, original_index)
+            self.delete_selection()
+        else:
+            super().keyboard_on_key_down(window, keycode, text, modifiers)
+
 
 
 
@@ -7070,7 +7072,7 @@ class UpdateAppProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Updating Auto-MCS",
+            'title': f"Updating auto-mcs",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -12907,19 +12909,19 @@ class ConsolePanel(FloatLayout):
 
             # Manipulate command history
             def keyboard_on_key_down(self, window, keycode, text, modifiers):
-                super().keyboard_on_key_down(window, keycode, text, modifiers)
 
                 if self.parent.run_data:
 
+                    if keycode[1] == "backspace" and "ctrl" in modifiers:
+                        original_index = self.cursor_col
+                        new_text, index = constants.control_backspace(self.text, original_index)
+                        self.select_text(original_index - index, original_index)
+                        self.delete_selection()
+                    else:
+                        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
                     if keycode[1] == "tab":
                         self.tab_player()
-
-                    if keycode[1] == "backspace" and "ctrl" in modifiers:
-                        if " " not in self.text:
-                            self.text = ""
-                        else:
-                            self.text = self.text.rsplit(" ", 1)[0].strip() + " "
-
 
                     if keycode[1] == 'up' and self.parent.run_data['command-history']:
                         if self.text != self.original_text:
@@ -16899,14 +16901,13 @@ class EditorLine(RelativeLayout):
                     Clock.schedule_once(functools.partial(replace_text, 'true'), 0)
                     return
 
-
-                super().keyboard_on_key_down(window, keycode, text, modifiers)
-
                 if keycode[1] == "backspace" and "ctrl" in modifiers:
-                    if " " not in self.text:
-                        self.text = ""
-                    else:
-                        self.text = self.text.rsplit(" ", 1)[0]
+                    original_index = self.cursor_col
+                    new_text, index = constants.control_backspace(self.text, original_index)
+                    self.select_text(original_index - index, original_index)
+                    self.delete_selection()
+                else:
+                    super().keyboard_on_key_down(window, keycode, text, modifiers)
 
                 # # Fix overscroll
                 # if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
@@ -17108,13 +17109,13 @@ class ServerPropertiesEditScreen(MenuBackground):
             if keycode[1] in ['r', 'z', 'y'] and 'ctrl' in modifiers:
                 return None
 
-            super().keyboard_on_key_down(window, keycode, text, modifiers)
-
             if keycode[1] == "backspace" and "ctrl" in modifiers:
-                if " " not in self.text:
-                    self.text = ""
-                else:
-                    self.text = self.text.rsplit(" ", 1)[0]
+                original_index = self.cursor_col
+                new_text, index = constants.control_backspace(self.text, original_index)
+                self.select_text(original_index - index, original_index)
+                self.delete_selection()
+            else:
+                super().keyboard_on_key_down(window, keycode, text, modifiers)
 
             # Fix overscroll
             if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):

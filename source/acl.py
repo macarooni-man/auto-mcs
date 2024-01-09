@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime as dt, timedelta
+from datetime import datetime as dt
 from urllib.request import urlopen
 from copy import deepcopy
 from glob import glob
@@ -67,14 +67,8 @@ class AclObject():
 
     def __init__(self, server_name: str):
 
-        # Check if banned-players.txt/.json exists to determine new server status
-        self._new_server = not bool(glob(os.path.join(constants.applicationFolder, 'Servers', server_name, '*banned-players*')))
-        if self._new_server:
-            self._new_server = not bool(glob(os.path.join(constants.applicationFolder, 'Servers', server_name, '*banned-ips*')))
-        if self._new_server:
-            self._new_server = not bool(glob(os.path.join(constants.applicationFolder, 'Servers', server_name, '*ops*')))
-        if self._new_server:
-            self._new_server = not bool(glob(os.path.join(constants.applicationFolder, 'Servers', server_name, '*whitelist*')))
+        # Check if config file exists to determine new server status
+        self._new_server = (not constants.server_path(server_name, constants.server_ini))
 
         self.server = dump_config(server_name, self._new_server)
         self.rules = self.load_acl(new_server=self._new_server)
@@ -844,7 +838,6 @@ class AclObject():
         if remove:
             rule_list = self.__iter_rule_list__('ops', rule_list)
 
-
         # Only modify rules if new server
         if self._new_server:
             self.edit_list('ops', rule_list, remove)
@@ -958,6 +951,7 @@ class AclObject():
 
 
     # Reloads ACL contents
+    # List Types: ops, bans, wl
     def reload_list(self, list_type=None):
 
         if list_type == 'ops' or not list_type:

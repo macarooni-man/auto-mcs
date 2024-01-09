@@ -6,7 +6,6 @@ from copy import deepcopy
 from glob import glob
 import functools
 import threading
-import hashlib
 import psutil
 import ctypes
 import time
@@ -463,11 +462,22 @@ class ServerObject():
                     type_label = "EXEC"
                     type_color = (1, 0.298, 0.6, 1)
 
+                    user = message.split('issued server command: ')[0].strip()
+                    user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
+                    content = message.split('issued server command: ')[1].strip()
+
+                    # If commands change ACL status, reload lists
+                    if content.startswith('op ') or content.startswith('deop '):
+                        self.acl.reload_list('ops')
+                    if content.startswith('ban ') or content.startswith('pardon '):
+                        self.acl.reload_list('bans')
+                    if content.startswith('whitelist add ') or content.startswith('whitelist remove '):
+                        self.acl.reload_list('wl')
+
+                    # Process amscript event
                     if self.script_object.enabled:
-                        user = message.split('issued server command: ')[0].strip()
-                        user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
-                        content = message.split('issued server command: ')[1].strip()
                         event = functools.partial(self.script_object.message_event, {'user': user, 'content': content})
+
 
 
                 # Server start log
@@ -788,13 +798,18 @@ class ServerObject():
 
                 for line in lines_iterator:
 
-                    # Append legacy errors to error list
-                    if constants.version_check(self.version, '<', '1.7'):
-                        if "[STDERR] ".encode() in line:
-                            error_list.append(line.decode().split("[STDERR] ")[1])
-                            continue
+                    try:
+                        # Append legacy errors to error list
+                        if constants.version_check(self.version, '<', '1.7'):
+                            if "[STDERR] ".encode() in line:
+                                error_list.append(line.decode().split("[STDERR] ")[1])
+                                continue
 
-                    self.update_log(line)
+                        self.update_log(line)
+
+                    except Exception as e:
+                        if constants.debug:
+                            print(f'Failed to process line: {e}')
 
                     fail_counter = 0 if line else (fail_counter + 1)
 
@@ -968,6 +983,8 @@ class ServerObject():
 
 
                 # Close server
+                if constants.debug:
+                    print(f'Terminating "{self.name}"')
                 self.terminate()
                 return
 
@@ -1599,6 +1616,9 @@ class ServerManager():
             self.current_server = ServerObject(name)
             if crash_info[0] == name:
                 self.current_server.crash_log = crash_info[1]
+
+        if constants.debug:
+            print(vars(self.current_server))
 
     # Reloads self.current_server
     def reload_server(self):

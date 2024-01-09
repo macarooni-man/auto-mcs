@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, FIRST, IntVar, Frame, PhotoImage, INSERT, BaseWidget,\
-    Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, Button, SUNKEN, CURRENT, SEL
+from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, FIRST, IntVar, Frame, PhotoImage, BaseWidget,\
+    Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, Button, SUNKEN, CURRENT, SEL, INSERT
 
 from typing import Any, Callable, Optional, Type, Union
 from pygments.token import Keyword, Number, Name
@@ -3206,6 +3206,10 @@ def launch_window(path: str, data: dict, *a):
                 self.visible = False
                 self.current_key = ''
                 code_editor._vs.disabled = False
+
+                # Deactivate all matches
+                for x, b in enumerate(ac.button_list, 0):
+                    b['state'] = "normal"
 
             def update_results(self, text):
                 matches = None
