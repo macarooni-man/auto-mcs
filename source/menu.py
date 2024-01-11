@@ -11719,8 +11719,13 @@ class PerformancePanel(RelativeLayout):
             formatted_color = '[color=#737373]'
             found = False
             for x, item in enumerate(perf_data['uptime'].split(":")):
+                if x == 0 and len(item) > 2:
+                    formatted_color = f'{item}:'
+                    found = True
+                    continue
                 if x == 0 and item != '00':
-                    formatted_color += '[/color]'
+                    item = int(item)
+                    formatted_color += '[/color]' if len(str(item)) >= 2 else '0[/color]'
                     found = True
                 if item != "00" and not found:
                     found = True
@@ -11797,12 +11802,16 @@ class PerformancePanel(RelativeLayout):
 
 
             def on_resize(self, *args):
+                max_x = 500
                 self.label.texture_update()
                 self.size_hint_max = self.label.texture_size
+                self.size_hint_max[0] = max_x
                 self.label.size_hint_max = self.label.texture_size
+                self.label.size_hint_max[0] = max_x
 
                 self.shadow.texture_update()
                 self.shadow.size_hint_max = self.shadow.texture_size
+                self.shadow.size_hint_max[0] = max_x
                 self.shadow.pos = (self.label.x + self.offset, self.label.y - self.offset)
 
 
@@ -12285,10 +12294,30 @@ class ConsolePanel(FloatLayout):
     def update_text(self, text, force_scroll=False, animate_last=True, *args):
         original_scroll = self.scroll_layout.scroll_y
         original_len = len(self.scroll_layout.data)
+        label_height = 41.8
         self.scroll_layout.data = text
-        if (self.console_text.height > self.scroll_layout.height - self.console_text.padding[-1] - self.console_text.padding[1]) and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
+
+
+        # Make the console sticky if scrolled to the bottom of the viewport
+        viewport_size = self.scroll_layout.height - self.console_text.padding[-1] - self.console_text.padding[1]
+        if (len(self.scroll_layout.data) * label_height > viewport_size) and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
             self.scroll_layout.scroll_y = 0
             self.auto_scroll = True
+
+
+        # Temporary fix to prevent console text from moving when new data is added
+        else:
+
+            delta = self.scroll_layout.convert_distance_to_scroll(0, ((len(self.scroll_layout.data) * label_height) * (1 - self.scroll_layout.scroll_y)) - ((original_len * label_height) * (1 - original_scroll)))[1]
+            if delta:
+                final_scroll = self.scroll_layout.scroll_y + delta
+
+                if final_scroll > 1:
+                    final_scroll = 1
+                elif final_scroll < 0:
+                    final_scroll = 0
+
+                self.scroll_layout.scroll_y = final_scroll
 
         def fade_animation(*args):
             for label in self.console_text.children:
@@ -12303,6 +12332,12 @@ class ConsolePanel(FloatLayout):
                     Animation(opacity=0, duration=0.3).start(label.anim_cover)
         if len(text) > original_len and animate_last:
             Clock.schedule_once(fade_animation, 0)
+
+
+        # Update selection coordinates if they exist
+        if self.last_self_touch:
+            lst = self.last_self_touch
+            self.last_self_touch = (lst[0], lst[1] + ((len(self.scroll_layout.data) - original_len) * label_height))
 
 
     # Fit background color across screen for transitions, and fix position
@@ -12698,6 +12733,7 @@ class ConsolePanel(FloatLayout):
     def copy_selection(self):
         if self.selected_labels:
             Clipboard.copy('\n'.join([str(x[0].rjust(11) + ('['+x[1]+']').rjust(9) + ' >   '+x[2]) for x in self.selected_labels]))
+            self.selected_labels = []
 
         # Animate to convey copying
         for label in self.console_text.children:

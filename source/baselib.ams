@@ -225,7 +225,7 @@ def generate_header(text):
 		player.log('!ams enable/disable <script>/all', 'white', 'normal')
 		player.log('- Enables/disables script by name, or all', 'gray', 'normal')
 		player.log('!ams clearpst', 'white', 'normal')
-		player.log('- Deletes and resets persistent server and player configuration', 'gray', 'normal')
+		player.log('- Deletes and resets persistent script configuration', 'gray', 'normal')
 		player.log('!ams reload', 'white', 'normal')
 		player.log('- Recompiles and initializes all enabled scripts', 'gray', 'normal')
 
@@ -297,7 +297,7 @@ def generate_header(text):
 		server._persistent_config.purge_config()
 		if not player.is_server:
 			player.log_error(f"[amscript] Successfully cleared all persistent data!")
-		server._ams_log(f"Successfully cleared all persistent data!", 'error')
+		server._ams_log(f"Successfully cleared all persistent data!", 'success')
 
 
 	# Reloads amscript engine

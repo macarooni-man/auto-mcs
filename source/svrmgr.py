@@ -565,7 +565,7 @@ class ServerObject():
                 # Other message events
                 elif "WARN" in line:
                     type_label = "WARN"
-                    type_color = (1, 0.659, 0.42, 1)
+                    type_color = (1, 0.804, 0.42, 1)
                 elif "ERROR" in line:
                     type_label = "ERROR"
                     type_color = (1, 0.5, 0.65, 1)
@@ -1374,7 +1374,7 @@ class ServerObject():
 
                 if log_type == 'warning':
                     type_label = "WARN"
-                    type_color = (1, 0.659, 0.42, 1)
+                    type_color = (1, 0.804, 0.42, 1)
                 elif log_type == 'error':
                     type_label = "ERROR"
                     type_color = (1, 0.5, 0.65, 1)
