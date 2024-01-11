@@ -732,6 +732,7 @@ class ServerObject():
                 self.run_data['close-hooks'] = [self.auto_backup_func]
                 self.run_data['console-panel'] = None
                 self.run_data['performance-panel'] = None
+                self.run_data['command-history'] = []
             else:
                 self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
 
@@ -777,7 +778,6 @@ class ServerObject():
 
             self.run_data['pid'] = self.run_data['process'].pid
             self.run_data['send-command'] = self.send_command
-            self.run_data['command-history'] = []
 
 
 
@@ -1097,11 +1097,10 @@ class ServerObject():
             self.running = False
             self.launch()
 
-
     # Restarts server, for amscript
     def restart(self):
         self.restart_flag = True
-        self.send_command("stop")
+        self.silent_command("stop")
 
     # Retrieves performance information
     def performance_stats(self, interval=0.5, update_players=False):

@@ -1063,7 +1063,7 @@ class ServerVersionInput(BaseInput):
             elif len(self.text) < 10:
                 self.valid(True, True)
 
-                s = re.sub('[^a-eA-e0-9 .wpreWPRE-]', '', substring.splitlines()[0]).lower()
+                s = re.sub('[^a-eA-E0-9 .wpreWPRE-]', '', substring.splitlines()[0]).lower()
 
                 # Add name to current config
                 if self.text + s:
@@ -12348,6 +12348,9 @@ class ConsolePanel(FloatLayout):
             self.size_hint_max = (Window.width - self.size_offset[0], Window.height - self.size_offset[1])
             self.y = self.default_y
 
+        self.stop_click.size = self.size
+        self.stop_click.pos = self.pos
+
         # Console controls resize
         self.controls.size = self.size
         self.controls.pos = self.pos
@@ -12375,6 +12378,7 @@ class ConsolePanel(FloatLayout):
     # Launch server and update properties
     def launch_server(self, animate=True, *args):
         self.update_size()
+        self.selected_labels = []
 
         for k in self.parent._ignore_keys:
             if k == 'f':
@@ -12674,6 +12678,128 @@ class ConsolePanel(FloatLayout):
         self.controls.log_button.button.on_release()
 
 
+    # Select all ConsoleLabels
+    def select_all(self):
+        self.selected_labels = [x['text'] for x in self.scroll_layout.data]
+        for label in self.console_text.children:
+            label.sel_cover.opacity = 0.2
+
+
+    # Deselect all selected ConsoleLabels
+    def deselect_all(self):
+        self.selected_labels = []
+        for label in self.console_text.children:
+            if label.sel_cover.opacity > 0:
+                Animation.stop_all(label.sel_cover)
+                Animation(opacity=0, duration=0.05).start(label.sel_cover)
+
+
+    # Format and copy all selected text to clipboard
+    def copy_selection(self):
+        if self.selected_labels:
+            Clipboard.copy('\n'.join([str(x[0].rjust(11) + ('['+x[1]+']').rjust(9) + ' >   '+x[2]) for x in self.selected_labels]))
+
+        # Animate to convey copying
+        for label in self.console_text.children:
+            if label.sel_cover.opacity > 0:
+                Animation.stop_all(label.sel_cover)
+                label.sel_cover.opacity = 0.4
+                Animation(opacity=0, duration=0.2).start(label.sel_cover)
+
+
+    # Check for drag select
+    def on_touch_down(self, touch):
+
+        # Copy when right-clicked
+        if self.selected_labels and touch.button == "right":
+            self.copy_selection()
+            return True
+
+        # Select code for a single ConsoleLabel is under "SelectCover.on_touch_down()"
+        if touch.button == "left":
+            self.last_self_touch = self.console_text.to_widget(*touch.pos)
+        return super().on_touch_down(touch)
+
+
+    # Check for drag select
+    def on_touch_up(self, touch):
+        self.last_self_touch = None
+        return super().on_touch_up(touch)
+
+
+    # Automatically scroll console_text when mouse is dragged on the top or bottom regions
+    def scroll_region(self, top=True, last_touch=None):
+        if not self.in_scroll_region:
+            self.in_scroll_region = True
+            scroll_padding = 50
+            scroll_speed = (self.scroll_layout.height / len(self.scroll_layout.data)) / 1800
+            last_touch.pos = self.to_widget(*Window.mouse_pos)
+
+            if top:
+                while (Window.mouse_pos[1] >= self.scroll_layout.y + (self.scroll_layout.height - scroll_padding)) and self.last_self_touch:
+                    def scroll_up(*a):
+                        self.scroll_layout.scroll_y += scroll_speed
+
+                    if self.scroll_layout.scroll_y < 1:
+                        Clock.schedule_once(scroll_up, 0)
+                        Clock.schedule_once(functools.partial(self.on_touch_move, last_touch), 0)
+                    else:
+                        self.scroll_layout.scroll_y = 1
+                        break
+                    time.sleep(0.01)
+
+            else:
+                while (self.scroll_layout.y + (scroll_padding * 2) >= Window.mouse_pos[1] >= self.scroll_layout.y) and self.last_self_touch:
+                    def scroll_down(*a):
+                        self.scroll_layout.scroll_y -= scroll_speed
+
+                    if self.scroll_layout.scroll_y > 0:
+                        Clock.schedule_once(scroll_down, 0)
+                        Clock.schedule_once(functools.partial(self.on_touch_move, last_touch), 0)
+                    else:
+                        self.scroll_layout.scroll_y = 0
+                        break
+                    time.sleep(0.01)
+
+            self.in_scroll_region = False
+
+
+
+    def on_touch_move(self, touch, *a):
+
+        # Move the scrollbar when near the top or bottom to select more than the viewport
+        scroll_padding = 50
+        if (touch.dsy > 0) and (touch.pos[1] >= self.scroll_layout.y + (self.scroll_layout.height - scroll_padding)):
+            threading.Timer(0, functools.partial(self.scroll_region, True, touch)).start()
+
+        if (touch.dsy < 0) and (self.scroll_layout.y + (scroll_padding * 2) >= touch.pos[1] >= self.scroll_layout.y):
+            threading.Timer(0, functools.partial(self.scroll_region, False, touch)).start()
+
+        def is_between(y3):
+            y1 = self.console_text.height - self.last_self_touch[1]
+            y2 = self.console_text.height - self.console_text.to_widget(*touch.pos)[1]
+            y3 = self.console_text.height - self.console_text.to_widget(*self.scroll_layout.to_parent(0, y3))[1] - 25
+            return ((y1 <= y3 <= y2) or (y2 <= y3 <= y1)) and not (touch.pos[0] > self.scroll_layout.x + (self.scroll_layout.width - self.scroll_layout.drag_pad))
+
+        for widget in self.console_text.children:
+            try:
+                if is_between(widget.y) and widget.original_text not in self.selected_labels:
+
+                    # Use Y delta to orient clipboard content
+                    if touch.dsy > 0:
+                        self.selected_labels.insert(0, widget.original_text)
+                    else:
+                        self.selected_labels.append(widget.original_text)
+                    widget.sel_cover.opacity = 0.2
+
+                elif (not is_between(widget.y)) and widget.original_text in self.selected_labels:
+                    self.selected_labels.remove(widget.original_text)
+                    widget.sel_cover.opacity = 0
+            except:
+                pass
+        return super().on_touch_move(touch)
+
+
     def __init__(self, server_name, server_button=None, **kwargs):
         super().__init__(**kwargs)
 
@@ -12688,10 +12814,29 @@ class ConsolePanel(FloatLayout):
         self.default_y = 170
         self.y = self.default_y
 
+        # Selection info
+        self.selected_labels = []
+        self.last_touch = None
+        self.last_self_touch = None
+        self.in_scroll_region = False
+
+
         self.button_colors = {
             'maximize': [[(0.05, 0.08, 0.07, 1), (0.8, 0.8, 1, 1)], ''],
             'stop': [[(0.05, 0.08, 0.07, 1), (0.8, 0.8, 1, 1)], 'pink']
         }
+
+
+        # Stop clicks through the background
+        class StopClick(FloatLayout):
+            def on_touch_down(self, touch):
+                if self.collide_point(*touch.pos):
+                    return True
+                else:
+                    super().on_touch_down(touch)
+
+        self.stop_click = StopClick()
+        self.add_widget(self.stop_click)
 
 
         # Console line Viewclass for RecycleView
@@ -12708,12 +12853,17 @@ class ConsolePanel(FloatLayout):
             # Modifies rule attributes based on text content
             def change_properties(self, text):
 
+                if not self.console_panel and constants.server_manager.current_server.run_data:
+                    try:
+                        self.console_panel = constants.server_manager.current_server.run_data['console-panel']
+                    except KeyError:
+                        pass
+
                 if text and screen_manager.current_screen.name == 'ServerViewScreen':
                     self.date_label.text = text[0]
                     self.type_label.text = text[1]
                     self.main_label.text = text[2]
                     type_color = text[3]
-
 
                     # Log text section formatting
                     width = screen_manager.current_screen.console_panel.console_text.width
@@ -12746,11 +12896,16 @@ class ConsolePanel(FloatLayout):
                         self.date_banner1.color = self.date_banner2.color = constants.brighten_color(type_color, -0.2)
                         self.type_banner.color = type_color
 
+                        # Format selection color
+                        if self.console_panel:
+                            self.sel_cover.opacity = 0.2 if self.original_text in self.console_panel.selected_labels else 0
+                        self.sel_cover.color = constants.brighten_color(type_color, 0.05)
+                        self.sel_cover.width = self.width
 
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
-
                 self.original_text = None
+                self.console_panel = None
                 self.line_spacing = 20
                 self.font_size = sp(17)
                 self.section_size = 110
@@ -12798,6 +12953,35 @@ class ConsolePanel(FloatLayout):
                 self.date_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
                 self.date_label.halign = 'left'
                 self.add_widget(self.date_label)
+
+
+                # Select cover for text selection
+                class SelectCover(Image):
+
+                    def on_touch_down(self, touch):
+                        if self.collide_point(*touch.pos):
+                            if self.parent:
+                                for widget in self.parent.parent.children:
+                                    widget.sel_cover.opacity = 0
+                                try:
+                                    if (self.parent.original_text in self.parent.console_panel.selected_labels) and (len(self.parent.console_panel.selected_labels) == 1):
+                                        self.parent.console_panel.selected_labels = []
+                                    else:
+                                        self.parent.console_panel.last_touch = touch.pos
+                                        self.parent.console_panel.selected_labels = [self.parent.original_text]
+                                        self.opacity = 0.2
+                                except:
+                                    pass
+                        else:
+                            self.opacity = 0
+                            return super().on_touch_down(touch)
+
+                self.sel_cover = SelectCover()
+                self.sel_cover.opacity = 0
+                self.sel_cover.allow_stretch = True
+                self.sel_cover.size_hint = (None, None)
+                self.sel_cover.height = self.section_size / 2.63
+                self.add_widget(self.sel_cover)
 
 
                 # Cover for fade animation
@@ -13031,6 +13215,7 @@ class ConsolePanel(FloatLayout):
         self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(100, 42), padding=[0, 3, 0, 30])
         self.console_text.bind(minimum_height=self.console_text.setter('height'))
         self.scroll_layout.add_widget(self.console_text)
+        self.scroll_layout.scroll_type = ['bars']
         self.add_widget(self.scroll_layout)
 
 
@@ -13220,6 +13405,18 @@ class ServerViewScreen(MenuBackground):
 
         # Capture keypress on current screen no matter what
         if self.name == screen_manager.current_screen.name:
+
+            # Copy selected console text
+            if ((keycode[1] == 'c' and 'ctrl' in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+                self.console_panel.copy_selection()
+
+            # Select all console text
+            if ((keycode[1] == 'a' and 'ctrl' in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+                self.console_panel.select_all()
+
+            # Deselect all console text
+            if ((keycode[1] == 'd' and 'ctrl' in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+                self.console_panel.deselect_all()
 
             # Stop the server if it's currently running
             if ((keycode[1] == 'q' and 'ctrl' in modifiers) and ('q' not in self._ignore_keys)) and self.server.run_data:
@@ -18911,9 +19108,9 @@ class MainApp(App):
         # if not constants.app_compiled:
         #     def open_menu(*args):
         #         open_server("bedrock-test")
-        #         def show_notif(*args):
-        #             screen_manager.current_screen.menu_taskbar.show_notification('amscript')
-        #         Clock.schedule_once(show_notif, 2)
+        #         # def show_notif(*args):
+        #         #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
+        #         # Clock.schedule_once(show_notif, 2)
         #         # def open_ams(*args):
         #         #     screen_manager.current = "ServerAddonScreen"
         #         # Clock.schedule_once(open_ams, 1)
