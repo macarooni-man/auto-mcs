@@ -7261,7 +7261,7 @@ class CreateServerWorldScreen(MenuBackground):
         # Generate ACL in new_server_info
         def create_acl():
             if not constants.new_server_info['acl_object']:
-                constants.new_server_info['acl_object'] = acl.AclObject(constants.new_server_info['name'])
+                constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
             else:
                 constants.new_server_info['acl_object'].server = acl.dump_config(constants.new_server_info['name'], True)
 
@@ -7459,7 +7459,7 @@ class RuleButton(FloatLayout):
             else:
                 self.hover_attr = (icon_path("close-circle.png"), 'BAN' if rule.rule_type == 'player' else 'REMOVE', (1, 0.5, 0.65, 1))
         elif screen_manager.current_screen.current_list == "wl":
-            if screen_manager.current_screen.acl_object.server['whitelist']:
+            if screen_manager.current_screen.acl_object._server['whitelist']:
                 self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (0.3, 1, 0.6, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (1, 0.5, 0.65, 1)]
             else:
                 self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (0.3, 1, 0.6, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (0.7, 0.7, 0.7, 1)]
@@ -8162,7 +8162,7 @@ class AclRulePanel(RelativeLayout):
             final_text += (f"\n[color={self.color_dict['blue']}]Operator[/color]" if displayed_rule.display_data['op'] else "\n")
 
             # Whitelist data
-            if screen_manager.current_screen.acl_object.server['whitelist']:
+            if screen_manager.current_screen.acl_object._server['whitelist']:
                 self.player_layout.access_line_3.opacity = 1
                 final_text += ("\n[color=" + (f"{self.color_dict['green']}]Whitelisted" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]Not whitelisted") + "[/color]")
             else:
@@ -8175,7 +8175,7 @@ class AclRulePanel(RelativeLayout):
 
 
             # Adjust graphic data for access
-            if screen_manager.current_screen.acl_object.server['whitelist']:
+            if screen_manager.current_screen.acl_object._server['whitelist']:
                 if displayed_rule.display_data['wl']:
                     self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
                     self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_active.png")
@@ -8199,7 +8199,7 @@ class AclRulePanel(RelativeLayout):
             self.player_layout.uuid_header.text = "UUID"
             self.player_layout.ip_header.text = "IP"
             self.player_layout.geo_header.text = "Location"
-            self.player_layout.access_header.text = f"Access to '{screen_manager.current_screen.acl_object.server['name']}':"
+            self.player_layout.access_header.text = f"Access to '{screen_manager.current_screen.acl_object._server['name']}':"
 
 
 
@@ -8257,7 +8257,7 @@ class AclRulePanel(RelativeLayout):
             else:
                 widget_color = self.color_dict['red']
 
-            if not screen_manager.current_screen.acl_object.rule_in_acl('subnets', displayed_rule.rule):
+            if not screen_manager.current_screen.acl_object.rule_in_acl(displayed_rule.rule, 'subnets'):
                 displayed_rule.display_data['rule_info'] = "Unaffected " + displayed_rule.display_data['rule_info'].split(" ")[0]
                 displayed_rule.rule = displayed_rule.rule.replace("!w", "").replace("!g", "").strip()
                 screen_manager.current_screen.displayed_rule = displayed_rule
@@ -8793,7 +8793,7 @@ class CreateServerAclScreen(MenuBackground):
         # Modify header content
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = ('[color=#6A6ABA]No rules[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] rule' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] rules')
-        if list_type == "wl" and not self.acl_object.server['whitelist']:
+        if list_type == "wl" and not self.acl_object._server['whitelist']:
             header_content += " (inactive)"
 
         # header_content = (" "*(len(header_content) - (55 if 'inactive' not in header_content else 50))) + header_content
@@ -8862,7 +8862,7 @@ class CreateServerAclScreen(MenuBackground):
                     size=(125, 32),
                     color=(0.6, 0.5, 1, 1) if list_type == 'ops'
                     else (0.3, 1, 0.6, 1) if list_type == 'bans'
-                    else (1, 0.5, 0.65, 1) if self.acl_object.server['whitelist'] else(0.7, 0.7, 0.7, 1),
+                    else (1, 0.5, 0.65, 1) if self.acl_object._server['whitelist'] else(0.7, 0.7, 0.7, 1),
 
                     text="standard" if list_type == 'ops'
                     else "allowed" if list_type == 'bans'
@@ -8991,7 +8991,7 @@ class CreateServerAclScreen(MenuBackground):
 
         # Whitelist toggle button
         def toggle_whitelist(boolean):
-            self.acl_object.toggle_whitelist(boolean)
+            self.acl_object.enable_whitelist(boolean)
 
             Clock.schedule_once(
                 functools.partial(
@@ -9007,7 +9007,7 @@ class CreateServerAclScreen(MenuBackground):
             # Update list
             self.update_list('wl', reload_children=True, reload_panel=True)
 
-        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object.server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
 
 
         # Legend for rule types
@@ -9132,7 +9132,7 @@ class CreateServerAclRuleScreen(MenuBackground):
     def apply_rules(self):
 
         # Actually apply rules
-        original_list = self.acl_object.process_query(self.acl_input.text, self.current_list)
+        original_list = self.acl_object._process_query(self.acl_input.text, self.current_list)
 
         applied_list = []
         applied_list.extend(original_list['global'])
@@ -14334,7 +14334,7 @@ class ServerAclScreen(CreateServerAclScreen):
 
         # Whitelist toggle button
         def toggle_whitelist(boolean):
-            self.acl_object.toggle_whitelist(boolean)
+            self.acl_object.enable_whitelist(boolean)
 
             Clock.schedule_once(
                 functools.partial(
@@ -14350,7 +14350,7 @@ class ServerAclScreen(CreateServerAclScreen):
             # Update list
             self.update_list('wl', reload_children=True, reload_panel=True)
 
-        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object.server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
 
         # Legend for rule types
         self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749}, size_hint_max=(400, 100))

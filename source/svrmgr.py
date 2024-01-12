@@ -13,7 +13,7 @@ import json
 import os
 import re
 
-from acl import AclObject, get_uuid
+from acl import AclManager, get_uuid
 from backup import BackupManager
 from addons import AddonManager
 import constants
@@ -172,7 +172,7 @@ class ServerObject():
                 self._view_notif('add-ons', viewed='')
         Timer(0, load_addon).start()
         def load_acl(*args):
-            self.acl = AclObject(server_name)
+            self.acl = AclManager(server_name)
         Timer(0, load_acl).start()
         def load_scriptmgr(*args):
             self.script_manager = amscript.ScriptManager(self.name)
@@ -281,7 +281,7 @@ class ServerObject():
                     self._view_notif('add-ons', viewed='')
             Timer(0, load_addon).start()
             def load_acl(*args):
-                self.acl = AclObject(self.name)
+                self.acl = AclManager(self.name)
             Timer(0, load_acl).start()
             def load_scriptmgr(*args):
                 self.script_manager = amscript.ScriptManager(self.name)
@@ -1175,7 +1175,7 @@ class ServerObject():
             # Update player list
             for player, data in player_list.items():
                 if data['logged-in']:
-                    if self.acl.rule_in_acl('ops', player):
+                    if self.acl.rule_in_acl(player, 'ops'):
                         final_list.insert(0, {'text': player, 'color': (0, 1, 1, 1)})
                     else:
                         final_list.append({'text': player, 'color': (0.6, 0.6, 1, 1)})
@@ -1272,7 +1272,7 @@ class ServerObject():
 
     # Attempts to automatically back up the server
     def auto_backup_func(self, crash_info, *args):
-        auto_backup = self.backup.backup_stats['auto-backup']
+        auto_backup = self.backup._backup_stats['auto-backup']
 
         if auto_backup == 'prompt':
             return False

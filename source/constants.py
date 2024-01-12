@@ -2120,7 +2120,7 @@ motd={new_server_info['server_settings']['motd']}
 announce-player-achievements=true
 force-gamemode=false
 hardcore={bool_str(new_server_info['server_settings']['difficulty'] == 'hardcore')}
-white-list={bool_str(new_server_info['acl_object'].server['whitelist'])}
+white-list={bool_str(new_server_info['acl_object']._server['whitelist'])}
 pvp={bool_str(new_server_info['server_settings']['pvp'])}
 spawn-npcs={bool_str(new_server_info['server_settings']['spawn_creatures'])}
 generate-structures=true
@@ -2139,7 +2139,7 @@ resource-pack-hash=
 max-world-size=29999984"""
 
     if version_check(new_server_info['version'], ">=", '1.13'):
-        serverProperties += f"\nenforce_whitelist={bool_str(new_server_info['acl_object'].server['whitelist'])}"
+        serverProperties += f"\nenforce_whitelist={bool_str(new_server_info['acl_object']._server['whitelist'])}"
 
     if version_check(new_server_info['version'], ">=", '1.19'):
         serverProperties += "\nenforce-secure-profile=false"
@@ -2605,8 +2605,8 @@ def finalize_import(progress_func=None, *args):
 
 
         # Add global rules to ACL
-        from acl import AclObject
-        AclObject(import_data['name']).write_rules()
+        from acl import AclManager
+        AclManager(import_data['name']).write_rules()
 
         if progress_func:
             progress_func(66)

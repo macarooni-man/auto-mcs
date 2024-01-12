@@ -67,7 +67,7 @@ class BackupManager():
         self.directory = self._backup_stats['backup-path']
         self.auto_backup = self._backup_stats['auto-backup']
         self.maximum = self._backup_stats['max-backup']
-        self.total_size = reduce(lambda x, y: x+y, [z[1] for z in self._backup_stats['backup-list']])
+        self.total_size = self._backup_stats['total-size-bytes']
         self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
         self.latest = self.list[0]
         self._restore_file = None
@@ -78,7 +78,7 @@ class BackupManager():
         self.directory = self._backup_stats['backup-path']
         self.auto_backup = self._backup_stats['auto-backup']
         self.maximum = self._backup_stats['max-backup']
-        self.total_size = reduce(lambda x, y: x+y, [z[1] for z in self._backup_stats['backup-list']])
+        self.total_size = self._backup_stats['total-size-bytes']
         self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
         self.latest = self.list[0]
 
@@ -128,7 +128,6 @@ def convert_date(m_time: int or float):
     else:
         dt_obj = m_time
     days = (dt.now().date() - dt_obj.date()).days
-    print(days)
     if days == 0:
         fmt = "Today %#I:%M %p" if constants.os_name == "windows" else "Today %-I:%M %p"
     elif days == 1:
@@ -195,6 +194,7 @@ def dump_config(server_name: str, new_server=False):
         'max-backup': '5',
         'latest-backup': None,
         'total-size': convert_size(0),
+        'total-size-bytes': 0,
         'backup-list': []
     }
 
@@ -220,7 +220,8 @@ def dump_config(server_name: str, new_server=False):
 
         try:
             backup_stats['latest-backup'] = convert_date(backup_stats['backup-list'][0][2])
-            backup_stats['total-size'] = convert_size(reduce(lambda x, y: x+y, [z[1] for z in backup_stats['backup-list']]))
+            backup_stats['total-size-bytes'] = reduce(lambda x, y: x+y, [z[1] for z in backup_stats['backup-list']])
+            backup_stats['total-size'] = convert_size(backup_stats['total-size-bytes'])
         except IndexError:
             pass
 

@@ -1217,7 +1217,7 @@ class ScriptObject():
         # print([rule.rule for rule in self.server.acl.rules['ops']])
         if player_obj['user'] == self.server_id:
             permission = 'server'
-        elif self.server.acl.rule_in_acl('ops', player_obj['user']):
+        elif self.server.acl.rule_in_acl(player_obj['user'], 'ops'):
             permission = 'op'
         else:
             permission = 'anyone'
