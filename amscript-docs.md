@@ -353,7 +353,7 @@ Contains the server's access control configuration and manages the whitelist, ba
 
 Accessed via the global variable `acl`
 
-The `AclManager` conceptualizes both users and IP addresses as `AclRule` objects in their respective lists in the `acl.rules` attribute. A majority of the methods include and modify the `'bans'`, `'ops'`, `'wl'`, and `'subnets'`.
+The `AclManager` conceptualizes both users and IP addresses as `AclRule` objects in their respective lists in the `acl.rules` attribute. A majority of the methods include and modify the `'bans'`, `'ops'`, `'wl'`, and `'subnets'` keys in this attribute.
 
 <br>
 
