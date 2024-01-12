@@ -383,9 +383,9 @@ Bans/pardons a player, IP, list of players, or list of IP's, optionally with a r
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `rule_list*` | [**PlayerScriptObject**](#PlayerScriptObject), `str` of username, or a `list` of either |
+| `rule_list*` | [**PlayerScriptObject**](#PlayerScriptObject), `str` of username/IP, or a `list` of either |
 | `remove` | `bool`, removes rule from effect. Defaults to `False`
-| `reason` | `str`, reason for the kick displayed in the menu, and log
+| `reason` | `str`, reason for the ban displayed in the menu, and log
 
 <br>
 
