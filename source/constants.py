@@ -2227,15 +2227,16 @@ def create_backup(import_server=False, *args):
 
 
 # Restore backup and track progress for ServerBackupRestoreProgressScreen
-def restore_server(file_path, progress_func=None):
+def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 
     # Get file count of backup
     total_files = 0
     proc_complete = False
+    file_path = backup_obj.path
     server_name = server_manager.current_server.name
     file_name = os.path.basename(file_path)
 
-    server_manager.current_server.backup.restore_file = None
+    server_manager.current_server.backup._restore_file = None
 
     with tarfile.open(file_path) as archive:
         total_files = sum(1 for member in archive if member.isreg())
@@ -2256,7 +2257,7 @@ def restore_server(file_path, progress_func=None):
     thread_check.daemon = True
     thread_check.start()
 
-    server_manager.current_server.backup.restore(file_name)
+    server_manager.current_server.backup.restore(backup_obj)
     proc_complete = True
 
     if progress_func:

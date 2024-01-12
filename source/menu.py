@@ -12590,7 +12590,7 @@ class ConsolePanel(FloatLayout):
         Clock.schedule_once(reset, 0)
 
         # Prompt new server to enable automatic backups and updates
-        if not crash and (self.server_obj.auto_update == 'prompt' or self.server_obj.backup.backup_stats['auto-backup'] == 'prompt'):
+        if not crash and (self.server_obj.auto_update == 'prompt' or self.server_obj.backup._backup_stats['auto-backup'] == 'prompt'):
             Clock.schedule_once(functools.partial(prompt_new_server, self.server_obj))
 
 
@@ -13571,8 +13571,8 @@ class ServerBackupScreen(MenuBackground):
         }
 
         for k, v in button_dict.items():
-            print(server_obj.backup.backup_stats['backup-list'])
-            if k == 'restore' and not server_obj.backup.backup_stats['backup-list']:
+            print(server_obj.backup._backup_stats['backup-list'])
+            if k == 'restore' and not server_obj.backup._backup_stats['backup-list']:
                 v.disable(True)
                 continue
 
@@ -13583,8 +13583,8 @@ class ServerBackupScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
-        server_obj.backup.update_data()
-        backup_stats = server_obj.backup.backup_stats
+        server_obj.backup._update_data()
+        backup_stats = server_obj.backup._backup_stats
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
 
         # Retain button persistence when disabled
@@ -13640,7 +13640,7 @@ class ServerBackupScreen(MenuBackground):
 
                 # Update header
                 def change_header(*args):
-                    backup_stats = server_obj.backup.backup_stats
+                    backup_stats = server_obj.backup._backup_stats
                     backup_count = len(backup_stats['backup-list'])
                     header_content = "Latest Back-up  [color=#494977]-[/color]  " + ('[color=#6A6ABA]Never[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
                     sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
@@ -13716,7 +13716,7 @@ class ServerBackupScreen(MenuBackground):
 
         # Open back-up directory
         def open_backup_dir(*args):
-            backup_stats = server_obj.backup.backup_stats
+            backup_stats = server_obj.backup._backup_stats
             constants.open_folder(backup_stats['backup-path'])
             Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
@@ -13728,7 +13728,7 @@ class ServerBackupScreen(MenuBackground):
 
         # Migrate back-up directory
         def change_backup_dir(*args):
-            backup_stats = server_obj.backup.backup_stats
+            backup_stats = server_obj.backup._backup_stats
             current_path = backup_stats['backup-path']
             new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else constants.backupFolder), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
             Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
@@ -14063,7 +14063,7 @@ class ServerBackupRestoreScreen(MenuBackground):
                             server_obj.silent_command("stop")
                             while server_obj.running:
                                 time.sleep(0.2)
-                        constants.server_manager.current_server.backup.restore_file = file
+                        constants.server_manager.current_server.backup._restore_file = file
                         screen_manager.current = 'ServerBackupRestoreProgressScreen'
 
                     selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "BackupButton"][index - 1]
@@ -14134,7 +14134,7 @@ class ServerBackupRestoreScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
-        backup_list = [backup.BackupObject(server_obj.name, file) for file in server_obj.backup.backup_stats['backup-list']]
+        backup_list = [backup.BackupObject(server_obj.name, file) for file in server_obj.backup._backup_stats['backup-list']]
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
@@ -14222,8 +14222,8 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
             self.progress_bar.update_progress(final)
 
         server_obj = constants.server_manager.current_server
-        restore_date = server_obj.backup.restore_file.date
-        restore_path = server_obj.backup.restore_file.path
+        restore_file = server_obj.backup._restore_file
+        restore_date = server_obj.backup._restore_file.date
         self.page_contents = {
 
             # Page name
@@ -14252,7 +14252,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         # Create function list
         function_list = [
             ('Verifying Java installation', functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Restoring back-up', functools.partial(constants.restore_server, restore_path, functools.partial(adjust_percentage, 70)), 0),
+            ('Restoring back-up', functools.partial(constants.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
         ]
 
         self.page_contents['function_list'] = tuple(function_list)

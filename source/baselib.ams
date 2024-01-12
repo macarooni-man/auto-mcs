@@ -131,8 +131,8 @@ def generate_header(text):
 	# Shows back-up info
 	elif cmd == "status":
 		player.log(generate_header('Back-up Information'), 'green', 'normal')
-		player.log(f'Latest Back-up:   {backup.backup_stats["latest-backup"]}', 'yellow', 'normal')
-		player.log(f'Total Back-ups:   {len(backup.backup_stats["backup-list"])}  ({backup.backup_stats["total-size"]}, limit: {backup.backup_stats["max-backup"]})', 'gold', 'normal')
+		player.log(f'Latest Back-up:   {backup.latest.date}', 'yellow', 'normal')
+		player.log(f'Total Back-ups:   {len(backup.list)}  ({backup.total_size}, limit: {backup.maximum})', 'gold', 'normal')
 		player.log("- Run '!backup save' to create a new back-up", 'gray', 'normal')
 
 

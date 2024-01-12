@@ -437,3 +437,105 @@ Following the above example when a player with the `op` or `server` privilege ex
 
 - `arguments` will be converted to `{'arg1': 'foo', 'arg2': 'bar'}` after execution, and can be acccessed in the function as such
 - Calling `arguments['arg1']` will return the value of `'foo'`
+
+<br><br>
+
+
+
+
+## BackupManager
+Contains the server's back-up configuration and allows you to save, restore, or configure the UI settings.
+
+Accessed via the global variable `backup`
+
+**Methods**: <br><br>
+
+
+
+### backup.save()
+
+Immediately saves the state of the server to a back-up file.
+
+<br>
+
+
+
+### backup.restore(*backup_obj*)
+
+Restores a back-up from a `BackupObject`. Use the `backup.latest` or `backup.list` attribute to retrieve a `BackupObject`.
+
+- If the server is currently running, this function will do nothing. Schedule the restore in a [**@server.on_stop**](#serveron_stop)
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `backup_obj*` | `BackupObject`, retrieve from `backup.latest` or `backup.list` |
+
+<br>
+
+
+
+### backup.set_directory(*new_directory*)
+
+Migrates all the back-up files from the previous directory to the specified `new_directory`.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `new_directory*` | `str` of a folder on the filesystem, and will create it if it doesn't exist |
+
+<br>
+
+
+
+### backup.set_amount(*amount*)
+
+Configures the maximum amount of back-ups that can be saved to `backup.directory` before overwriting.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `amount*` | `int` or `'unlimited'` |
+
+<br>
+
+
+
+### backup.enable_auto_backup(*enabled*)
+
+Enables or disables automatic server back-ups.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `new_directory*` | `bool` to enable automatic back-ups. Defaults to `True` |
+
+<br>
+
+
+
+**Attributes**:
+> Note: All attributes are read-only, and thus will not change the server data when modified
+
+
+#### backup.directory
+ - `str`, default filesystem directory to save and restore back-ups from
+
+#### backup.maximum
+ - `int` or `'unlimited'`, tells the maximum amount of back-ups allowed in `backup.directory`
+
+#### backup.auto_backup
+ - `bool`, tells whether automatic server back-ups are enabled or not
+
+#### backup.total_size
+ - `int`, contains storage utilization in bytes of all back-ups in `backup.directory`
+
+#### backup.latest
+ - `BackupObject`, file details of the most recent back-up
+ - Available attributes are `BackupObject.path`, `BackupObject.size`, and `BackupObject.date`
+
+#### backup.list
+ - `list` of `BackupObject`, file details of all back-ups sorted from most recent in descending order at `backup.list[0]`
+ - Available attributes are `BackupObject.path`, `BackupObject.size`, and `BackupObject.date`
+
+<br><br>

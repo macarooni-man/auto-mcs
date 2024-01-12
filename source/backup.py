@@ -9,7 +9,7 @@ import os
 # Auto-MCS Back-up API
 # ----------------------------------------------- Backup Objects -------------------------------------------------------
 
-# Instantiate backup object from file (backup_info is data from self.backup_stats['backup-list'])
+# Instantiate backup object from file (backup_info is data from self._backup_stats['backup-list'])
 # server_name, file_path --> BackupObject
 class BackupObject():
 
@@ -44,7 +44,7 @@ class BackupObject():
         os.chdir(cwd)
 
 
-    def __init__(self, server_name: str, backup_info: list):
+    def __init__(self, server_name: str, backup_info: list, no_fetch=False):
         self.name = server_name
 
         self.path = backup_info[0]
@@ -54,7 +54,8 @@ class BackupObject():
         self.type = 'Unknown'
         self.version = 'Unknown'
 
-        self.grab_config()
+        if not no_fetch:
+            self.grab_config()
 
 
 # Instantiate class with "server_name" (case-sensitive)
@@ -62,49 +63,60 @@ class BackupObject():
 class BackupManager():
 
     def __init__(self, server_name: str):
+        self._server, self._backup_stats = dump_config(server_name)
+        self.directory = self._backup_stats['backup-path']
+        self.auto_backup = self._backup_stats['auto-backup']
+        self.maximum = self._backup_stats['max-backup']
+        self.total_size = reduce(lambda x, y: x+y, [z[1] for z in self._backup_stats['backup-list']])
+        self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
+        self.latest = self.list[0]
+        self._restore_file = None
 
-        self.server, self.backup_stats = dump_config(server_name)
-        self.restore_file = None
-
-    # Refreshes self.backup_stats
-    def update_data(self):
-        self.server, self.backup_stats = dump_config(self.server['name'])
+    # Refreshes self._backup_stats
+    def _update_data(self):
+        self._server, self._backup_stats = dump_config(self._server['name'])
+        self.directory = self._backup_stats['backup-path']
+        self.auto_backup = self._backup_stats['auto-backup']
+        self.maximum = self._backup_stats['max-backup']
+        self.total_size = reduce(lambda x, y: x+y, [z[1] for z in self._backup_stats['backup-list']])
+        self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
+        self.latest = self.list[0]
 
 
     # Backup functions
 
     # Backs up server to the backup directory in auto-mcs.ini
     def save(self, ignore_running=False):
-        backup = backup_server(self.server['name'], self.backup_stats, ignore_running)
-        self.update_data()
+        backup = backup_server(self._server['name'], self._backup_stats, ignore_running)
+        self._update_data()
         return backup
 
     # Restores server from file name
-    def restore(self, backup_name: str):
-        if self.server['name'] not in constants.server_manager.running_servers:
-            backup = restore_server(self.server['name'], backup_name, self.backup_stats)
-            self.update_data()
+    def restore(self, backup_obj: BackupObject):
+        if self._server['name'] not in constants.server_manager.running_servers:
+            backup = restore_server(self._server['name'], backup_obj.path, self._backup_stats)
+            self._update_data()
             return backup
         else:
             return None
 
     # Moves backup directory to new_path
-    def set_directory(self, new_path: str):
-        path = set_backup_directory(self.server['name'], new_path)
-        self.update_data()
+    def set_directory(self, new_directory: str):
+        path = set_backup_directory(self._server['name'], new_directory)
+        self._update_data()
         return path
 
     # Sets maximum backup limit
     # amount: <int> or 'unlimited'
     def set_amount(self, amount):
-        new_amt = set_backup_amount(self.server['name'], amount)
-        self.update_data()
+        new_amt = set_backup_amount(self._server['name'], amount)
+        self._update_data()
         return new_amt
 
     # Toggle auto backup status
     def enable_auto_backup(self, enabled=True):
-        status = enable_auto_backup(self.server['name'], enabled)
-        self.update_data()
+        status = enable_auto_backup(self._server['name'], enabled)
+        self._update_data()
         return status
 
 # ---------------------------------------------- General Functions -----------------------------------------------------
@@ -116,6 +128,7 @@ def convert_date(m_time: int or float):
     else:
         dt_obj = m_time
     days = (dt.now().date() - dt_obj.date()).days
+    print(days)
     if days == 0:
         fmt = "Today %#I:%M %p" if constants.os_name == "windows" else "Today %-I:%M %p"
     elif days == 1:
@@ -203,7 +216,7 @@ def dump_config(server_name: str, new_server=False):
     # Generate backup list and metadata
     if constants.server_path(server_name):
 
-        backup_stats['backup-list'] = sorted([[file, os.stat(file).st_size, convert_date_str(file)] for file in glob(os.path.join(backup_stats['backup-path'], f'{server_dict["name"]}__*'))], key=lambda x: x[2], reverse=True)
+        backup_stats['backup-list'] = sorted([[file, os.stat(file).st_size, os.stat(file).st_mtime] for file in glob(os.path.join(backup_stats['backup-path'], f'{server_dict["name"]}__*'))], key=lambda x: x[2], reverse=True)
 
         try:
             backup_stats['latest-backup'] = convert_date(backup_stats['backup-list'][0][2])
@@ -211,7 +224,7 @@ def dump_config(server_name: str, new_server=False):
         except IndexError:
             pass
 
-        backup_stats['backup-list'] = [[file[0], convert_size(file[1]), file[2].strftime("%a %#I:%M %p %#m/%#d/%Y" if constants.os_name == "windows" else "%a %-I:%M %p %-m/%-d/%Y")] for file in backup_stats['backup-list']]
+        backup_stats['backup-list'] = [[file[0], convert_size(file[1]), convert_date(file[2])] for file in backup_stats['backup-list']]
 
 
     return server_dict, backup_stats
