@@ -327,10 +327,10 @@ Enables or disables automatic server back-ups.
  - `str`, default filesystem directory to save and restore back-ups from
 
 #### backup.maximum
- - `int` or `'unlimited'`, tells the maximum amount of back-ups allowed in `backup.directory`
+ - `int` or `'unlimited'`, shows the maximum amount of back-ups allowed in `backup.directory`
 
 #### backup.auto_backup
- - `bool`, tells whether automatic server back-ups are enabled or not
+ - `bool`, shows whether automatic server back-ups are enabled or not
 
 #### backup.total_size
  - `int`, contains storage utilization in bytes of all back-ups in `backup.directory`
