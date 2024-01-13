@@ -68,72 +68,139 @@ class AddonFileObject(AddonObject):
 class AddonManager():
 
     def __init__(self, server_name: str):
-        self.server = dump_config(server_name)
-        self.installed_addons = enumerate_addons(self.server)
-        self.geyser_support = self.check_geyser()
-        self.addon_hash = self._set_hash()
+        self._server = dump_config(server_name)
+        self._addons_supported = self._server['type'].lower() != 'vanilla'
+        self._update_notified = False
         self.update_required = False
-        self.update_notified = False
+        self.installed_addons = enumerate_addons(self._server)
+        self.geyser_support = self.check_geyser()
+        self._addon_hash = self._set_hash()
 
         # Set addon hash if server is running
         try:
-            if self.server['name'] in constants.server_manager.running_servers:
-                constants.server_manager.running_servers['name'].run_data['addon-hash'] = deepcopy(self.addon_hash)
+            if self._server['name'] in constants.server_manager.running_servers:
+                constants.server_manager.running_servers['name'].run_data['addon-hash'] = deepcopy(self._addon_hash)
         except:
             pass
 
         # Write addons to cache
         constants.load_addon_cache(True)
 
+    # Sets addon hash to determine changes
+    def _set_hash(self):
+        addon_hash = ""
+
+        for addon in sorted(self.installed_addons['enabled'], key=lambda x: x.name):
+            addon_hash += addon.hash
+
+        return addon_hash
+
+    # Checks addon hash in running config to see if it's changed
+    def _hash_changed(self):
+        hash_changed = False
+        server_name = self._server['name']
+
+        if server_name in constants.server_manager.running_servers:
+            hash_changed = constants.server_manager.running_servers[server_name].run_data['addon-hash'] != self._addon_hash
+
+        return hash_changed
+
     # Refreshes self.installed_addons list
-    def refresh_addons(self):
-        self.server = dump_config(self.server['name'])
-        self.installed_addons = enumerate_addons(self.server)
+    def _refresh_addons(self):
+        if not self._addons_supported:
+            return None
+
+        self._server = dump_config(self._server['name'])
+        self.installed_addons = enumerate_addons(self._server)
         self.geyser_support = self.check_geyser()
-        self.addon_hash = self._set_hash()
+        self._addon_hash = self._set_hash()
 
     # Imports addon directly from file path
     def import_addon(self, addon_path: str):
-        addon = get_addon_file(addon_path, self.server)
-        import_addon(addon, self.server)
-        self.refresh_addons()
+        if not self._addons_supported:
+            return None
+
+        addon = get_addon_file(addon_path, self._server)
+        import_addon(addon, self._server)
+        self._refresh_addons()
         return addon
+
+    # Searches for downloadable addons, returns a list of AddonWebObjects
+    def search_addons(self, query: str):
+        if not self._addons_supported:
+            return []
+
+        addon_list = search_addons(query, self._server)
+        if addon_list:
+            return addon_list
+        else:
+            return []
 
     # Downloads addon directly from the closest match of name, or from AddonWebObject
     def download_addon(self, addon: str or AddonWebObject):
+        if not self._addons_supported:
+            return None
 
         # If AddonWebObject was provided
         if isinstance(addon, AddonWebObject):
             if not addon.download_url:
-                addon = get_addon_url(addon, self.server)
+                addon = get_addon_url(addon, self._server)
             if addon:
-                download_addon(addon, self.server)
+                download_addon(addon, self._server)
 
         # If addon was provided with a name
         else:
-            addon = find_addon(addon, self.server)
+            addon = find_addon(addon, self._server)
             if addon:
-                download_addon(addon, self.server)
-        self.refresh_addons()
+                download_addon(addon, self._server)
+        self._refresh_addons()
 
     # Enables/Disables installed addons
     def addon_state(self, addon: AddonFileObject, enabled=True):
-        addon_state(addon, self.server, enabled)
-        self.refresh_addons()
+        if not self._addons_supported:
+            return None
+
+        addon_state(addon, self._server, enabled)
+        self._refresh_addons()
 
     # Deletes addon
     def delete_addon(self, addon: AddonFileObject):
+        if not self._addons_supported:
+            return None
+
         try:
             os.remove(addon.path)
             removed = True
         except OSError:
             removed = False
 
-        self.refresh_addons()
+        self._refresh_addons()
         return removed
+
+    # Retrieves AddonFileObject by name
+    def get_addon(self, addon_name: str):
+        name = addon_name.strip().lower()
+        match_list = []
+        for addon in self.return_single_list():
+
+            if name in [addon.id.lower(), addon.name.lower()]:
+                return addon
+
+            score = round(SequenceMatcher(None, addon.id.lower(), name).ratio(), 2)
+            score += round(SequenceMatcher(None, addon.name.lower(), name).ratio(), 2)
+            if addon.subtitle:
+                score += (round(SequenceMatcher(None, addon.subtitle.lower(), name).ratio(), 2) * 5)
+
+            match_list.append((addon, score))
+
+        if match_list:
+            return sorted(match_list, key=lambda x: x[1])[0]
 
     # Checks if an update is available for any AddonFileObject
     def check_for_updates(self):
+        if not self._addons_supported:
+            return False
+
         if self.update_required:
             return True
 
@@ -151,7 +218,7 @@ class AddonManager():
                                 return True
 
                     # Everything else
-                    update = get_update_url(addon, self.server['version'], self.server['type'])
+                    update = get_update_url(addon, self._server['version'], self._server['type'])
                     if constants.check_app_version(addon.addon_version, update.addon_version, limit=3):
                         # print(addon.name, addon.addon_version, update.addon_version)
                         self.update_required = True
@@ -163,36 +230,22 @@ class AddonManager():
 
     # Returns single list of all addons
     def return_single_list(self):
-        return enumerate_addons(self.server, True)
+        if not self._addons_supported:
+            return self.installed_addons
+
+        return enumerate_addons(self._server, True)
 
     # Returns bool of geyser installation
     def check_geyser(self):
+        if not self._addons_supported:
+            return False
 
-        if self.server['type'] in ['spigot', 'paper', 'fabric']:
+        if self._server['type'] in ['spigot', 'paper', 'fabric']:
 
             # Check for geyser
             return 'geyser' in [addon.id.lower() for addon in self.return_single_list()]
         else:
             return False
-
-    # Sets addon hash to determine changes
-    def _set_hash(self):
-        addon_hash = ""
-
-        for addon in sorted(self.installed_addons['enabled'], key=lambda x: x.name):
-            addon_hash += addon.hash
-
-        return addon_hash
-
-    # Checks addon hash in running config to see if it's changed
-    def _hash_changed(self):
-        hash_changed = False
-        server_name = self.server['name']
-
-        if server_name in constants.server_manager.running_servers:
-            hash_changed = constants.server_manager.running_servers[server_name].run_data['addon-hash'] != self.addon_hash
-
-        return hash_changed
 
 
 # -------------------------------------------- Addon File Functions ----------------------------------------------------
@@ -920,6 +973,8 @@ def find_addon(name, server_properties):
 #   'disabled': [AddonFileObject3, AddonFileObject4]
 # }
 def enumerate_addons(server_properties, single_list=False):
+    if server_properties['type'].lower() == 'vanilla':
+        return {'enabled': [], 'disabled': []}
 
     # Define folder paths based on server info
     addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'

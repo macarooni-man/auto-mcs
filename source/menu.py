@@ -8652,7 +8652,7 @@ class CreateServerAclScreen(MenuBackground):
 
         # Update displayed data on user panel
         if rule_name:
-            self.acl_object.display_rule(rule_name)
+            self.acl_object.get_rule(rule_name)
             self.user_panel.update_panel(self.acl_object.displayed_rule, rule_scope)
 
 
@@ -9162,7 +9162,7 @@ class CreateServerAclRuleScreen(MenuBackground):
         )
 
         # Return to previous screen
-        self.acl_object.display_rule(applied_list[0])
+        self.acl_object.get_rule(applied_list[0])
         previous_screen()
 
         def update_panel(*args):
@@ -12143,7 +12143,7 @@ class PerformancePanel(RelativeLayout):
                     def on_ref_press(self, *args):
                         if not self.disabled and self.text:
                             if constants.server_manager.current_server.acl:
-                                constants.server_manager.current_server.acl.display_rule(re.sub("\[.*?\]", "", self.text))
+                                constants.server_manager.current_server.acl.get_rule(re.sub("\[.*?\]", "", self.text))
                                 constants.back_clicked = True
                                 screen_manager.current = 'ServerAclScreen'
                                 constants.back_clicked = False
@@ -15270,8 +15270,8 @@ class ServerAddonScreen(MenuBackground):
             )
 
         # Show banner if updates are available
-        elif constants.server_manager.current_server.addon.update_required and not constants.server_manager.current_server.addon.update_notified:
-            constants.server_manager.current_server.addon.update_notified = True
+        elif constants.server_manager.current_server.addon.update_required and not constants.server_manager.current_server.addon._update_notified:
+            constants.server_manager.current_server.addon._update_notified = True
             Clock.schedule_once(
                 functools.partial(
                     self.show_banner,
@@ -19061,7 +19061,8 @@ class MainApp(App):
         Window.left = left
     Window.on_request_close = functools.partial(sys.exit)
 
-    Window.minimum_width, Window.minimum_height = constants.window_size
+    Window.minimum_width = constants.window_size[0] - 50
+    Window.minimum_height = constants.window_size[1] - 50
     Window.clearcolor = constants.background_color
     Builder.load_string(kv_file)
 

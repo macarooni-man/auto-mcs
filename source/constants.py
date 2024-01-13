@@ -39,7 +39,7 @@ import amscript
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
 app_version = "2.0.5"
-ams_version = "1.0"
+ams_version = "1.1"
 app_title = "auto-mcs"
 window_size = (850, 850)
 refresh_rate = 60

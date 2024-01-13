@@ -578,9 +578,9 @@ class AclManager():
         return acl_dict
 
 
-    # Overwrites self.display_rule with server-wide rule information
+    # Retrieves rule from name and overwrites self.displayed_rule with server-wide rule information
     # rule_name --> AclRule
-    def display_rule(self, rule_name: str):
+    def get_rule(self, rule_name: str):
 
         # Add specific data for IP rules
         if rule_name.count(".") == 3:
@@ -2529,7 +2529,7 @@ def convert_obj_to_str(rule_list: str or list or PlayerScriptObject):
 # acl = AclManager(properties['name'])
 
 # # Edit ACL:
-# acl.display_rule("127.0.0.1")
+# acl.get_rule("127.0.0.1")
 # acl._process_query("!g KChicken, !w 192.168.1.2", list_type="bans")
 # acl.op_player("ChaffyCosine669, blue_kazoo", remove=False)
 # acl.whitelist_player("test1, test2, test3", remove=False)

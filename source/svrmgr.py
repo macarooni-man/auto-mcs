@@ -743,7 +743,7 @@ class ServerObject():
             self.run_data['advanced-hash'] = self.__get_advanced_hash__()
             self.run_data['addon-hash'] = None
             if self.addon:
-                self.run_data['addon-hash'] = deepcopy(self.addon.addon_hash)
+                self.run_data['addon-hash'] = deepcopy(self.addon._addon_hash)
             self.run_data['script-hash'] = deepcopy(self.script_manager.script_hash)
 
 

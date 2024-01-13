@@ -248,6 +248,8 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 <br><br>
 
+
+
 ## BackupManager
 Contains the server's back-up configuration and allows you to save, restore, or configure the UI settings.
 
@@ -355,6 +357,31 @@ Accessed via the global variable `acl`
 
 The `AclManager` conceptualizes both users and IP addresses as `AclRule` objects in their respective lists in the `acl.rules` attribute. A majority of the methods include and modify the `'bans'`, `'ops'`, `'wl'`, and `'subnets'` keys in this attribute.
 
+- An `AclRule` is structured in the following format:
+```python
+class AclRule():
+
+    # ID/name of the rule
+    self.rule <str>
+
+    # 'player' or 'ip'
+    self.rule_type <str>
+
+    # 'local' or 'global'
+    self.rule_scope <str>
+
+    # 'ops', 'bans', 'wl', or 'subnets'
+    self.acl_group <str>
+
+    # Extra content (ban reason, IP geolocation, etc.)
+    self.extra_data <dict>
+
+    # To be added when rule is displayed from AclManager
+    self.display_data <dict>
+```
+
+
+
 <br>
 
 
@@ -370,7 +397,7 @@ Kicks a player or list of players, optionally with a reason.
 | Parameter | Description |
 | --- | --- |
 | `rule_list*` | [**PlayerScriptObject**](#PlayerScriptObject), `str` of username, or a `list` of either |
-| `reason` | `str`, reason for the kick displayed in the menu, and log
+| `reason` | `str`, reason for the kick displayed in the menu, and log |
 
 <br>
 
@@ -384,8 +411,8 @@ Bans/pardons a player, IP, list of players, or list of IP's, optionally with a r
 | Parameter | Description |
 | --- | --- |
 | `rule_list*` | [**PlayerScriptObject**](#PlayerScriptObject), `str` of username/IP, or a `list` of either |
-| `remove` | `bool`, removes rule from effect. Defaults to `False`
-| `reason` | `str`, reason for the ban displayed in the menu, and log
+| `remove` | `bool`, removes rule from effect. Defaults to `False` |
+| `reason` | `str`, reason for the ban displayed in the menu, and log |
 
 <br>
 
@@ -399,7 +426,7 @@ Ops/de-ops a player or list of players, optionally with a reason.
 | Parameter | Description |
 | --- | --- |
 | `rule_list*` | [**PlayerScriptObject**](#PlayerScriptObject), `str` of username, or a `list` of either |
-| `remove` | `bool`, removes rule from effect. Defaults to `False`
+| `remove` | `bool`, removes rule from effect. Defaults to `False` |
 
 <br>
 
@@ -413,7 +440,7 @@ Adds a player or list of players to the whitelist.
 | Parameter | Description |
 | --- | --- |
 | `rule_list*` | [**PlayerScriptObject**](#PlayerScriptObject), `str` of username, or a `list` of either |
-| `remove` | `bool`, removes rule from effect. Defaults to `False`
+| `remove` | `bool`, removes rule from effect. Defaults to `False` |
 
 <br>
 
@@ -440,8 +467,8 @@ Adds a player or list of players to a specified list type for every server.
 | Parameter | Description |
 | --- | --- |
 | `rule_list*` | [**PlayerScriptObject**](#PlayerScriptObject), `str` of username, or a `list` of either |
-| `list_type*` | `str`, can be `'ops'`, `'bans'`, or `'wl'`
-| `remove` | `bool`, removes rule from effect. Defaults to `False`
+| `list_type*` | `str`, can be `'ops'`, `'bans'`, or `'wl'` |
+| `remove` | `bool`, removes rule from effect. Defaults to `False` |
 
 <br>
 
@@ -454,7 +481,7 @@ Reloads the list type from the server `.json` files and refreshes `acl.rules`. I
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `list_type` | `str`, can be `'ops'`, `'bans'`, or `'wl'`
+| `list_type` | `str`, can be `'ops'`, `'bans'`, or `'wl'` |
 
 <br>
 
@@ -468,8 +495,8 @@ Similar to the `acl.*_player` methods, but only edits `acl.rules` in memory with
 | Parameter | Description |
 | --- | --- |
 | `rule_list*` | [**PlayerScriptObject**](#PlayerScriptObject), `str` of username, or a `list` of either |
-| `list_type*` | `str`, can be `'ops'`, `'bans'`, or `'wl'`
-| `remove` | `bool`, removes rule from effect. Defaults to `False`
+| `list_type*` | `str`, can be `'ops'`, `'bans'`, or `'wl'` |
+| `remove` | `bool`, removes rule from effect. Defaults to `False` |
 
 <br>
 
@@ -491,7 +518,7 @@ Checks if a player or IP is in a specified list type. Returns `bool`
 | Parameter | Description |
 | --- | --- |
 | `rule*` | [**PlayerScriptObject**](#PlayerScriptObject) or `str` of username or IP |
-| `list_type*` | `str`, can be `'ops'`, `'bans'`, `'wl'`, or `'subnets'`
+| `list_type*` | `str`, can be `'ops'`, `'bans'`, `'wl'`, or `'subnets'` |
 
 <br>
 
@@ -499,25 +526,25 @@ Checks if a player or IP is in a specified list type. Returns `bool`
 
 ### acl.count_rules(*list_type*)
 
-Counts rules in the specified list type, or all rules if unspecified.
+Counts rules in the specified list type, or all rules if unspecified. Returns the total amount as `int`.
 
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `list_type` | `str`, can be `'ops'`, `'bans'`, or `'wl'`
+| `list_type` | `str`, can be `'ops'`, `'bans'`, or `'wl'` |
 
 <br>
 
 
 
-### acl.display_rule(*rule_name*)
+### acl.get_rule(*rule_name*)
 
-Generates all the data displayed for the user panel in the UI. Returns a new `AclRule` with additional data in the `AclRule.extra_data` dictionary.
+Retrieves all the access control data associated with a rule. Returns a new `AclRule` with additional data in the `AclRule.extra_data` dictionary.
 
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `rule_name*` | `str` of username, IP, or subnet
+| `rule_name*` | `str` of username, IP, or subnet |
 
 <br>
 
@@ -545,7 +572,233 @@ acl.rules = {
  - `dict`, structured similarly to `acl.rules`, but contains an organized list of disabled and enabled items for each list type. Used for the UI
 
  #### acl.displayed_rule
- - `AclRule`, contains the rule returned from the `acl.display_rule()` method
+ - `AclRule`, contains the rule returned from the `acl.get_rule()` method
+
+<br><br>
+
+
+
+
+## AddonManager
+Contains the server's add-on configuration. Manages both plugins and mods depending on the server distribution.
+
+Accessed via the global variable `addon`
+
+> Note: Vanilla servers don't support addons, but the `AddonManager` is still included for compatibility with certain scripts. Because of this, the following methods and attributes will return `None`, and empty `list` or `False` with certain checks. Eventually, the empty `AddonManager` for Vanilla servers will be replaced with datapack functionality.
+
+The `AddonManager` conceptualizes add-ons in a few different formats:
+
+- For all functionality relating to data stored locally, add-ons are abstracted as an `AddonFileObject`. The attributes are as follows:
+```python
+class AddonFileObject():
+    self.addon_object_type = "file"
+
+    # The name defined in the '.jar' file 
+    self.name <str>
+
+    # Type of add-on: 'forge', 'fabric', or 'bukkit'
+    self.type <str>
+
+    # The author defined in the '.jar' file
+    self.author <str>
+
+    # A short description defined in the '.jar' file
+    self.subtitle <str>
+
+    # A short, unique identifier of the add-on
+    self.id <str>
+
+    # The full file path of the '.jar' file
+    self.path <str>
+
+    # Add-on version defined in the '.jar' file
+    self.addon_version <str>
+
+    # Whether or not the add-on is disabled in auto-mcs
+    self.disabled <bool>
+```
+
+<br>
+
+- For all functionality relating to data stored on the internet, add-ons are abstracted as an `AddonWebObject`. The attributes are as follows:
+```python
+class AddonWebObject():
+    self.addon_object_type = "web"
+
+    # The name defined on the internet
+    self.name <str>
+
+    # Type of add-on: 'forge', 'fabric', or 'bukkit'
+    self.type <str>
+
+    # The author defined on the internet
+    self.author <str>
+
+    # A short description defined on the internet
+    self.subtitle <str>
+
+    # A short, unique identifier of the add-on (the URL slug)
+    self.id <str>
+
+    # The full URL of the website hosting the project
+    self.url <str>
+
+    # Add-on version defined on the download page
+    self.addon_version <str>
+
+    # Whether or not the add-on has a version available for your server
+    self.supported <bool>
+
+    # Constains all supported Minecraft versions
+    self.versions <str>
+
+    # A long-form description of the project defined on the internet
+    self.description <str>
+
+    # A direct download link to the appropriate version for the server
+    self.download_url <str>
+
+    # Download version of 'self.download_url'
+    self.download_version <str>
+```
+
+
+<br>
+
+
+**Methods**: <br><br>
+
+
+
+### addon.search_addons(*query*)
+
+Returns a `list` of `AddonWebObject` that match your query, sorted in descending order from `index[0]`.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `query*` | `str`, partial search term or full add-on name |
+
+<br>
+
+
+
+### addon.download_addon(*addon*)
+
+Downloads an add-on from a string of the add-on name, ID, or an `AddonWebObject` provided by `addon.search_addons()`. The file is saved in the server's default mods or plugins directory.
+
+> Note: This method will automatically determine the most compatible version for your server.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `addon*` | `str` or `AddonWebObject` to download |
+
+<br>
+
+
+
+### addon.import_addon(*addon_path*)
+
+Imports a `.jar` file to the server's default mods or plugins directory.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `addon_path*` | `str`, full system path to the `.jar` file |
+
+<br>
+
+
+
+### addon.addon_state(*addon, enabled*)
+
+Enables/disables an installed add-on. Retrieve an `AddonFileObject` with `addon.get_addon()` or from `addon.installed_addons`.
+
+> Note: The server requires a restart for changes to take effect
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `addon*` | `AddonFileObject`, from `addon.get_addon()` or `addon.installed_addons` |  
+| `enabled*` | `bool`, to enable or disable the add-on. Defaults to `True` |
+
+<br>
+
+
+
+### addon.delete_addon(*addon*)
+
+Permanently deletes an installed add-on. Retrieve an `AddonFileObject` with `addon.get_addon()` or from `addon.installed_addons`.
+
+> Note: The server requires a restart for changes to take effect
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `addon*` | `AddonFileObject`, from `addon.get_addon()` or `addon.installed_addons` |
+
+<br>
+
+
+
+### addon.get_addon(*addon_name*)
+
+Retrieves an `AddonFileObject` from the installed server add-ons.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `addon_name*` | `str`, add-on name or ID |
+
+<br>
+
+
+
+### addon.return_single_list()
+
+Returns a single `list` of both enabled and disabled `AddonFileObject` from `addon.installed_addons`.
+
+<br>
+
+
+
+### addon.check_for_updates()
+
+Checks the `AddonFileObject.addon_version` for all the installed add-ons against the internet to see if an update is available. Returns `True` if one or more plugins require an update, and the value is stored in the `addon.update_required` attribute.
+
+> Note: Currently, the only way to update add-ons is through the UI
+
+<br>
+
+
+
+### addon.check_geyser()
+
+Inspects installed add-ons to determine if Geyser and Floodgate are installed. Returns `True` if they are available, and the value is stored in the `addon.geyser_support` attribute.
+
+<br>
+
+
+
+**Attributes**:
+> Note: All attributes are read-only, and thus will not change the server data when modified
+
+
+#### addon.installed_addons
+ - `dict`, contains lists of `AddonFileObject` with the following structure:
+ ```python
+acl.rules = {
+    'enabled': [AddonFileObject, AddonFileObject, ...],
+    'disabled': [AddonFileObject, AddonFileObject, ...]
+}
+```
+
+#### addon.update_required
+ - `bool`, `True` if one or more add-ons can be updated
+
+#### addon.geyser_support
+ - `bool`, `True` if Geyser and Floodgate are installed
 
 <br><br>
 
@@ -564,7 +817,7 @@ acl.rules = {
 
 ### @server.on_start
 
-Fired upon process execution by Auto-MCS, not when a player can connect.
+Fired upon process execution by auto-mcs, not when a player can connect.
 
 **Accepted parameters**:
 | Parameter | Description |
@@ -583,7 +836,7 @@ Fired upon process execution by Auto-MCS, not when a player can connect.
 
 ### @server.on_stop
 
-Fired upon process termination by Auto-MCS, not when `/stop` or a crash is logged.
+Fired upon process termination by auto-mcs, not when `/stop` or a crash is logged.
 
 **Accepted parameters**:
 | Parameter | Description |
@@ -732,7 +985,7 @@ Used for registering custom commands and augmenting existing ones.
 > Note: Every alias automatically validates syntax and checks the player's permission level before execution
 
 Following the above example when a player with the `anyone` privilege executes `!test foo bar`:
-- Auto-MCS will determine that the player doesn't meet the minimum permission and will fail
+- amscript will determine that the player doesn't meet the minimum permission and will fail
 - Permission tree is `server` > `op` > `anyone`
 
 Following the above example when a player with the `op` or `server` privilege executes `!test foo bar`:
