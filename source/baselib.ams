@@ -2,7 +2,7 @@
 # title: amscript Base Library
 # author: Kaleb Efflandt
 # version: 1.0
-# description: A collection of tools to integrate Auto-MCS in-game
+# description: A collection of tools to integrate auto-mcs in-game
 #!
 
 
@@ -20,7 +20,7 @@ def generate_header(text):
 
 
 # Displays all amscript commands that the player has access to, with an optional search feature
-@player.on_alias(player, command='help', arguments={'command': False}, permission='anyone', description='View the Auto-MCS command directory (Auto-MCS provided)'):
+@player.on_alias(player, command='help', arguments={'command': False}, permission='anyone', description='View the auto-mcs command directory (auto-mcs provided)'):
 	cmd = arguments['command']
 	match_count = 0
 	
@@ -54,7 +54,7 @@ def generate_header(text):
 
 
 # Displays server information in the chat
-@player.on_alias(player, command='info', permission='op', description='View server information (Auto-MCS provided)'):
+@player.on_alias(player, command='info', permission='op', description='View server information (auto-mcs provided)'):
 
 	def fmt_pct_color(pct, low_white=False):
 		return "red" if pct > 85 else "gold" if pct > 70 else "yellow" if pct > 50 else ("white" if low_white else "green") if pct > (0 if low_white else 5) else "gray"
@@ -90,7 +90,7 @@ def generate_header(text):
 
 
 # Displays server information in the chat
-@player.on_alias(player, command='restart', arguments={'delay': False}, permission='op', description='Stops and restarts with optional delay (seconds) (Auto-MCS provided)'):
+@player.on_alias(player, command='restart', arguments={'delay': False}, permission='op', description='Stops and restarts with optional delay (seconds) (auto-mcs provided)'):
 	
 	# Optionally wait for delay specified
 	if arguments['delay']:
@@ -114,7 +114,7 @@ def generate_header(text):
 
 
 # '!backup' command to use the back-up manager in-game
-@player.on_alias(player, command='backup', arguments={'command': False}, permission='op', description='Manage server back-ups in-game (Auto-MCS provided)'):
+@player.on_alias(player, command='backup', arguments={'command': False}, permission='op', description='Manage server back-ups in-game (auto-mcs provided)'):
 	cmd = arguments['command']
 
 	# Shows all back-up sub-commands
@@ -154,7 +154,7 @@ def generate_header(text):
 
 
 # '!acl' command to view the access control maanger in-game
-@player.on_alias(player, command='acl', arguments={'command': False}, permission='op', description='View access control configuration in-game (Auto-MCS provided)'):
+@player.on_alias(player, command='acl', arguments={'command': False}, permission='op', description='View access control configuration in-game (auto-mcs provided)'):
 	cmd = arguments['command']
 
 	# Shows all access control sub-commands
@@ -194,7 +194,7 @@ def generate_header(text):
 	# View whitelist
 	elif cmd == "whitelist":
 		player.log(generate_header('Access Control: Whitelist'), 'green', 'normal')
-		if acl.server['whitelist']:
+		if acl.whitelist_enabled:
 			player.log("- Whitelist is currently enabled", "dark_green", "normal")
 		else:
 			player.log("- Whitelist is currently disabled", "dark_red", "normal")
@@ -212,8 +212,8 @@ def generate_header(text):
 
 
 
-# '!amscript' command to manage the amscript engine in-game
-@player.on_alias(player, command='ams', arguments={'command': False}, permission='op', description='Manage amscript in-game (Auto-MCS provided)'):
+# '!ams' command to manage the amscript engine in-game
+@player.on_alias(player, command='ams', arguments={'command': False}, permission='op', description='Manage amscript in-game (auto-mcs provided)'):
 	cmd = arguments['command']
 
 	# Shows all amscript sub-commands
@@ -233,11 +233,10 @@ def generate_header(text):
 
 	# Shows loaded scripts and version info
 	elif cmd == "status":
-		data = server._ams_info
-		loaded = data['installed']['enabled']
-		unloaded = data['installed']['disabled']
+		loaded = amscript.installed_scripts['enabled']
+		unloaded = amscript.installed_scripts['disabled']
 
-		player.log(generate_header(f'amscript v{data["version"]}'), 'green', 'normal')
+		player.log(generate_header(f'amscript v{server.ams_version}'), 'green', 'normal')
 		if len(loaded) > 0:
 			player.log(f'{len(loaded)} enabled script(s):', 'white', 'normal')
 			player.log(', '.join([script.file_name for script in loaded]), 'gray', 'normal')
@@ -258,8 +257,7 @@ def generate_header(text):
 		if " " in cmd:
 			
 			# Generate valid script list
-			script_list = list(tuple(server._ams_info['installed']['enabled']))
-			script_list.extend(list(tuple(server._ams_info['installed']['disabled'])))
+			script_list = amscript.return_single_list()
 
 			# format argument 3 as a script name
 			all = cmd.split(" ", 1)[1].strip().lower() == "all"
@@ -275,12 +273,12 @@ def generate_header(text):
 					
 					# Enable script
 					if cmd.startswith("enable"):
-						server._script_state(script, enabled=True)
+						amscript.script_state(script, enabled=True)
 						if not player.is_server:
 							player.log_success(f"[amscript] '{script.file_name}' is now enabled. Type '!ams reload' for changes to take effect")
 						server._ams_log(f"'{script.file_name}' is now enabled. Type '!ams reload' for changes to take effect", 'success')
 					else:
-						server._script_state(script, enabled=False)
+						amscript.script_state(script, enabled=False)
 						if not player.is_server:
 							player.log_error(f"[amscript] '{script.file_name}' is now disabled. Type '!ams reload' for changes to take effect")
 						server._ams_log(f"'{script.file_name}' is now disabled. Type '!ams reload' for changes to take effect", 'error')

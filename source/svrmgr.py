@@ -744,7 +744,7 @@ class ServerObject():
             self.run_data['addon-hash'] = None
             if self.addon:
                 self.run_data['addon-hash'] = deepcopy(self.addon._addon_hash)
-            self.run_data['script-hash'] = deepcopy(self.script_manager.script_hash)
+            self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
 
             # Open server script and attempt to launch
@@ -1301,7 +1301,7 @@ class ServerObject():
             self.script_object = amscript.ScriptObject(self)
             loaded_count, total_count = self.script_object.construct()
             self.script_object.start_event({'date': dt.now()})
-            self.run_data['script-hash'] = deepcopy(self.script_manager.script_hash)
+            self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
             return loaded_count, total_count
         else:

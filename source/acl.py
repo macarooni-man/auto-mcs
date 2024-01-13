@@ -75,6 +75,7 @@ class AclManager():
         self.playerdata = self._get_playerdata() if not self._new_server else []
 
         self.list_items = self._gen_list_items()
+        self.whitelist_enabled = self._server['whitelist']
         self.displayed_rule = None
 
 
@@ -915,6 +916,7 @@ class AclManager():
                 constants.server_properties(self._server['name'], new_properties)
 
             self._server['whitelist'] = enabled
+            self.whitelist_enabled = enabled
 
             # If server is running, reload whitelist settings in memory
             if self._server['name'] in constants.server_manager.running_servers:

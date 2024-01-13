@@ -58,7 +58,7 @@ class AddonFileObject(AddonObject):
         self.id = addon_id
         self.path = addon_path
         self.addon_version = addon_version
-        self.disabled = False
+        self.enabled = True
 
         # Generate Hash
         hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
@@ -75,6 +75,12 @@ class AddonManager():
         self.installed_addons = enumerate_addons(self._server)
         self.geyser_support = self.check_geyser()
         self._addon_hash = self._set_hash()
+
+        # Setup paths
+        addon_folder = "plugins" if self._server['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+        disabled_addon_folder = str("disabled-" + addon_folder)
+        self.addon_path = constants.server_path(self._server['name'], addon_folder)
+        self.disabled_addon_path = constants.server_path(self._server['name'], disabled_addon_folder)
 
         # Set addon hash if server is running
         try:
@@ -177,10 +183,15 @@ class AddonManager():
         self._refresh_addons()
         return removed
 
-    # Retrieves AddonFileObject by name
-    def get_addon(self, addon_name: str):
+    # Retrieves AddonFileObject or AddonWebObject by name
+    def get_addon(self, addon_name: str, online=False):
         name = addon_name.strip().lower()
         match_list = []
+
+        # Search online for addons instead
+        if online:
+            return find_addon(name, self._server)
+
         for addon in self.return_single_list():
 
             if name in [addon.id.lower(), addon.name.lower()]:
@@ -194,7 +205,7 @@ class AddonManager():
             match_list.append((addon, score))
 
         if match_list:
-            return sorted(match_list, key=lambda x: x[1])[0]
+            return sorted(match_list, key=lambda x: x[1], reverse=True)[0][0]
 
     # Checks if an update is available for any AddonFileObject
     def check_for_updates(self):

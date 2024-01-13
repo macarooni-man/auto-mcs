@@ -17,9 +17,27 @@ Accessed via the global variable `server`
 
 
 
+### server.stop()
+
+Immediately stops the server.
+
+
+<br>
+
+
+
+### server.restart()
+
+Immediately stops and restarts the server.
+
+
+<br>
+
+
+
 ### server.log(*message, log_type*)
 
-Sends a custom log event to the console. This output is displayed only while the server is running, and is not saved to the log file.
+Sends a custom log event to the console. This output is displayed only while the server is running, and is not saved to `latest.log`.
 
 - `server.log_success()`, `server.log_warning()`, and `server.log_error()` methods can also be used, and only require the `message` parameter.
 
@@ -28,6 +46,21 @@ Sends a custom log event to the console. This output is displayed only while the
 | --- | --- |
 | `message*` | `str` of log content |
 | `log_type` | `str` can be `'info'`, `'success'`, `'warning'` or `'error'`. Defaults to `'info'` |
+
+<br>
+
+
+
+### server.execute(*command*)
+
+Executes any Minecraft command in the server console.
+
+> Note: Some commands are version dependent and you may need to implement a switch to execute different commands for different versions.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `command*` | `str`, any Minecraft command |
 
 <br>
 
@@ -56,7 +89,6 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
 | --- | --- |
 | `selector*` | `str` of username, or a valid Minecraft selector that returns a single value (like @p, @s, @r). Only players will be matched |
 | `reverse` | `bool` selects last match on `True`. Defaults to `False` |
-
 
 <br>
 
@@ -106,6 +138,9 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
  - Assigning or updating a key in the `server.persistent` dictionary will automatically save it, and can be accessed via the same key persistently until it is changed again, or deleted. Data will only be saved for the server referenced in the object.
 
 > Warning: persistent data is only saved properly when the server shuts down gracefully, if the computer crashes or the server process is terminated forcefully, the persistent data will likely revert to previous values
+
+#### server.ams_version
+- `str`, contains the current amscript version to account for API changes
 
 <br><br>
 
@@ -420,7 +455,7 @@ Bans/pardons a player, IP, list of players, or list of IP's, optionally with a r
 
 ### acl.op_player(*rule_list, remove*)
 
-Ops/de-ops a player or list of players, optionally with a reason.
+Ops/de-ops a player or list of players.
 
 **Accepted parameters**:
 | Parameter | Description |
@@ -434,7 +469,7 @@ Ops/de-ops a player or list of players, optionally with a reason.
 
 ### acl.whitelist_player(*rule_list, remove*)
 
-Adds a player or list of players to the whitelist.
+Adds/removes a player or list of players to/from the whitelist.
 
 **Accepted parameters**:
 | Parameter | Description |
@@ -571,8 +606,11 @@ acl.rules = {
 #### acl.list_items
  - `dict`, structured similarly to `acl.rules`, but contains an organized list of disabled and enabled items for each list type. Used for the UI
 
- #### acl.displayed_rule
+#### acl.displayed_rule
  - `AclRule`, contains the rule returned from the `acl.get_rule()` method
+
+#### acl.whitelist_enabled
+ - `bool`, whether or not the server whitelist is enforced
 
 <br><br>
 
@@ -614,8 +652,8 @@ class AddonFileObject():
     # Add-on version defined in the '.jar' file
     self.addon_version <str>
 
-    # Whether or not the add-on is disabled in auto-mcs
-    self.disabled <bool>
+    # Whether or not the add-on is enabled in auto-mcs
+    self.enabled <bool>
 ```
 
 <br>
@@ -685,7 +723,7 @@ Returns a `list` of `AddonWebObject` that match your query, sorted in descending
 
 ### addon.download_addon(*addon*)
 
-Downloads an add-on from a string of the add-on name, ID, or an `AddonWebObject` provided by `addon.search_addons()`. The file is saved in the server's default mods or plugins directory.
+Downloads an add-on from a string of the add-on name, ID, or an `AddonWebObject` provided by `addon.search_addons()`. The file is saved in `addon.addon_path`.
 
 > Note: This method will automatically determine the most compatible version for your server.
 
@@ -700,7 +738,7 @@ Downloads an add-on from a string of the add-on name, ID, or an `AddonWebObject`
 
 ### addon.import_addon(*addon_path*)
 
-Imports a `.jar` file to the server's default mods or plugins directory.
+Imports a `.jar` file to `addon.addon_path`.
 
 **Accepted parameters**:
 | Parameter | Description |
@@ -742,14 +780,15 @@ Permanently deletes an installed add-on. Retrieve an `AddonFileObject` with `add
 
 
 
-### addon.get_addon(*addon_name*)
+### addon.get_addon(*addon_name, online*)
 
-Retrieves an `AddonFileObject` from the installed server add-ons.
+Retrieves an `AddonFileObject` from the installed server add-ons, or `AddonWebObject` from the online repository if `online` is `True`.
 
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `addon_name*` | `str`, add-on name or ID |
+| `addon_name*` | `str`, add-on name |
+| `online` | `bool`, retrieves online data instead if `True`. Defaults to `False` |
 
 <br>
 
@@ -794,11 +833,210 @@ acl.rules = {
 }
 ```
 
+#### addon.addon_path
+- `str`, full filesystem path to the server's add-ons directory
+
+#### addon.disabled_addon_path
+- `str`, full filesystem path to the server's disabled add-ons directory
+
 #### addon.update_required
  - `bool`, `True` if one or more add-ons can be updated
 
 #### addon.geyser_support
  - `bool`, `True` if Geyser and Floodgate are installed
+
+<br><br>
+
+
+
+
+## ScriptManager
+Contains the server's amscript configuration.
+
+Accessed via the global variable `amscript`
+
+The `ScriptManager` conceptualizes scripts in a few different formats:
+
+- For all functionality relating to data stored locally, scripts are abstracted as an `AmsFileObject`. The attributes are as follows:
+```python
+class AmsFileObject():
+    self.addon_object_type = "file"
+
+    # The title defined in the script
+    self.title <str>
+
+    # The author defined in the script
+    self.author <str>
+
+    # The description defined in the script
+    self.description <str>
+
+    # The file name of the script
+    self.file_name <str>
+
+    # The full file path of the script
+    self.path <str>
+
+    # Add-on version defined in the script
+    self.version <str>
+
+    # Whether or not the script is enabled in auto-mcs
+    self.enabled <bool>
+```
+
+<br>
+
+- For all functionality relating to data stored on the internet, scripts are abstracted as an `AmsWebObject`. The attributes are as follows:
+```python
+class AmsWebObject():
+    self.addon_object_type = "web"
+
+    # The title defined on the internet
+    self.title <str>
+
+    # The author defined on the internet
+    self.author <str>
+
+    # The description defined on the internet
+    self.description <str>
+
+    # The file name defined of the internet
+    self.file_name <str>
+
+    # The full URL of the project on the internet
+    self.url <str>
+
+    # A direct download link to the appropriate version for the server
+    self.download_url <str>
+
+    # The script version defined on the internet
+    self.version <str>
+
+    # Whether or not the script is installed
+    self.installed <bool>
+
+    # A direct download link to required dependencies, or None
+    self.libs <str>
+```
+
+
+<br>
+
+
+**Methods**: <br><br>
+
+
+
+### amscript.search_scripts(*query*)
+
+Returns a `list` of `AmsWebObject` that match your query, sorted in descending order from `index[0]`.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `query*` | `str`, partial search term or full script name |
+
+<br>
+
+
+
+### amscript.download_script(*script*)
+
+Downloads a script from a string of the script name, or an `AddonWebObject` provided by `addon.search_addons()`. The file is saved in `amscript.script_path`.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `script*` | `str` or `AmsWebObject` to download |
+
+<br>
+
+
+
+### amscript.import_script(*script_path*)
+
+Imports an `.ams` file to `amscript.script_path`.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `addon_path*` | `str`, full system path to the `.ams` file |
+
+<br>
+
+
+
+### amscript.script_state(*script, enabled*)
+
+Enables/disables an installed script. Retrieve an `AmsFileObject` with `amscript.get_script()` or from `amscript.installed_scripts`.
+
+> Note: The amscript engine requires a restart for changes to take effect
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `script*` | `AmsFileObject`, from `amscript.get_script()` or `amscript.installed_scripts` |  
+| `enabled*` | `bool`, to enable or disable the script. Defaults to `True` |
+
+<br>
+
+
+
+### amscript.delete_script(*script*)
+
+Permanently deletes an installed script. Retrieve an `AmsFileObject` with `amscript.get_script()` or from `amscript.installed_scripts`.
+
+> Note: The amscript engine requires a restart for changes to take effect
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `script*` | `AmsFileObject`, from `amscript.get_script()` or `amscript.installed_scripts` |
+
+<br>
+
+
+
+### amscript.get_script(*script_name, online*)
+
+Retrieves an `AmsFileObject` from the installed server scripts, or `AmsWebObject` from the online repository if `online` is `True`.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `script_name*` | `str`, script name |
+| `online` | `bool`, retrieves online data instead if `True`. Defaults to `False` |
+
+<br>
+
+
+
+### amscript.return_single_list()
+
+Returns a single `list` of both enabled and disabled `AmsFileObject` from `amscript.installed_scripts`.
+
+<br>
+
+
+
+**Attributes**:
+> Note: All attributes are read-only, and thus will not change the server data when modified
+
+
+#### amscript.installed_scripts
+ - `dict`, contains lists of `AmsFileObject` with the following structure:
+ ```python
+acl.rules = {
+    'enabled': [AmsFileObject, AmsFileObject, ...],
+    'disabled': [AmsFileObject, AmsFileObject, ...]
+}
+```
+
+#### amscript.script_path
+- `str`, full filesystem path to the global auto-mcs script folder
+
+#### amscript.json_path
+- `str`, full filesystem path to the server's amscript `.json` configuration file
 
 <br><br>
 

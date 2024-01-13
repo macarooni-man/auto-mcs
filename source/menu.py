@@ -12732,7 +12732,15 @@ class ConsolePanel(FloatLayout):
     # Format and copy all selected text to clipboard
     def copy_selection(self):
         if self.selected_labels:
-            Clipboard.copy('\n'.join([str(x[0].rjust(11) + ('['+x[1]+']').rjust(9) + ' >   '+x[2]) for x in self.selected_labels]))
+            text = '\n'.join([str(x[0].rjust(11) + ('['+x[1]+']').rjust(9) + ' >   '+x[2]) for x in self.selected_labels])
+
+            # Remove formatting from text
+            if '[/color]' in text:
+                text = re.sub(r'\[\/?color(=#\w+)?\]', '', text)
+            if '§' in text:
+                for code in constants.color_table.keys():
+                    text = text.replace(code, '')
+            Clipboard.copy(text)
             self.selected_labels = []
 
         # Animate to convey copying
