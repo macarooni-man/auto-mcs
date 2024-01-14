@@ -1243,6 +1243,9 @@ class ServerObject():
         if not self.running:
 
             # Save a back-up of current server state
+            while not self.backup:
+                time.sleep(0.1)
+
             self.backup.save()
 
             # Delete server folder

@@ -69,7 +69,10 @@ class BackupManager():
         self.maximum = self._backup_stats['max-backup']
         self.total_size = self._backup_stats['total-size-bytes']
         self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
-        self.latest = self.list[0]
+        if self.list:
+            self.latest = self.list[0]
+        else:
+            self.latest = None
         self._restore_file = None
 
     # Refreshes self._backup_stats
@@ -80,7 +83,10 @@ class BackupManager():
         self.maximum = self._backup_stats['max-backup']
         self.total_size = self._backup_stats['total-size-bytes']
         self.list = [BackupObject(self._server['name'], file, no_fetch=True) for file in self._backup_stats['backup-list']]
-        self.latest = self.list[0]
+        if self.list:
+            self.latest = self.list[0]
+        else:
+            self.latest = None
 
 
     # Backup functions
