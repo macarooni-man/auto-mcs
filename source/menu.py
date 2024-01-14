@@ -7374,7 +7374,7 @@ def process_ip_text(server_obj=None):
 
     else:
         start_text = ''
-        if not str(constants.new_server_info['port'] == '25565') or constants.new_server_info['ip']:
+        if not str(constants.new_server_info['port']) == '25565' or constants.new_server_info['ip']:
             if constants.new_server_info['ip']:
                 start_text = constants.new_server_info['ip']
             if str(constants.new_server_info['port']) != '25565':
