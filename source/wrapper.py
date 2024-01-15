@@ -52,31 +52,39 @@ if __name__ == '__main__':
 
 
     # Check for additional arguments
-    parser = argparse.ArgumentParser(description='CLI options for auto-mcs')
-    parser.add_argument('-d', '--debug', default='',help='execute auto-mcs with verbose console logging', action='store_true')
-    parser.add_argument('-l', '--launch', type=str, default='', help='specify a server name (or list of server names) to launch automatically', metavar='"Server 1, Server 2"')
-    args = parser.parse_args()
+    try:
+        parser = argparse.ArgumentParser(description='CLI options for auto-mcs')
+        parser.add_argument('-d', '--debug', default='',help='execute auto-mcs with verbose console logging', action='store_true')
+        parser.add_argument('-l', '--launch', type=str, default='', help='specify a server name (or list of server names) to launch automatically', metavar='"Server 1, Server 2"')
+        args = parser.parse_args()
 
-    # Check for debug mode
-    constants.debug = args.debug
+        # Check for debug mode
+        constants.debug = args.debug
 
-    # Check for auto-start
-    if args.launch:
-        constants.generate_server_list()
-        server_list = [s.strip() for s in args.launch.split(',')]
-        for server in server_list:
-            if server.lower() in constants.server_list_lower:
-                server = constants.server_list[constants.server_list_lower.index(server.lower())]
-                constants.boot_launches.append(server)
-            else:
-                print(f'--launch: server "{server}" does not exist')
-                sys.exit(-1)
+        # Check for auto-start
+        if args.launch:
+            constants.generate_server_list()
+            server_list = [s.strip() for s in args.launch.split(',')]
+            for server in server_list:
+                if server.lower() in constants.server_list_lower:
+                    server = constants.server_list[constants.server_list_lower.index(server.lower())]
+                    constants.boot_launches.append(server)
+                else:
+                    print(f'--launch: server "{server}" does not exist')
+                    sys.exit(-1)
+
+    except AttributeError:
+        if constants.debug:
+            print("argparse error: failed to process commandline arguments")
 
 
 
     # Check if application is already open
     if constants.os_name == "windows":
-        if len(constants.run_proc(f'tasklist | findstr {os.path.basename(constants.launch_path)}', True).strip().splitlines()) > 2:
+        command = f'tasklist | findstr {os.path.basename(constants.launch_path)}'
+        response = [line for line in constants.run_proc(command, True).strip().splitlines() if ((command not in line) and ('tasklist' not in line) and (line.endswith(' K')))]
+        print(response)
+        if len(response) > 2:
             user32 = ctypes.WinDLL('user32')
             if hwnd := user32.FindWindowW(None, constants.app_title):
                 if not user32.IsZoomed(hwnd):
@@ -85,7 +93,9 @@ if __name__ == '__main__':
             sys.exit()
     # Linux
     else:
-        if len(constants.run_proc(f'ps -e | grep {os.path.basename(constants.launch_path)}', True).strip().splitlines()) > 2:
+        command = f'ps -e | grep {os.path.basename(constants.launch_path)}'
+        response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and line]
+        if len(response) > 2:
             sys.exit()
 
     import main

@@ -38,8 +38,8 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0.4"
-ams_version = "1.0"
+app_version = "2.0.5"
+ams_version = "1.1"
 app_title = "auto-mcs"
 window_size = (850, 850)
 refresh_rate = 60
@@ -708,7 +708,11 @@ def check_world_version(world_path: str, server_version: str):  # Returns (True,
                 with open(cache_file, 'r') as f:
                     cache_file = json.load(f)
 
-                world_version = ([item for item in cache_file.items() if world_data_version == item[1]][0])
+                try:
+                    world_version = ([item for item in cache_file.items() if world_data_version == item[1]][0])
+                # Accept as valid if world could not be found, it's probably too new
+                except IndexError:
+                    return (True, None)
                 try:
                     server_version = (server_version, cache_file[server_version])
                 except:
@@ -2116,7 +2120,7 @@ motd={new_server_info['server_settings']['motd']}
 announce-player-achievements=true
 force-gamemode=false
 hardcore={bool_str(new_server_info['server_settings']['difficulty'] == 'hardcore')}
-white-list={bool_str(new_server_info['acl_object'].server['whitelist'])}
+white-list={bool_str(new_server_info['acl_object']._server['whitelist'])}
 pvp={bool_str(new_server_info['server_settings']['pvp'])}
 spawn-npcs={bool_str(new_server_info['server_settings']['spawn_creatures'])}
 generate-structures=true
@@ -2130,12 +2134,12 @@ max-tick-time=60000
 max-players={new_server_info['server_settings']['max_players']}
 spawn-protection={20 if new_server_info['server_settings']['spawn_protection'] else 0}
 online-mode={bool_str(not ("b" in new_server_info['version'][:1] or "a" in new_server_info['version'][:1]))}
-allow-flight=false
+allow-flight=true
 resource-pack-hash=
 max-world-size=29999984"""
 
     if version_check(new_server_info['version'], ">=", '1.13'):
-        serverProperties += f"\nenforce_whitelist={bool_str(new_server_info['acl_object'].server['whitelist'])}"
+        serverProperties += f"\nenforce_whitelist={bool_str(new_server_info['acl_object']._server['whitelist'])}"
 
     if version_check(new_server_info['version'], ">=", '1.19'):
         serverProperties += "\nenforce-secure-profile=false"
@@ -2223,15 +2227,16 @@ def create_backup(import_server=False, *args):
 
 
 # Restore backup and track progress for ServerBackupRestoreProgressScreen
-def restore_server(file_path, progress_func=None):
+def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 
     # Get file count of backup
     total_files = 0
     proc_complete = False
+    file_path = backup_obj.path
     server_name = server_manager.current_server.name
     file_name = os.path.basename(file_path)
 
-    server_manager.current_server.backup.restore_file = None
+    server_manager.current_server.backup._restore_file = None
 
     with tarfile.open(file_path) as archive:
         total_files = sum(1 for member in archive if member.isreg())
@@ -2252,7 +2257,7 @@ def restore_server(file_path, progress_func=None):
     thread_check.daemon = True
     thread_check.start()
 
-    server_manager.current_server.backup.restore(file_name)
+    server_manager.current_server.backup.restore(backup_obj)
     proc_complete = True
 
     if progress_func:
@@ -2600,8 +2605,8 @@ def finalize_import(progress_func=None, *args):
 
 
         # Add global rules to ACL
-        from acl import AclObject
-        AclObject(import_data['name']).write_rules()
+        from acl import AclManager
+        AclManager(import_data['name']).write_rules()
 
         if progress_func:
             progress_func(66)
@@ -3327,9 +3332,38 @@ max-tick-time=60000
 max-players=20
 spawn-protection=20
 online-mode=true
-allow-flight=false
+allow-flight=true
 resource-pack-hash=
 max-world-size=29999984"""
 
     with open(os.path.join(path, 'server.properties'), "w+") as f:
         f.write(serverProperties)
+
+
+# CTRL + Backspace function
+def control_backspace(text, index):
+
+    # Split up text into parts
+    start = text[:index].strip()
+    end = text[index:]
+
+    if " " not in start:
+        new_text = ""
+    else:
+        new_text = start.rsplit(" ", 1)[0]
+
+    # Add space between concatenated blocks if one does not exist
+    try:
+        if new_text[-1] != " " and not end:
+            new_text += " "
+
+        elif new_text[-1] != " " and end[0] != " ":
+            new_text += " "
+
+    except IndexError:
+        pass
+
+    # Return edited text
+    final_text = new_text + end
+    new_index = len(text) - len(final_text)
+    return final_text, new_index

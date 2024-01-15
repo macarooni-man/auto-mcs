@@ -6,7 +6,6 @@ from copy import deepcopy
 from glob import glob
 import functools
 import threading
-import hashlib
 import psutil
 import ctypes
 import time
@@ -14,7 +13,7 @@ import json
 import os
 import re
 
-from acl import AclObject, get_uuid
+from acl import AclManager, get_uuid
 from backup import BackupManager
 from addons import AddonManager
 import constants
@@ -173,7 +172,7 @@ class ServerObject():
                 self._view_notif('add-ons', viewed='')
         Timer(0, load_addon).start()
         def load_acl(*args):
-            self.acl = AclObject(server_name)
+            self.acl = AclManager(server_name)
         Timer(0, load_acl).start()
         def load_scriptmgr(*args):
             self.script_manager = amscript.ScriptManager(self.name)
@@ -282,7 +281,7 @@ class ServerObject():
                     self._view_notif('add-ons', viewed='')
             Timer(0, load_addon).start()
             def load_acl(*args):
-                self.acl = AclObject(self.name)
+                self.acl = AclManager(self.name)
             Timer(0, load_acl).start()
             def load_scriptmgr(*args):
                 self.script_manager = amscript.ScriptManager(self.name)
@@ -463,11 +462,22 @@ class ServerObject():
                     type_label = "EXEC"
                     type_color = (1, 0.298, 0.6, 1)
 
+                    user = message.split('issued server command: ')[0].strip()
+                    user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
+                    content = message.split('issued server command: ')[1].strip()
+
+                    # If commands change ACL status, reload lists
+                    if content.startswith('op ') or content.startswith('deop '):
+                        self.acl.reload_list('ops')
+                    if content.startswith('ban ') or content.startswith('pardon '):
+                        self.acl.reload_list('bans')
+                    if content.startswith('whitelist add ') or content.startswith('whitelist remove '):
+                        self.acl.reload_list('wl')
+
+                    # Process amscript event
                     if self.script_object.enabled:
-                        user = message.split('issued server command: ')[0].strip()
-                        user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
-                        content = message.split('issued server command: ')[1].strip()
                         event = functools.partial(self.script_object.message_event, {'user': user, 'content': content})
+
 
 
                 # Server start log
@@ -555,7 +565,7 @@ class ServerObject():
                 # Other message events
                 elif "WARN" in line:
                     type_label = "WARN"
-                    type_color = (1, 0.659, 0.42, 1)
+                    type_color = (1, 0.804, 0.42, 1)
                 elif "ERROR" in line:
                     type_label = "ERROR"
                     type_color = (1, 0.5, 0.65, 1)
@@ -722,6 +732,7 @@ class ServerObject():
                 self.run_data['close-hooks'] = [self.auto_backup_func]
                 self.run_data['console-panel'] = None
                 self.run_data['performance-panel'] = None
+                self.run_data['command-history'] = []
             else:
                 self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
 
@@ -732,8 +743,8 @@ class ServerObject():
             self.run_data['advanced-hash'] = self.__get_advanced_hash__()
             self.run_data['addon-hash'] = None
             if self.addon:
-                self.run_data['addon-hash'] = deepcopy(self.addon.addon_hash)
-            self.run_data['script-hash'] = deepcopy(self.script_manager.script_hash)
+                self.run_data['addon-hash'] = deepcopy(self.addon._addon_hash)
+            self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
 
             # Open server script and attempt to launch
@@ -767,7 +778,6 @@ class ServerObject():
 
             self.run_data['pid'] = self.run_data['process'].pid
             self.run_data['send-command'] = self.send_command
-            self.run_data['command-history'] = []
 
 
 
@@ -788,13 +798,18 @@ class ServerObject():
 
                 for line in lines_iterator:
 
-                    # Append legacy errors to error list
-                    if constants.version_check(self.version, '<', '1.7'):
-                        if "[STDERR] ".encode() in line:
-                            error_list.append(line.decode().split("[STDERR] ")[1])
-                            continue
+                    try:
+                        # Append legacy errors to error list
+                        if constants.version_check(self.version, '<', '1.7'):
+                            if "[STDERR] ".encode() in line:
+                                error_list.append(line.decode().split("[STDERR] ")[1])
+                                continue
 
-                    self.update_log(line)
+                        self.update_log(line)
+
+                    except Exception as e:
+                        if constants.debug:
+                            print(f'Failed to process line: {e}')
 
                     fail_counter = 0 if line else (fail_counter + 1)
 
@@ -968,6 +983,8 @@ class ServerObject():
 
 
                 # Close server
+                if constants.debug:
+                    print(f'Terminating "{self.name}"')
                 self.terminate()
                 return
 
@@ -1080,11 +1097,10 @@ class ServerObject():
             self.running = False
             self.launch()
 
-
     # Restarts server, for amscript
     def restart(self):
         self.restart_flag = True
-        self.send_command("stop")
+        self.silent_command("stop")
 
     # Retrieves performance information
     def performance_stats(self, interval=0.5, update_players=False):
@@ -1159,7 +1175,7 @@ class ServerObject():
             # Update player list
             for player, data in player_list.items():
                 if data['logged-in']:
-                    if self.acl.rule_in_acl('ops', player):
+                    if self.acl.rule_in_acl(player, 'ops'):
                         final_list.insert(0, {'text': player, 'color': (0, 1, 1, 1)})
                     else:
                         final_list.append({'text': player, 'color': (0.6, 0.6, 1, 1)})
@@ -1227,6 +1243,9 @@ class ServerObject():
         if not self.running:
 
             # Save a back-up of current server state
+            while not self.backup:
+                time.sleep(0.1)
+
             self.backup.save()
 
             # Delete server folder
@@ -1256,7 +1275,7 @@ class ServerObject():
 
     # Attempts to automatically back up the server
     def auto_backup_func(self, crash_info, *args):
-        auto_backup = self.backup.backup_stats['auto-backup']
+        auto_backup = self.backup._backup_stats['auto-backup']
 
         if auto_backup == 'prompt':
             return False
@@ -1285,7 +1304,7 @@ class ServerObject():
             self.script_object = amscript.ScriptObject(self)
             loaded_count, total_count = self.script_object.construct()
             self.script_object.start_event({'date': dt.now()})
-            self.run_data['script-hash'] = deepcopy(self.script_manager.script_hash)
+            self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
             return loaded_count, total_count
         else:
@@ -1358,7 +1377,7 @@ class ServerObject():
 
                 if log_type == 'warning':
                     type_label = "WARN"
-                    type_color = (1, 0.659, 0.42, 1)
+                    type_color = (1, 0.804, 0.42, 1)
                 elif log_type == 'error':
                     type_label = "ERROR"
                     type_color = (1, 0.5, 0.65, 1)
@@ -1599,6 +1618,9 @@ class ServerManager():
             self.current_server = ServerObject(name)
             if crash_info[0] == name:
                 self.current_server.crash_log = crash_info[1]
+
+        if constants.debug:
+            print(vars(self.current_server))
 
     # Reloads self.current_server
     def reload_server(self):

@@ -1,0 +1,85 @@
+---
+name: Compiler
+on:
+  push: null
+jobs:
+  windows:
+    name: Windows Build
+    runs-on: windows-2019
+    steps:
+    
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+        
+      - name: Install Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+          
+      - name: Compile auto-mcs
+        shell: pwsh
+        run: |
+          systeminfo
+          $python_path = "$env:LOCALAPPDATA\Programs\Python\Python39"
+          md $python_path
+          Move-Item -Force C:\hostedtoolcache\windows\Python\3.9.13\x64\* $python_path
+          powershell -noprofile -executionpolicy bypass -file .\build-tools\build-windows.ps1
+
+      - name: Upload Executable
+        uses: actions/upload-artifact@v3
+        with:
+          name: auto-mcs-windows
+          path: build-tools/dist/
+          retention-days: 5
+
+
+  linux:
+    name: Linux Build
+    runs-on: ubuntu-20.04
+    steps:
+    
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          
+      - name: Install Dependencies
+        run: |
+          sudo apt update -y
+          sudo apt install xvfb fluxbox libasound2 -y
+          export DISPLAY=:0.0
+          Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+          sleep 1
+          fluxbox > /dev/null 2>&1 &
+          
+      - name: Install Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      #- name: Setup upterm session
+      #  uses: lhotari/action-upterm@v1
+    
+      - name: Compile auto-mcs
+        run: |
+          mkdir -p /opt/python/
+          ln -s /opt/hostedtoolcache/Python/3.9.18/x64 /opt/python/3.9.18
+          sudo rm -rf /usr/bin/python3
+          sudo rm -rf /usr/bin/pip
+          sudo ln -s /opt/hostedtoolcache/Python/3.9.18/x64/bin/python/bin/python3 /usr/bin/python3
+          sudo ln -s /opt/hostedtoolcache/Python/3.9.18/x64/bin/python/bin/pip3.9 /usr/bin/pip
+          sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
+          sudo cp -f /usr/bin/whoami /usr/bin/logname
+          export DISPLAY=:0.0
+          cd build-tools
+          chmod +x build-linux.sh
+          sudo ./build-linux.sh
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: auto-mcs-linux
+          path: build-tools/dist/
+          retention-days: 5

@@ -1,4 +1,5 @@
 import distutils.sysconfig as sysconfig
+from difflib import SequenceMatcher
 from threading import Timer
 from textwrap import indent
 from copy import deepcopy
@@ -25,6 +26,7 @@ import gc
 # House an .ams file and relevant details
 class AmsFileObject():
     def __init__(self, path, enabled=False):
+        self.script_object_type = 'file'
         self.path = path
         self.file_name = os.path.basename(path)
         self.title = self.file_name.replace(".ams","")
@@ -75,6 +77,7 @@ class AmsFileObject():
 # House an .ams file in the online repository
 class AmsWebObject():
     def __init__(self, data: tuple or list):
+        self.script_object_type = 'web'
 
         meta = None
         self.title = data[0]
@@ -130,17 +133,35 @@ class AmsWebObject():
 class ScriptManager():
 
     def __init__(self, server_name):
-        self.server_name = server_name
-        self.server_path = constants.server_path(server_name)
+        self._server_name = server_name
+        self._server_path = constants.server_path(server_name)
         self.script_path = constants.scriptDir
-        self.json_path = os.path.join(self.server_path, 'amscript', json_name)
+        self.json_path = os.path.join(self._server_path, 'amscript', json_name)
         self.installed_scripts = {'enabled': [], 'disabled': []}
-        self.online_scripts = constants.ams_web_list
-        self.script_hash = None
-        self.enumerate_scripts()
+        self._online_scripts = constants.ams_web_list
+        self._script_hash = None
+        self._enumerate_scripts()
+
+    # Sets script hash to determine changes
+    def _set_hash(self):
+        script_hash = ""
+
+        for script in sorted(self.installed_scripts['enabled'], key=lambda x: x.title):
+            script_hash += script.hash.decode()
+
+        return script_hash
+
+    # Checks script hash in running config to see if it's changed
+    def _hash_changed(self):
+        hash_changed = False
+
+        if self._server_name in constants.server_manager.running_servers:
+            hash_changed = constants.server_manager.running_servers[self._server_name].run_data['script-hash'] != self._script_hash
+
+        return hash_changed
 
     # Checks for enabled scrips and adds them to the list
-    def enumerate_scripts(self, single_list=False):
+    def _enumerate_scripts(self, single_list=False):
         all_scripts = glob(os.path.join(self.script_path, '*.ams'))
         ams_dict = {'enabled': [], 'disabled': []}
 
@@ -165,7 +186,7 @@ class ScriptManager():
             ams_dict['disabled'] = [AmsFileObject(script, enabled=False) for script in all_scripts]
 
         self.installed_scripts = ams_dict
-        self.script_hash = self._set_hash()
+        self._script_hash = self._set_hash()
 
         # If single list, concatenate enabled and disabled lists
         if single_list:
@@ -175,70 +196,11 @@ class ScriptManager():
         else:
             return ams_dict
 
-    # Returns single list of all scripts
-    def return_single_list(self):
-        return self.enumerate_scripts(single_list=True)
-
-    # Enables/Disables scripts
-    def script_state(self, script: AmsFileObject, enabled=True):
-        script_state(self.server_name, script, enabled)
-
-        # Reload script data
-        self.enumerate_scripts()
-
-    # Checks online to view scripts from GitHub
-    def search_scripts(self, query: str, *args):
-        constants.folder_check(constants.scriptDir)
-
-        if not self.online_scripts:
+    # If scripts aren't obtained, gather web list
+    def _refresh_online_scripts(self):
+        if not self._online_scripts:
             constants.get_repo_scripts()
-            self.online_scripts = constants.ams_web_list
-
-        final_list = []
-        installed_list = [script.title.lower().strip() for script in self.return_single_list()]
-
-        # Filter available scripts with query
-        for script in self.online_scripts:
-            if query.lower().strip() in script.title.lower().strip() or query.lower() in script.description.lower().strip() or not query:
-                if script not in final_list:
-                    script.installed = script.title.lower().strip() in installed_list
-                    final_list.append(script)
-
-        return final_list
-
-    # Deletes script
-    def delete_script(self, script: AmsFileObject):
-
-        # Remove script from every server in which it's enabled
-        for server in glob(os.path.join(constants.applicationFolder, 'Servers', '*')):
-            server_name = os.path.basename(server)
-            json_path = constants.server_path(server_name, 'amscript', json_name)
-            if json_path:
-                script_state(server_name, script, enabled=False)
-
-        # Delete script from .ams path
-        try:
-            os.remove(script.path)
-            removed = True
-        except OSError:
-            removed = False
-
-        self.enumerate_scripts()
-        return removed
-
-    # Downloads script and enables it
-    def download_script(self, script: AmsWebObject):
-        constants.folder_check(constants.scriptDir)
-        constants.download_url(script.download_url, script.file_name, constants.scriptDir)
-        new_script = AmsFileObject(os.path.join(constants.scriptDir, script.file_name))
-        self.script_state(new_script, enabled=True)
-
-        if script.libs:
-            lib_dir = os.path.join(constants.scriptDir, 'libs')
-            constants.folder_check(constants.downDir)
-            constants.folder_check(lib_dir)
-            constants.download_url(script.libs, 'libs.zip', constants.downDir)
-            constants.extract_archive(os.path.join(constants.downDir, 'libs.zip'), lib_dir)
+            self._online_scripts = constants.ams_web_list
 
     # Imports list of scripts into script folder
     def import_script(self, script: str):
@@ -260,26 +222,102 @@ class ScriptManager():
             except OSError:
                 pass
 
-        self.enumerate_scripts()
+        self._enumerate_scripts()
         return success
 
-    # Sets script hash to determine changes
-    def _set_hash(self):
-        script_hash = ""
+    # Checks online to view scripts from GitHub
+    def search_scripts(self, query: str, *args):
+        constants.folder_check(constants.scriptDir)
+        self._refresh_online_scripts()
 
-        for script in sorted(self.installed_scripts['enabled'], key=lambda x: x.title):
-            script_hash += script.hash.decode()
+        final_list = []
+        installed_list = [script.title.lower().strip() for script in self.return_single_list()]
 
-        return script_hash
+        # Filter available scripts with query
+        for script in self._online_scripts:
+            if query.lower().strip() in script.title.lower().strip() or query.lower() in script.description.lower().strip() or not query:
+                if script not in final_list:
+                    script.installed = script.title.lower().strip() in installed_list
+                    final_list.append(script)
 
-    # Checks script hash in running config to see if it's changed
-    def _hash_changed(self):
-        hash_changed = False
+        return final_list
 
-        if self.server_name in constants.server_manager.running_servers:
-            hash_changed = constants.server_manager.running_servers[self.server_name].run_data['script-hash'] != self.script_hash
+    # Downloads script and enables it
+    def download_script(self, script: str or AmsWebObject):
 
-        return hash_changed
+        # If string was provided
+        if isinstance(script, str):
+            script = self.get_script(script, online=True)
+
+        constants.folder_check(constants.scriptDir)
+        constants.download_url(script.download_url, script.file_name, constants.scriptDir)
+        new_script = AmsFileObject(os.path.join(constants.scriptDir, script.file_name))
+        self.script_state(new_script, enabled=True)
+
+        if script.libs:
+            lib_dir = os.path.join(constants.scriptDir, 'libs')
+            constants.folder_check(constants.downDir)
+            constants.folder_check(lib_dir)
+            constants.download_url(script.libs, 'libs.zip', constants.downDir)
+            constants.extract_archive(os.path.join(constants.downDir, 'libs.zip'), lib_dir)
+
+    # Enables/Disables scripts
+    def script_state(self, script: AmsFileObject, enabled=True):
+        script_state(self._server_name, script, enabled)
+
+        # Reload script data
+        self._enumerate_scripts()
+
+    # Deletes script
+    def delete_script(self, script: AmsFileObject):
+
+        # Remove script from every server in which it's enabled
+        for server in glob(os.path.join(constants.applicationFolder, 'Servers', '*')):
+            server_name = os.path.basename(server)
+            json_path = constants.server_path(server_name, 'amscript', json_name)
+            if json_path:
+                script_state(server_name, script, enabled=False)
+
+        # Delete script from .ams path
+        try:
+            os.remove(script.path)
+            removed = True
+        except OSError:
+            removed = False
+
+        self._enumerate_scripts()
+        return removed
+
+    # Retrieves AmsFileObject or AmsWebObject by name
+    def get_script(self, script_name: str, online=False):
+        name = script_name.strip().lower()
+        match_list = []
+
+        # Get list of available scripts
+        if online:
+            self._refresh_online_scripts()
+            script_list = self._online_scripts
+        else:
+            script_list = self.return_single_list()
+
+        for script in script_list:
+
+            if name in [script.title.lower(), script.file_name.lower()]:
+                return script
+
+            score = round(SequenceMatcher(None, script.title.lower(), name).ratio(), 2)
+            score += round(SequenceMatcher(None, script.file_name.lower(), name).ratio(), 2)
+            if script.description:
+                score += (round(SequenceMatcher(None, script.description.lower(), name).ratio(), 2) * 5)
+
+            match_list.append((script, score))
+
+        if match_list:
+            return sorted(match_list, key=lambda x: x[1], reverse=True)[0][0]
+
+    # Returns single list of all scripts
+    def return_single_list(self):
+        return self._enumerate_scripts(single_list=True)
 
 
 # For processing .ams files and running them in the wrapper
@@ -922,7 +960,7 @@ class ScriptObject():
 
         # First, gather all script files
         constants.folder_check(self.script_path)
-        self.server.script_manager.enumerate_scripts()
+        self.server.script_manager._enumerate_scripts()
         self.scripts = [os.path.join(constants.executable_folder, 'baselib.ams')]
         self.scripts.extend([script.path for script in self.server.script_manager.installed_scripts['enabled']])
 
@@ -1186,6 +1224,8 @@ class ScriptObject():
         msg_obj['content'] = msg_obj['content'].replace("&bl;", "[").replace("&br;", "]")
         if msg_obj['content'].strip().split(" ",1)[0].strip() in self.aliases.keys():
             self.alias_event(msg_obj)
+        elif msg_obj['content'].startswith('!'):
+            PlayerScriptObject(self.server_script_obj, msg_obj['user']).log_error('Unknown command. Type "!help" for help.')
         elif msg_obj['user'] != self.server_id:
             self.call_event('@player.on_message', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), msg_obj['content']))
 
@@ -1217,7 +1257,7 @@ class ScriptObject():
         # print([rule.rule for rule in self.server.acl.rules['ops']])
         if player_obj['user'] == self.server_id:
             permission = 'server'
-        elif self.server.acl.rule_in_acl('ops', player_obj['user']):
+        elif self.server.acl.rule_in_acl(player_obj['user'], 'ops'):
             permission = 'op'
         else:
             permission = 'anyone'

@@ -82,7 +82,7 @@ from kivy.uix.dropdown import DropDown
 from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
-from kivy.properties import BooleanProperty, ObjectProperty, NumericProperty, ListProperty
+from kivy.properties import BooleanProperty, ObjectProperty
 
 
 def icon_path(name):
@@ -500,13 +500,15 @@ class BaseInput(TextInput):
 
     # Special keypress behaviors
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        super().keyboard_on_key_down(window, keycode, text, modifiers)
 
         if keycode[1] == "backspace" and "ctrl" in modifiers:
-            if " " not in self.text:
-                self.text = ""
-            else:
-                self.text = self.text.rsplit(" ", 1)[0]
+            original_index = self.cursor_col
+            new_text, index = constants.control_backspace(self.text, original_index)
+            self.select_text(original_index - index, original_index)
+            self.delete_selection()
+        else:
+            super().keyboard_on_key_down(window, keycode, text, modifiers)
+
 
 
 
@@ -1061,7 +1063,7 @@ class ServerVersionInput(BaseInput):
             elif len(self.text) < 10:
                 self.valid(True, True)
 
-                s = re.sub('[^a-eA-e0-9 .wpreWPRE-]', '', substring.splitlines()[0]).lower()
+                s = re.sub('[^a-eA-E0-9 .wpreWPRE-]', '', substring.splitlines()[0]).lower()
 
                 # Add name to current config
                 if self.text + s:
@@ -7070,7 +7072,7 @@ class UpdateAppProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Updating Auto-MCS",
+            'title': f"Updating auto-mcs",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -7259,7 +7261,7 @@ class CreateServerWorldScreen(MenuBackground):
         # Generate ACL in new_server_info
         def create_acl():
             if not constants.new_server_info['acl_object']:
-                constants.new_server_info['acl_object'] = acl.AclObject(constants.new_server_info['name'])
+                constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
             else:
                 constants.new_server_info['acl_object'].server = acl.dump_config(constants.new_server_info['name'], True)
 
@@ -7372,7 +7374,7 @@ def process_ip_text(server_obj=None):
 
     else:
         start_text = ''
-        if not str(constants.new_server_info['port'] == '25565') or constants.new_server_info['ip']:
+        if not str(constants.new_server_info['port']) == '25565' or constants.new_server_info['ip']:
             if constants.new_server_info['ip']:
                 start_text = constants.new_server_info['ip']
             if str(constants.new_server_info['port']) != '25565':
@@ -7457,7 +7459,7 @@ class RuleButton(FloatLayout):
             else:
                 self.hover_attr = (icon_path("close-circle.png"), 'BAN' if rule.rule_type == 'player' else 'REMOVE', (1, 0.5, 0.65, 1))
         elif screen_manager.current_screen.current_list == "wl":
-            if screen_manager.current_screen.acl_object.server['whitelist']:
+            if screen_manager.current_screen.acl_object._server['whitelist']:
                 self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (0.3, 1, 0.6, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (1, 0.5, 0.65, 1)]
             else:
                 self.color_id = self.button.color_id = [(0, 0, 0, 0.85), (0.3, 1, 0.6, 1)] if rule.list_enabled else [(0, 0, 0, 0.85), (0.7, 0.7, 0.7, 1)]
@@ -8160,7 +8162,7 @@ class AclRulePanel(RelativeLayout):
             final_text += (f"\n[color={self.color_dict['blue']}]Operator[/color]" if displayed_rule.display_data['op'] else "\n")
 
             # Whitelist data
-            if screen_manager.current_screen.acl_object.server['whitelist']:
+            if screen_manager.current_screen.acl_object._server['whitelist']:
                 self.player_layout.access_line_3.opacity = 1
                 final_text += ("\n[color=" + (f"{self.color_dict['green']}]Whitelisted" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]Not whitelisted") + "[/color]")
             else:
@@ -8173,7 +8175,7 @@ class AclRulePanel(RelativeLayout):
 
 
             # Adjust graphic data for access
-            if screen_manager.current_screen.acl_object.server['whitelist']:
+            if screen_manager.current_screen.acl_object._server['whitelist']:
                 if displayed_rule.display_data['wl']:
                     self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
                     self.player_layout.access_line_2.source = os.path.join(constants.gui_assets, "access_active.png")
@@ -8197,7 +8199,7 @@ class AclRulePanel(RelativeLayout):
             self.player_layout.uuid_header.text = "UUID"
             self.player_layout.ip_header.text = "IP"
             self.player_layout.geo_header.text = "Location"
-            self.player_layout.access_header.text = f"Access to '{screen_manager.current_screen.acl_object.server['name']}':"
+            self.player_layout.access_header.text = f"Access to '{screen_manager.current_screen.acl_object._server['name']}':"
 
 
 
@@ -8255,7 +8257,7 @@ class AclRulePanel(RelativeLayout):
             else:
                 widget_color = self.color_dict['red']
 
-            if not screen_manager.current_screen.acl_object.rule_in_acl('subnets', displayed_rule.rule):
+            if not screen_manager.current_screen.acl_object.rule_in_acl(displayed_rule.rule, 'subnets'):
                 displayed_rule.display_data['rule_info'] = "Unaffected " + displayed_rule.display_data['rule_info'].split(" ")[0]
                 displayed_rule.rule = displayed_rule.rule.replace("!w", "").replace("!g", "").strip()
                 screen_manager.current_screen.displayed_rule = displayed_rule
@@ -8650,7 +8652,7 @@ class CreateServerAclScreen(MenuBackground):
 
         # Update displayed data on user panel
         if rule_name:
-            self.acl_object.display_rule(rule_name)
+            self.acl_object.get_rule(rule_name)
             self.user_panel.update_panel(self.acl_object.displayed_rule, rule_scope)
 
 
@@ -8791,7 +8793,7 @@ class CreateServerAclScreen(MenuBackground):
         # Modify header content
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = ('[color=#6A6ABA]No rules[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] rule' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] rules')
-        if list_type == "wl" and not self.acl_object.server['whitelist']:
+        if list_type == "wl" and not self.acl_object._server['whitelist']:
             header_content += " (inactive)"
 
         # header_content = (" "*(len(header_content) - (55 if 'inactive' not in header_content else 50))) + header_content
@@ -8860,7 +8862,7 @@ class CreateServerAclScreen(MenuBackground):
                     size=(125, 32),
                     color=(0.6, 0.5, 1, 1) if list_type == 'ops'
                     else (0.3, 1, 0.6, 1) if list_type == 'bans'
-                    else (1, 0.5, 0.65, 1) if self.acl_object.server['whitelist'] else(0.7, 0.7, 0.7, 1),
+                    else (1, 0.5, 0.65, 1) if self.acl_object._server['whitelist'] else(0.7, 0.7, 0.7, 1),
 
                     text="standard" if list_type == 'ops'
                     else "allowed" if list_type == 'bans'
@@ -8989,7 +8991,7 @@ class CreateServerAclScreen(MenuBackground):
 
         # Whitelist toggle button
         def toggle_whitelist(boolean):
-            self.acl_object.toggle_whitelist(boolean)
+            self.acl_object.enable_whitelist(boolean)
 
             Clock.schedule_once(
                 functools.partial(
@@ -9005,7 +9007,7 @@ class CreateServerAclScreen(MenuBackground):
             # Update list
             self.update_list('wl', reload_children=True, reload_panel=True)
 
-        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object.server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
 
 
         # Legend for rule types
@@ -9130,7 +9132,7 @@ class CreateServerAclRuleScreen(MenuBackground):
     def apply_rules(self):
 
         # Actually apply rules
-        original_list = self.acl_object.process_query(self.acl_input.text, self.current_list)
+        original_list = self.acl_object._process_query(self.acl_input.text, self.current_list)
 
         applied_list = []
         applied_list.extend(original_list['global'])
@@ -9160,7 +9162,7 @@ class CreateServerAclRuleScreen(MenuBackground):
         )
 
         # Return to previous screen
-        self.acl_object.display_rule(applied_list[0])
+        self.acl_object.get_rule(applied_list[0])
         previous_screen()
 
         def update_panel(*args):
@@ -11717,8 +11719,13 @@ class PerformancePanel(RelativeLayout):
             formatted_color = '[color=#737373]'
             found = False
             for x, item in enumerate(perf_data['uptime'].split(":")):
+                if x == 0 and len(item) > 2:
+                    formatted_color = f'{item}:'
+                    found = True
+                    continue
                 if x == 0 and item != '00':
-                    formatted_color += '[/color]'
+                    item = int(item)
+                    formatted_color += '[/color]' if len(str(item)) >= 2 else '0[/color]'
                     found = True
                 if item != "00" and not found:
                     found = True
@@ -11795,12 +11802,16 @@ class PerformancePanel(RelativeLayout):
 
 
             def on_resize(self, *args):
+                max_x = 500
                 self.label.texture_update()
                 self.size_hint_max = self.label.texture_size
+                self.size_hint_max[0] = max_x
                 self.label.size_hint_max = self.label.texture_size
+                self.label.size_hint_max[0] = max_x
 
                 self.shadow.texture_update()
                 self.shadow.size_hint_max = self.shadow.texture_size
+                self.shadow.size_hint_max[0] = max_x
                 self.shadow.pos = (self.label.x + self.offset, self.label.y - self.offset)
 
 
@@ -12132,7 +12143,7 @@ class PerformancePanel(RelativeLayout):
                     def on_ref_press(self, *args):
                         if not self.disabled and self.text:
                             if constants.server_manager.current_server.acl:
-                                constants.server_manager.current_server.acl.display_rule(re.sub("\[.*?\]", "", self.text))
+                                constants.server_manager.current_server.acl.get_rule(re.sub("\[.*?\]", "", self.text))
                                 constants.back_clicked = True
                                 screen_manager.current = 'ServerAclScreen'
                                 constants.back_clicked = False
@@ -12283,10 +12294,30 @@ class ConsolePanel(FloatLayout):
     def update_text(self, text, force_scroll=False, animate_last=True, *args):
         original_scroll = self.scroll_layout.scroll_y
         original_len = len(self.scroll_layout.data)
+        label_height = 41.8
         self.scroll_layout.data = text
-        if (self.console_text.height > self.scroll_layout.height - self.console_text.padding[-1] - self.console_text.padding[1]) and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
+
+
+        # Make the console sticky if scrolled to the bottom of the viewport
+        viewport_size = self.scroll_layout.height - self.console_text.padding[-1] - self.console_text.padding[1]
+        if (len(self.scroll_layout.data) * label_height > viewport_size) and ((original_scroll == 0 or not self.auto_scroll) or force_scroll):
             self.scroll_layout.scroll_y = 0
             self.auto_scroll = True
+
+
+        # Temporary fix to prevent console text from moving when new data is added
+        else:
+
+            delta = self.scroll_layout.convert_distance_to_scroll(0, ((len(self.scroll_layout.data) * label_height) * (1 - self.scroll_layout.scroll_y)) - ((original_len * label_height) * (1 - original_scroll)))[1]
+            if delta:
+                final_scroll = self.scroll_layout.scroll_y + delta
+
+                if final_scroll > 1:
+                    final_scroll = 1
+                elif final_scroll < 0:
+                    final_scroll = 0
+
+                self.scroll_layout.scroll_y = final_scroll
 
         def fade_animation(*args):
             for label in self.console_text.children:
@@ -12301,6 +12332,12 @@ class ConsolePanel(FloatLayout):
                     Animation(opacity=0, duration=0.3).start(label.anim_cover)
         if len(text) > original_len and animate_last:
             Clock.schedule_once(fade_animation, 0)
+
+
+        # Update selection coordinates if they exist
+        if self.last_self_touch:
+            lst = self.last_self_touch
+            self.last_self_touch = (lst[0], lst[1] + ((len(self.scroll_layout.data) - original_len) * label_height))
 
 
     # Fit background color across screen for transitions, and fix position
@@ -12346,6 +12383,9 @@ class ConsolePanel(FloatLayout):
             self.size_hint_max = (Window.width - self.size_offset[0], Window.height - self.size_offset[1])
             self.y = self.default_y
 
+        self.stop_click.size = self.size
+        self.stop_click.pos = self.pos
+
         # Console controls resize
         self.controls.size = self.size
         self.controls.pos = self.pos
@@ -12373,6 +12413,7 @@ class ConsolePanel(FloatLayout):
     # Launch server and update properties
     def launch_server(self, animate=True, *args):
         self.update_size()
+        self.selected_labels = []
 
         for k in self.parent._ignore_keys:
             if k == 'f':
@@ -12549,7 +12590,7 @@ class ConsolePanel(FloatLayout):
         Clock.schedule_once(reset, 0)
 
         # Prompt new server to enable automatic backups and updates
-        if not crash and (self.server_obj.auto_update == 'prompt' or self.server_obj.backup.backup_stats['auto-backup'] == 'prompt'):
+        if not crash and (self.server_obj.auto_update == 'prompt' or self.server_obj.backup._backup_stats['auto-backup'] == 'prompt'):
             Clock.schedule_once(functools.partial(prompt_new_server, self.server_obj))
 
 
@@ -12672,6 +12713,137 @@ class ConsolePanel(FloatLayout):
         self.controls.log_button.button.on_release()
 
 
+    # Select all ConsoleLabels
+    def select_all(self):
+        self.selected_labels = [x['text'] for x in self.scroll_layout.data]
+        for label in self.console_text.children:
+            label.sel_cover.opacity = 0.2
+
+
+    # Deselect all selected ConsoleLabels
+    def deselect_all(self):
+        self.selected_labels = []
+        for label in self.console_text.children:
+            if label.sel_cover.opacity > 0:
+                Animation.stop_all(label.sel_cover)
+                Animation(opacity=0, duration=0.05).start(label.sel_cover)
+
+
+    # Format and copy all selected text to clipboard
+    def copy_selection(self):
+        if self.selected_labels:
+            text = '\n'.join([str(x[0].rjust(11) + ('['+x[1]+']').rjust(9) + ' >   '+x[2]) for x in self.selected_labels])
+
+            # Remove formatting from text
+            if '[/color]' in text:
+                text = re.sub(r'\[\/?color(=#\w+)?\]', '', text)
+            if '§' in text:
+                for code in constants.color_table.keys():
+                    text = text.replace(code, '')
+            Clipboard.copy(text)
+            self.selected_labels = []
+
+        # Animate to convey copying
+        for label in self.console_text.children:
+            if label.sel_cover.opacity > 0:
+                Animation.stop_all(label.sel_cover)
+                label.sel_cover.opacity = 0.4
+                Animation(opacity=0, duration=0.2).start(label.sel_cover)
+
+
+    # Check for drag select
+    def on_touch_down(self, touch):
+
+        # Copy when right-clicked
+        if self.selected_labels and touch.button == "right":
+            self.copy_selection()
+            return True
+
+        # Select code for a single ConsoleLabel is under "SelectCover.on_touch_down()"
+        if touch.button == "left":
+            self.last_self_touch = self.console_text.to_widget(*touch.pos)
+        return super().on_touch_down(touch)
+
+
+    # Check for drag select
+    def on_touch_up(self, touch):
+        self.last_self_touch = None
+        return super().on_touch_up(touch)
+
+
+    # Automatically scroll console_text when mouse is dragged on the top or bottom regions
+    def scroll_region(self, top=True, last_touch=None):
+        if not self.in_scroll_region:
+            self.in_scroll_region = True
+            scroll_padding = 50
+            scroll_speed = (self.scroll_layout.height / len(self.scroll_layout.data)) / 1800
+            last_touch.pos = self.to_widget(*Window.mouse_pos)
+
+            if top:
+                while (Window.mouse_pos[1] >= self.scroll_layout.y + (self.scroll_layout.height - scroll_padding)) and self.last_self_touch:
+                    def scroll_up(*a):
+                        self.scroll_layout.scroll_y += scroll_speed
+
+                    if self.scroll_layout.scroll_y < 1:
+                        Clock.schedule_once(scroll_up, 0)
+                        Clock.schedule_once(functools.partial(self.on_touch_move, last_touch), 0)
+                    else:
+                        self.scroll_layout.scroll_y = 1
+                        break
+                    time.sleep(0.01)
+
+            else:
+                while (self.scroll_layout.y + (scroll_padding * 2) >= Window.mouse_pos[1] >= self.scroll_layout.y) and self.last_self_touch:
+                    def scroll_down(*a):
+                        self.scroll_layout.scroll_y -= scroll_speed
+
+                    if self.scroll_layout.scroll_y > 0:
+                        Clock.schedule_once(scroll_down, 0)
+                        Clock.schedule_once(functools.partial(self.on_touch_move, last_touch), 0)
+                    else:
+                        self.scroll_layout.scroll_y = 0
+                        break
+                    time.sleep(0.01)
+
+            self.in_scroll_region = False
+
+
+
+    def on_touch_move(self, touch, *a):
+
+        # Move the scrollbar when near the top or bottom to select more than the viewport
+        scroll_padding = 50
+        if (touch.dsy > 0) and (touch.pos[1] >= self.scroll_layout.y + (self.scroll_layout.height - scroll_padding)):
+            threading.Timer(0, functools.partial(self.scroll_region, True, touch)).start()
+
+        if (touch.dsy < 0) and (self.scroll_layout.y + (scroll_padding * 2) >= touch.pos[1] >= self.scroll_layout.y):
+            threading.Timer(0, functools.partial(self.scroll_region, False, touch)).start()
+
+        def is_between(y3):
+            y1 = self.console_text.height - self.last_self_touch[1]
+            y2 = self.console_text.height - self.console_text.to_widget(*touch.pos)[1]
+            y3 = self.console_text.height - self.console_text.to_widget(*self.scroll_layout.to_parent(0, y3))[1] - 25
+            return ((y1 <= y3 <= y2) or (y2 <= y3 <= y1)) and not (touch.pos[0] > self.scroll_layout.x + (self.scroll_layout.width - self.scroll_layout.drag_pad))
+
+        for widget in self.console_text.children:
+            try:
+                if is_between(widget.y) and widget.original_text not in self.selected_labels:
+
+                    # Use Y delta to orient clipboard content
+                    if touch.dsy > 0:
+                        self.selected_labels.insert(0, widget.original_text)
+                    else:
+                        self.selected_labels.append(widget.original_text)
+                    widget.sel_cover.opacity = 0.2
+
+                elif (not is_between(widget.y)) and widget.original_text in self.selected_labels:
+                    self.selected_labels.remove(widget.original_text)
+                    widget.sel_cover.opacity = 0
+            except:
+                pass
+        return super().on_touch_move(touch)
+
+
     def __init__(self, server_name, server_button=None, **kwargs):
         super().__init__(**kwargs)
 
@@ -12686,10 +12858,29 @@ class ConsolePanel(FloatLayout):
         self.default_y = 170
         self.y = self.default_y
 
+        # Selection info
+        self.selected_labels = []
+        self.last_touch = None
+        self.last_self_touch = None
+        self.in_scroll_region = False
+
+
         self.button_colors = {
             'maximize': [[(0.05, 0.08, 0.07, 1), (0.8, 0.8, 1, 1)], ''],
             'stop': [[(0.05, 0.08, 0.07, 1), (0.8, 0.8, 1, 1)], 'pink']
         }
+
+
+        # Stop clicks through the background
+        class StopClick(FloatLayout):
+            def on_touch_down(self, touch):
+                if self.collide_point(*touch.pos):
+                    return True
+                else:
+                    super().on_touch_down(touch)
+
+        self.stop_click = StopClick()
+        self.add_widget(self.stop_click)
 
 
         # Console line Viewclass for RecycleView
@@ -12706,12 +12897,17 @@ class ConsolePanel(FloatLayout):
             # Modifies rule attributes based on text content
             def change_properties(self, text):
 
+                if not self.console_panel and constants.server_manager.current_server.run_data:
+                    try:
+                        self.console_panel = constants.server_manager.current_server.run_data['console-panel']
+                    except KeyError:
+                        pass
+
                 if text and screen_manager.current_screen.name == 'ServerViewScreen':
                     self.date_label.text = text[0]
                     self.type_label.text = text[1]
                     self.main_label.text = text[2]
                     type_color = text[3]
-
 
                     # Log text section formatting
                     width = screen_manager.current_screen.console_panel.console_text.width
@@ -12744,11 +12940,16 @@ class ConsolePanel(FloatLayout):
                         self.date_banner1.color = self.date_banner2.color = constants.brighten_color(type_color, -0.2)
                         self.type_banner.color = type_color
 
+                        # Format selection color
+                        if self.console_panel:
+                            self.sel_cover.opacity = 0.2 if self.original_text in self.console_panel.selected_labels else 0
+                        self.sel_cover.color = constants.brighten_color(type_color, 0.05)
+                        self.sel_cover.width = self.width
 
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
-
                 self.original_text = None
+                self.console_panel = None
                 self.line_spacing = 20
                 self.font_size = sp(17)
                 self.section_size = 110
@@ -12796,6 +12997,35 @@ class ConsolePanel(FloatLayout):
                 self.date_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
                 self.date_label.halign = 'left'
                 self.add_widget(self.date_label)
+
+
+                # Select cover for text selection
+                class SelectCover(Image):
+
+                    def on_touch_down(self, touch):
+                        if self.collide_point(*touch.pos):
+                            if self.parent:
+                                for widget in self.parent.parent.children:
+                                    widget.sel_cover.opacity = 0
+                                try:
+                                    if (self.parent.original_text in self.parent.console_panel.selected_labels) and (len(self.parent.console_panel.selected_labels) == 1):
+                                        self.parent.console_panel.selected_labels = []
+                                    else:
+                                        self.parent.console_panel.last_touch = touch.pos
+                                        self.parent.console_panel.selected_labels = [self.parent.original_text]
+                                        self.opacity = 0.2
+                                except:
+                                    pass
+                        else:
+                            self.opacity = 0
+                            return super().on_touch_down(touch)
+
+                self.sel_cover = SelectCover()
+                self.sel_cover.opacity = 0
+                self.sel_cover.allow_stretch = True
+                self.sel_cover.size_hint = (None, None)
+                self.sel_cover.height = self.section_size / 2.63
+                self.add_widget(self.sel_cover)
 
 
                 # Cover for fade animation
@@ -12907,19 +13137,19 @@ class ConsolePanel(FloatLayout):
 
             # Manipulate command history
             def keyboard_on_key_down(self, window, keycode, text, modifiers):
-                super().keyboard_on_key_down(window, keycode, text, modifiers)
 
                 if self.parent.run_data:
 
+                    if keycode[1] == "backspace" and "ctrl" in modifiers:
+                        original_index = self.cursor_col
+                        new_text, index = constants.control_backspace(self.text, original_index)
+                        self.select_text(original_index - index, original_index)
+                        self.delete_selection()
+                    else:
+                        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
                     if keycode[1] == "tab":
                         self.tab_player()
-
-                    if keycode[1] == "backspace" and "ctrl" in modifiers:
-                        if " " not in self.text:
-                            self.text = ""
-                        else:
-                            self.text = self.text.rsplit(" ", 1)[0].strip() + " "
-
 
                     if keycode[1] == 'up' and self.parent.run_data['command-history']:
                         if self.text != self.original_text:
@@ -13029,6 +13259,7 @@ class ConsolePanel(FloatLayout):
         self.console_text = RecycleGridLayout(size_hint_y=None, cols=1, default_size=(100, 42), padding=[0, 3, 0, 30])
         self.console_text.bind(minimum_height=self.console_text.setter('height'))
         self.scroll_layout.add_widget(self.console_text)
+        self.scroll_layout.scroll_type = ['bars']
         self.add_widget(self.scroll_layout)
 
 
@@ -13219,6 +13450,18 @@ class ServerViewScreen(MenuBackground):
         # Capture keypress on current screen no matter what
         if self.name == screen_manager.current_screen.name:
 
+            # Copy selected console text
+            if ((keycode[1] == 'c' and 'ctrl' in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+                self.console_panel.copy_selection()
+
+            # Select all console text
+            if ((keycode[1] == 'a' and 'ctrl' in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+                self.console_panel.select_all()
+
+            # Deselect all console text
+            if ((keycode[1] == 'd' and 'ctrl' in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+                self.console_panel.deselect_all()
+
             # Stop the server if it's currently running
             if ((keycode[1] == 'q' and 'ctrl' in modifiers) and ('q' not in self._ignore_keys)) and self.server.run_data:
                 stop_button = self.console_panel.controls.stop_button
@@ -13336,8 +13579,8 @@ class ServerBackupScreen(MenuBackground):
         }
 
         for k, v in button_dict.items():
-            print(server_obj.backup.backup_stats['backup-list'])
-            if k == 'restore' and not server_obj.backup.backup_stats['backup-list']:
+            print(server_obj.backup._backup_stats['backup-list'])
+            if k == 'restore' and not server_obj.backup._backup_stats['backup-list']:
                 v.disable(True)
                 continue
 
@@ -13348,8 +13591,8 @@ class ServerBackupScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
-        server_obj.backup.update_data()
-        backup_stats = server_obj.backup.backup_stats
+        server_obj.backup._update_data()
+        backup_stats = server_obj.backup._backup_stats
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
 
         # Retain button persistence when disabled
@@ -13405,7 +13648,7 @@ class ServerBackupScreen(MenuBackground):
 
                 # Update header
                 def change_header(*args):
-                    backup_stats = server_obj.backup.backup_stats
+                    backup_stats = server_obj.backup._backup_stats
                     backup_count = len(backup_stats['backup-list'])
                     header_content = "Latest Back-up  [color=#494977]-[/color]  " + ('[color=#6A6ABA]Never[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
                     sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
@@ -13481,7 +13724,7 @@ class ServerBackupScreen(MenuBackground):
 
         # Open back-up directory
         def open_backup_dir(*args):
-            backup_stats = server_obj.backup.backup_stats
+            backup_stats = server_obj.backup._backup_stats
             constants.open_folder(backup_stats['backup-path'])
             Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
@@ -13493,7 +13736,7 @@ class ServerBackupScreen(MenuBackground):
 
         # Migrate back-up directory
         def change_backup_dir(*args):
-            backup_stats = server_obj.backup.backup_stats
+            backup_stats = server_obj.backup._backup_stats
             current_path = backup_stats['backup-path']
             new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else constants.backupFolder), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
             Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
@@ -13828,7 +14071,7 @@ class ServerBackupRestoreScreen(MenuBackground):
                             server_obj.silent_command("stop")
                             while server_obj.running:
                                 time.sleep(0.2)
-                        constants.server_manager.current_server.backup.restore_file = file
+                        constants.server_manager.current_server.backup._restore_file = file
                         screen_manager.current = 'ServerBackupRestoreProgressScreen'
 
                     selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "BackupButton"][index - 1]
@@ -13899,7 +14142,7 @@ class ServerBackupRestoreScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
-        backup_list = [backup.BackupObject(server_obj.name, file) for file in server_obj.backup.backup_stats['backup-list']]
+        backup_list = [backup.BackupObject(server_obj.name, file) for file in server_obj.backup._backup_stats['backup-list']]
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
@@ -13987,8 +14230,8 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
             self.progress_bar.update_progress(final)
 
         server_obj = constants.server_manager.current_server
-        restore_date = server_obj.backup.restore_file.date
-        restore_path = server_obj.backup.restore_file.path
+        restore_file = server_obj.backup._restore_file
+        restore_date = server_obj.backup._restore_file.date
         self.page_contents = {
 
             # Page name
@@ -14017,7 +14260,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         # Create function list
         function_list = [
             ('Verifying Java installation', functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Restoring back-up', functools.partial(constants.restore_server, restore_path, functools.partial(adjust_percentage, 70)), 0),
+            ('Restoring back-up', functools.partial(constants.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -14099,7 +14342,7 @@ class ServerAclScreen(CreateServerAclScreen):
 
         # Whitelist toggle button
         def toggle_whitelist(boolean):
-            self.acl_object.toggle_whitelist(boolean)
+            self.acl_object.enable_whitelist(boolean)
 
             Clock.schedule_once(
                 functools.partial(
@@ -14115,7 +14358,7 @@ class ServerAclScreen(CreateServerAclScreen):
             # Update list
             self.update_list('wl', reload_children=True, reload_panel=True)
 
-        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object.server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
+        self.whitelist_toggle = toggle_button('whitelist', (0.5, 0.89), default_state=self.acl_object._server['whitelist'], x_offset=-395, custom_func=toggle_whitelist)
 
         # Legend for rule types
         self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749}, size_hint_max=(400, 100))
@@ -15035,8 +15278,8 @@ class ServerAddonScreen(MenuBackground):
             )
 
         # Show banner if updates are available
-        elif constants.server_manager.current_server.addon.update_required and not constants.server_manager.current_server.addon.update_notified:
-            constants.server_manager.current_server.addon.update_notified = True
+        elif constants.server_manager.current_server.addon.update_required and not constants.server_manager.current_server.addon._update_notified:
+            constants.server_manager.current_server.addon._update_notified = True
             Clock.schedule_once(
                 functools.partial(
                     self.show_banner,
@@ -16899,14 +17142,13 @@ class EditorLine(RelativeLayout):
                     Clock.schedule_once(functools.partial(replace_text, 'true'), 0)
                     return
 
-
-                super().keyboard_on_key_down(window, keycode, text, modifiers)
-
                 if keycode[1] == "backspace" and "ctrl" in modifiers:
-                    if " " not in self.text:
-                        self.text = ""
-                    else:
-                        self.text = self.text.rsplit(" ", 1)[0]
+                    original_index = self.cursor_col
+                    new_text, index = constants.control_backspace(self.text, original_index)
+                    self.select_text(original_index - index, original_index)
+                    self.delete_selection()
+                else:
+                    super().keyboard_on_key_down(window, keycode, text, modifiers)
 
                 # # Fix overscroll
                 # if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
@@ -17108,13 +17350,13 @@ class ServerPropertiesEditScreen(MenuBackground):
             if keycode[1] in ['r', 'z', 'y'] and 'ctrl' in modifiers:
                 return None
 
-            super().keyboard_on_key_down(window, keycode, text, modifiers)
-
             if keycode[1] == "backspace" and "ctrl" in modifiers:
-                if " " not in self.text:
-                    self.text = ""
-                else:
-                    self.text = self.text.rsplit(" ", 1)[0]
+                original_index = self.cursor_col
+                new_text, index = constants.control_backspace(self.text, original_index)
+                self.select_text(original_index - index, original_index)
+                self.delete_selection()
+            else:
+                super().keyboard_on_key_down(window, keycode, text, modifiers)
 
             # Fix overscroll
             if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
@@ -18827,7 +19069,8 @@ class MainApp(App):
         Window.left = left
     Window.on_request_close = functools.partial(sys.exit)
 
-    Window.minimum_width, Window.minimum_height = constants.window_size
+    Window.minimum_width = constants.window_size[0] - 50
+    Window.minimum_height = constants.window_size[1] - 50
     Window.clearcolor = constants.background_color
     Builder.load_string(kv_file)
 
@@ -18910,9 +19153,9 @@ class MainApp(App):
         # if not constants.app_compiled:
         #     def open_menu(*args):
         #         open_server("bedrock-test")
-        #         def show_notif(*args):
-        #             screen_manager.current_screen.menu_taskbar.show_notification('amscript')
-        #         Clock.schedule_once(show_notif, 2)
+        #         # def show_notif(*args):
+        #         #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
+        #         # Clock.schedule_once(show_notif, 2)
         #         # def open_ams(*args):
         #         #     screen_manager.current = "ServerAddonScreen"
         #         # Clock.schedule_once(open_ams, 1)
