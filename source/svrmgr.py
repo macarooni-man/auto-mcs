@@ -1176,9 +1176,9 @@ class ServerObject():
             for player, data in player_list.items():
                 if data['logged-in']:
                     if self.acl.rule_in_acl(player, 'ops'):
-                        final_list.insert(0, {'text': player, 'color': (0, 1, 1, 1)})
+                        final_list.insert(0, {'text': player, 'color': (0.5, 1, 1, 1)})
                     else:
-                        final_list.append({'text': player, 'color': (0.6, 0.6, 1, 1)})
+                        final_list.append({'text': player, 'color': (0.6, 0.6, 0.88, 1)})
 
             self.run_data['performance']['current-players'] = final_list
 

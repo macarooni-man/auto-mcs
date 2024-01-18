@@ -38,7 +38,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0.5"
+app_version = "2.0.6"
 ams_version = "1.1"
 app_title = "auto-mcs"
 window_size = (850, 850)
@@ -794,10 +794,16 @@ def folder_check(directory: str):
 
 # Open folder in default file browser
 def open_folder(directory: str):
-    if os_name == 'linux':
-        subprocess.Popen(['xdg-open', directory])
-    elif os_name == 'windows':
-        subprocess.Popen(['explorer', directory])
+    try:
+        if os_name == 'linux':
+            subprocess.Popen(['xdg-open', directory])
+        elif os_name == 'windows':
+            subprocess.Popen(['explorer', directory])
+
+    except Exception as e:
+        if debug:
+            print(f"Error opening '{directory}': {e}")
+        return False
 
 
 # Extract archive
@@ -3367,3 +3373,36 @@ def control_backspace(text, index):
     final_text = new_text + end
     new_index = len(text) - len(final_text)
     return final_text, new_index
+
+# Get player head to .png: pass player object
+def get_player_head(user: str):
+
+    # Set default image in case of failure
+    default_image = os.path.join(gui_assets, 'steve.png')
+    if not (app_online and user):
+        return default_image
+
+    try:
+        head_cache = os.path.join(cacheDir, 'heads')
+        final_path = os.path.join(head_cache, user)
+        url = f"https://mc-heads.net/avatar/{user}"
+
+        if os.path.exists(final_path):
+            age = abs(datetime.datetime.today().day - datetime.datetime.fromtimestamp(os.stat(final_path).st_mtime).day)
+            if age < 3:
+                return final_path
+            else:
+                os.remove(final_path)
+
+        folder_check(head_cache)
+        download_url(url, user, head_cache)
+
+        if os.path.exists(final_path):
+            return final_path
+        else:
+            return default_image
+
+    except Exception as e:
+        if debug:
+            print(f"Error retrieving head for '{user}': {e}")
+        return default_image

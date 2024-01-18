@@ -166,8 +166,10 @@ class AddonManager():
         if not self._addons_supported:
             return None
 
-        addon_state(addon, self._server, enabled)
+        success = addon_state(addon, self._server, enabled)
         self._refresh_addons()
+
+        return bool(success)
 
     # Deletes addon
     def delete_addon(self, addon: AddonFileObject):
@@ -1046,7 +1048,10 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True):
     elif not enabled and (addon_path == addon_folder):
         constants.folder_check(disabled_addon_folder)
         new_path = os.path.join(disabled_addon_folder, addon_name)
-        os.rename(addon.path, new_path)
+        try:
+            os.rename(addon.path, new_path)
+        except PermissionError:
+            return False
         addon.path = new_path
 
     return addon
