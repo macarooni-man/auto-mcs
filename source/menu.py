@@ -3163,10 +3163,9 @@ class RecycleViewWidget(RecycleView):
         self.scroll_wheel_distance = dp(55)
         Clock.schedule_once(functools.partial(self.assign_viewclass, view_class), 0)
 
-
     # Allow scroll bar to be dragged
     def on_touch_move(self, touch, *args):
-        if touch.pos[0] > self.x + (self.width - self.drag_pad):
+        if (touch.pos[0] > self.x + (self.width - self.drag_pad)) and touch.button in ['left', 'right']:
             try:
                 new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
                 self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
@@ -3176,7 +3175,7 @@ class RecycleViewWidget(RecycleView):
         return super().on_touch_move(touch)
 
     def on_touch_down(self, touch, *args):
-        if touch.pos[0] > self.x + (self.width - self.drag_pad):
+        if (touch.pos[0] > self.x + (self.width - self.drag_pad)) and touch.button in ['left', 'right']:
             try:
                 new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
                 self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
@@ -12074,9 +12073,9 @@ class PerformancePanel(RelativeLayout):
                             Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.layout)
                         Clock.schedule_once(after_anim, 0.4)
 
-                    if self.scroll_layout.data:
-                        self.unq_hash['before'] = self.scroll_layout.data
-                    self.unq_hash['after'] = player_dict
+                    # if self.scroll_layout.data:
+                    #     self.unq_hash['before'] = self.scroll_layout.data
+                    # self.unq_hash['after'] = player_dict
                     self.scroll_layout.data = player_dict
 
                     if self.resize_list:
@@ -12138,7 +12137,7 @@ class PerformancePanel(RelativeLayout):
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
 
-                self.unq_hash = {'before': None, 'after': None}
+                # self.unq_hash = {'before': None, 'after': None}
 
                 class PlayerLabel(RelativeLayout):
 
@@ -12200,7 +12199,10 @@ class PerformancePanel(RelativeLayout):
                         if attr == "color" and value:
                             self.color_values = [(value[0], value[1], value[2], 0.75), value]
                             self.button.background_color = self.color_values[0]
-                            self.label.color = constants.brighten_color(self.color_values[1], -0.65)
+                            label_color = Color(*self.color_values[1])
+                            label_color.v -= 0.68
+                            label_color.s += 0.05
+                            self.label.color = label_color.rgba
 
 
                     def __init__(self, **kwargs):
@@ -19273,28 +19275,28 @@ class MainApp(App):
 
 
         # Screen manager override
-        # if not constants.app_compiled:
-        #     def open_menu(*args):
-        #         open_server("bedrock-test")
-        #         # def show_notif(*args):
-        #         #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
-        #         # Clock.schedule_once(show_notif, 2)
-        #         def add_fake_players(*args):
-        #             op_color = (0.5, 1, 1, 1)
-        #             no_color = (0.6, 0.6, 0.88, 1)
-        #             screen_manager.current_screen.performance_panel.player_widget.update_data(
-        #                 [{'text': 'KChicken', 'color': op_color},
-        #                  {'text': 'LeopardGecko22', 'color': op_color},
-        #                  {'text': 'bgmombo', 'color': no_color},
-        #                  {'text': 'Test1234', 'color': no_color},
-        #                  {'text': 'Im_a_USERNAME', 'color': no_color},
-        #                  {'text': 'yes_i_am40', 'color': no_color}
-        #             ])
-        #         Clock.schedule_once(add_fake_players, 1)
-        #         # def open_ams(*args):
-        #         #     screen_manager.current = "ServerAddonScreen"
-        #         # Clock.schedule_once(open_ams, 1)
-        #     Clock.schedule_once(open_menu, 0.5)
+        if not constants.app_compiled:
+            def open_menu(*args):
+                open_server("bedrock-test")
+                # def show_notif(*args):
+                #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
+                # Clock.schedule_once(show_notif, 2)
+                def add_fake_players(*args):
+                    op_color = (0.5, 1, 1, 1)
+                    no_color = (0.6, 0.6, 0.88, 1)
+                    screen_manager.current_screen.performance_panel.player_widget.update_data(
+                        [{'text': 'KChicken', 'color': op_color},
+                         {'text': 'LeopardGecko22', 'color': op_color},
+                         {'text': 'bgmombo', 'color': no_color},
+                         {'text': 'Test1234', 'color': no_color},
+                         {'text': 'Im_a_USERNAME', 'color': no_color},
+                         {'text': 'yes_i_am40', 'color': no_color}
+                    ])
+                Clock.schedule_once(add_fake_players, 1)
+                # def open_ams(*args):
+                #     screen_manager.current = "ServerAddonScreen"
+                # Clock.schedule_once(open_ams, 1)
+            Clock.schedule_once(open_menu, 0.5)
 
 
         # Process --launch flag
