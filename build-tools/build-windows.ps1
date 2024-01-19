@@ -79,6 +79,7 @@ cmd /c "$start_venv && pip install --upgrade -r ./reqs-windows.txt"
 $kivy_path= "$venv_path\Lib\site-packages\kivy\tools\packaging\pyinstaller_hooks"
 ((Get-Content -Path "$kivy_path/__init__.py" ) -replace "from PyInstaller.compat import modname_tkinter","#") | Set-Content -Path "$kivy_path/__init__.py"
 ((Get-Content -Path "$kivy_path/__init__.py" ) -replace "excludedimports = \[modname_tkinter, ","excludedimports = [") | Set-Content -Path "$kivy_path/__init__.py"
+((Get-Content -Path "$kivy_path/__init__.py" ) -replace "from os import environ","from os import environ`nfrom kivy_deps import angle`nenviron['KIVY_GL_BACKEND'] = 'angle_sdl2'") | Set-Content -Path "$kivy_path/__init__.py"
 python -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path/kivy-hook.py"
 
 
@@ -90,7 +91,7 @@ cd ..\source
 pyinstaller $spec_file --upx-dir $current\upx\windows --clean
 cd $current
 Remove-Item -Force ..\source\$spec_file
-Remove-Item -Force .\dist -ErrorAction SilentlyContinue
+Remove-Item -Force .\dist -ErrorAction SilentlyContinue -Recurse
 Move-Item -Force ..\source\dist .
 deactivate
 

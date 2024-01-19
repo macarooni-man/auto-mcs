@@ -1,12 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from kivy_deps import angle, sdl2, glew
+from kivy_deps import sdl2, glew
 from time import sleep
 from re import findall
 from os.path import basename
 from glob import glob
-import os
-os.environ['KIVY_GL_BACKEND'] ='angle_sdl2'
 
 
 block_cipher = None
