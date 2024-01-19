@@ -1225,7 +1225,12 @@ class ScriptObject():
         if msg_obj['content'].strip().split(" ",1)[0].strip() in self.aliases.keys():
             self.alias_event(msg_obj)
         elif msg_obj['content'].startswith('!'):
-            PlayerScriptObject(self.server_script_obj, msg_obj['user']).log_error('Unknown command. Type "!help" for help.')
+            player = PlayerScriptObject(self.server_script_obj, msg_obj['user'])
+            message = 'Unknown command. Type "!help" for a list of commands.'
+            if player.is_server:
+                self.server_script_obj.log(message)
+            else:
+                player.log_error(message)
         elif msg_obj['user'] != self.server_id:
             self.call_event('@player.on_message', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), msg_obj['content']))
 
