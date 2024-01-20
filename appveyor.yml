@@ -5,9 +5,13 @@ image: Visual Studio 2019
 install:
 - ps: >-
     Remove-Item -Force -Recurse "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit"
+
     $python_path = "$env:LOCALAPPDATA\Programs\Python\Python39"
+
     md $python_path
+
     Move-Item -Force C:\Python39-x64\* $python_path
+    
     cmd /c "$python_path\python.exe -m pip install --upgrade pip --no-warn-script-location"
 
 build_script:
