@@ -58,23 +58,23 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: '3.9'
-
-      #- name: Setup upterm session
-      #  uses: lhotari/action-upterm@v1
     
       - name: Compile auto-mcs
         run: |
           mkdir -p /opt/python/
           ln -s /opt/hostedtoolcache/Python/3.9.18/x64 /opt/python/3.9.18
-          sudo rm -rf /usr/bin/python3
+          # sudo rm -rf /usr/bin/python3
           # sudo rm -rf /usr/bin/pip
-          sudo ln -s /opt/hostedtoolcache/Python/3.9.18/x64/bin/python/bin /usr/bin/python3
+          # sudo ln -s /opt/hostedtoolcache/Python/3.9.18/x64/bin/python/bin /usr/bin/python3
           # sudo ln -s /opt/hostedtoolcache/Python/3.9.18/x64/bin/python/bin/pip3.9 /usr/bin/pip
           sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
           export DISPLAY=:0.0
           cd build-tools
           chmod +x build-linux.sh
-          sudo ./build-linux.sh
+          # sudo ./build-linux.sh
+
+      - name: Setup upterm session
+        uses: lhotari/action-upterm@v1
 
       - name: Upload Binary
         uses: actions/upload-artifact@v3
