@@ -71,7 +71,6 @@ jobs:
           sudo ln -s /opt/hostedtoolcache/Python/3.9.18/x64/bin/python/bin/python3 /usr/bin/python3
           sudo ln -s /opt/hostedtoolcache/Python/3.9.18/x64/bin/python/bin/pip3.9 /usr/bin/pip
           sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
-          sudo cp -f /usr/bin/whoami /usr/bin/logname
           export DISPLAY=:0.0
           cd build-tools
           chmod +x build-linux.sh
