@@ -17,6 +17,14 @@ spec_file="auto-mcs.linux.spec"
 cd "$(cd -P -- "$(dirname -- "$0")" && pwd -P)"
 current=$( pwd )
 
+# Override for GitHub Runner
+if ! [ -f '/home/runner/' ]; then
+	github_runner() {
+	  echo "runner"
+	}
+	export logname=github_runner
+fi
+
 
 
 error ()
