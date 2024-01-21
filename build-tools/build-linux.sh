@@ -17,8 +17,9 @@ spec_file="auto-mcs.linux.spec"
 cd "$(cd -P -- "$(dirname -- "$0")" && pwd -P)"
 current=$( pwd )
 
-# Override for GitHub Runner
-if ! [ -d '/home/runner/work/auto-mcs/' ]; then
+
+# Run commands as user
+if [ -d '/home/runner/work/auto-mcs/' ]; then
 	github_runner() {
 	  echo "runner"
 	}
