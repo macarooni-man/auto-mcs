@@ -22,8 +22,7 @@ current=$( pwd )
 run_as_user ()
 {
 	if [ -d '/home/runner/work/auto-mcs/' ]; then
-		export pip='pip3'
-		su runner -c "$1"
+		su runner -c "$(echo $1 | sed 's/pip/pip3/')"
 	else
 		su $(logname) -c "$1"
 	fi
