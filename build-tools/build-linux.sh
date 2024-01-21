@@ -18,7 +18,7 @@ cd "$(cd -P -- "$(dirname -- "$0")" && pwd -P)"
 current=$( pwd )
 
 # Override for GitHub Runner
-if ! [ -f '/home/runner/' ]; then
+if ! [ -d '/home/runner/work/auto-mcs/' ]; then
 	github_runner() {
 	  echo "runner"
 	}
