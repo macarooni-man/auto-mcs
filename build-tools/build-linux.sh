@@ -18,17 +18,6 @@ cd "$(cd -P -- "$(dirname -- "$0")" && pwd -P)"
 current=$( pwd )
 
 
-# Run commands as user
-run_as_user ()
-{
-	if [ -d '/home/runner/work/auto-mcs/' ]; then
-		$1
-	else
-		su $(logname) -c "$1"
-	fi
-}
-
-
 
 error ()
 {
@@ -119,7 +108,7 @@ if [ $errorlevel -ne 0 ]; then
 	make altinstall
 	rm /tmp/Python-3.9.18.tgz
 
-	run_as_user $python" -m pip install --upgrade pip setuptools wheel"
+	su $(logname) -c $python" -m pip install --upgrade pip setuptools wheel"
 
 	errorlevel=$?
 	if [ $errorlevel -ne 0 ]; then
@@ -136,7 +125,7 @@ echo Detected $version
 
 if ! [ -d $venv_path ]; then
 	echo "A virtual environment was not detected"
-	run_as_user $python" -m venv "$venv_path
+	su $(logname) -c $python" -m venv "$venv_path
 
 else
 	echo "Detected virtual environment"
@@ -147,12 +136,12 @@ fi
 # Install/Upgrade packages
 echo "Installing packages"
 source $venv_path/bin/activate
-run_as_user "pip install --upgrade -r ./reqs-linux.txt"
+su $(logname) -c "pip install --upgrade -r ./reqs-linux.txt"
 
 
 # Use Kivy 2.1.0 for Alpine
 if [ -x "$(command -v apk)" ]; then
-	run_as_user "pip install --upgrade kivy==2.1.0"
+	su $(logname) -c "pip install --upgrade kivy==2.1.0"
 fi
 
 
@@ -161,7 +150,7 @@ patch() {
 	kivy_path=$1"/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
 	sed 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
 	sed 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
-	run_as_user $venv_path"/bin/python3.9 -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path"/kivy-hook.py"
+	su $(logname) -c $venv_path"/bin/python3.9 -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path"/kivy-hook.py"
 }
 patch $venv_path"/lib"
 patch $venv_path"/lib64"
@@ -174,7 +163,7 @@ export KIVY_AUDIO=ffpyplayer
 cd $current
 cp $spec_file ../source
 cd ../source
-run_as_user "pyinstaller "$spec_file" --upx-dir "$current"/upx/linux --clean"
+su $(logname) -c "pyinstaller "$spec_file" --upx-dir "$current"/upx/linux --clean"
 cd $current
 rm -rf ../source/$spec_file
 mv -f ../source/dist .
