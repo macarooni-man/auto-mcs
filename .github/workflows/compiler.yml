@@ -71,10 +71,10 @@ jobs:
           export DISPLAY=:0.0
           cd build-tools
           chmod +x build-linux.sh
-          # sudo ./build-linux.sh
+          sudo ./build-linux.sh
 
-      - name: Setup upterm session
-        uses: lhotari/action-upterm@v1
+      #- name: Setup upterm session
+      #  uses: lhotari/action-upterm@v1
 
       - name: Upload Binary
         uses: actions/upload-artifact@v3
