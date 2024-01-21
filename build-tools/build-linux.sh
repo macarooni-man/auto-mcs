@@ -22,9 +22,9 @@ current=$( pwd )
 run_as_user ()
 {
 	if [ -d '/home/runner/work/auto-mcs/' ]; then
-		su -c runner $1
+		su runner -c $1
 	else
-		su -c $(logname) $1
+		su $(logname) -c $1
 	fi
 }
 
