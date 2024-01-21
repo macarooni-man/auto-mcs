@@ -18794,7 +18794,7 @@ class ServerSettingsScreen(MenuBackground):
                     "warning_query",
                     f"Delete '{server_obj.name}'",
                     "Do you want to permanently delete this server?\n\nThis action cannot be undone\n(Your server can be re-imported from a back-up later)",
-                    (None, delete_server)
+                    (None, functools.partial(Clock.schedule_once, delete_server, 0.5))
                 ),
                 0
             )
