@@ -14089,7 +14089,10 @@ class BackupButton(HoverButton):
 
         self.type_image.version_label = TemplateLabel()
         self.type_image.version_label.color = self.color_id[1]
-        self.type_image.version_label.text = backup_object.version.lower()
+        if backup_object.build:
+            self.type_image.version_label.text = f'{backup_object.version.lower()} (b-{backup_object.build.lower()})'
+        else:
+            self.type_image.version_label.text = backup_object.version.lower()
         self.type_image.version_label.opacity = 0.6
 
         self.type_image.type_label = TemplateLabel()
