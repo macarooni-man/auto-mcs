@@ -15201,8 +15201,8 @@ class ServerAddonScreen(MenuBackground):
                             functools.partial(
                                 self.show_banner,
                                 (0.937, 0.831, 0.62, 1),
-                                f"auto-mcs can't disable this add-on while the server is running",
-                                "'alert-circle-sharp.png'",
+                                f"can't disable while the server is running",
+                                "alert-circle-sharp.png",
                                 3,
                                 {"center_x": 0.5, "center_y": 0.965}
                             ), 0
