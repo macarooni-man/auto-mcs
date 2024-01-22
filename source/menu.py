@@ -9120,7 +9120,10 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
             current_list.extend(acl.deepcopy(self.acl_object.rules['subnets']))
 
         if self.acl_object.displayed_rule and current_list:
-            self.update_user_panel(self.acl_object.displayed_rule.rule, self.user_panel.displayed_scope)
+            global_rules = acl.load_global_acl()
+            self.acl_object.displayed_rule.acl_group = self.current_list
+            rule_scope = acl.check_global_acl(global_rules, self.acl_object.displayed_rule).rule_scope
+            self.update_user_panel(self.acl_object.displayed_rule.rule, rule_scope)
         else:
             self.update_user_panel(None, None)
 
@@ -13122,7 +13125,7 @@ class ConsolePanel(FloatLayout):
                                     widget.sel_cover.opacity = 0
                                 try:
                                     if (self.parent.original_text in self.parent.console_panel.selected_labels) and (len(self.parent.console_panel.selected_labels) == 1):
-                                        self.parent.console_panel.selected_labels = []
+                                        self.parent.console_panel.deselect_all()
                                     else:
                                         self.parent.console_panel.last_touch = touch.pos
                                         self.parent.console_panel.selected_labels = [self.parent.original_text]
@@ -14578,7 +14581,10 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
             current_list.extend(acl.deepcopy(self.acl_object.rules['subnets']))
 
         if self.acl_object.displayed_rule and current_list:
-            self.update_user_panel(self.acl_object.displayed_rule.rule, self.user_panel.displayed_scope)
+            global_rules = acl.load_global_acl()
+            self.acl_object.displayed_rule.acl_group = self.current_list
+            rule_scope = acl.check_global_acl(global_rules, self.acl_object.displayed_rule).rule_scope
+            self.update_user_panel(self.acl_object.displayed_rule.rule, rule_scope)
         else:
             self.update_user_panel(None, None)
 
@@ -14736,7 +14742,7 @@ class AddonListButton(HoverButton):
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click_white.png')
+        self.background_down = self.background_normal
         self.disabled_banner = None
 
 
@@ -14746,7 +14752,6 @@ class AddonListButton(HoverButton):
                 if self.hovered:
                     self.hover_text.text = 'UNINSTALL ADD-ON'
                     self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
-                    self.background_color = (1, 1, 1, 1)
             Clock.schedule_once(change_color, 0.07)
             Animation.stop_all(self.delete_button)
             Animation(opacity=1, duration=0.25).start(self.delete_button)
@@ -14754,9 +14759,9 @@ class AddonListButton(HoverButton):
             def change_color(*args):
                 self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
                 if self.hovered:
-                    self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
-                    self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
-            Clock.schedule_once(change_color, 0.15)
+                    self.background_normal = os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                    self.background_down = self.background_normal
+            Clock.schedule_once(change_color, 0.07)
             Animation.stop_all(self.delete_button)
             Animation(opacity=0.65, duration=0.25).start(self.delete_button)
         def delete_click(*args):
@@ -14914,7 +14919,7 @@ class AddonListButton(HoverButton):
 
             # Fade button to hover state
             if not self.delete_button.button.hovered:
-                self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
+                self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
@@ -14924,9 +14929,6 @@ class AddonListButton(HoverButton):
             Animation(opacity=0, duration=0.13).start(self.title)
             Animation(opacity=0, duration=0.13).start(self.subtitle)
             Animation(opacity=1, duration=0.13).start(self.hover_text)
-
-            # Change button color based on state
-            self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
 
     def on_leave(self, *args):
         if not self.ignore_hover:
@@ -14947,11 +14949,6 @@ class AddonListButton(HoverButton):
             Animation(opacity=1, duration=0.13).start(self.title)
             Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
             Animation(opacity=0, duration=0.13).start(self.hover_text)
-
-            # Reset button color
-            def reset_color(*args):
-                self.background_color = (1, 1, 1, 1)
-            Clock.schedule_once(reset_color, 0.1)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -16014,7 +16011,7 @@ class AmscriptListButton(HoverButton):
 
             # Fade button to hover state
             if not self.delete_button.button.hovered:
-                self.animate_script(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
+                self.animate_script(image=os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
@@ -16024,9 +16021,6 @@ class AmscriptListButton(HoverButton):
             Animation(opacity=0, duration=0.13).start(self.title)
             Animation(opacity=0, duration=0.13).start(self.subtitle)
             Animation(opacity=1, duration=0.13).start(self.hover_text)
-
-            # Change button color based on state
-            self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
 
     def on_leave(self, *args):
         if not self.ignore_hover:
@@ -16047,11 +16041,6 @@ class AmscriptListButton(HoverButton):
             Animation(opacity=1, duration=0.13).start(self.title)
             Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
             Animation(opacity=0, duration=0.13).start(self.hover_text)
-
-            # Reset button color
-            def reset_color(*args):
-                self.background_color = (1, 1, 1, 1)
-            Clock.schedule_once(reset_color, 0.1)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -16076,7 +16065,7 @@ class AmscriptListButton(HoverButton):
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click_white.png')
+        self.background_down = self.background_normal
         self.disabled_banner = None
 
 
@@ -16088,7 +16077,6 @@ class AmscriptListButton(HoverButton):
                     if self.hovered:
                         self.hover_text.text = 'EDIT SCRIPT'
                         self.background_normal = os.path.join(constants.gui_assets, "server_button_hover.png")
-                        self.background_color = (1, 1, 1, 1)
                 Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
                 Animation(opacity=1, duration=0.25).start(self.delete_button)
@@ -16096,9 +16084,9 @@ class AmscriptListButton(HoverButton):
                 def change_color(*args):
                     self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
                     if self.hovered:
-                        self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
-                        self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
-                Clock.schedule_once(change_color, 0.15)
+                        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                        self.background_down = self.background_normal
+                Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
                 Animation(opacity=0.65, duration=0.25).start(self.delete_button)
             def edit_click(*args):
@@ -16139,7 +16127,6 @@ class AmscriptListButton(HoverButton):
                     if self.hovered:
                         self.hover_text.text = 'UNINSTALL SCRIPT'
                         self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
-                        self.background_color = (1, 1, 1, 1)
                 Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
                 Animation(opacity=1, duration=0.25).start(self.delete_button)
@@ -16147,9 +16134,9 @@ class AmscriptListButton(HoverButton):
                 def change_color(*args):
                     self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
                     if self.hovered:
-                        self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
-                        self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
-                Clock.schedule_once(change_color, 0.15)
+                        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                        self.background_down = self.background_normal
+                Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
                 Animation(opacity=0.65, duration=0.25).start(self.delete_button)
             def delete_click(*args):
@@ -18773,8 +18760,12 @@ class ServerSettingsScreen(MenuBackground):
             constants.server_manager.current_server = None
 
             def switch_screens(*a):
-                screen_manager.current = "ServerManagerScreen"
-                constants.screen_tree = ['MainMenuScreen']
+                if len(constants.generate_server_list()) > 0:
+                    screen_manager.current = "ServerManagerScreen"
+                    constants.screen_tree = ['MainMenuScreen']
+                else:
+                    screen_manager.current = "MainMenuScreen"
+                    constants.screen_tree = []
 
                 Clock.schedule_once(
                     functools.partial(

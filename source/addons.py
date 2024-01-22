@@ -1041,14 +1041,21 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True):
     if enabled and (addon_path == disabled_addon_folder):
         constants.folder_check(addon_folder)
         new_path = os.path.join(addon_folder, addon_name)
-        os.rename(addon.path, new_path)
+        try:
+            if os.path.exists(new_path):
+                os.remove(new_path)
+            os.rename(addon.path, new_path)
+        except PermissionError:
+            return False
         addon.path = new_path
 
-    # Enable addon if it's disabled
+    # Disable addon if it's enabled
     elif not enabled and (addon_path == addon_folder):
         constants.folder_check(disabled_addon_folder)
         new_path = os.path.join(disabled_addon_folder, addon_name)
         try:
+            if os.path.exists(new_path):
+                os.remove(new_path)
             os.rename(addon.path, new_path)
         except PermissionError:
             return False
