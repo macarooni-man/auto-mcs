@@ -169,7 +169,10 @@ def animate_icon(self, image, colors, hover_action, **kwargs):
     for child in self.parent.children:
         if child.id == 'text':
             if hover_action:
-                Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=0.12).start(child)
+                if child.hover_color:
+                    Animation(color=child.hover_color, duration=0.12).start(child)
+                else:
+                    Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=0.12).start(child)
             else:
                 Animation(color=(0, 0, 0, 0), duration=0.12).start(child)
 
@@ -3595,7 +3598,7 @@ class IconButton(FloatLayout):
             self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
 
 
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), **kwargs):
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, **kwargs):
         super().__init__(**kwargs)
 
         self.default_pos = position
@@ -3628,6 +3631,7 @@ class IconButton(FloatLayout):
         self.text.size_hint = size_hint
         self.text.pos_hint = pos_hint
         self.text.text = name.lower()
+        self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
@@ -3677,7 +3681,7 @@ class IconButton(FloatLayout):
 
 class RelativeIconButton(RelativeLayout):
 
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), **kwargs):
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, **kwargs):
         super().__init__(**kwargs)
 
         self.default_pos = position
@@ -3711,6 +3715,7 @@ class RelativeIconButton(RelativeLayout):
         if pos_hint:
             self.text.pos_hint = pos_hint
         self.text.text = name.lower()
+        self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
@@ -12744,14 +12749,14 @@ class ConsolePanel(FloatLayout):
             # Stop server button
             self.controls.remove_widget(self.controls.stop_button)
             del self.controls.stop_button
-            self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server)
+            self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
             # Restart server button
             self.controls.remove_widget(self.controls.restart_button)
             del self.controls.restart_button
-            self.controls.restart_button = IconButton('restart server', {}, (175, 150), (None, None), 'reload-sharp.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server)
+            self.controls.restart_button = IconButton('restart server', {}, (175, 150), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.restart_button.opacity = 0
             self.controls.add_widget(self.controls.restart_button)
 
@@ -12784,14 +12789,14 @@ class ConsolePanel(FloatLayout):
             # Stop server button
             self.controls.remove_widget(self.controls.stop_button)
             del self.controls.stop_button
-            self.controls.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.stop_server)
+            self.controls.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
             # Restart server button
             self.controls.remove_widget(self.controls.restart_button)
             del self.controls.restart_button
-            self.controls.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'reload-sharp.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.button_colors['stop'], click_func=self.restart_server)
+            self.controls.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.restart_button.opacity = 0
             self.controls.add_widget(self.controls.restart_button)
 
@@ -13342,12 +13347,12 @@ class ConsolePanel(FloatLayout):
                 self.add_widget(self.maximize_button)
 
                 # Stop server button
-                self.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.stop_server)
+                self.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
                 constants.hide_widget(self.stop_button)
                 self.add_widget(self.stop_button)
 
                 # Restart server button
-                self.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'reload-sharp.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.restart_server)
+                self.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
                 constants.hide_widget(self.restart_button)
                 self.add_widget(self.restart_button)
 
