@@ -23,6 +23,6 @@ artifacts:
 
 deploy:
 - provider: Webhook
-  url: https://app.signpath.io/API/v1/8325cf5e-9e2a-49bf-9540-a0fa8ca74c0d/Integrations/AppVeyor?ProjectSlug=auto-mcs&SigningPolicySlug=test-signing&ArtifactConfigurationSlug=initial
+  url: https://app.signpath.io/API/v1/8325cf5e-9e2a-49bf-9540-a0fa8ca74c0d/Integrations/AppVeyor?ProjectSlug=auto-mcs&SigningPolicySlug=release-signing&ArtifactConfigurationSlug=initial
   authorization:
     secure: NtJRN/egoy7Sr8sEAzKEbRj7HdVHd/g84ImcDuWilBfqw4JuqiPuUJhOusfuqjl6860gJVthW+jcQFh4AXsceg==

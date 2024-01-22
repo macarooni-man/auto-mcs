@@ -6,12 +6,12 @@ Welcome to auto-mcs! This software provides a simple and easy-to-digest experien
 
 Some notable features include:
  - Create a server in less than a minute
- - Full support for Paper, Fabric, Forge, Craftbukkit, Spigot, and Vanilla
+ - Full support for Paper, Fabric, Forge, Spigot, CraftBukkit, and Vanilla
  - Automatic server installation & updates
  - Ability to import any existing server
  - Switch worlds, versions, and distributions on the fly
  - Automatic backup management
- - Custom console with a universal [scripting API](https://github.com/macarooni-man/auto-mcs/blob/main/amscript-docs.md) (Compatible with Vanilla) and built-in IDE
+ - Custom console with a [universal scripting API](https://auto-mcs.com/guides/amscript) (Compatible with Vanilla) and built-in IDE
  - Detailed crash detection with an easy to view report
  - Internal mod & plug-in browser/installer (auto-mcs can update plugins as well)
  - Firewall-like Access Control menu to manage bans, the whitelist, and operators from a single page
@@ -40,18 +40,37 @@ To start, you can either import a server you've made on your own or create a new
 And that's it - click launch to play with your friends!
 
 <br><br>
+
 # Advanced Configuration
 As this is a relatively new project, a lot of things have and may change during development. [Visit the website for a comprehensive overview of all the features provided by auto-mcs](https://www.auto-mcs.com/guides).
 
 
 <br><br>
+
 # Contact & Inquiries
 - If you experience a crash, please submit an issue with the bug label including the crash report provided by auto-mcs.
+<br><br>
 - If you experience a bug, please submit an issue with the bug label including screenshots or a detailed description and location of the problem.
-- For all other inquiries including security issues or suggestions, please contact me directly [via email](mailto:help@auto-mcs.com?subject=Inquiry%20-%20).
+<br><br>
+- For all other inquiries including security issues or suggestions, [please contact us directly via email](mailto:help@auto-mcs.com?subject=Inquiry%20-%20).
 
 <br><br>
+
 # Additional Information
-auto-mcs is and will continue to be a free project for anyone to use. If you feel as though this project has brought you value, [please consider donating](https://github.com/sponsors/macarooni-man) to the continued development and maturity of auto-mcs. Thank you!
+- auto-mcs is and will continue to be a free project for anyone to use. If you feel as though this project has brought you value, [please consider donating](https://github.com/sponsors/macarooni-man) to the continued development and maturity of auto-mcs. Thank you!
 <br><br>
-By using this software you agree to the [terms & conditions](https://www.auto-mcs.com/terms-and-conditions)
+- auto-mcs will not transfer any information to other networked systems unless explicitly requested by any party involved with installing or operating it
+<br><br>
+- By using this software you agree to the [terms & conditions](https://www.auto-mcs.com/terms-and-conditions)
+
+<br><br>
+
+# Sponsors
+<table>
+ <tbody>
+  <tr>
+   <td align="center"><img alt="[SignPath]" src="https://avatars.githubusercontent.com/u/34448643" height="30"/></td>
+   <td>Free code signing on Windows provided by <a href="https://signpath.io/">SignPath.io</a>, certificate by <a href="https://signpath.org/">SignPath Foundation</a></td>
+  </tr>
+ </tbody>
+</table>
