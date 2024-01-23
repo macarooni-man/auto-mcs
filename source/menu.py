@@ -19293,6 +19293,31 @@ class MainApp(App):
         Clock.schedule_once(raise_window, 0)
 
 
+        # Screen manager override
+        # if not constants.app_compiled:
+        #     def open_menu(*args):
+        #         open_server("acl test", launch=True)
+        #         # def show_notif(*args):
+        #         #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
+        #         # Clock.schedule_once(show_notif, 2)
+        #         def add_fake_players(*args):
+        #             op_color = (0.5, 1, 1, 1)
+        #             no_color = (0.6, 0.6, 0.88, 1)
+        #             screen_manager.current_screen.performance_panel.player_widget.update_data(
+        #                 [{'text': 'KChicken', 'color': op_color},
+        #                  {'text': 'LeopardGecko22', 'color': op_color},
+        #                  {'text': 'bgmombo', 'color': no_color},
+        #                  {'text': 'Test1234', 'color': no_color},
+        #                  {'text': 'Im_a_USERNAME', 'color': no_color},
+        #                  {'text': 'yes_i_am40', 'color': no_color}
+        #             ])
+        #         Clock.schedule_once(add_fake_players, 1)
+        #         # def open_ams(*args):
+        #         #     screen_manager.current = "ServerAddonScreen"
+        #         # Clock.schedule_once(open_ams, 1)
+        #     Clock.schedule_once(open_menu, 0.5)
+
+
         # Process --launch flag
         if constants.boot_launches:
             if not constants.is_admin():
