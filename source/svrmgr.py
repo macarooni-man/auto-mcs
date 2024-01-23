@@ -1100,8 +1100,11 @@ class ServerObject():
     # Restarts server, for amscript
     def restart(self):
         self.restart_flag = True
-        for player in self.run_data['player-list'].keys():
-            self.silent_command(f"kick {player} Server is restarting", log=False)
+        try:
+            for player in self.run_data['player-list'].keys():
+                self.silent_command(f"kick {player} Server is restarting", log=False)
+        except KeyError:
+            pass
         self.silent_command("stop")
 
     # Retrieves performance information
