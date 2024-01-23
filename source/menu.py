@@ -169,6 +169,11 @@ def animate_icon(self, image, colors, hover_action, **kwargs):
     for child in self.parent.children:
         if child.id == 'text':
             if hover_action:
+                try:
+                    color = child.hover_color
+                except:
+                    child.hover_color = None
+
                 if child.hover_color:
                     Animation(color=child.hover_color, duration=0.12).start(child)
                 else:
@@ -3782,7 +3787,7 @@ class AnimButton(FloatLayout):
                     self.text.pos[0] -= sp(len(self.text.text) * 3)
                     self.text.pos[1] -= self.button.height
 
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, **kwargs):
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_hover_color=None, **kwargs):
         super().__init__(**kwargs)
 
         self.default_pos = position
@@ -3815,6 +3820,7 @@ class AnimButton(FloatLayout):
         self.text.size_hint = size_hint
         self.text.pos_hint = pos_hint
         self.text.text = name.lower()
+        self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
@@ -3884,7 +3890,7 @@ class BigIcon(HoverButton):
 
 
 
-def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, selected=False):
+def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, selected=False, text_hover_color=None):
 
     final = FloatLayout()
 
@@ -3920,6 +3926,7 @@ def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickab
     text.size_hint = size_hint
     text.pos_hint = {'center_x': pos_hint['center_x'], 'center_y': pos_hint['center_y'] - 0.11}
     text.text = name.lower()
+    text.hover_color = text_hover_color if text_hover_color else None
     text.font_size = sp(19)
     text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
     text.color = (0, 0, 0, 0)
@@ -12558,7 +12565,6 @@ class ConsolePanel(FloatLayout):
         Animation(opacity=0, duration=anim_speed).start(self.controls.background_ext)
         Animation(opacity=0, duration=(anim_speed*1.5) if animate else 0).start(self.controls.launch_button)
         Animation(opacity=0, duration=(anim_speed*1.5) if animate else 0).start(self.controls.log_button)
-        Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.maximize_button)
 
         def after_anim(*a):
             self.controls.maximize_button.disabled = False
@@ -12568,8 +12574,13 @@ class ConsolePanel(FloatLayout):
             self.controls.remove_widget(self.controls.log_button)
             self.controls.launch_button.button.on_leave()
             self.controls.log_button.button.on_leave()
-            Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.stop_button)
-            Animation(opacity=1, duration=(anim_speed*2) if animate else 0).start(self.controls.restart_button)
+            def delay(function, obj, delay):
+                def ad(*a):
+                    function.start(obj)
+                Clock.schedule_once(ad, delay)
+            delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.restart_button, 0.12)
+            delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.stop_button, 0.06)
+            Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine').start(self.controls.maximize_button)
 
         def update_launch_data(*args):
             if self.server_button:
@@ -12601,14 +12612,14 @@ class ConsolePanel(FloatLayout):
 
 
     # Send '/stop' command to server console
-    @staticmethod
-    def stop_server(*args):
-        screen_manager.current_screen.server.silent_command("stop")
+    def stop_server(self, *args):
+        if self.run_data:
+            screen_manager.current_screen.server.silent_command("stop")
 
     # Restart server
-    @staticmethod
-    def restart_server(*args):
-        screen_manager.current_screen.server.restart()
+    def restart_server(self, *args):
+        if self.run_data:
+            screen_manager.current_screen.server.restart()
 
 
     # Called from ServerObject when process stops
@@ -12664,10 +12675,14 @@ class ConsolePanel(FloatLayout):
 
 
             # Else, reset it back to normal
-            self.maximize(False)
-            constants.hide_widget(self.controls.maximize_button, True)
-            constants.hide_widget(self.controls.stop_button, True)
-            constants.hide_widget(self.controls.restart_button, True)
+            def disable_buttons(*a):
+                constants.hide_widget(self.controls.maximize_button, True)
+                constants.hide_widget(self.controls.stop_button, True)
+                constants.hide_widget(self.controls.restart_button, True)
+
+            if self.full_screen:
+                self.maximize(False)
+                disable_buttons()
 
 
             def after_anim(*a):
@@ -12694,6 +12709,12 @@ class ConsolePanel(FloatLayout):
                 Animation(opacity=1, duration=anim_speed).start(self.controls.launch_button)
                 Animation(opacity=1, duration=anim_speed).start(self.controls.background)
                 Animation(opacity=1, duration=anim_speed).start(self.controls.background_ext)
+
+                if self.controls.maximize_button.opacity > 0:
+                    Animation(opacity=0, duration=anim_speed).start(self.controls.maximize_button)
+                    Animation(opacity=0, duration=anim_speed).start(self.controls.stop_button)
+                    Animation(opacity=0, duration=anim_speed).start(self.controls.restart_button)
+                    Clock.schedule_once(disable_buttons, anim_speed*1.1)
 
                 def after_anim2(*a):
                     self.controls.maximize_button.disabled = False
@@ -12927,7 +12948,6 @@ class ConsolePanel(FloatLayout):
                     time.sleep(0.01)
 
             self.in_scroll_region = False
-
 
 
     def on_touch_move(self, touch, *a):

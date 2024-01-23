@@ -3140,7 +3140,7 @@ refresh_ips = None
 
 # Returns active IP address of 'name'
 def get_current_ip(name: str, get_ngrok=False):
-    global public_ip
+    global public_ip, ngrok_ip
 
     private_ip = ""
     original_port = "25565"
@@ -3246,6 +3246,7 @@ def get_current_ip(name: str, get_ngrok=False):
     # Format network info
     if get_ngrok:
         def get_ngk_ip(server_name, *args):
+            global ngrok_ip
             get_ngrok_ip(server_name)
 
             if ngrok_ip['ip']:
