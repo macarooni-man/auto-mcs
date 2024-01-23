@@ -36,6 +36,10 @@ class BackupObject():
                 if config.get('general', 'serverName') == self.name:
                     self.type = config.get('general', 'serverType')
                     self.version = config.get('general', 'serverVersion')
+                    try:
+                        self.build = config.get('general', 'serverBuild')
+                    except:
+                        self.build = None
 
                 os.remove(cfg)
                 break

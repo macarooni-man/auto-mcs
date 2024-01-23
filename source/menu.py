@@ -169,7 +169,10 @@ def animate_icon(self, image, colors, hover_action, **kwargs):
     for child in self.parent.children:
         if child.id == 'text':
             if hover_action:
-                Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=0.12).start(child)
+                if child.hover_color:
+                    Animation(color=child.hover_color, duration=0.12).start(child)
+                else:
+                    Animation(color=colors[1] if not self.selected else (0.6, 0.6, 1, 1), duration=0.12).start(child)
             else:
                 Animation(color=(0, 0, 0, 0), duration=0.12).start(child)
 
@@ -3163,10 +3166,9 @@ class RecycleViewWidget(RecycleView):
         self.scroll_wheel_distance = dp(55)
         Clock.schedule_once(functools.partial(self.assign_viewclass, view_class), 0)
 
-
     # Allow scroll bar to be dragged
     def on_touch_move(self, touch, *args):
-        if touch.pos[0] > self.x + (self.width - self.drag_pad):
+        if (touch.pos[0] > self.x + (self.width - self.drag_pad)) and touch.button in ['left', 'right']:
             try:
                 new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
                 self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
@@ -3176,7 +3178,7 @@ class RecycleViewWidget(RecycleView):
         return super().on_touch_move(touch)
 
     def on_touch_down(self, touch, *args):
-        if touch.pos[0] > self.x + (self.width - self.drag_pad):
+        if (touch.pos[0] > self.x + (self.width - self.drag_pad)) and touch.button in ['left', 'right']:
             try:
                 new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
                 self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
@@ -3596,7 +3598,7 @@ class IconButton(FloatLayout):
             self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
 
 
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), **kwargs):
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, **kwargs):
         super().__init__(**kwargs)
 
         self.default_pos = position
@@ -3629,6 +3631,7 @@ class IconButton(FloatLayout):
         self.text.size_hint = size_hint
         self.text.pos_hint = pos_hint
         self.text.text = name.lower()
+        self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
@@ -3678,7 +3681,7 @@ class IconButton(FloatLayout):
 
 class RelativeIconButton(RelativeLayout):
 
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), **kwargs):
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, **kwargs):
         super().__init__(**kwargs)
 
         self.default_pos = position
@@ -3712,6 +3715,7 @@ class RelativeIconButton(RelativeLayout):
         if pos_hint:
             self.text.pos_hint = pos_hint
         self.text.text = name.lower()
+        self.text.hover_color = text_hover_color if text_hover_color else None
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text.color = (0, 0, 0, 0)
@@ -8078,6 +8082,16 @@ class AclRulePanel(RelativeLayout):
             texture_size = 0.001 * self.player_layout.name_label.texture_size[0]
             self.player_layout.header_icon.pos_hint = {"center_x": 0.485 - texture_size, "center_y": 0.808}
 
+            # Change icon in header
+            # self.player_layout.header_icon.source = os.path.join(constants.gui_assets, 'steve.png')
+            # def update_source(*a):
+            #     source = constants.get_player_head(filtered_name)
+            #     def main_thread(*b):
+            #         if self.player_layout.name_label.text == filtered_name:
+            #             self.player_layout.header_icon.source = source
+            #     Clock.schedule_once(main_thread, 0)
+            # threading.Timer(0, update_source).start()
+
 
             # Online status
             if acl.check_online(displayed_rule.rule):
@@ -9111,7 +9125,10 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
             current_list.extend(acl.deepcopy(self.acl_object.rules['subnets']))
 
         if self.acl_object.displayed_rule and current_list:
-            self.update_user_panel(self.acl_object.displayed_rule.rule, self.user_panel.displayed_scope)
+            global_rules = acl.load_global_acl()
+            self.acl_object.displayed_rule.acl_group = self.current_list
+            rule_scope = acl.check_global_acl(global_rules, self.acl_object.displayed_rule).rule_scope
+            self.update_user_panel(self.acl_object.displayed_rule.rule, rule_scope)
         else:
             self.update_user_panel(None, None)
 
@@ -12063,6 +12080,10 @@ class PerformancePanel(RelativeLayout):
                         def after_anim(*args):
                             Animation(opacity=1, duration=0.4, transition='in_out_sine').start(self.layout)
                         Clock.schedule_once(after_anim, 0.4)
+
+                    # if self.scroll_layout.data:
+                    #     self.unq_hash['before'] = self.scroll_layout.data
+                    # self.unq_hash['after'] = player_dict
                     self.scroll_layout.data = player_dict
 
                     if self.resize_list:
@@ -12124,55 +12145,159 @@ class PerformancePanel(RelativeLayout):
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
 
-                class PlayerLabel(AlignLabel, HoverBehavior):
+                # self.unq_hash = {'before': None, 'after': None}
 
-                    # Hover stuffies
-                    def on_enter(self, *args):
-                        if self.copyable:
-                            self.outline_width = 0
-                            self.outline_color = constants.brighten_color(self.color, 0.05)
-                            Animation(outline_width=1, duration=0.03).start(self)
+                class PlayerLabel(RelativeLayout):
 
-                    def on_leave(self, *args):
+                    def disable(self, boolean: bool, animate=False):
+                        def disable(*a):
+                            self.button.ignore_hover = boolean
+                            constants.hide_widget(self, boolean)
+                            constants.hide_widget(self.button, boolean)
+                            self.button.disabled = boolean
 
-                        if self.copyable:
+                        if animate:
+                            duration = 0.3
+
+                            if not boolean:
+                                disable()
+
+                            self.opacity = (1 if boolean else 0)
                             Animation.stop_all(self)
-                            self.outline_width = 0
+                            Animation(opacity=(0 if boolean else 1), duration=duration).start(self)
 
-                    # Normal stuffies
-                    def on_ref_press(self, *args):
-                        if not self.disabled and self.text:
-                            if constants.server_manager.current_server.acl:
-                                constants.server_manager.current_server.acl.get_rule(re.sub("\[.*?\]", "", self.text))
-                                constants.back_clicked = True
-                                screen_manager.current = 'ServerAclScreen'
-                                constants.back_clicked = False
+                            if boolean:
+                                Clock.schedule_once(disable, duration + 0.1)
 
-                    def ref_text(self, *args):
-                        if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
-                            self.text = f'[ref=none]{self.text}[/ref]'
-                        elif '[/ref]' in self.text:
-                            self.text = self.text.replace("[/ref]", "") + "[/ref]"
+                        else:
+                            disable()
+
+                    def check_anim(self, value):
+                        animate = (self.name_value or value)
+                        if self.parent:
+                            panel = self.parent.parent.parent.parent
+                            animate = animate and (panel.unq_hash['before'] != panel.unq_hash['after'])
+                        self.disable(not bool(value), animate)
+
+                    def __setattr__(self, attr, value):
+                        super().__setattr__(attr, value)
+
+                        # Change attributes dynamically based on rule
+                        if attr == "text" and value:
+                            # Update text
+                            self.label.text = value.strip()
+
+                            # Update font size
+                            self.label.font_size = sp(22 - (0 if len(self.label.text) < 11 else (len(self.label.text) // 3)))
+
+                            # Update icon
+                            def update_source(*a):
+                                source = constants.get_player_head(value.strip())
+                                def main_thread(*b):
+                                    self.icon.source = source
+                                Clock.schedule_once(main_thread, 0)
+                            threading.Timer(0, update_source).start()
+
+
+                        if attr == "text":
+                            # self.check_anim(value)
+                            self.disable(not bool(value), False)
+                            self.name_value = value
+
+                        if attr == "color" and value:
+                            self.color_values = [(value[0], value[1], value[2], 0.75), value]
+                            self.button.background_color = self.color_values[0]
+                            label_color = Color(*self.color_values[1])
+                            label_color.v -= 0.68
+                            label_color.s += 0.05
+                            self.label.color = label_color.rgba
+
 
                     def __init__(self, **kwargs):
                         super().__init__(**kwargs)
-                        self.size_hint = (240, 39)
-                        self.pos = (0, 0)
-                        self.markup = True
-                        self.font_size = sp(25)
-                        self.copyable = True
-                        self.halign = 'left'
-                        self.valign = 'center'
-                        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-                        self.default_color = (0.6, 0.6, 1, 1)
-                        self.color = self.default_color
-                        self.bind(text=self.ref_text)
+
+                        size = (215, 45)
+                        name = 'player_label'
+                        position = (0.5, 0.5)
+                        self.name_value = None
+                        self.color_values = [(0.8, 0.8, 0.8, 0), (1, 1, 1, 0)]
+
+                        self.id = name
+                        self.size_hint_max = size
+                        self.size_hint_min = size
+
+                        self.button = HoverButton()
+                        self.button.id = 'player_button'
+                        self.button.border = (20, 20, 20, 20)
+                        self.button.size_hint_max = size
+                        self.button.size_hint_min = size
+                        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.button.id}.png')
+                        self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}.png')
+
+                        self.label = AlignLabel()
+                        self.label.halign = 'left'
+                        self.label.valign = 'center'
+                        self.label.id = 'label'
+                        self.label.size_hint_max = size
+                        self.label.pos_hint = {"center_x": position[0] + 0.18, "center_y": position[1] - 0.02}
+                        self.label.text = name.upper()
+                        self.label.font_size = sp(22)
+                        self.label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+                        self.label.color = dark_accent
+                        def on_touch_down(touch, *a):
+                            super(Label, self.label).on_touch_down(touch)
+                        self.label.on_touch_down = on_touch_down
+
+                        # Button click behavior
+                        def click_func(*a):
+                            print(self.label.text)
+                            if not self.button.ignore_hover and self.label.text:
+                                if constants.server_manager.current_server.acl:
+                                    constants.server_manager.current_server.acl.get_rule(re.sub("\[.*?\]", "", self.label.text))
+                                    constants.back_clicked = True
+                                    screen_manager.current = 'ServerAclScreen'
+                                    constants.back_clicked = False
+                        def hover(enter=True, *a):
+                            Animation.stop_all(self.button)
+                            Animation.stop_all(self.hicon)
+                            Animation(opacity=(0.25 if enter else 0), duration=0.12).start(self.hicon)
+                            Animation(background_color=self.color_values[1 if enter else 0], duration=0.12).start(self.button)
+                        self.button.bind(on_press=click_func)
+                        self.button.on_enter = functools.partial(hover, True)
+                        self.button.on_leave = functools.partial(hover, False)
+                        self.add_widget(self.button)
+
+                        self.picon = Image()
+                        self.picon.id = 'icon_placeholder'
+                        self.picon.size_hint_max_y = size[1]
+                        self.picon.pos_hint = {'center_x': 0.09}
+                        self.picon.source = os.path.join(constants.gui_assets, 'steve.png')
+                        self.add_widget(self.picon)
+
+                        self.icon = AsyncImage()
+                        self.icon.anim_delay = constants.anim_speed * 0.02
+                        self.icon.id = 'icon'
+                        self.icon.nocache = False
+                        self.icon.size_hint_max_y = size[1]
+                        self.icon.pos_hint = {'center_x': 0.09}
+                        self.icon.source = os.path.join(constants.gui_assets, 'steve.png')
+                        self.add_widget(self.icon)
+
+                        self.hicon = Image()
+                        self.hicon.id = 'icon_highlight'
+                        self.hicon.size_hint_max_y = size[1]
+                        self.hicon.pos_hint = {'center_x': 0.09}
+                        self.hicon.source = os.path.join(constants.gui_assets, 'head_highlight.png')
+                        self.hicon.opacity = 0
+                        self.add_widget(self.hicon)
+
+                        self.add_widget(self.label)
 
                 self.background = PanelFrame()
                 self.add_widget(self.background)
 
                 self.current_players = None
-                self.padding = 15
+                self.padding = 10
 
 
                 # List layout
@@ -12189,17 +12314,10 @@ class PerformancePanel(RelativeLayout):
                 self.scroll_layout = RecycleViewWidget(position=None, view_class=PlayerLabel)
                 self.scroll_layout.always_overscroll = False
                 self.scroll_layout.scroll_wheel_distance = dp(50)
-                self.player_list = RecycleGridLayout(size_hint_y=None, default_size=(240, 39), padding=[self.padding, 0, self.padding, 0])
+                self.player_list = RecycleGridLayout(size_hint_y=None, default_size=(240, 50), padding=[self.padding, 3, self.padding, -20], spacing=[0, 8])
                 self.player_list.bind(minimum_height=self.player_list.setter('height'))
                 self.scroll_layout.add_widget(self.player_list)
                 self.layout.add_widget(self.scroll_layout)
-
-                # Test stuffs
-                # def test(*args):
-                #     data = [{'text':str(x)} for x in range(3)]
-                #     self.update_data(data)
-                # Clock.schedule_once(test, 3)
-
                 self.add_widget(self.layout)
 
 
@@ -12631,14 +12749,14 @@ class ConsolePanel(FloatLayout):
             # Stop server button
             self.controls.remove_widget(self.controls.stop_button)
             del self.controls.stop_button
-            self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server)
+            self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
             # Restart server button
             self.controls.remove_widget(self.controls.restart_button)
             del self.controls.restart_button
-            self.controls.restart_button = IconButton('restart server', {}, (175, 150), (None, None), 'reload-sharp.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server)
+            self.controls.restart_button = IconButton('restart server', {}, (175, 150), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.restart_button.opacity = 0
             self.controls.add_widget(self.controls.restart_button)
 
@@ -12671,14 +12789,14 @@ class ConsolePanel(FloatLayout):
             # Stop server button
             self.controls.remove_widget(self.controls.stop_button)
             del self.controls.stop_button
-            self.controls.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.stop_server)
+            self.controls.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
             # Restart server button
             self.controls.remove_widget(self.controls.restart_button)
             del self.controls.restart_button
-            self.controls.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'reload-sharp.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.button_colors['stop'], click_func=self.restart_server)
+            self.controls.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.restart_button.opacity = 0
             self.controls.add_widget(self.controls.restart_button)
 
@@ -12776,7 +12894,10 @@ class ConsolePanel(FloatLayout):
         if not self.in_scroll_region:
             self.in_scroll_region = True
             scroll_padding = 50
-            scroll_speed = (self.scroll_layout.height / len(self.scroll_layout.data)) / 1800
+            try:
+                scroll_speed = (self.scroll_layout.height / len(self.scroll_layout.data)) / 1800
+            except ZeroDivisionError:
+                scroll_speed = 100
             last_touch.pos = self.to_widget(*Window.mouse_pos)
 
             if top:
@@ -12866,8 +12987,8 @@ class ConsolePanel(FloatLayout):
 
 
         self.button_colors = {
-            'maximize': [[(0.05, 0.08, 0.07, 1), (0.8, 0.8, 1, 1)], ''],
-            'stop': [[(0.05, 0.08, 0.07, 1), (0.8, 0.8, 1, 1)], 'pink']
+            'maximize': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], ''],
+            'stop': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], 'pink']
         }
 
 
@@ -13009,7 +13130,7 @@ class ConsolePanel(FloatLayout):
                                     widget.sel_cover.opacity = 0
                                 try:
                                     if (self.parent.original_text in self.parent.console_panel.selected_labels) and (len(self.parent.console_panel.selected_labels) == 1):
-                                        self.parent.console_panel.selected_labels = []
+                                        self.parent.console_panel.deselect_all()
                                     else:
                                         self.parent.console_panel.last_touch = touch.pos
                                         self.parent.console_panel.selected_labels = [self.parent.original_text]
@@ -13024,7 +13145,7 @@ class ConsolePanel(FloatLayout):
                 self.sel_cover.opacity = 0
                 self.sel_cover.allow_stretch = True
                 self.sel_cover.size_hint = (None, None)
-                self.sel_cover.height = self.section_size / 2.63
+                self.sel_cover.height = 42
                 self.add_widget(self.sel_cover)
 
 
@@ -13226,12 +13347,12 @@ class ConsolePanel(FloatLayout):
                 self.add_widget(self.maximize_button)
 
                 # Stop server button
-                self.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-circle-outline-big.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.stop_server)
+                self.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
                 constants.hide_widget(self.stop_button)
                 self.add_widget(self.stop_button)
 
                 # Restart server button
-                self.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'reload-sharp.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.restart_server)
+                self.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
                 constants.hide_widget(self.restart_button)
                 self.add_widget(self.restart_button)
 
@@ -13973,7 +14094,10 @@ class BackupButton(HoverButton):
 
         self.type_image.version_label = TemplateLabel()
         self.type_image.version_label.color = self.color_id[1]
-        self.type_image.version_label.text = backup_object.version.lower()
+        if backup_object.build:
+            self.type_image.version_label.text = f'{backup_object.version.lower()} (b-{backup_object.build.lower()})'
+        else:
+            self.type_image.version_label.text = backup_object.version.lower()
         self.type_image.version_label.opacity = 0.6
 
         self.type_image.type_label = TemplateLabel()
@@ -14465,7 +14589,10 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
             current_list.extend(acl.deepcopy(self.acl_object.rules['subnets']))
 
         if self.acl_object.displayed_rule and current_list:
-            self.update_user_panel(self.acl_object.displayed_rule.rule, self.user_panel.displayed_scope)
+            global_rules = acl.load_global_acl()
+            self.acl_object.displayed_rule.acl_group = self.current_list
+            rule_scope = acl.check_global_acl(global_rules, self.acl_object.displayed_rule).rule_scope
+            self.update_user_panel(self.acl_object.displayed_rule.rule, rule_scope)
         else:
             self.update_user_panel(None, None)
 
@@ -14623,7 +14750,7 @@ class AddonListButton(HoverButton):
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click_white.png')
+        self.background_down = self.background_normal
         self.disabled_banner = None
 
 
@@ -14633,7 +14760,6 @@ class AddonListButton(HoverButton):
                 if self.hovered:
                     self.hover_text.text = 'UNINSTALL ADD-ON'
                     self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
-                    self.background_color = (1, 1, 1, 1)
             Clock.schedule_once(change_color, 0.07)
             Animation.stop_all(self.delete_button)
             Animation(opacity=1, duration=0.25).start(self.delete_button)
@@ -14641,9 +14767,9 @@ class AddonListButton(HoverButton):
             def change_color(*args):
                 self.hover_text.text = ('DISABLE ADD-ON' if self.enabled else 'ENABLE ADD-ON')
                 if self.hovered:
-                    self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
-                    self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
-            Clock.schedule_once(change_color, 0.15)
+                    self.background_normal = os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                    self.background_down = self.background_normal
+            Clock.schedule_once(change_color, 0.07)
             Animation.stop_all(self.delete_button)
             Animation(opacity=0.65, duration=0.25).start(self.delete_button)
         def delete_click(*args):
@@ -14801,7 +14927,7 @@ class AddonListButton(HoverButton):
 
             # Fade button to hover state
             if not self.delete_button.button.hovered:
-                self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
+                self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
@@ -14811,9 +14937,6 @@ class AddonListButton(HoverButton):
             Animation(opacity=0, duration=0.13).start(self.title)
             Animation(opacity=0, duration=0.13).start(self.subtitle)
             Animation(opacity=1, duration=0.13).start(self.hover_text)
-
-            # Change button color based on state
-            self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
 
     def on_leave(self, *args):
         if not self.ignore_hover:
@@ -14834,11 +14957,6 @@ class AddonListButton(HoverButton):
             Animation(opacity=1, duration=0.13).start(self.title)
             Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
             Animation(opacity=0, duration=0.13).start(self.hover_text)
-
-            # Reset button color
-            def reset_color(*args):
-                self.background_color = (1, 1, 1, 1)
-            Clock.schedule_once(reset_color, 0.1)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -15082,7 +15200,19 @@ class ServerAddonScreen(MenuBackground):
 
 
                     # Toggle addon state
-                    addon_manager.addon_state(addon, enabled=not addon.enabled)
+                    success = addon_manager.addon_state(addon, enabled=not addon.enabled)
+                    if not success:
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_banner,
+                                (0.937, 0.831, 0.62, 1),
+                                f"can't disable while the server is running",
+                                "alert-circle-sharp.png",
+                                3,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+                        return False
                     addon_list = [addon for addon in addon_manager.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
                     self.gen_search_results(addon_list, fade_in=False, highlight=addon.hash, animate_scroll=True)
 
@@ -15889,7 +16019,7 @@ class AmscriptListButton(HoverButton):
 
             # Fade button to hover state
             if not self.delete_button.button.hovered:
-                self.animate_script(image=os.path.join(constants.gui_assets, f'{self.id}_hover_white.png'), color=self.color_id[0], hover_action=True)
+                self.animate_script(image=os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png'), color=self.color_id[0], hover_action=True)
 
             # Show delete button
             Animation.stop_all(self.delete_layout)
@@ -15899,9 +16029,6 @@ class AmscriptListButton(HoverButton):
             Animation(opacity=0, duration=0.13).start(self.title)
             Animation(opacity=0, duration=0.13).start(self.subtitle)
             Animation(opacity=1, duration=0.13).start(self.hover_text)
-
-            # Change button color based on state
-            self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
 
     def on_leave(self, *args):
         if not self.ignore_hover:
@@ -15922,11 +16049,6 @@ class AmscriptListButton(HoverButton):
             Animation(opacity=1, duration=0.13).start(self.title)
             Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
             Animation(opacity=0, duration=0.13).start(self.hover_text)
-
-            # Reset button color
-            def reset_color(*args):
-                self.background_color = (1, 1, 1, 1)
-            Clock.schedule_once(reset_color, 0.1)
 
     def loading(self, load_state, *args):
         if load_state:
@@ -15951,7 +16073,7 @@ class AmscriptListButton(HoverButton):
         self.size_hint_max = (580, 80)
         self.id = "addon_button"
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
-        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click_white.png')
+        self.background_down = self.background_normal
         self.disabled_banner = None
 
 
@@ -15963,7 +16085,6 @@ class AmscriptListButton(HoverButton):
                     if self.hovered:
                         self.hover_text.text = 'EDIT SCRIPT'
                         self.background_normal = os.path.join(constants.gui_assets, "server_button_hover.png")
-                        self.background_color = (1, 1, 1, 1)
                 Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
                 Animation(opacity=1, duration=0.25).start(self.delete_button)
@@ -15971,9 +16092,9 @@ class AmscriptListButton(HoverButton):
                 def change_color(*args):
                     self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
                     if self.hovered:
-                        self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
-                        self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
-                Clock.schedule_once(change_color, 0.15)
+                        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                        self.background_down = self.background_normal
+                Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
                 Animation(opacity=0.65, duration=0.25).start(self.delete_button)
             def edit_click(*args):
@@ -16014,7 +16135,6 @@ class AmscriptListButton(HoverButton):
                     if self.hovered:
                         self.hover_text.text = 'UNINSTALL SCRIPT'
                         self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
-                        self.background_color = (1, 1, 1, 1)
                 Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
                 Animation(opacity=1, duration=0.25).start(self.delete_button)
@@ -16022,9 +16142,9 @@ class AmscriptListButton(HoverButton):
                 def change_color(*args):
                     self.hover_text.text = ('DISABLE SCRIPT' if self.enabled else 'ENABLE SCRIPT')
                     if self.hovered:
-                        self.background_normal = os.path.join(constants.gui_assets, "addon_button_hover_white.png")
-                        self.background_color = ((1, 0.5, 0.65, 1) if self.enabled else (0.3, 1, 0.6, 1))
-                Clock.schedule_once(change_color, 0.15)
+                        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}_hover_{"dis" if self.enabled else "en"}abled.png')
+                        self.background_down = self.background_normal
+                Clock.schedule_once(change_color, 0.07)
                 Animation.stop_all(self.delete_button)
                 Animation(opacity=0.65, duration=0.25).start(self.delete_button)
             def delete_click(*args):
@@ -18648,8 +18768,12 @@ class ServerSettingsScreen(MenuBackground):
             constants.server_manager.current_server = None
 
             def switch_screens(*a):
-                screen_manager.current = "ServerManagerScreen"
-                constants.screen_tree = ['MainMenuScreen']
+                if len(constants.generate_server_list()) > 0:
+                    screen_manager.current = "ServerManagerScreen"
+                    constants.screen_tree = ['MainMenuScreen']
+                else:
+                    screen_manager.current = "MainMenuScreen"
+                    constants.screen_tree = []
 
                 Clock.schedule_once(
                     functools.partial(
@@ -18669,7 +18793,7 @@ class ServerSettingsScreen(MenuBackground):
                     "warning_query",
                     f"Delete '{server_obj.name}'",
                     "Do you want to permanently delete this server?\n\nThis action cannot be undone\n(Your server can be re-imported from a back-up later)",
-                    (None, delete_server)
+                    (None, functools.partial(Clock.schedule_once, delete_server, 0.5))
                 ),
                 0
             )
@@ -19069,7 +19193,7 @@ class MainApp(App):
         Window.left = left
     Window.on_request_close = functools.partial(sys.exit)
 
-    Window.minimum_width = constants.window_size[0] - 50
+    Window.minimum_width = constants.window_size[0]
     Window.minimum_height = constants.window_size[1] - 50
     Window.clearcolor = constants.background_color
     Builder.load_string(kv_file)
@@ -19120,7 +19244,7 @@ class MainApp(App):
         Window.bind(on_dropfile=self.file_drop)
 
         self.icon = os.path.join(constants.gui_assets, "big-icon.png")
-        Loader.loading_pickaxe = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+        Loader.loading_image = os.path.join(constants.gui_assets, 'empty.png')
 
         # Dynamically add every class with the name '*Screen' to ScreenManager
         screen_list = [x[0] for x in inspect.getmembers(sys.modules[__name__], inspect.isclass) if x[0].endswith('Screen') and x[0] != 'Screen']
@@ -19147,19 +19271,6 @@ class MainApp(App):
         def raise_window(*a):
             Window.raise_window()
         Clock.schedule_once(raise_window, 0)
-
-
-        # Screen manager override
-        # if not constants.app_compiled:
-        #     def open_menu(*args):
-        #         open_server("bedrock-test")
-        #         # def show_notif(*args):
-        #         #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
-        #         # Clock.schedule_once(show_notif, 2)
-        #         # def open_ams(*args):
-        #         #     screen_manager.current = "ServerAddonScreen"
-        #         # Clock.schedule_once(open_ams, 1)
-        #     Clock.schedule_once(open_menu, 0.5)
 
 
         # Process --launch flag
