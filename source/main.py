@@ -1,5 +1,6 @@
 # Local imports
 from svrmgr import ServerManager
+from constants import SearchManager
 import constants
 
 

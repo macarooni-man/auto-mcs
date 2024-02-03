@@ -1,6 +1,7 @@
 from shutil import rmtree, copytree, copy, ignore_patterns
 from concurrent.futures import ThreadPoolExecutor
 from random import randrange, choices
+from difflib import SequenceMatcher
 from urllib.request import Request
 from urllib.parse import quote
 from bs4 import BeautifulSoup
@@ -38,7 +39,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0.7"
+app_version = "2.0.8"
 ams_version = "1.1"
 app_title = "auto-mcs"
 window_size = (850, 850)
@@ -202,6 +203,7 @@ check_ngrok()
 
 # Bigboi server manager
 server_manager = None
+search_manager = None
 import_data = {'name': None, 'path': None}
 backup_lock = {}
 
@@ -369,6 +371,14 @@ def restart_update_app(*a):
     script_name = 'auto-mcs-update'
     update_log = os.path.join(tempDir, 'update-log')
     folder_check(tempDir)
+
+    # Delete guide cache in case of update
+    guide_cache = os.path.join(cacheDir, 'guide-cache.json')
+    if os.path.exists(guide_cache):
+        try:
+            os.remove(guide_cache)
+        except:
+            pass
 
     # Generate Windows script to restart
     if os_name == "windows":
@@ -982,6 +992,7 @@ def copy_to(src_dir: str, dst_dir: str, new_name: str, overwrite=True):
 # Create random string of characters
 def gen_rstring(size: int):
     return ''.join(choices(string.ascii_uppercase + string.ascii_lowercase, k=size))
+
 
 
 # --------------------------------------------- Startup Functions ------------------------------------------------------
@@ -2693,6 +2704,7 @@ def init_update():
     new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled
 
 
+
 # ------------------------------------------------ Server Functions ----------------------------------------------------
 
 # Returns absolute file path of server directories
@@ -3407,3 +3419,507 @@ def get_player_head(user: str):
         if debug:
             print(f"Error retrieving head for '{user}': {e}")
         return default_image
+
+
+
+# --------------------------------------------- Global Search Functions ------------------------------------------------
+
+# Generates content for all global searches
+class SearchManager():
+    
+    def __init__(self):
+
+        # Used to contain attributes of pages
+        class ScreenObject():
+            def __init__(self, name: str, screen_id: str, options: list or staticmethod, helper_keywords=[]):
+                self.id = screen_id
+                self.name = name
+                self.options = options
+                self.helper_keywords = helper_keywords
+                self.score = 0
+
+        self.guide_tree = {}
+        self.options_tree = {
+
+            'MainMenu': [
+                ScreenObject('Home', 'MainMenuScreen', ['Update auto-mcs', 'View changelog', 'Create a server', 'Import a server']),
+                ScreenObject('Server Manager', 'ServerManagerScreen', generate_server_list),
+            ],
+
+            'CreateServer': [
+                ScreenObject('Create Server (Step 1)', 'CreateServerNameScreen', ['Server Name']),
+                ScreenObject('Create Server (Step 2)', 'CreateServerTypeScreen', ['Select Vanilla', 'Select Paper', 'Select Fabric', 'Select CraftBukkit', 'Select Forge', 'Select Spigot']),
+                ScreenObject('Create Server (Step 3)', 'CreateServerVersionScreen', ['Type in version']),
+                ScreenObject('Create Server (Step 4)', 'CreateServerWorldScreen', ['Browse for a world', 'Type in seed', 'Select world type']),
+                ScreenObject('Create Server (Step 5)', 'CreateServerNetworkScreen', ['Specify IP/port', 'Type in Message Of The Day', 'Configure Access Control']),
+                ScreenObject('Create Server (Access Control)', 'CreateServerAclScreen', ['Configure bans', 'Configure operators', 'Configure the whitelist']),
+                ScreenObject('Create Server (Add-on Manager)', 'CreateServerAddonScreen', ['Download add-ons', 'Import add-ons', 'Toggle add-on state']),
+                ScreenObject('Create Server (Step 6)', 'CreateServerOptionsScreen', ['Change gamemode', 'Change difficulty', 'Specify maximum players', 'Enable spawn protection', 'Configure gamerules', 'Specify randomTickSpeed', 'Enable Bedrock support']),
+                ScreenObject('Create Server (Step 7)', 'CreateServerReviewScreen', ['Review & create server'])
+            ],
+
+            'ServerImport': [
+                ScreenObject('Import Server', 'ServerImportScreen', ['Import a server folder', 'Import an auto-mcs back-up']),
+            ],
+
+            'Server': [
+                ScreenObject('Server Manager', 'ServerViewScreen', ['Launch server', 'Stop server', 'Restart server', 'Enter console commands']),
+                ScreenObject('Back-up Manager', 'ServerBackupScreen', ['Save a back-up', 'Restore from a back-up', 'Enable automatic back-ups', 'Specify maximum back-ups', 'Open back-up directory', 'Migrate back-up directory']),
+                ScreenObject('Access Control', 'ServerAclScreen', ['Configure bans', 'Configure operators', 'Configure the whitelist']),
+                ScreenObject('Add-on Manager', 'ServerAddonScreen', ['Download add-ons', 'Import add-ons', 'Toggle add-on state', 'Update add-ons']),
+                ScreenObject('Script Manager', 'ServerAmscriptScreen', ['Download scripts', 'Import scripts', 'Create a new script', 'Edit a script', 'Open script directory']),
+                ScreenObject('Server Settings', 'ServerSettingsScreen', ["Edit 'server.properties'", 'Open server directory', 'Specify memory usage', 'Specify IP/port', 'Enable proxy (ngrok)', 'Enable Bedrock support', 'Enable automatic updates', 'Update this server', "Change 'server.jar'", 'Rename this server', 'Change world file', 'Delete this server'])
+            ]
+        }
+
+    # Cache the guides to a .json file
+    def cache_pages(self):
+        if not app_online:
+            return False
+
+        def get_html_contents(url: str):
+            while True:
+                req = requests.get(url)
+                if req.status_code == 200:
+                    break
+                else:
+                    time.sleep(3)
+
+            return BeautifulSoup(req.content, features='html.parser')
+
+        cache_file = os.path.join(cacheDir, 'guide-cache.json')
+        cache_data = {}
+
+        # If cache file exists, load data from there instead
+        if os.path.exists(cache_file):
+            with open(cache_file, 'r') as f:
+                self.guide_tree = json.loads(f.read())
+                return True
+
+        # If not, scrape the website
+        base_url = "https://www.auto-mcs.com/guides"
+        content = get_html_contents(base_url)
+
+        for a in content.find_all('a', class_="portfolio-hover-item"):
+
+            sub_url = base_url + a.get('href').replace('guides/', '')
+            title = a.get_text().strip()
+
+            guide = get_html_contents(sub_url)
+            time.sleep(1)
+
+            # Clean-up guide by removing unnecessary elements
+            for tag in guide("div", id='toc'):
+                tag.decompose()
+            for tag in guide("section", id='itemPagination'):
+                tag.decompose()
+            for tag in guide("section", class_='page-section'):
+                if '<  guides' in tag.get_text() or 'kaleb.efflandt@gmail.com' in tag.get_text():
+                    tag.decompose()
+
+            # Format specific tags in a custom way
+            for tag in guide("code"):
+                add_space = tag.text[-1] == ' '
+                tag.replace_with(f'`{tag.text.strip()}`{" " if add_space else ""}')
+
+            for tag in guide("a"):
+                try:
+                    href = tag.get('href')
+                    if href:
+                        if href.startswith('/'):
+                            href = f'https://auto-mcs.com{href}'
+
+                        if href.endswith('.png') or href.endswith('.jpg'):
+                            new_href = requests.get(href, allow_redirects=True).history[-1].headers['location']
+                            time.sleep(1)
+                            tag.replace_with(BeautifulSoup(f'<img src="{new_href}">', 'html.parser').img)
+                            continue
+
+                        tag.replace_with(f'[{tag.text}](<{href}>)')
+                except:
+                    pass
+
+            # Organize page contents into a dictionary of headers and paragraphs
+            page_content = {}
+            images = {}
+            last = None
+            last_header = ''
+            header_list = ['h1', 'h2', 'h3']
+            for element in guide.find_all():
+                text = element.text.strip()
+
+                accordion_header = 'accordion-item__title' in element.get('class', []) and element.name == 'span'
+
+                if element.name in ['p', 'ul', 'img'] or element.name in header_list or accordion_header:
+                    if len(element.text) > 10000:
+                        continue
+
+                    if last:
+                        if last.name in header_list and element.name in header_list:
+                            continue
+
+                    # Format lists
+                    if element.name == 'ul':
+                        text = '\n'.join([f'- {l.text.strip()}' for l in element.find_all('li') if l.text.strip()])
+                    elif element.name == 'li' or element.parent.name == 'li':
+                        continue
+
+                    # Format images
+                    if element.name == 'img':
+                        try:
+                            text = f"[⠀]({element.get('src')})"
+                            images[last_header].append(text)
+                        except:
+                            pass
+                        continue
+
+                    last = element
+
+                    # Ignore certain headers
+                    if ('controls' == text.lower() or 'some notable features include' in text.lower()):
+                        text = f"## {text}"
+
+                    # Add header
+                    elif element.name in header_list or accordion_header:
+                        last_header = text.lower()
+                        page_content[last_header] = ''
+                        images[last_header] = []
+                        continue
+
+                    page_content[last_header] += re.sub(r'\n\n+', '\n\n', text) + '\n'
+
+            # Format text to read better
+            for header, content in page_content.items():
+                content = re.sub(r'\.(?=[A-Z])', '.\n\n', content)
+                content = re.sub(r'(\n+Note:  )(.*)(\n+)', lambda x: f'\n\n> *Note:*  **{x.group(2)}**\n\n', f'\n{content}\n').strip()
+                content = re.sub(r'(?<=(\w|\d|\.|\?|\!))(\n)(?=(\w|\d|\.|\?|\!))', '\n\n', content).strip()
+                content = content.replace('permissions**\n\n!`auto-mcs --launch "Server 1, Server 2"`', 'permissions! `auto-mcs --launch "Server 1, Server 2"`**')
+                content = content.replace('`java.lang.**\n\nOutOfMemoryError: Java heap space`', '`java.lang.OutOfMemoryError: Java heap space`**')
+                if header in images:
+                    content += ' '.join(list(set(images[header])))
+
+                # Remove empty data
+                if not content.strip():
+                    del page_content[header]
+
+                page_content[header] = content
+
+            cache_data[title] = {'url': sub_url, 'content': page_content}
+
+        with open(cache_file, 'w+') as f:
+            f.write(json.dumps(cache_data))
+        self.guide_tree = cache_data
+        return True
+
+    # Generates a list of available options based on the current screen
+    def filter_options(self, current_screen):
+        screen_list = self.options_tree['MainMenu']
+        final_list = []
+
+        if current_screen.startswith('ServerImport'):
+            screen_list.extend(self.options_tree['ServerImport'])
+
+        if current_screen.startswith('CreateServer'):
+            for screen in self.options_tree['Server']:
+                if not (new_server_info['type'] == 'vanilla' and screen.id == 'ServerAddonScreen'):
+                    if screen not in screen_list:
+                        screen_list.append(screen)
+
+        if server_manager.current_server:
+            for screen in self.options_tree['Server']:
+                if not (server_manager.current_server.type == 'vanilla' and screen.id == 'ServerAddonScreen'):
+                    if screen not in screen_list:
+                        screen_list.append(screen)
+
+
+        # Iterate through available screens to create search objects
+        for screen in screen_list:
+            if screen.id == 'ServerManagerScreen':
+                final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, screen.helper_keywords))
+                for server in screen.options():
+                    final_list.append(ServerResult(server, 'Installed server', None))
+
+            elif (screen.id.startswith('Server') and 'Import' not in screen.id) and server_manager.current_server:
+                keywords = screen.options
+                keywords.extend(screen.helper_keywords)
+                final_list.append(ScreenResult(screen.name, f'Configuration page ({server_manager.current_server.name})', screen.id, keywords))
+                for setting in screen.options:
+                    final_list.append(SettingResult(setting, f'Action in {screen.name} ({server_manager.current_server.name})', screen.id))
+
+            else:
+                keywords = screen.options
+                keywords.extend(screen.helper_keywords)
+                final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, keywords))
+                for setting in screen.options:
+                    final_list.append(SettingResult(setting, f'Action in {screen.name}', screen.id))
+
+
+        # Return a list of all created screens, settings, and guides
+        return final_list
+
+    # Generate a list of results from a search
+    def execute_search(self, current_screen, query):
+        
+        match_list = {
+            'guide': SearchObject(),
+            'setting': [],
+            'screen': [],
+            'server': []
+        }
+
+        # Cleanup strings
+        def clean_str(string):
+            return string.strip().lower().replace('-', '')
+
+        # Removes common words to improve search results
+        def remove_common_words(string):
+            common_words = ['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'I', 'it', 'for', 'not',
+                            'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they',
+                            'we', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there',
+                            'their', 'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me',
+                            'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know', 'take', 'people',
+                            'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than', 'then',
+                            'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also', 'back', 'after', 'two',
+                            'how', 'our', 'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any',
+                            'these', 'give', 'day', 'most', 'us', 'is']
+
+            final_words = []
+
+            for w in string.split(' '):
+                if w.lower().strip() not in common_words:
+                    final_words.append(w)
+
+            return ' '.join(final_words)
+
+        # Manual query overrides for improved results
+        def check_overrides(string):
+            def check_word(w):
+                return len(re.findall(fr'\b{w}\b', string)) > 0
+
+            if (check_word('automcs') or check_word('this')) and 'what' in query.lower():
+                return 'getting started'
+
+            elif (check_word('automcs') or check_word(
+                'this')) and 'addon' not in query.lower() and 'script' not in query.lower() and (
+                check_word('download') or check_word('use') or check_word('install') or check_word('get')):
+                return 'installation'
+
+            elif (check_word('level') or check_word('world')) and (
+                'back' not in query.lower() and 'up' not in query.lower()):
+                return 'change the world'
+
+            elif check_word('ram') or check_word('memory'):
+                return 'allocate memory'
+
+            elif check_word('ide'):
+                return 'amscript ide'
+
+            elif 'modding' in query.lower():
+                return 'installing addons'
+
+            elif check_word('distribution'):
+                return 'server type'
+
+            elif (check_word('use') or check_word('controls') or check_word('help') or check_word('manager')) and (
+                check_word('acl') or 'access control' in query.lower()):
+                return 'what are rules'
+
+            elif (check_word('make') or check_word('create')) and check_word('server'):
+                return 'create a server'
+
+            elif check_word('amscript') and 'what is' in query.lower():
+                return 'amscript'
+
+            elif 'port forward' in query.lower() or check_word(
+                'nat') or 'address translation' in query.lower() or check_word('tcp') or check_word(
+                'udp') or 'port trigger' in query.lower():
+                return 'wan config'
+
+            elif check_word('port') or check_word('ip'):
+                return 'lan config'
+
+            elif check_word('amscript') and (
+                check_word('download') or check_word('use') or check_word('install') or check_word('get')):
+                return 'amscript getting started'
+
+            else:
+                return string
+
+        # Returns similarity of strings with a metric of 0-1
+        def similarity(a, b):
+            return round(SequenceMatcher(None, a, b).ratio(), 2)
+
+
+        # Find matching objects
+        options_list = self.filter_options(current_screen)
+        if options_list:
+            o_query = query
+
+            # First check for a title match
+            query = clean_str(query).replace('?', '').replace(',', '')
+            query = query.replace('mod', 'addon').replace('plugin', 'addon')
+            query = check_overrides(query)
+
+            for obj in options_list:
+                title = obj.title
+                simple_query = remove_common_words(query)
+                if simple_query in clean_str(obj.title):
+                    obj.score = 100
+                    if obj not in match_list[obj.type]:
+                        match_list[obj.type].append(obj)
+
+            # If no match was found, search every content header
+            else:
+                for obj in options_list:
+                    title = clean_str(obj.title)
+                    obj.score = 0
+
+                    if query == title:
+                        obj.score = 100
+
+                    else:
+                        # for w1 in title.split(' '):
+                        #     for w2 in query.split(' '):
+                        #         obj.score += (similarity(w1, w2) * (len(w1) / 2))
+                        obj.score = similarity(query, title)
+
+                        # Modify values based on object type
+                        if obj.type == 'server':
+                            obj.score /= 2
+
+                    if obj not in match_list[obj.type]:
+                        match_list[obj.type].append(obj)
+
+        
+        
+        # Search through every guide to return relevant information from a query
+        if app_online and self.guide_tree:
+            o_query = query
+
+            # First check for a title match
+            query = clean_str(query).replace('?', '').replace(',', '')
+            query = query.replace('mod', 'addon').replace('plugin', 'addon')
+            query = check_overrides(query)
+
+            for title in self.guide_tree.keys():
+                simple_query = remove_common_words(query)
+                if simple_query in clean_str(title):
+                    match_list['guide'] = GuideResult(
+                        f'{title} - Overview',
+                        'View guide from auto-mcs.com',
+                        self.guide_tree[title]['url'],
+                        score = 100
+                    )
+
+            # If no match was found, search every content header
+            else:
+                for page_title, data in self.guide_tree.items():
+                    url = data['url']
+                    content = data['content']
+
+                    o_page_title = page_title
+                    page_title = clean_str(page_title)
+
+                    # Ignore pages based on query
+                    def check_word_in_title(w1, w2=None, invert=False):
+                        if not w2:
+                            w2 = w1
+                        if invert:
+                            return w1 in query and w2 not in page_title
+                        else:
+                            return w1 not in query and w2 in page_title
+
+                    if check_word_in_title('addon') or check_word_in_title('backup') or check_word_in_title('amscript'):
+                        continue
+
+                    if check_word_in_title('addon', invert=True) or check_word_in_title('backup', invert=True) or check_word_in_title('amscript', invert=True):
+                        continue
+
+                    for title, paragraph in content.items():
+                        o_paragraph = paragraph
+                        o_title = title
+                        title = clean_str(title)
+                        paragraph = clean_str(paragraph)
+
+                        # If title matches query, give it a high score
+                        if query == title:
+                            similarity_score = 100
+                        else:
+                            # Calculate the similarity score
+                            similarity_score = round(similarity(paragraph, query)) + similarity(title, query)
+
+                            # If words from search are in the paragraph, increase score
+                            for word in remove_common_words(query).split():
+                                if len(word) > 2:
+                                    similarity_score += (len(re.findall(fr'\b{word}\b', paragraph)) / 10)
+                                    similarity_score += (len(re.findall(fr'\b{word}\b', title)) / 10)
+
+                        # print(similarity_score)
+                        if similarity_score > match_list['guide'].score:
+                            match_list['guide'] = GuideResult(
+                                f'{o_page_title} - {o_title.title()}',
+                                'View guide from auto-mcs.com',
+                                url + '#' + o_title.lower().replace(' ', '-'),
+                                score = similarity_score
+                            )
+
+        match_list['setting'] = tuple(sorted(match_list['setting'], key=lambda x: x.score, reverse=True))
+        match_list['screen'] = tuple(sorted(match_list['screen'], key=lambda x: x.score, reverse=True))
+        match_list['server'] = tuple(sorted(match_list['server'], key=lambda x: x.score, reverse=True))
+        return match_list
+
+
+
+# Base search result
+class SearchObject():
+    def __init__(self):
+        self.type = 'undefined'
+        self.score = 0
+
+# Search result that matches a setting
+class SettingResult(SearchObject):
+    def __init__(self, title, subtitle, target, keywords=[], score=0):
+        super().__init__()
+        self.type = 'setting'
+        self.icon = os.path.join(gui_assets, 'icons', '')
+        self.title = title
+        self.subtitle = subtitle
+        self.target = target
+        self.keywords = keywords
+        self.score = score
+
+# Search result that matches an online guide
+class GuideResult(SearchObject):
+    def __init__(self, title, subtitle, target, keywords=[], score=0):
+        super().__init__()
+        self.type = 'guide'
+        self.icon = os.path.join(gui_assets, 'icons', '')
+        self.title = title
+        self.subtitle = subtitle
+        self.target = target
+        self.keywords = keywords
+        self.score = score
+
+# Search result that matches an installed server
+class ServerResult(SearchObject):
+    def __init__(self, title, subtitle, target, keywords=[], score=0):
+        super().__init__()
+        self.type = 'server'
+        self.icon = os.path.join(gui_assets, 'icons', '')
+        self.title = title
+        self.subtitle = subtitle
+        self.target = target
+        self.keywords = keywords
+        self.score = score
+
+# Search result that matches a configuration page
+class ScreenResult(SearchObject):
+    def __init__(self, title, subtitle, target, keywords=[], score=0):
+        super().__init__()
+        self.type = 'screen'
+        self.icon = os.path.join(gui_assets, 'icons', '')
+        self.title = title
+        self.subtitle = subtitle
+        self.target = target
+        self.keywords = keywords
+        self.score = score

@@ -131,6 +131,7 @@ if __name__ == '__main__':
 
         # Check for updates
         constants.check_app_updates()
+        constants.search_manager = constants.SearchManager()
 
 
         # Find latest game versions and update data cache
@@ -163,6 +164,13 @@ if __name__ == '__main__':
         except Exception as e:
             if constants.debug:
                 print(e)
+
+        try:
+            constants.search_manager.cache_pages()
+        except Exception as e:
+            if constants.debug:
+                print(e)
+
 
         # Background loop if needed
         connect_counter = 0

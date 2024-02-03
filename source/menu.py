@@ -4590,8 +4590,8 @@ class NumberSlider(FloatLayout):
 # ---------------------------------------------------- Screens ---------------------------------------------------------
 
 # Popup widgets
-popup_blur_amount = 7  # Originally 5
-popup_blur_darkness = 0.9
+popup_blur_amount = 7       # 0-10 int:   Higher is blurrier  (originally 5)
+popup_blur_darkness = 0.9   # 0-1 float:  Lower is darker
 class PopupWindow(RelativeLayout):
 
     def generate_blur_background(self, *args):
@@ -5711,6 +5711,325 @@ class PopupUpdate(BigPopupWindow):
             widget.opacity = 0
 
 
+# Global search bar
+class PopupSearch(RelativeLayout):
+
+    class ResultButton(RelativeLayout):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.size_hint_max = (200, 75)
+            self.search_obj = None
+
+            self.button = Button()
+            self.add_widget(self.button)
+
+            self.title = Label()
+            self.title.text = 'Hello!'
+            # self.title.color = (0.6, 0.6, 1, 1)
+            self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+            self.title.font_size = sp(30)
+            self.title.pos_hint = {'center_x': 0.5, 'center_y': 0.75}
+            self.add_widget(self.title)
+
+            self.subtitle = Label()
+            self.subtitle.text = "I'm a subtitle"
+            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+            self.subtitle.font_size = sp(22)
+            self.subtitle.pos_hint = {'center_x': 0.5, 'center_y': 0.3}
+            self.add_widget(self.subtitle)
+
+        def refresh_data(self, search_obj):
+            self.search_obj = search_obj
+            self.title.text = search_obj.title
+            self.subtitle.text = search_obj.subtitle
+
+
+
+    def generate_blur_background(self, *args):
+        image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+
+        # Prevent this from running every resize
+        def reset_activity(*args):
+            self.generating_background = False
+
+        if not self.generating_background:
+            self.generating_background = True
+
+            if self.shown:
+                for widget in self.window.children:
+                    widget.opacity = 0
+                self.blur_background.opacity = 0
+
+            screen_manager.current_screen.export_to_png(image_path)
+            im = PILImage.open(image_path)
+            im = ImageEnhance.Brightness(im)
+            im = im.enhance(popup_blur_darkness - 0.03)
+            im1 = im.filter(GaussianBlur(popup_blur_amount + 1))
+            im1.save(image_path)
+            self.blur_background.reload()
+
+            if self.shown:
+                for widget in self.window.children:
+                    widget.opacity = 1
+                self.blur_background.opacity = 1
+
+            self.resize_window()
+            Clock.schedule_once(reset_activity, 0.5)
+
+    # Annoying hack to fix canvas lag
+    def resize_window(*args):
+        Window.on_resize(*Window.size)
+
+
+    def click_event(self, *args):
+        self.self_destruct(True)
+
+
+    def resize(self):
+        self.window.size = self.window_background.size
+        self.window.pos = (Window.size[0]/2 - self.window_background.width/2, Window.size[1]/2 - self.window_background.height/2)
+        if self.shown:
+            Clock.schedule_once(self.generate_blur_background, 0.1)
+
+
+    def animate(self, show=True, *args):
+        window_func = functools.partial(self.resize_window)
+        Clock.schedule_interval(window_func, 0.015)
+
+        def is_shown(*args):
+            self.shown = True
+
+        if show:
+            for widget in self.window.children:
+                original_size = (widget.width, widget.height)
+                widget.size = (original_size[0] * 0.8, original_size[1] * 0.8)
+                anim = Animation(size=original_size, duration=0.05)
+                anim &= Animation(opacity=1, duration=0.25)
+                anim.start(widget)
+            Animation(opacity=1, duration=0.25).start(self.blur_background)
+            Clock.schedule_once(functools.partial(is_shown), 0.5)
+        else:
+            for widget in self.window.children:
+                if "button" in widget.id:
+                    widget.opacity = 0
+
+            image_path = os.path.join(constants.gui_assets, 'live', 'popup.png')
+            self.window.export_to_png(image_path)
+
+            for widget in self.window.children:
+                if widget != self.window_background and "button" not in widget.id:
+                    widget.opacity = 0
+                else:
+                    if widget == self.window_background:
+                        widget.color = (1,1,1,1)
+                        widget.source = image_path
+                        widget.reload()
+                    original_size = (widget.width, widget.height)
+                    new_size = (original_size[0] * 0.85, original_size[1] * 0.85)
+                    anim = Animation(size=new_size, duration=0.08)
+                    anim &= Animation(opacity=0, duration=0.25)
+
+                    if "ok_button" in widget.id:
+                        widget.opacity = 1
+                        original_pos = (widget.pos[0], widget.pos[1] + 28)
+                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
+
+                    elif "button" in widget.id:
+                        widget.opacity = 1
+                        original_pos = (widget.pos[0] + (-34.25 if "yes" in widget.id else +34.25 if "no" in widget.id else 0), widget.pos[1] + 28)
+                        anim &= Animation(font_size=widget.font_size-3.5, pos=original_pos, duration=0.08)
+
+                    anim.start(widget)
+
+            Animation(opacity=0, duration=0.28).start(self.blur_background)
+
+        Clock.schedule_once(functools.partial(Clock.unschedule, window_func), 0.35)
+
+
+    # Delete popup bind
+    def self_destruct(self, animate, *args):
+
+        def delete(*args):
+
+            try:
+                for widget in self.parent.children:
+                    if "Popup" in widget.__class__.__name__:
+                        self.parent.popup_widget = None
+                        self.parent.canvas.after.clear()
+                        self.parent.remove_widget(widget)
+                        self.canvas.after.clear()
+            except AttributeError:
+                if constants.debug:
+                    print("Window Popup Error: Failed to delete popup as the parent window doesn't exist")
+
+        if animate:
+            self.animate(False)
+            Clock.schedule_once(delete, 0.4)
+        else:
+            delete()
+
+
+    # Generate search results when typing
+    def on_search(self, *a):
+
+        # Set lock for a timeout
+        if not self.search_lock:
+            self.search_lock = True
+
+            # Update results with query
+            self.search_text = self.window_input.text
+            results = constants.search_manager.execute_search(screen_manager.current, self.search_text)
+            complete_list = [results['guide']]
+            complete_list.extend(results['server'])
+            complete_list.extend(results['setting'])
+            complete_list.extend(results['screen'])
+            complete_list = tuple(sorted(complete_list, key=lambda x: x.score, reverse=True))
+
+            for x, button in enumerate(reversed(self.results.children), 0):
+                print(vars(complete_list[x]))
+                button.refresh_data(complete_list[x])
+
+
+            # print(vars(results['guide']))
+            # for item in results['server'][:2]:
+            #     print(vars(item))
+            # for item in results['setting'][:2]:
+            #     print(vars(item))
+            # for item in results['screen'][:2]:
+            #     print(vars(item))
+
+
+            # Reset lock for a timeout
+            def reset_lock(*a):
+                self.search_lock = False
+                if self.search_text != self.window_input.text:
+                    self.on_search()
+            Clock.schedule_once(reset_lock, 0.5)
+
+
+    def __init__(self, **kwargs):
+        self.window_color = (0.42, 0.475, 1, 1)
+        self.window_text_color = (0.78, 0.78, 1, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'information-circle.png')
+        super().__init__(**kwargs)
+
+        # Popup window layout
+        self.window = RelativeLayout()
+        self.callback = None
+        self.shown = False
+        self.clicked = False
+
+        self.max_results = 3
+        self.search_lock = False
+        self.search_text = ''
+
+        with self.canvas.after:
+            # Blurred background
+            self.blur_background = Image()
+            self.blur_background.opacity = 0
+            self.blur_background.id = "blur_background"
+            self.blur_background.source = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+            self.blur_background.allow_stretch = True
+            self.blur_background.keep_ratio = False
+            self.generating_background = False
+
+
+            # Popup window background
+            self.window_background = Image(source=os.path.join(constants.gui_assets, "global_search.png"))
+            self.window_background.id = "window_background"
+            self.window_background.size_hint = (None, None)
+            self.window_background.keep_ratio = False
+            self.window_background.size = (600, 800)
+            self.window_background.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+
+
+            # Popup window title
+            # self.window_icon = Image(source=self.window_icon_path)
+            # self.window_icon.id = "window_icon"
+            # self.window_icon.size_hint = (None, None)
+            # self.window_icon.allow_stretch = True
+            # self.window_icon.color = self.window_text_color
+            # self.window_icon.size = (36, 36)
+            # self.window_icon.pos = (self.window.x + 13, self.window.y + self.window_background.height - 48)
+
+            # Input to type in
+            self.window_input = BaseInput()
+            self.window_input.title_text = ""
+            self.window_input.id = 'search_input'
+            self.window_input.multiline = False
+            self.window_input.size_hint_max = (600, 100)
+            self.window_input.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+            self.window_input.padding_y = (30, 29)
+            self.window_input.padding_x = (25, 25)
+            self.window_input.halign = "left"
+            self.window_input.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.window_input.foreground_color = (0.78, 0.78, 1, 0.8)
+            self.window_input.background_color = (0, 0, 0, 0)
+            self.window_input.cursor_color = (0.78, 0.78, 1, 0.8)
+            self.window_input.selection_color = (0.7, 0.7, 1, 0.4)
+            self.window_input.cursor_width = 4
+            self.window_input.font_size = sp(32)
+            self.window_input.bind(text=self.on_search)
+
+
+            self.window_title = Label()
+            self.window_title.id = "window_title"
+            self.window_title.text = "search for anything"
+            self.window_title.color = self.window_text_color
+            self.window_title.font_size = sp(40)
+            self.window_title.y = (self.window_background.height / 7.5)
+            self.window_title.pos_hint = {"center_x": 0.5}
+            self.window_title.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["bold"]}.ttf')
+            self.window_title.text_size[0] = (self.window_background.size[0] * 0.7)
+            self.window_title.halign = "center"
+            self.window_title.shorten = True
+            self.window_title.markup = True
+            self.window_title.shorten_from = "right"
+
+
+            # Popup window content
+            self.window_content = Label()
+            self.window_content.id = "window_content"
+            self.window_content.color = tuple([px * 1.5 if px < 1 else px for px in self.window_text_color])
+            self.window_content.font_size = sp(23)
+            self.window_content.line_height = 1.15
+            self.window_content.halign = "center"
+            self.window_content.valign = "center"
+            self.window_content.text_size = (self.window_background.width - 40, self.window_background.height - 25)
+            self.window_content.pos_hint = {"center_x": 0.5, "center_y": 1}
+            self.window_content.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["bold"]}.ttf')
+
+
+            # Results layout
+            self.results = GridLayout(cols=1, spacing=30)
+            self.results.id = 'search_results'
+            self.results.size_hint_max = (200, 500)
+            self.results.pos_hint = {'center_x': 0.5}
+            self.results.y = -200
+
+            for x in range(self.max_results):
+                self.results.add_widget(self.ResultButton())
+
+
+        self.add_widget(self.blur_background)
+        self.window.add_widget(self.window_input)
+        self.window.add_widget(self.results)
+        self.window.add_widget(self.window_background)
+        # self.window.add_widget(self.window_icon)
+        self.window.add_widget(self.window_title)
+        self.window.add_widget(self.window_content)
+
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+        self.window_input.grab_focus()
+
+
+
 # Screen widgets
 def previous_screen(*args):
     screen_manager.current = constants.screen_tree.pop(-1)
@@ -6224,6 +6543,31 @@ class MenuBackground(Screen):
                     pass
             Clock.schedule_once(show, 0.3)
 
+    # Show global search bar
+    def show_search(self):
+
+        if "ProgressScreen" in self.__class__.__name__:
+            return
+
+        # Log for crash info
+        try:
+            interaction = f"PopupWidget (GlobalSearch)"
+            constants.last_widget = interaction + f" @ {constants.format_now()}"
+        except:
+            pass
+
+        with self.canvas.after:
+            self.popup_widget = PopupSearch()
+
+        self.popup_widget.generate_blur_background()
+
+        def show(*argies):
+            self.add_widget(self.popup_widget)
+            self.popup_widget.resize()
+            self.popup_widget.animate(True)
+
+        Clock.schedule_once(show, 0)
+
     # Show banner; pass in color, text, icon name, and duration
     @staticmethod
     def show_banner(color, text, icon, duration=5, pos_hint={"center_x": 0.5, "center_y": 0.895}, *args):
@@ -6315,6 +6659,35 @@ class MenuBackground(Screen):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
+
+            # Override for PopupSearch
+            if self.popup_widget.__class__.__name__ == 'PopupSearch':
+                if keycode[1] == 'escape':
+                    self.popup_widget.self_destruct(True)
+                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
+                    self.popup_widget.resize_window()
+                elif 'ctrl' not in modifiers and text and self.popup_widget.window_input.keyboard:
+
+                    def insert_text(content):
+                        col = self.popup_widget.window_input.cursor_col
+                        start = self.popup_widget.window_input.text[:col]
+                        end = self.popup_widget.window_input.text[col:]
+                        self.popup_widget.window_input.text = start + content + end
+                        for x in range(len(content)):
+                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
+
+                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
+                    if 'shift' in modifiers:
+                        new_str = new_str.upper()
+                    if len(new_str) == 1:
+                        insert_text(new_str)
+                    elif keycode[1] == 'spacebar':
+                        insert_text(' ')
+                    self.popup_widget.resize_window()
+                else:
+                    self.popup_widget.resize_window()
+                return True
+
             if keycode[1] in ['escape', 'n']:
                 try:
                     self.popup_widget.click_event(self.popup_widget, 'no')
@@ -6327,6 +6700,22 @@ class MenuBackground(Screen):
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, 'ok')
             return
+
+
+        # Trigger for showing search bar
+        elif self._shift_pressed and 'shift' in keycode[1]:
+            self.show_search()
+            self._shift_pressed = False
+            return True
+
+        elif 'shift' in keycode[1]:
+            self._shift_pressed = True
+            def reset(*a):
+                self._shift_pressed = False
+            Clock.schedule_once(reset, 0.25)
+            return True
+
+
 
         # Ignore ESC commands while input focused
         if not self._input_focused and self.name == screen_manager.current_screen.name:
@@ -6357,16 +6746,16 @@ class MenuBackground(Screen):
                 keyboard.release()
 
 
-        # On TAB/Shift+TAB, cycle through elements
-        if keycode[1] == 'tab' and 'tab' not in self._ignore_keys:
-            pass
-            # for widget in self.walk():
-            #     try:
-            #         if "button" in widget.id or "input" in widget.id:
-            #             print(widget)
-            #             break
-            #     except AttributeError:
-            #         continue
+        # # On TAB/Shift+TAB, cycle through elements
+        # if keycode[1] == 'tab' and 'tab' not in self._ignore_keys:
+        #     pass
+        #     # for widget in self.walk():
+        #     #     try:
+        #     #         if "button" in widget.id or "input" in widget.id:
+        #     #             print(widget)
+        #     #             break
+        #     #     except AttributeError:
+        #     #         continue
 
 
         # Crash test
@@ -6390,6 +6779,7 @@ class MenuBackground(Screen):
 
         self._input_focused = False
         self._keyboard = None
+        self._shift_pressed = False
 
         # Add keys to override in child windows
         self._ignore_keys = []
@@ -6981,6 +7371,35 @@ class MainMenuScreen(MenuBackground):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
+
+            # Override for PopupSearch
+            if self.popup_widget.__class__.__name__ == 'PopupSearch':
+                if keycode[1] == 'escape':
+                    self.popup_widget.self_destruct(True)
+                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
+                    self.popup_widget.resize_window()
+                elif 'ctrl' not in modifiers and text and self.popup_widget.window_input.keyboard:
+
+                    def insert_text(content):
+                        col = self.popup_widget.window_input.cursor_col
+                        start = self.popup_widget.window_input.text[:col]
+                        end = self.popup_widget.window_input.text[col:]
+                        self.popup_widget.window_input.text = start + content + end
+                        for x in range(len(content)):
+                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
+
+                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
+                    if 'shift' in modifiers:
+                        new_str = new_str.upper()
+                    if len(new_str) == 1:
+                        insert_text(new_str)
+                    elif keycode[1] == 'spacebar':
+                        insert_text(' ')
+                    self.popup_widget.resize_window()
+                else:
+                    self.popup_widget.resize_window()
+                return True
+
             if keycode[1] in ['escape', 'n']:
                 try:
                     self.popup_widget.click_event(self.popup_widget, 'no')
@@ -6999,6 +7418,21 @@ class MainMenuScreen(MenuBackground):
                 except AttributeError:
                     pass
             return
+
+
+        # Trigger for showing search bar
+        elif self._shift_pressed and 'shift' in keycode[1]:
+            self.show_search()
+            self._shift_pressed = False
+            return
+
+        elif 'shift' in keycode[1]:
+            self._shift_pressed = True
+            def reset(*a):
+                self._shift_pressed = False
+            Clock.schedule_once(reset, 0.25)
+            return
+
 
         # Ignore ESC commands while input focused
         if not self._input_focused and self.name == screen_manager.current_screen.name:
@@ -7030,16 +7464,16 @@ class MainMenuScreen(MenuBackground):
                         continue
                 keyboard.release()
 
-        # On TAB/Shift+TAB, cycle through elements
-        if keycode[1] == 'tab' and 'tab' not in self._ignore_keys:
-            pass
-            # for widget in self.walk():
-            #     try:
-            #         if "button" in widget.id or "input" in widget.id:
-            #             print(widget)
-            #             break
-            #     except AttributeError:
-            #         continue
+        # # On TAB/Shift+TAB, cycle through elements
+        # if keycode[1] == 'tab' and 'tab' not in self._ignore_keys:
+        #     pass
+        #     # for widget in self.walk():
+        #     #     try:
+        #     #         if "button" in widget.id or "input" in widget.id:
+        #     #             print(widget)
+        #     #             break
+        #     #     except AttributeError:
+        #     #         continue
 
         # Crash test
         # if keycode[1] == 'z' and 'ctrl' in modifiers:
@@ -13535,6 +13969,35 @@ class ServerViewScreen(MenuBackground):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
+
+            # Override for PopupSearch
+            if self.popup_widget.__class__.__name__ == 'PopupSearch':
+                if keycode[1] == 'escape':
+                    self.popup_widget.self_destruct(True)
+                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
+                    self.popup_widget.resize_window()
+                elif 'ctrl' not in modifiers and text and self.popup_widget.window_input.keyboard:
+
+                    def insert_text(content):
+                        col = self.popup_widget.window_input.cursor_col
+                        start = self.popup_widget.window_input.text[:col]
+                        end = self.popup_widget.window_input.text[col:]
+                        self.popup_widget.window_input.text = start + content + end
+                        for x in range(len(content)):
+                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
+
+                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
+                    if 'shift' in modifiers:
+                        new_str = new_str.upper()
+                    if len(new_str) == 1:
+                        insert_text(new_str)
+                    elif keycode[1] == 'spacebar':
+                        insert_text(' ')
+                    self.popup_widget.resize_window()
+                else:
+                    self.popup_widget.resize_window()
+                return True
+
             if keycode[1] in ['escape', 'n']:
                 try:
                     self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
@@ -13547,6 +14010,21 @@ class ServerViewScreen(MenuBackground):
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
             return
+
+
+        # Trigger for showing search bar
+        elif self._shift_pressed and 'shift' in keycode[1]:
+            self.show_search()
+            self._shift_pressed = False
+            return True
+
+        elif 'shift' in keycode[1]:
+            self._shift_pressed = True
+            def reset(*a):
+                self._shift_pressed = False
+            Clock.schedule_once(reset, 0.25)
+            return True
+
 
         # Ignore ESC commands while input focused
         if not self._input_focused and self.name == screen_manager.current_screen.name:
@@ -17991,6 +18469,35 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
+
+            # Override for PopupSearch
+            if self.popup_widget.__class__.__name__ == 'PopupSearch':
+                if keycode[1] == 'escape':
+                    self.popup_widget.self_destruct(True)
+                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
+                    self.popup_widget.resize_window()
+                elif 'ctrl' not in modifiers and text and self.popup_widget.window_input.keyboard:
+
+                    def insert_text(content):
+                        col = self.popup_widget.window_input.cursor_col
+                        start = self.popup_widget.window_input.text[:col]
+                        end = self.popup_widget.window_input.text[col:]
+                        self.popup_widget.window_input.text = start + content + end
+                        for x in range(len(content)):
+                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
+
+                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
+                    if 'shift' in modifiers:
+                        new_str = new_str.upper()
+                    if len(new_str) == 1:
+                        insert_text(new_str)
+                    elif keycode[1] == 'spacebar':
+                        insert_text(' ')
+                    self.popup_widget.resize_window()
+                else:
+                    self.popup_widget.resize_window()
+                return True
+
             if keycode[1] in ['escape', 'n']:
                 try:
                     self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
@@ -18003,6 +18510,19 @@ class ServerPropertiesEditScreen(MenuBackground):
                 except AttributeError:
                     self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
             return False
+
+        # Trigger for showing search bar
+        elif self._shift_pressed and 'shift' in keycode[1]:
+            self.show_search()
+            self._shift_pressed = False
+            return True
+
+        elif 'shift' in keycode[1]:
+            self._shift_pressed = True
+            def reset(*a):
+                self._shift_pressed = False
+            Clock.schedule_once(reset, 0.25)
+            return True
 
         def quit_to_menu(*a):
             for button in self.walk():
