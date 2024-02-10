@@ -45,7 +45,8 @@ os.environ["KIVY_IMAGE"] = "pil,sdl2"
 os.environ['KIVY_NO_ARGS'] = '1'
 
 from kivy.config import Config
-Config.set('graphics', 'maxfps', '240')
+Config.set('graphics', 'maxfps', '120')
+Config.set('graphics', 'vsync', '-1')
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
 Config.set('graphics', 'window_state', 'hidden')
 Config.set('kivy', 'exit_on_escape', '0')
@@ -55,16 +56,15 @@ from kivy.clock import Clock
 from kivy.loader import Loader
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget
-from kivy.utils import escape_markup
 from kivy.animation import Animation
 from kivy.uix.textinput import TextInput
 from kivy.uix.boxlayout import BoxLayout
+from kivy.graphics import Color, Rectangle
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.recycleview import RecycleView
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.togglebutton import ToggleButton
-from kivy.graphics import Canvas, Color, Rectangle
 from kivy.uix.relativelayout import RelativeLayout
 from kivy.input.providers.mouse import MouseMotionEvent
 from kivy.uix.recyclegridlayout import RecycleGridLayout
@@ -5718,15 +5718,16 @@ class PopupSearch(RelativeLayout):
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
 
-            self.size_hint_max = (200, 75)
+            self.size_hint_max = (600, 75)
             self.search_obj = None
 
             self.button = Button()
+            self.button.border = (0, 0, 0, 0)
+            self.button.background_normal = os.path.join(constants.gui_assets, 'global_search_button.png')
             self.add_widget(self.button)
 
             self.title = Label()
             self.title.text = 'Hello!'
-            # self.title.color = (0.6, 0.6, 1, 1)
             self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
             self.title.font_size = sp(30)
             self.title.pos_hint = {'center_x': 0.5, 'center_y': 0.75}
@@ -5734,16 +5735,34 @@ class PopupSearch(RelativeLayout):
 
             self.subtitle = Label()
             self.subtitle.text = "I'm a subtitle"
-            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.subtitle.font_size = sp(22)
             self.subtitle.pos_hint = {'center_x': 0.5, 'center_y': 0.3}
             self.add_widget(self.subtitle)
+
+            self.icon = Image(source=None)
+            self.icon.id = "window_icon"
+            self.icon.size_hint = (None, None)
+            self.icon.allow_stretch = True
+            self.icon.color = (1, 1, 1, 1)
+            self.icon.size = (36, 36)
+            self.icon.pos_hint = {'center_x': 0.05, 'center_y': 0.5}
+            self.add_widget(self.icon)
 
         def refresh_data(self, search_obj):
             self.search_obj = search_obj
             self.title.text = search_obj.title
             self.subtitle.text = search_obj.subtitle
+            self.icon.source = search_obj.icon
+            self.title.font_size = sp(30 - (0 if len(self.title.text) < 30 else (len(self.title.text) / 7)))
+            self.title.pos_hint = {'center_x': (0.5 if len(self.title.text) < 30 else 0.51), 'center_y': 0.75}
 
+            # Change Colors
+            bright_color = constants.brighten_color(search_obj.color, 0.15)
+            self.title.color = bright_color
+            self.icon.color = bright_color
+            self.subtitle.color = search_obj.color
+            self.button.background_color = search_obj.color
 
 
     def generate_blur_background(self, *args):
@@ -5945,15 +5964,6 @@ class PopupSearch(RelativeLayout):
             self.window_background.pos_hint = {"center_x": 0.5, "center_y": 0.5}
 
 
-            # Popup window title
-            # self.window_icon = Image(source=self.window_icon_path)
-            # self.window_icon.id = "window_icon"
-            # self.window_icon.size_hint = (None, None)
-            # self.window_icon.allow_stretch = True
-            # self.window_icon.color = self.window_text_color
-            # self.window_icon.size = (36, 36)
-            # self.window_icon.pos = (self.window.x + 13, self.window.y + self.window_background.height - 48)
-
             # Input to type in
             self.window_input = BaseInput()
             self.window_input.title_text = ""
@@ -6005,7 +6015,7 @@ class PopupSearch(RelativeLayout):
             # Results layout
             self.results = GridLayout(cols=1, spacing=30)
             self.results.id = 'search_results'
-            self.results.size_hint_max = (200, 500)
+            self.results.size_hint_max = (600, 500)
             self.results.pos_hint = {'center_x': 0.5}
             self.results.y = -200
 
@@ -19638,7 +19648,7 @@ class MigrateServerProgressScreen(ProgressScreen):
 
         function_list.append(('Creating pre-install back-up', functools.partial(constants.create_backup), 5 if (download_addons or needs_installed) else 10))
 
-        function_list.append(('Applying new server configuration', functools.partial(constants.update_server_files), 10 if (download_addons or needs_installed) else 20))
+        function_list.append(('Applying new configuration', functools.partial(constants.update_server_files), 10 if (download_addons or needs_installed) else 20))
 
         function_list.append(('Creating post-install back-up', functools.partial(constants.create_backup), 5 if (download_addons or needs_installed) else 10))
 

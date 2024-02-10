@@ -3881,7 +3881,8 @@ class SettingResult(SearchObject):
     def __init__(self, title, subtitle, target, keywords=[], score=0):
         super().__init__()
         self.type = 'setting'
-        self.icon = os.path.join(gui_assets, 'icons', '')
+        self.icon = os.path.join(gui_assets, 'icons', 'play-circle-sharp.png')
+        self.color = (0.7, 0.7, 1, 1)
         self.title = title
         self.subtitle = subtitle
         self.target = target
@@ -3893,7 +3894,8 @@ class GuideResult(SearchObject):
     def __init__(self, title, subtitle, target, keywords=[], score=0):
         super().__init__()
         self.type = 'guide'
-        self.icon = os.path.join(gui_assets, 'icons', '')
+        self.icon = os.path.join(gui_assets, 'icons', 'newspaper.png')
+        self.color = (0.6, 1, 0.75, 1)
         self.title = title
         self.subtitle = subtitle
         self.target = target
@@ -3905,7 +3907,8 @@ class ServerResult(SearchObject):
     def __init__(self, title, subtitle, target, keywords=[], score=0):
         super().__init__()
         self.type = 'server'
-        self.icon = os.path.join(gui_assets, 'icons', '')
+        self.icon = os.path.join(gui_assets, 'icons', 'sm', 'terminal.png')
+        self.color = (1, 0.598, 0.9, 1)
         self.title = title
         self.subtitle = subtitle
         self.target = target
@@ -3917,7 +3920,8 @@ class ScreenResult(SearchObject):
     def __init__(self, title, subtitle, target, keywords=[], score=0):
         super().__init__()
         self.type = 'screen'
-        self.icon = os.path.join(gui_assets, 'icons', '')
+        self.icon = os.path.join(gui_assets, 'icons', 'exit-sharp.png')
+        self.color = (0.639, 1, 1, 1)
         self.title = title
         self.subtitle = subtitle
         self.target = target

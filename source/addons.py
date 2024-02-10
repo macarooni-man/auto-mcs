@@ -388,7 +388,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                 jar_file.extract('META-INF/mods.toml', addon_tmp)
                                 with open(os.path.join(addon_tmp, 'META-INF', 'mods.toml'), 'r') as toml:
                                     addon_type = server_type
-                                    file_contents = toml.read().split("[[dependencies")[0]
+                                    file_contents = toml.read().split("[[dependencies")[0].replace(' = ', '=')
                                     for line in file_contents.splitlines():
                                         if addon_author and addon_name and addon_version and addon_subtitle and addon_id:
                                             break
@@ -439,13 +439,20 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
 
                     constants.safe_delete(addon_tmp)
-            except:
-                # Delete addon if it's corrupted
-                try:
-                    os.remove(addon_path)
-                except OSError:
-                    pass
-                return None
+
+            # If there's an issue with decompilation
+            except Exception as e:
+                if constants.debug:
+                    print(e)
+
+                if not addon_version:
+                    addon_version = None
+
+                if not addon_subtitle:
+                    addon_subtitle = None
+
+                if not addon_author:
+                    addon_author = None
 
 
             # If information was not found, use file name instead
