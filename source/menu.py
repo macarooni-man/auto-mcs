@@ -4237,7 +4237,7 @@ class DropButton(FloatLayout):
     def __init__(self, name, position, options_list, input_name=None, x_offset=0, facing='left', custom_func=None, change_text=True, **kwargs):
         super().__init__(**kwargs)
 
-        text_padding = 5
+        self.text_padding = 5
         self.facing = facing
         self.options_list = options_list
 
@@ -4276,7 +4276,7 @@ class DropButton(FloatLayout):
         self.text.id = 'text'
         self.text.size_hint = (None, None)
         self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.text.text = name.upper() + (" " * text_padding)
+        self.text.text = name.upper() + (" " * self.text_padding)
         self.text.font_size = sp(17)
         self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.text.color = (0.6, 0.6, 1, 1)
@@ -4329,7 +4329,7 @@ class DropButton(FloatLayout):
         self.button.on_release = functools.partial(lambda: self.dropdown.open(self.button))
 
         if change_text:
-            self.dropdown.bind(on_select=lambda instance, x: setattr(self.text, 'text', x.upper() + (" " * text_padding)))
+            self.dropdown.bind(on_select=lambda instance, x: setattr(self.text, 'text', x.upper() + (" " * self.text_padding)))
 
         if custom_func:
             self.dropdown.bind(on_select=lambda instance, x: custom_func(x))
@@ -4359,6 +4359,9 @@ class DropButton(FloatLayout):
 
         self.add_widget(self.icon)
 
+
+    def change_text(self, text):
+        self.text.text = text.upper() + (" " * self.text_padding)
 
     # Create button in drop-down list
     def list_button(self, sub_name, sub_id):
@@ -5785,14 +5788,106 @@ class PopupSearch(RelativeLayout):
 
             # Process click with directed target
             def process_target(*b):
-                if self.search_obj.target:
-                    if self.search_obj.type == 'guide':
+
+                # The following are overrides for extra functionality from the search bar
+                def override_acl(list_type):
+                    screen = screen_manager.get_screen(self.search_obj.target)
+
+                    if screen_manager.current_screen.name == self.search_obj.target:
+                        screen_manager.current_screen.update_list(list_type)
+                        text = 'OPERATORS' if list_type == 'ops' else 'WHITELIST' if list_type == 'wl' else 'BANS'
+                        screen.page_selector.change_text(text)
+                    else:
+                        if self.search_obj.target.startswith('Server'):
+                            screen.acl_object = constants.server_manager.current_server.acl
+                            screen._hash = constants.server_manager.current_server._hash
+                        else:
+                            screen.acl_object = constants.new_server_info['acl_object']
+                            screen._hash = constants.new_server_info['_hash']
+
+                        screen.current_list = list_type
+                        screen_manager.current = self.search_obj.target
+
+                # Override for launching the server
+                if self.search_obj.title.lower() == 'launch server':
+                    screen_manager.current = self.search_obj.target
+                    Clock.schedule_once(screen_manager.current_screen.console_panel.launch_server, 0)
+
+                elif self.search_obj.title.lower() == 'restart server':
+                    constants.server_manager.current_server.restart()
+
+                elif self.search_obj.title.lower() == 'stop server':
+                    screen_manager.current_screen.server.silent_command("stop")
+
+                # Update auto-mcs
+                if self.search_obj.title.lower() == 'update auto-mcs':
+                    screen_manager.current = self.search_obj.target
+                    Clock.schedule_once(screen_manager.current_screen.prompt_update, 0)
+
+                # ACL functions
+                elif self.search_obj.title.lower() == 'configure bans':
+                    override_acl('bans')
+
+                elif self.search_obj.title.lower() == 'configure operators':
+                    override_acl('ops')
+
+                elif self.search_obj.title.lower() == 'configure the whitelist':
+                    override_acl('wl')
+
+                # Open directory functions
+                elif self.search_obj.title.lower() == 'open server directory':
+                    constants.open_folder(constants.server_manager.current_server.server_path)
+
+                elif self.search_obj.title.lower() == 'open back-up directory':
+                    constants.open_folder(constants.server_manager.current_server.backup.directory)
+
+                elif self.search_obj.title.lower() == 'open script directory':
+                    constants.open_folder(constants.scriptDir)
+
+                # Save back-up
+                elif self.search_obj.title.lower() == 'save a back-up now':
+                    screen_manager.current = self.search_obj.target
+                    screen_manager.current_screen.save_backup_button.button.trigger_action()
+
+                # Create a new server
+                elif self.search_obj.title.lower() == 'create a new server':
+                    constants.new_server_init()
+                    screen_manager.current = self.search_obj.target
+
+                # Transilience settings
+                elif self.search_obj.title.lower() == 'rename this server':
+                    screen_manager.current = self.search_obj.target
+                    rename_input = screen_manager.current_screen.rename_input
+                    screen_manager.current_screen.scroll_widget.scroll_to(rename_input)
+                    rename_input.grab_focus()
+
+                elif self.search_obj.title.lower() == 'delete this server':
+                    screen_manager.current = self.search_obj.target
+                    delete_button = screen_manager.current_screen.delete_button
+                    screen_manager.current_screen.scroll_widget.scroll_to(delete_button, animate=False)
+                    Clock.schedule_once(delete_button.button.trigger_action, 0.1)
+
+                # Install ngrok
+                elif self.search_obj.title.lower() == 'install proxy (ngrok)':
+                    screen_manager.current = self.search_obj.target
+                    ngrok_button = screen_manager.current_screen.ngrok_button
+                    screen_manager.current_screen.scroll_widget.scroll_to(ngrok_button, animate=False)
+                    Clock.schedule_once(ngrok_button.button.trigger_action, 0.1)
+
+
+
+                # Below is standard functionality for the server actions
+
+                # Open server
+                elif self.search_obj.type == 'server':
+                    open_server(self.search_obj.title)
+
+                # Otherwise, launch web URL or go to screen
+                elif self.search_obj.target:
+                    if self.search_obj.target.startswith('http'):
                         webbrowser.open_new_tab(self.search_obj.target)
                     else:
                         screen_manager.current = self.search_obj.target
-
-                elif self.search_obj.type == 'server':
-                    open_server(self.search_obj.title)
 
             screen_manager.current_screen.popup_widget.self_destruct(True)
             Clock.schedule_once(process_target, 0.4)
@@ -5803,7 +5898,6 @@ class PopupSearch(RelativeLayout):
             def fade_out():
                 Animation.stop_all(self)
                 Animation(opacity=0, duration=0.2, transition='in_out_sine').start(self)
-                Clock.schedule_once(change_data, 0.1)
 
             if not search_obj:
                 fade_out()
@@ -5834,8 +5928,8 @@ class PopupSearch(RelativeLayout):
 
                     Animation.stop_all(self)
                     Animation(opacity=1, duration=0.2, transition='in_out_sine').start(self)
-
                 fade_out()
+                Clock.schedule_once(change_data, 0.1)
 
 
     def generate_blur_background(self, *args):
@@ -9533,7 +9627,7 @@ class CreateServerAclScreen(MenuBackground):
         # Generate buttons on page load
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
-        page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
+        self.page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
         header_content = ""
         self.header = HeaderText(header_content, '', (0, 0.89), fixed_x=True, no_line=True)
 
@@ -9644,7 +9738,7 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
         float_layout.add_widget(self.scroll_widget)
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
-        float_layout.add_widget(page_selector)
+        float_layout.add_widget(self.page_selector)
         float_layout.add_widget(self.list_header)
         float_layout.add_widget(self.search_bar)
         float_layout.add_widget(self.whitelist_toggle)
@@ -11248,11 +11342,12 @@ class ServerImportProgressScreen(ProgressScreen):
 # Opens server in panel, and updates Server Manager current_server
 def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, *args):
     def next_screen(*args):
-        if constants.server_manager.current_server.name != server_name:
+        different_server = constants.server_manager.current_server.name != server_name
+        if different_server:
             while constants.server_manager.current_server.name != server_name:
                 time.sleep(0.005)
-                
-        if screen_manager.current == 'ServerViewScreen':
+
+        if screen_manager.current == 'ServerViewScreen' and different_server:
             screen_manager.current = 'ServerManagerScreen'
 
         screen_manager.current = 'ServerViewScreen'
@@ -15058,7 +15153,7 @@ class ServerAclScreen(CreateServerAclScreen):
 
         # Generate buttons on page load
         selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
-        page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
+        self.page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
         header_content = ""
         self.header = HeaderText(header_content, '', (0, 0.89), fixed_x=True, no_line=True)
 
@@ -15161,7 +15256,7 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
         float_layout.add_widget(self.scroll_widget)
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
-        float_layout.add_widget(page_selector)
+        float_layout.add_widget(self.page_selector)
         float_layout.add_widget(self.list_header)
         float_layout.add_widget(self.search_bar)
         float_layout.add_widget(self.whitelist_toggle)
@@ -18996,6 +19091,7 @@ class ServerSettingsScreen(MenuBackground):
         self.name = self.__class__.__name__
         self.menu = 'init'
 
+        self.scroll_widget = None
         self.header = None
         self.title_widget = None
         self.footer_widget = None
@@ -19004,6 +19100,8 @@ class ServerSettingsScreen(MenuBackground):
         self.edit_properties_button = None
         self.open_path_button = None
         self.ngrok_button = None
+        self.rename_input = None
+        self.delete_button = None
         self.world_button = None
 
     def check_changes(self, server_obj, force_banner=False):
@@ -19039,6 +19137,7 @@ class ServerSettingsScreen(MenuBackground):
 
         # Scroll list
         scroll_widget = ScrollViewWidget()
+        self.scroll_widget = scroll_widget
         scroll_anchor = AnchorLayout()
         scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1175, size_hint_y=None, padding=[0, -50, 0, 60])
 
@@ -19390,9 +19489,9 @@ class ServerSettingsScreen(MenuBackground):
         sub_layout = ScrollItem()
         input_label = InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.2})
         sub_layout.add_widget(input_label)
-        rename_input = ServerRenameInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=server_obj.name, on_validate=rename_server, disabled=server_obj.running)
-        rename_input.size_hint_max_x = 435
-        sub_layout.add_widget(rename_input)
+        self.rename_input = ServerRenameInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=server_obj.name, on_validate=rename_server, disabled=server_obj.running)
+        self.rename_input.size_hint_max_x = 435
+        sub_layout.add_widget(self.rename_input)
         transilience_layout.add_widget(sub_layout)
 
         if server_obj.running:
@@ -19448,7 +19547,8 @@ class ServerSettingsScreen(MenuBackground):
             )
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(color_button('Delete Server', (0.5, 0.5), 'trash-sharp.png', click_func=prompt_delete, color=(1, 0.5, 0.65, 1), disabled=server_obj.running))
+        self.delete_button = color_button('Delete Server', (0.5, 0.5), 'trash-sharp.png', click_func=prompt_delete, color=(1, 0.5, 0.65, 1), disabled=server_obj.running)
+        sub_layout.add_widget(self.delete_button)
         transilience_layout.add_widget(sub_layout)
 
 
@@ -19893,7 +19993,7 @@ class MainApp(App):
         Window.bind(on_dropfile=self.file_drop)
 
         self.icon = os.path.join(constants.gui_assets, "big-icon.png")
-        Loader.loading_image = os.path.join(constants.gui_assets, 'empty.png')
+        # Loader.loading_image = os.path.join(constants.gui_assets, 'empty.png')
 
         # Dynamically add every class with the name '*Screen' to ScreenManager
         screen_list = [x[0] for x in inspect.getmembers(sys.modules[__name__], inspect.isclass) if x[0].endswith('Screen') and x[0] != 'Screen']

@@ -35,7 +35,7 @@ import re
 import addons
 import backup
 import amscript
-
+import constants
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
@@ -3442,7 +3442,7 @@ class SearchManager():
         self.options_tree = {
 
             'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': None, 'Create a server': None, 'Import a server': None}),
+                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen'}),
                 ScreenObject('Server Manager', 'ServerManagerScreen', generate_server_list),
             ],
 
@@ -3464,11 +3464,11 @@ class SearchManager():
 
             'Server': [
                 ScreenObject('Server Manager', 'ServerViewScreen', {'Launch server': None, 'Stop server': None, 'Restart server': None, 'Enter console commands': None}),
-                ScreenObject('Back-up Manager', 'ServerBackupScreen', {'Save a back-up': None, 'Restore from a back-up': 'ServerBackupRestoreScreen', 'Enable automatic back-ups': None, 'Specify maximum back-ups': None, 'Open back-up directory': None, 'Migrate back-up directory': None}),
+                ScreenObject('Back-up Manager', 'ServerBackupScreen', {'Save a back-up now': None, 'Restore from a back-up': 'ServerBackupRestoreScreen', 'Enable automatic back-ups': None, 'Specify maximum back-ups': None, 'Open back-up directory': None, 'Migrate back-up directory': None}),
                 ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}),
                 ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}),
                 ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}),
-                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Specify IP/port': None, 'Enable proxy (ngrok)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None})
+                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Specify IP/port': None, 'Enable proxy (ngrok)': None, 'Install proxy (ngrok)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None})
             ]
         }
 
@@ -3620,7 +3620,7 @@ class SearchManager():
             screen_list.extend(self.options_tree['ServerImport'])
 
         if current_screen.startswith('CreateServer'):
-            for screen in self.options_tree['Server']:
+            for screen in self.options_tree['CreateServer']:
                 if not (new_server_info['type'] == 'vanilla' and screen.id == 'ServerAddonScreen'):
                     if screen not in screen_list:
                         screen_list.append(screen)
@@ -3646,9 +3646,14 @@ class SearchManager():
                 for setting, value in screen.options.items():
 
                     # Ignore results for running server
-                    if server_manager.current_server.running and setting.lower() == 'launch server':
+                    if server_manager.current_server.running and setting.lower() in ('launch server', 'update this server', "change 'server.jar'", 'rename this server', 'change world file', 'delete this server'):
                         continue
-                    elif not server_manager.current_server.running and setting.lower() in ('restart server', 'stop steerver'):
+                    elif not server_manager.current_server.running and setting.lower() in ('restart server', 'stop server'):
+                        continue
+
+                    if setting.lower() == 'enable proxy (ngrok)' and not ngrok_installed:
+                        continue
+                    if setting.lower() == 'install proxy (ngrok)' and ngrok_installed:
                         continue
 
                     final_list.append(SettingResult(setting, f'Action in {screen.name} ({server_manager.current_server.name})', value if value else screen.id))
@@ -3658,6 +3663,10 @@ class SearchManager():
                 keywords.extend(screen.helper_keywords)
                 final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, keywords))
                 for setting, value in screen.options.items():
+
+                    if setting.lower() == 'update auto-mcs' and constants.app_latest:
+                        continue
+
                     final_list.append(SettingResult(setting, f'Action in {screen.name}', value if value else screen.id))
 
 
@@ -3863,6 +3872,8 @@ class SearchManager():
 
                         # print(similarity_score)
                         if similarity_score > match_list['guide'].score:
+                            if 'https://' in o_title.lower():
+                                continue
                             match_list['guide'] = GuideResult(
                                 f'{o_page_title} - {o_title.title()}',
                                 'View guide from auto-mcs.com',
