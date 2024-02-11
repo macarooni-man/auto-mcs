@@ -2748,7 +2748,7 @@ def generate_title(title):
 
 
 
-def footer_label(path, color):
+def footer_label(path, color, progress_screen=False):
 
     def fit_to_window(label_widget, path_string, *args):
         x = 1
@@ -2776,10 +2776,11 @@ def footer_label(path, color):
     final_layout = FloatLayout()
 
     text_layout = BoxLayout()
-    text_layout.pos = (20, 12)
+    text_layout.pos = (15, 12)
     version_layout = BoxLayout()
+    search_layout = RelativeLayout()
 
-    version_layout.pos = (-10, 13)
+    version_layout.pos = (-10 if progress_screen else -60, 13) # x=-10
 
     label = AlignLabel(color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf'), font_size=sp(22), markup=True, size_hint=(1.0, 1.0), halign="left", valign="bottom")
     version = AlignLabel(text=f"auto-mcs[size={round(sp(18))}]  [/size]v{constants.app_version}", color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23), markup=True, size_hint=(1.0, 1.0), halign="right", valign="bottom")
@@ -2792,6 +2793,13 @@ def footer_label(path, color):
 
     final_layout.add_widget(text_layout)
     final_layout.add_widget(version_layout)
+
+    if not progress_screen:
+        search_button = IconButton('search', {}, (-40, 0), (None, None), 'search-sharp.png', clickable=True, text_offset=(30, 0), click_func=screen_manager.current_screen.show_search)
+        search_layout.add_widget(search_button)
+        search_layout.pos_hint = {'center_x': 1}
+        search_layout.size_hint_max = (50, 50)
+        final_layout.add_widget(search_layout)
 
     return final_layout
 
@@ -2845,9 +2853,9 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
 
     else:
         footer.add_widget(FooterBackground())
-        footer.add_widget(footer_label(path=menu_path, color=color)) # menu_path
+        footer.add_widget(footer_label(path=menu_path, color=color, progress_screen=progress_screen)) # menu_path
         if not progress_screen:
-            footer.add_widget(IconButton('main menu', {}, (0, 0), (None, None), 'home-sharp.png', clickable=True))
+            footer.add_widget(IconButton('main menu', {}, (-5, 0), (None, None), 'home-sharp.png', clickable=True))
         else:
             footer.add_widget(AnimButton('please wait...', {}, (0, 0), (None, None), 'loading_pickaxe.gif', clickable=False))
 
@@ -5749,20 +5757,85 @@ class PopupSearch(RelativeLayout):
             self.icon.pos_hint = {'center_x': 0.05, 'center_y': 0.5}
             self.add_widget(self.icon)
 
-        def refresh_data(self, search_obj):
-            self.search_obj = search_obj
-            self.title.text = search_obj.title
-            self.subtitle.text = search_obj.subtitle
-            self.icon.source = search_obj.icon
-            self.title.font_size = sp(30 - (0 if len(self.title.text) < 30 else (len(self.title.text) / 7)))
-            self.title.pos_hint = {'center_x': (0.5 if len(self.title.text) < 30 else 0.51), 'center_y': 0.75}
+            self.opacity = 0
 
-            # Change Colors
-            bright_color = constants.brighten_color(search_obj.color, 0.15)
-            self.title.color = bright_color
-            self.icon.color = bright_color
-            self.subtitle.color = search_obj.color
-            self.button.background_color = search_obj.color
+        @staticmethod
+        def fix_lag(t, *a):
+            for x in range(t):
+                Clock.schedule_once(screen_manager.current_screen.popup_widget.resize_window, x / 100)
+
+        def animate_click(self):
+            self.fix_lag(50)
+
+            original_color = self.search_obj.color
+            bright_color = constants.brighten_color(original_color, 0.15)
+
+            new_original = constants.brighten_color(original_color, 0.4)
+            new_bright = constants.brighten_color(bright_color, 0.2)
+
+            self.title.color = new_bright
+            self.icon.color = new_bright
+            self.subtitle.color = new_original
+            self.button.background_color = new_original
+
+            Animation(color=bright_color, duration=0.5).start(self.title)
+            Animation(color=bright_color, duration=0.5).start(self.icon)
+            Animation(color=original_color, duration=0.5).start(self.subtitle)
+            Animation(background_color=original_color, duration=0.5).start(self.button)
+
+            # Process click with directed target
+            def process_target(*b):
+                if self.search_obj.target:
+                    if self.search_obj.type == 'guide':
+                        webbrowser.open_new_tab(self.search_obj.target)
+                    else:
+                        screen_manager.current = self.search_obj.target
+
+                elif self.search_obj.type == 'server':
+                    open_server(self.search_obj.title)
+
+            screen_manager.current_screen.popup_widget.self_destruct(True)
+            Clock.schedule_once(process_target, 0.4)
+
+
+        def refresh_data(self, search_obj):
+
+            def fade_out():
+                Animation.stop_all(self)
+                Animation(opacity=0, duration=0.2, transition='in_out_sine').start(self)
+                Clock.schedule_once(change_data, 0.1)
+
+            if not search_obj:
+                fade_out()
+                return None
+
+            try:
+                animate = search_obj.title != self.title.text
+            except AttributeError:
+                fade_out()
+                return None
+
+            if animate:
+                self.fix_lag(50)
+                def change_data(*a):
+                    self.search_obj = search_obj
+                    self.title.text = search_obj.title
+                    self.subtitle.text = search_obj.subtitle
+                    self.icon.source = search_obj.icon
+                    self.title.font_size = sp(30 - (0 if len(self.title.text) < 30 else (len(self.title.text) / 7)))
+                    self.title.pos_hint = {'center_x': (0.5 if len(self.title.text) < 30 else 0.51), 'center_y': 0.75}
+
+                    # Change Colors
+                    bright_color = constants.brighten_color(search_obj.color, 0.15)
+                    self.title.color = bright_color
+                    self.icon.color = bright_color
+                    self.subtitle.color = search_obj.color
+                    self.button.background_color = search_obj.color
+
+                    Animation.stop_all(self)
+                    Animation(opacity=1, duration=0.2, transition='in_out_sine').start(self)
+
+                fade_out()
 
 
     def generate_blur_background(self, *args):
@@ -5784,8 +5857,8 @@ class PopupSearch(RelativeLayout):
             screen_manager.current_screen.export_to_png(image_path)
             im = PILImage.open(image_path)
             im = ImageEnhance.Brightness(im)
-            im = im.enhance(popup_blur_darkness - 0.03)
-            im1 = im.filter(GaussianBlur(popup_blur_amount + 1))
+            im = im.enhance(popup_blur_darkness - 0.07)
+            im1 = im.filter(GaussianBlur(popup_blur_amount + 4))
             im1.save(image_path)
             self.blur_background.reload()
 
@@ -5802,8 +5875,24 @@ class PopupSearch(RelativeLayout):
         Window.on_resize(*Window.size)
 
 
+    # def click_event(self, *args):
+    #     self.self_destruct(True)
+
+
     def click_event(self, *args):
-        self.self_destruct(True)
+        if not self.clicked:
+
+            if isinstance(args[1], str):
+                self.self_destruct(True)
+            else:
+                force_button = None
+                rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
+
+            for button in self.results.children:
+                if button.width > rel_coord[0] > button.x and (button.height + button.y) > rel_coord[1] > button.y:
+                    button.animate_click()
+                    break
+
 
 
     def resize(self):
@@ -5899,7 +5988,11 @@ class PopupSearch(RelativeLayout):
 
             # Update results with query
             self.search_text = self.window_input.text
-            results = constants.search_manager.execute_search(screen_manager.current, self.search_text)
+            try:
+                results = constants.search_manager.execute_search(screen_manager.current, self.search_text)
+            except:
+                return None
+
             complete_list = [results['guide']]
             complete_list.extend(results['server'])
             complete_list.extend(results['setting'])
@@ -6030,6 +6123,8 @@ class PopupSearch(RelativeLayout):
         # self.window.add_widget(self.window_icon)
         self.window.add_widget(self.window_title)
         self.window.add_widget(self.window_content)
+
+        self.bind(on_touch_down=self.click_event)
 
         self.canvas.after.clear()
 
@@ -11156,6 +11251,10 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         if constants.server_manager.current_server.name != server_name:
             while constants.server_manager.current_server.name != server_name:
                 time.sleep(0.005)
+                
+        if screen_manager.current == 'ServerViewScreen':
+            screen_manager.current = 'ServerManagerScreen'
+
         screen_manager.current = 'ServerViewScreen'
 
         if launch:

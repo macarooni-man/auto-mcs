@@ -3442,33 +3442,33 @@ class SearchManager():
         self.options_tree = {
 
             'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', ['Update auto-mcs', 'View changelog', 'Create a server', 'Import a server']),
+                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': None, 'Create a server': None, 'Import a server': None}),
                 ScreenObject('Server Manager', 'ServerManagerScreen', generate_server_list),
             ],
 
             'CreateServer': [
-                ScreenObject('Create Server (Step 1)', 'CreateServerNameScreen', ['Server Name']),
-                ScreenObject('Create Server (Step 2)', 'CreateServerTypeScreen', ['Select Vanilla', 'Select Paper', 'Select Fabric', 'Select CraftBukkit', 'Select Forge', 'Select Spigot']),
-                ScreenObject('Create Server (Step 3)', 'CreateServerVersionScreen', ['Type in version']),
-                ScreenObject('Create Server (Step 4)', 'CreateServerWorldScreen', ['Browse for a world', 'Type in seed', 'Select world type']),
-                ScreenObject('Create Server (Step 5)', 'CreateServerNetworkScreen', ['Specify IP/port', 'Type in Message Of The Day', 'Configure Access Control']),
-                ScreenObject('Create Server (Access Control)', 'CreateServerAclScreen', ['Configure bans', 'Configure operators', 'Configure the whitelist']),
-                ScreenObject('Create Server (Add-on Manager)', 'CreateServerAddonScreen', ['Download add-ons', 'Import add-ons', 'Toggle add-on state']),
-                ScreenObject('Create Server (Step 6)', 'CreateServerOptionsScreen', ['Change gamemode', 'Change difficulty', 'Specify maximum players', 'Enable spawn protection', 'Configure gamerules', 'Specify randomTickSpeed', 'Enable Bedrock support']),
-                ScreenObject('Create Server (Step 7)', 'CreateServerReviewScreen', ['Review & create server'])
+                ScreenObject('Create Server (Step 1)', 'CreateServerNameScreen', {'Server Name': None}),
+                ScreenObject('Create Server (Step 2)', 'CreateServerTypeScreen', {'Select Vanilla': None, 'Select Paper': None, 'Select Fabric': None, 'Select CraftBukkit': None, 'Select Forge': None, 'Select Spigot': None}),
+                ScreenObject('Create Server (Step 3)', 'CreateServerVersionScreen', {'Type in version': None}),
+                ScreenObject('Create Server (Step 4)', 'CreateServerWorldScreen', {'Browse for a world': None, 'Type in seed': None, 'Select world type': None}),
+                ScreenObject('Create Server (Step 5)', 'CreateServerNetworkScreen', {'Specify IP/port': None, 'Type in Message Of The Day': None, 'Configure Access Control': 'CreateServerAclScreen'}),
+                ScreenObject('Create Server (Access Control)', 'CreateServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}),
+                ScreenObject('Create Server (Add-on Manager)', 'CreateServerAddonScreen', {'Download add-ons': 'CreateServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None}),
+                ScreenObject('Create Server (Step 6)', 'CreateServerOptionsScreen', {'Change gamemode': None, 'Change difficulty': None, 'Specify maximum players': None, 'Enable spawn protection': None, 'Configure gamerules': None, 'Specify randomTickSpeed': None, 'Enable Bedrock support': None}),
+                ScreenObject('Create Server (Step 7)', 'CreateServerReviewScreen', {'Review & create server': None})
             ],
 
             'ServerImport': [
-                ScreenObject('Import Server', 'ServerImportScreen', ['Import a server folder', 'Import an auto-mcs back-up']),
+                ScreenObject('Import Server', 'ServerImportScreen', {'Import a server folder': None, 'Import an auto-mcs back-up': None}),
             ],
 
             'Server': [
-                ScreenObject('Server Manager', 'ServerViewScreen', ['Launch server', 'Stop server', 'Restart server', 'Enter console commands']),
-                ScreenObject('Back-up Manager', 'ServerBackupScreen', ['Save a back-up', 'Restore from a back-up', 'Enable automatic back-ups', 'Specify maximum back-ups', 'Open back-up directory', 'Migrate back-up directory']),
-                ScreenObject('Access Control', 'ServerAclScreen', ['Configure bans', 'Configure operators', 'Configure the whitelist']),
-                ScreenObject('Add-on Manager', 'ServerAddonScreen', ['Download add-ons', 'Import add-ons', 'Toggle add-on state', 'Update add-ons']),
-                ScreenObject('Script Manager', 'ServerAmscriptScreen', ['Download scripts', 'Import scripts', 'Create a new script', 'Edit a script', 'Open script directory']),
-                ScreenObject('Server Settings', 'ServerSettingsScreen', ["Edit 'server.properties'", 'Open server directory', 'Specify memory usage', 'Specify IP/port', 'Enable proxy (ngrok)', 'Enable Bedrock support', 'Enable automatic updates', 'Update this server', "Change 'server.jar'", 'Rename this server', 'Change world file', 'Delete this server'])
+                ScreenObject('Server Manager', 'ServerViewScreen', {'Launch server': None, 'Stop server': None, 'Restart server': None, 'Enter console commands': None}),
+                ScreenObject('Back-up Manager', 'ServerBackupScreen', {'Save a back-up': None, 'Restore from a back-up': 'ServerBackupRestoreScreen', 'Enable automatic back-ups': None, 'Specify maximum back-ups': None, 'Open back-up directory': None, 'Migrate back-up directory': None}),
+                ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}),
+                ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}),
+                ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}),
+                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Specify IP/port': None, 'Enable proxy (ngrok)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None})
             ]
         }
 
@@ -3640,18 +3640,25 @@ class SearchManager():
                     final_list.append(ServerResult(server, 'Installed server', None))
 
             elif (screen.id.startswith('Server') and 'Import' not in screen.id) and server_manager.current_server:
-                keywords = screen.options
+                keywords = list(screen.options.keys())
                 keywords.extend(screen.helper_keywords)
                 final_list.append(ScreenResult(screen.name, f'Configuration page ({server_manager.current_server.name})', screen.id, keywords))
-                for setting in screen.options:
-                    final_list.append(SettingResult(setting, f'Action in {screen.name} ({server_manager.current_server.name})', screen.id))
+                for setting, value in screen.options.items():
+
+                    # Ignore results for running server
+                    if server_manager.current_server.running and setting.lower() == 'launch server':
+                        continue
+                    elif not server_manager.current_server.running and setting.lower() in ('restart server', 'stop steerver'):
+                        continue
+
+                    final_list.append(SettingResult(setting, f'Action in {screen.name} ({server_manager.current_server.name})', value if value else screen.id))
 
             else:
-                keywords = screen.options
+                keywords = list(screen.options.keys())
                 keywords.extend(screen.helper_keywords)
                 final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, keywords))
-                for setting in screen.options:
-                    final_list.append(SettingResult(setting, f'Action in {screen.name}', screen.id))
+                for setting, value in screen.options.items():
+                    final_list.append(SettingResult(setting, f'Action in {screen.name}', value if value else screen.id))
 
 
         # Return a list of all created screens, settings, and guides
