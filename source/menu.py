@@ -2753,7 +2753,7 @@ def footer_label(path, color, progress_screen=False):
     def fit_to_window(label_widget, path_string, *args):
         x = 1
         text = ""
-        shrink_value = round(Window.width / 25)
+        shrink_value = round(Window.width / 20)
         if len(path_list) > 2:
             shrink_value -= (len("".join(path_list[2:])))
 
@@ -3099,7 +3099,7 @@ class ScrollViewWidget(ScrollView):
 
     # Allow scroll bar to be dragged
     def on_touch_move(self, touch, *args):
-        if touch.pos[0] > self.x + (self.width - self.drag_pad):
+        if touch.pos[0] > self.x + (self.width - self.drag_pad) and (self.y + self.height > touch.pos[1] > self.y):
             try:
                 new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
                 self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
@@ -3109,7 +3109,7 @@ class ScrollViewWidget(ScrollView):
         return super().on_touch_move(touch)
 
     def on_touch_down(self, touch, *args):
-        if touch.pos[0] > self.x + (self.width - self.drag_pad):
+        if touch.pos[0] > self.x + (self.width - self.drag_pad) and (self.y + self.height > touch.pos[1] > self.y):
             try:
                 new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
                 self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
@@ -3181,7 +3181,7 @@ class RecycleViewWidget(RecycleView):
 
     # Allow scroll bar to be dragged
     def on_touch_move(self, touch, *args):
-        if (touch.pos[0] > self.x + (self.width - self.drag_pad)) and touch.button in ['left', 'right']:
+        if (touch.pos[0] > self.x + (self.width - self.drag_pad) and (self.y + self.height > touch.pos[1] > self.y)) and touch.button in ['left', 'right']:
             try:
                 new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
                 self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
@@ -3191,7 +3191,7 @@ class RecycleViewWidget(RecycleView):
         return super().on_touch_move(touch)
 
     def on_touch_down(self, touch, *args):
-        if (touch.pos[0] > self.x + (self.width - self.drag_pad)) and touch.button in ['left', 'right']:
+        if (touch.pos[0] > self.x + (self.width - self.drag_pad) and (self.y + self.height > touch.pos[1] > self.y)) and touch.button in ['left', 'right']:
             try:
                 new_scroll = ((touch.pos[1] - self.y) / (self.height - (self.height * (self.vbar[1])))) - (self.vbar[1])
                 self.scroll_y = 1 if new_scroll > 1 else 0 if new_scroll < 0 else new_scroll
@@ -5773,8 +5773,8 @@ class PopupSearch(RelativeLayout):
             original_color = self.search_obj.color
             bright_color = constants.brighten_color(original_color, 0.15)
 
-            new_original = constants.brighten_color(original_color, 0.4)
-            new_bright = constants.brighten_color(bright_color, 0.2)
+            new_original = constants.brighten_color(original_color, 0.25)
+            new_bright = constants.brighten_color(bright_color, 0.1)
 
             self.title.color = new_bright
             self.icon.color = new_bright
@@ -5819,8 +5819,13 @@ class PopupSearch(RelativeLayout):
                 elif self.search_obj.title.lower() == 'stop server':
                     screen_manager.current_screen.server.silent_command("stop")
 
+                # Update server
+                elif self.search_obj.title.lower() == 'update this server':
+                    screen_manager.current = self.search_obj.target
+                    screen_manager.current_screen.update_button.button.trigger_action()
+
                 # Update auto-mcs
-                if self.search_obj.title.lower() == 'update auto-mcs':
+                elif self.search_obj.title.lower() == 'update auto-mcs':
                     screen_manager.current = self.search_obj.target
                     Clock.schedule_once(screen_manager.current_screen.prompt_update, 0)
 
@@ -5889,11 +5894,13 @@ class PopupSearch(RelativeLayout):
                     else:
                         screen_manager.current = self.search_obj.target
 
-            screen_manager.current_screen.popup_widget.self_destruct(True)
-            Clock.schedule_once(process_target, 0.4)
+            def do_things(*a):
+                screen_manager.current_screen.popup_widget.self_destruct(True)
+                Clock.schedule_once(process_target, 0.4)
+            Clock.schedule_once(do_things, 0.14)
 
 
-        def refresh_data(self, search_obj):
+        def refresh_data(self, search_obj, fun_anim=False, *a):
 
             def fade_out():
                 Animation.stop_all(self)
@@ -5927,7 +5934,7 @@ class PopupSearch(RelativeLayout):
                     self.button.background_color = search_obj.color
 
                     Animation.stop_all(self)
-                    Animation(opacity=1, duration=0.2, transition='in_out_sine').start(self)
+                    Animation(opacity=1, duration=0.5 if fun_anim else 0.2, transition='in_out_sine').start(self)
                 fade_out()
                 Clock.schedule_once(change_data, 0.1)
 
@@ -5951,8 +5958,8 @@ class PopupSearch(RelativeLayout):
             screen_manager.current_screen.export_to_png(image_path)
             im = PILImage.open(image_path)
             im = ImageEnhance.Brightness(im)
-            im = im.enhance(popup_blur_darkness - 0.07)
-            im1 = im.filter(GaussianBlur(popup_blur_amount + 4))
+            im = im.enhance(popup_blur_darkness - 0.09)
+            im1 = im.filter(GaussianBlur(popup_blur_amount + 5))
             im1.save(image_path)
             self.blur_background.reload()
 
@@ -5964,13 +5971,10 @@ class PopupSearch(RelativeLayout):
             self.resize_window()
             Clock.schedule_once(reset_activity, 0.5)
 
+
     # Annoying hack to fix canvas lag
     def resize_window(*args):
         Window.on_resize(*Window.size)
-
-
-    # def click_event(self, *args):
-    #     self.self_destruct(True)
 
 
     def click_event(self, *args):
@@ -5979,14 +5983,15 @@ class PopupSearch(RelativeLayout):
             if isinstance(args[1], str):
                 self.self_destruct(True)
             else:
-                force_button = None
                 rel_coord = (args[1].pos[0] - self.x - self.window.x, args[1].pos[1] - self.y - self.window.y)
 
             for button in self.results.children:
-                if button.width > rel_coord[0] > button.x and (button.height + button.y) > rel_coord[1] > button.y:
-                    button.animate_click()
-                    break
-
+                if button.opacity == 1:
+                    if button.width > rel_coord[0] > button.x and (button.height + button.y) > rel_coord[1] > button.y:
+                        button.animate_click()
+                        self.dont_hide = True
+                    else:
+                        Animation(opacity=0, duration=0.13).start(button)
 
 
     def resize(self):
@@ -6074,29 +6079,35 @@ class PopupSearch(RelativeLayout):
 
 
     # Generate search results when typing
-    def on_search(self, *a):
+    def on_search(self, force=None, fun_anim=False, *a):
 
         # Set lock for a timeout
-        if not self.search_lock:
+        if not self.search_lock and (self.window_input.text or force):
             self.search_lock = True
 
             # Update results with query
-            self.search_text = self.window_input.text
+            if force:
+                self.search_text = force
+            else:
+                self.search_text = self.window_input.text
             try:
                 results = constants.search_manager.execute_search(screen_manager.current, self.search_text)
+
+                complete_list = [results['guide']]
+                complete_list.extend(results['server'])
+                complete_list.extend(results['setting'])
+                complete_list.extend(results['screen'])
+                complete_list = tuple(sorted(complete_list, key=lambda x: x.score, reverse=True))
+
+                for x, button in enumerate(reversed(self.results.children), 0):
+                    print(vars(complete_list[x]))
+                    if fun_anim:
+                        Clock.schedule_once(functools.partial(button.refresh_data, complete_list[x], True), (x*0.1))
+                    else:
+                        button.refresh_data(complete_list[x])
+
             except:
-                return None
-
-            complete_list = [results['guide']]
-            complete_list.extend(results['server'])
-            complete_list.extend(results['setting'])
-            complete_list.extend(results['screen'])
-            complete_list = tuple(sorted(complete_list, key=lambda x: x.score, reverse=True))
-
-            for x, button in enumerate(reversed(self.results.children), 0):
-                print(vars(complete_list[x]))
-                button.refresh_data(complete_list[x])
-
+                pass
 
             # print(vars(results['guide']))
             # for item in results['server'][:2]:
@@ -6115,6 +6126,38 @@ class PopupSearch(RelativeLayout):
             Clock.schedule_once(reset_lock, 0.5)
 
 
+    def hide_on_unfocus(self, *a):
+        if not self.window_input.focused:
+            def test_hide(*a):
+                if not self.dont_hide:
+                    self.self_destruct(True)
+            Clock.schedule_once(test_hide, 0.1)
+
+
+    def on_enter(self, *a):
+        top_button = self.results.children[-1]
+        Animation(opacity=0, duration=0.13).start(self.results.children[0])
+        Animation(opacity=0, duration=0.13).start(self.results.children[1])
+        if top_button.opacity > 0:
+            top_button.animate_click()
+            self.dont_hide = True
+
+    def init_search(self, *a):
+        screen_name = screen_manager.current_screen.name
+
+        # Help overrides
+        if screen_name == 'MainMenuScreen':
+            query = 'getting started'
+        elif screen_name == 'ServerViewScreen':
+            query = 'help server manager'
+        elif 'Acl' in screen_name:
+            query = 'help access control'
+        else:
+            filtered = ''.join(map(lambda x: x if x.islower() else " "+x, screen_name.replace('Screen','').replace('Server',''))).lower().strip()
+            query = f'help {filtered}'
+        print(query)
+        self.on_search(force=query, fun_anim=True)
+
     def __init__(self, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.78, 0.78, 1, 1)
@@ -6126,6 +6169,7 @@ class PopupSearch(RelativeLayout):
         self.callback = None
         self.shown = False
         self.clicked = False
+        self.dont_hide = False
 
         self.max_results = 3
         self.search_lock = False
@@ -6168,6 +6212,7 @@ class PopupSearch(RelativeLayout):
             self.window_input.selection_color = (0.7, 0.7, 1, 0.4)
             self.window_input.cursor_width = 4
             self.window_input.font_size = sp(32)
+            self.window_input.on_text_validate = self.on_enter
             self.window_input.bind(text=self.on_search)
 
 
@@ -6214,18 +6259,21 @@ class PopupSearch(RelativeLayout):
         self.window.add_widget(self.window_input)
         self.window.add_widget(self.results)
         self.window.add_widget(self.window_background)
-        # self.window.add_widget(self.window_icon)
         self.window.add_widget(self.window_title)
         self.window.add_widget(self.window_content)
 
         self.bind(on_touch_down=self.click_event)
+        self.window_input.bind(focus=self.hide_on_unfocus)
 
         self.canvas.after.clear()
 
         self.blur_background.opacity = 0
         for widget in self.window.children:
             widget.opacity = 0
+
         self.window_input.grab_focus()
+
+        Clock.schedule_once(self.init_search, 0)
 
 
 
@@ -9573,6 +9621,11 @@ class CreateServerAclScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
 
+        if not constants.new_server_info['acl_object']:
+            constants.new_server_name()
+            constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
+            self.acl_object = constants.new_server_info['acl_object']
+
         # If self._hash doesn't match, set list to ops by default
         if self._hash != constants.new_server_info['_hash']:
             self.acl_object = constants.new_server_info['acl_object']
@@ -10868,6 +10921,19 @@ class CreateServerReviewScreen(MenuBackground):
         self.menu = 'init'
 
     def generate_menu(self, **kwargs):
+
+        # Fulfill prerequisites if skipped somehow
+        constants.new_server_name()
+
+        if not constants.new_server_info['version']:
+            server_type = constants.new_server_info['type']
+            constants.new_server_info['version'] = constants.latestMC[server_type]
+            if server_type in ['forge', 'paper']:
+                constants.new_server_info['build'] = constants.latestMC['builds'][server_type]
+
+        if not constants.new_server_info['acl_object']:
+            constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
+
 
         # Scroll list
         scroll_widget = ScrollViewWidget()
@@ -19099,6 +19165,7 @@ class ServerSettingsScreen(MenuBackground):
 
         self.edit_properties_button = None
         self.open_path_button = None
+        self.update_button = None
         self.ngrok_button = None
         self.rename_input = None
         self.delete_button = None
@@ -19428,12 +19495,12 @@ class ServerSettingsScreen(MenuBackground):
                         ), 0
                     )
             server_obj._view_notif('settings', viewed=server_obj.update_string)
-            update_button = WaitButton(f"Update to {server_obj.update_string}", (0.5, 0.5), 'arrow-up-circle-outline.png', disabled=disabled, click_func=update_server)
+            self.update_button = WaitButton(f"Update to {server_obj.update_string}", (0.5, 0.5), 'arrow-up-circle-outline.png', disabled=disabled, click_func=update_server)
         else:
-            update_button = WaitButton('Up to date', (0.5, 0.5), 'checkmark-circle.png', disabled=True)
-            Animation.stop_all(update_button.icon)
-            update_button.icon.opacity = 0.5
-        sub_layout.add_widget(update_button)
+            self.update_button = WaitButton('Up to date', (0.5, 0.5), 'checkmark-circle.png', disabled=True)
+            Animation.stop_all(self.update_button.icon)
+            self.update_button.icon.opacity = 0.5
+        sub_layout.add_widget(self.update_button)
         update_layout.add_widget(sub_layout)
 
 

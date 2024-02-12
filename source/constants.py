@@ -1699,6 +1699,17 @@ def new_server_init():
     }
 
 
+# Generate new server name
+def new_server_name():
+    if not constants.new_server_info['name']:
+        new_name = 'New Server'
+        x = 1
+        while new_name.lower() in constants.server_list_lower:
+            new_name = f'New Server ({x})'
+            x += 1
+        constants.new_server_info['name'] = new_name
+
+
 # Verify portable java is available in '.auto-mcs\Tools', if not install it
 modern_pct = 0
 legacy_pct = 0
@@ -3422,7 +3433,7 @@ def get_player_head(user: str):
 
 
 
-# --------------------------------------------- Global Search Functions ------------------------------------------------
+# ---------------------------------------------- Global Search Function ------------------------------------------------
 
 # Generates content for all global searches
 class SearchManager():
@@ -3452,8 +3463,8 @@ class SearchManager():
                 ScreenObject('Create Server (Step 3)', 'CreateServerVersionScreen', {'Type in version': None}),
                 ScreenObject('Create Server (Step 4)', 'CreateServerWorldScreen', {'Browse for a world': None, 'Type in seed': None, 'Select world type': None}),
                 ScreenObject('Create Server (Step 5)', 'CreateServerNetworkScreen', {'Specify IP/port': None, 'Type in Message Of The Day': None, 'Configure Access Control': 'CreateServerAclScreen'}),
-                ScreenObject('Create Server (Access Control)', 'CreateServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}),
-                ScreenObject('Create Server (Add-on Manager)', 'CreateServerAddonScreen', {'Download add-ons': 'CreateServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None}),
+                ScreenObject('Create Server (Access Control)', 'CreateServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
+                ScreenObject('Create Server (Add-on Manager)', 'CreateServerAddonScreen', {'Download add-ons': 'CreateServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None}, ['mod', 'plugin', 'addon', 'extension']),
                 ScreenObject('Create Server (Step 6)', 'CreateServerOptionsScreen', {'Change gamemode': None, 'Change difficulty': None, 'Specify maximum players': None, 'Enable spawn protection': None, 'Configure gamerules': None, 'Specify randomTickSpeed': None, 'Enable Bedrock support': None}),
                 ScreenObject('Create Server (Step 7)', 'CreateServerReviewScreen', {'Review & create server': None})
             ],
@@ -3464,11 +3475,11 @@ class SearchManager():
 
             'Server': [
                 ScreenObject('Server Manager', 'ServerViewScreen', {'Launch server': None, 'Stop server': None, 'Restart server': None, 'Enter console commands': None}),
-                ScreenObject('Back-up Manager', 'ServerBackupScreen', {'Save a back-up now': None, 'Restore from a back-up': 'ServerBackupRestoreScreen', 'Enable automatic back-ups': None, 'Specify maximum back-ups': None, 'Open back-up directory': None, 'Migrate back-up directory': None}),
-                ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}),
-                ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}),
-                ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}),
-                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Specify IP/port': None, 'Enable proxy (ngrok)': None, 'Install proxy (ngrok)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None})
+                ScreenObject('Back-up Manager', 'ServerBackupScreen', {'Save a back-up now': None, 'Restore from a back-up': 'ServerBackupRestoreScreen', 'Enable automatic back-ups': None, 'Specify maximum back-ups': None, 'Open back-up directory': None, 'Migrate back-up directory': None}, ['backup', 'revert', 'snapshot', 'restore', 'save']),
+                ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
+                ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}, ['mod', 'plugin', 'addon', 'extension']),
+                ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}, ['amscript', 'script', 'ide', 'develop']),
+                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Specify IP/port': None, 'Enable proxy (ngrok)': None, 'Install proxy (ngrok)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'update'])
             ]
         }
 
@@ -3642,7 +3653,8 @@ class SearchManager():
             elif (screen.id.startswith('Server') and 'Import' not in screen.id) and server_manager.current_server:
                 keywords = list(screen.options.keys())
                 keywords.extend(screen.helper_keywords)
-                final_list.append(ScreenResult(screen.name, f'Configuration page ({server_manager.current_server.name})', screen.id, keywords))
+                if current_screen != screen.id:
+                    final_list.append(ScreenResult(screen.name, f'Configuration page ({server_manager.current_server.name})', screen.id, keywords))
                 for setting, value in screen.options.items():
 
                     # Ignore results for running server
@@ -3651,12 +3663,17 @@ class SearchManager():
                     elif not server_manager.current_server.running and setting.lower() in ('restart server', 'stop server'):
                         continue
 
+                    # Change results for ngrok installation
                     if setting.lower() == 'enable proxy (ngrok)' and not ngrok_installed:
                         continue
                     if setting.lower() == 'install proxy (ngrok)' and ngrok_installed:
                         continue
 
-                    final_list.append(SettingResult(setting, f'Action in {screen.name} ({server_manager.current_server.name})', value if value else screen.id))
+                    # If server is up to date, hide update prompt
+                    if setting.lower() == 'update this server' and not server_manager.current_server.update_string:
+                        continue
+
+                    final_list.append(SettingResult(setting, f'Action in {screen.name} ({server_manager.current_server.name})', value if value else screen.id, keywords))
 
             else:
                 keywords = list(screen.options.keys())
@@ -3667,13 +3684,13 @@ class SearchManager():
                     if setting.lower() == 'update auto-mcs' and constants.app_latest:
                         continue
 
-                    final_list.append(SettingResult(setting, f'Action in {screen.name}', value if value else screen.id))
+                    final_list.append(SettingResult(setting, f'Action in {screen.name}', value if value else screen.id, keywords))
 
 
         # Return a list of all created screens, settings, and guides
         return final_list
 
-    # Generate a list of results from a search
+    # Generate a list of weighted results from a search
     def execute_search(self, current_screen, query):
         
         match_list = {
@@ -3772,8 +3789,8 @@ class SearchManager():
             o_query = query
 
             # First check for a title match
-            query = clean_str(query).replace('?', '').replace(',', '')
-            query = query.replace('mod', 'addon').replace('plugin', 'addon')
+            query = clean_str(query).replace('?', '').replace(',', '').replace('help','').replace('guide','')
+            query = query.replace('mod', 'addon').replace('plugin', 'addon').replace('folder', 'directory').replace('path', 'directory')
             query = check_overrides(query)
 
             for obj in options_list:
@@ -3794,27 +3811,36 @@ class SearchManager():
                         obj.score = 100
 
                     else:
-                        # for w1 in title.split(' '):
-                        #     for w2 in query.split(' '):
-                        #         obj.score += (similarity(w1, w2) * (len(w1) / 2))
-                        obj.score = similarity(query, title)
+                        # Initial score based on title match
+                        obj.score = similarity(query, title) * 10
+
+                        # Increase score comparing word by word
+                        for w1 in title.split(' '):
+                            for w2 in query.split(' '):
+                                obj.score += ((similarity(w1, w2) * len(w2)) * 2)
+
+                        # Finally, increase score by pre-existing keyword matches
+                        for keyword in obj.keywords:
+                            if keyword in query:
+                                obj.score += 5
 
                         # Modify values based on object type
-                        if obj.type == 'server':
-                            obj.score /= 2
+                        if obj.type == 'server' and current_screen == 'ServerManagerScreen':
+                            obj.score *= 2
+                        elif obj.type == 'server' and (current_screen.startswith('Server') or current_screen.startswith('CreateServer')):
+                            obj.score /= 1.5
 
                     if obj not in match_list[obj.type]:
                         match_list[obj.type].append(obj)
 
-        
-        
+
         # Search through every guide to return relevant information from a query
         if app_online and self.guide_tree:
             o_query = query
 
             # First check for a title match
-            query = clean_str(query).replace('?', '').replace(',', '')
-            query = query.replace('mod', 'addon').replace('plugin', 'addon')
+            query = clean_str(query).replace('?', '').replace(',', '').replace('help','').replace('guide','')
+            query = query.replace('mod', 'addon').replace('plugin', 'addon').replace('folder', 'directory').replace('path', 'directory')
             query = check_overrides(query)
 
             for title in self.guide_tree.keys():
@@ -3881,12 +3907,13 @@ class SearchManager():
                                 score = similarity_score
                             )
 
+            if 'guide' in o_query.lower() or 'help' in o_query.lower():
+                match_list['guide'].score = 1000
+
         match_list['setting'] = tuple(sorted(match_list['setting'], key=lambda x: x.score, reverse=True))
         match_list['screen'] = tuple(sorted(match_list['screen'], key=lambda x: x.score, reverse=True))
         match_list['server'] = tuple(sorted(match_list['server'], key=lambda x: x.score, reverse=True))
         return match_list
-
-
 
 # Base search result
 class SearchObject():

@@ -2018,7 +2018,7 @@ def launch_window(path: str, data: dict, *a):
                                         c_tag = self.tag_names(start_closing)[0]
                                     except IndexError:
                                         continue
-                                    for tag in ('Comment', 'String.Single', 'String.Double', 'String.Doc', 'String.Heredoc', 'sel'):
+                                    for tag in ('Comment', 'String.Single', 'String.Double', 'String.Doc', 'String.Heredoc'): # 'sel'
                                         if tag in o_tag or tag in c_tag:
                                             break
                                     else:
