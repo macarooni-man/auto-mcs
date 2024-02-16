@@ -241,9 +241,9 @@ class HoverButton(Button, HoverBehavior):
         self.button_pressed = touch.button
 
         # Show context menu if available
-        self.context_options = [{'name': 'Test option 1', 'icon': 'test-icon.png', 'action': None},{'name': 'Test option 2', 'icon': 'test-icon.png', 'action': None},{'name': 'Test option 3', 'icon': 'test-icon.png', 'action': None}]
-        if touch.button == 'right' and self.context_options and self.hovered:
-            screen_manager.current_screen.show_context_menu(self.context_options)
+        self.context_options = [{'name': str(self), 'icon': 'test-icon.png', 'action': None},{'name': 'Test option 1', 'icon': 'test-icon.png', 'action': None},{'name': 'Test option 2', 'icon': 'test-icon.png', 'action': None}]
+        if touch.button == 'right' and (self.context_options and self.collide_point(*touch.pos)):
+            screen_manager.current_screen.show_context_menu(self, self.context_options)
 
     def on_enter(self, *args):
         if not self.ignore_hover:
@@ -4460,7 +4460,7 @@ class DropButton(FloatLayout):
 # self.context_options = [{'name': 'Test option', 'icon': 'test-icon.png', 'action': self.do_something}]
 class ContextMenu(GridLayout):
 
-    # Button in context menu
+    # Object for all children in layout
     class ListButton(RelativeLayout):
 
         def __init__(self, sub_data, sub_id, **kw):
@@ -4501,8 +4501,11 @@ class ContextMenu(GridLayout):
         self.opacity = 0
         self.visible = False
         self.rounded = False
+        self.widget = None
 
-    def show(self, options_list=None):
+    # Shows menu on the current screen
+    def show(self, widget, options_list=None):
+        self.widget = widget
         if options_list:
             self._change_options(options_list)
         self.visible = True
@@ -4512,9 +4515,11 @@ class ContextMenu(GridLayout):
             Animation(opacity=1, size_hint_max_x=182, duration=0.13, transition='in_out_sine').start(self)
         Clock.schedule_once(wait, 0)
 
+    # Hides the menu, and deletes it from the current screen
     def hide(self, animate=True, *args):
-        def delete(*args):
+        Clock.schedule_once(self.widget.on_leave, 0.05)
 
+        def delete(*args):
             try:
                 for widget in self.parent.children:
                     if "ContextMenu" in widget.__class__.__name__:
@@ -4526,20 +4531,23 @@ class ContextMenu(GridLayout):
 
         if animate:
             Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
-            Clock.schedule_once(functools.partial(self._deselect_buttons), 0.15)
-            Clock.schedule_once(delete, 0.2)
+            Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
+            Clock.schedule_once(delete, 0.141)
         else:
             delete()
 
+    # Executes 'self.on_leave()' for all children
     def _deselect_buttons(self, *args):
         for child in self.children:
             child.button.on_leave()
 
+    # Changes button textures when position is fixed on screen
     def _round_top_left(self, *a):
         b = self.children[-1]
         b.button.id = 'list_start_flip_button'
         b.button.on_leave()
 
+    # Moves menu to cursor, and prevents it from going off-screen
     def _update_pos(self):
 
         # Set initial position
@@ -4558,26 +4566,7 @@ class ContextMenu(GridLayout):
             self.x -= (off_x - Window.width)
             Clock.schedule_once(self._round_top_left, 0)
 
-    def on_touch_down(self, touch):
-
-        if self.visible:
-
-            # Hide menu on any touch that isn't right
-            if touch.button != 'right':
-                self.hide()
-                self.visible = False
-
-            # Ignore touch unless it's right, or clicked on any children
-            if touch.button == 'right' or any([b.button.hovered for b in self.children]):
-                return super().on_touch_down(touch)
-
-            return True
-
-        # Ignore if the menu isn't visible
-        else:
-            return super().on_touch_down(touch)
-
-    # Update list options
+    # Update list options with 'options_list'
     def _change_options(self, options_list):
         self.options_list = options_list
         self.clear_widgets()
@@ -4598,6 +4587,26 @@ class ContextMenu(GridLayout):
             else:
                 end_btn = self.ListButton(item, sub_id='list_end_button')
                 self.add_widget(end_btn)
+
+    # Modifies global click behavior when the menu is visible
+    def on_touch_down(self, touch):
+
+        if self.visible:
+
+            # Hide menu on any touch that isn't right
+            if touch.button != 'right':
+                self.hide()
+                self.visible = False
+
+            # Ignore touch unless it's right, or clicked on any children
+            if touch.button == 'right' or any([b.button.hovered for b in self.children]):
+                return super().on_touch_down(touch)
+
+            return True
+
+        # Ignore if the menu isn't visible
+        else:
+            return super().on_touch_down(touch)
 
 
 
@@ -7015,12 +7024,25 @@ class MenuBackground(Screen):
         Clock.schedule_once(show, 0)
 
     # Show a context menu when clicking on certain elements
-    def show_context_menu(self, options_list):
+    def show_context_menu(self, widget, options_list):
         if not self.popup_widget:
-            if not self.context_menu:
-                self.context_menu = ContextMenu()
-                self.add_widget(self.context_menu)
-            self.context_menu.show(options_list)
+
+            def show(*a):
+                if not self.context_menu:
+                    self.context_menu = ContextMenu()
+                    self.add_widget(self.context_menu)
+                self.context_menu.show(widget, options_list)
+
+            if self.context_menu:
+                if self.context_menu.widget != widget:
+                    self.context_menu.hide()
+                    widget.on_enter()
+                    Clock.schedule_once(show, 0.15)
+                    return None
+
+            show()
+
+
 
 
     # Show banner; pass in color, text, icon name, and duration
