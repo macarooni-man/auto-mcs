@@ -40,7 +40,7 @@ if constants.app_compiled and constants.debug is False:
     os.environ['KIVY_HOME'] = kivy_folder
 
 
-os.environ["KCFG_KIVY_LOG_LEVEL"] = "info"
+os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug" if constants.debug else "info"
 os.environ["KIVY_IMAGE"] = "pil,sdl2"
 os.environ['KIVY_NO_ARGS'] = '1'
 
@@ -50,6 +50,11 @@ Config.set('graphics', 'vsync', '-1')
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
 Config.set('graphics', 'window_state', 'hidden')
 Config.set('kivy', 'exit_on_escape', '0')
+
+# Fullscreen in Docker
+if constants.is_docker:
+    Config.set('graphics', 'borderless', 1)
+    Config.set('graphics', 'custom_titlebar', 1)
 
 # Import kivy elements
 from kivy.clock import Clock
@@ -113,9 +118,9 @@ class HoverBehavior(object):
 
     def on_mouse_pos(self, *args):
         if not self.get_root_window() or self.disabled:
-            return # do proceed if I'm not displayed <=> If there's no parent
+            return  # do proceed if I'm not displayed <=> If there's no parent
         pos = args[1]
-        #Next line to_widget allow to compensate for relative layout
+        # Next line to_widget allow to compensate for relative layout
         inside = self.collide_point(*self.to_widget(*pos))
 
         if self.hovered == inside:
@@ -299,7 +304,7 @@ class InputLabel(RelativeLayout):
         icon = Image()
         icon.id = 'icon'
         icon.source = os.path.join(constants.gui_assets, 'icons', 'alert-circle-outline.png')
-        icon.color = (1, 0.53, 0.58, 0) # make alpha 0 eventually
+        icon.color = (1, 0.53, 0.58, 0)
         self.icon_x = icon.x
         icon.x -= dp((len(text.text) * (self.text_size - 8)) / 3) - dp(20)
 
@@ -775,7 +780,9 @@ class ServerNameInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 25:
-            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
             self.valid((self.text + s).lower().strip() not in constants.server_list_lower, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
@@ -862,7 +869,9 @@ class ServerRenameInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 25:
-            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
             text_check = (self.text + s).lower().strip()
             self.valid((text_check not in constants.server_list_lower) or (text_check == self.starting_text.lower().strip()), ((len(self.text + s) > 0) and not (str.isspace(self.text))))
@@ -964,7 +973,9 @@ class ScriptNameInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 25:
-            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring.splitlines()[0])
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
             self.valid(self.convert_name(self.text + s) not in self.script_list, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
@@ -1071,7 +1082,9 @@ class ServerVersionInput(BaseInput):
             elif len(self.text) < 10:
                 self.valid(True, True)
 
-                s = re.sub('[^a-eA-E0-9 .wpreWPRE-]', '', substring.splitlines()[0]).lower()
+                if '\n' in substring:
+                    substring = substring.splitlines()[0]
+                s = re.sub('[^a-eA-E0-9 .wpreWPRE-]', '', substring).lower()
 
                 # Add name to current config
                 if self.text + s:
@@ -1668,7 +1681,9 @@ class CreateServerSeedInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 32:
-            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring.splitlines()[0])
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring)
 
             # Add name to current config
             constants.new_server_info['server_settings']['seed'] = (self.text + s).strip()
@@ -1765,7 +1780,9 @@ class ServerSeedInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 32:
-            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring.splitlines()[0])
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring)
 
             # Add name to current config
             screen_manager.current_screen.new_seed = (self.text + s).strip()
@@ -2108,7 +2125,9 @@ class CreateServerPortInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 21:
-            s = re.sub('[^0-9:.]', '', substring.splitlines()[0])
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^0-9:.]', '', substring)
 
             if ":" in self.text and ":" in s:
                 s = ''
@@ -2265,7 +2284,9 @@ class ServerMOTDInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 32:
-            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring.splitlines()[0])
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring)
 
             # Add name to current config
             constants.new_server_info['server_settings']['motd'] = (self.text + s).strip() if self.text + s else "A Minecraft Server"
@@ -2303,7 +2324,9 @@ class ServerPlayerInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 7:
-            s = re.sub('[^0-9]', '', substring.splitlines()[0])
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^0-9]', '', substring)
 
             # Add name to current config
             constants.new_server_info['server_settings']['max_players'] = (self.text + s).strip() if self.text + s else "20"
@@ -2341,7 +2364,9 @@ class ServerTickSpeedInput(BaseInput):
             substring = ""
 
         elif len(self.text) < 5:
-            s = re.sub('[^0-9]', '', substring.splitlines()[0])
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^0-9]', '', substring)
 
             # Add name to current config
             constants.new_server_info['server_settings']['random_tick_speed'] = (self.text + s).strip() if self.text + s else "3"
@@ -2409,7 +2434,9 @@ class AclInput(BaseInput):
             substring = ""
 
         else:
-            s = re.sub('[^a-zA-Z0-9 _().!/,-]', '', substring.splitlines()[0])
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-zA-Z0-9 _().!/,-]', '', substring)
 
             # Filter input, and process data to search_filter function in AclScreen
             self.actual_text = (self.text + s).strip() if self.text + s else ""
@@ -2489,7 +2516,9 @@ class AclRuleInput(BaseInput):
             else:
                 reg_exp = '[^a-zA-Z0-9 _,!]'
 
-            s = re.sub(reg_exp, '', substring.splitlines()[0])
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub(reg_exp, '', substring)
 
             original_rule = self.text.split(",")[:self.text[:self.cursor_index()].count(",") + 1][-1]
             rule = original_rule + s.replace(",","")
@@ -7542,13 +7571,16 @@ class MainMenuScreen(MenuBackground):
         if not constants.server_list:
             top_button = main_button('Import a server', (0.5, 0.42), 'download-outline.png')
         else:
-            top_button = main_button('Manage Auto-MCS servers', (0.5, 0.42), 'settings-outline.png')
-        bottom_button = main_button('Create a new server', (0.5, 0.32), 'duplicate-outline.png')
+            top_button = main_button('Manage Auto-MCS servers', (0.5, 0.38 if constants.is_docker else 0.42), 'settings-outline.png')
+        bottom_button = main_button('Create a new server', (0.5, 0.26 if constants.is_docker else 0.32), 'duplicate-outline.png')
         quit_button = exit_button('Quit', (0.5, 0.17))
 
         buttons.append(top_button)
         buttons.append(bottom_button)
-        buttons.append(quit_button)
+
+        # Only add quit button if standalone app
+        if not constants.is_docker:
+            buttons.append(quit_button)
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -20079,7 +20111,7 @@ class MainApp(App):
             import pyi_splash
             pyi_splash.close()
 
-        if constants.fullscreen:
+        if constants.fullscreen or constants.is_docker:
             Window.maximize()
         Window.show()
 

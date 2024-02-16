@@ -80,23 +80,24 @@ if __name__ == '__main__':
 
 
     # Check if application is already open
-    if constants.os_name == "windows":
-        command = f'tasklist | findstr {os.path.basename(constants.launch_path)}'
-        response = [line for line in constants.run_proc(command, True).strip().splitlines() if ((command not in line) and ('tasklist' not in line) and (line.endswith(' K')))]
-        print(response)
-        if len(response) > 2:
-            user32 = ctypes.WinDLL('user32')
-            if hwnd := user32.FindWindowW(None, constants.app_title):
-                if not user32.IsZoomed(hwnd):
-                    user32.ShowWindow(hwnd, 1)
-                user32.SetForegroundWindow(hwnd)
-            sys.exit()
-    # Linux
-    else:
-        command = f'ps -e | grep {os.path.basename(constants.launch_path)}'
-        response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and line]
-        if len(response) > 2:
-            sys.exit()
+    if not constants.is_docker:
+        if constants.os_name == "windows":
+            command = f'tasklist | findstr {os.path.basename(constants.launch_path)}'
+            response = [line for line in constants.run_proc(command, True).strip().splitlines() if ((command not in line) and ('tasklist' not in line) and (line.endswith(' K')))]
+            print(response)
+            if len(response) > 2:
+                user32 = ctypes.WinDLL('user32')
+                if hwnd := user32.FindWindowW(None, constants.app_title):
+                    if not user32.IsZoomed(hwnd):
+                        user32.ShowWindow(hwnd, 1)
+                    user32.SetForegroundWindow(hwnd)
+                sys.exit()
+        # Linux
+        else:
+            command = f'ps -e | grep {os.path.basename(constants.launch_path)}'
+            response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and line]
+            if len(response) > 2:
+                sys.exit()
 
     import main
 

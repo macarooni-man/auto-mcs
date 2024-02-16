@@ -1,9 +1,9 @@
 altgraph==0.17.3
 asyncio-dgram==2.1.2
 beautifulsoup4==4.11.1
-certifi==2023.7.22
+certifi>=2023.7.22
 charset-normalizer==2.1.1
-cloudscraper==1.2.69
+cloudscraper>=1.2.71
 dnspython==2.2.1
 docutils==0.19
 future==0.18.3

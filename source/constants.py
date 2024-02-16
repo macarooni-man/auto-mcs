@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 from platform import system
 from threading import Timer
 from copy import deepcopy
+from pathlib import Path
 from glob import glob
 from nbt import nbt
 import configparser
@@ -39,7 +40,7 @@ import constants
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0.8"
+app_version = "2.1"
 ams_version = "1.1"
 app_title = "auto-mcs"
 window_size = (850, 850)
@@ -211,6 +212,13 @@ backup_lock = {}
 # Maximum memory
 total_ram = round(psutil.virtual_memory().total / 1073741824)
 max_memory = int(round(total_ram - (total_ram / 4)))
+
+
+# Check if running in Docker
+def check_docker():
+    cgroup = Path('/proc/self/cgroup')
+    return Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
+is_docker = check_docker()
 
 
 # Global amscripts
@@ -821,7 +829,8 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
     archive = None
     archive_type = None
 
-    print(f"Extracting '{archive_file}' to '{export_path}'...")
+    if debug:
+        print(f"Extracting '{archive_file}' to '{export_path}'...")
 
     try:
         if archive_file.endswith("tar.gz"):
@@ -837,13 +846,48 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
         if archive and applicationFolder in os.path.split(export_path)[0]:
             folder_check(export_path)
 
+            # Use tar if available, for speed
+            use_tar = False
+            if archive_type == 'tar':
+                try:
+                    rc = subprocess.call(['tar', '--help'])
+                    use_tar = rc == 0
+
+                except Exception as e:
+                    if debug:
+                        print(e)
+                    use_tar = False
+
+            if debug and use_tar:
+                print('Extract: Using "tar" as a provider')
+
+
             # Keep integrity of archive
             if not skip_root:
-                archive.extractall(export_path)
+
+                if use_tar:
+                    archive_file = os.path.abspath(archive_file)
+                    cwd = os.path.abspath(os.curdir)
+                    os.chdir(export_path)
+                    run_proc(f"tar -xf \"{archive_file}\"")
+                    os.chdir(cwd)
+                else:
+                    archive.extractall(export_path)
 
             # Export from root folder instead
             else:
-                if archive_type == "tar":
+                if use_tar:
+                    archive_file = os.path.abspath(archive_file)
+                    cwd = os.path.abspath(os.curdir)
+                    os.chdir(export_path)
+                    run_proc(f"tar -xf \"{archive_file}\"")
+                    os.chdir(glob('*')[0])
+                    delete_later = os.path.abspath(os.curdir)
+                    run_proc('move * ..\\.' if os_name == 'windows' else 'mv * ../.')
+                    os.chdir(cwd)
+                    safe_delete(delete_later)
+
+                elif archive_type == "tar":
                     def remove_root(file):
                         root_path = file.getmembers()[0].path
                         if "/" in root_path:
@@ -865,8 +909,9 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
                         zip_info.filename = zip_info.filename[len(root_path):]
                         archive.extract(zip_info, export_path)
 
-            print(f"Extracted '{archive_file}' to '{export_path}'")
-        else:
+            if debug:
+                print(f"Extracted '{archive_file}' to '{export_path}'")
+        elif debug:
             print(f"Archive '{archive_file}' was not found")
 
     except Exception as e:
@@ -875,8 +920,6 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
 
 # Download file from URL to directory
 def download_url(url: str, file_name: str, output_path: str, progress_func=None):
-
-    # with DownloadProgressBar(unit='B', unit_scale=True, bar_format='{l_bar}{bar:40}\x1b[97m{r_bar}\x1b[97m{bar:-40b}', colour="GREEN", miniters=1, desc=file_name) as t:
     opener = urllib.request.build_opener()
     opener.addheaders = [('User-agent', 'Mozilla/5.0')]
     urllib.request.install_opener(opener)

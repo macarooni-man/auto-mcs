@@ -2,14 +2,14 @@ altgraph==0.17.3
 asyncio-dgram==2.1.2
 beautifulsoup4==4.11.1
 bs4==0.0.1
-certifi==2023.7.22
+certifi>=2023.7.22
 charset-normalizer==2.1.1
-cloudscraper==1.2.71
+cloudscraper>=1.2.71
 dnspython==2.2.1
 docutils==0.19
 idna==3.4
 ipaddress==1.0.23
-Kivy==2.0.0
+Kivy==2.1.0
 Kivy-Garden==0.1.5
 munch==3.0.0
 NBT==1.5.1

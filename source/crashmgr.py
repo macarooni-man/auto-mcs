@@ -81,7 +81,7 @@ def generate_log(exception):
 
     General Info:
 
-        Version:           {constants.app_version} - {constants.os_name.title()} ({platform()})
+        Version:           {constants.app_version} - {constants.os_name.title()} ({"Docker, " if constants.is_docker else ""}{platform()})
         Online:            {constants.app_online}
         Sub-servers:       {', '.join([f"{x}: {y.type} {y.version}" for x, y in enumerate(constants.server_manager.running_servers.values(), 1)]) if constants.server_manager.running_servers else "None"}
         ngrok:             {"Active" if constants.ngrok_ip['ip'] == "" else "Inactive"}
