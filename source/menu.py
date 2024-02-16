@@ -115,8 +115,16 @@ class HoverBehavior(object):
         self.register_event_type('on_leave')
         Window.bind(mouse_pos=self.on_mouse_pos)
         super(HoverBehavior, self).__init__(**kwargs)
+        self.id = ''
 
     def on_mouse_pos(self, *args):
+
+        # Ignore if context menu is visible
+        context_menu = screen_manager.current_screen.context_menu
+        if context_menu and not (self.id.startswith('list_') and self.id.endswith('_button')):
+            return
+
+
         if not self.get_root_window() or self.disabled:
             return  # do proceed if I'm not displayed <=> If there's no parent
         pos = args[1]
@@ -223,12 +231,19 @@ class HoverButton(Button, HoverBehavior):
         self.bind(on_touch_down=self.onPressed)
         self.button_pressed = None
         self.selected = False
+        self.context_options = []
+        self.id = ''
 
     def onPressed(self, instance, touch):
         if touch.device == "wm_touch":
             touch.button = "left"
 
         self.button_pressed = touch.button
+
+        # Show context menu if available
+        self.context_options = [{'name': 'Test option 1', 'icon': 'test-icon.png', 'action': None},{'name': 'Test option 2', 'icon': 'test-icon.png', 'action': None},{'name': 'Test option 3', 'icon': 'test-icon.png', 'action': None}]
+        if touch.button == 'right' and self.context_options and self.hovered:
+            screen_manager.current_screen.show_context_menu(self.context_options)
 
     def on_enter(self, *args):
         if not self.ignore_hover:
@@ -4388,7 +4403,6 @@ class DropButton(FloatLayout):
 
         self.add_widget(self.icon)
 
-
     def change_text(self, text):
         self.text.text = text.upper() + (" " * self.text_padding)
 
@@ -4423,7 +4437,6 @@ class DropButton(FloatLayout):
 
         return sub_final
 
-
     # Update list options
     def change_options(self, options_list):
         self.options_list = options_list
@@ -4440,6 +4453,152 @@ class DropButton(FloatLayout):
             else:
                 end_btn = self.list_button(item, sub_id='list_end_button')
                 self.dropdown.add_widget(end_btn)
+
+
+# Similar to DropButton, but for a right-click context menu
+# Options are assigned from children of the HoverButton class:
+# self.context_options = [{'name': 'Test option', 'icon': 'test-icon.png', 'action': self.do_something}]
+class ContextMenu(GridLayout):
+
+    # Button in context menu
+    class ListButton(RelativeLayout):
+
+        def __init__(self, sub_data, sub_id, **kw):
+            super().__init__(**kw)
+
+            self.id = sub_data['name']
+            self.size_hint_y = None
+            self.height = 42 if "mid" in sub_id else 46
+            self.width = 182
+
+            self.button = HoverButton()
+            self.button.id = sub_id
+            self.button.height = self.height
+            self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+            self.button.border = (0, 0, 0, 0)
+            self.button.background_normal = os.path.join(constants.gui_assets, f'{sub_id}.png')
+            self.button.background_down = os.path.join(constants.gui_assets, f'{sub_id}_click.png')
+
+            self.text = Label()
+            self.text.id = 'text'
+            self.text.text = sub_data['name']
+            self.text.font_size = sp(19)
+            self.text.padding_y = 100
+            self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            self.text.color = (0.6, 0.6, 1, 1)
+
+            self.add_widget(self.button)
+            self.add_widget(self.text)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.id = 'context_menu'
+        self.cols = 1
+        self.options_list = None
+        self.size_hint_max_x = 130
+        self.opacity = 0
+        self.visible = False
+        self.rounded = False
+
+    def show(self, options_list=None):
+        if options_list:
+            self._change_options(options_list)
+        self.visible = True
+
+        def wait(*a):
+            self._update_pos()
+            Animation(opacity=1, size_hint_max_x=182, duration=0.13, transition='in_out_sine').start(self)
+        Clock.schedule_once(wait, 0)
+
+    def hide(self, animate=True, *args):
+        def delete(*args):
+
+            try:
+                for widget in self.parent.children:
+                    if "ContextMenu" in widget.__class__.__name__:
+                        self.parent.context_menu = None
+                        self.parent.remove_widget(widget)
+            except AttributeError:
+                if constants.debug:
+                    print("Window ContextMenu Error: Failed to delete menu as the parent window doesn't exist")
+
+        if animate:
+            Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
+            Clock.schedule_once(functools.partial(self._deselect_buttons), 0.15)
+            Clock.schedule_once(delete, 0.2)
+        else:
+            delete()
+
+    def _deselect_buttons(self, *args):
+        for child in self.children:
+            child.button.on_leave()
+
+    def _round_top_left(self, *a):
+        b = self.children[-1]
+        b.button.id = 'list_start_flip_button'
+        b.button.on_leave()
+
+    def _update_pos(self):
+
+        # Set initial position
+        pos = Window.mouse_pos
+        self.x = pos[0]
+        self.y = pos[1] - self.height
+
+        # Check if the menu goes off-screen
+        off_y = pos[1] - self.minimum_height
+        if off_y <= 0:
+            self.y -= off_y
+            Clock.schedule_once(self._round_top_left, 0)
+
+        off_x = pos[0] + self.width
+        if off_x >= Window.width:
+            self.x -= (off_x - Window.width)
+            Clock.schedule_once(self._round_top_left, 0)
+
+    def on_touch_down(self, touch):
+
+        if self.visible:
+
+            # Hide menu on any touch that isn't right
+            if touch.button != 'right':
+                self.hide()
+                self.visible = False
+
+            # Ignore touch unless it's right, or clicked on any children
+            if touch.button == 'right' or any([b.button.hovered for b in self.children]):
+                return super().on_touch_down(touch)
+
+            return True
+
+        # Ignore if the menu isn't visible
+        else:
+            return super().on_touch_down(touch)
+
+    # Update list options
+    def _change_options(self, options_list):
+        self.options_list = options_list
+        self.clear_widgets()
+
+        for item in self.options_list:
+
+            # Start of the list
+            if item == self.options_list[0]:
+                start_btn = self.ListButton(item, sub_id='list_start_button')
+                self.add_widget(start_btn)
+
+            # Middle of the list
+            elif item != self.options_list[-1]:
+                mid_btn = self.ListButton(item, sub_id='list_mid_button')
+                self.add_widget(mid_btn)
+
+            # Last button
+            else:
+                end_btn = self.ListButton(item, sub_id='list_end_button')
+                self.add_widget(end_btn)
+
 
 
 def toggle_button(name, position, default_state=True, x_offset=0, custom_func=None, disabled=False):
@@ -6692,6 +6851,11 @@ class MenuBackground(Screen):
         if self.resize_bind:
             Window.unbind(on_resize=self.resize_bind)
 
+        # Remove context menu
+        if self.context_menu:
+            self.context_menu.hide(animate=False)
+            self.context_menu = None
+
         # Causes bug with resizing
         # for widget in self.walk():
         #     self.remove_widget(widget)
@@ -6743,6 +6907,9 @@ class MenuBackground(Screen):
 
     # Show popup; popup_type can be "info", "warning", "query"
     def show_popup(self, popup_type, title, content, callback=None, *args):
+        if self.context_menu:
+            self.context_menu.hide()
+
         if ((popup_type == "update") or (title and content and popup_type in ["info", "warning", "query", "warning_query", "controls", "addon", "script"])) and (self == screen_manager.current_screen):
 
             # self.show_popup("info", "Title", "This is an info popup!", functools.partial(callback_func))
@@ -6825,6 +6992,9 @@ class MenuBackground(Screen):
         if "ProgressScreen" in self.__class__.__name__:
             return
 
+        if self.context_menu:
+            self.context_menu.hide()
+
         # Log for crash info
         try:
             interaction = f"PopupWidget (GlobalSearch)"
@@ -6843,6 +7013,15 @@ class MenuBackground(Screen):
             self.popup_widget.animate(True)
 
         Clock.schedule_once(show, 0)
+
+    # Show a context menu when clicking on certain elements
+    def show_context_menu(self, options_list):
+        if not self.popup_widget:
+            if not self.context_menu:
+                self.context_menu = ContextMenu()
+                self.add_widget(self.context_menu)
+            self.context_menu.show(options_list)
+
 
     # Show banner; pass in color, text, icon name, and duration
     @staticmethod
@@ -7000,13 +7179,18 @@ class MenuBackground(Screen):
             # If we hit escape, release the keyboard
             # On ESC, click on back button if it exists
             if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
-                for button in self.walk():
-                    try:
-                        if button.id == "exit_button":
-                            button.force_click()
-                            break
-                    except AttributeError:
-                        continue
+
+                if self.context_menu:
+                    self.context_menu.hide()
+
+                else:
+                    for button in self.walk():
+                        try:
+                            if button.id == "exit_button":
+                                button.force_click()
+                                break
+                        except AttributeError:
+                            continue
                 keyboard.release()
 
 
@@ -7052,6 +7236,7 @@ class MenuBackground(Screen):
         self.banner_widget = None
         self.popup_widget = None
         self.page_switcher = None
+        self.context_menu = None
 
         self._input_focused = False
         self._keyboard = None
@@ -7723,13 +7908,18 @@ class MainMenuScreen(MenuBackground):
             # If we hit escape, release the keyboard
             # On ESC, click on back button if it exists
             if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
-                for button in self.walk():
-                    try:
-                        if button.id == "exit_button":
-                            button.force_click()
-                            break
-                    except AttributeError:
-                        continue
+
+                if self.context_menu:
+                    self.context_menu.hide()
+
+                else:
+                    for button in self.walk():
+                        try:
+                            if button.id == "exit_button":
+                                button.force_click()
+                                break
+                        except AttributeError:
+                            continue
                 keyboard.release()
 
             # Click next button if it's not disabled
@@ -14336,7 +14526,10 @@ class ServerViewScreen(MenuBackground):
             # On ESC, click on back button if it exists
             if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
 
-                if self.console_panel.full_screen:
+                if self.context_menu:
+                    self.context_menu.hide()
+
+                elif self.console_panel.full_screen:
                     self.console_panel.maximize(False)
 
                 else:

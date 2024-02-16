@@ -314,6 +314,7 @@ def check_app_version(current, latest, limit=None):
     normalize(l_list, max_size)
 
     for x in range(max_size):
+
         if limit:
             if x >= limit:
                 return False
@@ -321,7 +322,7 @@ def check_app_version(current, latest, limit=None):
         if l_list[x] > c_list[x]:
             return True
 
-        elif c_list[0] > l_list[0]:
+        elif c_list[x] > l_list[x]:
             return False
     else:
         return False
