@@ -14,6 +14,7 @@ import functools
 import threading
 import inspect
 import time
+import math
 import sys
 import os
 import re
@@ -241,7 +242,7 @@ class HoverButton(Button, HoverBehavior):
         self.button_pressed = touch.button
 
         # Show context menu if available
-        self.context_options = [{'name': str(self), 'icon': 'test-icon.png', 'action': None},{'name': 'Test option 1', 'icon': 'test-icon.png', 'action': None},{'name': 'Test option 2', 'icon': 'test-icon.png', 'action': None}]
+        self.context_options = [{'name': self.id, 'icon': 'amscript.png', 'action': None},{'name': 'Test 1', 'icon': 'restart-server.png', 'action': None},{'name': 'Test option 2', 'icon': 'ban.png', 'action': None},{'name': 'Test option 3', 'icon': 'stop-server.png', 'action': None},{'name': 'Test 4', 'icon': 'ethernet.png', 'action': None}]
         if touch.button == 'right' and (self.context_options and self.collide_point(*touch.pos)):
             screen_manager.current_screen.show_context_menu(self, self.context_options)
 
@@ -4463,33 +4464,82 @@ class ContextMenu(GridLayout):
     # Object for all children in layout
     class ListButton(RelativeLayout):
 
+        def animate(self, fade_in=True, delay=0):
+
+            def delay_anim(*a):
+                Animation.stop_all(self.text)
+                Animation.stop_all(self.icon)
+                self.text.x = self.text_x
+                self.icon.x = self.icon_x
+
+                if fade_in:
+                    self.text.x -= 15
+                    self.icon.x -= 15
+                    self.text.opacity = 0
+                    self.icon.opacity = 0
+                    Animation(opacity=1, x=self.text_x, duration=0.3, transition='out_sine').start(self.text)
+                    Animation(opacity=1, x=self.icon_x, duration=0.3, transition='out_sine').start(self.icon)
+
+                else:
+                    Animation(opacity=0, x=self.text_x-15, duration=0.15).start(self.text)
+                    Animation(opacity=0, x=self.icon_x-40, duration=0.15).start(self.icon)
+
+            Clock.schedule_once(delay_anim, delay)
+
         def __init__(self, sub_data, sub_id, **kw):
             super().__init__(**kw)
 
             self.id = sub_data['name']
             self.size_hint_y = None
             self.height = 42 if "mid" in sub_id else 46
-            self.width = 182
+            self.width = 200
+            self.text_x = 0
+            self.icon_x = 0
 
+            # Add button
             self.button = HoverButton()
             self.button.id = sub_id
             self.button.height = self.height
             self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
-
             self.button.border = (0, 0, 0, 0)
             self.button.background_normal = os.path.join(constants.gui_assets, f'{sub_id}.png')
             self.button.background_down = os.path.join(constants.gui_assets, f'{sub_id}_click.png')
 
+            # Add text
             self.text = Label()
             self.text.id = 'text'
+            self.text.opacity = 0
             self.text.text = sub_data['name']
             self.text.font_size = sp(19)
             self.text.padding_y = 100
+            self.text.halign = 'left'
+            self.text.x = 15
+            self.text_x = self.text.x
             self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
             self.text.color = (0.6, 0.6, 1, 1)
+            def adjust_text(*a):
+                self.text.text_size = (200, None)
+                self.text.texture_update()
+            Clock.schedule_once(adjust_text, 0)
 
             self.add_widget(self.button)
             self.add_widget(self.text)
+
+            # Add icon (optional)
+            self.icon = Image()
+            if sub_data['icon']:
+                self.icon.id = 'icon'
+                self.icon.opacity = 0
+                self.icon.source = icon_path(sub_data['icon'])
+                self.icon.size_hint_max = (25, 25)
+                self.icon.pos_hint = {'center_y': 0.5}
+                self.icon.x = self.width - (self.icon.size_hint_max[0] * 1.5)
+                self.icon_x = self.icon.x
+                self.icon.allow_stretch = True
+                self.icon.keep_ratio = False
+                self.icon.color = (0.6, 0.6, 1, 1)
+
+                self.add_widget(self.icon)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -4497,7 +4547,7 @@ class ContextMenu(GridLayout):
         self.id = 'context_menu'
         self.cols = 1
         self.options_list = None
-        self.size_hint_max_x = 130
+        self.size_hint_max_x = 138
         self.opacity = 0
         self.visible = False
         self.rounded = False
@@ -4512,14 +4562,16 @@ class ContextMenu(GridLayout):
 
         def wait(*a):
             self._update_pos()
-            Animation(opacity=1, size_hint_max_x=182, duration=0.13, transition='in_out_sine').start(self)
+            Animation(opacity=1, size_hint_max_x=200, duration=0.13, transition='in_out_sine').start(self)
+            for x, b in enumerate(reversed(self.children), 0):
+                b.animate(True, (math.log(x + 1) / math.log(1.17)) / 70) # (len(options_list)*5)
         Clock.schedule_once(wait, 0)
 
     # Hides the menu, and deletes it from the current screen
     def hide(self, animate=True, *args):
         Clock.schedule_once(self.widget.on_leave, 0.05)
 
-        def delete(*args):
+        def delete(*a):
             try:
                 for widget in self.parent.children:
                     if "ContextMenu" in widget.__class__.__name__:
@@ -4531,6 +4583,8 @@ class ContextMenu(GridLayout):
 
         if animate:
             Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
+            for b in self.children:
+                b.animate(False)
             Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
             Clock.schedule_once(delete, 0.141)
         else:
@@ -6891,6 +6945,11 @@ class MenuBackground(Screen):
 
     # Fit background color across screen for transitions
     def update_rect(self, *args):
+
+        # Hide context menu when screen is resized
+        if self.context_menu:
+            self.context_menu.hide(False)
+
         self.rect.pos = self.pos
         self.rect.size = self.size
 
@@ -11449,8 +11508,9 @@ class CreateServerProgressScreen(ProgressScreen):
         }
 
         # Create function list
+        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
         function_list = [
-            ('Verifying Java installation', functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 30)), 0)
         ]
 
@@ -11636,8 +11696,9 @@ class ServerImportProgressScreen(ProgressScreen):
         is_backup_file = ((constants.import_data['path'].endswith(".tgz") or constants.import_data['path'].endswith(".amb")) and os.path.isfile(constants.import_data['path']))
 
         # Create function list
+        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
         function_list = [
-            ('Verifying Java installation', functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ('Importing server', functools.partial(constants.scan_import, is_backup_file, functools.partial(adjust_percentage, 30)), 0),
             ('Validating configuration', functools.partial(constants.finalize_import, functools.partial(adjust_percentage, 20)), 0),
             ('Creating initial back-up', functools.partial(constants.create_backup, True), 20)
@@ -15397,8 +15458,9 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         }
 
         # Create function list
+        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
         function_list = [
-            ('Verifying Java installation', functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ('Restoring back-up', functools.partial(constants.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
         ]
 
@@ -20141,8 +20203,9 @@ class MigrateServerProgressScreen(ProgressScreen):
         }
 
         # Create function list
+        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
         function_list = [
-            ('Verifying Java installation', functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 30)), 0)
         ]
 

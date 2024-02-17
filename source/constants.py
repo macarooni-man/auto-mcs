@@ -1,4 +1,4 @@
-from shutil import rmtree, copytree, copy, ignore_patterns
+from shutil import rmtree, copytree, copy, ignore_patterns, move
 from concurrent.futures import ThreadPoolExecutor
 from random import randrange, choices
 from difflib import SequenceMatcher
@@ -166,6 +166,7 @@ tmpsvr = os.path.join(tempDir, 'tmpsvr')
 cacheDir = os.path.join(applicationFolder, 'Cache')
 configDir = os.path.join(applicationFolder, 'Config')
 scriptDir = os.path.join(applicationFolder, 'Tools', 'amscript')
+javaDir = os.path.join(applicationFolder, 'Tools', 'java')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 global_conf = os.path.join(configDir, 'app-config.json')
 username = ''
@@ -851,7 +852,7 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
             use_tar = False
             if archive_type == 'tar':
                 try:
-                    rc = subprocess.call(['tar', '--help'])
+                    rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL)
                     use_tar = rc == 0
 
                 except Exception as e:
@@ -878,15 +879,21 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
             # Export from root folder instead
             else:
                 if use_tar:
-                    archive_file = os.path.abspath(archive_file)
                     cwd = os.path.abspath(os.curdir)
                     os.chdir(export_path)
-                    run_proc(f"tar -xf \"{archive_file}\"")
-                    os.chdir(glob('*')[0])
-                    delete_later = os.path.abspath(os.curdir)
-                    run_proc('move * ..\\.' if os_name == 'windows' else 'mv * ../.')
+                    run_proc(f"tar -x{'z' if archive_file.endswith('.tar.gz') else ''}f \"{archive_file}\"")
+
+                    # Find sub-folders
+                    folders = [f for f in glob('*') if os.path.isdir(f)]
+                    target = os.path.join(export_path, folders[0])
+
+                    # Move data to root, and delete the sub-folder
+                    for f in glob(os.path.join(target, '*')):
+                        print(f, os.path.join(export_path, os.path.basename(f)))
+                        move(f, os.path.join(export_path, os.path.basename(f)))
+
+                    safe_delete(target)
                     os.chdir(cwd)
-                    safe_delete(delete_later)
 
                 elif archive_type == "tar":
                     def remove_root(file):
@@ -1789,7 +1796,7 @@ def java_check(progress_func=None):
             return False
 
         # Check if installations function before doing anything
-        if os.path.exists(os.path.abspath(os.path.join(applicationFolder, 'Tools', 'java'))):
+        if os.path.exists(os.path.abspath(javaDir)):
 
             modern_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'bin', 'java.exe' if os_name == "windows" else 'java')
             legacy_path = os.path.join(applicationFolder, 'Tools', 'java', 'legacy', 'bin', 'java.exe' if os_name == "windows" else 'java')
@@ -1863,8 +1870,8 @@ def java_check(progress_func=None):
                 timer.cancel()
 
             # Install java by extracting the files to their respective folder
-            modern_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern')
-            legacy_path = os.path.join(applicationFolder, 'Tools', 'java', 'legacy')
+            modern_path = os.path.join(javaDir, 'modern')
+            legacy_path = os.path.join(javaDir, 'legacy')
 
             safe_delete(modern_path)
             safe_delete(legacy_path)
