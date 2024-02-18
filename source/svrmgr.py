@@ -1105,7 +1105,11 @@ class ServerObject():
                 self.silent_command(f"kick {player} Server is restarting", log=False)
         except KeyError:
             pass
-        self.silent_command("stop")
+        self.stop()
+
+    # Stops the server
+    def stop(self):
+        self.silent_command('stop')
 
     # Retrieves performance information
     def performance_stats(self, interval=0.5, update_players=False):
@@ -1627,10 +1631,12 @@ class ServerManager():
         if constants.debug:
             print(vars(self.current_server))
 
+        return self.current_server
+
     # Reloads self.current_server
     def reload_server(self):
         if self.current_server:
-            self.open_server(self.current_server.name)
+            return self.open_server(self.current_server.name)
 
 # --------------------------------------------- General Functions ------------------------------------------------------
 

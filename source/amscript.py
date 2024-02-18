@@ -1290,7 +1290,7 @@ class ServerScriptObject():
         # Assign callable functions from main server object
         self.execute = server_obj.silent_command
         self.restart = server_obj.restart
-        self.stop = functools.partial(self.execute, 'stop')
+        self.stop = server_obj.stop
         self.log = server_obj.send_log
         self.aliases = {}
         self.ams_version = constants.ams_version

@@ -242,9 +242,10 @@ class HoverButton(Button, HoverBehavior):
         self.button_pressed = touch.button
 
         # Show context menu if available
-        self.context_options = [{'name': self.id, 'icon': 'amscript.png', 'action': None},{'name': 'Test 1', 'icon': 'restart-server.png', 'action': None},{'name': 'Test option 2', 'icon': 'ban.png', 'action': None},{'name': 'Test option 3', 'icon': 'stop-server.png', 'action': None},{'name': 'Test 4', 'icon': 'ethernet.png', 'action': None}]
-        if touch.button == 'right' and (self.context_options and self.collide_point(*touch.pos)):
-            screen_manager.current_screen.show_context_menu(self, self.context_options)
+        if touch.button == 'right' and self.collide_point(*touch.pos):
+            self.update_context_options()
+            if self.context_options:
+                screen_manager.current_screen.show_context_menu(self, self.context_options)
 
     def on_enter(self, *args):
         if not self.ignore_hover:
@@ -298,6 +299,9 @@ class HoverButton(Button, HoverBehavior):
         self.on_enter()
         self.trigger_action(0.1)
 
+    # Optional hook to override for updating context options dynamically
+    def update_context_options(self):
+        pass
 
 # -----------------------------------------------------  Labels  -------------------------------------------------------
 class InputLabel(RelativeLayout):
@@ -403,7 +407,7 @@ class BaseInput(TextInput):
         Clock.schedule_once(update_focus, 0)
 
 
-    def grab_focus(self):
+    def grab_focus(self, *a):
         def focus_later(*args):
             self.focus = True
         Clock.schedule_once(focus_later, 0)
@@ -2840,7 +2844,7 @@ def footer_label(path, color, progress_screen=False):
     final_layout.add_widget(version_layout)
 
     if not progress_screen:
-        search_button = IconButton('search', {}, (-40, 0), (None, None), 'search-sharp.png', clickable=True, text_offset=(30, 0), click_func=screen_manager.current_screen.show_search)
+        search_button = IconButton('search', {}, (-40, 0), (None, None), 'global-search.png', clickable=True, text_offset=(30, 0), click_func=screen_manager.current_screen.show_search)
         search_layout.add_widget(search_button)
         search_layout.pos_hint = {'center_x': 1}
         search_layout.size_hint_max = (50, 50)
@@ -4481,7 +4485,7 @@ class ContextMenu(GridLayout):
                     Animation(opacity=1, x=self.icon_x, duration=0.3, transition='out_sine').start(self.icon)
 
                 else:
-                    Animation(opacity=0, x=self.text_x-15, duration=0.15).start(self.text)
+                    Animation(opacity=0, duration=0.15).start(self.text)
                     Animation(opacity=0, x=self.icon_x-40, duration=0.15).start(self.icon)
 
             Clock.schedule_once(delay_anim, delay)
@@ -4500,7 +4504,12 @@ class ContextMenu(GridLayout):
             self.button = HoverButton()
             self.button.id = sub_id
             self.button.height = self.height
-            self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+            if sub_id == 'list_red_button':
+                self.button.color_id = [(0.1, 0.07, 0.07, 1), (1, 0.6, 0.7, 1)]
+            else:
+                self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
             self.button.border = (0, 0, 0, 0)
             self.button.background_normal = os.path.join(constants.gui_assets, f'{sub_id}.png')
             self.button.background_down = os.path.join(constants.gui_assets, f'{sub_id}_click.png')
@@ -4516,7 +4525,7 @@ class ContextMenu(GridLayout):
             self.text.x = 15
             self.text_x = self.text.x
             self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-            self.text.color = (0.6, 0.6, 1, 1)
+            self.text.color = self.button.color_id[1]
             def adjust_text(*a):
                 self.text.text_size = (200, None)
                 self.text.texture_update()
@@ -4537,9 +4546,13 @@ class ContextMenu(GridLayout):
                 self.icon_x = self.icon.x
                 self.icon.allow_stretch = True
                 self.icon.keep_ratio = False
-                self.icon.color = (0.6, 0.6, 1, 1)
+                self.icon.color = self.button.color_id[1]
 
                 self.add_widget(self.icon)
+
+            # Action when clicked
+            if sub_data['action']:
+                self.button.bind(on_press=sub_data['action'])
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -4626,6 +4639,8 @@ class ContextMenu(GridLayout):
         self.clear_widgets()
 
         for item in self.options_list:
+            if not item:
+                continue
 
             # Start of the list
             if item == self.options_list[0]:
@@ -4639,7 +4654,11 @@ class ContextMenu(GridLayout):
 
             # Last button
             else:
-                end_btn = self.ListButton(item, sub_id='list_end_button')
+                if 'color' in item:
+                    sub_id = f'list_{item["color"]}_button'
+                else:
+                    sub_id = 'list_end_button'
+                end_btn = self.ListButton(item, sub_id=sub_id)
                 self.add_widget(end_btn)
 
     # Modifies global click behavior when the menu is visible
@@ -6018,6 +6037,7 @@ class PopupSearch(RelativeLayout):
             for x in range(t):
                 Clock.schedule_once(screen_manager.current_screen.popup_widget.resize_window, x / 100)
 
+        # Contains all button overrides
         def animate_click(self):
             self.fix_lag(50)
 
@@ -6115,7 +6135,7 @@ class PopupSearch(RelativeLayout):
                     screen_manager.current = self.search_obj.target
                     rename_input = screen_manager.current_screen.rename_input
                     screen_manager.current_screen.scroll_widget.scroll_to(rename_input)
-                    rename_input.grab_focus()
+                    Clock.schedule_once(rename_input.grab_focus, 0.2)
 
                 elif self.search_obj.title.lower() == 'delete this server':
                     screen_manager.current = self.search_obj.target
@@ -6149,7 +6169,6 @@ class PopupSearch(RelativeLayout):
                 screen_manager.current_screen.popup_widget.self_destruct(True)
                 Clock.schedule_once(process_target, 0.4)
             Clock.schedule_once(do_things, 0.14)
-
 
         def refresh_data(self, search_obj, fun_anim=False, *a):
 
@@ -6351,7 +6370,6 @@ class PopupSearch(RelativeLayout):
                 complete_list = tuple(sorted(complete_list, key=lambda x: x.score, reverse=True))
 
                 for x, button in enumerate(reversed(self.results.children), 0):
-                    print(vars(complete_list[x]))
                     if fun_anim:
                         Clock.schedule_once(functools.partial(button.refresh_data, complete_list[x], True), (x*0.1))
                     else:
@@ -6393,6 +6411,7 @@ class PopupSearch(RelativeLayout):
             top_button.animate_click()
             self.dont_hide = True
 
+
     def init_search(self, *a):
         screen_name = screen_manager.current_screen.name
 
@@ -6406,8 +6425,8 @@ class PopupSearch(RelativeLayout):
         else:
             filtered = ''.join(map(lambda x: x if x.islower() else " "+x, screen_name.replace('Screen','').replace('Server',''))).lower().strip()
             query = f'help {filtered}'
-        print(query)
         self.on_search(force=query, fun_anim=True)
+
 
     def __init__(self, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
@@ -12141,6 +12160,82 @@ class ServerButton(HoverButton):
         if not self.ignore_hover:
             self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png'), color=self.color_id[1], hover_action=False)
 
+    def update_context_options(self):
+
+        # Functions for context menu
+        def launch(*a):
+            open_server(self.properties.name, launch=True)
+        def restart(*a):
+            constants.server_manager.open_server(self.properties.name).restart()
+        def stop(*a):
+            constants.server_manager.open_server(self.properties.name).stop()
+        def settings(*a):
+            constants.server_manager.open_server(self.properties.name)
+            screen_manager.current = 'ServerSettingsScreen'
+        def update(*a):
+            settings()
+            screen_manager.current_screen.update_button.button.trigger_action()
+        def rename(*a):
+            settings()
+            rename_input = screen_manager.current_screen.rename_input
+            screen_manager.current_screen.scroll_widget.scroll_to(rename_input)
+            Clock.schedule_once(rename_input.grab_focus, 0.2)
+        def delete(*a):
+            settings()
+            delete_button = screen_manager.current_screen.delete_button
+            screen_manager.current_screen.scroll_widget.scroll_to(delete_button, animate=False)
+            Clock.schedule_once(delete_button.button.trigger_action, 0.1)
+        def copy_ip(local, *a):
+                def click(*a):
+                    clipboard_text = re.sub("\[.*?\]", "", self.subtitle.text.split(" ")[-1].strip())
+                    if not local:
+                        banner_text = "Copied IP address"
+
+                    else:
+                        server_obj = self.properties
+                        if server_obj.running:
+                            clipboard_text = server_obj.run_data['network']['private_ip'] + ':' + server_obj.run_data['network']['address']['port']
+                        banner_text = "Copied LAN IP address"
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.85, 0.65, 1, 1),
+                            banner_text,
+                            "link-sharp.png",
+                            2,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
+
+                    Clipboard.copy(clipboard_text)
+
+                Clock.schedule_once(click, 0)
+
+        # Context menu buttons
+        if self.view_only and self.properties.running:
+            self.context_options = [
+                {'name': 'Copy local IP', 'icon': 'ethernet.png', 'action': functools.partial(copy_ip, True)},
+                {'name': 'Copy public IP', 'icon': 'wifi.png', 'action': functools.partial(copy_ip, False)}
+            ]
+        else:
+            if self.properties.running:
+                self.context_options = [
+                    {'name': 'Restart', 'icon': 'restart-server.png', 'action': restart},
+                    {'name': 'Stop', 'icon': 'stop-server.png', 'action': stop},
+                    {'name': 'Copy IP', 'icon': 'wifi-sharp.png', 'action': functools.partial(copy_ip, False)},
+                    {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings}
+                ]
+            else:
+                u = self.properties.update_string
+                self.context_options = [
+                    {'name': 'Launch', 'icon': 'start-server.png', 'action': launch},
+                    {'name': f'Update {"build" if u.startswith("b-") else f"{u}"}', 'icon': 'arrow-up.png', 'action': update} if u else None,
+                    {'name': 'Rename', 'icon': 'rename.png', 'action': rename},
+                    {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings},
+                    {'name': 'Delete', 'icon': 'trash-sharp.png', 'action': delete, 'color': 'red'}
+                ]
+
 class ServerManagerScreen(MenuBackground):
 
     # Toggles favorite of item, and reload list
@@ -13165,6 +13260,51 @@ class PerformancePanel(RelativeLayout):
 
                 class PlayerLabel(RelativeLayout):
 
+                    class PlayerButton(HoverButton):
+                        def update_context_options(self):
+                            username = self.parent.label.text
+                            if not self.ignore_hover and username:
+                                
+                                # Functions for context menu
+                                def permissions(*a):
+                                    if constants.server_manager.current_server.acl:
+                                        constants.server_manager.current_server.acl.get_rule(re.sub("\[.*?\]", "", username))
+                                        constants.back_clicked = True
+                                        screen_manager.current = 'ServerAclScreen'
+                                        constants.back_clicked = False
+                                def copy(data_type: str, *a):
+                                    try:
+                                        player_info = constants.server_manager.current_server.run_data['player-list'][username]
+                                        text = player_info[data_type]
+                                        banner_text = f'Copied {data_type.upper().replace("USER","username")} to clipboard'
+
+                                        Clock.schedule_once(
+                                            functools.partial(
+                                                screen_manager.current_screen.show_banner,
+                                                (0.85, 0.65, 1, 1),
+                                                banner_text,
+                                                "link-sharp.png",
+                                                2,
+                                                {"center_x": 0.5, "center_y": 0.965}
+                                            ), 0
+                                        )
+
+                                        Clipboard.copy(text)
+
+                                    except KeyError:
+                                        pass
+                                def kick(*a):
+                                    constants.server_manager.current_server.acl.kick_player(username)
+
+                                # Context menu buttons
+                                self.context_options = [
+                                    {'name': 'Copy username', 'icon': 'person.png', 'action': functools.partial(copy, 'user')},
+                                    {'name': 'Copy UUID', 'icon': 'id-card-sharp.png', 'action': functools.partial(copy, 'uuid')},
+                                    {'name': 'Copy IP', 'icon': 'wifi-sharp.png', 'action': functools.partial(copy, 'ip')},
+                                    {'name': 'Permissions', 'icon': 'shield-half-small.png', 'action': permissions},
+                                    {'name': 'Kick player', 'icon': 'exit-sharp.png', 'action': kick, 'color': 'red'}
+                                ]
+
                     def disable(self, boolean: bool, animate=False):
                         def disable(*a):
                             self.button.ignore_hover = boolean
@@ -13228,7 +13368,6 @@ class PerformancePanel(RelativeLayout):
                             label_color.s += 0.05
                             self.label.color = label_color.rgba
 
-
                     def __init__(self, **kwargs):
                         super().__init__(**kwargs)
 
@@ -13242,7 +13381,7 @@ class PerformancePanel(RelativeLayout):
                         self.size_hint_max = size
                         self.size_hint_min = size
 
-                        self.button = HoverButton()
+                        self.button = self.PlayerButton()
                         self.button.id = 'player_button'
                         self.button.border = (20, 20, 20, 20)
                         self.button.size_hint_max = size
@@ -13266,8 +13405,7 @@ class PerformancePanel(RelativeLayout):
 
                         # Button click behavior
                         def click_func(*a):
-                            print(self.label.text)
-                            if not self.button.ignore_hover and self.label.text:
+                            if not self.button.ignore_hover and self.label.text and self.button.last_touch.button == 'left':
                                 if constants.server_manager.current_server.acl:
                                     constants.server_manager.current_server.acl.get_rule(re.sub("\[.*?\]", "", self.label.text))
                                     constants.back_clicked = True
@@ -13620,10 +13758,11 @@ class ConsolePanel(FloatLayout):
         threading.Timer(0, start_timer).start()
 
 
-    # Send '/stop' command to server console
+    # Stop server
     def stop_server(self, *args):
         if self.run_data:
-            screen_manager.current_screen.server.silent_command("stop")
+            screen_manager.current_screen.server.stop()
+
 
     # Restart server
     def restart_server(self, *args):
@@ -14249,7 +14388,7 @@ class ConsolePanel(FloatLayout):
                                 self.text = self.text[:-len(key)] + player
                                 break
 
-            def grab_focus(self):
+            def grab_focus(self, *a):
                 def focus_later(*args):
                     self.focus = True
 
@@ -18237,7 +18376,7 @@ class EditorLine(RelativeLayout):
         # Create main text input
         class EditorInput(TextInput):
 
-            def grab_focus(self):
+            def grab_focus(self, *a):
                 def focus_later(*args):
                     self.focus = True
 
@@ -18524,7 +18663,7 @@ class ServerPropertiesEditScreen(MenuBackground):
 
             self.bind(on_text_validate=self.on_enter)
 
-        def grab_focus(self):
+        def grab_focus(self, *a):
             def focus_later(*args):
                 self.focus = True
 
@@ -20400,28 +20539,28 @@ class MainApp(App):
 
 
         # Screen manager override
-        # if not constants.app_compiled:
-        #     def open_menu(*args):
-        #         open_server("acl test", launch=True)
-        #         # def show_notif(*args):
-        #         #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
-        #         # Clock.schedule_once(show_notif, 2)
-        #         def add_fake_players(*args):
-        #             op_color = (0.5, 1, 1, 1)
-        #             no_color = (0.6, 0.6, 0.88, 1)
-        #             screen_manager.current_screen.performance_panel.player_widget.update_data(
-        #                 [{'text': 'KChicken', 'color': op_color},
-        #                  {'text': 'LeopardGecko22', 'color': op_color},
-        #                  {'text': 'bgmombo', 'color': no_color},
-        #                  {'text': 'Test1234', 'color': no_color},
-        #                  {'text': 'Im_a_USERNAME', 'color': no_color},
-        #                  {'text': 'yes_i_am40', 'color': no_color}
-        #             ])
-        #         Clock.schedule_once(add_fake_players, 1)
-        #         # def open_ams(*args):
-        #         #     screen_manager.current = "ServerAddonScreen"
-        #         # Clock.schedule_once(open_ams, 1)
-        #     Clock.schedule_once(open_menu, 0.5)
+        if not constants.app_compiled:
+            def open_menu(*args):
+                open_server("acl test", launch=False)
+                # def show_notif(*args):
+                #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
+                # Clock.schedule_once(show_notif, 2)
+                def add_fake_players(*args):
+                    op_color = (0.5, 1, 1, 1)
+                    no_color = (0.6, 0.6, 0.88, 1)
+                    screen_manager.current_screen.performance_panel.player_widget.update_data(
+                        [{'text': 'KChicken', 'color': op_color},
+                         {'text': 'LeopardGecko22', 'color': op_color},
+                         {'text': 'bgmombo', 'color': no_color},
+                         {'text': 'Test1234', 'color': no_color},
+                         {'text': 'Im_a_USERNAME', 'color': no_color},
+                         {'text': 'yes_i_am40', 'color': no_color}
+                    ])
+                Clock.schedule_once(add_fake_players, 1)
+                # def open_ams(*args):
+                #     screen_manager.current = "ServerAddonScreen"
+                # Clock.schedule_once(open_ams, 1)
+            Clock.schedule_once(open_menu, 0.5)
 
 
         # Process --launch flag
