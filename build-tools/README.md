@@ -11,6 +11,15 @@ $a = ".\auto-mcs.zip";Invoke-WebRequest https://auto-mcs.com/src -OutFile $a;Exp
 
 <br>
 
+## macOS
+On macOS, open a Terminal instance as a standard user and run the following one-liner to build auto-mcs from source:
+```sh
+git clone https://github.com/macarooni-man/auto-mcs && cd auto-mcs/build-tools && chmod +x build-macos.sh && ./build-macos.sh
+```
+> _Note:_   When running this command, you'll be prompted to install the command line developer tools if `git` is not installed. Additionally, you'll be prompted to install the homebrew package manager if it's not installed.
+
+<br>
+
 ## Linux
 
 On Linux, first verify that you have the `git` package installed and an X11 compatible desktop environment

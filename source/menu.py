@@ -13264,7 +13264,7 @@ class PerformancePanel(RelativeLayout):
                         def update_context_options(self):
                             username = self.parent.label.text
                             if not self.ignore_hover and username:
-                                
+
                                 # Functions for context menu
                                 def permissions(*a):
                                     if constants.server_manager.current_server.acl:
@@ -13993,7 +13993,8 @@ class ConsolePanel(FloatLayout):
             'app_title': constants.app_title,
             'gui_assets': constants.gui_assets,
             'background_color': constants.background_color,
-            'sub_processes': constants.sub_processes
+            'sub_processes': constants.sub_processes,
+            'os_name': constants.os_name
         }
         Clock.schedule_once(functools.partial(logviewer.open_log, self.server_name, constants.server_manager.current_server.crash_log, data_dict), 0.1)
         self.controls.log_button.button.on_leave()
@@ -16984,7 +16985,8 @@ def edit_script(edit_button, server_obj, script_path):
             'protected': script_obj.protected_variables,
             'events': script_obj.valid_events
         },
-        'suggestions': server_obj.retrieve_suggestions(script_obj)
+        'suggestions': server_obj.retrieve_suggestions(script_obj),
+        'os_name': constants.os_name
     }
     Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict), 0.1)
     if edit_button:
@@ -20488,6 +20490,7 @@ class MainApp(App):
             print(e)
 
         if force_close:
+            Window.close()
             return False
 
         if constants.ignore_close:
@@ -20498,6 +20501,7 @@ class MainApp(App):
             return True
 
         else:
+            Window.close()
             return False
 
     Window.bind(on_request_close=exit_check)
@@ -20538,29 +20542,29 @@ class MainApp(App):
         Clock.schedule_once(raise_window, 0)
 
 
-        # Screen manager override
-        if not constants.app_compiled:
-            def open_menu(*args):
-                open_server("acl test", launch=False)
-                # def show_notif(*args):
-                #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
-                # Clock.schedule_once(show_notif, 2)
-                def add_fake_players(*args):
-                    op_color = (0.5, 1, 1, 1)
-                    no_color = (0.6, 0.6, 0.88, 1)
-                    screen_manager.current_screen.performance_panel.player_widget.update_data(
-                        [{'text': 'KChicken', 'color': op_color},
-                         {'text': 'LeopardGecko22', 'color': op_color},
-                         {'text': 'bgmombo', 'color': no_color},
-                         {'text': 'Test1234', 'color': no_color},
-                         {'text': 'Im_a_USERNAME', 'color': no_color},
-                         {'text': 'yes_i_am40', 'color': no_color}
-                    ])
-                Clock.schedule_once(add_fake_players, 1)
-                # def open_ams(*args):
-                #     screen_manager.current = "ServerAddonScreen"
-                # Clock.schedule_once(open_ams, 1)
-            Clock.schedule_once(open_menu, 0.5)
+        # Screen manager override for testing
+        # if not constants.app_compiled:
+        #     def open_menu(*args):
+        #         open_server("acl test", launch=False)
+        #         # def show_notif(*args):
+        #         #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
+        #         # Clock.schedule_once(show_notif, 2)
+        #         def add_fake_players(*args):
+        #             op_color = (0.5, 1, 1, 1)
+        #             no_color = (0.6, 0.6, 0.88, 1)
+        #             screen_manager.current_screen.performance_panel.player_widget.update_data(
+        #                 [{'text': 'KChicken', 'color': op_color},
+        #                  {'text': 'LeopardGecko22', 'color': op_color},
+        #                  {'text': 'bgmombo', 'color': no_color},
+        #                  {'text': 'Test1234', 'color': no_color},
+        #                  {'text': 'Im_a_USERNAME', 'color': no_color},
+        #                  {'text': 'yes_i_am40', 'color': no_color}
+        #             ])
+        #         Clock.schedule_once(add_fake_players, 1)
+        #         # def open_ams(*args):
+        #         #     screen_manager.current = "ServerAddonScreen"
+        #         # Clock.schedule_once(open_ams, 1)
+        #     Clock.schedule_once(open_menu, 0.5)
 
 
         # Process --launch flag

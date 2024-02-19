@@ -152,10 +152,10 @@ start_script_name = "Start"
 # Paths
 os_name = 'windows' if os.name == 'nt' else 'macos' if system().lower() == 'darwin' else 'linux' if os.name == 'posix' else os.name
 home = os.path.expanduser('~')
-appdata = os.getenv("APPDATA") if os_name == 'windows' else '~/Library/Application Support' if os_name == 'macos' else home
+appdata = os.getenv("APPDATA") if os_name == 'windows' else f'{home}/Library/Application Support' if os_name == 'macos' else home
 applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
 
-saveFolder = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' else "~/Library/Application Support/minecraft/saves"
+saveFolder = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' else f"{home}/Library/Application Support/minecraft/saves"
 downDir = os.path.join(applicationFolder, 'Downloads')
 backupFolder = os.path.join(applicationFolder, 'Backups')
 userDownloads = os.path.join(home, 'Downloads')
@@ -1056,7 +1056,7 @@ def check_app_updates():
     try:
         # Grab release data
         latest_release = f"https://api.github.com/repos{project_link.split('.com')[1]}/releases/latest"
-        req = requests.get(latest_release)
+        req = requests.get(latest_release, timeout=5)
         status_code = req.status_code
         app_online = status_code in (200, 403)
         release_data = req.json()
@@ -1124,13 +1124,14 @@ def check_app_updates():
 
 # Get latest game versions
 def find_latest_mc():
+    timeout = 15
 
     def latest_version(name, url):
 
         if name == "vanilla":
             # Vanilla
             try:
-                reqs = requests.get(url)
+                reqs = requests.get(url, timeout=timeout)
                 soup = BeautifulSoup(reqs.text, 'html.parser')
 
                 for div in soup.find_all('div', "item flex items-center p-3 border-b border-gray-700 snap-start ncItem"):
@@ -1150,14 +1151,14 @@ def find_latest_mc():
 
         elif name == "forge":
             # Forge
-            reqs = requests.get(url)
+            reqs = requests.get(url, timeout=timeout)
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
             # Get side panel latest version
             a = soup.find('ul', 'nav-collapsible nav-collapsible-open')
             try:
                 new_url = url.rsplit('/', 1)[0] + '/' + a.find('a').get('href')
-                reqs = requests.get(new_url)
+                reqs = requests.get(new_url, timeout=timeout)
                 soup = BeautifulSoup(reqs.text, 'html.parser')
             except:
                 pass
@@ -1179,7 +1180,7 @@ def find_latest_mc():
 
         elif name == "paper":
             # Paper
-            reqs = requests.get(url)
+            reqs = requests.get(url, timeout=timeout)
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
             jsonObject = json.loads(reqs.text)
@@ -1194,7 +1195,7 @@ def find_latest_mc():
 
         elif name == "spigot":
             # Spigot
-            reqs = requests.get(url)
+            reqs = requests.get(url, timeout=timeout)
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
             latestMC["spigot"] = soup.find('div', "row vdivide").h2.text
@@ -1202,7 +1203,7 @@ def find_latest_mc():
 
         elif name == "craftbukkit":
             # Craftbukkit
-            reqs = requests.get(url)
+            reqs = requests.get(url, timeout=timeout)
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
             latestMC["craftbukkit"] = soup.find('div', "row vdivide").h2.text
@@ -1215,7 +1216,7 @@ def find_latest_mc():
             installer = "https://meta.fabricmc.net/v2/versions/installer"
 
             # Game version
-            reqs = requests.get(version)
+            reqs = requests.get(version, timeout=timeout)
             jsonObject = json.loads(reqs.text)
 
             for item in jsonObject:
@@ -1224,7 +1225,7 @@ def find_latest_mc():
                     break
 
             # Loader build
-            reqs = requests.get(loader)
+            reqs = requests.get(loader, timeout=timeout)
             jsonObject = json.loads(reqs.text)
 
             for item in jsonObject:
@@ -1233,7 +1234,7 @@ def find_latest_mc():
                     break
 
             # Installer build
-            reqs = requests.get(installer)
+            reqs = requests.get(installer, timeout=timeout)
             jsonObject = json.loads(reqs.text)
 
             for item in jsonObject:
@@ -1254,7 +1255,7 @@ def find_latest_mc():
         "fabric": "https://fabricmc.net/use/server/"
     }
 
-    with ThreadPoolExecutor(max_workers=10) as pool:
+    with ThreadPoolExecutor(max_workers=6) as pool:
         pool.map(latest_version, version_links.keys(), version_links.values())
 
 

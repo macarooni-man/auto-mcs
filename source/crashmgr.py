@@ -73,6 +73,8 @@ def generate_log(exception):
     calculated_space = 0
     splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)
 
+    formatted_os_name = constants.os_name.title() if constants.os_name != 'macos' else 'macOS'
+
     log = f"""{'=' * (header_len * 3)}
 {"||" + (' ' * round((header_len * 1.5) - (len(header) / 2) - 1)) + header + (' ' * round((header_len * 1.5) - (len(header)) + 14)) + "||"}
 {splash_line + (((header_len * 3) - len(splash_line) - 2) * " ") + "||"}
@@ -81,7 +83,7 @@ def generate_log(exception):
 
     General Info:
 
-        Version:           {constants.app_version} - {constants.os_name.title()} ({"Docker, " if constants.is_docker else ""}{platform()})
+        Version:           {constants.app_version} - {formatted_os_name} ({"Docker, " if constants.is_docker else ""}{platform()})
         Online:            {constants.app_online}
         Sub-servers:       {', '.join([f"{x}: {y.type} {y.version}" for x, y in enumerate(constants.server_manager.running_servers.values(), 1)]) if constants.server_manager.running_servers else "None"}
         ngrok:             {"Active" if constants.ngrok_ip['ip'] == "" else "Inactive"}
@@ -150,7 +152,8 @@ def open_log(log_path):
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
-        'sub_processes': constants.sub_processes
+        'sub_processes': constants.sub_processes,
+        'os_name': constants.os_name
     }
     logviewer.open_log('Crash Report', log_path, data_dict)
 
