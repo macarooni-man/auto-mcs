@@ -98,10 +98,10 @@ jobs:
           export DISPLAY=:0.0
           cd build-tools
           current=$( pwd )
-          python3.9 -venv ./venv
+          python3.9 -m venv ./venv
           source ./venv/bin/activate
           pip install -r reqs-linux.txt
-          python3.9 -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
+          python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
 
           # Build
           echo Compiling auto-mcs
