@@ -34,6 +34,9 @@ if constants.os_name == "windows":
     import tkinter as tk
     from tkinter import filedialog
 
+# Control modifier for keyboard shortcuts
+control = 'meta' if constants.os_name == "macos" else 'ctrl'
+
 # Disable Kivy logging if debug is off and app is compiled
 if constants.app_compiled and constants.debug is False:
     kivy_folder = os.path.join(constants.os_temp, ".kivy")
@@ -534,7 +537,7 @@ class BaseInput(TextInput):
     # Special keypress behaviors
     def keyboard_on_key_down(self, window, keycode, text, modifiers):
 
-        if keycode[1] == "backspace" and "ctrl" in modifiers:
+        if keycode[1] == "backspace" and control in modifiers:
             original_index = self.cursor_col
             new_text, index = constants.control_backspace(self.text, original_index)
             self.select_text(original_index - index, original_index)
@@ -667,15 +670,19 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
 
         def loading(self, boolean_value):
 
-            for child in self.children:
-                if child.id == "load_icon":
-                    if boolean_value:
-                        Animation(color=(0.6, 0.6, 1, 1), duration=0.05).start(child)
-                    else:
-                        Animation(color=(0.6, 0.6, 1, 0), duration=0.2).start(child)
+            def main_thread(*a):
 
-                if child.id == "search_button":
-                    constants.hide_widget(child, boolean_value)
+                for child in self.children:
+                    if child.id == "load_icon":
+                        if boolean_value:
+                            Animation(color=(0.6, 0.6, 1, 1), duration=0.05).start(child)
+                        else:
+                            Animation(color=(0.6, 0.6, 1, 0), duration=0.2).start(child)
+
+                    if child.id == "search_button":
+                        constants.hide_widget(child, boolean_value)
+
+            Clock.schedule_once(main_thread, 0)
 
     def repos_button(bar, button, load, *args):
         def after_window(*args):
@@ -7221,7 +7228,7 @@ class MenuBackground(Screen):
                     self.popup_widget.self_destruct(True)
                 elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
                     self.popup_widget.resize_window()
-                elif 'ctrl' not in modifiers and text and self.popup_widget.window_input.keyboard:
+                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
 
                     def insert_text(content):
                         col = self.popup_widget.window_input.cursor_col
@@ -7319,7 +7326,7 @@ class MenuBackground(Screen):
 
 
         # Crash test
-        # if keycode[1] == 'z' and 'ctrl' in modifiers:
+        # if keycode[1] == 'z' and control in modifiers:
         #     crash = float("crash")
 
 
@@ -7942,7 +7949,7 @@ class MainMenuScreen(MenuBackground):
                     self.popup_widget.self_destruct(True)
                 elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
                     self.popup_widget.resize_window()
-                elif 'ctrl' not in modifiers and text and self.popup_widget.window_input.keyboard:
+                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
 
                     def insert_text(content):
                         col = self.popup_widget.window_input.cursor_col
@@ -8001,7 +8008,8 @@ class MainMenuScreen(MenuBackground):
         # Ignore ESC commands while input focused
         if not self._input_focused and self.name == screen_manager.current_screen.name:
 
-            if keycode[1] == 'u' and 'shift' in modifiers and 'alt' in modifiers and 'ctrl' in modifiers and not self.popup_widget:
+            # Force prompt an update/reinstall on main menu
+            if keycode[1] == 'u' and 'shift' in modifiers and 'alt' in modifiers and control in modifiers and not self.popup_widget:
                 self.prompt_update(force=True)
 
             # Keycode is composed of an integer + a string
@@ -8045,7 +8053,7 @@ class MainMenuScreen(MenuBackground):
         #     #         continue
 
         # Crash test
-        # if keycode[1] == 'z' and 'ctrl' in modifiers:
+        # if keycode[1] == 'z' and control in modifiers:
         #     crash = float("crash")
 
         # Return True to accept the key. Otherwise, it will be used by the system.
@@ -9635,7 +9643,7 @@ class CreateServerAclScreen(MenuBackground):
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         super()._on_keyboard_down(keyboard, keycode, text, modifiers)
 
-        if keycode[1] == 'h' and 'ctrl' in modifiers and not self.popup_widget:
+        if ((keycode[1] == 'h' and control in modifiers and constants.os_name != 'macos') or (keycode[1] == 'h' and control in modifiers and 'shift' in modifiers and constants.os_name == 'macos')) and not self.popup_widget:
             self.controls_button.button.trigger_action()
 
         # Press
@@ -14430,7 +14438,7 @@ class ConsolePanel(FloatLayout):
 
                 if self.parent.run_data:
 
-                    if keycode[1] == "backspace" and "ctrl" in modifiers:
+                    if keycode[1] == "backspace" and control in modifiers:
                         original_index = self.cursor_col
                         new_text, index = constants.control_backspace(self.text, original_index)
                         self.select_text(original_index - index, original_index)
@@ -14691,7 +14699,7 @@ class ServerViewScreen(MenuBackground):
                     self.popup_widget.self_destruct(True)
                 elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
                     self.popup_widget.resize_window()
-                elif 'ctrl' not in modifiers and text and self.popup_widget.window_input.keyboard:
+                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
 
                     def insert_text(content):
                         col = self.popup_widget.window_input.cursor_col
@@ -14788,25 +14796,25 @@ class ServerViewScreen(MenuBackground):
         if self.name == screen_manager.current_screen.name:
 
             # Copy selected console text
-            if ((keycode[1] == 'c' and 'ctrl' in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+            if ((keycode[1] == 'c' and control in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
                 self.console_panel.copy_selection()
 
             # Select all console text
-            if ((keycode[1] == 'a' and 'ctrl' in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+            if ((keycode[1] == 'a' and control in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
                 self.console_panel.select_all()
 
             # Deselect all console text
-            if ((keycode[1] == 'd' and 'ctrl' in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+            if ((keycode[1] == 'd' and control in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
                 self.console_panel.deselect_all()
 
             # Stop the server if it's currently running
-            if ((keycode[1] == 'q' and 'ctrl' in modifiers) and ('q' not in self._ignore_keys)) and self.server.run_data:
+            if ((keycode[1] == 'q' and control in modifiers) and ('q' not in self._ignore_keys)) and self.server.run_data:
                 stop_button = self.console_panel.controls.stop_button
                 if stop_button.opacity == 1:
                     stop_button.button.trigger_action(0.1)
 
             # Restart the server if it's currently running
-            if ((keycode[1] == 'r' and ('ctrl' in modifiers and 'shift' in modifiers)) and ('r' not in self._ignore_keys)) and self.server.run_data:
+            if ((keycode[1] == 'r' and (control in modifiers and 'shift' in modifiers)) and ('r' not in self._ignore_keys)) and self.server.run_data:
                 restart_button = self.console_panel.controls.restart_button
                 if restart_button.opacity == 1:
                     restart_button.button.trigger_action(0.1)
@@ -18462,11 +18470,11 @@ class EditorLine(RelativeLayout):
             def keyboard_on_key_down(self, window, keycode, text, modifiers):
 
                 # Ignore undo and redo for global effect
-                if keycode[1] in ['r', 'z', 'y'] and 'ctrl' in modifiers:
+                if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
                     return None
 
                 # Undo functionality
-                elif (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (keycode[1] == 'v' and 'ctrl' in modifiers) or (keycode[1] == 'backspace' and 'ctrl' in modifiers):
+                elif (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (keycode[1] == 'v' and control in modifiers) or (keycode[1] == 'backspace' and control in modifiers):
                     self.undo_func(save=True)
 
                 # Toggle boolean values with space
@@ -18480,7 +18488,7 @@ class EditorLine(RelativeLayout):
                     Clock.schedule_once(functools.partial(replace_text, 'true'), 0)
                     return
 
-                if keycode[1] == "backspace" and "ctrl" in modifiers:
+                if keycode[1] == "backspace" and control in modifiers:
                     original_index = self.cursor_col
                     new_text, index = constants.control_backspace(self.text, original_index)
                     self.select_text(original_index - index, original_index)
@@ -18685,10 +18693,10 @@ class ServerPropertiesEditScreen(MenuBackground):
         def keyboard_on_key_down(self, window, keycode, text, modifiers):
 
             # Ignore undo and redo for global effect
-            if keycode[1] in ['r', 'z', 'y'] and 'ctrl' in modifiers:
+            if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
                 return None
 
-            if keycode[1] == "backspace" and "ctrl" in modifiers:
+            if keycode[1] == "backspace" and control in modifiers:
                 original_index = self.cursor_col
                 new_text, index = constants.control_backspace(self.text, original_index)
                 self.select_text(original_index - index, original_index)
@@ -19029,6 +19037,17 @@ class ServerPropertiesEditScreen(MenuBackground):
 
 • Press 'CTRL+F' to search for data
 
+• Press 'SPACE' to toggle boolean values (e.g. true, false)""" if constants.os_name != 'macos' else """This menu allows you to edit additional configuration options provided by the 'server.properties' file. Refer to the Minecraft Wiki for more information. Shortcuts are provided for ease of use:
+
+
+• Press 'CMD+Z' to undo, and 'CMD+R'/'CMD+Y' to redo
+
+• Press 'CMD+S' to save modifications
+
+• Press 'CMD+Q' to quit the editor
+
+• Press 'CMD+F' to search for data
+
 • Press 'SPACE' to toggle boolean values (e.g. true, false)"""
 
             Clock.schedule_once(
@@ -19196,7 +19215,7 @@ class ServerPropertiesEditScreen(MenuBackground):
                     self.popup_widget.self_destruct(True)
                 elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
                     self.popup_widget.resize_window()
-                elif 'ctrl' not in modifiers and text and self.popup_widget.window_input.keyboard:
+                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
 
                     def insert_text(content):
                         col = self.popup_widget.window_input.cursor_col
@@ -19271,7 +19290,7 @@ class ServerPropertiesEditScreen(MenuBackground):
             pass
 
 
-        if keycode[1] == 'h' and 'ctrl' in modifiers and not self.popup_widget:
+        if ((keycode[1] == 'h' and control in modifiers and constants.os_name != 'macos') or (keycode[1] == 'h' and control in modifiers and 'shift' in modifiers and constants.os_name == 'macos')) and not self.popup_widget:
             self.controls_button.button.trigger_action()
 
 
@@ -19281,7 +19300,7 @@ class ServerPropertiesEditScreen(MenuBackground):
 
 
         # Quit and prompt to save if file was changed
-        if keycode[1] == 'q' and 'ctrl' in modifiers:
+        if keycode[1] == 'q' and control in modifiers:
             if self.modified:
                 self.show_popup(
                     "query",
@@ -19299,7 +19318,7 @@ class ServerPropertiesEditScreen(MenuBackground):
 
 
         # Ctrl-F to search
-        if keycode[1] == 'f' and 'ctrl' in modifiers:
+        if keycode[1] == 'f' and control in modifiers:
             if not self.search_bar.focused:
                 self.search_bar.grab_focus()
             else:
@@ -19307,19 +19326,19 @@ class ServerPropertiesEditScreen(MenuBackground):
 
 
         # Save config file
-        if keycode[1] == 's' and 'ctrl' in modifiers and self.modified:
+        if keycode[1] == 's' and control in modifiers and self.modified:
             self.save_config()
 
 
         # Undo / Redo functionality
-        if keycode[1] == 'z' and 'ctrl' in modifiers and self.undo_history:
+        if keycode[1] == 'z' and control in modifiers and self.undo_history:
             self.undo(save=False, undo=True)
 
-        elif keycode[1] == 'z' and 'ctrl' in modifiers and not self.undo_history:
+        elif keycode[1] == 'z' and control in modifiers and not self.undo_history:
             if not self.check_data():
                 self.reset_data()
 
-        if keycode[1] in ['r', 'y'] and 'ctrl' in modifiers and self.redo_history:
+        if keycode[1] in ['r', 'y'] and control in modifiers and self.redo_history:
             self.undo(save=False, undo=False)
 
 

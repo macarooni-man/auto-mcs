@@ -51,7 +51,7 @@ a.datas = tuple(data_list)
 
 # Convert modified list back to a tuple
 a.datas += Tree('./gui-assets', prefix='gui-assets', excludes=exclude_list)
-
+from constants import app_version
 
 # Remove binaries
 final_list = []
@@ -113,19 +113,20 @@ app = BUNDLE(coll,
           info_plist={
             'NSPrincipalClass': 'NSApplication',
             'NSAppleScriptEnabled': False,
-            'CFBundleDocumentTypes': [
-                {
-                    'CFBundleTypeName': 'auto-mcs back-up',
-                    'CFBundleTypeIconFile': 'icon.icns',
-                    'LSItemContentTypes': ['com.auto-mcs.amb'],
-                    'LSHandlerRank': 'Owner'
+            "CFBundleShortVersionString": app_version,
+            "CFBundleDocumentTypes": [
+                    {
+                        "CFBundleTypeExtensions": ["ams"],
+                        "CFBundleTypeName": "Auto-MCS Script",
+                        "CFBundleTypeRole": "Editor",
+                        "CFBundleTypeOSTypes": ["TEXT"],
                     },
                     {
-                    'CFBundleTypeName': 'auto-mcs script',
-                    'CFBundleTypeIconFile': 'icon.icns',
-                    'LSItemContentTypes': ['com.auto-mcs.ams'],
-                    'LSHandlerRank': 'Owner'
-                    }
+                        "CFBundleTypeExtensions": ["amb"],
+                        "CFBundleTypeName": "Auto-MCS Back-up File",
+                        "CFBundleTypeRole": "Editor",
+                        "CFBundleTypeOSTypes": ["TEXT"],
+                    },
                 ]
             },
 )

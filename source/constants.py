@@ -36,7 +36,6 @@ import re
 import addons
 import backup
 import amscript
-import constants
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
@@ -275,6 +274,12 @@ def get_refresh_rate():
             if "CurrentRefreshRate" in rate:
                 refresh_rate = round(float(rate.splitlines()[0].split(":")[1].strip()))
 
+        elif os_name == 'macos':
+            rate = run_proc('system_profiler SPDisplaysDataType | grep Hz', True)
+            if "@ " in rate and "Hz" in rate:
+                refresh_rate = round(float(re.search(r'(?<=@ ).*(?=Hz)', rate.strip())[0]))
+
+        # Linux
         else:
             rate = run_proc('xrandr | grep "*"', True)
             if rate.strip().endswith("*"):
@@ -817,6 +822,8 @@ def open_folder(directory: str):
     try:
         if os_name == 'linux':
             subprocess.Popen(['xdg-open', directory])
+        elif os_name == 'macos':
+            subprocess.Popen(['open', directory])
         elif os_name == 'windows':
             subprocess.Popen(['explorer', directory])
 
@@ -1753,13 +1760,13 @@ def new_server_init():
 
 # Generate new server name
 def new_server_name():
-    if not constants.new_server_info['name']:
+    if not new_server_info['name']:
         new_name = 'New Server'
         x = 1
-        while new_name.lower() in constants.server_list_lower:
+        while new_name.lower() in server_list_lower:
             new_name = f'New Server ({x})'
             x += 1
-        constants.new_server_info['name'] = new_name
+        new_server_info['name'] = new_name
 
 
 # Verify portable java is available in '.auto-mcs\Tools', if not install it
@@ -1799,9 +1806,17 @@ def java_check(progress_func=None):
         # Check if installations function before doing anything
         if os.path.exists(os.path.abspath(javaDir)):
 
-            modern_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'bin', 'java.exe' if os_name == "windows" else 'java')
-            legacy_path = os.path.join(applicationFolder, 'Tools', 'java', 'legacy', 'bin', 'java.exe' if os_name == "windows" else 'java')
-            jar_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'bin', 'jar.exe' if os_name == "windows" else 'jar')
+            # Gather paths to Java installed internally
+            if os_name == 'macos':
+                modern_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'Contents', 'Home', 'bin', 'java')
+                legacy_path = os.path.join(applicationFolder, 'Tools', 'java', 'legacy', 'Contents', 'Home', 'bin', 'java')
+                jar_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'Contents', 'Home', 'bin', 'jar')
+
+            else:
+                modern_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'bin', 'java.exe' if os_name == "windows" else 'java')
+                legacy_path = os.path.join(applicationFolder, 'Tools', 'java', 'legacy', 'bin', 'java.exe' if os_name == "windows" else 'java')
+                jar_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'bin', 'jar.exe' if os_name == "windows" else 'jar')
+
 
             if (run_proc(f'"{os.path.abspath(modern_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(legacy_path)}" -version') == 0):
 
@@ -2349,7 +2364,7 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 
 # Import Server stuffies
 
-# Figures out type and version of server. Returns information to constants.import_data dict
+# Figures out type and version of server. Returns information to import_data dict
 # There will be issues importing 1.17.0 bukkit derivatives due to Java 16 requirement
 def scan_import(bkup_file=False, progress_func=None, *args):
     name = import_data['name']
@@ -3733,7 +3748,7 @@ class SearchManager():
                 final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, keywords))
                 for setting, value in screen.options.items():
 
-                    if setting.lower() == 'update auto-mcs' and constants.app_latest:
+                    if setting.lower() == 'update auto-mcs' and app_latest:
                         continue
 
                     final_list.append(SettingResult(setting, f'Action in {screen.name}', value if value else screen.id, keywords))

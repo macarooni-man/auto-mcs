@@ -1,4 +1,4 @@
-from tkinter import Tk, Entry, SUNKEN, Canvas, PhotoImage, Button, CENTER, END
+from tkinter import Tk, Entry, SUNKEN, Canvas, PhotoImage, CENTER, END
 from platform import platform, architecture
 from operator import itemgetter
 from PIL import ImageTk, Image
@@ -13,6 +13,18 @@ import os
 
 import constants
 import logviewer
+
+
+# Remove border on macOS buttons
+if constants.os_name == 'macos':
+    import tkmacosx
+    class Button(tkmacosx.Button):
+        def __init__(self, **args):
+            super().__init__(**args)
+            self.config(borderless=1, focusthickness=0, state='active')
+else:
+    from tkinter import Button
+
 
 
 # Generates crash report

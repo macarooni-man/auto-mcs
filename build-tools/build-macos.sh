@@ -4,9 +4,20 @@
 
 # Global variables
 shopt -s expand_aliases
-python="/usr/local/bin/python3.9"
+
+# Use different paths for different architectures
+if [ "$(uname -m)" = "x86_64" ]; then
+	python="/usr/local/bin/python3.9"
+	brew="/usr/local/bin/brew"
+	upx="/usr/local/Cellar/upx"
+else
+	python="/opt/homebrew/opt/python@3.9/libexec/bin/python3.9"
+	brew="/opt/homebrew/bin/brew"
+	upx="/opt/homebrew/opt/upx"
+fi
 venv_path="./venv"
 spec_file="auto-mcs.macos.spec"
+
 
 
 # Overwrite current directory
@@ -31,17 +42,22 @@ if [ $errorlevel -ne 0 ]; then
 
 
 	# Check if brew is installed
-	if ! [ -f /usr/local/bin/brew ]; then
+	brewversion=$( $brew --version )
+	errorlevel=$?
+	if [ $errorlevel -ne 0 ]; then
 		echo Installing the homebrew package manager
 		/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 	fi
 
-	if ! [ -f /usr/local/bin/brew ]; then
+	brewversion=$( $brew --version )
+	errorlevel=$?
+	if [ $errorlevel -ne 0 ]; then
 		error "This script requires the homebrew package manager to run"
 	fi
 
+	echo Detected $brewversion
 
-	echo Obtaining packages to build Python from source
+	echo Obtaining packages to install Python
 
 	# Install appropriate packages
 	/usr/local/bin/brew install python@3.9 python-tk@3.9 upx
@@ -75,10 +91,18 @@ fi
 echo "Installing packages"
 source $venv_path/bin/activate
 pip install --upgrade -r ./reqs-linux.txt
-pip install --upgrade pyobjus
+pip install --upgrade pyobjus tkmacosx
 
 # Remove Kivy icons to prevent dock flickering
 rm -rf $venv_path/lib/python3.9/site-packages/kivy/data/logo/*
+
+
+# Install Consolas if it doesn't exist and reload font cache
+if ! ls ~/Library/Fonts/Consolas* 1> /dev/null 2>&1; then
+    echo Installing Consolas font
+	cp -f ../source/gui-assets/fonts/Consolas* ~/Library/Fonts
+	atsutil databases -removeUser
+fi
 
 
 # Build
@@ -89,7 +113,7 @@ cp $spec_file ../source
 cd ../source
 rm -rf build/
 rm -rf dist/
-pyinstaller "$spec_file" --upx-dir /usr/local/Cellar/upx/*/bin --clean
+pyinstaller "$spec_file" --upx-dir $upx/*/bin --clean
 cd $current
 rm -rf ../source/$spec_file
 rm -rf ../source/dist/auto-mcs

@@ -156,6 +156,13 @@ patch $venv_path"/lib"
 patch $venv_path"/lib64"
 
 
+# Install Consolas if it doesn't exist and reload font cache
+if ! ls /usr/share/fonts/Consolas* 1> /dev/null 2>&1; then
+    echo Installing Consolas font
+    cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
+	fc-cache -f
+fi
+
 
 # Build
 echo Compiling auto-mcs

@@ -5,6 +5,10 @@ import functools
 import os
 
 
+default_font_size = 15
+control = 'Control'
+
+
 # Converts between HEX and RGB decimal colors
 def convert_color(color: str or tuple):
 
@@ -66,6 +70,12 @@ def brighten_color(color: tuple or str, amount: float):
 
 # Opens a crash log in a read-only text editor
 def launch_window(server_name: str, path: str, data: dict):
+    global default_font_size, control
+
+    # Increase font size on macOS
+    if data['os_name'] == 'macos':
+        default_font_size += 5
+        control = 'Command'
 
     # Get text
     crash_data = ''
@@ -78,7 +88,7 @@ def launch_window(server_name: str, path: str, data: dict):
         # Init Tk window
         background_color = convert_color(brighten_color(data['background_color'], -0.1))['hex']
         text_color = convert_color((0.6, 0.6, 1))['hex']
-        file_icon = os.path.join(data['gui_assets'], "big-icon.png")
+        file_icon = os.path.join(data['gui_assets'], "amscript-icon.png")
         min_size = (950, 600)
 
         root = Tk()
@@ -107,7 +117,7 @@ def launch_window(server_name: str, path: str, data: dict):
 
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
-                self.bind("<Control-BackSpace>", self.ctrl_bs)
+                self.bind(f"<{control}-BackSpace>", self.ctrl_bs)
 
                 self.put_placeholder()
 
@@ -145,11 +155,11 @@ def launch_window(server_name: str, path: str, data: dict):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = "Consolas 17 bold",
+            font = f"Consolas {default_font_size + 2} bold",
         )
 
         # Bind CTRL-F to focus search box
-        root.bind('<Control-f>', lambda x: search.focus_force())
+        root.bind(f"<{control}-f>", lambda x: search.focus_force())
 
 
         # Add scrollbar
@@ -339,7 +349,7 @@ def launch_window(server_name: str, path: str, data: dict):
                     fg = convert_color((0.3, 0.3, 0.65))['hex'],
                     bg = background_color,
                     borderwidth = 0,
-                    font = "Consolas 15 bold"
+                    font = f"Consolas {default_font_size} bold"
                 )
 
             def highlight_pattern(self, pattern, tag, start="1.0", end="end", regexp=False):
@@ -395,7 +405,7 @@ def launch_window(server_name: str, path: str, data: dict):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = "Consolas 15",
+            font = f"Consolas {default_font_size}",
             state = DISABLED,
             spacing1 = 10
         )
@@ -467,7 +477,8 @@ if os.name == 'nt':
 #     data_dict = {
 #         'app_title': constants.app_title,
 #         'gui_assets': constants.gui_assets,
-#         'background_color': constants.background_color
+#         'background_color': constants.background_color,
+#         'os_name': 'macos'
 #     }
-#     path = r"C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\Cunt Buiscut\crash-reports\crash-2017-08-01_18.03.13-server.txt"
+#     path = '/Users/kaleb/Library/Application Support/auto-mcs/Logs/ame-fatal_20-27-33_2-18-24.log'
 #     launch_window('test', path, data_dict)
