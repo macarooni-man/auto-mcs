@@ -99,8 +99,8 @@ jobs:
           cd build-tools
           sed -i "s/su \$(logname) -c/eval/" build-linux.sh
           chmod +x build-linux.sh
-          sudo ./build-linux.sh
-          chmod +x dist/auto-mcs
+          # sudo ./build-linux.sh
+          # chmod +x dist/auto-mcs
 
       - name: Setup upterm session
         uses: lhotari/action-upterm@v1
