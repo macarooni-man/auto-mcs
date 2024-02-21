@@ -55,6 +55,7 @@ jobs:
           cd build-tools
           chmod +x build-macos.sh
           sudo ./build-macos.sh
+          chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
 
       - name: Upload Binary
         uses: actions/upload-artifact@v3
@@ -99,6 +100,7 @@ jobs:
           sed -i "s/su \$(logname) -c/eval/" build-linux.sh
           chmod +x build-linux.sh
           sudo ./build-linux.sh
+          chmod +x dist/auto-mcs
 
       - name: Setup upterm session
         uses: lhotari/action-upterm@v1
