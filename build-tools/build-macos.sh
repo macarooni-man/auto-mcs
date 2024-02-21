@@ -100,7 +100,7 @@ rm -rf $venv_path/lib/python3.9/site-packages/kivy/data/logo/*
 kivy_path=$venv_path"/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
 sed -i 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py
 sed -i 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py
-eval $python" -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path"/kivy-hook.py"
+eval $python" -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path"/hook-kivy.py"
 
 
 # Install Consolas if it doesn't exist and reload font cache
