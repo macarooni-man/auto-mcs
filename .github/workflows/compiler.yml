@@ -66,6 +66,7 @@ jobs:
           sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
           export DISPLAY=:0.0
           cd build-tools
+          sed -i s/logname/whoami/ build-linux.sh
           chmod +x build-linux.sh
           sudo ./build-linux.sh
 
