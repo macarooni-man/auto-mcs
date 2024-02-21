@@ -93,12 +93,11 @@ jobs:
       - name: Compile auto-mcs
         run: |
           spec_file="auto-mcs.linux.spec"
-          cd "$(cd -P -- "$(dirname -- "$0")" && pwd -P)"
-          current=$( pwd )
           
           sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
           export DISPLAY=:0.0
           cd build-tools
+          current=$( pwd )
           python3.9 -venv ./venv
           source ./venv/bin/activate
           pip install -r reqs-linux.txt
