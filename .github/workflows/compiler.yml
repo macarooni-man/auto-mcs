@@ -93,7 +93,6 @@ jobs:
       - name: Compile auto-mcs
         run: |
           spec_file="auto-mcs.linux.spec"
-          
           sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
           export DISPLAY=:0.0
           cd build-tools
@@ -102,8 +101,6 @@ jobs:
           source ./venv/bin/activate
           pip install -r reqs-linux.txt
           python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
-
-          # Build
           echo Compiling auto-mcs
           export KIVY_AUDIO=ffpyplayer
           cd $current
@@ -114,19 +111,16 @@ jobs:
           rm -rf ../source/$spec_file
           mv -f ../source/dist .
           deactivate
-          
-          # Check if compiled
           if ! [ -f $current/dist/auto-mcs ]; then
             "[FAIL] Something went wrong during compilation"
             exit 1
           else
           	echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
           fi
-          
           chmod +x dist/auto-mcs
 
-      - name: Setup upterm session
-        uses: lhotari/action-upterm@v1
+      # - name: Setup upterm session
+      #   uses: lhotari/action-upterm@v1
 
       - name: Upload Binary
         uses: actions/upload-artifact@v3
