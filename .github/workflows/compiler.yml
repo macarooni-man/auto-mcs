@@ -35,6 +35,32 @@ jobs:
           retention-days: 5
 
 
+
+  macos:
+    name: macOS Build
+    runs-on: macos-11
+    steps:
+    
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Compile auto-mcs
+        run: |
+          cd build-tools
+          chmod +x build-macos.sh
+          sudo ./build-macos.sh
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: auto-mcs-macos
+          path: build-tools/dist/
+          retention-days: 5
+
+
+
   linux:
     name: Linux Build
     runs-on: ubuntu-20.04
