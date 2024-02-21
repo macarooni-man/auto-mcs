@@ -139,22 +139,6 @@ source $venv_path/bin/activate
 su $(logname) -c "pip install --upgrade -r ./reqs-linux.txt"
 
 
-# Use Kivy 2.1.0 for Alpine
-if [ -x "$(command -v apk)" ]; then
-	su $(logname) -c "pip install --upgrade kivy==2.1.0"
-fi
-
-
-# Patch and install Kivy hook for Pyinstaller
-patch() {
-	kivy_path=$1"/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
-	sed 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
-	sed 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
-	su $(logname) -c $venv_path"/bin/python3.9 -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path"/kivy-hook.py"
-}
-patch $venv_path"/lib"
-patch $venv_path"/lib64"
-
 
 # Install Consolas if it doesn't exist and reload font cache
 if ! ls /usr/share/fonts/Consolas* 1> /dev/null 2>&1; then

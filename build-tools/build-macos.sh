@@ -11,7 +11,7 @@ if [ "$(uname -m)" = "x86_64" ]; then
 	brew="/usr/local/bin/brew"
 	upx="/usr/local/Cellar/upx"
 else
-	python="/opt/homebrew/opt/python@3.9/libexec/bin/python3.9"
+	python="/opt/homebrew/opt/python@3.9/libexec/bin/python3"
 	brew="/opt/homebrew/bin/brew"
 	upx="/opt/homebrew/opt/upx"
 fi
@@ -60,7 +60,7 @@ if [ $errorlevel -ne 0 ]; then
 	echo Obtaining packages to install Python
 
 	# Install appropriate packages
-	/usr/local/bin/brew install python@3.9 python-tk@3.9 upx
+	eval $brew" install python@3.9 python-tk@3.9 upx"
 
 	eval $python" -m pip install --upgrade pip setuptools wheel"
 
@@ -90,11 +90,17 @@ fi
 # Install/Upgrade packages
 echo "Installing packages"
 source $venv_path/bin/activate
-pip install --upgrade -r ./reqs-linux.txt
-pip install --upgrade pyobjus tkmacosx
+pip install --upgrade -r ./reqs-macos.txt
 
 # Remove Kivy icons to prevent dock flickering
 rm -rf $venv_path/lib/python3.9/site-packages/kivy/data/logo/*
+
+
+# Patch Kivy Pyinstaller hook
+kivy_path=$venv_path"/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
+sed -i 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py
+sed -i 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py
+eval $python" -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path"/kivy-hook.py"
 
 
 # Install Consolas if it doesn't exist and reload font cache
