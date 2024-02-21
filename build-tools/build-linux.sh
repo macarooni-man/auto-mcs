@@ -136,15 +136,15 @@ fi
 # Install/Upgrade packages
 echo "Installing packages"
 source $venv_path/bin/activate
-pip install --upgrade -r ./reqs-linux.txt
+su $(logname) -c "pip install --upgrade -r ./reqs-linux.txt"
 
 
 # Patch and install Kivy hook for Pyinstaller
 patch() {
 	kivy_path=$1"/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
-	sed 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
-	sed 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
-	python -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path/kivy-hook.py"
+	sed -i 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py
+	sed -i 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py
+	su $(logname) -c $venv_path"/bin/python3.9 -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path"/kivy-hook.py"
 }
 patch $venv_path"/lib"
 patch $venv_path"/lib64"
@@ -164,7 +164,7 @@ export KIVY_AUDIO=ffpyplayer
 cd $current
 cp $spec_file ../source
 cd ../source
-pyinstaller "$spec_file" --upx-dir "$current"/upx/linux --clean
+su $(logname) -c "pyinstaller "$spec_file" --upx-dir "$current"/upx/linux --clean"
 cd $current
 rm -rf ../source/$spec_file
 mv -f ../source/dist .
