@@ -124,5 +124,6 @@ deactivate
 if ! [ -d $current/dist/auto-mcs.app ]; then
 	error "[FAIL] Something went wrong during compilation"
 else
+	chmod +x $current/dist/auto-mcs.app/Contents/MacOS/auto-mcs
 	echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs.app\"
 fi

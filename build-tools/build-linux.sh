@@ -48,9 +48,9 @@ if [ $errorlevel -ne 0 ]; then
 
 	# Determine system package manager and install appropriate packages
 	if [ -x "$(command -v apk)" ];       then apk add --no-cache wget gcc make gstreamer-dev sdl2_mixer-dev sdl2_ttf-dev pangomm-dev sdl2_image-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev portaudio-dev
-	elif [ -x "$(command -v apt-get)" ]; then apt-get install -y build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils liblzma-dev python3-dev libfreetype-dev libfreetype6 libasound2 libasound-dev libasound2-dev portaudio19-dev
+	elif [ -x "$(command -v apt)" ];     then apt install -y build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils liblzma-dev python3-dev libfreetype-dev libfreetype6 libasound2 libasound-dev libasound2-dev portaudio19-dev
 	elif [ -x "$(command -v dnf)" ];     then dnf -y groupinstall "Development Tools" && sudo dnf -y install wget gcc bzip2-devel libffi-devel xz-devel freetype-devel portaudio-devel
-	elif [ -x "$(command -v yum)" ];  then yum -y groupinstall "Development Tools" && sudo dnf -y install wget gcc bzip2-devel libffi-devel xz-devel freetype-devel portaudio-devel
+	elif [ -x "$(command -v yum)" ];     then yum -y groupinstall "Development Tools" && sudo dnf -y install wget gcc bzip2-devel libffi-devel xz-devel freetype-devel portaudio-devel
 	elif [ -x "$(command -v pacman)" ];  then pacman -S --noconfirm base-devel wget openssl-1.1 tk freetype2 portaudio
 	else echo "[WARNING] Package manager not found: You must manually install the Python 3.9 source dependencies">&2; fi
 
@@ -174,5 +174,6 @@ deactivate
 if ! [ -f $current/dist/auto-mcs ]; then
 	error "[FAIL] Something went wrong during compilation"
 else
+	chmod +x $current/dist/auto-mcs
 	echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
 fi
