@@ -9,7 +9,7 @@ dnspython==2.2.1
 docutils==0.19
 idna==3.4
 ipaddress==1.0.23
-Kivy==2.1.0
+Kivy==2.0.0
 Kivy-Garden==0.1.5
 munch==3.0.0
 NBT==1.5.1

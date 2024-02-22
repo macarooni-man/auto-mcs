@@ -1,0 +1,6 @@
+build-tools/dist
+build-tools/venv
+source/build
+source/__pycache__
+build-tools/.DS_Store
+.DS_Store
