@@ -1130,6 +1130,12 @@ class ServerObject():
                         perc_ram = round(proc.memory_info().private / 1048576, 2)
                         break
 
+            # Get RSS of parent on macOS
+            elif constants.os_name == "macos":
+                if parent.name() == "java":
+                    perc_cpu = parent.cpu_percent(interval=interval)
+                    perc_ram = round(parent.memory_info().rss / 1048576, 2)
+
             # Get performance stats of forked java process
             else:
                 if parent.name() == "java":
