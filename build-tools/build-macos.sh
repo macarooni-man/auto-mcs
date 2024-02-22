@@ -95,12 +95,6 @@ pip install --upgrade -r ./reqs-macos.txt
 # Remove Kivy icons to prevent dock flickering
 rm -rf $venv_path/lib/python3.9/site-packages/kivy/data/logo/*
 
-# Patch and install Kivy hook
-kivy_path=$venv_path"/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
-sed 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path"/__init__.py" > tmp.txt && mv tmp.txt $kivy_path"/__init__.py"
-sed 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path"/__init__.py" > tmp.txt && mv tmp.txt $kivy_path"/__init__.py"
-python -m kivy.tools.packaging.pyinstaller_hooks hook $venv_path"/lib/python3.9/site-packages/PyInstaller/hooks/hook-kivy.py"
-
 
 # Install Consolas if it doesn't exist and reload font cache
 if ! ls ~/Library/Fonts/Consolas* 1> /dev/null 2>&1; then
