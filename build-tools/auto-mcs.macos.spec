@@ -113,8 +113,9 @@ app = BUNDLE(coll,
           info_plist={
             'NSPrincipalClass': 'NSApplication',
             'NSAppleScriptEnabled': False,
-            "CFBundleShortVersionString": app_version,
-            "CFBundleDocumentTypes": [
+            'NSHighResolutionCapable': False,
+            'CFBundleShortVersionString': app_version,
+            'CFBundleDocumentTypes': [
                     {
                         "CFBundleTypeExtensions": ["ams"],
                         "CFBundleTypeName": "Auto-MCS Script",
