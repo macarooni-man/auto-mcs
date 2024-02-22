@@ -48,20 +48,36 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install python@3.9 python-tk@3.9 upx
+          brew install python@3.9 python-tk@3.9 upx create-dmg
       
       - name: Compile auto-mcs
         run: |
+          root=$(pwd)
           cd build-tools
           chmod +x build-macos.sh
           sudo ./build-macos.sh
           chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
 
+          # Create .dmg from .app
+          sudo create-dmg \
+            --volname "auto-mcs" \
+            --volicon "$root/source/icon.icns" \
+            --background "$root/source/gui-assets/dmg-bg.png" \
+            --window-pos 200 120 \
+            --window-size 835 640 \
+            --icon-size 128 \
+            --text-size 16 \
+            --icon "auto-mcs.app" 230 277 \
+            --hide-extension "auto-mcs.app" \
+            --app-drop-link 593 277 \
+            "$root/build-tools/dist/auto-mcs.dmg" \
+            "$root/build-tools/dist/auto-mcs.app"
+
       - name: Upload Binary
         uses: actions/upload-artifact@v3
         with:
           name: auto-mcs-macos
-          path: build-tools/dist/
+          path: build-tools/dist/auto-mcs.dmg
           retention-days: 5
 
 
