@@ -52,8 +52,8 @@ project_link = "https://github.com/macarooni-man/auto-mcs"
 website = "https://auto-mcs.com"
 update_data = {
     "version": '',
-    "urls": {'windows': None, 'linux': None},
-    "md5": {'windows': None, 'linux': None},
+    "urls": {'windows': None, 'linux': None, 'macos': None},
+    "md5": {'windows': None, 'linux': None, 'macos': None},
     "desc": '',
     "reboot-msg": [],
     "auto-show": True
@@ -357,7 +357,7 @@ del \"{os.path.join(tempDir, script_name)}\""""
             run_proc(f"\"{batch_path}\" > nul 2>&1")
 
 
-    # Generate Linux script to restart
+    # Generate Linux/macOS script to restart
     else:
         script_name = f'{script_name}.sh'
         folder_check(tempDir)
@@ -420,6 +420,43 @@ del \"{os.path.join(tempDir, script_name)}\""""
 
             batch_file.close()
             run_proc(f"\"{batch_path}\" > nul 2>&1")
+
+
+    # Generate macOS script to restart
+    elif os_name == 'macos':
+        script_name = f'{script_name}.sh'
+        folder_check(tempDir)
+        shell_path = os.path.join(tempDir, script_name)
+        shell_file = open(shell_path, 'w+')
+        escaped_path = launch_path.replace(" ", "\ ")
+        dmg_path = os.path.join(downDir, 'auto-mcs.dmg')
+
+        if app_compiled:  # Running as compiled
+            shell_file.write(
+                f"""#!/bin/bash
+kill {os.getpid()}
+sleep 2
+
+hdiutil mount "{dmg_path}"
+rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(launch_path), '../..')}"
+errorlevel=$?
+if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
+    echo banner-success@auto-mcs was updated to v{update_data['version']} successfully! > "{update_log}"
+else
+    echo banner-failure@Something went wrong with the update > "{update_log}"
+fi
+
+hdiutil unmount /Volumes/auto-mcs
+rm -rf "{dmg_path}"
+chmod +x "{launch_path}"
+exec {escaped_path} &
+rm \"{os.path.join(tempDir, script_name)}\""""
+            )
+
+            shell_file.close()
+            with open(shell_path, 'r') as f:
+                print(f.read())
+            run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
 
 
     # Generate Linux script to restart
@@ -1092,6 +1129,10 @@ def check_app_updates():
                     checksum = "windows"
                     continue
 
+                if "macOS" in line:
+                    checksum = "macos"
+                    continue
+
                 if "Linux" in line:
                     checksum = "linux"
                     continue
@@ -1113,11 +1154,14 @@ def check_app_updates():
 
         # Download links
         for file in release_data['assets']:
-            if 'linux' in file['name']:
-                update_data['urls']['linux'] = file['browser_download_url']
-                continue
             if 'windows' in file['name']:
                 update_data['urls']['windows'] = file['browser_download_url']
+                continue
+            if 'macos' in file['name']:
+                update_data['urls']['macos'] = file['browser_download_url']
+                continue
+            if 'linux' in file['name']:
+                update_data['urls']['linux'] = file['browser_download_url']
                 continue
 
         # Check if app needs to be updated, and URL was successful
@@ -1390,13 +1434,13 @@ def download_update(progress_func=None):
         if progress_func:
             progress_func(round(100 * a * b / c))
 
-    update_url = update_data['urls']['windows' if os_name == 'windows' else 'linux']
+    update_url = update_data['urls'][os_name]
     if not update_url:
         return False
 
-    # Attempt at most 5 times to download server.jar
+    # Attempt at most 3 times to download auto-mcs
     fail_count = 0
-    while fail_count < 5:
+    while fail_count < 3:
 
         safe_delete(downDir)
         folder_check(downDir)
@@ -1408,22 +1452,30 @@ def download_update(progress_func=None):
 
 
             # Specify names
-            binary_zip = 'auto-mcs.zip'
-            binary_name = 'auto-mcs.exe' if os_name == 'windows' else 'auto-mcs'
+            if os_name == 'macos':
+                binary_zip = 'auto-mcs.dmg'
+                binary_name = 'auto-mcs.app'
+            else:
+                binary_zip = 'auto-mcs.zip'
+                binary_name = 'auto-mcs.exe' if os_name == 'windows' else 'auto-mcs'
 
             # Download binary zip, and extract the binary from the archive
             download_url(update_url, binary_zip, downDir, hook)
             update_path = os.path.join(downDir, binary_zip)
-            extract_archive(update_path, downDir)
-            binary_file = os.path.join(downDir, binary_name)
-            os.remove(update_path)
+
+            if os_name == 'macos':
+                binary_file = update_path
+            else:
+                extract_archive(update_path, downDir)
+                os.remove(update_path)
+                binary_file = os.path.join(downDir, binary_name)
 
 
             # If successful, copy to tmpsvr
             if os.path.isfile(binary_file):
 
                 # If the hash matches, continue
-                if get_checksum(binary_file) == update_data['md5']['windows' if os_name == 'windows' else 'linux']:
+                if get_checksum(binary_file) == update_data['md5'][os_name]:
 
                     if progress_func:
                         progress_func(100)
