@@ -59,7 +59,7 @@ jobs:
           chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
 
           # Create .dmg from .app
-          create-dmg \
+          sudo create-dmg \
             --volname "auto-mcs" \
             --volicon "$root/source/icon.icns" \
             --background "$root/source/gui-assets/dmg-bg.png" \
