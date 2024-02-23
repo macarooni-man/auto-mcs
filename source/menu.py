@@ -4566,6 +4566,7 @@ class ContextMenu(GridLayout):
 
         self.id = 'context_menu'
         self.cols = 1
+        self.spacing = (0, 0.01)
         self.options_list = None
         self.size_hint_max_x = 138
         self.opacity = 0
@@ -5037,6 +5038,9 @@ class PopupWindow(RelativeLayout):
     # Delete popup bind
     def self_destruct(self, animate, *args):
 
+        if not self.shown:
+            return
+
         def delete(*args):
 
             try:
@@ -5488,6 +5492,9 @@ class BigPopupWindow(RelativeLayout):
 
     # Delete popup bind
     def self_destruct(self, animate, *args):
+
+        if not self.shown:
+            return
 
         def delete(*args):
 
@@ -6001,6 +6008,10 @@ class PopupUpdate(BigPopupWindow):
 
 # Global search bar
 class PopupSearch(RelativeLayout):
+    "play-circle-sharp.png"
+    "newspaper.png"
+    "terminal.png"
+    "exit-sharp.png"
 
     class ResultButton(RelativeLayout):
         def __init__(self, **kwargs):
@@ -6334,6 +6345,9 @@ class PopupSearch(RelativeLayout):
 
     # Delete popup bind
     def self_destruct(self, animate, *args):
+
+        if not self.shown:
+            return
 
         def delete(*args):
 
