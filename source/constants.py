@@ -52,8 +52,8 @@ project_link = "https://github.com/macarooni-man/auto-mcs"
 website = "https://auto-mcs.com"
 update_data = {
     "version": '',
-    "urls": {'windows': None, 'linux': None, 'macos': None},
-    "md5": {'windows': None, 'linux': None, 'macos': None},
+    "urls": {'windows': None, 'linux': None, 'linux-arm64': None, 'macos': None},
+    "md5": {'windows': None, 'linux': None, 'linux-arm64': None, 'macos': None},
     "desc": '',
     "reboot-msg": [],
     "auto-show": True
@@ -215,12 +215,35 @@ backup_lock = {}
 total_ram = round(psutil.virtual_memory().total / 1073741824)
 max_memory = int(round(total_ram - (total_ram / 4)))
 
+# Replacement for os.system to prevent CMD flashing
+def run_proc(cmd, return_text=False):
+    if return_text:
+        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
+        if debug:
+            print(f'{cmd}: returned exit code {result.returncode}')
+        return result.stdout.decode('utf-8', errors='ignore')
+    else:
+        return_code = subprocess.call(cmd, shell=True)
+        if debug:
+            print(f'{cmd}: returned exit code {return_code}')
+        return return_code
+
+
 
 # Check if running in Docker
 def check_docker():
     cgroup = Path('/proc/self/cgroup')
     return Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
 is_docker = check_docker()
+
+# Check if OS is ARM
+def check_arm():
+    if os_name != 'windows':
+        return run_proc('uname -m', True).strip() == 'aarch64'
+    else:
+        return run_proc('echo %PROCESSOR_ARCHITECTURE%', True).strip() == 'ARM64'
+is_arm = check_arm()
+
 
 
 # Global amscripts
@@ -502,19 +525,6 @@ def format_now():
 
 # Global banner
 global_banner = None
-
-# Replacement for os.system to prevent CMD flashing
-def run_proc(cmd, return_text=False):
-    if return_text:
-        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
-        if debug:
-            print(f'{cmd}: returned exit code {result.returncode}')
-        return result.stdout.decode('utf-8', errors='ignore')
-    else:
-        return_code = subprocess.call(cmd, shell=True)
-        if debug:
-            print(f'{cmd}: returned exit code {return_code}')
-        return return_code
 
 
 # Hide kivy widgets
@@ -1135,6 +1145,10 @@ def check_app_updates():
                     checksum = "macos"
                     continue
 
+                if "arm64" in line.lower():
+                    checksum = "linux-arm64"
+                    continue
+
                 if "Linux" in line:
                     checksum = "linux"
                     continue
@@ -1161,6 +1175,9 @@ def check_app_updates():
                 continue
             if 'macos' in file['name']:
                 update_data['urls']['macos'] = file['browser_download_url']
+                continue
+            if 'arm64' in file['name']:
+                update_data['urls']['linux-arm64'] = file['browser_download_url']
                 continue
             if 'linux' in file['name']:
                 update_data['urls']['linux'] = file['browser_download_url']
@@ -1443,14 +1460,18 @@ def generate_splash(crash=False):
     session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
 
 
-# Downloads the latest version of Auto-MCS if available
+# Downloads the latest version of auto-mcs if available
 def download_update(progress_func=None):
 
     def hook(a, b, c):
         if progress_func:
             progress_func(round(100 * a * b / c))
 
-    update_url = update_data['urls'][os_name]
+    if os_name == 'linux' and is_arm:
+        update_url = update_data['urls']['linux-arm64']
+    else:
+        update_url = update_data['urls'][os_name]
+
     if not update_url:
         return False
 
@@ -1954,7 +1975,7 @@ def java_check(progress_func=None):
 
 
             # Detect if running on ARM
-            if os_name == 'linux' and run_proc('uname -m', True).strip() == 'aarch64':
+            if os_name == 'linux' and is_arm:
                 os_download = 'linux-arm64'
             else:
                 os_download = os_name
@@ -3244,7 +3265,17 @@ def install_ngrok():
                 file_name = "ngrok.zip"
                 break
 
-            if os_name == "linux" and "stable-linux-amd64" in dl_url:
+            if os_name == "macos" and "stable-darwin-amd64" in dl_url:
+                final_url = dl_url
+                file_name = "ngrok.zip"
+                break
+
+            if os_name == "linux" and is_arm and "stable-linux-arm64" in dl_url:
+                final_url = dl_url
+                file_name = "ngrok.tgz"
+                break
+
+            if os_name == "linux" and not is_arm and "stable-linux-amd64" in dl_url:
                 final_url = dl_url
                 file_name = "ngrok.tgz"
                 break
