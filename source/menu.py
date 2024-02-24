@@ -3929,29 +3929,50 @@ class AnimButton(FloatLayout):
 
 class BigIcon(HoverButton):
 
+    def deselect(self):
+        self.selected = False
+        for child in [x for x in self.parent.children if x.id == "icon"]:
+            if child.type == self.type:
+                self.on_leave()
+        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
+        self.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+        self.background_hover = os.path.join(constants.gui_assets, f'{self.id}_hover.png')
+
     def on_click(self):
-        for item in self.parent.parent.parent.children:
-            for child_item in item.children:
-                for child_button in child_item.children:
-                    if child_button.id == 'big_icon_button':
+        cl1 = screen_manager.current_screen.content_layout_1
+        cl2 = screen_manager.current_screen.content_layout_2
 
-                        if child_button.hovered is True:
-                            child_button.selected = True
-                            child_button.on_enter()
-                            child_button.background_down = os.path.join(constants.gui_assets, f'{child_button.id}_selected.png')
-                            constants.new_server_info['type'] = child_button.type
+        if self.type == 'more':
+            if cl2.opacity == 0:
+                constants.hide_widget(cl2, False)
+                constants.hide_widget(cl1)
+            else:
+                constants.hide_widget(cl1, False)
+                constants.hide_widget(cl2)
+            return
 
-                        else:
-                            child_button.selected = False
-                            for child in [x for x in child_button.parent.children if x.id == "icon"]:
-                                if child.type == child_button.type:
-                                    child_button.on_leave()
-                            child_button.background_normal = os.path.join(constants.gui_assets, f'{child_button.id}.png')
-                            child_button.background_down = os.path.join(constants.gui_assets, f'{child_button.id}_click.png')
-                            child_button.background_hover = os.path.join(constants.gui_assets, f'{child_button.id}_hover.png')
+        def iterator(layout, *a):
+            for item in layout.children:
+                for child_item in item.children:
+                    for child_button in child_item.children:
+                        if child_button.id == 'big_icon_button':
 
-                        break
+                            if child_button.type == 'more':
+                                child_button.deselect()
+                                continue
 
+                            if child_button.hovered is True:
+                                child_button.selected = True
+                                child_button.on_enter()
+                                child_button.background_down = os.path.join(constants.gui_assets, f'{child_button.id}_selected.png')
+                                constants.new_server_info['type'] = child_button.type
+
+                            else:
+                                child_button.deselect()
+
+                            break
+        iterator(cl1)
+        iterator(cl2)
 
 
 def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, selected=False, text_hover_color=None):
@@ -4119,7 +4140,7 @@ class NextButton(HoverButton):
         for child in self.parent.parent.children:
             if "ServerVersionInput" in child.__class__.__name__:
                 # Reset geyser_selected if version is less than 1.13.2
-                if constants.version_check(child.text, "<", "1.13.2") or constants.new_server_info['type'] not in ['spigot', 'paper', 'fabric']:
+                if constants.version_check(child.text, "<", "1.13.2") or constants.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric']:
                     constants.new_server_info['server_settings']['geyser_support'] = False
 
                 # Reset gamerule settings if version is less than 1.4.2
@@ -8197,6 +8218,9 @@ class CreateServerTypeScreen(MenuBackground):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
         self.menu = 'init'
+        self.current_selection = 'vanilla'
+        self.content_layout_1 = None
+        self.content_layout_2 = None
 
     def generate_menu(self, **kwargs):
         # Generate buttons on page load
@@ -8205,14 +8229,15 @@ class CreateServerTypeScreen(MenuBackground):
         float_layout.id = 'content'
 
         float_layout.add_widget(HeaderText("What type of server do you wish to create?", '', (0, 0.86)))
+        self.current_selection = constants.new_server_info['type']
 
         # Create UI buttons
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerVersionScreen'))
         buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
 
-        # Create type buttons
-        content_layout = FloatLayout()
-        content_layout.current_selection = constants.new_server_info['type']
+
+        # Create type buttons (Page 1)
+        self.content_layout_1 = FloatLayout()
         row_top = BoxLayout()
         row_bottom = BoxLayout()
         row_top.pos_hint = {"center_y": 0.66, "center_x": 0.5}
@@ -8222,16 +8247,32 @@ class CreateServerTypeScreen(MenuBackground):
         row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == constants.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('experimental mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
+        self.content_layout_1.add_widget(row_top)
+        self.content_layout_1.add_widget(row_bottom)
+
+
+        # Create type buttons (Page 2)
+        self.content_layout_2 = FloatLayout()
+        constants.hide_widget(self.content_layout_2)
+        row_top = BoxLayout()
+        row_top.pos_hint = {"center_y": 0.52, "center_x": 0.5}
+        row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
+        row_top.orientation = row_bottom.orientation = "horizontal"
+        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
+
+        self.content_layout_2.add_widget(row_top)
+
 
         for button in buttons:
             float_layout.add_widget(button)
 
-        content_layout.add_widget(row_top)
-        content_layout.add_widget(row_bottom)
-        float_layout.add_widget(content_layout)
+        float_layout.add_widget(self.content_layout_1)
+        float_layout.add_widget(self.content_layout_2)
         menu_name = f"Create '{constants.new_server_info['name']}'"
 
         float_layout.add_widget(page_counter(2, 7, (0, 0.868)))
@@ -10370,7 +10411,7 @@ class CreateServerOptionsScreen(MenuBackground):
 
         # Geyser switch for bedrock support
         if constants.version_check(constants.new_server_info['version'], ">=", "1.13.2")\
-        and constants.new_server_info['type'].lower() in ['spigot', 'paper', 'fabric']:
+        and constants.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric']:
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="bedrock support (geyser)"))
             sub_layout.add_widget(toggle_button('geyser_support', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['geyser_support']))
@@ -11181,7 +11222,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 class ServerDemoInput(BaseInput):
 
     def resize_self(self, *args):
-        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper"]\
+        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper", "purpur"]\
             else 9.6 if self.type_image.type_label.text == "forge"\
             else 9.35 if self.type_image.type_label.text == "craftbukkit"\
             else 9.55
@@ -11918,7 +11959,7 @@ class ServerButton(HoverButton):
         self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1 + 30 - 100, self.y + 8)
 
 
-        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper"]\
+        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper", "purpur"]\
             else 9.6 if self.type_image.type_label.text == "forge"\
             else 9.35 if self.type_image.type_label.text == "craftbukkit"\
             else 9.55
@@ -15205,7 +15246,7 @@ class BackupButton(HoverButton):
         self.index_label.pos = (self.x - 19, self.y + 2.5)
         self.index_icon.pos = (self.x + 8, self.y + 18)
 
-        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper"]\
+        offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper", "purpur"]\
             else 9.6 if self.type_image.type_label.text == "forge"\
             else 9.35 if self.type_image.type_label.text == "craftbukkit"\
             else 9.55
@@ -19912,7 +19953,7 @@ class ServerSettingsScreen(MenuBackground):
 
         # Geyser switch for bedrock support
         sub_layout = ScrollItem()
-        disabled = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'fabric'])
+        disabled = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric'])
         hint_text = "geyser (unsupported server)" if disabled else "bedrock support (geyser)"
         if not constants.app_online:
             disabled = True
@@ -20155,6 +20196,9 @@ class MigrateServerTypeScreen(MenuBackground):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
         self.menu = 'init'
+        self.current_selection = 'vanilla'
+        self.content_layout_1 = None
+        self.content_layout_2 = None
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
@@ -20170,29 +20214,46 @@ class MigrateServerTypeScreen(MenuBackground):
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='MigrateServerVersionScreen'))
         buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
 
-        # Create type buttons
-        content_layout = FloatLayout()
-        content_layout.current_selection = constants.new_server_info['type']
+        self.current_selection = constants.new_server_info['type']
+
+
+        # Create type buttons (Page 1)
+        self.content_layout_1 = FloatLayout()
         row_top = BoxLayout()
         row_bottom = BoxLayout()
-        row_top.pos_hint = {"center_y": 0.65, "center_x": 0.5}
-        row_bottom.pos_hint = {"center_y": 0.395, "center_x": 0.5}
+        row_top.pos_hint = {"center_y": 0.66, "center_x": 0.5}
+        row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
         row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
         row_top.orientation = row_bottom.orientation = "horizontal"
         row_top.add_widget(big_icon_button('runs most plug-ins, optimized', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'paper', clickable=True, selected=('paper' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == constants.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('experimental mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
+        self.content_layout_1.add_widget(row_top)
+        self.content_layout_1.add_widget(row_bottom)
+
+
+        # Create type buttons (Page 2)
+        self.content_layout_2 = FloatLayout()
+        constants.hide_widget(self.content_layout_2)
+        row_top = BoxLayout()
+        row_top.pos_hint = {"center_y": 0.52, "center_x": 0.5}
+        row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
+        row_top.orientation = row_bottom.orientation = "horizontal"
+        row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
+
+        self.content_layout_2.add_widget(row_top)
+
 
         for button in buttons:
             float_layout.add_widget(button)
 
-        content_layout.add_widget(row_top)
-        content_layout.add_widget(row_bottom)
-        float_layout.add_widget(content_layout)
-
+        float_layout.add_widget(self.content_layout_1)
+        float_layout.add_widget(self.content_layout_2)
         float_layout.add_widget(page_counter(1, 2, (0, 0.86)))
         float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Change 'server.jar'"))
@@ -20577,27 +20638,32 @@ class MainApp(App):
 
         # Screen manager override for testing
         # if not constants.app_compiled:
-        #     def open_menu(*args):
-        #         open_server("acl test", launch=False)
-        #         # def show_notif(*args):
-        #         #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
-        #         # Clock.schedule_once(show_notif, 2)
-        #         def add_fake_players(*args):
-        #             op_color = (0.5, 1, 1, 1)
-        #             no_color = (0.6, 0.6, 0.88, 1)
-        #             screen_manager.current_screen.performance_panel.player_widget.update_data(
-        #                 [{'text': 'KChicken', 'color': op_color},
-        #                  {'text': 'LeopardGecko22', 'color': op_color},
-        #                  {'text': 'bgmombo', 'color': no_color},
-        #                  {'text': 'Test1234', 'color': no_color},
-        #                  {'text': 'Im_a_USERNAME', 'color': no_color},
-        #                  {'text': 'yes_i_am40', 'color': no_color}
-        #             ])
-        #         Clock.schedule_once(add_fake_players, 1)
-        #         # def open_ams(*args):
-        #         #     screen_manager.current = "ServerAddonScreen"
-        #         # Clock.schedule_once(open_ams, 1)
-        #     Clock.schedule_once(open_menu, 0.5)
+            # def open_menu(*a):
+            #     constants.new_server_init()
+            #     constants.new_server_info['name'] = 'testE'
+            #     screen_manager.current = 'CreateServerTypeScreen'
+            # Clock.schedule_once(open_menu, 0)
+            # def open_menu(*args):
+            #     open_server("acl test", launch=False)
+            #     # def show_notif(*args):
+            #     #     screen_manager.current_screen.menu_taskbar.show_notification('amscript')
+            #     # Clock.schedule_once(show_notif, 2)
+            #     def add_fake_players(*args):
+            #         op_color = (0.5, 1, 1, 1)
+            #         no_color = (0.6, 0.6, 0.88, 1)
+            #         screen_manager.current_screen.performance_panel.player_widget.update_data(
+            #             [{'text': 'KChicken', 'color': op_color},
+            #              {'text': 'LeopardGecko22', 'color': op_color},
+            #              {'text': 'bgmombo', 'color': no_color},
+            #              {'text': 'Test1234', 'color': no_color},
+            #              {'text': 'Im_a_USERNAME', 'color': no_color},
+            #              {'text': 'yes_i_am40', 'color': no_color}
+            #         ])
+            #     Clock.schedule_once(add_fake_players, 1)
+            #     # def open_ams(*args):
+            #     #     screen_manager.current = "ServerAddonScreen"
+            #     # Clock.schedule_once(open_ams, 1)
+            # Clock.schedule_once(open_menu, 0.5)
 
 
         # Process --launch flag

@@ -77,7 +77,7 @@ class AddonManager():
         self._addon_hash = self._set_hash()
 
         # Setup paths
-        addon_folder = "plugins" if self._server['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+        addon_folder = "plugins" if constants.server_type(self._server['type']) == 'bukkit' else 'mods'
         disabled_addon_folder = str("disabled-" + addon_folder)
         self.addon_path = constants.server_path(self._server['name'], addon_folder)
         self.disabled_addon_path = constants.server_path(self._server['name'], disabled_addon_folder)
@@ -253,7 +253,7 @@ class AddonManager():
         if not self._addons_supported:
             return False
 
-        if self._server['type'] in ['spigot', 'paper', 'fabric']:
+        if self._server['type'] in ['spigot', 'paper', 'purpur', 'fabric']:
 
             # Check for geyser
             return 'geyser' in [addon.id.lower() for addon in self.return_single_list()]
@@ -277,11 +277,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
 
     # Determine which addons to look for
-    if server_properties['type'] in ["craftbukkit", "paper", "spigot"]:
-        server_type = "bukkit"
-    else:
-        server_type = server_properties['type']
-
+    server_type = constants.server_type(server_properties['type'])
 
     # Get addon information
     if jar_name.endswith(".jar"):
@@ -510,7 +506,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
     except TypeError:
         return False
 
-    addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
     destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else constants.server_path(server_properties['name'], addon_folder)
 
     # Make sure the addon_path and destination_path are not the same
@@ -547,10 +543,7 @@ def search_addons(query: str, server_properties):
     }
 
     # Determine which addons to search for
-    if server_properties['type'] in ["craftbukkit", "paper", "spigot"]:
-        server_type = "bukkit"
-    else:
-        server_type = server_properties['type']
+    server_type = constants.server_type(server_properties['type'])
 
 
     # If server_type is bukkit
@@ -881,10 +874,7 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
 
     # Force type
     if force_type:
-        if force_type.lower() in ['craftbukkit', 'spigot', 'paper']:
-            new_type = 'bukkit'
-        else:
-            new_type = force_type.lower()
+        new_type = constants.server_type(force_type)
     else:
         new_type = addon.type
 
@@ -941,7 +931,7 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
     if not addon.download_url:
         return False
 
-    addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
     destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(constants.server_path(server_properties['name']), addon_folder)
 
     # Download addon to "destination_path + file_name"
@@ -997,7 +987,7 @@ def enumerate_addons(server_properties, single_list=False):
         return {'enabled': [], 'disabled': []}
 
     # Define folder paths based on server info
-    addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
     disabled_addon_folder = str("disabled-" + addon_folder)
     addon_folder = constants.server_path(server_properties['name'], addon_folder)
     disabled_addon_folder = constants.server_path(server_properties['name'], disabled_addon_folder)
@@ -1037,7 +1027,7 @@ def enumerate_addons(server_properties, single_list=False):
 def addon_state(addon: AddonFileObject, server_properties, enabled=True):
 
     # Define folder paths based on server info
-    addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
     disabled_addon_folder = str("disabled-" + addon_folder)
     addon_folder = os.path.join(constants.server_path(server_properties['name']), addon_folder)
     disabled_addon_folder = os.path.join(constants.server_path(server_properties['name']), disabled_addon_folder)
@@ -1102,11 +1092,11 @@ def dump_config(server_name: str):
 
 # Returns chat reporting addon if it can be found
 def disable_report_addon(server_properties):
-    server_type = server_properties['type'].replace('craft','')
+    server_type = server_properties['type'].replace('craft','').replace('purpur', 'paper')
 
     item = None
 
-    if server_type in ['spigot', 'bukkit', 'paper']:
+    if constants.server_type(server_type) == 'bukkit':
         url = "https://modrinth.com/mod/freedomchat"
 
         # Find addon information
@@ -1130,10 +1120,7 @@ def disable_report_addon(server_properties):
 
 
     if item:
-        if server_properties['type'] in ["craftbukkit", "paper", "spigot"]:
-            server_type = "bukkit"
-        else:
-            server_type = server_properties['type']
+        server_type = constants.server_type(server_properties['type'])
 
         name = html.find('h1', class_='title').get_text()
         author = [x.div.p.text for x in html.find_all('a', class_='team-member') if 'owner' in x.get_text().lower()][0]
@@ -1152,7 +1139,7 @@ def geyser_addons(server_properties):
     final_list = []
 
     # Make AddonWebObjects for dependencies
-    if server_properties['type'] in ['spigot', 'paper']:
+    if server_properties['type'] in ['spigot', 'paper', 'purpur']:
 
         # Geyser bukkit
         url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot'

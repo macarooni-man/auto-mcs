@@ -85,6 +85,7 @@ latestMC = {
     "vanilla": "0.0.0",
     "forge": "0.0.0",
     "paper": "0.0.0",
+    "purpur": "0.0.0",
     "spigot": "0.0.0",
     "craftbukkit": "0.0.0",
     "fabric": "0.0.0",
@@ -92,6 +93,7 @@ latestMC = {
     "builds": {
         "forge": "0",
         "paper": "0",
+        "purpur": "0"
     }
 }
 
@@ -1232,16 +1234,29 @@ def find_latest_mc():
         elif name == "paper":
             # Paper
             reqs = requests.get(url, timeout=timeout)
-            soup = BeautifulSoup(reqs.text, 'html.parser')
 
             jsonObject = json.loads(reqs.text)
             version = jsonObject['versions'][-1]
             latestMC["paper"] = version
 
-            build_url = f"https://papermc.io/api/v2/projects/paper/versions/{version}"
+            build_url = f"{url}/versions/{version}"
             reqs = requests.get(build_url)
             jsonObject = json.loads(reqs.text)
             latestMC["builds"]["paper"] = jsonObject['builds'][-1]
+
+
+        elif name == "purpur":
+            # Purpur
+            reqs = requests.get(url, timeout=timeout)
+
+            jsonObject = json.loads(reqs.text)
+            version = jsonObject['versions'][-1]
+            latestMC["purpur"] = version
+
+            build_url = f"{url}/{version}"
+            reqs = requests.get(build_url)
+            jsonObject = json.loads(reqs.text)
+            latestMC["builds"]["purpur"] = jsonObject['builds']['latest']
 
 
         elif name == "spigot":
@@ -1300,7 +1315,8 @@ def find_latest_mc():
     version_links = {
         "vanilla": "https://mcversions.net/index.html",
         "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/index.html",
-        "paper": "https://papermc.io/api/v2/projects/paper/",
+        "paper": "https://papermc.io/api/v2/projects/paper",
+        "purpur": "https://api.purpurmc.org/v2/purpur",
         "spigot": "https://getbukkit.org/download/spigot",
         "craftbukkit": "https://getbukkit.org/download/craftbukkit",
         "fabric": "https://fabricmc.net/use/server/"
@@ -1619,6 +1635,22 @@ def validate_version(server_info: dict):
                         url = ""
 
 
+            elif str.lower(mcType) == "purpur":
+
+                # Workaround to prevent downloading Java 16 as well
+                if mcVer != "1.17":
+
+                    try:
+                        paper_url = f"https://api.purpurmc.org/v2/purpur/{mcVer}"
+                        reqs = requests.get(paper_url)
+                        jsonObject = json.loads(reqs.text)
+                        buildNum = jsonObject['builds']['latest']
+
+                        url = f"https://api.purpurmc.org/v2/purpur/{mcVer}/{buildNum}/download"
+                    except:
+                        url = ""
+
+
             elif str.lower(mcType) == "forge":
                 print(modifiedVersion)
                 # 1.16.3 is unavailable due to issues with Java
@@ -1756,7 +1788,7 @@ def search_version(server_info: dict):
         server_info['version'] = latestMC[server_info['type']]
 
         # Set build info
-        if server_info['type'] in ["forge", "paper"]:
+        if server_info['type'] in ["forge", "paper", "purpur"]:
             server_info['build'] = latestMC['builds'][server_info['type']]
 
     return validate_version(server_info)
@@ -2030,7 +2062,7 @@ def iter_addons(progress_func=None, update=False):
     if new_server_info['server_settings']['geyser_support']:
 
         # Add vault for permissions
-        if new_server_info['type'] in ['craftbukkit', 'spigot', 'paper']:
+        if server_type(new_server_info['type']) == 'bukkit':
             vault = addons.find_addon('vault', new_server_info)
             if vault:
                 if vault not in all_addons:
@@ -2054,7 +2086,7 @@ def iter_addons(progress_func=None, update=False):
     if addon_count == 0:
         return True
 
-    addon_folder = "plugins" if new_server_info['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+    addon_folder = "plugins" if server_type(new_server_info['type']) == 'bukkit' else 'mods'
     folder_check(os.path.join(tmpsvr, addon_folder))
     folder_check(os.path.join(tmpsvr, "disabled-" + addon_folder))
 
@@ -2073,7 +2105,7 @@ def iter_addons(progress_func=None, update=False):
                     addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
                     downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
                     if not downloaded:
-                        disabled_folder = "plugins" if server_manager.current_server.type in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+                        disabled_folder = "plugins" if server_type(server_manager.current_server.type) == 'bukkit' else 'mods'
                         copy(addon_object.path, os.path.join(tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
 
                     return True
@@ -2509,6 +2541,10 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                         elif "modloader" in output.lower() or "forge" in output.lower() or "fml" in output.lower():
                             import_data['type'] = "forge"
 
+                        # Purpur keywords
+                        elif "purpur" in version_output.lower():
+                            import_data['type'] = "purpur"
+
                         # Paper keywords
                         elif "paperclip" in output.lower():
                             import_data['type'] = "paper"
@@ -2520,7 +2556,6 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                         import_data['build'] = str(json.load(f)['currentVersion'].lower().split('paper-')[1].split(' ')[0].strip())
                                 except:
                                     pass
-
 
                         # Spigot keywords
                         elif "spigot" in output.lower() or "spigot" in version_output.lower():
@@ -2570,7 +2605,7 @@ eula=true"""
                         # Run latest version of java
                         else:
                             # If paper, copy pre-downloaded vanilla .jar files if they exist
-                            if import_data['type'] == "paper":
+                            if import_data['type'] in ["paper", "purpur"]:
                                 copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
                             server = subprocess.Popen(f"\"{java_executable['modern']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar server.jar nogui", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
@@ -2837,6 +2872,14 @@ def init_update():
 
 # ------------------------------------------------ Server Functions ----------------------------------------------------
 
+# Returns general server type from specific type
+def server_type(specific_type: str):
+    if specific_type.lower().strip() in ['craftbukkit', 'bukkit', 'spigot', 'paper', 'purpur']:
+        return 'bukkit'
+    else:
+        return specific_type.lower().strip()
+
+
 # Returns absolute file path of server directories
 def server_path(server_name: str, *args):
     path_name = os.path.join(applicationFolder, 'Servers', server_name, *args)
@@ -3065,7 +3108,7 @@ def generate_run_script(properties, temp_server=False):
         # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
         script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true'
 
-        if version_check(properties['version'], "<", "1.16.5") and properties['type'] == 'paper':
+        if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
             script += ' -DPaper.ignoreJavaVersion=true'
 
         script += ' -jar server.jar nogui'
@@ -3158,7 +3201,7 @@ def make_update_list():
             new_version = latestMC[jarType.lower()]
             current_version = jarVer
 
-            if ((jarType.lower() in ["forge", "paper"]) and (jarBuild != "")) and (new_version == current_version):
+            if ((jarType.lower() in ["forge", "paper", "purpur"]) and (jarBuild != "")) and (new_version == current_version):
                 new_version += " b-" + str(latestMC["builds"][jarType.lower()])
                 current_version += " b-" + str(jarBuild)
 
@@ -3578,7 +3621,7 @@ class SearchManager():
 
             'CreateServer': [
                 ScreenObject('Create Server (Step 1)', 'CreateServerNameScreen', {'Server Name': None}),
-                ScreenObject('Create Server (Step 2)', 'CreateServerTypeScreen', {'Select Vanilla': None, 'Select Paper': None, 'Select Fabric': None, 'Select CraftBukkit': None, 'Select Forge': None, 'Select Spigot': None}),
+                ScreenObject('Create Server (Step 2)', 'CreateServerTypeScreen', {'Select Vanilla': None, 'Select Paper': None, 'Select Purpur': None, 'Select Fabric': None, 'Select CraftBukkit': None, 'Select Forge': None, 'Select Spigot': None}),
                 ScreenObject('Create Server (Step 3)', 'CreateServerVersionScreen', {'Type in version': None}),
                 ScreenObject('Create Server (Step 4)', 'CreateServerWorldScreen', {'Browse for a world': None, 'Type in seed': None, 'Select world type': None}),
                 ScreenObject('Create Server (Step 5)', 'CreateServerNetworkScreen', {'Specify IP/port': None, 'Type in Message Of The Day': None, 'Configure Access Control': 'CreateServerAclScreen'}),

@@ -94,7 +94,7 @@ class ServerObject():
             # Check if Geyser actually exists
             def thread(*a):
                 geyser = 0
-                if constants.version_check(self.version, ">=", "1.13.2") and self.type.lower() in ['spigot', 'paper', 'fabric']:
+                if constants.version_check(self.version, ">=", "1.13.2") and self.type.lower() in ['spigot', 'paper', 'purpur', 'fabric']:
                     while not self.addon:
                         time.sleep(0.2)
                     addon_list = self.addon.return_single_list()
