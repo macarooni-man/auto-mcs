@@ -167,7 +167,8 @@ jobs:
           copy_artifact_path: build-tools/dist
           commands: |
               # Install dependencies
-              find /usr -name "libcrypt*"
+              mkdir -p /usr/lib64/
+              sudo cp -f /usr/lib/aarch64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
               sudo apt update -y
               sudo apt install xvfb fluxbox libasound2 libasound-dev python3-venv python3-dev -y
               export DISPLAY=:0.0
