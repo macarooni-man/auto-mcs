@@ -167,11 +167,9 @@ jobs:
           bind_mount_repository: yes
           commands: |
               # Install dependencies
+              echo deb http://http.us.debian.org/debian/ testing non-free contrib main >> /etc/apt/sources.list
               sudo apt update -y
-              sudo apt install xvfb fluxbox libasound2 libasound-dev software-properties-common python3-launchpadlib -y
-              sudo add-apt-repository ppa:deadsnakes/ppa
-              sudo apt update -y
-              sudo apt install python3.9
+              sudo apt install xvfb fluxbox libasound2 libasound-dev python3.9 python3.9-tk -y
               export DISPLAY=:0.0
               Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
               sleep 1
