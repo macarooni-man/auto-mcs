@@ -170,7 +170,7 @@ jobs:
               mkdir -p /usr/lib64/
               sudo cp -f /usr/lib/aarch64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
               sudo apt update -y
-              sudo apt install xvfb fluxbox libasound2 libasound-dev python3-venv python3-dev -y
+              sudo apt install xvfb fluxbox libasound2 libasound-dev python3-venv python3-tk python3-dev -y
               export DISPLAY=:0.0
               Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
               sleep 1
@@ -183,6 +183,7 @@ jobs:
               current=$( pwd )
               python3 -m venv ./venv
               . ./venv/bin/activate
+              pip install --upgrade pip
               pip install -r reqs-linux.txt
               python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
               echo Compiling auto-mcs
