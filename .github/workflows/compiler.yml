@@ -156,7 +156,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
+          
+      - name: Create artifact directory
+        run: |
+          mkdir build-tools/dist
+          
       - name: Configure VM & compile auto-mcs
         uses: pguyot/arm-runner-action@v2
         with:
@@ -164,7 +168,8 @@ jobs:
           cpu_info: cpuinfo/raspberrypi_zero2_w_arm64
           base_image: raspios_lite_arm64:2022-04-04
           image_additional_mb: 4096
-          bind_mount_repository: yes
+          copy_artifact_path: build-tools/dist/*
+          copy_artifact_dest: build-tools/dist
           commands: |
               # Install dependencies
               mkdir -p /usr/lib64/
