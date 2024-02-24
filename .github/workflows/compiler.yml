@@ -168,7 +168,7 @@ jobs:
           commands: |
               # Install dependencies
               sudo apt update -y
-              sudo apt install xvfb fluxbox libasound2 libasound-dev software-properties-common -y
+              sudo apt install xvfb fluxbox libasound2 libasound-dev software-properties-common python3-launchpadlib -y
               sudo add-apt-repository ppa:deadsnakes/ppa
               sudo apt update -y
               sudo apt install python3.9
@@ -179,7 +179,6 @@ jobs:
 
               # Build auto-mcs
               spec_file="auto-mcs.linux.spec"
-              sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
               export DISPLAY=:0.0
               cd build-tools
               current=$( pwd )
