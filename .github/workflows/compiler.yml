@@ -144,3 +144,46 @@ jobs:
           name: auto-mcs-linux
           path: build-tools/dist/
           retention-days: 5
+
+
+
+  linux-arm:
+    name: Linux Build (ARM-64)
+    runs-on: ubuntu-20.04
+    steps:
+    
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Configure VM & compile auto-mcs
+        uses: pguyot/arm-runner-action@v2
+        with:
+          arch: aarch64
+          cpu: cortex-a53
+          base_image: raspios_lite_arm64:latest
+          cpu_info: raspberrypi_zero2_w_arm64_w
+          bind_mount_repository: yes
+          image_additional_mb: 4096
+          commands: |
+              # Install dependencies
+              sudo apt update -y
+              sudo apt install xvfb fluxbox libasound2 libasound-dev -y
+              export DISPLAY=:0.0
+              Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+              sleep 1
+              fluxbox > /dev/null 2>&1 &
+
+              # Build auto-mcs
+              cd build-tools
+              chmod +x build-linux.sh
+              sudo ./build-linux.sh
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: auto-mcs-linux-arm
+          path: build-tools/dist/
+          retention-days: 5
+
