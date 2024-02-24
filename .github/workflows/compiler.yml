@@ -160,11 +160,9 @@ jobs:
       - name: Configure VM & compile auto-mcs
         uses: pguyot/arm-runner-action@v2
         with:
-          arch: aarch64
           cpu: cortex-a53
+          cpu_info: cpuinfo/raspberrypi_zero2_w_arm64
           base_image: raspios_lite_arm64:latest
-          cpu_info: raspberrypi_zero2_w_arm64_w
-          bind_mount_repository: yes
           image_additional_mb: 4096
           commands: |
               # Install dependencies
