@@ -162,7 +162,7 @@ jobs:
         with:
           cpu: cortex-a53
           cpu_info: cpuinfo/raspberrypi_zero2_w_arm64
-          base_image: raspios_lite_arm64:latest
+          base_image: raspbian_lite:2020-02-13
           image_additional_mb: 4096
           bind_mount_repository: yes
           commands: |
