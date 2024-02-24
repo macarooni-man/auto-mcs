@@ -168,7 +168,7 @@ jobs:
           commands: |
               # Install dependencies
               sudo apt update -y
-              sudo apt install xvfb fluxbox libasound2 libasound-dev -y
+              sudo apt install xvfb fluxbox libasound2 libasound-dev git -y
               curl https://pyenv.run | bash
               ~/.pyenv/bin/pyenv install 3.9.18
               export DISPLAY=:0.0
