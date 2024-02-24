@@ -168,8 +168,9 @@ jobs:
           commands: |
               # Install dependencies
               sudo apt update -y
-              sudo apt install xvfb fluxbox libasound2 libasound-dev pyenv -y
-              pyenv install 3.9.18
+              sudo apt install xvfb fluxbox libasound2 libasound-dev -y
+              curl https://pyenv.run | bash
+              ~/.pyenv/bin/pyenv install 3.9.18
               export DISPLAY=:0.0
               Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
               sleep 1
@@ -180,8 +181,8 @@ jobs:
               export DISPLAY=:0.0
               cd build-tools
               current=$( pwd )
-              pyenv virtualenv 3.9.18 venv
-              pyenv activate venv
+              ~/.pyenv/bin/pyenv virtualenv 3.9.18 venv
+              ~/.pyenv/bin/pyenv activate venv
               pip install -r reqs-linux.txt
               python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
               echo Compiling auto-mcs
@@ -193,7 +194,6 @@ jobs:
               cd $current
               rm -rf ../source/$spec_file
               mv -f ../source/dist .
-              deactivate
               if ! [ -f $current/dist/auto-mcs ]; then
                 "[FAIL] Something went wrong during compilation"
                 exit 1
