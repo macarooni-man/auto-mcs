@@ -1870,6 +1870,10 @@ def java_check(progress_func=None):
             "modern": "https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/linux-i586/jre-8u331-linux-x64.tar.gz"
         },
+        'linux-arm64': {
+            "modern": "https://download.oracle.com/java/17/latest/jdk-17_linux-aarch64_bin.tar.gz",
+            "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_281-b09/89d678f2be164786b292527658ca1605/linux-i586/jdk-8u281-linux-aarch64.tar.gz"
+        },
         'macos': {
             "modern": "https://download.oracle.com/java/17/latest/jdk-17_macos-x64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/unix-i586/jre-8u331-macosx-x64.tar.gz"
@@ -1948,6 +1952,14 @@ def java_check(progress_func=None):
                 timer.daemon = True
                 timer.start()  # Checks for potential crash
 
+
+            # Detect if running on ARM
+            if os_name == 'linux' and run_proc('uname -m', True).strip() == 'aarch64':
+                os_download = 'linux-arm64'
+            else:
+                os_download = os_name
+
+
             with ThreadPoolExecutor(max_workers=2) as pool:
 
                 def hook1(a, b, c):
@@ -1960,7 +1972,7 @@ def java_check(progress_func=None):
 
                 pool.map(
                     download_url,
-                    [java_url[os_name]['modern'], java_url[os_name]['legacy']],
+                    [java_url[os_download]['modern'], java_url[os_download]['legacy']],
                     [modern_filename, legacy_filename],
                     [downDir, downDir],
                     [hook1 if progress_func else None, hook2 if progress_func else None]
