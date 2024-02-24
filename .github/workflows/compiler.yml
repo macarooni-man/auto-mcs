@@ -211,7 +211,7 @@ jobs:
       - name: Upload Binary
         uses: actions/upload-artifact@v3
         with:
-          name: auto-mcs-linux-arm
+          name: auto-mcs-linux-arm64
           path: build-tools/dist/
           retention-days: 5
 
