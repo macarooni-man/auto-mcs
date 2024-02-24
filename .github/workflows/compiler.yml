@@ -162,11 +162,12 @@ jobs:
         with:
           cpu: cortex-a53
           cpu_info: cpuinfo/raspberrypi_zero2_w_arm64
-          base_image: raspios_lite_arm64:2022-01-28
+          base_image: raspios_lite_arm64:2022-04-04
           image_additional_mb: 4096
-          bind_mount_repository: yes
+          copy_artifact_path: build-tools/dist
           commands: |
               # Install dependencies
+              sudo sysctl -w net.ipv6.conf.eth0.disable_ipv6=1
               sudo apt update -y
               sudo apt install xvfb fluxbox libasound2 libasound-dev python3-venv python3-dev -y
               export DISPLAY=:0.0
