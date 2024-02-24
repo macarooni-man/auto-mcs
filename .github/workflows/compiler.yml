@@ -148,7 +148,7 @@ jobs:
 
 
   linux-arm:
-    name: Linux Build (ARM-64)
+    name: Linux Build (arm64)
     runs-on: ubuntu-20.04
     steps:
     
@@ -164,13 +164,13 @@ jobs:
           cpu_info: cpuinfo/raspberrypi_zero2_w_arm64
           base_image: raspios_lite_arm64:2022-04-04
           image_additional_mb: 4096
-          copy_artifact_path: build-tools/dist
+          bind_mount_repository: yes
           commands: |
               # Install dependencies
               mkdir -p /usr/lib64/
               sudo cp -f /usr/lib/aarch64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
               sudo apt update -y
-              sudo apt install xvfb fluxbox libasound2 libasound-dev python3-venv python3-tk python3-dev -y
+              sudo apt install xvfb fluxbox libasound2 libasound-dev upx python3-venv python3-tk python3-dev -y
               export DISPLAY=:0.0
               Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
               sleep 1
@@ -183,7 +183,7 @@ jobs:
               current=$( pwd )
               python3 -m venv ./venv
               . ./venv/bin/activate
-              pip install --upgrade pip
+              pip install --upgrade pip setuptools wheel
               pip install -r reqs-linux.txt
               python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
               echo Compiling auto-mcs
@@ -191,7 +191,7 @@ jobs:
               cd $current
               cp $spec_file ../source
               cd ../source
-              pyinstaller $spec_file --upx-dir $current/upx/linux --clean
+              pyinstaller $spec_file --upx-dir $( which upx ) --clean
               cd $current
               rm -rf ../source/$spec_file
               mv -f ../source/dist .
