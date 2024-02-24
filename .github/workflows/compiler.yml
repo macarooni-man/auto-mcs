@@ -168,7 +168,7 @@ jobs:
           commands: |
               # Install dependencies
               sudo apt update -y
-              sudo apt install xvfb fluxbox libasound2 libasound-dev python3-venv -y
+              sudo apt install xvfb fluxbox libasound2 libasound-dev python3-venv python3-dev -y
               export DISPLAY=:0.0
               Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
               sleep 1
