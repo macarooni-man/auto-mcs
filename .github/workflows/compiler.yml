@@ -180,7 +180,7 @@ jobs:
               cd build-tools
               current=$( pwd )
               python3 -m venv ./venv
-              source ./venv/bin/activate
+              . ./venv/bin/activate
               pip install -r reqs-linux.txt
               python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
               echo Compiling auto-mcs
