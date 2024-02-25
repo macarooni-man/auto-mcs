@@ -39,6 +39,7 @@ class ServerObject():
         self.last_modified = os.path.getmtime(self.server_path)
         self.running = False
         self.restart_flag = False
+        self.custom_flags = ''
         self.crash_log = None
         self.max_log_size = 800
         self.run_data = {}
@@ -81,6 +82,11 @@ class ServerObject():
                 self.build = self.config_file.get("general", "serverBuild").lower()
         except:
             pass
+        try:
+            if self.config_file.get("general", "customFlags"):
+                self.custom_flags = self.config_file.get("general", "customFlags").strip()
+        except:
+            self.custom_flags = ''
         try:
             if self.config_file.get("general", "enableNgrok"):
                 self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
@@ -204,6 +210,11 @@ class ServerObject():
                 self.build = self.config_file.get("general", "serverBuild").lower()
         except:
             pass
+        try:
+            if self.config_file.get("general", "customFlags"):
+                self.custom_flags = self.config_file.get("general", "customFlags").strip()
+        except:
+            self.custom_flags = ''
         try:
             if self.config_file.get("general", "enableNgrok"):
                 self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
@@ -721,7 +732,7 @@ class ServerObject():
             if self.auto_update == 'true' and constants.app_online:
                 self.auto_update_func()
 
-            script_path = constants.generate_run_script(self.properties_dict())
+            script_path = constants.generate_run_script(self.properties_dict(), self.custom_flags)
 
             if not self.restart_flag:
                 self.run_data['launch-time'] = None
@@ -1217,6 +1228,13 @@ class ServerObject():
 
         return enabled
 
+    # Updates custom flags
+    def update_flags(self, flags):
+        self.config_file = constants.server_config(self.name)
+        self.config_file.set("general", "customFlags", flags.strip())
+        self.custom_flags = flags.strip()
+        constants.server_config(self.name, self.config_file)
+
     # Renames server
     def rename(self, new_name: str):
         if not self.running:
@@ -1274,7 +1292,7 @@ class ServerObject():
 
     # Checks modified advanced settings to check for a restart
     def __get_advanced_hash__(self):
-        return str(str(self.properties_hash) + str(self.ngrok_enabled).lower()[0] + str(self.geyser_enabled).lower()[0] + str(self.dedicated_ram)).strip()
+        return str(str(self.custom_flags) + str(self.properties_hash) + str(self.ngrok_enabled).lower()[0] + str(self.geyser_enabled).lower()[0] + str(self.dedicated_ram)).strip()
 
 
     # Attempts to automatically update the server

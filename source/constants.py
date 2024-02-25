@@ -945,7 +945,6 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
 
                     # Move data to root, and delete the sub-folder
                     for f in glob(os.path.join(target, '*')):
-                        print(f, os.path.join(export_path, os.path.basename(f)))
                         move(f, os.path.join(export_path, os.path.basename(f)))
 
                     safe_delete(target)
@@ -3115,7 +3114,7 @@ def calculate_ram(properties):
 
 
 # Generates server batch/shell script
-def generate_run_script(properties, temp_server=False):
+def generate_run_script(properties, temp_server=False, custom_flags=None):
 
     # Change directory to server path
     cwd = os.path.abspath(os.curdir)
@@ -3129,8 +3128,12 @@ def generate_run_script(properties, temp_server=False):
 
     script = ""
     ram = calculate_ram(properties)
-    start_flags = '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true -Dlog4j2.formatMsgNoLookups=true'
 
+    # Use custom flags, or Aikar's flags if none are provided
+    if not custom_flags:
+        start_flags = '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
+    else:
+        start_flags = custom_flags
 
     # For every version except Forge
     if properties['type'] != 'forge':

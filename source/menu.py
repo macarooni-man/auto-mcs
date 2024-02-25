@@ -2269,7 +2269,7 @@ class ServerPortInput(CreateServerPortInput):
 
 
 
-class ServerMOTDInput(BaseInput):
+class CreateServerMOTDInput(BaseInput):
 
     def on_enter(self, value):
 
@@ -2317,6 +2317,54 @@ class ServerMOTDInput(BaseInput):
 
             # Add name to current config
             constants.new_server_info['server_settings']['motd'] = (self.text + s).strip() if self.text + s else "A Minecraft Server"
+
+            return super().insert_text(s, from_undo=from_undo)
+
+class ServerMOTDInput(BaseInput):
+
+    def update_text(self, text):
+        print(text, self.server_obj.server_properties['motd'])
+        if text != self.server_obj.server_properties['motd'] and text:
+            self.server_obj.server_properties['motd'] = text
+            self.server_obj.properties_hash = self.server_obj.__get_properties_hash__()
+            screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
+            constants.server_properties(self.server_obj.name, write_object=self.server_obj.server_properties)
+            self.server_obj.reload_config()
+
+    def on_enter(self, value):
+        self.update_text((self.text).strip() if self.text else "A Minecraft Server")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.server_obj = constants.server_manager.current_server
+        self.size_hint_max = (528, 54)
+        self.title_text = "MOTD"
+        self.hint_text = "enter a message of the day..."
+        self.text = self.server_obj.server_properties['motd'] if self.server_obj.server_properties['motd'] != "A Minecraft Server" else ""
+        self.bind(on_text_validate=self.on_enter)
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if keycode[1] == "backspace":
+            # Add name to current config
+            self.update_text((self.text).strip() if self.text else "A Minecraft Server")
+
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 32:
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring)
+
+            # Add name to current config
+            self.update_text((self.text + s).strip() if self.text + s else "A Minecraft Server")
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -2625,6 +2673,108 @@ class NgrokAuthInput(BaseInput):
             self.text = substring
         self.check_next()
 
+
+
+class ServerFlagInput(BaseInput):
+
+    def write_config(self, text):
+        self.server_obj.update_flags(text)
+        screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.server_obj = constants.server_manager.current_server
+        self.size_hint_max = (528, 54)
+        self.title_text = "flags"
+        self.halign = "left"
+        self.padding_x = 25
+        self.hint_text = "enter custom launch flags..."
+
+        if self.server_obj.custom_flags:
+            self.text = self.server_obj.custom_flags
+
+        self.bind(on_text_validate=self.on_enter)
+
+
+    def on_enter(self, value):
+        self.process_text()
+
+
+    def valid_text(self, boolean_value, text):
+        for child in self.parent.children:
+            try:
+                if child.id == "InputLabel":
+
+                # Valid input
+                    if boolean_value:
+                        child.clear_text()
+                        child.disable_text(False)
+
+                # Invalid input
+                    else:
+                        child.update_text(self.stinky_text)
+                        child.disable_text(True)
+                    break
+
+            except AttributeError:
+                pass
+
+
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+        super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        if keycode[1] == "backspace":
+            self.process_text()
+
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and not substring.startswith('-'):
+            substring = ""
+
+        elif len(self.text) < 5000:
+            if '\n' in substring:
+                substring = ' '.join(substring.splitlines())
+            if len(substring) > 2:
+                substring = substring.strip()
+            s = substring
+
+            # Add name to current config
+            def process(*a):
+                self.process_text(text=(self.text))
+            Clock.schedule_once(process, 0)
+
+            return super().insert_text(s, from_undo=from_undo)
+
+
+    def process_text(self, text=''):
+
+        typed_info = (text if text else self.text).strip()
+
+        # Input validation
+        flag_check = all([f.strip().startswith('-') for f in typed_info.split(' ')])
+        space_check = re.search(r'(-\s|\w-|\d-| \s+|-+$)', typed_info, re.IGNORECASE)
+        memory_check = re.search(r'-xm(x|s)\d+(b|k|m|g|t)', typed_info, re.IGNORECASE)
+        self.stinky_text = ''
+
+        if typed_info:
+
+            if space_check or not flag_check:
+                self.stinky_text = 'Invalid formatting'
+
+            elif memory_check:
+                self.stinky_text = '   Configure memory above'
+
+            else:
+                self.write_config(typed_info.strip())
+
+        else:
+            self.write_config('')
+
+
+        self.valid(not self.stinky_text)
 
 
 
@@ -6169,6 +6319,14 @@ class PopupSearch(RelativeLayout):
                     constants.new_server_init()
                     screen_manager.current = self.search_obj.target
 
+                # Migrate server
+                elif self.search_obj.title.lower() == "change 'server.jar'":
+                    server_obj = constants.server_manager.current_server
+                    constants.new_server_init()
+                    constants.new_server_info['type'] = server_obj.type
+                    constants.new_server_info['version'] = server_obj.version
+                    screen_manager.current = self.search_obj.target
+
                 # Transilience settings
                 elif self.search_obj.title.lower() == 'rename this server':
                     screen_manager.current = self.search_obj.target
@@ -8476,7 +8634,7 @@ class CreateServerNetworkScreen(MenuBackground):
         float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.685}))
         float_layout.add_widget(HeaderText("Do you wish to configure network information?", '', (0, 0.8)))
         float_layout.add_widget(CreateServerPortInput(pos_hint={"center_x": 0.5, "center_y": 0.62}, text=process_ip_text()))
-        float_layout.add_widget(ServerMOTDInput(pos_hint={"center_x": 0.5, "center_y": 0.515}))
+        float_layout.add_widget(CreateServerMOTDInput(pos_hint={"center_x": 0.5, "center_y": 0.515}))
         float_layout.add_widget(main_button('Access Control Manager', (0.5, 0.4), 'shield-half-small.png', width=531))
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen'))
         buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
@@ -19763,22 +19921,7 @@ class ServerSettingsScreen(MenuBackground):
         pgh_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
 
         # Create and add paragraphs to GridLayout
-        def create_paragraph(name, layout, cid):
-
-            # Dirty fix to anchor paragraphs to the top
-            def repos(p, s, *args):
-                if scroll_layout.cols == 2:
-                    if s.height != scroll_layout._rows[cid]:
-                        p.y = scroll_layout._rows[cid] - s.height
-
-                    if cid == 0:
-                        for child in scroll_layout.children:
-                            if child != s and child.x == s.x:
-                                p2 = child.children[0]
-                                p2.y = p.y
-                                break
-                else:
-                    p.y = 0
+        def create_paragraph(name, layout, cid, center_y):
 
             sub_layout = ScrollItem()
             content_size = sp(22)
@@ -19786,12 +19929,9 @@ class ServerSettingsScreen(MenuBackground):
             paragraph = paragraph_object(size=(530, content_height), name=name, content=' ', font_size=content_size, font=pgh_font)
             sub_layout.height = paragraph.height + 80
 
-            sub_layout.bind(pos=functools.partial(repos, paragraph, sub_layout, cid))
-            sub_layout.bind(size=functools.partial(repos, paragraph, sub_layout, cid))
-
             sub_layout.add_widget(paragraph)
             sub_layout.add_widget(layout)
-            layout.pos_hint = {'center_x': 0.5, 'center_y': 0.555}
+            layout.pos_hint = {'center_x': 0.5, 'center_y': center_y}
             scroll_layout.add_widget(sub_layout)
 
 
@@ -19835,7 +19975,16 @@ class ServerSettingsScreen(MenuBackground):
         general_layout.add_widget(sub_layout)
 
 
-        create_paragraph('general', general_layout, 0)
+        # JVM flags
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.1}))
+        flag_input = ServerFlagInput(pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        flag_input.size_hint_max_x = 435
+        sub_layout.add_widget(flag_input)
+        general_layout.add_widget(sub_layout)
+
+
+        create_paragraph('general', general_layout, 0, 0.65)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -19845,9 +19994,18 @@ class ServerSettingsScreen(MenuBackground):
 
         network_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
-        # Edit IP/Port input
+        # MOTD Input
         sub_layout = ScrollItem()
         sub_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.2}))
+        motd_input = ServerMOTDInput(pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        motd_input.size_hint_max_x = 435
+        sub_layout.add_widget(motd_input)
+        network_layout.add_widget(sub_layout)
+
+
+        # Edit IP/Port input
+        sub_layout = ScrollItem()
+        sub_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.1}))
         port_input = ServerPortInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=process_ip_text(server_obj=server_obj))
         port_input.size_hint_max_x = 435
         sub_layout.add_widget(port_input)
@@ -19962,7 +20120,7 @@ class ServerSettingsScreen(MenuBackground):
         network_layout.add_widget(sub_layout)
 
 
-        create_paragraph('network', network_layout, 1)
+        create_paragraph('network', network_layout, 1, 0.65)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -20032,6 +20190,7 @@ class ServerSettingsScreen(MenuBackground):
         def migrate_server(*a):
             constants.new_server_init()
             constants.new_server_info['type'] = server_obj.type
+            constants.new_server_info['version'] = server_obj.version
             screen_manager.current = 'MigrateServerTypeScreen'
 
         sub_layout = ScrollItem()
@@ -20039,7 +20198,7 @@ class ServerSettingsScreen(MenuBackground):
         update_layout.add_widget(sub_layout)
 
 
-        create_paragraph('updates', update_layout, 0)
+        create_paragraph('updates', update_layout, 0, 0.555)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -20143,7 +20302,7 @@ class ServerSettingsScreen(MenuBackground):
         transilience_layout.add_widget(sub_layout)
 
 
-        create_paragraph('transilience', transilience_layout, 0)
+        create_paragraph('transilience', transilience_layout, 0, 0.555)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -20638,11 +20797,10 @@ class MainApp(App):
 
         # Screen manager override for testing
         # if not constants.app_compiled:
-            # def open_menu(*a):
-            #     constants.new_server_init()
-            #     constants.new_server_info['name'] = 'testE'
-            #     screen_manager.current = 'CreateServerTypeScreen'
-            # Clock.schedule_once(open_menu, 0)
+        #     open_server('Purpur Test')
+        #     def open_menu(*a):
+        #         screen_manager.current = 'ServerSettingsScreen'
+        #     Clock.schedule_once(open_menu, 2)
             # def open_menu(*args):
             #     open_server("acl test", launch=False)
             #     # def show_notif(*args):
