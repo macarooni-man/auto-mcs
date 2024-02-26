@@ -732,7 +732,7 @@ class ServerObject():
             if self.auto_update == 'true' and constants.app_online:
                 self.auto_update_func()
 
-            script_path = constants.generate_run_script(self.properties_dict(), self.custom_flags)
+            script_path = constants.generate_run_script(self.properties_dict(), custom_flags=self.custom_flags)
 
             if not self.restart_flag:
                 self.run_data['launch-time'] = None
@@ -746,6 +746,11 @@ class ServerObject():
                 self.run_data['command-history'] = []
             else:
                 self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
+
+            if self.custom_flags:
+                self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Using launch flags: '{self.custom_flags}'", (0.7, 0.7, 0.7, 1))})
+                # Prevent bugs when closing immediately due to bad flags
+                time.sleep(1)
 
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
 
@@ -1019,21 +1024,26 @@ class ServerObject():
 
 
             # Initialize ScriptObject
-            self.script_object = amscript.ScriptObject(self)
+            try:
+                self.script_object = amscript.ScriptObject(self)
 
-            # Fire server start event
-            if self.script_object.enabled:
-                self.script_object.construct()
-                self.script_object.start_event({'date': dt.now()})
+                # Fire server start event
+                if self.script_object.enabled:
+                    self.script_object.construct()
+                    self.script_object.start_event({'date': dt.now()})
 
 
-            # If start-cmd.tmp exists, run every command in file
-            cmd_tmp = constants.server_path(self.name, constants.command_tmp)
-            if cmd_tmp:
-                with open(cmd_tmp, 'r') as f:
-                    for cmd in f.readlines():
-                        self.send_command(cmd.strip(), add_to_history=False, log_cmd=False)
-                os.remove(cmd_tmp)
+                # If start-cmd.tmp exists, run every command in file
+                cmd_tmp = constants.server_path(self.name, constants.command_tmp)
+                if cmd_tmp:
+                    with open(cmd_tmp, 'r') as f:
+                        for cmd in f.readlines():
+                            self.send_command(cmd.strip(), add_to_history=False, log_cmd=False)
+                    os.remove(cmd_tmp)
+
+            # Server closed prematurely
+            except AttributeError:
+                pass
 
             self.restart_flag = False
         return self.run_data
@@ -1060,17 +1070,21 @@ class ServerObject():
 
 
         # Fire server stop event
-        if self.script_object.enabled:
+        try:
+            if self.script_object.enabled:
 
-            crash_data = ''
-            if self.crash_log:
-                with open(self.crash_log, 'r') as f:
-                    crash_data = f.read()
+                crash_data = ''
+                if self.crash_log:
+                    with open(self.crash_log, 'r') as f:
+                        crash_data = f.read()
 
-            self.script_object.shutdown_event({'date': dt.now(), 'crash': crash_data})
-            self.script_object.deconstruct()
-        del self.script_object
-        self.script_object = None
+                self.script_object.shutdown_event({'date': dt.now(), 'crash': crash_data})
+                self.script_object.deconstruct()
+            del self.script_object
+            self.script_object = None
+
+        except AttributeError:
+            pass
 
 
         # Add and delete temp file to update last modified time of server directory

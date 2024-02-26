@@ -2803,6 +2803,248 @@ eula=true"""
             return True
 
 
+# Imports a modpack from a .zip file
+def import_modpack(file_path: str):
+    global import_data
+
+    # Test archive first
+    if not os.path.isfile(file_path) or file_path.split('.')[-1] not in ['zip', 'gz', 'tgz']:
+        return False
+
+    # Set up directory structures and extract the modpack
+    cwd = os.path.abspath(os.curdir)
+    folder_check(tmpsvr)
+    os.chdir(tmpsvr)
+
+    test_server = os.path.join(tempDir, 'modpack')
+    folder_check(test_server)
+    os.chdir(test_server)
+
+    extract_archive(file_path, test_server)
+
+
+    # Check if root is a folder instead of files
+    folder_list = [d for d in glob(os.path.join(test_server, '*')) if os.path.isdir(d)]
+    file_list = [f for f in glob(os.path.join(test_server, '*')) if os.path.isdir(f)]
+    if len(folder_list) == 1 and len(file_list) <= 1:
+
+        # Move data to root, and delete the sub-folder
+        for f in glob(os.path.join(folder_list[0], '*')):
+            move(f, os.path.join(test_server, os.path.basename(f)))
+        safe_delete(folder_list[0])
+
+
+    data = {
+        'name': None,
+        'version': None,
+        'build': None,
+        'launch_flags': []
+    }
+
+    # Clean-up name
+    def process_name(name):
+
+        # First, sanitize the name of encoded data and irrelevant characters
+        name = name.encode('ascii').decode('unicode_escape')
+        name = re.sub(r'§\S', '', name).replace('\\', '')
+        name = re.sub(r'v?\d+(\.?\d+)+', '', name)
+        name = re.sub('[^a-zA-Z0-9 .]', '', name).strip()
+        name = re.sub(r'\s+',' ', name)
+
+        # Filter words in the title
+        articles = ('a', 'an', 'the', 'and', 'of', 'with', 'in', 'for')
+        name = ' '.join([w for w in name.split(' ') if (w[0].isupper() or w[0].isdigit() or w in articles)]).strip()
+
+        data['name'] = name
+
+    # Clean-up launch flags
+    def process_flags(flags):
+        if (flags.startswith('"') and flags.endswith('"')) or (flags.startswith("'") and flags.endswith("'")):
+            flags = flags[1:-1]
+
+        for flag in flags.split(' '):
+
+            # Clean up flags
+            for qt in ['"', "'"]:
+                if flag.startswith(qt):
+                    flag = flag[1:]
+                if flag.endswith(qt):
+                    flag = flag[:-1]
+
+            # Ignore flags with invalid data
+            if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
+                continue
+            for exclude in ['-install', '-server', '-jar', '--nogui', '-Command', '-fullversion', '-version']:
+                if exclude in flag:
+                    break
+
+            else:
+                # Add flag to final data
+                if flag.strip() not in data['launch_flags'] and flag.strip():
+                    data['launch_flags'].append(flag.strip())
+
+
+
+    # Approach #1: inspect "variables.txt"
+    if os.path.exists('variables.txt'):
+        with open('variables.txt', 'r') as f:
+            variables = {}
+            for line in f.readlines():
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    variables[key.lower()] = value.replace('\n','')
+            data['version'] = variables['minecraft_version'].strip()
+            data['build'] = variables['modloader_version'].strip()
+            data['type'] = variables['modloader'].lower().strip()
+            process_flags(variables['java_args'])
+
+    # Approach #2: inspect launch scripts and server.jar
+    if not data['version'] or not data['type']:
+
+        # Generate script list and iterate through each one
+        script_list = glob(os.path.join(str(test_server), "*.bat"))
+        script_list.extend(glob(os.path.join(str(test_server), "*.sh")))
+        jar_exists_name_fail = False
+
+        # First, search through all the scripts to find the type, version, and launch flags
+        for file in script_list:
+
+            # Find server jar name
+            with open(file, 'r') as f:
+                output = f.read()
+                f.close()
+
+                # Reformat variables set in config files (Forge)
+                for match in re.findall(r'forge.*\.jar', output):
+                    if '$' in match or '%' in match:
+                        jar_exists_name_fail = True
+                        continue
+
+                    split_match = match.split('-')
+                    if len(split_match) >= 3:
+                        jar_exists_name_fail = False
+                        data['version'] = split_match[1]
+                        data['type'] = 'forge'
+                        data['build'] = split_match[2].replace('.jar','')
+                        break
+
+                # Reformat variables set in config files (Fabric)
+                for match in re.findall(r'fabric.*\.jar', output):
+                    if '$' in match or '%' in match:
+                        jar_exists_name_fail = True
+                        continue
+
+                    split_match = match.split('-')
+                    if len(split_match) >= 3:
+                        jar_exists_name_fail = False
+                        data['version'] = split_match[2].replace('mc.','')
+                        data['type'] = 'fabric'
+                        data['build'] = split_match[3].replace('loader.','')
+                        break
+
+                # Gather launch flags
+                for match in re.findall(r'(?<= |=)--?\S+', output):
+                    process_flags(match)
+
+
+        # If a file exists but the name could not be determined, look for it manually
+        if jar_exists_name_fail:
+
+            # Reformat variables set in config files (Forge)
+            for match in glob(os.path.join(test_server, 'forge-*.jar')):
+                split_match = os.path.basename(match).split('-')
+                if len(split_match) >= 3:
+                    data['version'] = split_match[1]
+                    data['type'] = 'forge'
+                    data['build'] = split_match[2].replace('.jar', '')
+                    break
+
+            # Reformat variables set in config files (Fabric)
+            for match in glob(os.path.join(test_server, 'fabric-*.jar')):
+                split_match = os.path.basename(match).split('-')
+                if len(split_match) >= 3:
+                    data['version'] = split_match[2].replace('mc.', '')
+                    data['type'] = 'fabric'
+                    data['build'] = split_match[3].replace('loader.', '')
+                    break
+
+    # Approach #3: inspect server files
+    if not data['version'] or not data['type']:
+
+        # Generate script list and iterate through each one
+        text_list = glob(os.path.join(test_server, "*.txt"))
+        if os.path.exists(os.path.join(test_server, 'scripts')):
+            file_list = glob(os.path.join(test_server, "scripts", "*.*"))
+        if os.path.exists(os.path.join(test_server, 'config')):
+            file_list.extend(glob(os.path.join(test_server, "config", "*.*")))
+
+        matches = {
+            'forge': 0,
+            'fabric': 0,
+            'versions': []
+        }
+
+        def process_matches(content):
+            matches['forge'] += len(re.findall(r'\bforge\b', content, re.IGNORECASE))
+            matches['fabric'] += len(re.findall(r'\bfabric\b', content, re.IGNORECASE))
+            matches['versions'].extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
+
+        # First, search through all the files to find the type, version, and launch flags
+        for file in text_list:
+
+            # Find server jar name
+            with open(file, 'r') as f:
+                output = f.read()
+                f.close()
+                process_matches(output)
+                process_matches(os.path.basename(file))
+
+        process_matches(os.path.basename(file_path))
+
+        # Second, search through all the mod names to more accurately determine the MC version
+        if os.path.exists(os.path.join(test_server, 'mods')):
+            for mod in glob(os.path.join(test_server, "mods", "*.jar")):
+                process_matches(os.path.basename(mod))
+
+        data['type'] = 'fabric' if matches['fabric'] > matches['forge'] else 'forge'
+        if matches['versions']:
+            data['version'] = max(set(matches['versions']), key=matches['versions'].count)
+
+
+    # Get the modpack name
+    if not data['name']:
+
+        # Get the name from "server.properties"
+        if os.path.isfile('server.properties'):
+            with open('server.properties', 'r') as f:
+                for line in f.readlines():
+                    if line.lower().startswith('motd='):
+                        line = line.split('motd=', 1)[1]
+                        process_name(line)
+                        break
+
+        # Get the name from the file if not declared in the "server.properties"
+        if not data['name'] or data['name'].lower() == 'a minecraft server':
+            name = os.path.basename(file_path).rsplit('.',1)[0]
+            name = re.sub(r'(?<=\S)-(?=\S)', ' ', name)
+            if 'server' in name.lower():
+                name = name.split('server')[0].strip()
+            process_name(name)
+
+    # Look in alternate locations for launch flags
+    for file in glob(os.path.join(test_server, '*.*')):
+        for key in ['jvm', 'args', 'arguments', 'param']:
+            if key in os.path.basename(file):
+                with open(file, 'r') as f:
+                    text = f.read()
+                    for match in re.findall(r'(?<= |=|\n)--?\S+', text):
+                        process_flags(match)
+                    break
+
+
+    return data
+
+
 # Moves tmpsvr to actual server and checks for ACL and other file validity
 def finalize_import(progress_func=None, *args):
 
@@ -3114,7 +3356,7 @@ def calculate_ram(properties):
 
 
 # Generates server batch/shell script
-def generate_run_script(properties, temp_server=False, custom_flags=None):
+def generate_run_script(properties, temp_server=False, custom_flags=None, no_flags=False):
 
     # Change directory to server path
     cwd = os.path.abspath(os.curdir)
@@ -3130,10 +3372,13 @@ def generate_run_script(properties, temp_server=False, custom_flags=None):
     ram = calculate_ram(properties)
 
     # Use custom flags, or Aikar's flags if none are provided
-    if not custom_flags:
+    if no_flags:
+        start_flags = ''
+    elif not custom_flags:
         start_flags = '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
     else:
         start_flags = custom_flags
+
 
     # For every version except Forge
     if properties['type'] != 'forge':
@@ -3142,10 +3387,14 @@ def generate_run_script(properties, temp_server=False, custom_flags=None):
         java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['modern']
 
         # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
-        script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true'
+        script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
 
         if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
             script += ' -DPaper.ignoreJavaVersion=true'
+
+        # Improve performance on Purpur
+        if properties['type'] == 'purpur':
+            script += ' --add-modules=jdk.incubator.vector'
 
         script += ' -jar server.jar nogui'
 
@@ -3687,7 +3936,7 @@ class SearchManager():
                 ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
                 ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}, ['mod', 'plugin', 'addon', 'extension']),
                 ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}, ['amscript', 'script', 'ide', 'develop']),
-                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Specify IP/port': None, 'Enable proxy (ngrok)': None, 'Install proxy (ngrok)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'update'])
+                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (ngrok)': None, 'Install proxy (ngrok)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'update', 'jvm', 'motd'])
             ]
         }
 

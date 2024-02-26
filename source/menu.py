@@ -2681,6 +2681,7 @@ class ServerFlagInput(BaseInput):
         self.server_obj.update_flags(text)
         screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
 
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -2755,7 +2756,7 @@ class ServerFlagInput(BaseInput):
 
         # Input validation
         flag_check = all([f.strip().startswith('-') for f in typed_info.split(' ')])
-        space_check = re.search(r'(-\s|\w-|\d-| \s+|-+$)', typed_info, re.IGNORECASE)
+        space_check = re.search(r'(-\s|\w-\s|\d-| \s+|-+$)', typed_info, re.IGNORECASE)
         memory_check = re.search(r'-xm(x|s)\d+(b|k|m|g|t)', typed_info, re.IGNORECASE)
         self.stinky_text = ''
 
@@ -12157,18 +12158,8 @@ class ServerButton(HoverButton):
         Clock.schedule_once(next_frame, 0)
 
     def update_subtitle(self, run_data=None, last_modified=None):
-        if run_data:
-            self.running = True
-            self.subtitle.copyable = True
-            self.subtitle.color = self.run_color
-            self.subtitle.default_opacity = 0.8
-            self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-            if 'ngrok' in run_data['network']['address']['ip'].lower():
-                text = run_data['network']['address']['ip']
-            else:
-                text = ':'.join(run_data['network']['address'].values())
-            self.subtitle.text = f"Running  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
-        else:
+
+        def reset(*a):
             self.running = False
             self.subtitle.copyable = False
             if last_modified:
@@ -12177,6 +12168,24 @@ class ServerButton(HoverButton):
             self.subtitle.default_opacity = 0.56
             self.subtitle.font_name = self.original_font
             self.subtitle.text = self.original_subtitle
+
+        try:
+            if run_data:
+                self.running = True
+                self.subtitle.copyable = True
+                self.subtitle.color = self.run_color
+                self.subtitle.default_opacity = 0.8
+                self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                if 'ngrok' in run_data['network']['address']['ip'].lower():
+                    text = run_data['network']['address']['ip']
+                else:
+                    text = ':'.join(run_data['network']['address'].values())
+                self.subtitle.text = f"Running  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+            else:
+                reset()
+
+        except KeyError:
+            reset()
 
         self.subtitle.opacity = self.subtitle.default_opacity
 
@@ -13769,18 +13778,22 @@ class ConsolePanel(FloatLayout):
     # Update process to communicate with
     def update_process(self, run_data, *args):
         self.run_data = run_data
-        if self.update_text not in self.run_data['process-hooks']:
-            self.run_data['process-hooks'].append(self.update_text)
+        try:
+            if self.update_text not in self.run_data['process-hooks']:
+                self.run_data['process-hooks'].append(self.update_text)
 
-        if self.reset_panel not in self.run_data['close-hooks']:
-            self.run_data['close-hooks'].append(self.reset_panel)
+            if self.reset_panel not in self.run_data['close-hooks']:
+                self.run_data['close-hooks'].append(self.reset_panel)
 
-        self.update_text(self.run_data['log'])
+            self.update_text(self.run_data['log'])
 
-        def update_scroll(*args):
-            if (self.console_text.height > self.scroll_layout.height - self.console_text.padding[-1]):
-                self.scroll_layout.scroll_y = 0
-        Clock.schedule_once(update_scroll, 0)
+            def update_scroll(*args):
+                if (self.console_text.height > self.scroll_layout.height - self.console_text.padding[-1]):
+                    self.scroll_layout.scroll_y = 0
+            Clock.schedule_once(update_scroll, 0)
+
+        except KeyError:
+            pass
 
 
     # Updates RecycleView text with console text
