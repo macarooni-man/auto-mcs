@@ -29,6 +29,7 @@ import socket
 import time
 import json
 import math
+import yaml
 import sys
 import os
 import re
@@ -979,6 +980,24 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
 
     except Exception as e:
         print(f"Something went wrong extracting '{archive_file}': {e}")
+
+
+# Check if root is a folder instead of files, and move sub-folders to destination
+def move_files_root(source, destination=None):
+    destination = source if not destination else destination
+    folder_list = [d for d in glob(os.path.join(source, '*')) if os.path.isdir(d)]
+    file_list = [f for f in glob(os.path.join(source, '*')) if os.path.isdir(f)]
+    if len(folder_list) == 1 and len(file_list) <= 1:
+
+        # Move data to root, and delete the sub-folder
+        for f in glob(os.path.join(folder_list[0], '*')):
+            move(f, os.path.join(destination, os.path.basename(f)))
+        safe_delete(folder_list[0])
+
+    # If destination is a different path and there is no root folder, move anyway
+    elif source != destination:
+        for f in glob(os.path.join(source, '*')):
+            move(f, os.path.join(destination, os.path.basename(f)))
 
 
 # Download file from URL to directory
@@ -2816,26 +2835,16 @@ def import_modpack(file_path: str):
     folder_check(tmpsvr)
     os.chdir(tmpsvr)
 
-    test_server = os.path.join(tempDir, 'modpack')
+    test_server = os.path.join(tempDir, 'importtest')
     folder_check(test_server)
     os.chdir(test_server)
 
     extract_archive(file_path, test_server)
-
-
-    # Check if root is a folder instead of files
-    folder_list = [d for d in glob(os.path.join(test_server, '*')) if os.path.isdir(d)]
-    file_list = [f for f in glob(os.path.join(test_server, '*')) if os.path.isdir(f)]
-    if len(folder_list) == 1 and len(file_list) <= 1:
-
-        # Move data to root, and delete the sub-folder
-        for f in glob(os.path.join(folder_list[0], '*')):
-            move(f, os.path.join(test_server, os.path.basename(f)))
-        safe_delete(folder_list[0])
-
+    move_files_root(test_server)
 
     data = {
         'name': None,
+        'type': None,
         'version': None,
         'build': None,
         'launch_flags': []
@@ -2847,7 +2856,7 @@ def import_modpack(file_path: str):
         # First, sanitize the name of encoded data and irrelevant characters
         name = name.encode('ascii').decode('unicode_escape')
         name = re.sub(r'§\S', '', name).replace('\\', '')
-        name = re.sub(r'v?\d+(\.?\d+)+', '', name)
+        name = re.sub(r'v?\d+(\.?\d+)+\w?', '', name)
         name = re.sub('[^a-zA-Z0-9 .]', '', name).strip()
         name = re.sub(r'\s+',' ', name)
 
@@ -2884,10 +2893,86 @@ def import_modpack(file_path: str):
                     data['launch_flags'].append(flag.strip())
 
 
+    # Approach #1: look for "ServerStarter"
+    server_starter = False
+    yaml_list = []
+    for file in glob(os.path.join(test_server, '*.*')):
+        with open(file, 'r', encoding='utf-8', errors='ignore') as f:
+            text_content = f.read()
+            file_name = os.path.basename(file)
+            if 'serverstarter' in text_content.lower() or 'serverstarter' in file_name.lower():
+                server_starter = True
+            if file_name.rsplit('.', 1)[1] in ['yml', 'yaml']:
+                try:
+                    yaml_list.append(text_content)
+                except:
+                    pass
+    if server_starter and yaml_list:
+        for raw_content in yaml_list:
+            content = yaml.safe_load(raw_content)
+            if 'modpack' in content.keys() and '_specver' in content.keys():
+                data['name'] = content['modpack']['name']
+                data['version'] = content['install']['mcVersion']
+                data['build'] = content['install']['loaderVersion']
+                data['launch_flags'] = content['launch']['javaArgs']
+
+                matches = {'forge': 0, 'fabric': 0}
+                matches['forge'] += len(re.findall(r'\bforge\b', raw_content, re.IGNORECASE))
+                matches['fabric'] += len(re.findall(r'\bfabric\b', raw_content, re.IGNORECASE))
+                data['type'] = 'fabric' if matches['fabric'] > matches['forge'] else 'forge'
+
+                # Install additional content if required
+                try:
+                    if content['install']['modpackUrl']:
+                        url = content['install']['modpackUrl']
+                        additional_extract = os.path.join(tempDir, 'additional_extract')
+                        additional = os.path.join(test_server, 'modpack_additional.zip')
+
+                        # Download additional content defined in the .yaml
+                        if cs_download_url(url, os.path.basename(additional), test_server):
+                            folder_check(additional_extract)
+                            extract_archive(additional, additional_extract)
+                            move_files_root(additional_extract, test_server)
+
+                            # Download mods from "manifest.json"
+                            mod_dict = os.path.join(additional_extract, 'manifest.json')
+                            if os.path.isfile(mod_dict):
+                                with open(mod_dict, 'r') as f:
+                                    metadata = json.loads(f.read())
+
+                                    def get_mod_url(mod_data):
+                                        destination = os.path.join(test_server, 'mods')
+                                        mod_name = None
+                                        mod_url = None
+
+                                        # If URL is provided
+                                        try:
+                                            if mod_data['downloadUrl']:
+                                                if mod_data['downloadUrl'].endswith('.jar'):
+                                                    mod_name = sanitize_name(mod_data['downloadUrl'].rsplit('/', 1)[-1])[:-3] + '.jar'
+                                                else:
+                                                    mod_name = mod_data['downloadUrl'].rsplit('/', 1)[-1]
+                                                mod_url = mod_data['downloadUrl']
+                                        except KeyError:
+                                            pass
+
+                                        if mod_name and mod_url:
+                                            return cs_download_url(mod_url, mod_name, destination)
+                                        else:
+                                            return False
+
+                                    # Iterate over additional content to see if it's available to be downloaded
+                                    with ThreadPoolExecutor(max_workers=20) as pool:
+                                        for result in pool.map(get_mod_url, metadata['files']):
+                                            if not result:
+                                                return result
+                except KeyError:
+                    pass
+
 
     # Approach #1: inspect "variables.txt"
     if os.path.exists('variables.txt'):
-        with open('variables.txt', 'r') as f:
+        with open('variables.txt', 'r', encoding='utf-8', errors='ignore') as f:
             variables = {}
             for line in f.readlines():
                 if '=' in line:
@@ -2910,7 +2995,7 @@ def import_modpack(file_path: str):
         for file in script_list:
 
             # Find server jar name
-            with open(file, 'r') as f:
+            with open(file, 'r', encoding='utf-8', errors='ignore') as f:
                 output = f.read()
                 f.close()
 
@@ -2993,7 +3078,7 @@ def import_modpack(file_path: str):
         for file in text_list:
 
             # Find server jar name
-            with open(file, 'r') as f:
+            with open(file, 'r', encoding='utf-8', errors='ignore') as f:
                 output = f.read()
                 f.close()
                 process_matches(output)
@@ -3016,7 +3101,7 @@ def import_modpack(file_path: str):
 
         # Get the name from "server.properties"
         if os.path.isfile('server.properties'):
-            with open('server.properties', 'r') as f:
+            with open('server.properties', 'r', encoding='utf-8', errors='ignore') as f:
                 for line in f.readlines():
                     if line.lower().startswith('motd='):
                         line = line.split('motd=', 1)[1]
@@ -3026,9 +3111,9 @@ def import_modpack(file_path: str):
         # Get the name from the file if not declared in the "server.properties"
         if not data['name'] or data['name'].lower() == 'a minecraft server':
             name = os.path.basename(file_path).rsplit('.',1)[0]
-            name = re.sub(r'(?<=\S)-(?=\S)', ' ', name)
+            name = re.sub(r'(?<=\S)(-|_|\+)(?=\S)', ' ', name)
             if 'server' in name.lower():
-                name = name.split('server')[0].strip()
+                name = name[:len(name.lower().split('server')[0])].strip()
             process_name(name)
 
     # Look in alternate locations for launch flags
