@@ -871,7 +871,7 @@ class ServerObject():
 
                                 # If the log was modified recently, try and scrape error from there
                                 use_error = True
-                                if ((dt.now() - dt.fromtimestamp(os.path.getmtime(log_file))).total_seconds() <= 30):
+                                if os.path.exists(log_file) and ((dt.now() - dt.fromtimestamp(os.path.getmtime(log_file))).total_seconds() <= 30):
 
                                     with open(log_file, 'r') as f:
                                         file = f.read()

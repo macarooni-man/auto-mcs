@@ -68,13 +68,13 @@ from kivy.uix.widget import Widget
 from kivy.animation import Animation
 from kivy.uix.textinput import TextInput
 from kivy.uix.boxlayout import BoxLayout
-from kivy.graphics import Color, Rectangle
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.recycleview import RecycleView
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.relativelayout import RelativeLayout
+from kivy.graphics import Color, Rectangle, Ellipse
 from kivy.input.providers.mouse import MouseMotionEvent
 from kivy.uix.recyclegridlayout import RecycleGridLayout
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition, FadeTransition
@@ -12371,9 +12371,7 @@ class ServerButton(HoverButton):
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=self.run_color if (self.running and not self.hovered) else color, duration=0.06).start(self.subtitle)
 
-        if self.custom_icon:
-            Animation(color=constants.brighten_color(color, 0.75), duration=0.06).start(self.type_image.image)
-        else:
+        if not self.custom_icon:
             Animation(color=color, duration=0.06).start(self.type_image.image)
 
         if self.type_image.version_label.__class__.__name__ == "AlignLabel":
@@ -12561,18 +12559,20 @@ class ServerButton(HoverButton):
         # Check for custom server icon
         server_icon = constants.server_path(server_object.name, 'server-icon.png')
         if server_icon:
-            def make_icon_white(*a):
-                if self.view_only:
-                    self.type_image.image.color = (1, 1, 1, 1)
-                else:
-                    self.on_leave()
-            Clock.schedule_once(make_icon_white, 0)
             self.custom_icon = True
+            class CustomServerIcon(RelativeLayout):
+                def __init__(self, **kwargs):
+                    super().__init__(**kwargs)
+                    with self.canvas:
+                        Color(1, 1, 1)  # Set the color to white
+                        self.shadow = Ellipse(pos=(-13.5, -17.5), size=(100, 100), source=os.path.join(constants.gui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
+                        self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0, angle_end=360)
+            self.type_image.image = CustomServerIcon()
         else:
-            server_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type}_small.png')
             self.custom_icon = False
+            server_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type}_small.png')
+            self.type_image.image = Image(source=server_icon)
 
-        self.type_image.image = Image(source=server_icon)
         self.type_image.image.allow_stretch = True
         self.type_image.image.size_hint_max = (65, 65)
         self.type_image.image.color = self.color_id[1]

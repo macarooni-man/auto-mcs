@@ -1254,13 +1254,13 @@ def find_latest_mc():
             title_list = soup.find_all('div', "title")
 
             for div in title_list:
-                if "download latest" in div.text.lower():
+                if "download recommended" in div.text.lower():
                     latestMC["forge"] = div.small.text.split(" -")[0]
                     latestMC["builds"]["forge"] = div.small.text.split(" - ")[1]
                     break
             else:
                 for div in title_list:
-                    if "download recommended" in div.text.lower():
+                    if "download latest" in div.text.lower():
                         latestMC["forge"] = div.small.text.split(" -")[0]
                         latestMC["builds"]["forge"] = div.small.text.split(" - ")[1]
                         break
@@ -1700,9 +1700,20 @@ def validate_version(server_info: dict):
                         forge_url = f"https://files.minecraftforge.net/net/minecraftforge/forge/index_{mcVer}.html"
                         reqs = requests.get(forge_url)
                         soup = BeautifulSoup(reqs.text, 'html.parser')
-                        div = soup.find('div', "link link-boosted")
 
-                        urls = div.a.get('href').split("&url=")
+                        download_divs = soup.find_all('div', "download")
+                        dl = None
+                        for div in download_divs:
+                            if "download recommended" in div.find('div', "title").text.lower():
+                                dl = div.find('div', "link link-boosted")
+                                break
+                        else:
+                            for div in download_divs:
+                                if "download latest" in div.find('div', "title").text.lower():
+                                    dl = div.find('div', "link link-boosted")
+                                    break
+
+                        urls = dl.a.get('href').split("&url=")
 
                         for possible_url in urls:
                             if ".jar" in possible_url:
