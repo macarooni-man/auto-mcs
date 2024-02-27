@@ -1882,14 +1882,19 @@ def new_server_init():
 
 
 # Generate new server name
-def new_server_name():
-    if not new_server_info['name']:
-        new_name = 'New Server'
+def new_server_name(existing_server=None):
+    def iter_name(new_name):
         x = 1
         while new_name.lower() in server_list_lower:
-            new_name = f'New Server ({x})'
+            new_name = f'{new_name} ({x})'
             x += 1
-        new_server_info['name'] = new_name
+        return new_name
+
+    if existing_server:
+        return iter_name(existing_server)
+
+    elif not new_server_info['name']:
+        new_server_info['name'] = iter_name('New Server')
 
 
 # Verify portable java is available in '.auto-mcs\Tools', if not install it
@@ -2048,13 +2053,16 @@ def java_check(progress_func=None):
 # Create New Server stuffies
 
 # Downloads jar file from new_server_info, and generates link if it doesn't exist
-def download_jar(progress_func=None):
+def download_jar(progress_func=None, imported=False):
 
     def hook(a, b, c):
         if progress_func:
             progress_func(round(100 * a * b / c))
 
-    if not new_server_info['jar_link']:
+    if imported:
+        import_data['jar_link'] = search_version(import_data)[3]
+
+    elif not new_server_info['jar_link']:
         new_server_info['jar_link'] = search_version(new_server_info)[3]
 
     # Attempt at most 5 times to download server.jar
@@ -2070,9 +2078,14 @@ def download_jar(progress_func=None):
             if progress_func and fail_count > 0:
                 progress_func(0)
 
-            jar_name = ('forge' if new_server_info['type'] == 'forge' else 'server') + '.jar'
+            if imported:
+                jar_name = ('forge' if import_data['type'] == 'forge' else 'server') + '.jar'
+                download_url(import_data['jar_link'], jar_name, downDir, hook)
 
-            download_url(new_server_info['jar_link'], jar_name, downDir, hook)
+            else:
+                jar_name = ('forge' if new_server_info['type'] == 'forge' else 'server') + '.jar'
+                download_url(new_server_info['jar_link'], jar_name, downDir, hook)
+
             jar_path = os.path.join(downDir, jar_name)
 
             # If successful, copy to tmpsvr
@@ -2197,20 +2210,27 @@ def iter_addons(progress_func=None, update=False):
 
 
 # If Fabric or Forge, install server
-def install_server(progress_func=None):
+def install_server(progress_func=None, imported=False):
 
     # Change directory to tmpsvr
     cwd = os.path.abspath(os.curdir)
     os.chdir(tmpsvr)
 
+    if imported:
+        jar_version = import_data['version']
+        jar_type = import_data['type']
+    else:
+        jar_version = new_server_info['version']
+        jar_type = new_server_info['type']
+
 
     # Install Forge server
-    if new_server_info['type'] == 'forge':
+    if jar_type == 'forge':
 
         run_proc(f'"{java_executable["modern"]}" -jar forge.jar -installServer')
 
         # Modern
-        if version_check(new_server_info['version'], ">=", "1.17"):
+        if version_check(jar_version, ">=", "1.17"):
             for f in glob("run*"):
                 os.remove(f)
 
@@ -2222,7 +2242,7 @@ def install_server(progress_func=None):
 
 
         # 1.6 to 1.16
-        elif version_check(new_server_info['version'], ">=", "1.6") and version_check(new_server_info['version'], "<", "1.17"):
+        elif version_check(jar_version, ">=", "1.6") and version_check(jar_version, "<", "1.17"):
             if os_name == "windows":
                 run_proc("move *forge-*.jar server.jar")
             else:
@@ -2233,7 +2253,7 @@ def install_server(progress_func=None):
 
 
     # Install Fabric server
-    elif new_server_info['type'] == 'fabric':
+    elif jar_type == 'fabric':
 
         print("test", f'"{java_executable["modern"]}" -jar server.jar nogui')
 
@@ -2538,6 +2558,10 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             import_data['build'] = str(config_file.get('general', 'serverBuild'))
         except:
             pass
+        try:
+            import_data['launch_flags'] = str(config_file.get('general', 'customFlags'))
+        except:
+            pass
         import_data['config_file'] = config_file
 
         # Then delete it for later
@@ -2562,10 +2586,13 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             # Find server jar name
             with open(file, 'r') as f:
                 output = f.read()
+                raw_output = output
                 f.close()
+                start_script = False
 
                 if "-jar" in output and ".jar" in output:
-                    file_name = output.split("-jar ")[1].split(".jar")[0]
+                    start_script = True
+                    file_name = re.search(r'\S+(?=\.jar)', output).group(0)
 
                     # copy jar file to test directory
                     copy(os.path.join(str(path), f'{file_name}.jar'), test_server)
@@ -2702,6 +2729,7 @@ eula=true"""
 
                 # New versions of forge
                 elif "@libraries/net/minecraftforge/forge/" in output:
+                    start_script = True
 
                     version = output.split("@libraries/net/minecraftforge/forge/")[1].split("-")[0]
 
@@ -2717,6 +2745,39 @@ eula=true"""
                             import_data['version'] = version_list[0].split("-")[0].lower()
                             import_data['build'] = str(version_list[0].split("-")[1])
                             break
+
+
+                # Gather launch flags
+                if start_script:
+                    if 'launch_flags' not in import_data.keys():
+                        import_data['launch_flags'] = []
+                    def process_flags(flags):
+                        if (flags.startswith('"') and flags.endswith('"')) or (flags.startswith("'") and flags.endswith("'")):
+                            flags = flags[1:-1]
+
+                        for flag in flags.split(' '):
+
+                            # Clean up flags
+                            for qt in ['"', "'"]:
+                                if flag.startswith(qt):
+                                    flag = flag[1:]
+                                if flag.endswith(qt):
+                                    flag = flag[:-1]
+
+                            # Ignore flags with invalid data
+                            if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
+                                continue
+                            for exclude in ['-install', '-server', '-jar', '--nogui', '-Command', '-fullversion',
+                                            '-version']:
+                                if exclude in flag:
+                                    break
+
+                            else:
+                                # Add flag to final data
+                                if flag.strip() not in import_data['launch_flags'] and flag.strip():
+                                    import_data['launch_flags'].append(flag.strip())
+                    for match in re.findall(r'(?<= |=)--?\S+', raw_output):
+                        process_flags(match)
 
 
             # Import files and such
@@ -2767,6 +2828,11 @@ eula=true"""
 
             try:
                 config_file.set('general', 'allocatedMemory', str(import_data['config_file'].get('general', 'allocatedMemory')).lower())
+            except configparser.NoOptionError:
+                pass
+
+            try:
+                config_file.set('general', 'customFlags', str(import_data['config_file'].get('general', 'customFlags')).lower())
             except configparser.NoOptionError:
                 pass
 
@@ -2822,9 +2888,95 @@ eula=true"""
             return True
 
 
-# Imports a modpack from a .zip file
-def import_modpack(file_path: str):
+# Moves tmpsvr to actual server and checks for ACL and other file validity
+def finalize_import(progress_func=None, *args):
     global import_data
+
+    if import_data['name']:
+
+        # Copy folder to server path and delete tmpsvr
+        new_path = os.path.join(serverDir, import_data['name'])
+        copytree(tmpsvr, new_path, dirs_exist_ok=True)
+        safe_delete(tempDir)
+        safe_delete(downDir)
+
+        if progress_func:
+            progress_func(33)
+
+
+        # Add global rules to ACL
+        from acl import AclManager
+        AclManager(import_data['name']).write_rules()
+
+        if progress_func:
+            progress_func(66)
+
+
+        # Check for EULA
+        if not (server_path(import_data['name'], 'eula.txt') or server_path(import_data['name'], 'EULA.txt')):
+            time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
+
+            # Generate EULA.txt
+            eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
+{time_stamp}
+eula=true"""
+
+            with open(os.path.join(server_path(import_data['name']), 'eula.txt'), 'w+') as f:
+                f.write(eula)
+
+            if server_path(import_data['name'], 'server.properties'):
+                content = []
+                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'r') as f:
+                    content = f.readlines()
+                    edited = False
+                    if len(content) >= 1:
+                        if content[1].startswith('#'):
+                            content[1] = f"#{time_stamp}\n"
+                            edited = True
+                    if not edited:
+                        content.insert(0, f"#{time_stamp}\n")
+                        content.insert(0, "#Minecraft server properties\n")
+
+                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'w+') as f:
+                    f.writelines(content)
+            else:
+                fix_empty_properties(import_data['name'])
+
+
+        if os_name == "windows":
+
+            if server_path(import_data['name'], '.auto-mcs.ini'):
+                os.remove(server_path(import_data['name'], '.auto-mcs.ini'))
+
+            if server_path(import_data['name'], '.start-cmd.tmp'):
+                os.rename(server_path(import_data['name'], '.start-cmd.tmp'), os.path.join(server_path(import_data['name']), command_tmp))
+
+            run_proc(f"attrib +H \"{server_path(import_data['name'], server_ini)}\"")
+            if server_path(import_data['name'], command_tmp):
+                run_proc(f"attrib +H \"{server_path(import_data['name'], command_tmp)}\"")
+
+        else:
+            if server_path(import_data['name'], 'auto-mcs.ini'):
+                os.remove(server_path(import_data['name'], 'auto-mcs.ini'))
+
+            if server_path(import_data['name'], 'start-cmd.tmp'):
+                os.rename(server_path(import_data['name'], 'start-cmd.tmp'), os.path.join(server_path(import_data['name']), command_tmp))
+
+
+        if server_path(import_data['name'], server_ini):
+            safe_delete(tempDir)
+            safe_delete(downDir)
+            make_update_list()
+            if progress_func:
+                progress_func(100)
+            return True
+
+
+# Imports a modpack from a .zip file
+def scan_modpack(progress_func=None):
+    global import_data
+
+    file_path = import_data['path']
 
     # Test archive first
     if not os.path.isfile(file_path) or file_path.split('.')[-1] not in ['zip', 'gz', 'tgz']:
@@ -2841,6 +2993,9 @@ def import_modpack(file_path: str):
 
     extract_archive(file_path, test_server)
     move_files_root(test_server)
+
+    if progress_func:
+        progress_func(50)
 
     data = {
         'name': None,
@@ -2987,12 +3142,12 @@ def import_modpack(file_path: str):
     if not data['version'] or not data['type']:
 
         # Generate script list and iterate through each one
-        script_list = glob(os.path.join(str(test_server), "*.bat"))
-        script_list.extend(glob(os.path.join(str(test_server), "*.sh")))
+        file_list = glob(os.path.join(str(test_server), "*.bat"))
+        file_list.extend(glob(os.path.join(str(test_server), "*.sh")))
         jar_exists_name_fail = False
 
         # First, search through all the scripts to find the type, version, and launch flags
-        for file in script_list:
+        for file in file_list:
 
             # Find server jar name
             with open(file, 'r', encoding='utf-8', errors='ignore') as f:
@@ -3057,7 +3212,7 @@ def import_modpack(file_path: str):
     if not data['version'] or not data['type']:
 
         # Generate script list and iterate through each one
-        text_list = glob(os.path.join(test_server, "*.txt"))
+        file_list = glob(os.path.join(test_server, "*.txt"))
         if os.path.exists(os.path.join(test_server, 'scripts')):
             file_list = glob(os.path.join(test_server, "scripts", "*.*"))
         if os.path.exists(os.path.join(test_server, 'config')):
@@ -3075,7 +3230,7 @@ def import_modpack(file_path: str):
             matches['versions'].extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
 
         # First, search through all the files to find the type, version, and launch flags
-        for file in text_list:
+        for file in file_list:
 
             # Find server jar name
             with open(file, 'r', encoding='utf-8', errors='ignore') as f:
@@ -3127,13 +3282,48 @@ def import_modpack(file_path: str):
                     break
 
 
-    return data
+    if data['type'] and data['version'] and data['name']:
+        import_data = {
+            'name': new_server_name(import_data['name'] if import_data['name'] else data['name']),
+            'path': import_data['path'],
+            'type': data['type'],
+            'version': data['version'],
+            'build': data['build'],
+            'launch_flags': data['launch_flags']
+        }
+
+        if progress_func:
+            progress_func(100)
+
+        return data
+    else:
+        return False
 
 
 # Moves tmpsvr to actual server and checks for ACL and other file validity
-def finalize_import(progress_func=None, *args):
+def finalize_modpack(progress_func=None, *args):
+    global import_data
 
-    if import_data['name']:
+    test_server = os.path.join(tempDir, 'importtest')
+
+    if import_data['name'] and os.path.exists(test_server):
+
+        # Finish migrating data to tmpsvr
+        for item in glob(os.path.join(test_server, '*')):
+            file_name = os.path.basename(item)
+            if os.path.isdir(item) or (os.path.isfile(item) and (file_name.endswith('.txt') or file_name.endswith('.png') or file_name in ['server.properties'])):
+                if file_name.lower() == 'eula.txt':
+                    continue
+
+                if os.path.isdir(item):
+                    copytree(item, os.path.join(tmpsvr, file_name), dirs_exist_ok=True)
+                else:
+                    copy(item, tmpsvr)
+
+
+        # Create auto-mcs.ini
+        create_server_config(import_data, True, True)
+
 
         # Copy folder to server path and delete tmpsvr
         new_path = os.path.join(serverDir, import_data['name'])
@@ -3153,43 +3343,34 @@ def finalize_import(progress_func=None, *args):
             progress_func(66)
 
 
-        # Check for EULA
-        if not (server_path(import_data['name'], 'eula.txt') or server_path(import_data['name'], 'EULA.txt')):
-            time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
+        # Write EULA and "server.properties"
+        time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
 
-            # Generate EULA.txt
-            eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
+        # Generate EULA.txt
+        eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
 {time_stamp}
 eula=true"""
 
-            with open(os.path.join(server_path(import_data['name']), 'eula.txt'), 'w+') as f:
-                f.write(eula)
+        with open(os.path.join(server_path(import_data['name']), 'eula.txt'), 'w+') as f:
+            f.write(eula)
 
-            if server_path(import_data['name'], 'server.properties'):
-                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'w+') as f:
-                    content = f.readlines()
-                    content[1] = f"#{time_stamp}"
-                    f.writelines(content)
+        if server_path(import_data['name'], 'server.properties'):
+            content = []
+            with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'r') as f:
+                content = f.readlines()
+                edited = False
+                if len(content) >= 1:
+                    if content[1].startswith('#'):
+                        content[1] = f"#{time_stamp}\n"
+                        edited = True
+                if not edited:
+                    content.insert(0, f"#{time_stamp}\n")
+                    content.insert(0, "#Minecraft server properties\n")
 
-
-        if os_name == "windows":
-
-            if server_path(import_data['name'], '.auto-mcs.ini'):
-                os.remove(server_path(import_data['name'], '.auto-mcs.ini'))
-
-            if server_path(import_data['name'], '.start-cmd.tmp'):
-                os.rename(server_path(import_data['name'], '.start-cmd.tmp'), os.path.join(server_path(import_data['name']), command_tmp))
-
-            run_proc(f"attrib +H \"{server_path(import_data['name'], server_ini)}\"")
-            if server_path(import_data['name'], command_tmp):
-                run_proc(f"attrib +H \"{server_path(import_data['name'], command_tmp)}\"")
-
+            with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'w+') as f:
+                f.writelines(content)
         else:
-            if server_path(import_data['name'], 'auto-mcs.ini'):
-                os.remove(server_path(import_data['name'], 'auto-mcs.ini'))
-
-            if server_path(import_data['name'], 'start-cmd.tmp'):
-                os.rename(server_path(import_data['name'], 'start-cmd.tmp'), os.path.join(server_path(import_data['name']), command_tmp))
+            fix_empty_properties(import_data['name'])
 
 
         if server_path(import_data['name'], server_ini):
@@ -3199,6 +3380,7 @@ eula=true"""
             if progress_func:
                 progress_func(100)
             return True
+
 
 
 # Generates new information for a server update
@@ -3284,7 +3466,7 @@ def server_config(server_name: str, write_object=None, config_path=None):
 
 
 # Creates new auto-mcs.ini config file
-def create_server_config(properties: dict, temp_server=False):
+def create_server_config(properties: dict, temp_server=False, modpack=False):
 
     # Write default config
     config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
@@ -3305,6 +3487,12 @@ def create_server_config(properties: dict, temp_server=False):
     except:
         config.set('general', 'enableGeyser', 'false')
     config.set('general', 'enableNgrok', 'false')
+    try:
+        config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
+    except:
+        pass
+    if modpack:
+        config.set('general', 'isModpack', 'true')
 
     config.add_section('bkup')
     config.set('bkup', 'bkupAuto', 'prompt')
@@ -3460,9 +3648,9 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     if no_flags:
         start_flags = ''
     elif not custom_flags:
-        start_flags = '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
+        start_flags = ' -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
     else:
-        start_flags = custom_flags
+        start_flags = f' {custom_flags}'
 
 
     # For every version except Forge
@@ -3940,6 +4128,7 @@ def control_backspace(text, index):
     new_index = len(text) - len(final_text)
     return final_text, new_index
 
+
 # Get player head to .png: pass player object
 def get_player_head(user: str):
 
@@ -4012,7 +4201,7 @@ class SearchManager():
             ],
 
             'ServerImport': [
-                ScreenObject('Import Server', 'ServerImportScreen', {'Import a server folder': None, 'Import an auto-mcs back-up': None}),
+                ScreenObject('Import Server', 'ServerImportScreen', {'Import a server folder': None, 'Import an auto-mcs back-up': None, 'Import a Modpack': None, 'Download a Modpack': None}),
             ],
 
             'Server': [
@@ -4332,7 +4521,7 @@ class SearchManager():
 
             # First check for a title match
             query = clean_str(query).replace('?', '').replace(',', '').replace('help','').replace('guide','')
-            query = query.replace('mod', 'addon').replace('plugin', 'addon').replace('folder', 'directory').replace('path', 'directory')
+            query = query.replace('mod', 'addon').replace('plugin', 'addon').replace('folder', 'directory').replace('path', 'directory').replace('addonpack', 'modpack')
             query = check_overrides(query)
 
             for obj in options_list:

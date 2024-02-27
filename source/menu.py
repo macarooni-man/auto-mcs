@@ -2087,6 +2087,121 @@ class ServerImportBackupInput(DirectoryInput):
                 self.valid_text(True, True)
                 disable_next(False)
 
+class ServerImportModpackInput(DirectoryInput):
+
+    # Hide input_button on focus
+    def _on_focus(self, *args):
+        super()._on_focus(*args)
+
+        for child in self.parent.children:
+            for child_item in child.children:
+                try:
+                    if child_item.id == "input_button":
+
+                        if not self.text:
+                            self.hint_text = "type a path..." if self.focused else "import from a file..."
+
+                        # Run input validation on focus change
+                        if self.focus:
+                            self.valid(True, True)
+
+                        # If unfocused, validate text
+                        if not self.focus and self.text and child_item.height == 0:
+                            self.on_enter(self.text)
+
+                        # If box deleted and unfocused, set back to previous text
+                        elif not self.focus and not self.text:
+                            self.text = self.cache_text
+
+                        # If box filled in and text box clicked
+                        if self.focus and self.text:
+                            self.text = self.selected_server
+                            self.do_cursor_movement('cursor_end', True)
+                            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+                            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
+
+                        [constants.hide_widget(item, self.focus) for item in child.children]
+
+                        return
+
+                except AttributeError:
+                    continue
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.halign = "left"
+        self.padding_x = 25
+        self.size_hint_max = (528, 54)
+        self.title_text = "modpack"
+        self.hint_text = "import from a file..."
+        self.cache_text = ""
+        server = ""
+        self.selected_server = None if server == '' else server
+        self.server_verified = False
+        self.update_server(hide_popup=True)
+
+    def on_enter(self, value):
+        self.selected_server = self.text.replace("~", constants.home)
+        self.update_server()
+
+    # Input validation and server selection
+    def valid_text(self, boolean_value, text):
+        for child in self.parent.children:
+            try:
+                if child.id == "InputLabel":
+                # Invalid input
+                    if not boolean_value:
+                        if isinstance(text, str) and text:
+                            child.update_text(text)
+                        else:
+                            child.update_text('This server is invalid or corrupt')
+                        self.text = ""
+                # Valid input
+                    else:
+                        child.clear_text()
+                    break
+            except AttributeError:
+                pass
+
+    def update_server(self, force_ignore=False, hide_popup=False):
+
+        def disable_next(disable=False):
+            for item in screen_manager.current_screen.next_button.children:
+                try:
+                    if item.id == "next_button":
+                        item.disable(disable)
+                        break
+                except AttributeError:
+                    pass
+
+        self.scroll_x = 0
+
+        if self.selected_server:
+            self.selected_server = os.path.abspath(self.selected_server)
+
+            # Check if the selected server is invalid
+            if os.path.exists(self.selected_server) and os.path.basename(self.selected_server).endswith('.zip'):
+                constants.import_data = {'name': None, 'path': self.selected_server}
+                box_text = os.path.join(*Path(os.path.abspath(self.selected_server)).parts[-2:-1], os.path.basename(self.selected_server))
+                self.cache_text = self.text = box_text[:30] + "..." if len(box_text) > 30 else box_text
+                self.valid_text(True, True)
+                disable_next(False)
+
+            else:
+
+                if self.selected_server != os.path.abspath(os.curdir):
+                    try:
+                        self.selected_server = ''
+                        if not force_ignore:
+                            self.valid_text(False, False)
+                        disable_next(True)
+                    except AttributeError:
+                        pass
+
+
+
+
 
 class CreateServerPortInput(BaseInput):
 
@@ -5765,6 +5880,14 @@ class PopupControls(BigPopupWindow):
         self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'information-circle.png')
         super().__init__(**kwargs)
 
+
+        # Align window content
+        self.window_content.halign = "left"
+        self.window_content.valign = "top"
+        self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.4}
+        self.window_content.max_lines = 15 # Cuts off the beginning of content??
+
+
         # Modal specific settings
         self.window_sound = None
         self.no_button = None
@@ -6446,7 +6569,14 @@ class PopupSearch(RelativeLayout):
 
 
     def click_event(self, *args):
-        if not self.clicked:
+
+        button_pressed = 'ignore'
+        try:
+            button_pressed = args[1].button
+        except:
+            pass
+
+        if not self.clicked and button_pressed == 'left':
 
             if isinstance(args[1], str):
                 self.self_destruct(True)
@@ -11865,11 +11995,15 @@ class ServerImportScreen(MenuBackground):
 
         # Regular menus
         else:
-            self.layout.add_widget(HeaderText("Which server do you wish to import?", '', (0, 0.76)))
-            buttons.append(main_button('Import external server', (0.5, 0.5), 'folder-outline.png', click_func=functools.partial(self.load_input, 'external')))
-            buttons.append(main_button('Import Auto-MCS back-up', (0.5, 0.38), 'backup-icon.png', click_func=functools.partial(self.load_input, 'backup')))
+            def go_to_modpack(*a):
+                screen_manager.current = 'ServerImportModpackScreen'
+
+            self.layout.add_widget(HeaderText("What do you wish to import?", '', (0, 0.81)))
+            buttons.append(main_button('Import a modpack', (0.5, 0.58), 'modpack.png', click_func=go_to_modpack))
+            buttons.append(main_button('Import external server', (0.5, 0.46), 'folder-outline.png', click_func=functools.partial(self.load_input, 'external')))
+            buttons.append(main_button('Import Auto-MCS back-up', (0.5, 0.34), 'backup-icon.png', click_func=functools.partial(self.load_input, 'backup')))
             self.layout.add_widget(exit_button('Back', (0.5, 0.14), cycle=True))
-            self.page_counter = page_counter(1, 2, (0, 0.768))
+            self.page_counter = page_counter(1, 2, (0, 0.818))
             self.add_widget(self.page_counter)
 
         self.button_layout = FloatLayout()
@@ -11947,12 +12081,140 @@ class ServerImportProgressScreen(ProgressScreen):
 
         self.page_contents['function_list'] = tuple(function_list)
 
+class ServerImportModpackScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.layout = None
+        self.button_layout = None
+        self.page_counter = None
+        self.input_type = None
+        self.input = None
+        self.next_button = None
+
+
+    def generate_menu(self, **kwargs):
+
+        # Reset import path
+        constants.import_data = {'name': None, 'path': None}
+        constants.safe_delete(constants.tempDir)
+
+        # Generate buttons on page load
+        buttons = []
+        self.layout = FloatLayout()
+        self.layout.id = 'content'
+
+
+        # Regular menus
+        self.layout.add_widget(HeaderText("Which modpack do you wish to import?", '', (0, 0.81)))
+        buttons.append(main_button('Download a Modpack', (0.5, 0.576), 'download-outline.png', width=528))
+
+        start_path = constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
+        buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505}))
+        buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44}))
+        buttons.append(input_button('Browse...', (0.5, 0.44), ('file', start_path), input_name='ServerImportModpackInput', title='Select an modpack', ext_list=['*.zip']))
+
+        self.layout.add_widget(exit_button('Back', (0.5, 0.14), cycle=True))
+        def remove_page(*a):
+            if 'ServerImportScreen' in constants.screen_tree:
+                constants.screen_tree.remove('ServerImportScreen')
+        Clock.schedule_once(remove_page, 0.1)
+        self.page_counter = page_counter(2, 2, (0, 0.818))
+        self.add_widget(self.page_counter)
+
+        self.button_layout = FloatLayout()
+        for button in buttons:
+            self.button_layout.add_widget(button)
+
+        self.layout.add_widget(self.button_layout)
+        self.next_button = next_button('Next', (0.5, 0.24), True, next_screen='ServerImportModpackProgressScreen')
+        self.button_layout.add_widget(self.next_button)
+        self.layout.add_widget(generate_title('Server Manager: Import Server'))
+        self.layout.add_widget(generate_footer('Server Manager, Import server'))
+
+        self.add_widget(self.layout)
+
+class ServerImportModpackProgressScreen(ProgressScreen):
+
+    # Only replace this function when making a child screen
+    # Set fail message in child functions to trigger an error
+    def contents(self):
+
+        def before_func(*args):
+
+            # First, clean out any existing server in temp folder
+            constants.safe_delete(constants.tempDir)
+
+            if not constants.app_online:
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+            else:
+                constants.folder_check(constants.tmpsvr)
+
+        def after_func(*args):
+            server_path = os.path.join(constants.serverDir, constants.import_data['name'])
+            read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower() and 'me' in f.lower()]
+            if read_me:
+                with open(read_me[0], 'r') as f:
+                    read_me = f.read()
+            open_server(constants.import_data['name'], True, f"'{constants.import_data['name']}' was imported successfully", show_readme=read_me)
+
+        # Original is percentage before this function, adjusted is a percent of hooked value
+        def adjust_percentage(*args):
+            original = self.last_progress
+            adjusted = args[0]
+            total = args[1] * 0.01
+            final = original + round(adjusted * total)
+            if final < 0:
+                final = original
+            self.progress_bar.update_progress(final)
+
+
+        self.page_contents = {
+
+            # Page name
+            'title': f"Importing Modpack",
+
+            # Header text
+            'header': "Sit back and relax, it's automation time...",
+
+            # Tuple of tuples for steps (label, function, percent)
+            # Percent of all functions must total 100
+            # Functions must return True, or default error will be executed
+            'default_error': "There was an issue importing this modpack.\n\nThe required resources were unobtainable and will require manual installation.",
+
+            'function_list': (),
+
+            # Function to run before steps (like checking for an internet connection)
+            'before_function': before_func,
+
+            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
+            'after_function': after_func,
+
+            # Screen to go to after complete
+            'next_screen': None
+        }
+
+        # Create function list
+        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
+        function_list = [
+            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            ('Validating modpack', functools.partial(constants.scan_modpack, functools.partial(adjust_percentage, 20)), 0),
+            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 15), True), 0),
+            ('Installing modpack',functools.partial(constants.install_server, None, True), 15),
+            ('Validating configuration', functools.partial(constants.finalize_modpack, functools.partial(adjust_percentage, 10)), 0),
+            ('Creating initial back-up', functools.partial(constants.create_backup, True), 10)
+        ]
+
+        self.page_contents['function_list'] = tuple(function_list)
 
 
 # Server Manager Overview ----------------------------------------------------------------------------------------------
 
 # Opens server in panel, and updates Server Manager current_server
-def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, *args):
+def open_server(server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args):
     def next_screen(*args):
         different_server = constants.server_manager.current_server.name != server_name
         if different_server:
@@ -11980,6 +12242,16 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
             )
 
         constants.screen_tree = ['MainMenuScreen', 'ServerManagerScreen']
+
+
+
+        # If showing readme
+        if show_readme:
+            Clock.schedule_once(
+                functools.partial(screen_manager.current_screen.show_popup, "controls", "Author's Notes", show_readme, (None)),
+                1
+            )
+
 
     constants.server_manager.open_server(server_name)
     server_obj = constants.server_manager.current_server
@@ -12098,7 +12370,12 @@ class ServerButton(HoverButton):
 
         Animation(color=color, duration=0.06).start(self.title)
         Animation(color=self.run_color if (self.running and not self.hovered) else color, duration=0.06).start(self.subtitle)
-        Animation(color=color, duration=0.06).start(self.type_image.image)
+
+        if self.custom_icon:
+            Animation(color=constants.brighten_color(color, 0.75), duration=0.06).start(self.type_image.image)
+        else:
+            Animation(color=color, duration=0.06).start(self.type_image.image)
+
         if self.type_image.version_label.__class__.__name__ == "AlignLabel":
             Animation(color=color, duration=0.06).start(self.type_image.version_label)
         Animation(color=color, duration=0.06).start(self.type_image.type_label)
@@ -12280,7 +12557,22 @@ class ServerButton(HoverButton):
         # Type icon and info
         self.type_image = RelativeLayout()
         self.type_image.width = 400
-        self.type_image.image = Image(source=os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type}_small.png'))
+
+        # Check for custom server icon
+        server_icon = constants.server_path(server_object.name, 'server-icon.png')
+        if server_icon:
+            def make_icon_white(*a):
+                if self.view_only:
+                    self.type_image.image.color = (1, 1, 1, 1)
+                else:
+                    self.on_leave()
+            Clock.schedule_once(make_icon_white, 0)
+            self.custom_icon = True
+        else:
+            server_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type}_small.png')
+            self.custom_icon = False
+
+        self.type_image.image = Image(source=server_icon)
         self.type_image.image.allow_stretch = True
         self.type_image.image.size_hint_max = (65, 65)
         self.type_image.image.color = self.color_id[1]
@@ -12319,7 +12611,13 @@ class ServerButton(HoverButton):
 
 
         self.type_image.type_label = TemplateLabel()
-        self.type_image.type_label.text = server_object.type.lower().replace("craft", "")
+
+        # Say modpack if such
+        if self.properties.is_modpack:
+            type_text = 'modpack'
+        else:
+            type_text = server_object.type.lower().replace("craft", "")
+        self.type_image.type_label.text = type_text
         self.type_image.type_label.font_size = sp(23)
         self.type_image.add_widget(self.type_image.version_label)
         self.type_image.add_widget(self.type_image.type_label)
@@ -15981,7 +16279,7 @@ class ServerAclScreen(CreateServerAclScreen):
 
 • Press middle-mouse to toggle globally
 
-Rules can be filtered with the search bar, and can be added with the 'Add Rules' button or by pressing 'TAB'. The visible list can be switched between operators, bans, and the whitelist from the drop-down above the search bar."""
+Rules can be filtered with the search bar, and can be added with the 'Add Rules' button or by pressing 'TAB'. The visible list can be switched between operators, bans, and the whitelist from the drop-down at the top."""
 
             Clock.schedule_once(
                 functools.partial(

@@ -40,6 +40,7 @@ class ServerObject():
         self.running = False
         self.restart_flag = False
         self.custom_flags = ''
+        self.is_modpack = False
         self.crash_log = None
         self.max_log_size = 800
         self.run_data = {}
@@ -87,6 +88,11 @@ class ServerObject():
                 self.custom_flags = self.config_file.get("general", "customFlags").strip()
         except:
             self.custom_flags = ''
+        try:
+            if self.config_file.get("general", "isModpack"):
+                self.is_modpack = self.config_file.get("general", "isModpack").lower() == 'true'
+        except:
+            self.is_modpack = False
         try:
             if self.config_file.get("general", "enableNgrok"):
                 self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
@@ -215,6 +221,11 @@ class ServerObject():
                 self.custom_flags = self.config_file.get("general", "customFlags").strip()
         except:
             self.custom_flags = ''
+        try:
+            if self.config_file.get("general", "isModpack"):
+                self.is_modpack = self.config_file.get("general", "isModpack").lower() == 'true'
+        except:
+            self.is_modpack = False
         try:
             if self.config_file.get("general", "enableNgrok"):
                 self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
@@ -732,7 +743,7 @@ class ServerObject():
             if self.auto_update == 'true' and constants.app_online:
                 self.auto_update_func()
 
-            script_path = constants.generate_run_script(self.properties_dict(), custom_flags=self.custom_flags)
+            script_path = constants.generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=(not self.custom_flags and self.is_modpack))
 
             if not self.restart_flag:
                 self.run_data['launch-time'] = None
@@ -1623,6 +1634,11 @@ class ViewObject():
                 self.build = self.config_file.get("general", "serverBuild").lower()
         except:
             pass
+        try:
+            if self.config_file.get("general", "isModpack"):
+                self.is_modpack = self.config_file.get("general", "isModpack").lower() == 'true'
+        except:
+            self.is_modpack = False
 
         # Check update properties for UI stuff
         self.update_string = ''
