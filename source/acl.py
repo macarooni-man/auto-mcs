@@ -152,7 +152,10 @@ class AclManager():
         else:
 
             # Use usercache.json and fallback on resolving world playerdata
-            data_path = os.path.join(server_path, server_world, 'playerdata')
+            try:
+                data_path = os.path.join(server_path, server_world, 'playerdata')
+            except TypeError:
+                data_path = None
             usercache = []
             fallback = False
 
@@ -164,18 +167,19 @@ class AclManager():
             except FileNotFoundError:
                 fallback = True
 
-            if (not usercache) or (fallback):
+            if ((not usercache) or (fallback)) and data_path:
                 usercache = [os.path.basename(item).lower().split(".dat")[0] for item in glob(os.path.join(data_path, '*'))]
 
-            try:
-                with open(f"{cache_folder}\\uuid-db.json", "r") as f:
-                    db = json.load(f)
-                    uuid_list = [x['uuid'] for x in db]
-            except FileNotFoundError:
-                uuid_list = []
+            if usercache:
+                try:
+                    with open(f"{cache_folder}\\uuid-db.json", "r") as f:
+                        db = json.load(f)
+                        uuid_list = [x['uuid'] for x in db]
+                except FileNotFoundError:
+                    uuid_list = []
 
-            with ThreadPoolExecutor(max_workers=15) as pool:
-                pool.map(iter_usercache, usercache)
+                with ThreadPoolExecutor(max_workers=15) as pool:
+                    pool.map(iter_usercache, usercache)
 
         concat_db()
         return playerdata_list

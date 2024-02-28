@@ -43,6 +43,7 @@ import amscript
 app_version = "2.1"
 ams_version = "1.1"
 app_title = "auto-mcs"
+dev_version = False
 window_size = (850, 850)
 refresh_rate = 60
 anim_speed = 1
@@ -642,6 +643,7 @@ def cs_download_url(url: str, file_name: str, destination_path: str):
         try:
             web_file = return_scraper(url)
             full_path = os.path.join(destination_path, file_name)
+            folder_check(destination_path)
             with open(full_path, 'wb') as file:
                 file.write(web_file.content)
 
@@ -666,7 +668,7 @@ def sanitize_name(value, addon=False):
 
     value = value.split(":")[0]
     value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-    value = re.sub(r'[^\w\s-]', '', value)
+    value = re.sub(r'[^\'\w\s-]', '', value)
     return re.sub(r'[-\s]+', '-', value).strip('-_')
 
 # Comparison tool for Minecraft version strings
@@ -898,7 +900,7 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
         elif archive_file.endswith("tar"):
             archive = tarfile.open(archive_file, "r:", compresslevel=6)
             archive_type = "tar"
-        elif archive_file.endswith("zip"):
+        elif archive_file.endswith("zip") or archive_file.endswith("mrpack"):
             archive = zipfile.ZipFile(archive_file, 'r')
             archive_type = "zip"
 
@@ -1005,7 +1007,11 @@ def download_url(url: str, file_name: str, output_path: str, progress_func=None)
     opener = urllib.request.build_opener()
     opener.addheaders = [('User-agent', 'Mozilla/5.0')]
     urllib.request.install_opener(opener)
-    urllib.request.urlretrieve(url, filename=os.path.join(output_path, file_name), reporthook=progress_func)
+    file_path = os.path.join(output_path, file_name)
+    folder_check(output_path)
+    urllib.request.urlretrieve(url, filename=file_path, reporthook=progress_func)
+    if os.path.isfile(file_path):
+        return file_path
 
 
 # Will attempt to delete dir tree without error
@@ -1124,7 +1130,7 @@ def gen_rstring(size: int):
 
 # Check if client has an internet connection
 def check_app_updates():
-    global project_link, app_version, app_latest, app_online, update_data, auto_update
+    global project_link, app_version, dev_version, app_latest, app_online, update_data, auto_update
 
     # Check if updates are available
     try:
@@ -1204,6 +1210,10 @@ def check_app_updates():
         # Check if app needs to be updated, and URL was successful
         if check_app_version(str(app_version), str(update_data['version'])):
             app_latest = False
+
+        # Check if dev version
+        elif (str(app_version) != str(update_data['version'])) and check_app_version(str(update_data['version']), str(app_version)):
+            dev_version = True
 
     except Exception as e:
         if debug:
@@ -1704,7 +1714,7 @@ def validate_version(server_info: dict):
                         download_divs = soup.find_all('div', "download")
                         dl = None
                         for div in download_divs:
-                            if "download recommended" in div.find('div', "title").text.lower():
+                            if "download recommended" in div.find('div', "title").text.lower() and version_check(mcVer, '<=', '1.15.2'):
                                 dl = div.find('div', "link link-boosted")
                                 break
                         else:
@@ -2987,10 +2997,17 @@ eula=true"""
 def scan_modpack(progress_func=None):
     global import_data
 
-    file_path = import_data['path']
+    # First, download modpack if it's a URL
+    try:
+        url = import_data['url']
+    except KeyError:
+        file_path = import_data['path']
+    else:
+        file_path = import_data['path'] = download_url(url, f"{sanitize_name(import_data['name'])}.{url.rsplit('.',1)[-1]}", downDir)
+
 
     # Test archive first
-    if not os.path.isfile(file_path) or file_path.split('.')[-1] not in ['zip', 'gz', 'tgz']:
+    if not os.path.isfile(file_path) or file_path.split('.')[-1] not in ['zip', 'mrpack']:
         return False
 
     # Set up directory structures and extract the modpack
@@ -3008,13 +3025,6 @@ def scan_modpack(progress_func=None):
     if progress_func:
         progress_func(50)
 
-    data = {
-        'name': None,
-        'type': None,
-        'version': None,
-        'build': None,
-        'launch_flags': []
-    }
 
     # Clean-up name
     def process_name(name):
@@ -3023,14 +3033,19 @@ def scan_modpack(progress_func=None):
         name = name.encode('ascii').decode('unicode_escape')
         name = re.sub(r'§\S', '', name).replace('\\', '')
         name = re.sub(r'v?\d+(\.?\d+)+\w?', '', name)
-        name = re.sub('[^a-zA-Z0-9 .]', '', name).strip()
+        name = re.sub(r'fabric|forge|modpack', '', name, flags=re.IGNORECASE)
+        name = re.sub('[^a-zA-Z0-9 .\']', '', name).strip()
         name = re.sub(r'\s+',' ', name)
 
-        # Filter words in the title
-        articles = ('a', 'an', 'the', 'and', 'of', 'with', 'in', 'for')
-        name = ' '.join([w for w in name.split(' ') if (w[0].isupper() or w[0].isdigit() or w in articles)]).strip()
+        if name:
 
-        data['name'] = name
+            # Filter words in the title
+            articles = ('a', 'an', 'the', 'and', 'of', 'with', 'in', 'for')
+            name = ' '.join([w for w in name.split(' ') if (w[0].isupper() or w[0].isdigit() or w in articles)]).strip()
+
+            data['name'] = name
+
+        return name
 
     # Clean-up launch flags
     def process_flags(flags):
@@ -3059,7 +3074,48 @@ def scan_modpack(progress_func=None):
                     data['launch_flags'].append(flag.strip())
 
 
-    # Approach #1: look for "ServerStarter"
+    data = {
+        'name': None,
+        'type': None,
+        'version': None,
+        'build': None,
+        'launch_flags': []
+    }
+
+    if import_data['name']:
+        data['name'] = new_server_name(process_name(import_data['name']))
+
+
+    # Approach #1: Look for "modrinth.index.json"
+    if file_path.endswith('.mrpack'):
+        mr_index = os.path.join(test_server, 'modrinth.index.json')
+        if os.path.isfile(mr_index):
+            with open(mr_index, 'r') as f:
+
+                # Reorganize .json for ease of iteration
+                metadata = [
+                    {
+                        'url':i['downloads'][0],
+                        'file_name':os.path.basename(i['path']),
+                        'destination':os.path.join(test_server, os.path.dirname(i['path']))
+                    }
+                    for i in json.loads(f.read())["files"]
+                ]
+
+                def get_mod_url(mod_data):
+                    try:
+                        return cs_download_url(mod_data['url'], mod_data['file_name'], mod_data['destination'])
+                    except Exception as e:
+                        return False
+
+                # Iterate over additional content to see if it's available to be downloaded
+                with ThreadPoolExecutor(max_workers=20) as pool:
+                    for result in pool.map(get_mod_url, metadata):
+                        if not result:
+                            return result
+
+
+    # Approach #2: look for "ServerStarter"
     server_starter = False
     yaml_list = []
     for file in glob(os.path.join(test_server, '*.*')):
@@ -3102,6 +3158,7 @@ def scan_modpack(progress_func=None):
 
                             # Download mods from "manifest.json"
                             mod_dict = os.path.join(additional_extract, 'manifest.json')
+
                             if os.path.isfile(mod_dict):
                                 with open(mod_dict, 'r') as f:
                                     metadata = json.loads(f.read())
@@ -3115,7 +3172,8 @@ def scan_modpack(progress_func=None):
                                         try:
                                             if mod_data['downloadUrl']:
                                                 if mod_data['downloadUrl'].endswith('.jar'):
-                                                    mod_name = sanitize_name(mod_data['downloadUrl'].rsplit('/', 1)[-1])[:-3] + '.jar'
+                                                    mod_name = sanitize_name(
+                                                        mod_data['downloadUrl'].rsplit('/', 1)[-1])[:-3] + '.jar'
                                                 else:
                                                     mod_name = mod_data['downloadUrl'].rsplit('/', 1)[-1]
                                                 mod_url = mod_data['downloadUrl']
@@ -3132,11 +3190,11 @@ def scan_modpack(progress_func=None):
                                         for result in pool.map(get_mod_url, metadata['files']):
                                             if not result:
                                                 return result
+
                 except KeyError:
                     pass
 
-
-    # Approach #1: inspect "variables.txt"
+    # Approach #3: inspect "variables.txt"
     if os.path.exists('variables.txt'):
         with open('variables.txt', 'r', encoding='utf-8', errors='ignore') as f:
             variables = {}
@@ -3149,7 +3207,7 @@ def scan_modpack(progress_func=None):
             data['type'] = variables['modloader'].lower().strip()
             process_flags(variables['java_args'])
 
-    # Approach #2: inspect launch scripts and server.jar
+    # Approach #4: inspect launch scripts and server.jar
     if not data['version'] or not data['type']:
 
         # Generate script list and iterate through each one
@@ -3295,7 +3353,7 @@ def scan_modpack(progress_func=None):
 
     if data['type'] and data['version'] and data['name']:
         import_data = {
-            'name': new_server_name(import_data['name'] if import_data['name'] else data['name']),
+            'name': data['name'],
             'path': import_data['path'],
             'type': data['type'],
             'version': data['version'],
@@ -3322,7 +3380,16 @@ def finalize_modpack(progress_func=None, *args):
         # Finish migrating data to tmpsvr
         for item in glob(os.path.join(test_server, '*')):
             file_name = os.path.basename(item)
-            if os.path.isdir(item) or (os.path.isfile(item) and (file_name.endswith('.txt') or file_name.endswith('.png') or file_name in ['server.properties'])):
+            if os.path.isdir(item) or (os.path.isfile(item) and (file_name.endswith('.txt') or file_name.endswith('.png') or file_name.endswith('.yml') or file_name.endswith('.json') or file_name in ['server.properties'])):
+                if file_name.lower() == 'icon.png' and not os.path.exists(os.path.join(tmpsvr, 'server-icon.png')):
+                    copy(item, os.path.join(tmpsvr, 'server-icon.png'))
+                    continue
+                elif file_name == 'server-icon.png':
+                    copy(item, tmpsvr)
+                    continue
+                elif file_name.endswith('.png'):
+                    continue
+
                 if file_name.lower() == 'eula.txt':
                     continue
 

@@ -64,6 +64,10 @@ class AddonFileObject(AddonObject):
         hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
         self.hash = str(hash_data)[:8]
 
+# AddonObject for housing downloadable modpacks
+class ModpackWebObject(AddonWebObject):
+    pass
+
 # Server addon manager object for ServerManager()
 class AddonManager():
 
@@ -1185,6 +1189,84 @@ def geyser_addons(server_properties):
 
 
     return final_list
+
+
+# Returns list of modpack objects according to search
+# Query --> ModpackWebObject
+def search_modpacks(query: str, *a):
+
+    # Manually weighted search results
+    prioritized = ()
+
+    # Grab every modpack from search result and return results dict
+    url = f'https://api.modrinth.com/v2/search?facets=[["project_type:modpack"]]&limit=100&query={query}'
+    results = []
+    page_content = constants.get_url(url, return_response=True).json()
+
+    for mod in page_content['hits']:
+        name = mod['title']
+        author = mod['author']
+        subtitle = mod['description'].split("\n", 1)[0]
+        link = f"https://modrinth.com/modpack/{mod['slug']}"
+        file_name = mod['slug']
+
+        if link:
+            addon_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
+            addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+            results.append(addon_obj)
+
+
+    return results
+
+
+# Returns advanced addon object properties
+# ModpackWebObject
+def get_modpack_info(modpack: ModpackWebObject, *a):
+
+    # For cleaning up description formatting
+    emoji_pattern = re.compile("["
+                               u"\U0001F600-\U0001F64F"  # emoticons
+                               u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+                               u"\U0001F680-\U0001F6FF"  # transport & map symbols
+                               u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                               "]+", flags=re.UNICODE)
+
+    versions = []
+
+    # Find addon information
+    file_link = f"https://api.modrinth.com/v2/project/{modpack.id}"
+    page_content = constants.get_url(file_link, return_response=True).json()
+    description = emoji_pattern.sub(r'', page_content['body']).replace("*","").replace("#","").replace('&nbsp;', ' ')
+    description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
+    description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
+    description = re.sub(r'\]\(*.+\)', '', description)
+
+    modpack.description = description
+    modpack.supported = "yes"
+
+    return modpack
+
+
+# Return the latest available supported download link
+# ModpackWebObject
+def get_modpack_url(modpack: ModpackWebObject, *a):
+
+    # Skip if addon doesn't exist for some reason
+    if not modpack:
+        return False
+
+    pages = 1
+
+    # Iterate through every page until a match is found
+    file_link = f'https://api.modrinth.com/v2/project/{modpack.id}/version'
+    page_content = constants.get_url(file_link, return_response=True).json()
+
+    for data in page_content:
+        try:
+            modpack.download_url = data['files'][0]['url']
+            return modpack
+        except:
+            continue
 
 
 
