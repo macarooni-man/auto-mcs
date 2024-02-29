@@ -601,9 +601,9 @@ class AclManager():
             ip_obj = ipaddress.ip_network(rule_name.replace("!w", "").strip(), False)
 
             if "!w" in rule_name:
-                display_data['rule_info'] = "Subnet whitelist" if "/" in rule_name else "IP whitelist"
+                display_data['rule_info'] = constants.translate("Subnet whitelist" if "/" in rule_name else "IP whitelist")
             else:
-                display_data['rule_info'] = "Subnet ban" if "/" in rule_name else "IP ban"
+                display_data['rule_info'] = constants.translate("Subnet ban" if "/" in rule_name else "IP ban")
 
             display_data['ip_range'] = f"{ip_obj.network_address} - {ip_obj.broadcast_address}"
             display_data['subnet_mask'] = str(ip_obj.netmask)
@@ -1117,10 +1117,10 @@ def ip_info(addr: str):
             private_ip = socket.gethostbyname(socket.gethostname())
 
             if ip_obj.is_loopback or addr == private_ip:
-                location = "This machine"
+                location = constants.translate("This machine")
 
             else:
-                location = "LAN device"
+                location = constants.translate("LAN device")
 
         else:
             try:

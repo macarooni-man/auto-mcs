@@ -10,6 +10,7 @@ from threading import Timer
 from copy import deepcopy
 from pathlib import Path
 from glob import glob
+from PIL import Image
 from nbt import nbt
 import configparser
 import cloudscraper
@@ -290,6 +291,43 @@ def get_repo_scripts():
 
 
 # ---------------------------------------------- Global Functions ------------------------------------------------------
+
+# Converts string into another language
+def translate(text: str, locale=None):
+
+    # # Escape proper nouns that ignore translation
+    # def override(key):
+    #     if key in text:
+    #         return text.replace(key, f"${key}$")
+    #     elif key.upper() in text:
+    #         return text.replace(key.upper(), f"${key.upper()}$")
+    #     elif key.lower() in text:
+    #         return text.replace(key.lower(), f"${key.lower()}$")
+    #     else:
+    #         return text
+    # text = override('server.properties')
+    # text = override('server.jar')
+    # text = override('Java')
+    #
+    # # Remove placeholders for now, '$ ... $' will be used to preserve text from translation
+    # text = re.sub(r'\$(.*)\$', '\g<1>', text)
+    # final_text = ''
+    #
+    # if text == text.title():
+    #     final_text = 'Test'
+    # elif text == text.upper():
+    #     final_text = 'TEST'
+    # elif text == text.lower():
+    #     final_text = 'test'
+    # else:
+    #     final_text = 'TesT'
+    #
+    # if text.endswith('...'):
+    #     final_text += '...'
+    # 
+    # return final_text
+    return text
+
 
 # Retrieves the refresh rate of the display to calculate consistent animation speed
 def get_refresh_rate():
@@ -3381,18 +3419,28 @@ def finalize_modpack(progress_func=None, *args):
         for item in glob(os.path.join(test_server, '*')):
             file_name = os.path.basename(item)
             if os.path.isdir(item) or (os.path.isfile(item) and (file_name.endswith('.txt') or file_name.endswith('.png') or file_name.endswith('.yml') or file_name.endswith('.json') or file_name in ['server.properties'])):
+
+                # Scale and migrate image for "server-icon.png", if one is not provided
                 if file_name.lower() == 'icon.png' and not os.path.exists(os.path.join(tmpsvr, 'server-icon.png')):
-                    copy(item, os.path.join(tmpsvr, 'server-icon.png'))
+                    try:
+                        im = Image.open(file_name)
+                        im.thumbnail((64, 64), Image.LANCZOS)
+                        im.save(os.path.join(tmpsvr, 'server-icon.png'), 'png')
+                    except IOError:
+                        print("Error: can't create thumbnail for server icon")
                     continue
+
                 elif file_name == 'server-icon.png':
                     copy(item, tmpsvr)
                     continue
+
                 elif file_name.endswith('.png'):
                     continue
 
                 if file_name.lower() == 'eula.txt':
                     continue
 
+                # Recursively copy folders, and simply copy files
                 if os.path.isdir(item):
                     copytree(item, os.path.join(tmpsvr, file_name), dirs_exist_ok=True)
                 else:

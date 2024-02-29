@@ -139,9 +139,9 @@ def convert_date(m_time: int or float):
         dt_obj = m_time
     days = (dt.now().date() - dt_obj.date()).days
     if days == 0:
-        fmt = "Today %#I:%M %p" if constants.os_name == "windows" else "Today %-I:%M %p"
+        fmt = f"{constants.translate('Today')} %#I:%M %p" if constants.os_name == "windows" else f"{constants.translate('Today')} %-I:%M %p"
     elif days == 1:
-        fmt = "Yesterday %#I:%M %p" if constants.os_name == "windows" else "Yesterday %-I:%M %p"
+        fmt = f"{constants.translate('Yesterday')} %#I:%M %p" if constants.os_name == "windows" else f"{constants.translate('Yesterday')} %-I:%M %p"
     else:
         fmt = "%a %#I:%M %p %#m/%#d/%y" if constants.os_name == "windows" else "%a %-I:%M %p %-m/%-d/%y"
     return dt_obj.strftime(fmt)

@@ -95,6 +95,38 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.properties import BooleanProperty, ObjectProperty
 
 
+
+# Override Kivy widgets for translation
+class Label(Label):
+    def __init__(self, *args, **kwargs):
+        self.__translate__ = True
+        super().__init__(*args, **kwargs)
+
+    def __setattr__(self, key, value):
+        if key in ('text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+            value = constants.translate(value)
+        super().__setattr__(key, value)
+class Button(Button):
+    def __init__(self, *args, **kwargs):
+        self.__translate__ = True
+        super().__init__(*args, **kwargs)
+
+    def __setattr__(self, key, value):
+        if key in ('text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+            value = constants.translate(value)
+        super().__setattr__(key, value)
+class TextInput(TextInput):
+    def __init__(self, *args, **kwargs):
+        self.__translate__ = True
+        super().__init__(*args, **kwargs)
+
+    def __setattr__(self, key, value):
+        if key in ('hint_text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+            value = constants.translate(value)
+        super().__setattr__(key, value)
+
+
+
 def icon_path(name):
     return os.path.join(constants.gui_assets, 'icons', name)
 
@@ -2940,6 +2972,8 @@ def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, sele
     final_path = ""
     file_icon = os.path.join(constants.gui_assets, "small-icon.ico")
 
+    title = constants.translate(title)
+
     # Will find the first file start_dir to auto select
     def iter_start_dir(directory):
         end_dir = directory
@@ -3063,6 +3097,20 @@ def generate_title(title):
 
     background = HeaderBackground()
     label = AlignLabel(color=(0.2, 0.2, 0.4, 0.8), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf'), font_size=sp(25), size_hint=(1.0, 1.0), halign="center", valign="top")
+
+
+    # Split title to check for server name before translation
+    found_server = False
+    if ":" in title:
+        title_start, possible_server_name = title.split(':', 1)
+        if possible_server_name.strip()[1:-1].lower() in constants.server_list_lower:
+            title = f"{constants.translate(title_start)}:{possible_server_name}"
+            found_server = True
+    if not found_server:
+        title = constants.translate(title)
+
+
+    label.__translate__ = False
     label.text = title
     text_layout.add_widget(label)
 
@@ -3073,6 +3121,16 @@ def generate_title(title):
 
 
 def footer_label(path, color, progress_screen=False):
+
+    # Translate footer paths that don't include the server name
+    t_path = []
+    for i in path.split(', '):
+        if i.lower() in constants.server_list_lower:
+            t_path.append(i)
+        else:
+            t_path.append(constants.translate(i))
+    path = ', '.join(t_path)
+
 
     def fit_to_window(label_widget, path_string, *args):
         x = 1
@@ -3106,8 +3164,11 @@ def footer_label(path, color, progress_screen=False):
 
     version_layout.pos = (-10 if progress_screen else -60, 13) # x=-10
     label = AlignLabel(color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf'), font_size=sp(22), markup=True, size_hint=(1.0, 1.0), halign="left", valign="bottom")
+    label.__translate__ = False
     version_text = f"{constants.app_version}{' (dev)' if constants.dev_version else ''}"
-    version = AlignLabel(text=f"auto-mcs[size={round(sp(18))}]  [/size]v{version_text}", color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23), markup=True, size_hint=(1.0, 1.0), halign="right", valign="bottom")
+    version = AlignLabel(color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23), markup=True, size_hint=(1.0, 1.0), halign="right", valign="bottom")
+    version.__translate__ = False
+    version.text = f"auto-mcs[size={round(sp(18))}]  [/size]v{version_text}"
 
     text_layout.bind(pos=functools.partial(fit_to_window, label, path_list))
     text_layout.bind(size=functools.partial(fit_to_window, label, path_list))
@@ -3190,6 +3251,7 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
 def page_counter(index, total, pos):
     layout = FloatLayout()
     label = Label(halign="center")
+    label.__translate__ = False
     label.size_hint = (None, None)
     label.pos_hint = {"center_x": 0.5, "center_y": pos[1] - 0.07}
     label.markup = True
@@ -3302,6 +3364,7 @@ class PageSwitcher(RelativeLayout):
 
         # Page dots
         self.label = Label(halign="center")
+        self.label.__translate__ = False
         self.label.size_hint = (None, None)
         self.label.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.label.markup = True
@@ -3400,6 +3463,7 @@ def paragraph_object(size, name, content, font_size, font):
     paragraph_obj.width = size[0]
     paragraph_obj.height = size[1] + 10
     paragraph_obj.title_text = name
+    paragraph_obj.text_content.__translate__ = False
     paragraph_obj.text_content.text = content
     paragraph_obj.text_content.font_size = font_size
     return paragraph_obj
@@ -3595,7 +3659,7 @@ class BannerObject(RelativeLayout):
                 Animation(opacity=0, duration=0.3).start(widget)
 
 
-    def __init__(self, pos_hint={"center_x": 0.5, "center_y": 0.5}, size=(200,50), color=(1,1,1,1), text="", icon=None, icon_side="left", animate=False, **kwargs):
+    def __init__(self, pos_hint={"center_x": 0.5, "center_y": 0.5}, size=(200,50), color=(1,1,1,1), text="", icon=None, icon_side="left", animate=False, __translate__=True, **kwargs):
         super().__init__(**kwargs)
 
         self.size = size
@@ -3606,6 +3670,7 @@ class BannerObject(RelativeLayout):
 
         # Text
         self.text_object = Label()
+        self.text_object.__translate__ = __translate__
         self.text_object.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.text_object.font_size = sp(round(self.height / 1.8))
         self.text_object.color = (0, 0, 0, 0.75)
@@ -4529,7 +4594,9 @@ class HeaderText(FloatLayout):
         self.lower_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
         self.lower_text.color = (0.6, 0.6, 1, 0.6)
 
-        self.separator = Label(text="_" * 48, pos_hint={"center_y": position[1] - 0.025}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+        self.separator = Label(pos_hint={"center_y": position[1] - 0.025}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+        self.separator.__translate__ = False
+        self.separator.text = "_" * 48
         self.separator.id = 'separator'
         if not no_line:
             self.add_widget(self.separator)
@@ -5946,6 +6013,7 @@ class PopupAddon(BigPopupWindow):
 
         # Title
         self.window_title.text_size[0] = (self.window_background.size[0] * 0.7)
+        self.window_title.__translate__ = False
         self.window_title.halign = "center"
         self.window_title.shorten = True
         self.window_title.markup = True
@@ -6032,9 +6100,10 @@ class PopupAddon(BigPopupWindow):
                 if self.addon_object.versions:
                     addon_supported = constants.version_check(server_version, ">=", self.addon_object.versions[-1]) and constants.version_check(server_version, "<=", self.addon_object.versions[0])
 
-                version_text = f"{'Supported' if addon_supported else 'Unsupported'}:  {addon_versions}"
+                version_text = f"{constants.translate('Supported' if addon_supported else 'Unsupported')}:  {addon_versions}"
 
                 self.version_banner = BannerObject(
+                    __translate__ = False,
                     pos_hint = {"center_x": (0.5 if not self.installed else 0.36), "center_y": 0.877},
                     size = (250, 40),
                     color = (0.4, 0.682, 1, 1) if addon_supported else (1, 0.53, 0.58, 1),
@@ -6102,6 +6171,7 @@ class PopupScript(BigPopupWindow):
 
         # Title
         self.window_title.text_size[0] = (self.window_background.size[0] * 0.7)
+        self.window_title.__translate__ = False
         self.window_title.halign = "center"
         self.window_title.shorten = True
         self.window_title.markup = True
@@ -6517,6 +6587,8 @@ class PopupSearch(RelativeLayout):
             if animate:
                 self.fix_lag(50)
                 def change_data(*a):
+                    self.title.__translate__ = not search_obj.type == 'server'
+
                     self.search_obj = search_obj
                     self.title.text = search_obj.title
                     self.subtitle.text = search_obj.subtitle
@@ -6805,6 +6877,7 @@ class PopupSearch(RelativeLayout):
 
             # Input to type in
             self.window_input = BaseInput()
+            self.window_input.__translate__ = False
             self.window_input.title_text = ""
             self.window_input.id = 'search_input'
             self.window_input.multiline = False
@@ -6841,6 +6914,7 @@ class PopupSearch(RelativeLayout):
 
             # Popup window content
             self.window_content = Label()
+            self.window_content.__translate__ = False
             self.window_content.id = "window_content"
             self.window_content.color = tuple([px * 1.5 if px < 1 else px for px in self.window_text_color])
             self.window_content.font_size = sp(23)
@@ -8186,9 +8260,14 @@ class MainMenuScreen(MenuBackground):
 
         splash.add_widget(logo)
         version_text = f"{constants.app_version}{' (dev)' if constants.dev_version else ''}"
-        version = Label(text=f"v{version_text}{(7 - len(version_text)) * '  '}", pos=(330, 200), pos_hint={"center_y": 0.77}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
+        version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
+        version.__translate__ = False
+        version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
         splash.add_widget(version)
-        splash.add_widget(Label(text="_" * 50, pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25)))
+        seperator = Label(pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+        seperator.__translate__ = False
+        seperator.text="_" * 50
+        splash.add_widget(seperator)
         splash.add_widget(Label(text=constants.session_splash, pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25)))
 
         float_layout.add_widget(splash)
@@ -9078,6 +9157,7 @@ class RuleButton(FloatLayout):
         self.button.always_release = True
 
         self.text = Label()
+        self.text.__translate__ = False
         self.text.id = 'text'
         self.text.size_hint = (None, None)
         self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
@@ -9262,6 +9342,7 @@ class AclRulePanel(RelativeLayout):
 
         # Make this copyable text
         self.player_layout.name_label = HeaderLabel()
+        self.player_layout.name_label.__translate__ = False
         self.player_layout.name_label.pos_hint = {"center_x": 0.54, "center_y": 0.81}
         self.player_layout.name_label.font_size = sp(25)
         self.player_layout.add_widget(self.player_layout.name_label)
@@ -9279,29 +9360,35 @@ class AclRulePanel(RelativeLayout):
         self.player_layout.add_widget(self.player_layout.online_label)
 
         self.player_layout.uuid_header = HeaderLabel()
+        self.player_layout.uuid_header.__translate__ = False
         self.player_layout.uuid_header.pos_hint = {"center_x": 0.5, "center_y": 0.66}
         self.player_layout.add_widget(self.player_layout.uuid_header)
 
         # Make this copyable text
         self.player_layout.uuid_label = ParagraphLabel()
+        self.player_layout.uuid_label.__translate__ = False
         self.player_layout.uuid_label.pos_hint = {"center_x": 0.5, "center_y": 0.619}
         self.player_layout.add_widget(self.player_layout.uuid_label)
 
         self.player_layout.ip_header = HeaderLabel()
+        self.player_layout.ip_header.__translate__ = False
         self.player_layout.ip_header.pos_hint = {"center_x": 0.28, "center_y": 0.54}
         self.player_layout.add_widget(self.player_layout.ip_header)
 
         # Make this copyable text
         self.player_layout.ip_label = ParagraphLabel()
+        self.player_layout.ip_label.__translate__ = False
         self.player_layout.ip_label.font_size = sp(20)
         self.player_layout.ip_label.pos_hint = {"center_x": 0.28, "center_y": 0.499}
         self.player_layout.add_widget(self.player_layout.ip_label)
 
         self.player_layout.geo_header = HeaderLabel()
+        self.player_layout.geo_header.__translate__ = False
         self.player_layout.geo_header.pos_hint = {"center_x": 0.7, "center_y": 0.54}
         self.player_layout.add_widget(self.player_layout.geo_header)
 
         self.player_layout.geo_label = ParagraphLabel()
+        self.player_layout.geo_label.__translate__ = False
         self.player_layout.geo_label.halign = "center"
         self.player_layout.geo_label.pos_hint = {"center_x": 0.7, "center_y": 0.499}
         self.player_layout.add_widget(self.player_layout.geo_label)
@@ -9362,6 +9449,7 @@ class AclRulePanel(RelativeLayout):
 
         # Make this copyable text
         self.ip_layout.name_label = HeaderLabel()
+        self.ip_layout.name_label.__translate__ = False
         self.ip_layout.name_label.pos_hint = {"center_x": 0.54, "center_y": 0.81}
         self.ip_layout.name_label.font_size = sp(25)
         self.ip_layout.add_widget(self.ip_layout.name_label)
@@ -9372,16 +9460,19 @@ class AclRulePanel(RelativeLayout):
 
         # Make ip copyable text
         self.ip_layout.type_label = ParagraphLabel()
+        self.ip_layout.type_label.__translate__ = False
         self.ip_layout.type_label.font_size = sp(20)
         self.ip_layout.type_label.pos_hint = {"center_x": 0.28, "center_y": 0.598}
         self.ip_layout.add_widget(self.ip_layout.type_label)
 
+        self.ip_layout.affected_header = HeaderLabel()
         self.ip_layout.affected_header = HeaderLabel()
         self.ip_layout.affected_header.pos_hint = {"center_x": 0.7, "center_y": 0.64}
         self.ip_layout.add_widget(self.ip_layout.affected_header)
 
         # Make ip copyable text
         self.ip_layout.affected_label = ParagraphLabel()
+        self.ip_layout.affected_label.__translate__ = False
         self.ip_layout.affected_label.halign = "center"
         self.ip_layout.affected_label.font_size = sp(20)
         self.ip_layout.affected_label.pos_hint = {"center_x": 0.7, "center_y": 0.598}
@@ -9391,8 +9482,9 @@ class AclRulePanel(RelativeLayout):
         self.ip_layout.network_header.pos_hint = {"center_x": 0.5, "center_y": 0.458}
         self.ip_layout.add_widget(self.ip_layout.network_header)
 
-        # Make ip copyable text
+        # Make IP copyable text
         self.ip_layout.network_label = ParagraphLabel()
+        self.ip_layout.network_label.__translate__ = False
         self.ip_layout.network_label.halign = "center"
         self.ip_layout.network_label.valign = "top"
         self.ip_layout.network_label.text_size = (400, 150)
@@ -9673,10 +9765,10 @@ class AclRulePanel(RelativeLayout):
             # Change affected users
             users = displayed_rule.display_data['affected_users']
             if users == 0:
-                self.ip_layout.affected_label.text = "0 users"
+                self.ip_layout.affected_label.text = f"0 {constants.translate('users')}"
                 self.ip_layout.affected_label.color = self.color_dict['gray']
             else:
-                self.ip_layout.affected_label.text = f"{users:,} user{'s' if users > 1 else ''}"
+                self.ip_layout.affected_label.text = f"{users:,} {constants.translate('user' + 's' if users > 1 else '')}"
                 self.ip_layout.affected_label.color = self.color_dict['green'] if "whitelist" in displayed_rule.display_data['rule_info'].lower() else self.color_dict['red']
 
 
@@ -10875,6 +10967,7 @@ class AddonButton(HoverButton):
         self.title.markup = True
         self.title.shorten_from = "right"
         self.title.max_lines = 1
+        self.title.__translate__ = False
         self.title.text = f"{self.properties.name}  [color=#434368]-[/color]  {self.properties.author if self.properties.author else 'Unknown'}"
         self.add_widget(self.title)
 
@@ -11590,8 +11683,11 @@ def server_demo_input(pos_hint, properties):
     demo_input = ServerDemoInput()
     demo_input.properties = properties
     demo_input.pos_hint = pos_hint
+    demo_input.__translate__ = False
     demo_input.hint_text = properties['name']
+    demo_input.type_image.version_label.__translate__ = False
     demo_input.type_image.version_label.text = properties['version']
+    demo_input.type_image.type_label.__translate__ = False
     demo_input.type_image.type_label.text = properties['type'].lower().replace("craft", "")
     demo_input.type_image.image.source = os.path.join(constants.gui_assets, 'icons', 'big', f'{properties["type"]}_small.png')
     return demo_input
@@ -11865,7 +11961,7 @@ class CreateServerProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Creating '{constants.new_server_info['name']}'",
+            'title': f"Creating '${constants.new_server_info['name']}$'",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -11881,7 +11977,7 @@ class CreateServerProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(open_server, constants.new_server_info['name'], True, f"'{constants.new_server_info['name']}' was created successfully"),
+            'after_function': functools.partial(open_server, constants.new_server_info['name'], True, f"'${constants.new_server_info['name']}$' was created successfully"),
 
             # Screen to go to after complete
             'next_screen': None
@@ -11902,7 +11998,7 @@ class CreateServerProgressScreen(ProgressScreen):
             needs_installed = constants.new_server_info['type'] in ['forge', 'fabric']
 
         if needs_installed:
-            function_list.append((f'Installing {constants.new_server_info["type"].title()}', functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${constants.new_server_info["type"].title()}$', functools.partial(constants.install_server), 10 if download_addons else 20))
 
         if download_addons:
             function_list.append(('Add-oning add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
@@ -12733,7 +12829,7 @@ class ServerButton(HoverButton):
                     text = run_data['network']['address']['ip']
                 else:
                     text = ':'.join(run_data['network']['address'].values())
-                self.subtitle.text = f"Running  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+                self.subtitle.text = f"{constants.translate('Running')}  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
             else:
                 reset()
 
@@ -12777,6 +12873,7 @@ class ServerButton(HoverButton):
 
         # Title of Server
         self.title = Label()
+        self.title.__translate__ = False
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
@@ -12796,6 +12893,7 @@ class ServerButton(HoverButton):
             self.subtitle = self.ParagraphLabel()
         else:
             self.subtitle = Label()
+        self.subtitle.__translate__ = False
         self.subtitle.size = (300, 30)
         self.subtitle.id = "subtitle"
         self.subtitle.halign = "left"
@@ -12816,7 +12914,7 @@ class ServerButton(HoverButton):
                 text = server_object.run_data['network']['address']['ip']
             else:
                 text = ':'.join(server_object.run_data['network']['address'].values())
-            self.subtitle.text = f"Running  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+            self.subtitle.text = f"{constants.translate('Running')}  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
         else:
             self.subtitle.copyable = False
             self.subtitle.color = self.color_id[1]
@@ -12842,7 +12940,7 @@ class ServerButton(HoverButton):
                 def __init__(self, **kwargs):
                     super().__init__(**kwargs)
                     with self.canvas:
-                        Color(1, 1, 1)  # Set the color to white
+                        Color(1, 1, 1, 1)  # Set the color to white
                         self.shadow = Ellipse(pos=(-13.5, -17.5), size=(100, 100), source=os.path.join(constants.gui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
                         self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0, angle_end=360)
             self.type_image.image = CustomServerIcon()
@@ -12858,6 +12956,7 @@ class ServerButton(HoverButton):
 
         def TemplateLabel():
             template_label = AlignLabel()
+            template_label.__translate__ = False
             template_label.halign = "right"
             template_label.valign = "middle"
             template_label.text_size = template_label.size
@@ -13060,7 +13159,7 @@ class ServerManagerScreen(MenuBackground):
             functools.partial(
                 screen_manager.current_screen.show_banner,
                 (0.85, 0.65, 1, 1) if bool_favorite else (0.68, 0.68, 1, 1),
-                f"'{server_name}'" + (" marked as favorite" if bool_favorite else " is no longer marked as favorite"),
+                f"'${server_name}$'" + (" marked as favorite" if bool_favorite else " is no longer marked as favorite"),
                 "heart-sharp.png" if bool_favorite else "heart-dislike-outline.png",
                 2,
                 {"center_x": 0.5, "center_y": 0.965}
@@ -13579,7 +13678,7 @@ def prompt_new_server(server_obj, *args):
         screen_manager.current_screen.show_popup(
             "query",
             "Automatic Updates",
-            f"Would you like to enable automatic updates for '{server_obj.name}'?\n\nIf an update is available, auto-mcs will update this server when opened",
+            f"Would you like to enable automatic updates for '${server_obj.name}$'?\n\nIf an update is available, auto-mcs will update this server when opened",
             [functools.partial(set_update, False),
              functools.partial(set_update, True)]
         )
@@ -13601,7 +13700,7 @@ def prompt_new_server(server_obj, *args):
         screen_manager.current_screen.show_popup(
             "query",
             "Automatic Back-ups",
-            f"Would you like to enable automatic back-ups for '{server_obj.name}'?\n\nauto-mcs will back up this server when closed",
+            f"Would you like to enable automatic back-ups for '${server_obj.name}$'?\n\nauto-mcs will back up this server when closed",
             [functools.partial(set_bkup_and_prompt_update, False),
              functools.partial(set_bkup_and_prompt_update, True)]
         )
@@ -13749,13 +13848,15 @@ class PerformancePanel(RelativeLayout):
                 self.shadow.pos = (self.label.x + self.offset, self.label.y - self.offset)
 
 
-            def __init__(self, text, font, size, color, align='left', offset=2, shadow_color=dark_accent, **kwargs):
+            def __init__(self, text, font, size, color, align='left', offset=2, shadow_color=dark_accent, __translate__=True, **kwargs):
                 super().__init__(**kwargs)
 
                 self.offset = offset
 
                 # Shadow
-                self.shadow = AlignLabel(text=text)
+                self.shadow = AlignLabel()
+                self.shadow.__translate__ = __translate__
+                self.shadow.text = text
                 self.shadow.font_name = font
                 self.shadow.font_size = size
                 self.shadow.color = shadow_color
@@ -13763,7 +13864,9 @@ class PerformancePanel(RelativeLayout):
                 self.add_widget(self.shadow)
 
                 # Main label
-                self.label = AlignLabel(text=text)
+                self.label = AlignLabel()
+                self.label.__translate__ = __translate__
+                self.label.text = text
                 self.label.font_name = font
                 self.label.font_size = size
                 self.label.color = color
@@ -13876,6 +13979,7 @@ class PerformancePanel(RelativeLayout):
 
                 # Label text
                 self.name = ShadowLabel(
+                    __translate__ = False,
                     text = meter_name,
                     font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["medium"]),
                     size = sp(22),
@@ -13888,6 +13992,7 @@ class PerformancePanel(RelativeLayout):
 
                 # Percent text
                 self.percentage_label = ShadowLabel(
+                    __translate__ = False,
                     text = f'{self.percent} %',
                     font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"]),
                     size = sp(30),
@@ -13941,6 +14046,7 @@ class PerformancePanel(RelativeLayout):
 
                 # Up-time label
                 self.uptime_label = ShadowLabel(
+                    __translate__ = False,
                     text = f'00:00:00:00',
                     font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["mono-bold"]) + '.otf',
                     size = sp(30),
@@ -13971,6 +14077,7 @@ class PerformancePanel(RelativeLayout):
 
                 # Player count label
                 self.player_label = ShadowLabel(
+                    __translate__ = False,
                     text = f'0 / {self.max_players}',
                     font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["bold"]),
                     size = sp(26),
@@ -14196,6 +14303,7 @@ class PerformancePanel(RelativeLayout):
                         self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}.png')
 
                         self.label = AlignLabel()
+                        self.label.__translate__ = False
                         self.label.halign = 'left'
                         self.label.valign = 'center'
                         self.label.id = 'label'
@@ -14594,7 +14702,7 @@ class ConsolePanel(FloatLayout):
                         functools.partial(
                             screen_manager.current_screen.show_banner,
                             (1, 0.5, 0.65, 1),
-                            f"'{self.server_name}' has crashed",
+                            f"'${self.server_name}$' has crashed",
                             "close-circle-sharp.png",
                             2.5,
                             {"center_x": 0.5, "center_y": 0.965}
@@ -14652,7 +14760,7 @@ class ConsolePanel(FloatLayout):
                     self.controls.log_button.opacity = 0
                     self.controls.add_widget(self.controls.log_button)
                     Animation(opacity=1, duration=anim_speed).start(self.controls.log_button)
-                    self.controls.crash_text.update_text(f"Uh oh, '{self.server_name}' has crashed", False)
+                    self.controls.crash_text.update_text(f"Uh oh, '${self.server_name}$' has crashed", False)
 
 
                 # Animate panel
@@ -15014,7 +15122,13 @@ class ConsolePanel(FloatLayout):
                     self.width = width
                     self.main_label.width = width - (self.section_size * 2) - 3
                     self.main_label.text_size = (width - (self.section_size * 2) - 3, None)
-                    self.main_label.texture_update()
+                    try:
+                        self.main_label.texture_update()
+                    except:
+                        self.date_label.text = kivy.utils.escape_markup(text[0])
+                        self.type_label.text = kivy.utils.escape_markup(text[1])
+                        self.main_label.text = kivy.utils.escape_markup(text[2])
+                        self.main_label.texture_update()
                     self.main_label.size = self.main_label.texture_size
                     self.main_label.size_hint_max_x = width - (self.section_size * 2) - 3
                     self.size_hint_max_x = width
@@ -15057,6 +15171,7 @@ class ConsolePanel(FloatLayout):
 
                 # Main text
                 self.main_label = Label()
+                self.main_label.__translate__ = False
                 self.main_label.markup = True
                 self.main_label.shorten = True
                 self.main_label.shorten_from = 'right'
@@ -15074,6 +15189,7 @@ class ConsolePanel(FloatLayout):
                 self.add_widget(self.type_banner)
 
                 self.type_label = Label()
+                self.type_label.__translate__ = False
                 self.type_label.font_size = self.font_size
                 self.type_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
                 self.add_widget(self.type_label)
@@ -15093,6 +15209,7 @@ class ConsolePanel(FloatLayout):
                 self.add_widget(self.date_banner2)
 
                 self.date_label = Label()
+                self.date_label.__translate__ = False
                 self.date_label.font_size = self.font_size
                 self.date_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
                 self.date_label.halign = 'left'
@@ -15307,7 +15424,7 @@ class ConsolePanel(FloatLayout):
                 self.crash_text = InputLabel(pos_hint={'center_y': 0.78})
                 self.add_widget(self.crash_text)
                 if constants.server_manager.current_server.crash_log:
-                    self.crash_text.update_text(f"Uh oh, '{self.panel.server_name}' has crashed", False)
+                    self.crash_text.update_text(f"Uh oh, '${self.panel.server_name}$' has crashed", False)
 
 
                 # Button shadow in the top right
@@ -15811,7 +15928,7 @@ class ServerBackupScreen(MenuBackground):
                     functools.partial(
                         self.show_banner,
                         (0.553, 0.902, 0.675, 1),
-                        f"Backed up '{server_obj.name}' successfully",
+                        f"Backed up '${server_obj.name}$' successfully",
                         "checkmark-circle-sharp.png",
                         2.5,
                         {"center_x": 0.5, "center_y": 0.965}
@@ -16385,7 +16502,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Restoring '{server_obj.name}'",
+            'title': f"Restoring '${server_obj.name}$'",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -16401,7 +16518,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(open_server, server_obj.name, True, f"'{server_obj.name}' was restored to {restore_date}"),
+            'after_function': functools.partial(open_server, server_obj.name, True, f"'${server_obj.name}$' was restored to {restore_date}"),
 
             # Screen to go to after complete
             'next_screen': None
@@ -16879,6 +16996,7 @@ class AddonListButton(HoverButton):
 
         # Title of Addon
         self.title = Label()
+        self.title.__translate__ = False
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
@@ -17875,6 +17993,7 @@ class ScriptButton(HoverButton):
 
         # Title of Script
         self.title = Label()
+        self.title.__translate__ = False
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
@@ -18254,6 +18373,7 @@ class AmscriptListButton(HoverButton):
 
         # Title of Script
         self.title = Label()
+        self.title.__translate__ = False
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
@@ -18346,12 +18466,12 @@ class CreateAmscriptScreen(MenuBackground):
 
 
 
-# Welcome to the amscript IDE!
-# Right-click > Help to learn more about the capabilities of amscript
+# {constants.translate('Welcome to the amscript IDE!')}
+# {constants.translate('Right-click > Help to learn more about the capabilities of amscript')}
 
 @player.on_join(player, message):
     if player not in server.usercache:
-        player.log(f"Welcome to {{server}} {{player}}!")
+        player.log(f"{constants.translate('Welcome to')} {{server}} {{player}}!")
 """
 
             constants.folder_check(constants.scriptDir)
@@ -19338,6 +19458,7 @@ class EditorLine(RelativeLayout):
 
                 self.bind(scroll_x=self.scroll_search)
 
+                self.__translate__ = False
                 self.font_kerning = False
                 self.index = index
                 self.index_func = index_func
@@ -19381,6 +19502,7 @@ class EditorLine(RelativeLayout):
 
         # Line number
         self.line_number = AlignLabel()
+        self.line_number.__translate__ = False
         self.line_number.text = str(line)
         self.line_number.halign = 'right'
         self.line_number.markup = True
@@ -19393,6 +19515,7 @@ class EditorLine(RelativeLayout):
 
         # Key label
         self.key_label = Label()
+        self.key_label.__translate__ = False
         self.key_label.text = ('# ' + key[1:].strip()) if key.startswith('#') else key
         self.key_label.original_text = ('# ' + key[1:].strip()) if key.startswith('#') else key
         self.key_label.font_name = self.font_name
@@ -19404,6 +19527,7 @@ class EditorLine(RelativeLayout):
 
         # '=' sign
         self.eq_label = Label()
+        self.eq_label.__translate__ = False
         self.eq_label.text = '='
         self.eq_label.halign = 'left'
         self.eq_label.font_name = self.font_name
@@ -20866,7 +20990,7 @@ class ServerSettingsScreen(MenuBackground):
                     functools.partial(
                         screen_manager.current_screen.show_banner,
                         (1, 0.5, 0.65, 1),
-                        f"'{server_name}' was deleted successfully",
+                        f"'${server_name}$' was deleted successfully",
                         "trash-sharp.png",
                         3,
                         {"center_x": 0.5, "center_y": 0.965}
@@ -20878,7 +21002,7 @@ class ServerSettingsScreen(MenuBackground):
                 functools.partial(
                     screen_manager.current_screen.show_popup,
                     "warning_query",
-                    f"Delete '{server_obj.name}'",
+                    f"Delete '${server_obj.name}$'",
                     "Do you want to permanently delete this server?\n\nThis action cannot be undone\n(Your server can be re-imported from a back-up later)",
                     (None, functools.partial(Clock.schedule_once, delete_server, 0.5))
                 ),
