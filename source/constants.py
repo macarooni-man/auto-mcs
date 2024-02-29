@@ -295,6 +295,9 @@ def get_repo_scripts():
 # Converts string into another language
 def translate(text: str, locale=None):
 
+    if not text.strip():
+        return text
+
     # # Escape proper nouns that ignore translation
     # def override(key):
     #     if key in text:
@@ -324,7 +327,7 @@ def translate(text: str, locale=None):
     #
     # if text.endswith('...'):
     #     final_text += '...'
-    # 
+    #
     # return final_text
     return text
 

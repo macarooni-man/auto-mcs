@@ -7880,6 +7880,7 @@ class ProgressWidget(RelativeLayout):
 
         # Percentage text
         self.percentage = Label()
+        self.percentage.__translate__ = False
         self.percentage.text = "0%"
         self.percentage.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['medium'])
         self.percentage.font_size = sp(19)
@@ -8257,18 +8258,23 @@ class MainMenuScreen(MenuBackground):
         splash = FloatLayout()
 
         logo = Image(source=os.path.join(constants.gui_assets, 'logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
-
         splash.add_widget(logo)
+
         version_text = f"{constants.app_version}{' (dev)' if constants.dev_version else ''}"
         version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
         version.__translate__ = False
         version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
         splash.add_widget(version)
+
         seperator = Label(pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
         seperator.__translate__ = False
-        seperator.text="_" * 50
+        seperator.text = "_" * 50
         splash.add_widget(seperator)
-        splash.add_widget(Label(text=constants.session_splash, pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25)))
+
+        session_splash = Label(pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+        session_splash.__translate__ = False
+        session_splash.text = constants.session_splash
+        splash.add_widget(session_splash)
 
         float_layout.add_widget(splash)
 
