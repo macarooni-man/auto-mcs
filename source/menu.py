@@ -97,14 +97,26 @@ from kivy.properties import BooleanProperty, ObjectProperty
 
 
 # Override Kivy widgets for translation
+def scale_size(obj, o, n, *a):
+    if o and n and obj.__o_size__:
+        diff = len(n) - len(o)
+        # Make sure that scaled font size doesn't get too low, for example in the controls menu
+        new_size = round(diff * 0.4)
+        obj.font_size = obj.__o_size__ - new_size
+
 class Label(Label):
     def __init__(self, *args, **kwargs):
         self.__translate__ = True
+        self.__o_size__ = None
         super().__init__(*args, **kwargs)
 
     def __setattr__(self, key, value):
         if key in ('text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+            o = value
             value = constants.translate(value)
+            Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
+        if key == 'font_size' and not self.__o_size__:
+            self.__o_size__ = value
         super().__setattr__(key, value)
 class Button(Button):
     def __init__(self, *args, **kwargs):
@@ -4568,10 +4580,11 @@ def next_button(name, position, disabled=False, next_screen="MainMenuScreen", sh
 
 class HeaderText(FloatLayout):
 
-    def __init__(self, display_text, more_text, position, fixed_x=False, no_line=False, **kwargs):
+    def __init__(self, display_text, more_text, position, fixed_x=False, no_line=False, __translate__ = (True, True), **kwargs):
         super().__init__(**kwargs)
 
         self.text = Label()
+        self.text.__translate__ = __translate__[0]
         self.text.id = 'text'
         self.text.size_hint = (None, None)
         self.text.markup = True
@@ -4585,6 +4598,7 @@ class HeaderText(FloatLayout):
         self.text.color = (0.6, 0.6, 1, 1)
 
         self.lower_text = Label()
+        self.lower_text.__translate__ = __translate__[1]
         self.lower_text.id = 'lower_text'
         self.lower_text.size_hint = (None, None)
         self.lower_text.markup = True
@@ -6022,6 +6036,7 @@ class PopupAddon(BigPopupWindow):
 
 
         # Description
+        self.window_content.__translate__ = False
         self.window_content.text = "" if not addon_object else self.addon_object.description
         if not self.window_content.text.strip():
             self.window_content.text = "description unavailable"
@@ -6180,6 +6195,7 @@ class PopupScript(BigPopupWindow):
 
 
         # Description
+        self.window_content.__translate__ = False
         self.window_content.text = "" if not script_object else self.script_object.description
         if not self.window_content.text.strip():
             self.window_content.text = "description unavailable"
@@ -9033,7 +9049,7 @@ class RuleButton(FloatLayout):
                 # Modify 'ops' list
                 if current_list == "ops" and button_text in ['promote', 'demote']:
                     acl_object.op_player(self.rule.rule, remove=(button_text == "demote"))
-                    banner_text = f"'{filtered_name}' was {'demoted' if (button_text == 'demote') else 'promoted'}"
+                    banner_text = f"'${filtered_name}$' was {'demoted' if (button_text == 'demote') else 'promoted'}"
                     reload_page = True
 
                 # Modify 'bans' list
@@ -9051,13 +9067,13 @@ class RuleButton(FloatLayout):
                             if ip_addr in acl.gen_iplist(acl_object.rules['subnets']):
                                 acl_object.ban_player(f"!w{ip_addr}", remove=False)
 
-                    banner_text = f"'{filtered_name}' was removed" if button_text == 'remove' else f"'{filtered_name}' is {'pardoned' if (button_text == 'pardon') else 'banned'}"
+                    banner_text = f"'${filtered_name}$' was removed" if button_text == 'remove' else f"'{filtered_name}' is {'pardoned' if (button_text == 'pardon') else 'banned'}"
                     reload_page = True
 
                 # Modify 'wl' list
                 elif current_list == "wl" and button_text in ['permit', 'restrict']:
                     acl_object.whitelist_player(self.rule.rule, remove=(button_text == "restrict"))
-                    banner_text = f"'{filtered_name}' is {'restricted' if (button_text == 'restrict') else 'permitted'}"
+                    banner_text = f"'${filtered_name}$' is {'restricted' if (button_text == 'restrict') else 'permitted'}"
                     reload_page = True
 
 
@@ -9069,7 +9085,7 @@ class RuleButton(FloatLayout):
                     original_hover_attr[1],
                     self.color_id[1]
                 )
-                banner_text = f"'{filtered_name}' rule is now locally applied"
+                banner_text = f"'${filtered_name}$' rule is now locally applied"
                 localize = True
                 new_scope = "local"
                 reload_page = True
@@ -9083,7 +9099,7 @@ class RuleButton(FloatLayout):
                     original_hover_attr[1],
                     self.global_icon_color if (self.rule.rule_scope == 'local') else self.color_id[1]
                 )
-                banner_text = f"'{filtered_name}' is now {'local' if (self.rule.rule_scope == 'global') else 'global'}ly applied"
+                banner_text = f"'${filtered_name}$' is now {'local' if (self.rule.rule_scope == 'global') else 'global'}ly applied"
                 localize = self.rule.rule_scope == "global"
                 new_scope = "local" if localize else "global"
                 reload_page = True
@@ -9323,6 +9339,8 @@ class AclRulePanel(RelativeLayout):
         self.blank_label = Label()
         self.blank_label.id = 'blank_label'
         self.blank_label.text = "Right-click a rule to view"
+        self.blank_label.text_size[0] = self.size_hint_max[0] * 0.7
+        self.blank_label.halign = "center"
         self.blank_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
         self.blank_label.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         self.blank_label.font_size = sp(26)
@@ -9864,14 +9882,14 @@ class AclRulePanel(RelativeLayout):
                     (1, 0.5, 0.65, 1) if current_list == "bans" else
                     (0.3, 1, 0.6, 1)
                 )
-                banner_text = f"'{filtered_name}' is now locally applied"
+                banner_text = f"'${filtered_name}$' is now locally applied"
                 new_scope = "local"
                 reload_page = True
 
             elif "globalize" in option:
                 acl_object.add_global_rule(original_name, current_list, remove=False)
                 hover_attr = (icon_path("earth-sharp.png"), 'GLOBALIZE', (0.953, 0.929, 0.38, 1))
-                banner_text = f"'{filtered_name}' is now globally applied"
+                banner_text = f"'${filtered_name}$' is now globally applied"
                 new_scope = "global"
                 reload_page = True
 
@@ -9885,14 +9903,14 @@ class AclRulePanel(RelativeLayout):
                     acl_object.op_player(original_name, remove=True)
 
                 hover_attr = (icon_path("close-circle.png"), 'DEMOTE', (1, 0.5, 0.65, 1))
-                banner_text = f"'{filtered_name}' was demoted"
+                banner_text = f"'${filtered_name}$' was demoted"
                 new_scope = "local"
                 reload_page = True
 
             elif "promote" in option:
                 acl_object.op_player(original_name, remove=False)
                 hover_attr = (icon_path("promote.png"), 'PROMOTE', (0.3, 1, 0.6, 1))
-                banner_text = f"'{filtered_name}' was promoted"
+                banner_text = f"'${filtered_name}$' was promoted"
                 reload_page = True
 
 
@@ -9902,7 +9920,7 @@ class AclRulePanel(RelativeLayout):
                 if "ban user" in option:
                     acl_object.ban_player(original_name, remove=False)
                     hover_attr = (icon_path("close-circle.png"), 'BAN', (1, 0.5, 0.65, 1))
-                    banner_text = f"'{filtered_name}' is banned"
+                    banner_text = f"'${filtered_name}$' is banned"
                     reload_page = True
 
                 elif "ban IP" in option:
@@ -9913,7 +9931,7 @@ class AclRulePanel(RelativeLayout):
 
                     acl_object.ban_player(f"!w{ip_addr}", remove=True)
                     hover_attr = (icon_path("close-circle.png"), 'BAN', (1, 0.5, 0.65, 1))
-                    banner_text = f"'{filtered_name}' is banned"
+                    banner_text = f"'${filtered_name}$' is banned"
                     reload_page = True
 
                 if "pardon IP" in option and "user" in option:
@@ -9927,7 +9945,7 @@ class AclRulePanel(RelativeLayout):
                         acl_object.ban_player(f"!w{ip_addr}", remove=False)
 
                     hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
-                    banner_text = f"'{filtered_name}' is pardoned"
+                    banner_text = f"'${filtered_name}$' is pardoned"
                     new_scope = "local"
                     reload_page = True
 
@@ -9938,7 +9956,7 @@ class AclRulePanel(RelativeLayout):
                         acl_object.ban_player(original_name, remove=True)
 
                     hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
-                    banner_text = f"'{filtered_name}' is pardoned"
+                    banner_text = f"'${filtered_name}$' is pardoned"
                     new_scope = "local"
                     reload_page = True
 
@@ -9950,7 +9968,7 @@ class AclRulePanel(RelativeLayout):
                         acl_object.ban_player(f"!w{ip_addr}", remove=False)
 
                     hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
-                    banner_text = f"'{filtered_name}' is pardoned"
+                    banner_text = f"'${filtered_name}$' is pardoned"
                     new_scope = "local"
                     reload_page = True
 
@@ -9968,7 +9986,7 @@ class AclRulePanel(RelativeLayout):
                     else:
                         acl_object.ban_player(original_name, remove=False)
                     hover_attr = (icon_path("close-circle.png"), 'BAN', (1, 0.5, 0.65, 1))
-                    banner_text = f"'{filtered_name}' is banned"
+                    banner_text = f"'${filtered_name}$' is banned"
                     new_name = filtered_name
                     reload_page = True
 
@@ -9979,7 +9997,7 @@ class AclRulePanel(RelativeLayout):
                         acl_object.ban_player(original_name, remove=True)
 
                     hover_attr = (icon_path("lock-open.png"), 'PARDON', (0.3, 1, 0.6, 1))
-                    banner_text = f"'{filtered_name}' is pardoned"
+                    banner_text = f"'${filtered_name}$' is pardoned"
                     new_scope = "local"
                     reload_page = True
 
@@ -9990,7 +10008,7 @@ class AclRulePanel(RelativeLayout):
                         acl_object.ban_player(original_name, remove=True)
 
                     hover_attr = (icon_path("shield-disabled-outline.png"), 'REMOVE', (0.7, 0.7, 1, 1))
-                    banner_text = f"'{filtered_name}' was removed"
+                    banner_text = f"'${filtered_name}$' was removed"
                     new_scope = "local"
                     reload_page = True
 
@@ -10002,7 +10020,7 @@ class AclRulePanel(RelativeLayout):
                     acl_object.ban_player(original_name, remove=True)
                     acl_object.ban_player(f"!w{filtered_name}", remove=False)
                     hover_attr = (icon_path("shield-checkmark-outline.png"), 'WHITELIST', (0.439, 0.839, 1, 1))
-                    banner_text = f"'{filtered_name}' is whitelisted"
+                    banner_text = f"'${filtered_name}$' is whitelisted"
                     new_name = f"!w{filtered_name}"
                     reload_page = True
 
@@ -10275,9 +10293,9 @@ class CreateServerAclScreen(MenuBackground):
 
         # Modify header content
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = ('[color=#6A6ABA]No rules[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] rule' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] rules')
+        header_content = (f'[color=#6A6ABA]{constants.translate("No rules")}[/color]' if rule_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("rule")}' if rule_count == 1 else f'[font={very_bold_font}]{rule_count:,}[/font] {constants.translate("rules")}')
         if list_type == "wl" and not self.acl_object._server['whitelist']:
-            header_content += " (inactive)"
+            header_content += f" ({constants.translate('inactive')})"
 
         # header_content = (" "*(len(header_content) - (55 if 'inactive' not in header_content else 50))) + header_content
 
@@ -10312,7 +10330,7 @@ class CreateServerAclScreen(MenuBackground):
             Animation.stop_all(self.search_label)
             # print(len(self.scroll_widget.data))
             if self.filter_text and len(self.scroll_widget.data) == 0:
-                self.search_label.text = f"No results for '{self.filter_text}'"
+                self.search_label.text = f"{constants.translate('No results for')} '{self.filter_text}'"
                 Animation(opacity=1, duration=0.2).start(self.search_label)
             else:
                 Animation(opacity=0, duration=0.2).start(self.search_label)
@@ -10463,7 +10481,7 @@ class CreateServerAclScreen(MenuBackground):
         selector_text = "operators" if self.current_list == "ops" else "bans" if self.current_list == "bans" else "whitelist"
         self.page_selector = DropButton(selector_text, (0.5, 0.89), options_list=['operators', 'bans', 'whitelist'], input_name='ServerAclTypeInput', x_offset=-210, facing='center', custom_func=self.update_list)
         header_content = ""
-        self.header = HeaderText(header_content, '', (0, 0.89), fixed_x=True, no_line=True)
+        self.header = HeaderText(header_content, '', (0, 0.89), fixed_x=True, no_line=True, __translate__ = (False, True))
 
 
         buttons = []
@@ -10526,6 +10544,7 @@ class CreateServerAclScreen(MenuBackground):
 
         # Lol search label idek
         self.search_label = Label()
+        self.search_label.__translate__ = False
         self.search_label.text = ""
         self.search_label.halign = "center"
         self.search_label.valign = "center"
@@ -10980,6 +10999,7 @@ class AddonButton(HoverButton):
 
         # Description of Addon
         self.subtitle = Label()
+        self.subtitle.__translate__ = False
         self.subtitle.id = "subtitle"
         self.subtitle.halign = "left"
         self.subtitle.color = self.color_id[1]
@@ -11101,7 +11121,7 @@ class CreateServerAddonScreen(MenuBackground):
         # Generate header
         addon_count = len(results)
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Add-on Queue  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] items')
+        header_content = f"{constants.translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
 
         for child in self.header.children:
             if child.id == "text":
@@ -11262,8 +11282,8 @@ class CreateServerAddonScreen(MenuBackground):
         # Generate buttons on page load
         addon_count = len(constants.new_server_info['addon_objects'])
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Add-on Queue  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] items')
-        self.header = HeaderText(header_content, '', (0, 0.89))
+        header_content = f"{constants.translate('Add-on Queue')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {constants.translate("items")}')
+        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
         buttons = []
         float_layout = FloatLayout()
@@ -11365,7 +11385,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
             addon_count = len(results)
             very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
             search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
-            header_content = f"Search for '{search_text}'  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No results[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] items')
+            header_content = f"{constants.translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
 
             for child in self.header.children:
                 if child.id == "text":
@@ -11559,8 +11579,8 @@ class CreateServerAddonSearchScreen(MenuBackground):
         # Generate buttons on page load
         addon_count = 0
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Add-on Search"
-        self.header = HeaderText(header_content, '', (0, 0.89))
+        header_content = constants.translate("Add-on Search")
+        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
         buttons = []
         float_layout = FloatLayout()
@@ -12377,7 +12397,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
             addon_count = len(results)
             very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
             search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
-            header_content = f"Search for '{search_text}'  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No results[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] items')
+            header_content = f"{constants.translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
 
             for child in self.header.children:
                 if child.id == "text":
@@ -12536,8 +12556,8 @@ class ServerImportModpackSearchScreen(MenuBackground):
         # Generate buttons on page load
         addon_count = 0
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Modpack Search"
-        self.header = HeaderText(header_content, '', (0, 0.89))
+        header_content = constants.translate("Modpack Search")
+        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
         buttons = []
         float_layout = FloatLayout()
@@ -14195,7 +14215,7 @@ class PerformancePanel(RelativeLayout):
                                     try:
                                         player_info = constants.server_manager.current_server.run_data['player-list'][username]
                                         text = player_info[data_type]
-                                        banner_text = f'Copied {data_type.upper().replace("USER","username")} to clipboard'
+                                        banner_text = f'Copied ${data_type.upper().replace("USER","username")}$ to clipboard'
 
                                         Clock.schedule_once(
                                             functools.partial(
@@ -15920,7 +15940,7 @@ class ServerBackupScreen(MenuBackground):
                 def change_header(*args):
                     backup_stats = server_obj.backup._backup_stats
                     backup_count = len(backup_stats['backup-list'])
-                    header_content = "Latest Back-up  [color=#494977]-[/color]  " + ('[color=#6A6ABA]Never[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
+                    header_content = f"{constants.translate('Latest Back-up')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("Never")}[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
                     sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
                     self.header.text.text = header_content
                     self.header.lower_text.text = sub_header_content
@@ -16063,9 +16083,9 @@ class ServerBackupScreen(MenuBackground):
         # Configure header
         # print(backup_stats)
         backup_count = len(backup_stats['backup-list'])
-        header_content = "Latest Back-up  [color=#494977]-[/color]  " + ('[color=#6A6ABA]Never[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
+        header_content = f"{constants.translate('Latest Back-up')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("Never")}[/color]' if not backup_stats['latest-backup'] else f'[font={very_bold_font}]{backup_stats["latest-backup"]}[/font]')
         sub_header_content = f"{backup_count:,}  back-up" + ("" if backup_count == 1 else "s") + (f"   ({backup_stats['total-size']})" if backup_count > 0 else "")
-        self.header = HeaderText(header_content, sub_header_content, (0, 0.89))
+        self.header = HeaderText(header_content, sub_header_content, (0, 0.89), __translate__ = (False, True))
         float_layout.add_widget(self.header)
 
 
@@ -16524,7 +16544,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(open_server, server_obj.name, True, f"'${server_obj.name}$' was restored to {restore_date}"),
+            'after_function': functools.partial(open_server, server_obj.name, True, f"'${server_obj.name}$' was restored to ${restore_date}$"),
 
             # Screen to go to after complete
             'next_screen': None
@@ -17020,6 +17040,7 @@ class AddonListButton(HoverButton):
 
         # Description of Addon
         self.subtitle = Label()
+        self.subtitle.__translate__ = False
         self.subtitle.id = "subtitle"
         self.subtitle.halign = "left"
         self.subtitle.color = self.color_id[1]
@@ -17308,7 +17329,7 @@ class ServerAddonScreen(MenuBackground):
         enabled_count = len([addon for addon in addon_manager.installed_addons['enabled'] if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))])
         disabled_count = len(addon_manager.installed_addons['disabled'])
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Installed Add-ons  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] items')
+        header_content = f"{constants.translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {constants.translate("items")}')
 
         if addon_manager._hash_changed():
             icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
@@ -17475,8 +17496,8 @@ class ServerAddonScreen(MenuBackground):
         # Generate buttons on page load
         addon_count = len(self.server.addon.return_single_list())
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Installed Add-ons  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] items')
-        self.header = HeaderText(header_content, '', (0, 0.89))
+        header_content = f"{constants.translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {constants.translate("items")}')
+        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
         buttons = []
         float_layout = FloatLayout()
@@ -17627,7 +17648,7 @@ class ServerAddonSearchScreen(MenuBackground):
             addon_count = len(results)
             very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
             search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
-            header_content = f"Search for '{search_text}'  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No results[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] item' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] items')
+            header_content = f"{constants.translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count:,}[/font] {constants.translate("items")}')
 
             for child in self.header.children:
                 if child.id == "text":
@@ -17849,8 +17870,8 @@ class ServerAddonSearchScreen(MenuBackground):
         # Generate buttons on page load
         addon_count = 0
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Add-on Search"
-        self.header = HeaderText(header_content, '', (0, 0.89))
+        header_content = constants.translate("Add-on Search")
+        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
         buttons = []
         float_layout = FloatLayout()
@@ -18016,6 +18037,7 @@ class ScriptButton(HoverButton):
 
         # Description of Script
         self.subtitle = Label()
+        self.subtitle.__translate__ = False
         self.subtitle.id = "subtitle"
         self.subtitle.halign = "left"
         self.subtitle.color = self.color_id[1]
@@ -18397,6 +18419,7 @@ class AmscriptListButton(HoverButton):
 
         # Description of Addon
         self.subtitle = Label()
+        self.subtitle.__translate__ = False
         self.subtitle.id = "subtitle"
         self.subtitle.halign = "left"
         self.subtitle.color = self.color_id[1]
@@ -18622,7 +18645,7 @@ class ServerAmscriptScreen(MenuBackground):
         enabled_count = len(script_manager.installed_scripts['enabled'])
         disabled_count = len(script_manager.installed_scripts['disabled'])
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Installed Scripts  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] item' if script_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] items')
+        header_content = f"{constants.translate('Installed Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {constants.translate("items")}')
 
         if script_manager._hash_changed():
             icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
@@ -18772,8 +18795,8 @@ class ServerAmscriptScreen(MenuBackground):
         # Generate buttons on page load
         script_count = len(self.server.script_manager.return_single_list())
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Installed Scripts  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No items[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] item' if script_count == 1 else f'[font={very_bold_font}]{script_count}[/font] items')
-        self.header = HeaderText(header_content, '', (0, 0.89))
+        header_content = f"{constants.translate('Installed Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count}[/font] {constants.translate("items")}')
+        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
         buttons = []
         float_layout = FloatLayout()
@@ -18923,9 +18946,9 @@ class ServerAmscriptSearchScreen(MenuBackground):
             very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
             search_text = self.search_bar.previous_search if (len(self.search_bar.previous_search) <= 25) else self.search_bar.previous_search[:22] + "..."
             if isinstance(search_text, str) and not search_text:
-                header_content = f"Available Scripts  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No results[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] item' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] items')
+                header_content = f"{constants.translate('Available Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] {constants.translate("items")}')
             else:
-                header_content = f"Search for '{search_text}'  [color=#494977]-[/color]  " + ('[color=#6A6ABA]No results[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] item' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] items')
+                header_content = f"{constants.translate('Search for')} '{search_text}'  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No results")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count:,}[/font] {constants.translate("items")}')
 
             for child in self.header.children:
                 if child.id == "text":
@@ -19128,8 +19151,8 @@ class ServerAmscriptSearchScreen(MenuBackground):
         # Generate buttons on page load
         script_count = 0
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
-        header_content = "Script Search"
-        self.header = HeaderText(header_content, '', (0, 0.89))
+        header_content = constants.translate("Script Search")
+        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
 
         buttons = []
         float_layout = FloatLayout()
@@ -20947,7 +20970,7 @@ class ServerSettingsScreen(MenuBackground):
                 functools.partial(
                     screen_manager.current_screen.show_banner,
                     (0.553, 0.902, 0.675, 1),
-                    f"Server renamed to '{name}' successfully!",
+                    f"Server renamed to '${name}$' successfully!",
                     "rename.png",
                     2.5,
                     {"center_x": 0.5, "center_y": 0.965}
@@ -21276,7 +21299,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             constants.make_update_list()
             server_obj._view_notif('add-ons', False)
             server_obj._view_notif('settings', viewed=constants.new_server_info['version'])
-            open_server(server_obj.name, True, f"{final_text} '{server_obj.name}' successfully", launch=self.page_contents['launch'])
+            open_server(server_obj.name, True, f"{final_text} '${server_obj.name}$' successfully", launch=self.page_contents['launch'])
 
 
         # Original is percentage before this function, adjusted is a percent of hooked value

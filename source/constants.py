@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from random import randrange, choices
 from difflib import SequenceMatcher
 from urllib.request import Request
+from googletrans import Translator
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 from platform import system
@@ -293,43 +294,149 @@ def get_repo_scripts():
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
 # Converts string into another language
-def translate(text: str, locale=None):
+translator = None
+locale = 'en'
+locale_file = os.path.join(executable_folder, 'locales.json')
+locale_data = {}
+if os.path.isfile(locale_file):
+    with open(locale_file, 'r') as f:
+        locale_data = json.loads(f.read())
+available_locales = {
+    "English": {"name": 'English', "code": 'en'},
+    "Spanish": {"name": 'Español', "code": 'es'},
+    "French": {"name": 'Français', "code": 'fr'},
+    "Italian": {"name": 'Italiano', "code": 'it'},
+    "German": {"name": 'Deutsch', "code": 'de'},
+    "Dutch": {"name": 'Nederlands', "code": 'nl'},
+    "Portuguese": {"name": 'Português', "code": 'pt'},
+    "Swedish": {"name": 'Suédois', "code": 'sv'},
+    "Chinese": {"name": '中文', "code": 'zh-CN'},
+    "Japanese": {"name": '日本語', "code": 'ja'},
+    "Korean": {"name": '한국어', "code": 'ko'},
+    "Arabic": {"name": 'العربية', "code": 'ar'},
+    "Russian": {"name": 'Русский', "code": 'ru'},
+    "Ukranian": {"name": 'Українська', "code": 'uk'},
+    "Finnish": {"name": 'suomen', "code": 'fi'}
+}
+def translate(text: str):
+    global translator, locale_data, locale
 
-    if not text.strip():
+    # Ignore if text is blank, or locale is set to english
+    if not text.strip() or locale.startswith('en'):
         return text
 
-    # # Escape proper nouns that ignore translation
-    # def override(key):
-    #     if key in text:
-    #         return text.replace(key, f"${key}$")
-    #     elif key.upper() in text:
-    #         return text.replace(key.upper(), f"${key.upper()}$")
-    #     elif key.lower() in text:
-    #         return text.replace(key.lower(), f"${key.lower()}$")
-    #     else:
-    #         return text
-    # text = override('server.properties')
-    # text = override('server.jar')
-    # text = override('Java')
+    # Create translator object
+    if not translator:
+        translator = Translator()
+
+    # Searches locale_data for string
+    def search_data(s, *a):
+        try:
+            return locale_data[s.strip().lower()][locale]
+        except KeyError:
+            pass
+
+    new_text = None
+
+
+    # Extract proper noun if present with flag
+    conserve = ''
+    if text.count('$') >= 2:
+        dollar_pattern = re.compile(r'(?<=\$)(.*)(?=\$)')
+        conserve = re.search(dollar_pattern, text).group(1)
+        text = re.sub(dollar_pattern, '', text)
+
+
+    # First, attempt to get translation through locale_data directly
+    new_text = search_data(text, False)
+
+    # Second, attempt to translate matched words with regex
+    if not new_text:
+        def match_data(s, *a):
+            try:
+                return locale_data[s.group(0).strip().lower()][locale]
+            except KeyError:
+                pass
+            return s.group(0)
+        new_text = re.sub(r'\b\S+\b', match_data, text)
+
+
+    # If a match was found, return text in its original case
+    if new_text:
+
+        # Escape proper nouns that ignore translation
+        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java')
+        for o in overrides:
+            new_key = search_data(o)
+            if not new_key:
+                continue
+
+            if new_key in new_text:
+                new_text = new_text.replace(new_key, o)
+            elif new_key.upper() in new_text:
+                new_text = new_text.replace(new_key.upper(), o.upper())
+            elif new_key.lower() in new_text:
+                new_text = new_text.replace(new_key.lower(), o.lower())
+
+
+        # Manual overrides
+        if locale == 'es':
+            new_text = re.sub('servidor\.properties', 'server.properties', new_text, re.IGNORECASE)
+            new_text = re.sub('servidor\.jar', 'server.jar', new_text, re.IGNORECASE)
+            new_text = re.sub('control S', 'Administrar', new_text, re.IGNORECASE)
+
+
+        # Replace proper noun (rework this to iterate over each match, in case there are multiple
+        if conserve:
+            new_text = new_text.replace('$$', conserve)
+
+        # Remove dollar signs if they are still present for some reason
+        new_text = re.sub(r'\$(.*)\$', '\g<1>', text)
+
+
+        # Get the spacing in front and after the text
+        if text.startswith(' ') or text.endswith(' '):
+            try:
+                before = re.search(r'(^\s+)', text).group(1)
+            except:
+                before = ''
+            try:
+                after = re.search(r'(?=.*)(\s+$)', text).group(1)
+            except:
+                after = ''
+            new_text = f'{before}{new_text}{after}'
+
+
+        # Keep case from original text
+        if text == text.title():
+            return new_text.title()
+        elif text == text.upper():
+            return new_text.upper()
+        elif text == text.lower():
+            return new_text.lower()
+        elif text.strip() == text[0].strip().upper() + text[1:].strip().lower():
+            return new_text[0].upper() + new_text[1:].lower()
+        else:
+            return new_text
+
+    # If not, return original text
+    else:
+        return text
+
+
+    # return translator.translate(text, src='en', dest=locale).text
+
+
     #
     # # Remove placeholders for now, '$ ... $' will be used to preserve text from translation
-    # text = re.sub(r'\$(.*)\$', '\g<1>', text)
+    #
     # final_text = ''
     #
-    # if text == text.title():
-    #     final_text = 'Test'
-    # elif text == text.upper():
-    #     final_text = 'TEST'
-    # elif text == text.lower():
-    #     final_text = 'test'
-    # else:
-    #     final_text = 'TesT'
-    #
     # if text.endswith('...'):
-    #     final_text += '...'
+    #     new_text += '...'
     #
     # return final_text
-    return text
+
 
 
 # Retrieves the refresh rate of the display to calculate consistent animation speed
@@ -477,9 +584,9 @@ timeout /t 3 /nobreak
 
 copy /b /v /y "{os.path.join(downDir, 'auto-mcs.exe')}" "{launch_path}"
 if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
-    echo banner-success@auto-mcs was updated to v{update_data['version']} successfully! > "{update_log}"
+    echo banner-success@{translate("auto-mcs was updated to v" + update_data['version'] + ' successfully!')} > "{update_log}"
 ) else (
-    echo banner-failure@Something went wrong with the update > "{update_log}"
+    echo banner-failure@{translate("Something went wrong with the update")} > "{update_log}"
 )
 
 start \"\" \"{launch_path}\"
@@ -509,9 +616,9 @@ hdiutil mount "{dmg_path}"
 rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(launch_path), '../..')}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@auto-mcs was updated to v{update_data['version']} successfully! > "{update_log}"
+    echo banner-success@{translate("auto-mcs was updated to v" + update_data['version'] + ' successfully!')} > "{update_log}"
 else
-    echo banner-failure@Something went wrong with the update > "{update_log}"
+    echo banner-failure@{translate("Something went wrong with the update")} > "{update_log}"
 fi
 
 hdiutil unmount /Volumes/auto-mcs
@@ -544,9 +651,9 @@ sleep 2
 /bin/cp -rf "{os.path.join(downDir, 'auto-mcs')}" "{launch_path}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@auto-mcs was updated to v{update_data['version']} successfully! > "{update_log}"
+    echo banner-success@{translate("auto-mcs was updated to v" + update_data['version'] + ' successfully!')} > "{update_log}"
 else
-    echo banner-failure@Something went wrong with the update > "{update_log}"
+    echo banner-failure@{translate("Something went wrong with the update")} > "{update_log}"
 fi
 
 chmod +x "{launch_path}"
