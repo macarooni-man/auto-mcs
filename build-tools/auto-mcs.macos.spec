@@ -17,6 +17,7 @@ a = Analysis(['wrapper.py'],
                         ('./icon.ico', '.'),
                         ('./icon.icns', '.'),
                         ('./baselib.ams', '.'),
+                        ('./locales.json', '.'),
                         ('../build-tools/ca-bundle.crt', '.'),
                         ('./gui-assets/icons/sm/*', './gui-assets/icons/sm')
                     ],

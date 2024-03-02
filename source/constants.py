@@ -3,7 +3,6 @@ from concurrent.futures import ThreadPoolExecutor
 from random import randrange, choices
 from difflib import SequenceMatcher
 from urllib.request import Request
-from googletrans import Translator
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 from platform import system
@@ -293,8 +292,7 @@ def get_repo_scripts():
 
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
-# Converts string into another language
-translator = None
+# Functions and data for translation
 locale = 'en'
 locale_file = os.path.join(executable_folder, 'locales.json')
 locale_data = {}
@@ -310,24 +308,36 @@ available_locales = {
     "Dutch": {"name": 'Nederlands', "code": 'nl'},
     "Portuguese": {"name": 'Português', "code": 'pt'},
     "Swedish": {"name": 'Suédois', "code": 'sv'},
-    "Chinese": {"name": '中文', "code": 'zh-CN'},
-    "Japanese": {"name": '日本語', "code": 'ja'},
-    "Korean": {"name": '한국어', "code": 'ko'},
-    "Arabic": {"name": 'العربية', "code": 'ar'},
-    "Russian": {"name": 'Русский', "code": 'ru'},
-    "Ukranian": {"name": 'Українська', "code": 'uk'},
-    "Finnish": {"name": 'suomen', "code": 'fi'}
+    "Finnish": {"name": 'Suomen', "code": 'fi'},
+
+
+    # Requires special fonts:
+
+    # "Chinese": {"name": '中文', "code": 'zh-CN'},
+    # "Japanese": {"name": '日本語', "code": 'ja'},
+    # "Korean": {"name": '한국어', "code": 'ko'},
+    # "Arabic": {"name": 'العربية', "code": 'ar'},
+    # "Russian": {"name": 'Русский', "code": 'ru'},
+    # "Ukranian": {"name": 'Українська', "code": 'uk'}
 }
+def get_locale_string(*a):
+    for k, v in available_locales.items():
+        if locale in v.values():
+            return f'{v["name"]} ({v["code"]})'
+
+
 def translate(text: str):
-    global translator, locale_data, locale
+    global locale_data, locale
 
     # Ignore if text is blank, or locale is set to english
     if not text.strip() or locale.startswith('en'):
         return text
 
     # Create translator object
-    if not translator:
-        translator = Translator()
+    # if not translator:
+    #     translator = Translator()
+    # return translator.translate(text, src='en', dest=locale).text
+
 
     # Searches locale_data for string
     def search_data(s, *a):
@@ -365,7 +375,7 @@ def translate(text: str):
     if new_text:
 
         # Escape proper nouns that ignore translation
-        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java')
+        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB')
         for o in overrides:
             new_key = search_data(o)
             if not new_key:
@@ -384,6 +394,8 @@ def translate(text: str):
             new_text = re.sub('servidor\.properties', 'server.properties', new_text, re.IGNORECASE)
             new_text = re.sub('servidor\.jar', 'server.jar', new_text, re.IGNORECASE)
             new_text = re.sub('control S', 'Administrar', new_text, re.IGNORECASE)
+        if locale == 'fr':
+            new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, re.IGNORECASE)
 
 
         # Replace proper noun (rework this to iterate over each match, in case there are multiple
@@ -391,7 +403,7 @@ def translate(text: str):
             new_text = new_text.replace('$$', conserve)
 
         # Remove dollar signs if they are still present for some reason
-        new_text = re.sub(r'\$(.*)\$', '\g<1>', text)
+        new_text = re.sub(r'\$(.*)\$', '\g<1>', new_text)
 
 
         # Get the spacing in front and after the text
@@ -421,21 +433,7 @@ def translate(text: str):
 
     # If not, return original text
     else:
-        return text
-
-
-    # return translator.translate(text, src='en', dest=locale).text
-
-
-    #
-    # # Remove placeholders for now, '$ ... $' will be used to preserve text from translation
-    #
-    # final_text = ''
-    #
-    # if text.endswith('...'):
-    #     new_text += '...'
-    #
-    # return final_text
+        return re.sub(r'\$(.*)\$', '\g<1>', text)
 
 
 
@@ -4420,7 +4418,7 @@ class SearchManager():
         self.options_tree = {
 
             'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen'}),
+                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen'}),
                 ScreenObject('Server Manager', 'ServerManagerScreen', generate_server_list),
             ],
 
@@ -4492,7 +4490,7 @@ class SearchManager():
             for tag in guide("section", id='itemPagination'):
                 tag.decompose()
             for tag in guide("section", class_='page-section'):
-                if '<  guides' in tag.get_text() or 'kaleb.efflandt@gmail.com' in tag.get_text():
+                if '<  guides' in tag.get_text() or 'help@auto-mcs.com' in tag.get_text():
                     tag.decompose()
 
             # Format specific tags in a custom way

@@ -116,6 +116,18 @@ if __name__ == '__main__':
                 print('Closed: auto-mcs is already open')
                 sys.exit(10)
 
+
+    # Get default system language
+    from locale import getdefaultlocale
+    system_locale = getdefaultlocale()[0]
+    if '_' in system_locale:
+        system_locale = system_locale.split('_')[0]
+    for v in constants.available_locales.values():
+        if system_locale.startswith(v['code']):
+            constants.locale = v['code']
+            break
+
+
     import main
 
 
@@ -131,6 +143,7 @@ if __name__ == '__main__':
                 file_contents = constants.json.loads(f.read())
                 constants.geometry = file_contents['geometry']
                 constants.fullscreen = file_contents['fullscreen']
+                constants.locale = file_contents['locale']
                 constants.auto_update = file_contents['auto-update']
         except:
             pass

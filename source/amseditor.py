@@ -899,7 +899,7 @@ def launch_window(path: str, data: dict, *a):
         search_frame = Frame(root, height=1)
         search_frame.configure(bg=frame_background, borderwidth=0, highlightthickness=0)
         search_frame.place(rely=1, y=-45, relwidth=1, height=55)
-        root.search = SearchBox(search_frame, placeholder='search for text')
+        root.search = SearchBox(search_frame, placeholder=data['translate']('search for text'))
         search = root.search
         search.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
         search.configure(
@@ -2812,7 +2812,7 @@ def launch_window(path: str, data: dict, *a):
                         break
 
                     if tag == "highlight":
-                        if str(search.cget('fg')) == '#4A4A70' and search.get() == 'search for text':
+                        if str(search.cget('fg')) == '#4A4A70' and search.get() == data['translate']('search for text'):
                             break
 
                     self.mark_set("matchStart", index)
@@ -2963,7 +2963,7 @@ def launch_window(path: str, data: dict, *a):
                 pattern_text = search.get()
                 replace_text = self.get()
 
-                if replace_text in ('replace with...', ''):
+                if replace_text in (data['translate']('replace with...'), ''):
                     return
 
                 start = f"{current_line}.0"
@@ -3013,7 +3013,7 @@ def launch_window(path: str, data: dict, *a):
                     replace_button['state'] = 'active'
                     root.focus_force()
 
-                if replace_text in ('replace with...', ''):
+                if replace_text in (data['translate']('replace with...'), ''):
                     return
 
                 for x in code_editor.match_list:
@@ -3094,7 +3094,7 @@ def launch_window(path: str, data: dict, *a):
                 self.bind('<Leave>', self.on_leave)
         replace_frame = Frame(root, height=1)
         replace_frame.configure(bg=frame_background, borderwidth=0, highlightthickness=0)
-        root.replace = ReplaceBox(replace_frame, placeholder='replace with...')
+        root.replace = ReplaceBox(replace_frame, placeholder=data['translate']('replace with...'))
         replace = root.replace
         replace.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
         replace.bind('<Tab>', lambda *_: root.after(0, lambda *_: search.focus_force()))
@@ -3129,7 +3129,7 @@ def launch_window(path: str, data: dict, *a):
             if not search_text:
                 search_text = search.get()
 
-            if str(search.cget('fg')) == '#4A4A70' and search_text == 'search for text':
+            if str(search.cget('fg')) == '#4A4A70' and search_text == data['translate']('search for text'):
                 search_text = ''
 
             search.last_index = 0
@@ -3498,7 +3498,7 @@ def launch_window(path: str, data: dict, *a):
                     visible = b.winfo_ismapped()
                     try:
                         item = items[x]
-                        b.config(text=item, command=functools.partial(self.click_func, item))
+                        b.config(text=data['translate'](item), command=functools.partial(self.click_func, item))
                         if not visible:
                             b.grid(sticky="w")
                         if data['os_name'] == 'macos':

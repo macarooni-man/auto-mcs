@@ -145,7 +145,7 @@ def launch_window(server_name: str, path: str, data: dict):
         search_frame = Frame(root, height=1)
         search_frame.pack(fill=X, side=BOTTOM)
         search_frame.configure(bg=background_color, borderwidth=0, highlightthickness=0)
-        search = SearchBox(search_frame, placeholder='search for text')
+        search = SearchBox(search_frame, placeholder=data['translate']('search for text'))
         search.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
         search.configure(
             bg = background_color,

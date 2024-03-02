@@ -104,6 +104,10 @@ if ! ls ~/Library/Fonts/Consolas* 1> /dev/null 2>&1; then
 fi
 
 
+# Rebuild locales.json
+python locale-gen.py
+
+
 # Build
 echo Compiling auto-mcs
 export KIVY_AUDIO=ffpyplayer

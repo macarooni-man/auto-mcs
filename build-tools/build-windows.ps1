@@ -83,6 +83,10 @@ $kivy_path= "$venv_path\Lib\site-packages\kivy\tools\packaging\pyinstaller_hooks
 python -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path/kivy-hook.py"
 
 
+# Rebuild locales.json
+python locale-gen.py
+
+
 # Build
 echo "Compiling auto-mcs"
 cd $current

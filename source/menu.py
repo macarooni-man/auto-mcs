@@ -97,13 +97,59 @@ from kivy.properties import BooleanProperty, ObjectProperty
 
 
 # Override Kivy widgets for translation
+size_dict = {'down': [], 'up': []}
+
+# Generates manual overrides for string resizing. Run this function with locale changes, and on startup
+def size_list(*a):
+    scale_up = ['back-ups', 'launch']
+    scale_down = ['ADD RULES...', 'QUIT']
+    size_dict['up'] = [constants.translate(i).lower() for i in scale_up]
+    size_dict['down'] = [constants.translate(i).lower() for i in scale_down]
+size_list()
+
 def scale_size(obj, o, n, *a):
     if o and n and obj.__o_size__:
         diff = len(n) - len(o)
-        # Make sure that scaled font size doesn't get too low, for example in the controls menu
-        new_size = round(diff * 0.4)
-        obj.font_size = obj.__o_size__ - new_size
+        parent_class = obj.parent.__class__.__name__
+        new_size = None
 
+        # Ignore on certain screens
+        if screen_manager.current.endswith('ProgressScreen') or r'[ref=none]' in obj.text:
+            return None
+
+
+        # Ignore header resizing
+        if parent_class not in ('HeaderText'):
+            new_size = round(diff * 0.4)
+
+        if new_size:
+
+            # Make text bigger
+            if obj.text.strip().lower() in size_dict['up'] or parent_class in ('IconButton'):
+                new_size = round(new_size / 2)
+
+            # Make text smaller
+            if obj.text.strip().lower() in size_dict['down']:
+                new_size = new_size * 2
+
+            # Change popup sizes
+            if (screen_manager.current_screen.popup_widget and parent_class == 'RelativeLayout'):
+                new_size = round(new_size / 32)
+
+            # Set a floor for resize
+            if obj.__o_size__ - new_size < obj.__o_size__ - 5:
+                new_size = 5
+
+            # Change y-center of Input
+            if obj.__class__.__name__.endswith('Input'):
+                obj.padding_y = (11 + new_size, 11 + new_size)
+
+            obj.font_size = obj.__o_size__ - new_size
+def filter_text(string):
+    if isinstance(string, str) and "$" in string:
+        return re.sub(r'\$(.*)\$', '\g<1>', string)
+    else:
+        return string
 class Label(Label):
     def __init__(self, *args, **kwargs):
         self.__translate__ = True
@@ -111,30 +157,49 @@ class Label(Label):
         super().__init__(*args, **kwargs)
 
     def __setattr__(self, key, value):
-        if key in ('text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
-            o = value
-            value = constants.translate(value)
-            Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        if key == 'font_size' and not self.__o_size__:
-            self.__o_size__ = value
+        if constants.locale != 'en':
+            if key == 'font_size' and not self.__o_size__:
+                self.__o_size__ = value
+            if key in ('text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+                o = value
+                value = constants.translate(value)
+                Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
+        elif constants.locale == 'en' and key in ('text'):
+            value = filter_text(value)
         super().__setattr__(key, value)
 class Button(Button):
     def __init__(self, *args, **kwargs):
         self.__translate__ = True
+        self.__o_size__ = None
         super().__init__(*args, **kwargs)
 
     def __setattr__(self, key, value):
-        if key in ('text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
-            value = constants.translate(value)
+        if constants.locale != 'en':
+            if key == 'font_size' and not self.__o_size__:
+                self.__o_size__ = value
+            if key in ('text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+                o = value
+                value = constants.translate(value)
+                Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
+        elif constants.locale == 'en' and key in ('text'):
+            value = filter_text(value)
         super().__setattr__(key, value)
 class TextInput(TextInput):
     def __init__(self, *args, **kwargs):
         self.__translate__ = True
+        self.__o_size__ = None
         super().__init__(*args, **kwargs)
 
     def __setattr__(self, key, value):
-        if key in ('hint_text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
-            value = constants.translate(value)
+        if constants.locale != 'en':
+            if key == 'font_size' and not self.__o_size__:
+                self.__o_size__ = value
+            if key in ('hint_text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+                o = value
+                value = constants.translate(value)
+                Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
+        elif constants.locale == 'en' and key in ('hint_text'):
+            value = filter_text(value)
         super().__setattr__(key, value)
 
 
@@ -859,7 +924,9 @@ class ServerNameInput(BaseInput):
             self.valid((self.text + s).lower().strip() not in constants.server_list_lower, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             # Add name to current config
-            constants.new_server_info['name'] = (self.text + s).strip()
+            def get_text(*a):
+                constants.new_server_info['name'] = self.text.strip()
+            Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -1160,7 +1227,9 @@ class ServerVersionInput(BaseInput):
 
                 # Add name to current config
                 if self.text + s:
-                    constants.new_server_info['version'] = (self.text + s).strip()
+                    def get_text(*a):
+                        constants.new_server_info['version'] = self.text.strip()
+                    Clock.schedule_once(get_text, 0)
                 else:
                     constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
 
@@ -1758,7 +1827,9 @@ class CreateServerSeedInput(BaseInput):
             s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring)
 
             # Add name to current config
-            constants.new_server_info['server_settings']['seed'] = (self.text + s).strip()
+            def get_text(*a):
+                constants.new_server_info['server_settings']['seed'] = self.text.strip()
+            Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -1857,7 +1928,9 @@ class ServerSeedInput(BaseInput):
             s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring)
 
             # Add name to current config
-            screen_manager.current_screen.new_seed = (self.text + s).strip()
+            def get_text(*a):
+                screen_manager.current_screen.new_seed = self.text.strip()
+            Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -2477,7 +2550,9 @@ class CreateServerMOTDInput(BaseInput):
             s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring)
 
             # Add name to current config
-            constants.new_server_info['server_settings']['motd'] = (self.text + s).strip() if self.text + s else "A Minecraft Server"
+            def get_text(*a):
+                constants.new_server_info['server_settings']['motd'] = self.text.strip() if self.text else "A Minecraft Server"
+            Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -2525,7 +2600,9 @@ class ServerMOTDInput(BaseInput):
             s = re.sub('[^a-zA-Z0-9 _/{}=+|"\'()*&^%$#@!?;:,.-]', '', substring)
 
             # Add name to current config
-            self.update_text((self.text + s).strip() if self.text + s else "A Minecraft Server")
+            def get_text(*a):
+                self.update_text(self.text.strip() if self.text else "A Minecraft Server")
+            Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -2565,7 +2642,9 @@ class ServerPlayerInput(BaseInput):
             s = re.sub('[^0-9]', '', substring)
 
             # Add name to current config
-            constants.new_server_info['server_settings']['max_players'] = (self.text + s).strip() if self.text + s else "20"
+            def get_text(*a):
+                constants.new_server_info['server_settings']['max_players'] = self.text.strip() if self.text else "20"
+            Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -2605,7 +2684,9 @@ class ServerTickSpeedInput(BaseInput):
             s = re.sub('[^0-9]', '', substring)
 
             # Add name to current config
-            constants.new_server_info['server_settings']['random_tick_speed'] = (self.text + s).strip() if self.text + s else "3"
+            def get_text(*a):
+                constants.new_server_info['server_settings']['random_tick_speed'] = self.text.strip() if self.text else "3"
+            Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -2675,8 +2756,10 @@ class AclInput(BaseInput):
             s = re.sub('[^a-zA-Z0-9 _().!/,-]', '', substring)
 
             # Filter input, and process data to search_filter function in AclScreen
-            self.actual_text = (self.text + s).strip() if self.text + s else ""
-            screen_manager.current_screen.search_filter(self.actual_text)
+            def get_text(*a):
+                self.actual_text = self.text.strip() if self.text else ""
+                screen_manager.current_screen.search_filter(self.actual_text)
+            Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -3248,6 +3331,13 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
         else:
             footer.add_widget(IconButton('no connection', {}, (0, 5), (None, None), 'ban.png', clickable=True, force_color=[[(0.07, 0.07, 0.07, 1), (0.7, 0.7, 0.7, 1)], 'gray']))
 
+        # Locale button
+        def change_locale_screen(*a):
+            screen_manager.current = 'ChangeLocaleScreen'
+        locale_button = RelativeIconButton(constants.get_locale_string(), {'center_x': 1}, (0, 5), (None, None), 'language.png', anchor='right', clickable=True, click_func=change_locale_screen, anchor_text='right')
+        locale_button.x = -35
+        footer.add_widget(locale_button)
+
     else:
         footer.add_widget(FooterBackground())
         footer.add_widget(footer_label(path=menu_path, color=color, progress_screen=progress_screen)) # menu_path
@@ -3764,63 +3854,63 @@ class BannerObject(RelativeLayout):
 
 
 # ----------------------------------------------------  Buttons  -------------------------------------------------------
-def main_button(name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None):
+class MainButton(FloatLayout):
 
-    def repos_icon(icon_widget, button_widget, *args):
+    def repos_icon(self, *args):
 
         def resize(*args):
-            pos_calc = ((button_widget.width/2 - 35) if button_widget.center[0] > 0 else (-button_widget.width/2 + 35))
-            icon_widget.center[0] = button_widget.center[0] + pos_calc
+            pos_calc = ((self.button.width/2 - 35) if self.button.center[0] > 0 else (-self.button.width/2 + 35))
+            self.icon.center[0] = self.button.center[0] + pos_calc
 
         Clock.schedule_once(resize, 0)
 
-    final = FloatLayout()
-    final.id = name
+    def __init__(self, name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, **args):
+        super().__init__(**args)
 
-    button = HoverButton()
-    button.id = 'main_button'
-    button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        self.id = name
 
-    button.size_hint = (None, None)
-    button.size = (dp(450 if not width else width), dp(72))
-    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
-    button.border = (30, 30, 30, 30)
-    button.background_normal = os.path.join(constants.gui_assets, 'main_button.png')
-    button.background_down = os.path.join(constants.gui_assets, 'main_button_click.png')
+        self.button = HoverButton()
+        self.button.id = 'main_button'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+        self.button.size_hint = (None, None)
+        self.button.size = (dp(450 if not width else width), dp(72))
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (30, 30, 30, 30)
+        self.button.background_normal = os.path.join(constants.gui_assets, 'main_button.png')
+        self.button.background_down = os.path.join(constants.gui_assets, 'main_button_click.png')
 
-    text = Label()
-    text.id = 'text'
-    text.size_hint = (None, None)
-    text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-    text.text = name.upper()
-    text.font_size = sp(19)
-    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-    text.color = (0.6, 0.6, 1, 1)
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.text.text = name.upper()
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 1)
 
 
-    # Button click behavior
-    button.on_release = functools.partial(button_action, name, button)
-    final.add_widget(button)
+        # Button click behavior
+        self.button.on_release = functools.partial(button_action, name, self.button)
+        self.add_widget(self.button)
 
-    if icon_name:
-        icon = Image()
-        icon.id = 'icon'
-        icon.source = icon_path(icon_name)
-        icon.size = (dp(1), dp(1))
-        icon.color = (0.6, 0.6, 1, 1)
-        icon.pos_hint = {"center_y": position[1]}
-        icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
-        final.add_widget(icon)
+        if icon_name:
+            self.icon = Image()
+            self.icon.id = 'icon'
+            self.icon.source = icon_path(icon_name)
+            self.icon.size = (dp(1), dp(1))
+            self.icon.color = (0.6, 0.6, 1, 1)
+            self.icon.pos_hint = {"center_y": position[1]}
+            self.icon.pos = (icon_offset if icon_offset else -190 if not width else (-190 - (width / 13)), 200)
+            self.add_widget(self.icon)
 
-    final.add_widget(text)
+        self.add_widget(self.text)
 
-    if auto_adjust_icon and icon_name:
-        Clock.schedule_once(functools.partial(repos_icon, icon, button), 0)
+        if auto_adjust_icon and icon_name:
+            Clock.schedule_once(self.repos_icon, 0)
 
-    if click_func:
-        button.bind(on_press=click_func)
+        if click_func:
+            self.button.bind(on_press=click_func)
 
-    return final
 
 
 def color_button(name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, color=(1, 1, 1, 1), disabled=False):
@@ -4011,7 +4101,6 @@ class IconButton(FloatLayout):
             self.text.pos[0] = self.text.pos[0] - self.text.offset[0]
             self.text.pos[1] = self.text.pos[1] - self.text.offset[1]
 
-
     def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, **kwargs):
         super().__init__(**kwargs)
 
@@ -4095,7 +4184,11 @@ class IconButton(FloatLayout):
 
 class RelativeIconButton(RelativeLayout):
 
-    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, **kwargs):
+    def resize(self, *args):
+        self.text.x = Window.width - self.text.texture_size[0] + 25
+
+
+    def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, **kwargs):
         super().__init__(**kwargs)
 
         self.default_pos = position
@@ -4123,10 +4216,14 @@ class RelativeIconButton(RelativeLayout):
         else:
             self.button.background_down = os.path.join(constants.gui_assets, f'{self.button.id}_click_{force_color[1]}.png' if clickable else f'{self.button.id}_hover_{force_color[1]}.png')
 
-        self.text = Label()
+        if anchor_text:
+            self.text = AlignLabel()
+            self.text.halign = anchor_text
+        else:
+            self.text = Label()
         self.text.id = 'text'
         self.text.size_hint = size_hint
-        if pos_hint:
+        if pos_hint and not anchor_text:
             self.text.pos_hint = pos_hint
         self.text.text = name.lower()
         self.text.hover_color = text_hover_color if text_hover_color else None
@@ -4174,6 +4271,10 @@ class RelativeIconButton(RelativeLayout):
             self.add_widget(self.icon)
 
         self.add_widget(self.text)
+
+        if anchor_text == "right":
+            self.bind(size=self.resize)
+            self.bind(pos=self.resize)
 
 class AnimButton(FloatLayout):
 
@@ -4396,48 +4497,46 @@ def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickab
 
 
 
-def exit_button(name, position, cycle=False):
+class ExitButton(FloatLayout):
 
-    final = FloatLayout()
+    def __init__(self, name, position, cycle=False, **args):
+        super().__init__(**args)
 
-    button = HoverButton()
-    button.id = 'exit_button'
-    button.color_id = [(0.1, 0.05, 0.05, 1), (0.6, 0.6, 1, 1)]
+        self.button = HoverButton()
+        self.button.id = 'exit_button'
+        self.button.color_id = [(0.1, 0.05, 0.05, 1), (0.6, 0.6, 1, 1)]
+        self.button.size_hint = (None, None)
+        self.button.size = (dp(195), dp(55))
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (-10, -10, -10, -10)
+        self.button.background_normal = os.path.join(constants.gui_assets, 'exit_button.png')
+        self.button.background_down = os.path.join(constants.gui_assets, 'exit_button_click.png')
 
-    button.size_hint = (None, None)
-    button.size = (dp(195), dp(55))
-    button.pos_hint = {"center_x": position[0], "center_y": position[1]}
-    button.border = (-10, -10, -10, -10)
-    button.background_normal = os.path.join(constants.gui_assets, 'exit_button.png')
-    button.background_down = os.path.join(constants.gui_assets, 'exit_button_click.png')
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.text.text = name.upper()
+        self.text.font_size = sp(19)
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 1)
 
-    text = Label()
-    text.id = 'text'
-    text.size_hint = (None, None)
-    text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-    text.text = name.upper()
-    text.font_size = sp(19)
-    text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
-    text.color = (0.6, 0.6, 1, 1)
-
-    icon = Image()
-    icon.id = 'icon'
-    icon.source = icon_path('close-circle-outline.png' if name.lower() == "quit" else 'back-outline.png')
-    icon.size = (dp(1), dp(1))
-    icon.color = (0.6, 0.6, 1, 1)
-    icon.pos_hint = {"center_y": position[1]}
-    icon.pos = (-70, 200)
-
-
-    # Button click behavior
-    button.on_release = functools.partial(button_action, name, button)
+        self.icon = Image()
+        self.icon.id = 'icon'
+        self.icon.source = icon_path('close-circle-outline.png' if name.lower() == "quit" else 'back-outline.png')
+        self.icon.size = (dp(1), dp(1))
+        self.icon.color = (0.6, 0.6, 1, 1)
+        self.icon.pos_hint = {"center_y": position[1]}
+        self.icon.pos = (-70, 200)
 
 
-    final.add_widget(button)
-    final.add_widget(icon)
-    final.add_widget(text)
+        # Button click behavior
+        self.button.on_release = functools.partial(button_action, name, self.button)
 
-    return final
+
+        self.add_widget(self.button)
+        self.add_widget(self.icon)
+        self.add_widget(self.text)
 
 
 
@@ -8080,7 +8179,7 @@ class ProgressScreen(MenuBackground):
             anim_duration = 0.5 if self.start else 0
 
             if "[font=" not in self.steps.label_2.text and self.steps.label_2.text:
-                self.steps.label_2.text = self.steps.label_2.text.split('(')[0].strip() + f"   [font={icons}]å[/font]"
+                self.steps.label_2.text = constants.translate(self.steps.label_2.text.split('(')[0].strip()) + f"   [font={icons}]å[/font]"
             Animation(opacity=0.3, duration=0.2 if self.start else 0, transition='out_sine').start(self.steps.label_1)
             Animation(opacity=0.3, duration=0.2 if self.start else 0, transition='out_sine').start(self.steps.label_2)
             Animation(opacity=0.3, duration=0.2 if self.start else 0, transition='out_sine').start(self.steps.label_3)
@@ -8112,7 +8211,7 @@ class ProgressScreen(MenuBackground):
 
                 # Label 2
                 try:
-                    self.steps.label_2.text = current + yummy_label
+                    self.steps.label_2.text = constants.translate(current) + yummy_label
                     self.steps.label_2.opacity = 1
                 except IndexError:
                     pass
@@ -8295,11 +8394,11 @@ class MainMenuScreen(MenuBackground):
         float_layout.add_widget(splash)
 
         if not constants.server_list:
-            top_button = main_button('Import a server', (0.5, 0.42), 'download-outline.png')
+            top_button = MainButton('Import a server', (0.5, 0.42), 'download-outline.png')
         else:
-            top_button = main_button('Manage Auto-MCS servers', (0.5, 0.38 if constants.is_docker else 0.42), 'settings-outline.png')
-        bottom_button = main_button('Create a new server', (0.5, 0.26 if constants.is_docker else 0.32), 'duplicate-outline.png')
-        quit_button = exit_button('Quit', (0.5, 0.17))
+            top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.38 if constants.is_docker else 0.42), 'settings-outline.png')
+        bottom_button = MainButton('Create a new server', (0.5, 0.26 if constants.is_docker else 0.32), 'duplicate-outline.png')
+        quit_button = ExitButton('Quit', (0.5, 0.17))
 
         buttons.append(top_button)
         buttons.append(bottom_button)
@@ -8558,6 +8657,122 @@ class UpdateAppProgressScreen(ProgressScreen):
         self.page_contents['function_list'] = tuple(function_list)
 
 
+class ChangeLocaleScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget()
+        scroll_widget.pos_hint = {'center_y': 0.485}
+        scroll_anchor = AnchorLayout()
+        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 10, 0, 100])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.7
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        scroll_layout.bind(minimum_height=scroll_layout.setter('height'))
+        scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.77}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.21}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(HeaderText("Select a language", '', (0, 0.86)))
+
+        class LocaleButton(MainButton):
+
+            def on_press(self, *a):
+                constants.locale = self.code
+                size_list()
+                constants.back_clicked = True
+                previous_screen()
+                constants.back_clicked = False
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        (0.85, 0.65, 1, 1),
+                        f"Switched language to ${re.sub(r' +', ' ', self.text.text)}$",
+                        "language-sharp.png",
+                        2,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+
+            def on_leave(self, *a):
+                def change_background(*a):
+                    self.button.background_normal = os.path.join(constants.gui_assets, 'addon_button_installed.png')
+                Clock.schedule_once(change_background, 0.08)
+
+            def __init__(self, name, code='en', **args):
+
+                self.code = code
+                in_use = self.code == constants.locale
+
+                icon = 'checkmark-sharp.png' if in_use else 'arrow-forward.png'
+
+                super().__init__(name, position=(0, 0), icon_name=icon, **args)
+                self.text.__translate__ = False
+                self.text.text = name
+
+                self.button.on_press = self.on_press
+
+                if in_use:
+                    self.button.color_id[1] = (0.6, 1, 0.8, 1)
+                    self.button.bind(on_leave=self.on_leave)
+                    self.text.color = self.icon.color = self.button.color_id[1]
+                    self.on_leave()
+
+
+        # Create a button for each available language
+        for k, v in constants.available_locales.items():
+
+            sub_layout = ScrollItem()
+            locale_title = f'{v["name"].title()}   ({v["code"].upper()})'
+            sub_layout.add_widget(LocaleButton(name=locale_title, pos_hint={"center_x": 1, "center_y": 0.5}, code=v["code"]))
+            scroll_layout.add_widget(sub_layout)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = "Language"
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(menu_name))
+
+        self.add_widget(float_layout)
+
+
 # </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -8584,7 +8799,7 @@ class CreateServerNameScreen(MenuBackground):
         # Prevent server creation if offline
         if not constants.app_online:
             float_layout.add_widget(HeaderText("Server creation requires an internet connection", '', (0, 0.6)))
-            buttons.append(exit_button('Back', (0.5, 0.35)))
+            buttons.append(ExitButton('Back', (0.5, 0.35)))
 
         # Regular menus
         else:
@@ -8593,7 +8808,7 @@ class CreateServerNameScreen(MenuBackground):
             name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['name'])
             float_layout.add_widget(name_input)
             buttons.append(next_button('Next', (0.5, 0.24), not constants.new_server_info['name'], next_screen='CreateServerTypeScreen'))
-            buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+            buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
             float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
 
         for button in buttons:
@@ -8632,7 +8847,7 @@ class CreateServerTypeScreen(MenuBackground):
 
         # Create UI buttons
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerVersionScreen'))
-        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
 
         # Create type buttons (Page 1)
@@ -8701,7 +8916,7 @@ class CreateServerVersionScreen(MenuBackground):
         # Prevent server creation if offline
         if not constants.app_online:
             float_layout.add_widget(HeaderText("Server creation requires an internet connection", '', (0, 0.6)))
-            buttons.append(exit_button('Back', (0.5, 0.35)))
+            buttons.append(ExitButton('Back', (0.5, 0.35)))
 
         # Regular menus
         else:
@@ -8710,7 +8925,7 @@ class CreateServerVersionScreen(MenuBackground):
             float_layout.add_widget(HeaderText("What version of Minecraft do you wish to play?", '', (0, 0.76)))
             float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['version']))
             buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerWorldScreen', show_load_icon=True))
-            buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+            buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -8768,7 +8983,7 @@ class CreateServerWorldScreen(MenuBackground):
             float_layout.add_widget(DropButton(default_name, (0.5, 0.442), options_list=options, input_name='ServerLevelTypeInput', x_offset=41))
 
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerNetworkScreen'))
-        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -8816,7 +9031,7 @@ class CreateServerWorldScreen(MenuBackground):
 
                     # Show button if true
                     if boolean_value and constants.new_server_info['server_settings']['world'] != 'world' and current_input == 'input':
-                        child.add_widget(main_button('Create new world instead', (0.5, 0.442), 'add-circle-outline.png', width=530))
+                        child.add_widget(MainButton('Create new world instead', (0.5, 0.442), 'add-circle-outline.png', width=530))
 
                     # Show seed input, and clear world text
                     elif constants.new_server_info['server_settings']['world'] == 'world' and current_input == 'button':
@@ -8876,9 +9091,9 @@ class CreateServerNetworkScreen(MenuBackground):
         float_layout.add_widget(HeaderText("Do you wish to configure network information?", '', (0, 0.8)))
         float_layout.add_widget(CreateServerPortInput(pos_hint={"center_x": 0.5, "center_y": 0.62}, text=process_ip_text()))
         float_layout.add_widget(CreateServerMOTDInput(pos_hint={"center_x": 0.5, "center_y": 0.515}))
-        float_layout.add_widget(main_button('Access Control Manager', (0.5, 0.4), 'shield-half-small.png', width=531))
+        float_layout.add_widget(MainButton('Access Control Manager', (0.5, 0.4), 'shield-half-small.png', width=531))
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='CreateServerOptionsScreen'))
-        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -9599,16 +9814,16 @@ class AclRulePanel(RelativeLayout):
                     d["minutes"], d["seconds"] = divmod(rem, 60)
 
                     if d['years'] > 0:
-                        time_formatted = (f"{d['years']} year{'s' if d['years'] > 1 else ''} " if d['years'] > 0 else "")
+                        time_formatted = (f"{d['years']} {constants.translate('year' + ('s' if d['years'] > 1 else ''))} " if d['years'] > 0 else "")
                     elif d['months'] > 0:
-                        time_formatted = (f"{d['months']} month{'s' if d['months'] > 1 else ''} " if d['months'] > 0 else "")
+                        time_formatted = (f"{d['months']} {constants.translate('month' + ('s' if d['months'] > 1 else ''))} " if d['months'] > 0 else "")
                     else:
                         time_formatted = (f"{d['days']}d " if d['days'] > 0 else "") + (f"{d['hours']}h " if d['hours'] > 0 else "") + (f"{d['minutes']}m " if d['minutes'] > 0 and d['days'] == 0 else "")
 
                     if not time_formatted:
                         time_formatted = 'seconds '
 
-                    self.player_layout.online_label.text = f"Last online {time_formatted}ago"
+                    self.player_layout.online_label.text = f"Last online ${time_formatted}$ago"
 
                 except ValueError:
                     self.player_layout.online_label.text = "Last online unknown"
@@ -9700,7 +9915,7 @@ class AclRulePanel(RelativeLayout):
             self.player_layout.uuid_header.text = "UUID"
             self.player_layout.ip_header.text = "IP"
             self.player_layout.geo_header.text = "Location"
-            self.player_layout.access_header.text = f"Access to '{screen_manager.current_screen.acl_object._server['name']}':"
+            self.player_layout.access_header.text = f"Access to '${screen_manager.current_screen.acl_object._server['name']}$':"
 
 
 
@@ -10597,7 +10812,7 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
         float_layout.add_widget(self.whitelist_toggle)
         float_layout.add_widget(self.user_panel)
 
-        buttons.append(exit_button('Back', (0.5, 0.099), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.099), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -10746,7 +10961,7 @@ class CreateServerAclRuleScreen(MenuBackground):
         float_layout.add_widget(self.acl_input)
 
         buttons.append(next_button('Add Rules', (0.5, 0.24), True, next_screen='CreateServerAclScreen'))
-        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -10809,7 +11024,7 @@ class CreateServerOptionsScreen(MenuBackground):
         # If server type != vanilla, append addon manger button and extend float_layout widget
         if constants.new_server_info['type'] != 'vanilla':
             sub_layout = ScrollItem()
-            sub_layout.add_widget(main_button('Add-on Manager', (0.5, 0.5), 'extension-puzzle-sharp.png'))
+            sub_layout.add_widget(MainButton('Add-on Manager', (0.5, 0.5), 'extension-puzzle-sharp.png'))
             scroll_layout.add_widget(sub_layout)
 
         # Gamemode dropdown
@@ -10899,7 +11114,7 @@ class CreateServerOptionsScreen(MenuBackground):
         float_layout.add_widget(scroll_bottom)
 
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='CreateServerReviewScreen'))
-        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -11314,9 +11529,9 @@ class CreateServerAddonScreen(MenuBackground):
         bottom_buttons = RelativeLayout()
         bottom_buttons.size_hint_max_x = 312
         bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        bottom_buttons.add_widget(main_button('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
-        bottom_buttons.add_widget(main_button('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
-        buttons.append(exit_button('Back', (0.5, 0.11), cycle=True))
+        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -11611,7 +11826,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
         float_layout.add_widget(self.search_bar)
         float_layout.add_widget(self.page_switcher)
 
-        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -11942,8 +12157,8 @@ class CreateServerReviewScreen(MenuBackground):
         float_layout.add_widget(server_demo_input(pos_hint={"center_x": 0.5, "center_y": 0.81}, properties=constants.new_server_info))
 
 
-        buttons.append(main_button('Create Server', (0.5, 0.22), 'checkmark-circle-outline.png'))
-        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+        buttons.append(MainButton('Create Server', (0.5, 0.22), 'checkmark-circle-outline.png'))
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -12122,7 +12337,7 @@ class ServerImportScreen(MenuBackground):
         # Prevent server creation if offline
         if not constants.app_online:
             self.layout.add_widget(HeaderText("Importing a server requires an internet connection", '', (0, 0.6)))
-            buttons.append(exit_button('Back', (0.5, 0.35)))
+            buttons.append(ExitButton('Back', (0.5, 0.35)))
 
         # Regular menus
         else:
@@ -12130,10 +12345,10 @@ class ServerImportScreen(MenuBackground):
                 screen_manager.current = 'ServerImportModpackScreen'
 
             self.layout.add_widget(HeaderText("What do you wish to import?", '', (0, 0.81)))
-            buttons.append(main_button('Import a modpack', (0.5, 0.58), 'modpack.png', click_func=go_to_modpack))
-            buttons.append(main_button('Import external server', (0.5, 0.46), 'folder-outline.png', click_func=functools.partial(self.load_input, 'external')))
-            buttons.append(main_button('Import Auto-MCS back-up', (0.5, 0.34), 'backup-icon.png', click_func=functools.partial(self.load_input, 'backup')))
-            self.layout.add_widget(exit_button('Back', (0.5, 0.14), cycle=True))
+            buttons.append(MainButton('Import a modpack', (0.5, 0.58), 'modpack.png', click_func=go_to_modpack))
+            buttons.append(MainButton('Import external server', (0.5, 0.46), 'folder-outline.png', click_func=functools.partial(self.load_input, 'external')))
+            buttons.append(MainButton('Import Auto-MCS back-up', (0.5, 0.34), 'backup-icon.png', click_func=functools.partial(self.load_input, 'backup')))
+            self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
             self.page_counter = page_counter(1, 2, (0, 0.818))
             self.add_widget(self.page_counter)
 
@@ -12243,14 +12458,14 @@ class ServerImportModpackScreen(MenuBackground):
         self.layout.add_widget(HeaderText("Which modpack do you wish to import?", '', (0, 0.81)))
         def download_modpack(*a):
             screen_manager.current = 'ServerImportModpackSearchScreen'
-        buttons.append(main_button('Download a Modpack', (0.5, 0.576), 'download-outline.png', width=528, click_func=download_modpack))
+        buttons.append(MainButton('Download a Modpack', (0.5, 0.576), 'download-outline.png', width=528, click_func=download_modpack))
 
         start_path = constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
         buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505}))
         buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44}))
         buttons.append(input_button('Browse...', (0.5, 0.44), ('file', start_path), input_name='ServerImportModpackInput', title='Select an modpack', ext_list=['*.zip', '*.mrpack']))
 
-        self.layout.add_widget(exit_button('Back', (0.5, 0.14), cycle=True))
+        self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
         def remove_page(*a):
             if 'ServerImportScreen' in constants.screen_tree:
                 constants.screen_tree.remove('ServerImportScreen')
@@ -12588,7 +12803,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
         float_layout.add_widget(self.search_bar)
         float_layout.add_widget(self.page_switcher)
 
-        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -13395,8 +13610,8 @@ class ServerManagerScreen(MenuBackground):
         float_layout.add_widget(scroll_bottom)
         float_layout.add_widget(self.page_switcher)
 
-        buttons.append(main_button('Import a server', (0.5, 0.202), 'download-outline.png'))
-        buttons.append(exit_button('Back', (0.5, 0.11), cycle=True))
+        buttons.append(MainButton('Import a server', (0.5, 0.202), 'download-outline.png'))
+        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -14938,7 +15153,8 @@ class ConsolePanel(FloatLayout):
             'gui_assets': constants.gui_assets,
             'background_color': constants.background_color,
             'sub_processes': constants.sub_processes,
-            'os_name': constants.os_name
+            'os_name': constants.os_name,
+            'translate': constants.translate
         }
         Clock.schedule_once(functools.partial(logviewer.open_log, self.server_name, constants.server_manager.current_server.crash_log, data_dict), 0.1)
         self.controls.log_button.button.on_leave()
@@ -15799,7 +16015,7 @@ class ServerViewScreen(MenuBackground):
         float_layout.add_widget(grid_layout)
 
         # Only add this off-screen for 'ESC' behavior
-        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
         for button in buttons:
             float_layout.add_widget(button)
 
@@ -16089,7 +16305,7 @@ class ServerBackupScreen(MenuBackground):
         float_layout.add_widget(self.header)
 
 
-        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -16486,7 +16702,7 @@ class ServerBackupRestoreScreen(MenuBackground):
         float_layout.add_widget(scroll_bottom)
         float_layout.add_widget(self.page_switcher)
 
-        buttons.append(exit_button('Back', (0.5, 0.11), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -16730,7 +16946,7 @@ Rules can be filtered with the search bar, and can be added with the 'Add Rules'
         float_layout.add_widget(self.whitelist_toggle)
         float_layout.add_widget(self.user_panel)
 
-        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -16828,7 +17044,7 @@ class ServerAclRuleScreen(CreateServerAclRuleScreen):
         float_layout.add_widget(self.acl_input)
 
         buttons.append(next_button('Add Rules', (0.5, 0.24), True, next_screen='ServerAclScreen'))
-        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -17528,9 +17744,9 @@ class ServerAddonScreen(MenuBackground):
         bottom_buttons = RelativeLayout()
         bottom_buttons.size_hint_max_x = 312
         bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        bottom_buttons.add_widget(main_button('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
-        bottom_buttons.add_widget(main_button('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
-        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=300, icon_offset=-115, auto_adjust_icon=True))
+        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -17902,7 +18118,7 @@ class ServerAddonSearchScreen(MenuBackground):
         float_layout.add_widget(self.search_bar)
         float_layout.add_widget(self.page_switcher)
 
-        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -17941,7 +18157,8 @@ def edit_script(edit_button, server_obj, script_path):
             'events': script_obj.valid_events
         },
         'suggestions': server_obj.retrieve_suggestions(script_obj),
-        'os_name': constants.os_name
+        'os_name': constants.os_name,
+        'translate': constants.translate
     }
     Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict), 0.1)
     if edit_button:
@@ -18553,7 +18770,7 @@ class CreateAmscriptScreen(MenuBackground):
         self.name_input.update_script_list(server_obj.script_manager.return_single_list())
         self.create_button = WaitButton('Create in IDE', (0.5, 0.24), 'amscript.png', width=370, icon_offset=-150, disabled=True, click_func=on_click)
         buttons.append(self.create_button)
-        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -18827,10 +19044,10 @@ class ServerAmscriptScreen(MenuBackground):
         bottom_buttons = RelativeLayout()
         bottom_buttons.size_hint_max_x = 512
         bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        bottom_buttons.add_widget(main_button('Import', (0, 0.202), 'download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
-        bottom_buttons.add_widget(main_button('Create New', (0.5, 0.202), '', width=245, icon_offset=-115, auto_adjust_icon=True))
-        bottom_buttons.add_widget(main_button('Download', (1, 0.202), 'cloud-download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
-        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+        bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(MainButton('Create New', (0.5, 0.202), '', width=245, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
+        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -19183,7 +19400,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
         float_layout.add_widget(self.search_bar)
         float_layout.add_widget(self.page_switcher)
 
-        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -19938,7 +20155,7 @@ class ServerPropertiesEditScreen(MenuBackground):
         float_layout.add_widget(self.fullscreen_shadow)
 
 
-        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -20384,7 +20601,7 @@ class NgrokAuthScreen(MenuBackground):
         self.authtoken_input = NgrokAuthInput(pos_hint={"center_x": 0.5, "center_y": 0.45})
         float_layout.add_widget(self.authtoken_input)
         buttons.append(next_button('Next', (0.5, 0.24), True, next_screen='ServerSettingsScreen', click_func=authorize_ngrok))
-        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -20508,7 +20725,7 @@ class ServerWorldScreen(MenuBackground):
             threading.Timer(0, change_thread).start()
 
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='ServerSettingsScreen', click_func=change_world))
-        buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -20555,7 +20772,7 @@ class ServerWorldScreen(MenuBackground):
 
                     # Show button if true
                     if boolean_value and self.new_world != 'world' and current_input == 'input':
-                        child.add_widget(main_button('Create new world instead', (0.5, 0.442), 'add-circle-outline.png', width=530))
+                        child.add_widget(MainButton('Create new world instead', (0.5, 0.442), 'add-circle-outline.png', width=530))
 
                     # Show seed input, and clear world text
                     elif self.new_world == 'world' and current_input == 'button':
@@ -20919,7 +21136,7 @@ class ServerSettingsScreen(MenuBackground):
                         ), 0
                     )
             server_obj._view_notif('settings', viewed=server_obj.update_string)
-            self.update_button = WaitButton(f"Update to {server_obj.update_string}", (0.5, 0.5), 'arrow-up-circle-outline.png', disabled=disabled, click_func=update_server)
+            self.update_button = WaitButton(f"Update to ${server_obj.update_string}$", (0.5, 0.5), 'arrow-up-circle-outline.png', disabled=disabled, click_func=update_server)
         else:
             self.update_button = WaitButton('Up to date', (0.5, 0.5), 'checkmark-circle.png', disabled=True)
             Animation.stop_all(self.update_button.icon)
@@ -21074,7 +21291,7 @@ class ServerSettingsScreen(MenuBackground):
         #     header_content = f"[color=#EFD49E][font={icons}]y[/font] " + header_content + "[/color]"
 
 
-        buttons.append(exit_button('Back', (0.5, -1), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -21113,7 +21330,7 @@ class MigrateServerTypeScreen(MenuBackground):
 
         # Create UI buttons
         buttons.append(next_button('Next', (0.5, 0.21), False, next_screen='MigrateServerVersionScreen'))
-        buttons.append(exit_button('Back', (0.5, 0.12), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         self.current_selection = constants.new_server_info['type']
 
@@ -21181,7 +21398,7 @@ class MigrateServerVersionScreen(MenuBackground):
         # Prevent server creation if offline
         if not constants.app_online:
             float_layout.add_widget(HeaderText("Changing the 'server.jar' requires an internet connection", '', (0, 0.6)))
-            buttons.append(exit_button('Back', (0.5, 0.35)))
+            buttons.append(ExitButton('Back', (0.5, 0.35)))
 
         # Regular menus
         else:
@@ -21239,7 +21456,7 @@ class MigrateServerVersionScreen(MenuBackground):
             self.final_button = WaitButton("Change 'server.jar'", (0.5, 0.24), 'swap-horizontal-outline.png', click_func=migrate_server)
             float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.49}, text=constants.new_server_info['version'], enter_func=migrate_server))
             self.add_widget(self.final_button)
-            buttons.append(exit_button('Back', (0.5, 0.14), cycle=True))
+            buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -21479,6 +21696,7 @@ class MainApp(App):
                 save_window_pos()
                 global_conf['fullscreen'] = (Window.width > (constants.window_size[0] + 400))
                 global_conf['geometry'] = constants.last_window
+                global_conf['locale'] = constants.locale
                 # print(global_conf)
                 f.write(constants.json.dumps(global_conf, indent=2))
         except Exception as e:
