@@ -1,9 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
 from glob import glob
 import googletrans
-import constants
 import json
 import ast
+import sys
 import os
 import re
 
@@ -22,6 +22,10 @@ import re
 # Iterate over every script to find unique strings
 all_terms = []
 source_dir = r'A:\auto-mcs\auto-mcs-gui'
+sys.path.append(source_dir)
+import constants
+
+
 for script in glob(os.path.join(source_dir, '*.py')):
 
     if os.path.basename(script) not in ['menu.py', 'logviewer.py', 'amseditor.py', 'backup.py', 'acl.py', 'constants.py']:
