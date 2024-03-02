@@ -21,7 +21,7 @@ import re
 
 # Iterate over every script to find unique strings
 all_terms = []
-source_dir = r'A:\auto-mcs\auto-mcs-gui'
+source_dir = os.path.join('..', 'source')
 sys.path.append(source_dir)
 import constants
 
