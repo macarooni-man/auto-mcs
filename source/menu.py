@@ -12296,7 +12296,7 @@ class ServerImportScreen(MenuBackground):
         elif input_type == "backup":
             self.button_layout.add_widget(ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.47}))
             start_path = constants.backupFolder if os.path.isdir(constants.backupFolder) else constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
-            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.47), ('file', start_path), input_name='ServerImportBackupInput', title='Select an Auto-MCS back-up file', ext_list=['*.amb', '*.tgz']))
+            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.47), ('file', start_path), input_name='ServerImportBackupInput', title='Select an auto-mcs back-up file', ext_list=['*.amb', '*.tgz']))
 
 
         # Auto-launch popup
