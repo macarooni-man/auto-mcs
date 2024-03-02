@@ -6155,7 +6155,7 @@ class PopupAddon(BigPopupWindow):
             self.body_button = Button()
             self.body_button.id = "body_button"
             self.body_button.size_hint = (None, None)
-            self.body_button.size = (200, 40)
+            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
             self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
@@ -6315,7 +6315,7 @@ class PopupScript(BigPopupWindow):
             self.body_button = Button()
             self.body_button.id = "body_button"
             self.body_button.size_hint = (None, None)
-            self.body_button.size = (200, 40)
+            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
             self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
@@ -6413,6 +6413,7 @@ class PopupUpdate(BigPopupWindow):
 
 
         # Description
+        self.window_content.__translate__ = False
         self.window_content.text = "" if not self.update_data['desc'] else ("\n\n" + self.update_data['desc'])
         if not self.window_content.text.strip():
             self.window_content.text = "description unavailable"
@@ -6432,7 +6433,7 @@ class PopupUpdate(BigPopupWindow):
             self.body_button = Button()
             self.body_button.id = "body_button"
             self.body_button.size_hint = (None, None)
-            self.body_button.size = (200, 40)
+            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
             self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
@@ -7246,9 +7247,9 @@ def button_action(button_name, button, specific_screen=''):
                                 else:
                                     addon_name = addon.name[:23] + "..."
 
-                                banner_text = f"Added '{addon_name}' to the queue"
+                                banner_text = f"Added '${addon_name}$' to the queue"
                             else:
-                                banner_text = f"Added {len(selection)} add-ons to the queue"
+                                banner_text = f"Added ${len(selection)}$ add-ons to the queue"
 
                     if banner_text:
                         Clock.schedule_once(
@@ -10866,13 +10867,14 @@ class CreateServerAclRuleScreen(MenuBackground):
 
         # Generate banner
         banner_text = "Added "
+        "Added '$$'"
 
         if len(applied_list) == 1:
-            banner_text += f"'{acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}'"
+            banner_text += f"'${acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}$'"
         elif len(applied_list) < 3:
-            banner_text += f"'{', '.join([(acl.get_uuid(x)['name'] if x.count('.') < 3 else x) for x in applied_list[0:2]])}'"
+            banner_text += f"'${', '.join([(acl.get_uuid(x)['name'] if x.count('.') < 3 else x) for x in applied_list[0:2]])}$'"
         else:
-            banner_text += f"'{acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}' and {len(applied_list) - 1:,} more"
+            banner_text += f"'${acl.get_uuid(applied_list[0])['name'] if applied_list[0].count('.') < 3 else applied_list[0]}$' and {len(applied_list) - 1:,} more"
 
 
         Clock.schedule_once(
@@ -11377,7 +11379,7 @@ class CreateServerAddonScreen(MenuBackground):
                         functools.partial(
                             self.show_banner,
                             (0.937, 0.831, 0.62, 1),
-                            f"Removed '{addon_name}' from the queue",
+                            f"Removed '${addon_name}$' from the queue",
                             "remove-circle-sharp.png",
                             2.5,
                             {"center_x": 0.5, "center_y": 0.965}
@@ -11662,7 +11664,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
                                 functools.partial(
                                     self.show_banner,
                                     (0.553, 0.902, 0.675, 1),
-                                    f"Added '{addon_name}' to the queue",
+                                    f"Added '${addon_name}$' to the queue",
                                     "add-circle-sharp.png",
                                     2.5,
                                     {"center_x": 0.5, "center_y": 0.965}
@@ -11679,7 +11681,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
                                         functools.partial(
                                             self.show_banner,
                                             (0.937, 0.831, 0.62, 1),
-                                            f"Removed '{addon_name}' from the queue",
+                                            f"Removed '${addon_name}$' from the queue",
                                             "remove-circle-sharp.png",
                                             2.5,
                                             {"center_x": 0.5, "center_y": 0.965}
@@ -21832,9 +21834,9 @@ class MainApp(App):
                                 else:
                                     addon_name = addon.name[:23] + "..."
 
-                                banner_text = f"Added '{addon_name}' to the queue"
+                                banner_text = f"Added '${addon_name}$' to the queue"
                             else:
-                                banner_text = f"Added {len(self.dropped_files)} add-ons to the queue"
+                                banner_text = f"Added ${len(self.dropped_files)}$ add-ons to the queue"
 
                     if banner_text:
                         Clock.schedule_once(
@@ -21972,6 +21974,8 @@ def run_application():
     main_app = MainApp(title=constants.app_title)
     try:
         main_app.run()
+        if constants.os_name == 'macos':
+            Window.close()
     except ArgumentError:
         pass
     except Exception as e:

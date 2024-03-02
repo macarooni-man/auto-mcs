@@ -144,6 +144,14 @@ def convert_date(m_time: int or float):
         fmt = f"{constants.translate('Yesterday')} %#I:%M %p" if constants.os_name == "windows" else f"{constants.translate('Yesterday')} %-I:%M %p"
     else:
         fmt = "%a %#I:%M %p %#m/%#d/%y" if constants.os_name == "windows" else "%a %-I:%M %p %-m/%-d/%y"
+
+    # Translate day
+    if constants.locale != 'en':
+        date = dt_obj.strftime(fmt)
+        for day in ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']:
+            if day.startswith(date[:3]):
+                return constants.translate(day)[:3] + date[3:]
+
     return dt_obj.strftime(fmt)
 
 

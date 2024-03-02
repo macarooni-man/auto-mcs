@@ -40,20 +40,26 @@ for script in glob(os.path.join(source_dir, '*.py')):
                 string = node.s
 
                 # Exclusions from translation
-                if os.path.basename(script) == 'constants.py' and node.lineno < 4400:
+                if os.path.basename(script) == 'constants.py' and (node.lineno < 4400 and node.lineno not in range(550,600)):
+                    continue
+                if os.path.basename(script) == 'amseditor.py' and node.lineno < 880:
                     continue
 
                 if "namespace eval tabdrag" in string or re.match('^\<.*\>$', string) or re.match('[A-Z][a-z]+\.[A-Z][a-z]+', string):
                     continue
 
                 if '$' not in string:
-                    if re.search(r'^(http|\!|\#|\.|\&|\-|\[\^|\[\/|\@player\.|\@server\.)', string) or re.search(r'(?=.*)(\.txt|\.png|\.json|\.ini$)', string):
+                    if re.search(r'^(http|\!|\#|\.|\&|\-|\[\^|\[\/|\/|\\|\*|\@)', string) or re.search(r'(?=.*)(\.txt|\.png|\.json|\.ini$)', string):
+                        continue
+                    if string.count('%') > 2:
                         continue
                     if string in ('macos', 'linux', 'windows', 'user32', 'utf-8', 'uuid'):
                         continue
                     if "_" in string and " " not in string:
                         continue
                     if '[color=' in string or '[/color]' in string or '.*' in string or '- Internal use only' in string:
+                        continue
+                    if re.search(r'v?\d+(\.?\d+)+\w?', string) and " " not in string:
                         continue
                     spaces = re.findall(r'\s+', string)
                     if spaces:
@@ -99,15 +105,21 @@ if os.path.isfile(locale_file):
         locale_data = json.loads(f.read())
 
 for x, string in enumerate(all_terms, 1):
+
+    # Format dollar signs for proper string replacement later
     if string.count('$') == 1:
         string = string.replace('$', '$$')
+    if "'$$" in string and "'$$'" not in string:
+        string = string.replace("'$$", "'$$'")
+    if "$$'" in string and "'$$'" not in string:
+        string = string.replace("$$'", "'$$'")
 
     print(f'[ {round((x / len(all_terms)*100), 1)}% ]  Translating "{string}"')
     def process_locale(code, *a):
         if code == 'en':
             return
 
-        key = string.lower()
+        key = string.lower().strip()
         if key not in locale_data:
             locale_data[key] = {}
 
@@ -125,4 +137,4 @@ for x, string in enumerate(all_terms, 1):
         pool.map(process_locale, locale_codes)
 
 with open(locale_file, "w") as f:
-    f.write(json.dumps(locale_data, indent=1))
+    f.write(json.dumps(locale_data))

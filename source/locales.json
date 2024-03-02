@@ -1,18 +1,8 @@
 {
- "127.0.0.1": {
-  "fr": "127.0.0.1",
-  "it": "127.0.0.1",
-  "es": "127.0.0.1",
-  "de": "127.0.0.1",
-  "nl": "127.0.0.1",
-  "pt": "127.0.0.1",
-  "sv": "127.0.0.1",
-  "fi": "127.0.0.1"
- },
  "name": {
-  "es": "nombre",
   "fr": "nom",
   "it": "nome",
+  "es": "nombre",
   "de": "Name",
   "nl": "naam",
   "pt": "nome",
@@ -20,14 +10,14 @@
   "fi": "nimi"
  },
  "version": {
-  "fi": "versio",
-  "fr": "version",
   "es": "versi\u00f3n",
+  "fr": "version",
+  "it": "versione",
   "de": "Ausf\u00fchrung",
   "nl": "versie",
   "pt": "vers\u00e3o",
   "sv": "version",
-  "it": "versione"
+  "fi": "versio"
  },
  "path": {
   "es": "camino",
@@ -109,26 +99,6 @@
   "sv": "subn\u00e4t",
   "fi": "aliverkot"
  },
- "1.8": {
-  "es": "1.8",
-  "fr": "1.8",
-  "it": "1.8",
-  "de": "1.8",
-  "nl": "1.8",
-  "pt": "1,8",
-  "sv": "1.8",
-  "fi": "1.8"
- },
- "%y-%m-%d %h:%m:%s +0000": {
-  "es": "%Y-%m-%d %H:%M:%S +0000",
-  "fr": "%Y-%m-%d %H:%M:%S +0000",
-  "it": "%Y-%m-%d %H:%M:%S +0000",
-  "de": "%Y-%m-%d %H:%M:%S +0000",
-  "nl": "%Y-%m-%d %H:%M:%S +0000",
-  "pt": "%Y-%m-%d %H:%M:%S +0000",
-  "sv": "%Y-%m-%d %H:%M:%S +0000",
-  "fi": "%Y-%m-%d %H:%M:%S +0000"
- },
  "global": {
   "es": "global",
   "fr": "mondial",
@@ -189,7 +159,7 @@
   "sv": "Servrar",
   "fi": "Palvelimet"
  },
- " - acl  <": {
+ "- acl  <": {
   "es": "- LCA <",
   "fr": "-LCA <",
   "it": "-ACL <",
@@ -330,24 +300,24 @@
   "fi": "verkossa"
  },
  "total": {
-  "fi": "kaikki yhteens\u00e4",
+  "es": "total",
   "fr": "total",
   "it": "totale",
   "de": "gesamt",
   "nl": "totaal",
   "pt": "total",
   "sv": "total",
-  "es": "total"
+  "fi": "kaikki yhteens\u00e4"
  },
  "general": {
-  "nl": "algemeen",
   "es": "general",
   "fr": "g\u00e9n\u00e9ral",
   "it": "generale",
   "de": "allgemein",
+  "nl": "algemeen",
   "pt": "em geral",
-  "fi": "yleist\u00e4",
-  "sv": "allm\u00e4n"
+  "sv": "allm\u00e4n",
+  "fi": "yleist\u00e4"
  },
  "servername": {
   "es": "nombre del servidor",
@@ -389,7 +359,7 @@
   "sv": "vitlista",
   "fi": "valkoinen lista"
  },
- "operators - ": {
+ "operators -": {
   "es": "Operadores -",
   "fr": "Les op\u00e9rateurs -",
   "it": "Operatori -",
@@ -399,7 +369,7 @@
   "sv": "Operat\u00f6rer -",
   "fi": "Operaattorit -"
  },
- " rule(s):\n": {
+ "rule(s):": {
   "es": "normas):",
   "fr": "r\u00e8gles):",
   "it": "regole):",
@@ -409,7 +379,7 @@
   "sv": "regel(er):",
   "fi": "s\u00e4\u00e4nt\u00f6(t):"
  },
- "bans - ": {
+ "bans -": {
   "es": "Prohibiciones -",
   "fr": "Interdictions -",
   "it": "Divieti -",
@@ -419,7 +389,7 @@
   "sv": "F\u00f6rbud -",
   "fi": "Kiellot -"
  },
- "whitelist - ": {
+ "whitelist -": {
   "es": "Lista blanca -",
   "fr": "Liste blanche -",
   "it": "Lista bianca -",
@@ -429,7 +399,7 @@
   "sv": "Vitlista -",
   "fi": "Valkoinen lista -"
  },
- "banned ips - ": {
+ "banned ips -": {
   "es": "IP prohibidas -",
   "fr": "IP interdites -",
   "it": "IP vietati -",
@@ -538,16 +508,6 @@
   "pt": "Dispositivo LAN",
   "sv": "LAN-enhet",
   "fi": "LAN-laite"
- },
- "/json": {
-  "es": "/json",
-  "fr": "/json",
-  "it": "/json",
-  "de": "/json",
-  "nl": "/json",
-  "pt": "/json",
-  "sv": "/json",
-  "fi": "/json"
  },
  "city": {
   "es": "ciudad",
@@ -659,7 +619,7 @@
   "sv": "Operat\u00f6rs\u00e5tkomst",
   "fi": "Operaattorin p\u00e4\u00e4sy"
  },
- "kick ": {
+ "kick": {
   "es": "patada",
   "fr": "coup",
   "it": "calcio",
@@ -679,7 +639,7 @@
   "sv": "enforce-whitelist",
   "fi": "pakottaa sallittujen luetteloon"
  },
- "server information:\n\n": {
+ "server information:": {
   "es": "Informaci\u00f3n del servidor:",
   "fr": "Informations sur le serveur\u00a0:",
   "it": "Informazioni sul server:",
@@ -729,16 +689,6 @@
   "sv": "datum",
   "fi": "P\u00e4iv\u00e4m\u00e4\u00e4r\u00e4"
  },
- "whitelist ": {
-  "es": "lista blanca",
-  "fr": "liste blanche",
-  "it": "lista bianca",
-  "de": "Whitelist",
-  "nl": "witte lijst",
-  "pt": "lista branca",
-  "sv": "vitlista",
-  "fi": "sallittujen luettelo"
- },
  "whitelist reload": {
   "es": "recarga de lista blanca",
   "fr": "rechargement de la liste blanche",
@@ -749,7 +699,7 @@
   "sv": "ladda om vitlistan",
   "fi": "sallittujen listan uudelleenlataus"
  },
- "    new server: ": {
+ "new server:": {
   "es": "Nuevo servidor:",
   "fr": "Nouveau serveur\u00a0:",
   "it": "Nuovo server:",
@@ -760,14 +710,14 @@
   "fi": "Uusi palvelin:"
  },
  "input": {
+  "nl": "invoer",
   "es": "aporte",
   "fr": "saisir",
   "it": "ingresso",
   "de": "Eingang",
-  "nl": "invoer",
-  "pt": "entrada",
   "sv": "inmatning",
-  "fi": "sy\u00f6tt\u00f6"
+  "fi": "sy\u00f6tt\u00f6",
+  "pt": "entrada"
  },
  "level": {
   "es": "nivel",
@@ -849,16 +799,6 @@
   "sv": "uuid-",
   "fi": "uuid-"
  },
- "*banned-ips*": {
-  "es": "*IPS prohibidas*",
-  "fr": "*ips-bannis*",
-  "it": "*ips vietati*",
-  "de": "*banned-ips*",
-  "nl": "*banned-ips*",
-  "pt": "*ips banidos*",
-  "sv": "*f\u00f6rbjudna-ips*",
-  "fi": "*banned-ips*"
- },
  "error: could not delete cache": {
   "es": "Error: no se pudo eliminar el cach\u00e9",
   "fr": "Erreur\u00a0: impossible de supprimer le cache",
@@ -889,27 +829,7 @@
   "sv": "av",
   "fi": "vinossa"
  },
- "op ": {
-  "es": "op",
-  "fr": "op",
-  "it": "operazione",
-  "de": "op",
-  "nl": "op",
-  "pt": "opera\u00e7\u00e3o",
-  "sv": "op",
-  "fi": "op"
- },
- "ban ": {
-  "es": "prohibici\u00f3n",
-  "fr": "interdire",
-  "it": "bandire",
-  "de": "Verbot",
-  "nl": "verbieden",
-  "pt": "banimento",
-  "sv": "f\u00f6rbjuda",
-  "fi": "kielt\u00e4\u00e4"
- },
- "ban-ip ": {
+ "ban-ip": {
   "es": "prohibici\u00f3n-ip",
   "fr": "ban-ip",
   "it": "ban-ip",
@@ -919,7 +839,7 @@
   "sv": "ban-ip",
   "fi": "ban-ip"
  },
- "whitelist add ": {
+ "whitelist add": {
   "es": "agregar a la lista blanca",
   "fr": "ajouter \u00e0 la liste blanche",
   "it": "aggiunta alla lista bianca",
@@ -929,7 +849,7 @@
   "sv": "vitlista l\u00e4gga till",
   "fi": "lis\u00e4ys sallittujen luetteloon"
  },
- "deop ": {
+ "deop": {
   "es": "deop",
   "fr": "d\u00e9op",
   "it": "deop",
@@ -939,7 +859,7 @@
   "sv": "deop",
   "fi": "deop"
  },
- "pardon ": {
+ "pardon": {
   "es": "indulto",
   "fr": "pardon",
   "it": "Scusi",
@@ -949,7 +869,7 @@
   "sv": "f\u00f6rl\u00e5ta",
   "fi": "Anteeksi"
  },
- "pardon-ip ": {
+ "pardon-ip": {
   "es": "perd\u00f3n-ip",
   "fr": "pardon-ip",
   "it": "scusa-ip",
@@ -959,7 +879,7 @@
   "sv": "f\u00f6rl\u00e5t-ip",
   "fi": "anteeksi-ip"
  },
- "whitelist remove ": {
+ "whitelist remove": {
   "es": "eliminar lista blanca",
   "fr": "supprimer la liste blanche",
   "it": "rimozione della lista bianca",
@@ -969,7 +889,7 @@
   "sv": "vitlista ta bort",
   "fi": "sallittujen listan poistaminen"
  },
- " you are not whitelisted on this server!": {
+ "you are not whitelisted on this server!": {
   "es": "\u00a1No estas en la lista blanca en este servidor!",
   "fr": "Vous n'\u00eates pas sur liste blanche sur ce serveur\u00a0!",
   "it": "Non sei nella whitelist su questo server!",
@@ -978,36 +898,6 @@
   "pt": "Voc\u00ea n\u00e3o est\u00e1 na lista de permiss\u00f5es deste servidor!",
   "sv": "Du \u00e4r inte vitlistad p\u00e5 denna server!",
   "fi": "Et ole sallittujen luettelossa t\u00e4ll\u00e4 palvelimella!"
- },
- "control": {
-  "es": "Control",
-  "fr": "Contr\u00f4le",
-  "it": "Controllo",
-  "de": "Kontrolle",
-  "nl": "Controle",
-  "pt": "Ao controle",
-  "sv": "Kontrollera",
-  "fi": "Ohjaus"
- },
- "corrects scrolling numbers across platforms": {
-  "es": "Corrige los n\u00fameros que se desplazan entre plataformas.",
-  "fr": "Corrige les num\u00e9ros de d\u00e9filement sur toutes les plates-formes",
-  "it": "Corregge i numeri di scorrimento su tutte le piattaforme",
-  "de": "Korrigiert plattform\u00fcbergreifend scrollende Zahlen",
-  "nl": "Corrigeert scrollende nummers over platforms",
-  "pt": "Corrige n\u00fameros de rolagem entre plataformas",
-  "sv": "Korrigerar rullande nummer \u00f6ver plattformar",
-  "fi": "Korjaa vieritysnumerot eri alustoilla"
- },
- "general table must present in color scheme": {
-  "es": "La tabla general debe presentarse en combinaci\u00f3n de colores.",
-  "fr": "Le tableau g\u00e9n\u00e9ral doit \u00eatre pr\u00e9sent\u00e9 dans une palette de couleurs",
-  "it": "La tabella generale deve essere presente nella combinazione di colori",
-  "de": "Die allgemeine Tabelle muss farblich dargestellt sein",
-  "nl": "Algemene tabel moet in kleurenschema worden weergegeven",
-  "pt": "Tabela geral deve apresentar esquema de cores",
-  "sv": "Allm\u00e4n tabell m\u00e5ste presenteras i f\u00e4rgschema",
-  "fi": "Yleistaulukko on esitett\u00e4v\u00e4 v\u00e4rimaailmassa"
  },
  "nt": {
   "es": "Nuevo Testamento",
@@ -1019,786 +909,6 @@
   "sv": "nt",
   "fi": "nt"
  },
- "background": {
-  "es": "fondo",
-  "fr": "arri\u00e8re-plan",
-  "it": "sfondo",
-  "de": "Hintergrund",
-  "nl": "achtergrond",
-  "pt": "fundo",
-  "sv": "bakgrund",
-  "fi": "tausta"
- },
- "foreground": {
-  "es": "primer plano",
-  "fr": "premier plan",
-  "it": "primo piano",
-  "de": "Vordergrund",
-  "nl": "voorgrond",
-  "pt": "primeiro plano",
-  "sv": "f\u00f6rgrund",
-  "fi": "etualalla"
- },
- "selectbackground": {
-  "es": "seleccione Fondo",
-  "fr": "s\u00e9lectionner l'arri\u00e8re-plan",
-  "it": "seleziona sfondo",
-  "de": "Hintergrund ausw\u00e4hlen",
-  "nl": "selecteerachtergrond",
-  "pt": "selecione o plano de fundo",
-  "sv": "v\u00e4lj bakgrund",
-  "fi": "valitse tausta"
- },
- "selectforeground": {
-  "es": "seleccionar primer plano",
-  "fr": "s\u00e9lectionner le premier plan",
-  "it": "seleziona primo piano",
-  "de": "Vordergrund ausw\u00e4hlen",
-  "nl": "selecteervoorgrond",
-  "pt": "selecione primeiro plano",
-  "sv": "v\u00e4lj f\u00f6rgrund",
-  "fi": "valitse etualalla"
- },
- "inactiveselectbackground": {
-  "es": "fondo seleccionado inactivo",
-  "fr": "inactifs\u00e9lectionnerarri\u00e8re-plan",
-  "it": "inattivoseleziona sfondo",
-  "de": "inaktiver Hintergrund ausw\u00e4hlen",
-  "nl": "inactiefselecteer achtergrond",
-  "pt": "inativo selecionar plano de fundo",
-  "sv": "inaktiv v\u00e4lj bakgrund",
-  "fi": "ei-aktiivinenvalitse tausta"
- },
- "insertbackground": {
-  "es": "insertar fondo",
-  "fr": "ins\u00e9rer un arri\u00e8re-plan",
-  "it": "inserire sfondo",
-  "de": "Hintergrund einf\u00fcgen",
-  "nl": "achtergrond invoegen",
-  "pt": "inserir fundo",
-  "sv": "infoga bakgrund",
-  "fi": "lis\u00e4\u00e4 tausta"
- },
- "insertwidth": {
-  "es": "ancho de inserci\u00f3n",
-  "fr": "ins\u00e9rer la largeur",
-  "it": "larghezza inserto",
-  "de": "Einf\u00fcgebreite",
-  "nl": "insteekbreedte",
-  "pt": "largura de inser\u00e7\u00e3o",
-  "sv": "insatsbredd",
-  "fi": "lis\u00e4leveys"
- },
- "borderwidth": {
-  "es": "ancho del borde",
-  "fr": "largeur de la bordure",
-  "it": "larghezza del bordo",
-  "de": "Rahmenbreite",
-  "nl": "grensbreedte",
-  "pt": "largura da borda",
-  "sv": "gr\u00e4nsbredd",
-  "fi": "rajanleveys"
- },
- "highlightthickness": {
-  "es": "resaltar espesor",
-  "fr": "\u00e9paisseur de surbrillance",
-  "it": "spessore dell'evidenziazione",
-  "de": "Highlightthickness",
-  "nl": "markeer de dikte",
-  "pt": "espessura do destaque",
-  "sv": "h\u00f6jdpunktstjocklek",
-  "fi": "korostuspaksuus"
- },
- "bg": {
-  "es": "bg",
-  "fr": "bg",
-  "it": "bg",
-  "de": "bg",
-  "nl": "bg",
-  "pt": "obrigado",
-  "sv": "bg",
-  "fi": "bg"
- },
- "fg": {
-  "es": "fg",
-  "fr": "fg",
-  "it": "fig",
-  "de": "fg",
-  "nl": "fg",
-  "pt": "fg",
-  "sv": "fg",
-  "fi": "fg"
- },
- "caret": {
-  "es": "signo de intercalaci\u00f3n",
-  "fr": "curseur",
-  "it": "cursore",
-  "de": "Caret",
-  "nl": "dakje",
-  "pt": "cursor",
-  "sv": "mark\u00f6r",
-  "fi": "caret"
- },
- "error": {
-  "es": "Error",
-  "fr": "Erreur",
-  "it": "Errore",
-  "de": "Fehler",
-  "nl": "Fout",
-  "pt": "Erro",
-  "sv": "Fel",
-  "fi": "Virhe"
- },
- "constant": {
-  "es": "constante",
-  "fr": "constante",
-  "it": "costante",
-  "de": "Konstante",
-  "nl": "constante",
-  "pt": "constante",
-  "sv": "konstant",
-  "fi": "vakio"
- },
- "declaration": {
-  "es": "declaraci\u00f3n",
-  "fr": "d\u00e9claration",
-  "it": "dichiarazione",
-  "de": "Erkl\u00e4rung",
-  "nl": "verklaring",
-  "pt": "declara\u00e7\u00e3o",
-  "sv": "deklaration",
-  "fi": "ilmoitus"
- },
- "namespace": {
-  "es": "espacio de nombres",
-  "fr": "espace de noms",
-  "it": "spazio dei nomi",
-  "de": "Namensraum",
-  "nl": "naamruimte",
-  "pt": "espa\u00e7o para nome",
-  "sv": "namnutrymme",
-  "fi": "nimiavaruus"
- },
- "pseudo": {
-  "es": "seudo",
-  "fr": "pseudo",
-  "it": "pseudo-",
-  "de": "Pseudo-",
-  "nl": "pseudo",
-  "pt": "pseudo",
-  "sv": "pseudo",
-  "fi": "pseudo"
- },
- "reserved": {
-  "es": "reservado",
-  "fr": "r\u00e9serv\u00e9",
-  "it": "riservato",
-  "de": "reserviert",
-  "nl": "gereserveerd",
-  "pt": "reservado",
-  "sv": "reserverad",
-  "fi": "varattu"
- },
- "type": {
-  "es": "tipo",
-  "fr": "taper",
-  "it": "tipo",
-  "de": "Typ",
-  "nl": "type",
-  "pt": "tipo",
-  "sv": "typ",
-  "fi": "tyyppi"
- },
- "event": {
-  "es": "evento",
-  "fr": "\u00e9v\u00e9nement",
-  "it": "evento",
-  "de": "Ereignis",
-  "nl": "evenement",
-  "pt": "evento",
-  "sv": "h\u00e4ndelse",
-  "fi": "tapahtuma"
- },
- "argument": {
-  "es": "argumento",
-  "fr": "argument",
-  "it": "discussione",
-  "de": "Streit",
-  "nl": "argument",
-  "pt": "argumento",
-  "sv": "argument",
-  "fi": "Perustelu"
- },
- "header": {
-  "es": "encabezamiento",
-  "fr": "ent\u00eate",
-  "it": "intestazione",
-  "de": "Header",
-  "nl": "koptekst",
-  "pt": "cabe\u00e7alho",
-  "sv": "rubrik",
-  "fi": "otsikko"
- },
- "attr": {
-  "es": "atributo",
-  "fr": "attr",
-  "it": "attr",
-  "de": "attr",
-  "nl": "attr",
-  "pt": "atributo",
-  "sv": "attr",
-  "fi": "attr"
- },
- "builtin": {
-  "es": "incorporado",
-  "fr": "int\u00e9gr\u00e9",
-  "it": "incorporato",
-  "de": "eingebaut",
-  "nl": "ingebouwd",
-  "pt": "constru\u00eddas em",
-  "sv": "inbyggt",
-  "fi": "sis\u00e4\u00e4nrakennettu"
- },
- "class": {
-  "es": "clase",
-  "fr": "classe",
-  "it": "classe",
-  "de": "Klasse",
-  "nl": "klas",
-  "pt": "aula",
-  "sv": "klass",
-  "fi": "luokkaa"
- },
- "decorator": {
-  "es": "decorador",
-  "fr": "d\u00e9corateur",
-  "it": "decoratore",
-  "de": "Dekorateur",
-  "nl": "decorateur",
-  "pt": "decorador",
-  "sv": "dekorat\u00f6r",
-  "fi": "sisustusarkkitehti"
- },
- "entity": {
-  "es": "entidad",
-  "fr": "entit\u00e9",
-  "it": "entit\u00e0",
-  "de": "juristische Person",
-  "nl": "entiteit",
-  "pt": "entidade",
-  "sv": "entitet",
-  "fi": "kokonaisuus"
- },
- "exception": {
-  "es": "excepci\u00f3n",
-  "fr": "exception",
-  "it": "eccezione",
-  "de": "Ausnahme",
-  "nl": "uitzondering",
-  "pt": "exce\u00e7\u00e3o",
-  "sv": "undantag",
-  "fi": "poikkeus"
- },
- "function": {
-  "es": "funci\u00f3n",
-  "fr": "fonction",
-  "it": "funzione",
-  "de": "Funktion",
-  "nl": "functie",
-  "pt": "fun\u00e7\u00e3o",
-  "sv": "fungera",
-  "fi": "toiminto"
- },
- "label": {
-  "es": "etiqueta",
-  "fr": "\u00e9tiquette",
-  "it": "etichetta",
-  "de": "Etikett",
-  "nl": "etiket",
-  "pt": "r\u00f3tulo",
-  "sv": "m\u00e4rka",
-  "fi": "etiketti"
- },
- "tag": {
-  "es": "etiqueta",
-  "fr": "\u00e9tiqueter",
-  "it": "etichetta",
-  "de": "Etikett",
-  "nl": "label",
-  "pt": "marca\u00e7\u00e3o",
-  "sv": "m\u00e4rka",
-  "fi": "tag"
- },
- "variable": {
-  "es": "variable",
-  "fr": "variable",
-  "it": "variabile",
-  "de": "Variable",
-  "nl": "variabel",
-  "pt": "vari\u00e1vel",
-  "sv": "variabel",
-  "fi": "muuttuja"
- },
- "affix": {
-  "es": "afijo",
-  "fr": "affixe",
-  "it": "apporre",
-  "de": "Affix",
-  "nl": "bevestigen",
-  "pt": "afixo",
-  "sv": "affix",
-  "fi": "kiinnitt\u00e4\u00e4"
- },
- "backtick": {
-  "es": "comillas invertidas",
-  "fr": "backtick",
-  "it": "apice inverso",
-  "de": "Backtick",
-  "nl": "terugslag",
-  "pt": "crase",
-  "sv": "backtick",
-  "fi": "takaisin tikku"
- },
- "char": {
-  "es": "carbonizarse",
-  "fr": "carboniser",
-  "it": "car",
-  "de": "verkohlen",
-  "nl": "verkoold",
-  "pt": "Caracteres",
-  "sv": "r\u00f6ding",
-  "fi": "hiilty\u00e4"
- },
- "delimeter": {
-  "es": "delimitador",
-  "fr": "d\u00e9limiteur",
-  "it": "delimitatore",
-  "de": "Trennzeichen",
-  "nl": "scheidingsteken",
-  "pt": "delimitador",
-  "sv": "avgr\u00e4nsare",
-  "fi": "erotin"
- },
- "doc": {
-  "es": "doc",
-  "fr": "doc",
-  "it": "doc",
-  "de": "Dok",
-  "nl": "doc",
-  "pt": "documento",
-  "sv": "doc",
-  "fi": "doc"
- },
- "double": {
-  "es": "doble",
-  "fr": "double",
-  "it": "Doppio",
-  "de": "doppelt",
-  "nl": "dubbele",
-  "pt": "dobro",
-  "sv": "dubbel",
-  "fi": "kaksinkertainen"
- },
- "escape": {
-  "es": "escapar",
-  "fr": "s'\u00e9chapper",
-  "it": "fuga",
-  "de": "Flucht",
-  "nl": "ontsnappen",
-  "pt": "escapar",
-  "sv": "fly",
-  "fi": "paeta"
- },
- "heredoc": {
-  "es": "heredoc",
-  "fr": "h\u00e9rdoc",
-  "it": "quidoc",
-  "de": "hierdoc",
-  "nl": "hierdoc",
-  "pt": "heredoc",
-  "sv": "heredoc",
-  "fi": "heredoc"
- },
- "interpol": {
-  "es": "interpol",
-  "fr": "Interpol",
-  "it": "interpol",
-  "de": "Interpol",
-  "nl": "interpol",
-  "pt": "interpol",
-  "sv": "interpol",
-  "fi": "interpol"
- },
- "regex": {
-  "es": "expresi\u00f3n regular",
-  "fr": "expression r\u00e9guli\u00e8re",
-  "it": "espressione regolare",
-  "de": "Regex",
-  "nl": "regex",
-  "pt": "express\u00e3o regular",
-  "sv": "regex",
-  "fi": "regex"
- },
- "single": {
-  "es": "soltero",
-  "fr": "c\u00e9libataire",
-  "it": "separare",
-  "de": "einzel",
-  "nl": "enkel",
-  "pt": "solteiro",
-  "sv": "enda",
-  "fi": "yksitt\u00e4inen"
- },
- "symbol": {
-  "es": "s\u00edmbolo",
-  "fr": "symbole",
-  "it": "simbolo",
-  "de": "Symbol",
-  "nl": "symbool",
-  "pt": "s\u00edmbolo",
-  "sv": "symbol",
-  "fi": "symboli"
- },
- "binary": {
-  "es": "binario",
-  "fr": "binaire",
-  "it": "binario",
-  "de": "bin\u00e4r",
-  "nl": "binair",
-  "pt": "bin\u00e1rio",
-  "sv": "bin\u00e4r",
-  "fi": "bin\u00e4\u00e4ri"
- },
- "float": {
-  "es": "flotar",
-  "fr": "flotter",
-  "it": "galleggiante",
-  "de": "schweben",
-  "nl": "vlot",
-  "pt": "flutuador",
-  "sv": "flyta",
-  "fi": "kellua"
- },
- "hex": {
-  "es": "maleficio",
-  "fr": "hexad\u00e9cimal",
-  "it": "esadecimale",
-  "de": "verhexen",
-  "nl": "hex",
-  "pt": "hexadecimal",
-  "sv": "hex",
-  "fi": "hex"
- },
- "integer": {
-  "es": "entero",
-  "fr": "entier",
-  "it": "numero intero",
-  "de": "ganze Zahl",
-  "nl": "geheel getal",
-  "pt": "inteiro",
-  "sv": "heltal",
-  "fi": "kokonaisluku"
- },
- "long": {
-  "es": "largo",
-  "fr": "long",
-  "it": "lungo",
-  "de": "lang",
-  "nl": "lang",
-  "pt": "longo",
-  "sv": "l\u00e5ng",
-  "fi": "pitk\u00e4"
- },
- "octal": {
-  "es": "octal",
-  "fr": "octal",
-  "it": "ottale",
-  "de": "oktal",
-  "nl": "octaal",
-  "pt": "octal",
-  "sv": "oktal",
-  "fi": "oktaali"
- },
- "hashbang": {
-  "es": "hach\u00eds",
-  "fr": "hashbang",
-  "it": "hashbang",
-  "de": "Hashbang",
-  "nl": "hasjbang",
-  "pt": "hash bang",
-  "sv": "hashbang",
-  "fi": "hashbang"
- },
- "multiline": {
-  "es": "multil\u00ednea",
-  "fr": "multiligne",
-  "it": "multilinea",
-  "de": "mehrzeilig",
-  "nl": "meerdere regels",
-  "pt": "multilinha",
-  "sv": "flerlinje",
-  "fi": "monirivinen"
- },
- "preproc": {
-  "es": "preprocesamiento",
-  "fr": "pr\u00e9proc",
-  "it": "preproc",
-  "de": "Vorproz",
-  "nl": "voorbewerking",
-  "pt": "pr\u00e9-processamento",
-  "sv": "preproc",
-  "fi": "preproc"
- },
- "preprocfile": {
-  "es": "preprocfile",
-  "fr": "pr\u00e9profil",
-  "it": "preprocfile",
-  "de": "Pr\u00e4prodatei",
-  "nl": "voorverwerkingsbestand",
-  "pt": "pr\u00e9-perfil",
-  "sv": "f\u00f6rprocfil",
-  "fi": "esiprofiili"
- },
- "special": {
-  "es": "especial",
-  "fr": "sp\u00e9cial",
-  "it": "speciale",
-  "de": "besonders",
-  "nl": "speciaal",
-  "pt": "especial",
-  "sv": "s\u00e4rskild",
-  "fi": "erityist\u00e4"
- },
- "emphasis": {
-  "es": "\u00e9nfasis",
-  "fr": "accent",
-  "it": "enfasi",
-  "de": "Schwerpunkt",
-  "nl": "nadruk",
-  "pt": "\u00eanfase",
-  "sv": "betoning",
-  "fi": "painotus"
- },
- "heading": {
-  "es": "t\u00edtulo",
-  "fr": "titre",
-  "it": "intestazione",
-  "de": "\u00dcberschrift",
-  "nl": "rubriek",
-  "pt": "cabe\u00e7alho",
-  "sv": "rubrik",
-  "fi": "otsikko"
- },
- "strong": {
-  "es": "fuerte",
-  "fr": "fort",
-  "it": "forte",
-  "de": "stark",
-  "nl": "sterk",
-  "pt": "forte",
-  "sv": "stark",
-  "fi": "vahva"
- },
- "subheading": {
-  "es": "subt\u00edtulo",
-  "fr": "sous-titre",
-  "it": "sottovoce",
-  "de": "Unter\u00fcberschrift",
-  "nl": "ondertitel",
-  "pt": "subt\u00edtulo",
-  "sv": "underrubrik",
-  "fi": "alaotsikko"
- },
- "editor": {
-  "es": "editor",
-  "fr": "\u00e9diteur",
-  "it": "editore",
-  "de": "Editor",
-  "nl": "editor",
-  "pt": "editor",
-  "sv": "redakt\u00f6r",
-  "fi": "toimittaja"
- },
- "punctuation": {
-  "it": "punteggiatura",
-  "es": "puntuaci\u00f3n",
-  "fr": "ponctuation",
-  "de": "Interpunktion",
-  "pt": "pontua\u00e7\u00e3o",
-  "sv": "skiljetecken",
-  "fi": "v\u00e4limerkit",
-  "nl": "interpunctie"
- },
- "comment": {
-  "es": "comentario",
-  "fr": "commentaire",
-  "it": "commento",
-  "de": "Kommentar",
-  "nl": "opmerking",
-  "pt": "Comente",
-  "sv": "kommentar",
-  "fi": "kommentti"
- },
- "keyword": {
-  "es": "palabra clave",
-  "fr": "mot-cl\u00e9",
-  "it": "parola chiave",
-  "de": "Stichwort",
-  "nl": "trefwoord",
-  "pt": "palavra-chave",
-  "sv": "nyckelord",
-  "fi": "avainsana"
- },
- "string": {
-  "es": "cadena",
-  "fr": "cha\u00eene",
-  "it": "corda",
-  "de": "Zeichenfolge",
-  "nl": "snaar",
-  "pt": "corda",
-  "sv": "str\u00e4ng",
-  "fi": "merkkijono"
- },
- "pos": {
-  "es": "posici\u00f3n",
-  "fr": "position",
-  "it": "pos",
-  "de": "Pos",
-  "nl": "pos",
-  "pt": "posi\u00e7\u00e3o",
-  "sv": "pos",
-  "fi": "pos"
- },
- "size": {
-  "es": "tama\u00f1o",
-  "fr": "taille",
-  "it": "misurare",
-  "de": "Gr\u00f6\u00dfe",
-  "nl": "maat",
-  "pt": "tamanho",
-  "sv": "storlek",
-  "fi": "koko"
- },
- "up": {
-  "pt": "acima",
-  "es": "arriba",
-  "fr": "en haut",
-  "it": "su",
-  "de": "hoch",
-  "nl": "omhoog",
-  "fi": "yl\u00f6s",
-  "sv": "upp"
- },
- "rgb": {
-  "es": "rgb",
-  "fr": "RVB",
-  "it": "RGB",
-  "de": "RGB",
-  "nl": "rgb",
-  "pt": "RGB",
-  "sv": "rgb",
-  "fi": "rgb"
- },
- "root": {
-  "es": "ra\u00edz",
-  "fr": "racine",
-  "it": "radice",
-  "de": "Wurzel",
-  "nl": "wortel",
-  "pt": "raiz",
-  "sv": "rot",
-  "fi": "juuri"
- },
- "builtins": {
-  "es": "incorporados",
-  "fr": "int\u00e9gr\u00e9s",
-  "it": "builtin",
-  "de": "Einbauten",
-  "nl": "inbouw",
-  "pt": "embutidos",
-  "sv": "inbyggda",
-  "fi": "sis\u00e4\u00e4nrakennetut"
- },
- "1.0": {
-  "es": "1.0",
-  "fr": "1.0",
-  "it": "1.0",
-  "de": "1,0",
-  "nl": "1,0",
-  "pt": "1,0",
-  "sv": "1.0",
-  "fi": "1.0"
- },
- "end-1c": {
-  "es": "final-1c",
-  "fr": "fin-1c",
-  "it": "fine-1c",
-  "de": "Ende-1c",
-  "nl": "eind-1c",
-  "pt": "fim-1c",
-  "sv": "slut-1c",
-  "fi": "loppu-1c"
- },
- "command": {
-  "es": "Dominio",
-  "fr": "Commande",
-  "it": "Comando",
-  "de": "Befehl",
-  "nl": "Commando",
-  "pt": "Comando",
-  "sv": "Kommando",
-  "fi": "Komento"
- },
- "wm": {
-  "es": "wm",
-  "fr": "wm",
-  "it": "wm",
-  "de": "wm",
-  "nl": "wm",
-  "pt": "uh",
-  "sv": "wm",
-  "fi": "wm"
- },
- "iconphoto": {
-  "es": "iconofoto",
-  "fr": "ic\u00f4nephoto",
-  "it": "iconafoto",
-  "de": "Symbolfoto",
-  "nl": "icoonfoto",
-  "pt": "foto de \u00edcone",
-  "sv": "ikonfoto",
-  "fi": "kuvakekuva"
- },
- "a ttk notebook with close buttons on each tab": {
-  "es": "Un cuaderno ttk con botones de cierre en cada pesta\u00f1a",
-  "fr": "Un Notebook ttk avec des boutons de fermeture sur chaque onglet",
-  "it": "Un taccuino ttk con pulsanti di chiusura su ciascuna scheda",
-  "de": "Ein TTK-Notizbuch mit Schaltfl\u00e4chen zum Schlie\u00dfen auf jeder Registerkarte",
-  "nl": "Een ttk-notitieboekje met sluitknoppen op elk tabblad",
-  "pt": "Um caderno ttk com bot\u00f5es para fechar em cada guia",
-  "sv": "En ttk Notebook med st\u00e4ngningsknappar p\u00e5 varje flik",
-  "fi": "Ttk-muistikirja, jossa on sulkemispainikkeet jokaisessa v\u00e4lilehdess\u00e4"
- },
- "operator": {
-  "es": "operador",
-  "fr": "op\u00e9rateur",
-  "it": "operatore",
-  "de": "Operator",
-  "nl": "exploitant",
-  "pt": "operador",
-  "sv": "operat\u00f6r",
-  "fi": "operaattori"
- },
- "number": {
-  "pt": "n\u00famero",
-  "es": "n\u00famero",
-  "fr": "nombre",
-  "it": "numero",
-  "de": "Nummer",
-  "nl": "nummer",
-  "fi": "m\u00e4\u00e4r\u00e4",
-  "sv": "siffra"
- },
  "highlight": {
   "es": "destacar",
   "fr": "souligner",
@@ -1809,6 +919,16 @@
   "sv": "markera",
   "fi": "kohokohta"
  },
+ "error": {
+  "es": "error",
+  "fr": "erreur",
+  "it": "errore",
+  "de": "Fehler",
+  "nl": "fout",
+  "pt": "erro",
+  "sv": "fel",
+  "fi": "virhe"
+ },
  "parentheses": {
   "es": "par\u00e9ntesis",
   "fr": "parenth\u00e8ses",
@@ -1818,156 +938,6 @@
   "pt": "par\u00eanteses",
   "sv": "parentes",
   "fi": "suluissa"
- },
- "protected": {
-  "es": "protegido",
-  "fr": "prot\u00e9g\u00e9",
-  "it": "protetto",
-  "de": "gesch\u00fctzt",
-  "nl": "beschermd",
-  "pt": "protegido",
-  "sv": "skyddad",
-  "fi": "suojattu"
- },
- "enemy": {
-  "es": "enemigo",
-  "fr": "ennemi",
-  "it": "nemico",
-  "de": "Feind",
-  "nl": "vijand",
-  "pt": "inimigo",
-  "sv": "fiende",
-  "fi": "vihollinen"
- },
- "x": {
-  "es": "X",
-  "fr": "X",
-  "it": "X",
-  "de": "X",
-  "nl": "X",
-  "pt": "x",
-  "sv": "x",
-  "fi": "x"
- },
- " - amscript ide": {
-  "es": "- IDE amscript",
-  "fr": "- l'EDI amscript",
-  "it": "- IDE amscript",
-  "de": "- Amscript-IDE",
-  "nl": "- amscript-IDE",
-  "pt": "- IDE amscript",
-  "sv": "- amscript IDE",
-  "fi": "- amscript IDE"
- },
- "customnotebook": {
-  "es": "Cuaderno personalizado",
-  "fr": "Carnet personnalis\u00e9",
-  "it": "Taccuino personalizzato",
-  "de": "Benutzerdefiniertes Notizbuch",
-  "nl": "Aangepast notitieboekje",
-  "pt": "Caderno personalizado",
-  "sv": "Anpassad anteckningsbok",
-  "fi": "Mukautettu muistikirja"
- },
- "called when the button is pressed over the close button": {
-  "es": "Se llama cuando se presiona el bot\u00f3n sobre el bot\u00f3n de cerrar.",
-  "it": "Chiamato quando viene premuto il pulsante sopra il pulsante di chiusura",
-  "de": "Wird aufgerufen, wenn die Schaltfl\u00e4che \u00fcber der Schlie\u00dfen-Schaltfl\u00e4che gedr\u00fcckt wird",
-  "nl": "Wordt opgeroepen wanneer de knop over de sluitknop wordt gedrukt",
-  "pt": "Chamado quando o bot\u00e3o \u00e9 pressionado sobre o bot\u00e3o Fechar",
-  "sv": "Anropas n\u00e4r knappen trycks \u00f6ver st\u00e4ngningsknappen",
-  "fi": "Kutsutaan, kun painiketta painetaan sulkemispainikkeen p\u00e4\u00e4ll\u00e4",
-  "fr": "Appel\u00e9 lorsque le bouton est enfonc\u00e9 sur le bouton de fermeture"
- },
- "called when the button is released": {
-  "es": "Se llama cuando se suelta el bot\u00f3n.",
-  "fr": "Appel\u00e9 lorsque le bouton est rel\u00e2ch\u00e9",
-  "it": "Chiamato quando il pulsante viene rilasciato",
-  "de": "Wird aufgerufen, wenn die Taste losgelassen wird",
-  "nl": "Wordt gebeld als de knop wordt losgelaten",
-  "pt": "Chamado quando o bot\u00e3o \u00e9 liberado",
-  "sv": "Anropas n\u00e4r knappen sl\u00e4pps",
-  "fi": "Soitetaan, kun painike vapautetaan"
- },
- "both": {
-  "es": "ambos",
-  "fr": "les deux",
-  "it": "Entrambi",
-  "de": "beide",
-  "nl": "beide",
-  "pt": "ambos",
-  "sv": "b\u00e5de",
-  "fi": "molemmat"
- },
- "nw": {
-  "es": "noroeste",
-  "fr": "maintenant",
-  "it": "ora",
-  "de": "jetzt",
-  "nl": "nw",
-  "pt": "agora",
-  "sv": "nw",
-  "fi": "nw"
- },
- "font": {
-  "es": "fuente",
-  "fr": "Police de caract\u00e8re",
-  "it": "font",
-  "de": "Schriftart",
-  "nl": "lettertype",
-  "pt": "Fonte",
-  "sv": "font",
-  "fi": "fontti"
- },
- "3": {
-  "sv": "3",
-  "fr": "3",
-  "it": "3",
-  "de": "3",
-  "nl": "3",
-  "pt": "3",
-  "es": "3",
-  "fi": "3"
- },
- "0": {
-  "es": "0",
-  "fr": "0",
-  "it": "0",
-  "de": "0",
-  "nl": "0",
-  "pt": "0",
-  "sv": "0",
-  "fi": "0"
- },
- "word": {
-  "es": "palabra",
-  "fr": "mot",
-  "it": "parola",
-  "de": "Wort",
-  "nl": "woord",
-  "pt": "palavra",
-  "sv": "ord",
-  "fi": "sana"
- },
- "placeholder": {
-  "es": "MARCADOR DE LUGAR",
-  "fr": "EMPLACEMENT",
-  "it": "SEGNAPOSTO",
-  "de": "PLATZHALTER",
-  "nl": "TIJDELIJKE HOUDER",
-  "pt": "LUGAR",
-  "sv": "PLATSH\u00c5LLARE",
-  "fi": "PAIKANPIT\u00c4J\u00c4"
- },
- "break": {
-  "fr": "casser",
-  "it": "rottura",
-  "de": "brechen",
-  "nl": "pauze ",
-  "pt": "quebrar",
-  "sv": "ha s\u00f6nder",
-  "fi": "tauko",
-  "es": "romper"
  },
  "s": {
   "es": "s",
@@ -2009,6 +979,16 @@
   "sv": "Ritar om widgeten",
   "fi": "Piirt\u00e4\u00e4 widgetin uudelleen"
  },
+ "break": {
+  "fr": "casser",
+  "it": "rottura",
+  "de": "brechen",
+  "nl": "pauze ",
+  "pt": "quebrar",
+  "sv": "ha s\u00f6nder",
+  "fi": "tauko",
+  "es": "romper"
+ },
  "must be a dictionary or a built-in color scheme": {
   "es": "Debe ser un diccionario o una combinaci\u00f3n de colores incorporada.",
   "fr": "Doit \u00eatre un dictionnaire ou un jeu de couleurs int\u00e9gr\u00e9",
@@ -2028,6 +1008,26 @@
   "pt": "fim",
   "sv": "slutet",
   "fi": "loppu"
+ },
+ "both": {
+  "es": "ambos",
+  "fr": "les deux",
+  "it": "Entrambi",
+  "de": "beide",
+  "nl": "beide",
+  "pt": "ambos",
+  "sv": "b\u00e5de",
+  "fi": "molemmat"
+ },
+ "word": {
+  "es": "palabra",
+  "fr": "mot",
+  "it": "parola",
+  "de": "Wort",
+  "nl": "woord",
+  "pt": "palavra",
+  "sv": "ord",
+  "fi": "sana"
  },
  "black": {
   "es": "negro",
@@ -2049,6 +1049,16 @@
   "sv": "gul",
   "fi": "keltainen"
  },
+ "placeholder": {
+  "es": "MARCADOR DE LUGAR",
+  "fr": "EMPLACEMENT",
+  "it": "SEGNAPOSTO",
+  "de": "PLATZHALTER",
+  "nl": "TIJDELIJKE HOUDER",
+  "pt": "LUGAR",
+  "sv": "PLATSH\u00c5LLARE",
+  "fi": "PAIKANPIT\u00c4J\u00c4"
+ },
  "se": {
   "es": "s\u00ed",
   "fr": "se",
@@ -2059,145 +1069,25 @@
   "sv": "se",
   "fi": "se"
  },
- "ff": {
-  "pt": "FF",
-  "es": "FF",
-  "fr": "FR",
-  "it": "FF",
-  "de": "FF",
-  "nl": "FF",
-  "fi": "FF",
-  "sv": "FF"
+ "nw": {
+  "es": "noroeste",
+  "fr": "maintenant",
+  "it": "ora",
+  "de": "jetzt",
+  "nl": "nw",
+  "pt": "agora",
+  "sv": "nw",
+  "fi": "nw"
  },
- "generic": {
-  "es": "gen\u00e9rico",
-  "fr": "g\u00e9n\u00e9rique",
-  "it": "generico",
-  "de": "generisch",
-  "nl": "algemeen",
-  "pt": "gen\u00e9rico",
-  "sv": "generisk",
-  "fi": "yleinen"
- },
- "extras": {
-  "es": "extras",
-  "fr": "Suppl\u00e9ments",
-  "it": "extra",
-  "de": "Extras",
-  "nl": "extra's",
-  "pt": "extras",
-  "sv": "extramaterial",
-  "fi": "extrat"
- },
- "zoomed": {
-  "es": "ampliado",
-  "fr": "zoom\u00e9",
-  "it": "ingrandito",
-  "de": "gezoomt",
-  "nl": "ingezoomd",
-  "pt": "ampliado",
-  "sv": "zoomat",
-  "fi": "zoomattu"
- },
- "style": {
-  "es": "estilo",
-  "fr": "style",
-  "it": "stile",
-  "de": "Stil",
-  "nl": "stijl",
-  "pt": "estilo",
-  "sv": "stil",
-  "fi": "tyyli"
- },
- "close": {
-  "es": "cerca",
-  "fr": "fermer",
-  "it": "vicino",
-  "de": "schlie\u00dfen",
-  "nl": "dichtbij",
-  "pt": "fechar",
-  "sv": "st\u00e4nga",
-  "fi": "kiinni"
- },
- "flat": {
-  "es": "departamento",
-  "fr": "plat",
-  "it": "Piatto",
-  "de": "Wohnung",
-  "nl": "vlak",
-  "pt": "plano",
-  "sv": "platt",
-  "fi": "tasainen"
- },
- "image": {
-  "es": "imagen",
-  "fr": "image",
-  "it": "Immagine",
-  "de": "Bild",
-  "nl": "afbeelding",
-  "pt": "imagem",
-  "sv": "bild",
-  "fi": "kuva"
- },
- "customnotebook.tab": {
-  "es": "Pesta\u00f1a Cuaderno personalizado",
-  "fr": "CustomNotebook.Tab",
-  "it": "CustomNotebook.Tab",
-  "de": "CustomNotebook.Tab",
-  "nl": "AangepastNotebook.Tab",
-  "pt": "CustomNotebook.Tab",
-  "sv": "CustomNotebook.Tab",
-  "fi": "Mukautettu Notebook.Tab"
- },
- "down": {
-  "es": "abajo",
-  "fr": "vers le bas",
-  "it": "gi\u00f9",
-  "de": "runter",
-  "nl": "omlaag",
-  "pt": "abaixo",
-  "sv": "ner",
-  "fi": "alas"
- },
- "ignore": {
-  "es": "ignorar",
-  "fr": "ignorer",
-  "it": "ignorare",
-  "de": "ignorieren",
-  "nl": "negeren",
-  "pt": "ignorar",
-  "sv": "ignorera",
-  "fi": "j\u00e4tt\u00e4\u00e4 huomiotta"
- },
- "consolas ": {
-  "es": "Consolas",
-  "fr": "Consoles",
-  "it": "Consolati",
-  "de": "Konsolen",
-  "nl": "Consola's",
-  "pt": "Consolas",
-  "sv": "Konsoler",
-  "fi": "Consolas"
- },
- " italic": {
-  "es": "it\u00e1lico",
-  "fr": "italique",
-  "it": "corsivo",
-  "de": "kursiv",
-  "nl": "cursief",
-  "pt": "it\u00e1lico",
-  "sv": "kursiv",
-  "fi": "kursivoitu"
- },
- "return": {
-  "es": "Devolver",
-  "fr": "Retour",
-  "it": "Ritorno",
-  "de": "Zur\u00fcckkehren",
-  "nl": "Opbrengst",
-  "pt": "Retornar",
-  "sv": "L\u00e4mna tillbaka",
-  "fi": "Palata"
+ "fg": {
+  "es": "fg",
+  "fr": "fg",
+  "it": "fig",
+  "de": "fg",
+  "nl": "fg",
+  "pt": "fg",
+  "sv": "fg",
+  "fi": "fg"
  },
  "search for text": {
   "es": "buscar texto",
@@ -2208,6 +1098,36 @@
   "pt": "procure por texto",
   "sv": "s\u00f6ka efter text",
   "fi": "etsi teksti\u00e4"
+ },
+ "hex": {
+  "es": "maleficio",
+  "fr": "hexad\u00e9cimal",
+  "it": "esadecimale",
+  "de": "verhexen",
+  "nl": "hex",
+  "pt": "hexadecimal",
+  "sv": "hex",
+  "fi": "hex"
+ },
+ "consolas": {
+  "es": "Consolas",
+  "fr": "Consoles",
+  "it": "Consolati",
+  "de": "Konsolen",
+  "nl": "Consola's",
+  "pt": "Consolas",
+  "sv": "Konsoler",
+  "fi": "Consolas"
+ },
+ "command": {
+  "es": "dominio",
+  "fr": "commande",
+  "it": "comando",
+  "de": "Befehl",
+  "nl": "commando",
+  "pt": "comando",
+  "sv": "kommando",
+  "fi": "komento"
  },
  "slider": {
   "es": "control deslizante",
@@ -2279,7 +1199,7 @@
   "sv": "infoga + 1 rad",
   "fi": "lis\u00e4\u00e4 + 1 rivi"
  },
- " 1234 ": {
+ "1234": {
   "es": "1234",
   "fr": "1234",
   "it": "1234",
@@ -2298,6 +1218,16 @@
   "pt": "enrolar",
   "sv": "sl\u00e5 in",
   "fi": "k\u00e4\u00e4ri"
+ },
+ "font": {
+  "es": "fuente",
+  "fr": "Police de caract\u00e8re",
+  "it": "font",
+  "de": "Schriftart",
+  "nl": "lettertype",
+  "pt": "Fonte",
+  "sv": "font",
+  "fi": "fontti"
  },
  "rename": {
   "es": "rebautizar",
@@ -2349,6 +1279,26 @@
   "sv": "sel.sist",
   "fi": "sel.last"
  },
+ "return": {
+  "es": "Devolver",
+  "fr": "Retour",
+  "it": "Ritorno",
+  "de": "Zur\u00fcckkehren",
+  "nl": "Opbrengst",
+  "pt": "Retornar",
+  "sv": "L\u00e4mna tillbaka",
+  "fi": "Palata"
+ },
+ "escape": {
+  "es": "Escapar",
+  "fr": "S'\u00e9chapper",
+  "it": "Fuga",
+  "de": "Flucht",
+  "nl": "Ontsnappen",
+  "pt": "Escapar",
+  "sv": "Fly",
+  "fi": "Paeta"
+ },
  "parenleft": {
   "es": "padre izquierdo",
   "fr": "parengauche",
@@ -2399,6 +1349,16 @@
   "sv": "aktiva",
   "fi": "aktiivinen"
  },
+ "image": {
+  "es": "imagen",
+  "fr": "image",
+  "it": "Immagine",
+  "de": "Bild",
+  "nl": "afbeelding",
+  "pt": "imagem",
+  "sv": "bild",
+  "fi": "kuva"
+ },
  "replace with...": {
   "es": "reemplazar con...",
   "fr": "remplacer par...",
@@ -2422,12 +1382,12 @@
  "linespace": {
   "es": "espacio de linea",
   "fr": "interligne",
+  "it": "interlinea",
   "de": "Zeilenabstand",
   "nl": "lijnruimte",
   "pt": "espa\u00e7o de linha",
   "sv": "linjeutrymme",
-  "fi": "rivitila",
-  "it": "interlinea"
+  "fi": "rivitila"
  },
  "normal": {
   "es": "normal",
@@ -2449,65 +1409,15 @@
   "sv": "Sk\u00e4ra",
   "fi": "Leikata"
  },
- "fullscreen": {
-  "es": "pantalla completa",
-  "fr": "plein \u00e9cran",
-  "it": "a schermo intero",
-  "de": "Vollbild",
-  "nl": "volledig scherm",
-  "pt": "tela cheia",
-  "sv": "fullsk\u00e4rm",
-  "fi": "koko n\u00e4ytt\u00f6"
- },
- "font-size": {
-  "es": "tama\u00f1o de fuente",
-  "fr": "taille de police",
-  "it": "dimensione del font",
-  "de": "Schriftgr\u00f6\u00dfe",
-  "nl": "lettertypegrootte",
-  "pt": "tamanho da fonte",
-  "sv": "textstorlek",
-  "fi": "Fonttikoko"
- },
- "geometry": {
-  "es": "geometr\u00eda",
-  "fr": "g\u00e9om\u00e9trie",
-  "it": "geometria",
-  "de": "Geometrie",
-  "nl": "geometrie",
-  "pt": "geometria",
-  "sv": "geometri",
-  "fi": "geometria"
- },
- "ide-settings": {
-  "es": "configuraci\u00f3n ide",
-  "fr": "param\u00e8tres d'id\u00e9e",
-  "it": "impostazioni ide",
-  "de": "ide-einstellungen",
-  "nl": "ide-instellingen",
-  "pt": "configura\u00e7\u00f5es ideais",
-  "sv": "ide-inst\u00e4llningar",
-  "fi": "ide-asetukset"
- },
- "pressed": {
-  "es": "presionado",
-  "fr": "press\u00e9",
-  "it": "premuto",
-  "de": "gedr\u00fcckt",
-  "nl": "ingedrukt",
-  "pt": "pressionado",
-  "sv": "nedtryckt",
-  "fi": "painetaan"
- },
- "e": {
-  "es": "mi",
-  "fr": "e",
-  "it": "e",
-  "de": "e",
-  "nl": "e",
-  "pt": "e",
-  "sv": "e",
-  "fi": "e"
+ "0": {
+  "es": "0",
+  "fr": "0",
+  "it": "0",
+  "de": "0",
+  "nl": "0",
+  "pt": "0",
+  "sv": "0",
+  "fi": "0"
  },
  "translate": {
   "es": "traducir",
@@ -2559,6 +1469,16 @@
   "sv": "pixlar",
   "fi": "pikseli\u00e4"
  },
+ "bg": {
+  "es": "bg",
+  "fr": "bg",
+  "it": "bg",
+  "de": "bg",
+  "nl": "bg",
+  "pt": "obrigado",
+  "sv": "bg",
+  "fi": "bg"
+ },
  "monospace": {
   "es": "monoespacio",
   "fr": "monospace",
@@ -2589,7 +1509,7 @@
   "sv": "ns",
   "fi": "ns"
  },
- " lineend": {
+ "lineend": {
   "es": "final de l\u00ednea",
   "fr": "fin de ligne",
   "it": "lineend",
@@ -2649,7 +1569,7 @@
   "sv": "infoga+1c blid",
   "fi": "insert+1c sananp\u00e4\u00e4"
  },
- "[line ": {
+ "[line": {
   "es": "[L\u00ednea",
   "fr": "[Doubler",
   "it": "[Linea",
@@ -2659,17 +1579,7 @@
   "sv": "[Linje",
   "fi": "[Linja"
  },
- "@0,0 + ": {
-  "es": "@0,0 +",
-  "fr": "@0,0 +",
-  "it": "@0,0+",
-  "de": "@0,0 +",
-  "nl": "@0,0+",
-  "pt": "@0,0 +",
-  "sv": "@0,0 +",
-  "fi": "@0,0 +"
- },
- " lines": {
+ "lines": {
   "es": "l\u00edneas",
   "fr": "lignes",
   "it": "linee",
@@ -2699,7 +1609,7 @@
   "sv": "infoga lin\u00e4nde",
   "fi": "lis\u00e4\u00e4 rivinp\u00e4\u00e4"
  },
- " linestart": {
+ "linestart": {
   "es": "inicio de l\u00ednea",
   "fr": "d\u00e9but de ligne",
   "it": "inizio linea",
@@ -2728,6 +1638,16 @@
   "pt": "+1c",
   "sv": "+1c",
   "fi": "+1c"
+ },
+ "up": {
+  "es": "Arriba",
+  "fr": "En haut",
+  "it": "Su",
+  "de": "Hoch",
+  "nl": "Omhoog",
+  "pt": "Acima",
+  "sv": "Upp",
+  "fi": "Yl\u00f6s"
  },
  "at": {
   "es": "en",
@@ -2799,26 +1719,6 @@
   "sv": "Kopiera",
   "fi": "Kopio"
  },
- "events": {
-  "es": "eventos",
-  "fr": "\u00e9v\u00e9nements",
-  "it": "eventi",
-  "de": "Veranstaltungen",
-  "nl": "evenementen",
-  "pt": "eventos",
-  "sv": "evenemang",
-  "fi": "Tapahtumat"
- },
- "customnotebook.client": {
-  "es": "ClienteCuadernoPersonalizado.cliente",
-  "fr": "CustomNotebook.client",
-  "it": "CustomNotebook.client",
-  "de": "CustomNotebook.client",
-  "nl": "CustomNotebook.client",
-  "pt": "CustomNotebook.client",
-  "sv": "CustomNotebook.client",
-  "fi": "CustomNotebook.client"
- },
  "width": {
   "es": "ancho",
   "fr": "largeur",
@@ -2828,6 +1728,26 @@
   "pt": "largura",
   "sv": "bredd",
   "fi": "leveys"
+ },
+ "highlightthickness": {
+  "es": "resaltar espesor",
+  "fr": "\u00e9paisseur de surbrillance",
+  "it": "spessore dell'evidenziazione",
+  "de": "Highlightthickness",
+  "nl": "markeer de dikte",
+  "pt": "espessura do destaque",
+  "sv": "h\u00f6jdpunktstjocklek",
+  "fi": "korostuspaksuus"
+ },
+ "borderwidth": {
+  "es": "ancho del borde",
+  "fr": "largeur de la bordure",
+  "it": "larghezza del bordo",
+  "de": "Rahmenbreite",
+  "nl": "grensbreedte",
+  "pt": "largura da borda",
+  "sv": "gr\u00e4nsbredd",
+  "fi": "rajanleveys"
  },
  "relief": {
   "es": "alivio",
@@ -2899,7 +1819,7 @@
   "sv": "byta ut",
   "fi": "korvata"
  },
- "1.0 + ": {
+ "1.0 +": {
   "es": "1.0 +",
   "fr": "1,0 +",
   "it": "1.0+",
@@ -2909,7 +1829,7 @@
   "sv": "1,0+",
   "fi": "1,0+"
  },
- " chars": {
+ "chars": {
   "es": "caracteres",
   "fr": "caract\u00e8res",
   "it": "caratteri",
@@ -2919,7 +1839,7 @@
   "sv": "r\u00f6dingar",
   "fi": "merkki\u00e4"
  },
- " indices": {
+ "indices": {
   "es": "\u00edndices",
   "fr": "indices",
   "it": "indici",
@@ -2929,7 +1849,7 @@
   "sv": "index",
   "fi": "indeksit"
  },
- " bold": {
+ "bold": {
   "es": "atrevido",
   "fr": "audacieux",
   "it": "grassetto",
@@ -2959,35 +1879,45 @@
   "sv": "+3c",
   "fi": "+3c"
  },
+ "down": {
+  "es": "Abajo",
+  "fr": "Vers le bas",
+  "it": "Gi\u00f9",
+  "de": "Runter",
+  "nl": "Omlaag",
+  "pt": "Abaixo",
+  "sv": "Ner",
+  "fi": "Alas"
+ },
  "quotedbl": {
   "es": "citadobl",
   "fr": "cit\u00e9bl",
-  "it": "citatobl",
+  "fi": "lainattubl",
   "de": "zitiertbl",
   "nl": "geciteerdbl",
   "pt": "citadodbl",
   "sv": "citerad bl",
-  "fi": "lainattubl"
+  "it": "citatobl"
  },
  "continue": {
-  "es": "continuar",
+  "sv": "Forts\u00e4tta",
   "fr": "continuer",
+  "fi": "jatkaa",
+  "es": "continuar",
   "it": "Continua",
   "de": "weitermachen",
   "nl": "doorgaan",
-  "pt": "continuar",
-  "sv": "Forts\u00e4tta",
-  "fi": "jatkaa"
+  "pt": "continuar"
  },
  "yield": {
   "es": "producir",
-  "fr": "rendement",
+  "fi": "tuotto",
+  "nl": "opbrengst",
+  "sv": "avkastning",
   "it": "prodotto",
   "de": "Ertrag",
-  "nl": "opbrengst",
-  "pt": "colheita",
-  "sv": "avkastning",
-  "fi": "tuotto"
+  "fr": "rendement",
+  "pt": "colheita"
  },
  "raise": {
   "es": "aumentar",
@@ -3059,6 +1989,16 @@
   "sv": "G\u00f6ra om",
   "fi": "Toista"
  },
+ "comment": {
+  "es": "Comentario",
+  "fr": "Commentaire",
+  "it": "Commento",
+  "de": "Kommentar",
+  "nl": "Opmerking",
+  "pt": "Comente",
+  "sv": "Kommentar",
+  "fi": "Kommentti"
+ },
  "search": {
   "es": "Buscar",
   "fr": "Recherche",
@@ -3099,56 +2039,6 @@
   "sv": "Hj\u00e4lp",
   "fi": "auta"
  },
- "0x": {
-  "es": "0x",
-  "fr": "0x",
-  "it": "0x",
-  "de": "0x",
-  "nl": "0x",
-  "pt": "0x",
-  "sv": "0x",
-  "fi": "0x"
- },
- "configure": {
-  "es": "configurar",
-  "fr": "configurer",
-  "it": "configurare",
-  "de": "konfigurieren",
-  "nl": "configureren",
-  "pt": "configurar",
-  "sv": "konfigurera",
-  "fi": "konfiguroida"
- },
- "map": {
-  "es": "mapa",
-  "fr": "carte",
-  "it": "carta geografica",
-  "de": "Karte",
-  "nl": "kaart",
-  "pt": "mapa",
-  "sv": "Karta",
-  "fi": "kartta"
- },
- "sticky": {
-  "es": "pegajoso",
-  "fr": "collant",
-  "it": "appiccicoso",
-  "de": "klebrig",
-  "nl": "kleverig",
-  "pt": "pegajoso",
-  "sv": "klibbig",
-  "fi": "tahmeaa"
- },
- "children": {
-  "es": "ni\u00f1os",
-  "fr": "enfants",
-  "it": "bambini",
-  "de": "Kinder",
-  "nl": "kinderen",
-  "pt": "crian\u00e7as",
-  "sv": "barn",
-  "fi": "lapset"
- },
  "tagged with \"sel\"": {
   "es": "etiquetado con \"sel\"",
   "fr": "\u00e9tiquet\u00e9 avec \"sel\"",
@@ -3168,6 +2058,26 @@
   "pt": "nada para",
   "sv": "inget att",
   "fi": "ei mit\u00e4\u00e4n"
+ },
+ "keyword": {
+  "es": "palabra clave",
+  "fr": "mot-cl\u00e9",
+  "it": "parola chiave",
+  "de": "Stichwort",
+  "nl": "trefwoord",
+  "pt": "palavra-chave",
+  "sv": "nyckelord",
+  "fi": "avainsana"
+ },
+ "builtin": {
+  "es": "incorporado",
+  "fr": "int\u00e9gr\u00e9",
+  "it": "incorporato",
+  "de": "eingebaut",
+  "nl": "ingebouwd",
+  "pt": "constru\u00eddas em",
+  "sv": "inbyggt",
+  "fi": "sis\u00e4\u00e4nrakennettu"
  },
  "message": {
   "es": "mensaje",
@@ -3189,6 +2099,26 @@
   "sv": "koda",
   "fi": "koodi"
  },
+ "single": {
+  "es": "Soltero",
+  "fr": "C\u00e9libataire",
+  "it": "Separare",
+  "de": "Einzel",
+  "nl": "Enkel",
+  "pt": "Solteiro",
+  "sv": "Enda",
+  "fi": "Yksitt\u00e4inen"
+ },
+ "double": {
+  "es": "Doble",
+  "fr": "Double",
+  "it": "Doppio",
+  "de": "Doppelt",
+  "nl": "Dubbele",
+  "pt": "Dobro",
+  "sv": "Dubbel",
+  "fi": "Kaksinkertainen"
+ },
  "braceleft": {
   "es": "braceleft",
   "fr": "accoladegauche",
@@ -3209,7 +2139,7 @@
   "sv": "bracketright",
   "fi": "hakasulku"
  },
- " result(s)": {
+ "result(s)": {
   "es": "resultados)",
   "fr": "r\u00e9sultats)",
   "it": "risultato(i)",
@@ -3218,6 +2148,16 @@
   "pt": "resultados)",
   "sv": "resultat)",
   "fi": "tulos (tulokset)"
+ },
+ "italic": {
+  "es": "it\u00e1lico",
+  "fr": "italique",
+  "it": "corsivo",
+  "de": "kursiv",
+  "nl": "cursief",
+  "pt": "it\u00e1lico",
+  "sv": "kursiv",
+  "fi": "kursivoitu"
  },
  "log()": {
   "es": "registro()",
@@ -3239,7 +2179,7 @@
   "sv": "K\u00f6r()",
   "fi": "suorittaa()"
  },
- "verdana ": {
+ "verdana": {
   "es": "Verdana",
   "fr": "Verdane",
   "it": "Verdana",
@@ -3248,36 +2188,6 @@
   "pt": "Verdana",
   "sv": "Verdana",
   "fi": "Verdana"
- },
- "expand": {
-  "es": "expandir",
-  "fr": "d\u00e9velopper",
-  "it": "espandere",
-  "de": "expandieren",
-  "nl": "uitbreiden",
-  "pt": "expandir",
-  "sv": "bygga ut",
-  "fi": "laajentaa"
- },
- "padding": {
-  "es": "relleno",
-  "fr": "rembourrage",
-  "it": "imbottitura",
-  "de": "Polsterung",
-  "nl": "opvulling",
-  "pt": "preenchimento",
-  "sv": "stoppning",
-  "fi": "pehmuste"
- },
- "@0,0": {
-  "es": "@0,0",
-  "fr": "@0,0",
-  "it": "@0,0",
-  "de": "@0,0",
-  "nl": "@0,0",
-  "pt": "@0,0",
-  "sv": "@0,0",
-  "fi": "@0,0"
  },
  "false": {
   "es": "FALSO",
@@ -3310,14 +2220,14 @@
   "fi": "ei"
  },
  "n": {
-  "es": "norte",
+  "fi": "n",
   "fr": "n",
   "it": "N",
   "de": "N",
   "nl": "N",
   "pt": "n",
   "sv": "n",
-  "fi": "n"
+  "es": "norte"
  },
  "token.": {
   "es": "Simb\u00f3lico.",
@@ -3369,45 +2279,15 @@
   "sv": "f\u00e4ste v\u00e4nster",
   "fi": "kiinnike vasen"
  },
- "customnotebook.padding": {
-  "es": "Relleno de cuaderno personalizado",
-  "fr": "CustomNotebook.padding",
-  "it": "CustomNotebook.padding",
-  "de": "CustomNotebook.padding",
-  "nl": "CustomNotebook.padding",
-  "pt": "CustomNotebook.padding",
-  "sv": "CustomNotebook.padding",
-  "fi": "CustomNotebook.padding"
- },
- "selected": {
-  "es": "seleccionado",
-  "fr": "choisi",
-  "it": "selezionato",
-  "de": "ausgew\u00e4hlt",
-  "nl": "geselecteerd",
-  "pt": "selecionado",
-  "sv": "vald",
-  "fi": "valittu"
- },
- "side": {
-  "es": "lado",
-  "fr": "c\u00f4t\u00e9",
-  "it": "lato",
-  "de": "Seite",
-  "nl": "kant",
-  "pt": "lado",
-  "sv": "sida",
-  "fi": "puolella"
- },
- "top": {
-  "es": "arriba",
-  "fr": "haut",
-  "it": "superiore",
-  "de": "Spitze",
-  "nl": "bovenkant",
-  "pt": "principal",
-  "sv": "topp",
-  "fi": "alkuun"
+ "x": {
+  "es": "X",
+  "fr": "X",
+  "it": "X",
+  "de": "X",
+  "nl": "X",
+  "pt": "x",
+  "sv": "x",
+  "fi": "x"
  },
  "next": {
   "es": "Pr\u00f3ximo",
@@ -3429,36 +2309,6 @@
   "sv": "objekt",
   "fi": "esine"
  },
- "customnotebook.focus": {
-  "es": "Cuaderno personalizado.enfoque",
-  "fr": "CustomNotebook.focus",
-  "it": "CustomNotebook.focus",
-  "de": "CustomNotebook.focus",
-  "nl": "CustomNotebook.focus",
-  "pt": "CustomNotebook.focus",
-  "sv": "CustomNotebook.focus",
-  "fi": "CustomNotebook.focus"
- },
- "customnotebook.label": {
-  "es": "Etiqueta de cuaderno personalizada",
-  "fr": "\u00c9tiquette de bloc-notes personnalis\u00e9e",
-  "it": "Etichetta.notebook personalizzata",
-  "de": "Benutzerdefiniertes Notebook.label",
-  "nl": "Aangepast Notebook.label",
-  "pt": "Notebook.label personalizado",
-  "sv": "Anpassad Notebook.label",
-  "fi": "Mukautettu Notebook.label"
- },
- "customnotebook.close": {
-  "es": "Cuaderno personalizado.cerrar",
-  "fr": "CustomNotebook.close",
-  "it": "CustomNotebook.close",
-  "de": "CustomNotebook.close",
-  "nl": "CustomNotebook.close",
-  "pt": "CustomNotebook.fechar",
-  "sv": "CustomNotebook.st\u00e4ng",
-  "fi": "CustomNotebook.close"
- },
  "b": {
   "es": "B",
   "fr": "B",
@@ -3468,6 +2318,16 @@
   "pt": "B",
   "sv": "B",
   "fi": "B"
+ },
+ "en": {
+  "es": "es",
+  "fr": "fr",
+  "it": "en",
+  "de": "de",
+  "nl": "nl",
+  "pt": "pt",
+  "sv": "sv",
+  "fi": "fi"
  },
  "backup-path": {
   "es": "ruta de respaldo",
@@ -3590,14 +2450,14 @@
   "fi": "bkup"
  },
  "bkupdir": {
-  "es": "bkupDir",
+  "fi": "bkupDir",
   "fr": "bkupDir",
   "it": "bkupDir",
   "de": "bkupDir",
   "nl": "bkupDir",
   "pt": "bkupDir",
   "sv": "bkupDir",
-  "fi": "bkupDir"
+  "es": "bkupDir"
  },
  "migrate": {
   "es": "emigrar",
@@ -3619,7 +2479,77 @@
   "sv": "bkupAuto",
   "fi": "bkupAuto"
  },
- " k": {
+ "sunday": {
+  "es": "Domingo",
+  "fr": "Dimanche",
+  "it": "Domenica",
+  "de": "Sonntag",
+  "nl": "Zondag",
+  "pt": "Domingo",
+  "sv": "s\u00f6ndag",
+  "fi": "sunnuntai"
+ },
+ "monday": {
+  "es": "Lunes",
+  "fr": "Lundi",
+  "it": "Lunedi",
+  "de": "Montag",
+  "nl": "Maandag",
+  "pt": "Segunda-feira",
+  "sv": "m\u00e5ndag",
+  "fi": "maanantai"
+ },
+ "tuesday": {
+  "es": "Martes",
+  "fr": "Mardi",
+  "it": "Marted\u00ec",
+  "de": "Dienstag",
+  "nl": "Dinsdag",
+  "pt": "Ter\u00e7a-feira",
+  "sv": "tisdag",
+  "fi": "tiistai"
+ },
+ "wednesday": {
+  "es": "Mi\u00e9rcoles",
+  "fr": "Mercredi",
+  "it": "Mercoled\u00ec",
+  "de": "Mittwoch",
+  "nl": "Woensdag",
+  "pt": "Quarta-feira",
+  "sv": "onsdag",
+  "fi": "keskiviikko"
+ },
+ "thursday": {
+  "es": "Jueves",
+  "fr": "Jeudi",
+  "it": "Gioved\u00ec",
+  "de": "Donnerstag",
+  "nl": "Donderdag",
+  "pt": "Quinta-feira",
+  "sv": "torsdag",
+  "fi": "torstai"
+ },
+ "friday": {
+  "es": "Viernes",
+  "fr": "Vendredi",
+  "it": "Venerd\u00ec",
+  "de": "Freitag",
+  "nl": "Vrijdag",
+  "pt": "Sexta-feira",
+  "sv": "fredag",
+  "fi": "perjantai"
+ },
+ "saturday": {
+  "es": "S\u00e1bado",
+  "fr": "Samedi",
+  "it": "Sabato",
+  "de": "Samstag",
+  "nl": "Zaterdag",
+  "pt": "S\u00e1bado",
+  "sv": "l\u00f6rdag",
+  "fi": "lauantai"
+ },
+ "k": {
   "es": "k",
   "fr": "K",
   "it": "K",
@@ -3669,27 +2599,7 @@
   "sv": "tar -xvf \"",
   "fi": "tar -xvf \""
  },
- " %#i:%m %p": {
-  "es": "%#I:%M %p",
-  "fr": "%#I:%M %p",
-  "it": "%#I:%M %p",
-  "de": "%#I:%M %p",
-  "nl": "%#I:%M %p",
-  "pt": "%#Crian\u00e7a levada",
-  "sv": "%#I:%M %p",
-  "fi": "%#I:%M %p"
- },
- " %-i:%m %p": {
-  "es": "%-I:%M %p",
-  "fr": "%-I:%M %p",
-  "it": "%-I:%M %p",
-  "de": "%-I:%M %p",
-  "nl": "%-I:%M %p",
-  "pt": "%-Crian\u00e7a levada",
-  "sv": "%-I:%M %p",
-  "fi": "%-I:%M %p"
- },
- " m": {
+ "m": {
   "es": "METRO",
   "fr": "M",
   "it": "M",
@@ -3717,7 +2627,7 @@
   "nl": "sparen",
   "pt": "economia",
   "sv": "r\u00e4ddning",
-  "fi": "s\u00e4\u00e4st\u00e4minen"
+  "fi": "s\u00e4\u00e4st\u00e4\u00e4"
  },
  "save-on": {
   "es": "ahorrar en",
@@ -3739,7 +2649,17 @@
   "sv": "uppdateraAuto",
   "fi": "p\u00e4ivitysAuto"
  },
- " g": {
+ "type": {
+  "es": "tipo",
+  "fr": "taper",
+  "it": "tipo",
+  "de": "Typ",
+  "nl": "type",
+  "pt": "tipo",
+  "sv": "typ",
+  "fi": "tyyppi"
+ },
+ "g": {
   "es": "GRAMO",
   "fr": "g",
   "it": "G",
@@ -3789,7 +2709,7 @@
   "sv": "I dag",
   "fi": "T\u00e4n\u00e4\u00e4n"
  },
- " t": {
+ "t": {
   "es": "t",
   "fr": "T",
   "it": "T",
@@ -3858,6 +2778,26 @@
   "pt": "alcatr\u00e3o -cvf \"",
   "sv": "tar -cvf \"",
   "fi": "tar -cvf \""
+ },
+ "auto-mcs-update": {
+  "es": "actualizaci\u00f3n-autom\u00e1tica-mcs",
+  "fr": "mise \u00e0 jour automatique mcs",
+  "it": "aggiornamento automatico di mcs",
+  "de": "Auto-MCS-Update",
+  "nl": "automatische mcs-update",
+  "pt": "atualiza\u00e7\u00e3o autom\u00e1tica do mcs",
+  "sv": "auto-mcs-uppdatering",
+  "fi": "auto-mcs-p\u00e4ivitys"
+ },
+ "update-log": {
+  "es": "registro de actualizaci\u00f3n",
+  "fr": "journal de mise \u00e0 jour",
+  "it": "registro-aggiornamento",
+  "de": "Update-Protokoll",
+  "nl": "update-logboek",
+  "pt": "log de atualiza\u00e7\u00e3o",
+  "sv": "uppdateringslogg",
+  "fi": "p\u00e4ivitysloki"
  },
  "undefined": {
   "es": "indefinido",
@@ -4190,13 +3130,13 @@
   "fi": "kuten"
  },
  "you": {
-  "sv": "du",
   "es": "t\u00fa",
   "fr": "toi",
   "it": "Voi",
   "de": "Du",
   "nl": "Jij",
   "pt": "voc\u00ea",
+  "sv": "du",
   "fi": "sin\u00e4"
  },
  "do": {
@@ -4240,14 +3180,14 @@
   "fi": "h\u00e4nen"
  },
  "by": {
-  "fi": "kirjoittaja",
+  "es": "por",
   "fr": "par",
   "it": "di",
   "de": "von",
   "nl": "door",
   "pt": "por",
   "sv": "f\u00f6rbi",
-  "es": "por"
+  "fi": "kirjoittaja"
  },
  "from": {
   "es": "de",
@@ -4810,13 +3750,13 @@
   "fi": "j\u00e4lkeen"
  },
  "two": {
-  "sv": "tv\u00e5",
   "es": "dos",
   "fr": "deux",
   "it": "due",
   "de": "zwei",
   "nl": "twee",
   "pt": "dois",
+  "sv": "tv\u00e5",
   "fi": "kaksi"
  },
  "how": {
@@ -4842,12 +3782,12 @@
  "work": {
   "es": "trabajar",
   "fr": "travail",
+  "it": "lavoro",
   "de": "arbeiten",
   "nl": "werk",
   "pt": "trabalhar",
   "sv": "arbete",
-  "fi": "tehd\u00e4 ty\u00f6t\u00e4",
-  "it": "lavoro"
+  "fi": "tehd\u00e4 ty\u00f6t\u00e4"
  },
  "first": {
   "es": "primero",
@@ -5029,6 +3969,96 @@
   "sv": "katalog",
   "fi": "hakemistosta"
  },
+ "chmod +x \"": {
+  "es": "chmod +x \"",
+  "fr": "chmod +x\"",
+  "it": "chmod +x \"",
+  "de": "chmod +x \"",
+  "nl": "chmod +x \"",
+  "pt": "chmod +x\"",
+  "sv": "chmod +x \"",
+  "fi": "chmod +x \""
+ },
+ "\" && bash \"": {
+  "es": "\" && fiesta \"",
+  "fr": "\" && bash \"",
+  "it": "\" && bash \"",
+  "de": "\" && bash \"",
+  "nl": "\" && bashen \"",
+  "pt": "\" && bash \"",
+  "sv": "\"&& bash\"",
+  "fi": "\"&& bash\""
+ },
+ "taskkill /f /im \"": {
+  "es": "tareakill /f /im \"",
+  "fr": "taskkill /f /im\"",
+  "it": "taskkill /f /im \"",
+  "de": "taskkill /f /im \"",
+  "nl": "taskkill /f /im \"",
+  "pt": "taskkill /f /im \"",
+  "sv": "taskkill /f /im \"",
+  "fi": "taskkill /f /im \""
+ },
+ "\"\ntimeout /t 3 /nobreak\n\ncopy /b /v /y \"": {
+  "es": "\"\ntiempo de espera /t 3 /nobreak\n\ncopiar /b /v /y \"",
+  "fr": "\"\nd\u00e9lai d'attente /t 3 /nobreak\n\ncopier /b /v /y \"",
+  "it": "\"\ntimeout /t 3 /nobreak\n\ncopia /b /v /y \"",
+  "de": "\"\nTimeout /t 3 /nobreak\n\nkopieren /b /v /y \"",
+  "nl": "\"\ntime-out /t 3 /nobreak\n\nkopieer /b /v /y \"",
+  "pt": "\"\ntempo limite /t 3 /nobreak\n\ncopiar /b /v /y\"",
+  "sv": "\"\ntimeout /t 3 /nobreak\n\nkopiera /b /v /y \"",
+  "fi": "\"\naikakatkaisu /t 3 /nobreak\n\nkopioi /b /v /y \""
+ },
+ "\"\nif exist \"": {
+  "es": "\"\nsi existe \"",
+  "fr": "\"\ns'il existe \"",
+  "it": "\"\nse esiste\"",
+  "de": "\"\nfalls vorhanden\u201c",
+  "nl": "\"\nals het bestaat \"",
+  "pt": "\"\nse existir\"",
+  "sv": "\"\nom det finns\"",
+  "fi": "\"\njos on olemassa\""
+ },
+ "\" if %errorlevel% equ 0 (\n    echo banner-success@": {
+  "es": "\" si %ERRORLEVEL% EQU 0 (\n    eco banner-\u00e9xito@",
+  "fr": "\" si %ERRORLEVEL% EQU 0 (\n    \u00e9cho banni\u00e8re-succ\u00e8s@",
+  "it": "\" se %ERRORLEVEL% EQU 0 (\n    eco banner-successo@",
+  "de": "\" wenn %ERRORLEVEL% EQU 0 (\n    echo banner-success@",
+  "nl": "\" als %ERRORLEVEL% EQU 0 (\n    echo banner-succes@",
+  "pt": "\"se %ERRORLEVEL% EQU 0 (\n    eco banner-sucesso@",
+  "sv": "\" om %ERRORLEVEL% EQU 0 (\n    echo banner-success@",
+  "fi": "\" jos %ERRORLEVEL% EQU 0 (\n    echo banner-success@"
+ },
+ "\"\n) else (\n    echo banner-failure@": {
+  "fi": "\"\n) muu (\n    echo banner-failure@",
+  "fr": "\"\n) autre (\n    echo banni\u00e8re-\u00e9chec@",
+  "it": "\"\n) altro (\n    eco errore banner@",
+  "de": "\"\n) anders (\n    echo banner-failure@",
+  "nl": "\"\n) anders (\n    echo banner-fout@",
+  "pt": "\"\n) outro (\n    echo banner-failure@",
+  "sv": "\"\n) annat (\n    echo banner-failure@",
+  "es": "\"\n) dem\u00e1s (\n    fallo del banner de eco@"
+ },
+ "\"\ndel \"": {
+  "es": "\"\ndel \"",
+  "fr": "\"\ndu \"",
+  "it": "\"\ndel\"",
+  "de": "\"\ndel \"",
+  "nl": "\"\nvan \"",
+  "pt": "\"\ndel \"",
+  "sv": "\"\ndel \"",
+  "fi": "\"\ndel \""
+ },
+ "\" > nul 2>&1": {
+  "es": "\" > nulo 2>&1",
+  "fr": "\" > nul 2>&1",
+  "it": "\" > tutto 2>&1",
+  "de": "\" > null 2>&1",
+  "nl": "\" > nul2>&1",
+  "pt": "\" > nulo 2>&1",
+  "sv": "\" > null 2>&1",
+  "fi": "> null 2>&1"
+ },
  "home": {
   "es": "Hogar",
   "fr": "Maison",
@@ -5091,13 +4121,13 @@
  },
  "create server (step 5)": {
   "es": "Crear servidor (paso 5)",
-  "fr": "Cr\u00e9er un serveur (\u00e9tape 5)",
   "it": "Crea server (passaggio 5)",
   "de": "Server erstellen (Schritt 5)",
   "nl": "Server maken (stap 5)",
   "pt": "Criar servidor (etapa 5)",
   "sv": "Skapa server (steg 5)",
-  "fi": "Luo palvelin (vaihe 5)"
+  "fi": "Luo palvelin (vaihe 5)",
+  "fr": "Cr\u00e9er un serveur (\u00e9tape 5)"
  },
  "create server (access control)": {
   "es": "Crear servidor (control de acceso)",
@@ -5280,7 +4310,6 @@
   "fi": "`java.lang.OutOfMemoryError: Java-kekotila`**"
  },
  "installation": {
-  "es": "instalaci\u00f3n",
   "fr": "installation",
   "it": "installazione",
   "de": "Installation",
@@ -5820,14 +4849,14 @@
   "fi": "M\u00e4\u00e4rit\u00e4 varmuuskopioiden enimm\u00e4ism\u00e4\u00e4r\u00e4"
  },
  "open back-up directory": {
-  "es": "Abrir directorio de respaldo",
+  "fi": "Avaa varmuuskopiohakemisto",
   "fr": "Ouvrir le r\u00e9pertoire de sauvegarde",
   "it": "Apri la directory di backup",
   "de": "Backup-Verzeichnis \u00f6ffnen",
   "nl": "Open de back-upmap",
   "pt": "Abra o diret\u00f3rio de backup",
   "sv": "\u00d6ppna s\u00e4kerhetskopieringskatalogen",
-  "fi": "Avaa varmuuskopiohakemisto"
+  "es": "Abrir directorio de respaldo"
  },
  "migrate back-up directory": {
   "es": "Migrar directorio de respaldo",
@@ -6050,14 +5079,14 @@
   "fi": "Ota automaattiset p\u00e4ivitykset k\u00e4ytt\u00f6\u00f6n"
  },
  "update this server": {
-  "it": "Aggiorna questo server",
   "es": "Actualizar este servidor",
   "fr": "Mettre \u00e0 jour ce serveur",
-  "nl": "Update deze server",
+  "it": "Aggiorna questo server",
   "de": "Aktualisieren Sie diesen Server",
+  "nl": "Update deze server",
+  "pt": "Atualizar este servidor",
   "sv": "Uppdatera denna server",
-  "fi": "P\u00e4ivit\u00e4 t\u00e4m\u00e4 palvelin",
-  "pt": "Atualizar este servidor"
+  "fi": "P\u00e4ivit\u00e4 t\u00e4m\u00e4 palvelin"
  },
  "change 'server.jar'": {
   "es": "Cambiar 'servidor.jar'",
@@ -6289,18 +5318,37 @@
   "sv": "Se guide fr\u00e5n auto-mcs.com",
   "fi": "Katso opas osoitteesta auto-mcs.com"
  },
- "/releases/latest": {
-  "es": "/lanzamientos/\u00faltimo",
-  "fr": "/versions/derni\u00e8res",
-  "it": "/rilasci/ultime",
-  "de": "/releases/latest",
-  "nl": "/releases/nieuwste",
-  "pt": "/lan\u00e7amentos/mais recentes",
-  "sv": "/releases/senaste",
-  "fi": "/julkaisut/viimeisin"
+ "auto-mcs.exe": {
+  "es": "auto-mcs.exe",
+  "fr": "auto-mcs.exe",
+  "it": "auto-mcs.exe",
+  "de": "auto-mcs.exe",
+  "nl": "auto-mcs.exe",
+  "pt": "auto-mcs.exe",
+  "sv": "auto-mcs.exe",
+  "fi": "auto-mcs.exe"
+ },
+ "something went wrong with the update": {
+  "es": "Algo sali\u00f3 mal con la actualizaci\u00f3n.",
+  "fr": "Quelque chose s'est mal pass\u00e9 avec la mise \u00e0 jour",
+  "it": "Qualcosa \u00e8 andato storto con l'aggiornamento",
+  "de": "Beim Update ist ein Fehler aufgetreten",
+  "nl": "Er is iets misgegaan met de update",
+  "pt": "Algo deu errado com a atualiza\u00e7\u00e3o",
+  "sv": "N\u00e5got gick fel med uppdateringen",
+  "fi": "Jotain meni pieleen p\u00e4ivityksess\u00e4"
+ },
+ "class": {
+  "es": "clase",
+  "fr": "classe",
+  "it": "classe",
+  "de": "Klasse",
+  "nl": "klas",
+  "pt": "aula",
+  "sv": "klass",
+  "fi": "luokkaa"
  },
  "p": {
-  "es": "pag",
   "fr": "p",
   "it": "P",
   "de": "P",
@@ -6399,7 +5447,7 @@
   "sv": "allokera minne",
   "fi": "varaa muistia"
  },
- " - overview": {
+ "- overview": {
   "es": "- Descripci\u00f3n general",
   "fr": "- Aper\u00e7u",
   "it": "- Panoramica",
@@ -6408,6 +5456,16 @@
   "pt": "- Vis\u00e3o geral",
   "sv": "- \u00d6versikt",
   "fi": "- Yleiskatsaus"
+ },
+ "auto-mcs was updated to v$$ successfully!": {
+  "es": "\u00a1auto-mcs se actualiz\u00f3 a v$$ exitosamente!",
+  "fr": "auto-mcs a \u00e9t\u00e9 mis \u00e0 jour vers v$$ avec succ\u00e8s !",
+  "it": "auto-mcs \u00e8 stato aggiornato con successo a v$$!",
+  "de": "auto-mcs wurde erfolgreich auf v$$ aktualisiert!",
+  "nl": "auto-mcs is succesvol bijgewerkt naar v$$!",
+  "pt": "auto-mcs foi atualizado para v$$ com sucesso!",
+  "sv": "auto-mcs uppdaterades till v$$ framg\u00e5ngsrikt!",
+  "fi": "auto-mcs p\u00e4ivitettiin v$$:ksi onnistuneesti!"
  },
  "location": {
   "es": "ubicaci\u00f3n",
@@ -6429,16 +5487,6 @@
   "sv": "li",
   "fi": "li"
  },
- "\\b": {
-  "es": "\\b",
-  "fr": "\\b",
-  "it": "\\B",
-  "de": "\\B",
-  "nl": "\\B",
-  "pt": "\\b",
-  "sv": "\\b",
-  "fi": "\\b"
- },
  "amscript ide": {
   "es": "ide de escritura",
   "fr": "id\u00e9e amscript",
@@ -6459,7 +5507,7 @@
   "sv": "Konfigurationssida (",
   "fi": "Asetussivu ("
  },
- "action in ": {
+ "action in": {
   "es": "Acci\u00f3n en",
   "fr": "Action dans",
   "it": "Azione dentro",
@@ -6620,14 +5668,14 @@
   "fi": "osoitteen k\u00e4\u00e4nn\u00f6s"
  },
  "tcp": {
-  "de": "TCP",
   "es": "TCP",
   "fr": "tcp",
   "it": "tcp",
+  "de": "TCP",
+  "nl": "TCP",
   "pt": "tcp",
   "sv": "tcp",
-  "fi": "tcp",
-  "nl": "TCP"
+  "fi": "tcp"
  },
  "udp": {
   "es": "udp",
@@ -6701,153 +5749,120 @@
  },
  "meta": {
   "es": "meta",
-  "fr": "m\u00e9ta",
-  "it": "meta",
-  "de": "Meta",
   "nl": "meta",
   "pt": "meta",
   "sv": "meta",
+  "de": "Meta",
+  "fr": "m\u00e9ta",
+  "it": "meta",
   "fi": "meta"
  },
  "ctrl": {
   "es": "control",
-  "fr": "Ctrl",
+  "sv": "ctrl",
   "it": "Ctrl",
-  "de": "Strg",
   "nl": "ctrl",
   "pt": "Ctrl",
-  "sv": "ctrl",
-  "fi": "ctrl"
+  "fr": "Ctrl",
+  "fi": "ctrl",
+  "de": "Strg"
  },
  "debug": {
   "es": "depurar",
-  "fr": "d\u00e9boguer",
   "it": "eseguire il debug",
-  "de": "debuggen",
   "nl": "debuggen",
+  "de": "debuggen",
   "pt": "depurar",
+  "fr": "d\u00e9boguer",
   "sv": "fels\u00f6ka",
   "fi": "debug"
  },
  "info": {
-  "es": "informaci\u00f3n",
-  "fr": "Info",
-  "it": "informazioni",
   "de": "die Info",
+  "fi": "tiedot",
+  "fr": "Info",
   "nl": "informatie",
+  "it": "informazioni",
+  "es": "informaci\u00f3n",
   "pt": "informa\u00e7\u00f5es",
-  "sv": "info",
-  "fi": "tiedot"
+  "sv": "info"
  },
  "graphics": {
-  "es": "gr\u00e1ficos",
   "fr": "graphique",
-  "it": "grafica",
   "de": "Grafik",
+  "it": "grafica",
   "nl": "afbeeldingen",
-  "pt": "gr\u00e1ficos",
   "sv": "grafik",
+  "pt": "gr\u00e1ficos",
   "fi": "grafiikkaa"
  },
  "maxfps": {
-  "es": "maxfps",
   "fr": "fps max",
   "it": "maxfps",
-  "de": "maxfps",
-  "nl": "maxfps",
-  "pt": "m\u00e1ximo fps",
   "sv": "maxfps",
-  "fi": "maxfps"
- },
- "120": {
-  "es": "120",
-  "fr": "120",
-  "it": "120",
-  "de": "120",
-  "nl": "120",
-  "pt": "120",
-  "sv": "120",
-  "fi": "120"
+  "fi": "maxfps",
+  "pt": "m\u00e1ximo fps",
+  "nl": "maxfps",
+  "de": "maxfps"
  },
  "vsync": {
-  "es": "vsync",
   "fr": "vsync",
-  "it": "vsync",
-  "de": "vsync",
-  "nl": "vsync",
   "pt": "vsync",
+  "es": "vsync",
+  "fi": "vsync",
+  "de": "vsync",
   "sv": "vsync",
-  "fi": "vsync"
+  "nl": "vsync",
+  "it": "vsync"
  },
  "mouse": {
-  "es": "rat\u00f3n",
   "fr": "souris",
-  "it": "topo",
   "de": "Maus",
   "nl": "muis",
-  "pt": "rato",
   "sv": "mus",
-  "fi": "hiiri"
+  "fi": "hiiri",
+  "it": "topo",
+  "pt": "rato"
  },
  "hidden": {
   "es": "oculto",
-  "fr": "cach\u00e9",
+  "fi": "piilotettu",
   "it": "nascosto",
   "de": "versteckt",
-  "nl": "verborgen",
-  "pt": "escondido",
   "sv": "dold",
-  "fi": "piilotettu"
+  "pt": "escondido",
+  "fr": "cach\u00e9",
+  "nl": "verborgen"
  },
  "kivy": {
-  "es": "kivy",
-  "fr": "kivy",
-  "it": "Kivy",
-  "de": "Kivy",
   "nl": "Kivy",
-  "pt": "Kivy",
+  "fr": "kivy",
+  "es": "kivy",
+  "it": "Kivy",
   "sv": "kivy",
-  "fi": "kivy"
+  "fi": "kivy",
+  "pt": "Kivy",
+  "de": "Kivy"
  },
- "2.0.0": {
-  "es": "2.0.0",
-  "fr": "2.0.0",
-  "it": "2.0.0",
-  "de": "2.0.0",
-  "nl": "2.0.0",
-  "pt": "2.0.0",
-  "sv": "2.0.0",
-  "fi": "2.0.0"
- },
- "contains the last relevant point received by the hoverable. this can\n    be used in `on_enter` or `on_leave` in order to know where was dispatched the event.\n    ": {
-  "es": "Contiene el \u00faltimo punto relevante recibido por el Hoverable. Esto puede\n    usarse en `on_enter` o `on_leave` para saber d\u00f3nde se envi\u00f3 el evento.",
+ "contains the last relevant point received by the hoverable. this can\n    be used in `on_enter` or `on_leave` in order to know where was dispatched the event.": {
   "fr": "Contient le dernier point pertinent re\u00e7u par le Hoverable. Ceci peut\n    \u00eatre utilis\u00e9 dans `on_enter` ou `on_leave` afin de savoir o\u00f9 a \u00e9t\u00e9 distribu\u00e9 l'\u00e9v\u00e9nement.",
-  "it": "Contiene l'ultimo punto rilevante ricevuto dall'Hoverable. Questo pu\u00f2\n    essere utilizzato in `on_enter` o `on_leave` per sapere dove \u00e8 stato inviato l'evento.",
-  "de": "Enth\u00e4lt den letzten relevanten Punkt, den das Hoverable empfangen hat. Das kann\n    in \u201eon_enter\u201c oder \u201eon_leave\u201c verwendet werden, um zu wissen, wohin das Ereignis gesendet wurde.",
-  "nl": "Bevat het laatste relevante punt dat door de Hoverable is ontvangen. Dit kan\n    worden gebruikt in `on_enter` of `on_leave` om te weten waar de gebeurtenis naartoe is verzonden.",
+  "es": "Contiene el \u00faltimo punto relevante recibido por el Hoverable. Esto puede\n    usarse en `on_enter` o `on_leave` para saber d\u00f3nde se envi\u00f3 el evento.",
   "pt": "Cont\u00e9m o \u00faltimo ponto relevante recebido pelo Hoverable. Isso pode\n    ser usado em `on_enter` ou `on_leave` para saber onde foi despachado o evento.",
   "sv": "Inneh\u00e5ller den sista relevanta po\u00e4ngen som den sv\u00e4vande fick. Detta kan\n    anv\u00e4ndas i `on_enter` eller `on_leave` f\u00f6r att veta vart evenemanget skickades.",
-  "fi": "Sis\u00e4lt\u00e4\u00e4 viimeisen Hoverablen vastaanottaman asiaankuuluvan pisteen. T\u00e4m\u00e4 voi\n    k\u00e4ytet\u00e4\u00e4n \"on_enter\"- tai \"on_leave\"-kohdassa, jotta tiedet\u00e4\u00e4n, minne tapahtuma l\u00e4hetettiin."
+  "fi": "Sis\u00e4lt\u00e4\u00e4 viimeisen Hoverablen vastaanottaman asiaankuuluvan pisteen. T\u00e4m\u00e4 voi\n    k\u00e4ytet\u00e4\u00e4n \"on_enter\"- tai \"on_leave\"-kohdassa, jotta tiedet\u00e4\u00e4n, minne tapahtuma l\u00e4hetettiin.",
+  "it": "Contiene l'ultimo punto rilevante ricevuto dall'Hoverable. Questo pu\u00f2\n    essere utilizzato in `on_enter` o `on_leave` per sapere dove \u00e8 stato inviato l'evento.",
+  "de": "Enth\u00e4lt den letzten relevanten Punkt, den das Hoverable empfangen hat. Das kann\n    in \u201eon_enter\u201c oder \u201eon_leave\u201c verwendet werden, um zu wissen, wohin das Ereignis gesendet wurde.",
+  "nl": "Bevat het laatste relevante punt dat door de Hoverable is ontvangen. Dit kan\n    worden gebruikt in `on_enter` of `on_leave` om te weten waar de gebeurtenis naartoe is verzonden."
  },
  "hoverbehavior": {
   "es": "Comportamiento de desplazamiento",
-  "fr": "Comportement de survol",
   "it": "Comportamento al passaggio del mouse",
   "de": "Schwebeverhalten",
   "nl": "Zweefgedrag",
   "pt": "HoverBehavior",
   "sv": "HoverBehavior",
-  "fi": "HoverBehavior"
- },
- "9999ff": {
-  "es": "9999FF",
-  "fr": "9999FF",
-  "it": "9999FF",
-  "de": "9999FF",
-  "nl": "9999FF",
-  "pt": "9999FF",
-  "sv": "9999FF",
-  "fi": "9999FF"
+  "fi": "HoverBehavior",
+  "fr": "Comportement de survol"
  },
  "text": {
   "es": "texto",
@@ -7089,16 +6104,6 @@
   "sv": "ange IPv4 eller port (localhost:25565)",
   "fi": "kirjoita IPv4 tai portti (localhost:25565)"
  },
- "25565": {
-  "es": "25565",
-  "fr": "25565",
-  "it": "25565",
-  "de": "25565",
-  "nl": "25565",
-  "pt": "25565",
-  "sv": "25565",
-  "fi": "25565"
- },
  "enter a message of the day...": {
   "es": "introduce un mensaje del d\u00eda...",
   "fr": "entrez un message du jour...",
@@ -7109,7 +6114,7 @@
   "sv": "ange dagens meddelande...",
   "fi": "sy\u00f6t\u00e4 p\u00e4iv\u00e4n viesti..."
  },
- " max players ": {
+ "max players": {
   "es": "jugadores m\u00e1ximos",
   "fr": "le maximum de joueurs",
   "it": "giocatori massimi",
@@ -7180,14 +6185,14 @@
   "fi": "sy\u00f6t\u00e4 s\u00e4\u00e4nn\u00f6t..."
  },
  "authtoken": {
-  "fr": "jeton d'authentification",
   "es": "token de autentificaci\u00f3n",
+  "fr": "jeton d'authentification",
+  "it": "token di autenticazione",
   "de": "Authtoken",
   "nl": "autoriseren",
   "pt": "token de autoriza\u00e7\u00e3o",
   "sv": "authtoken",
-  "fi": "todennettu",
-  "it": "token di autenticazione"
+  "fi": "todennettu"
  },
  "paste your ngrok authtoken...": {
   "es": "pega tu token de autenticaci\u00f3n de ngrok...",
@@ -7329,6 +6334,26 @@
   "sv": "falla ner",
   "fi": "pudota alas"
  },
+ "top": {
+  "es": "arriba",
+  "fr": "haut",
+  "it": "superiore",
+  "de": "Spitze",
+  "nl": "bovenkant",
+  "pt": "principal",
+  "sv": "topp",
+  "fi": "alkuun"
+ },
+ "ignore": {
+  "es": "ignorar",
+  "fr": "ignorer",
+  "it": "ignorare",
+  "de": "ignorieren",
+  "nl": "negeren",
+  "pt": "ignorar",
+  "sv": "ignorera",
+  "fi": "j\u00e4tt\u00e4\u00e4 huomiotta"
+ },
  "0%": {
   "es": "0%",
   "fr": "0%",
@@ -7359,6 +6384,16 @@
   "sv": "Spr\u00e5k",
   "fi": "Kieli"
  },
+ "background": {
+  "es": "fondo",
+  "fr": "arri\u00e8re-plan",
+  "it": "sfondo",
+  "de": "Hintergrund",
+  "nl": "achtergrond",
+  "pt": "fundo",
+  "sv": "bakgrund",
+  "fi": "tausta"
+ },
  "right-click a rule to view": {
   "es": "Haga clic derecho en una regla para ver",
   "fr": "Cliquez avec le bouton droit sur une r\u00e8gle pour l'afficher",
@@ -7369,7 +6404,7 @@
   "sv": "H\u00f6gerklicka p\u00e5 en regel f\u00f6r att visa",
   "fi": "Napsauta hiiren kakkospainikkeella s\u00e4\u00e4nt\u00f6\u00e4 n\u00e4hd\u00e4ksesi"
  },
- "added ": {
+ "added": {
   "es": "Agregado",
   "fr": "Ajout\u00e9e",
   "it": "Aggiunto",
@@ -7378,6 +6413,16 @@
   "pt": "Adicionado",
   "sv": "Lagt till",
   "fi": "Lis\u00e4tty"
+ },
+ "added '$$'": {
+  "es": "A\u00f1adido '$$'",
+  "fr": "Ajout de '$$'",
+  "it": "Aggiunto \"$$\"",
+  "de": "\u201e$$\u201c hinzugef\u00fcgt",
+  "nl": "'$$' toegevoegd",
+  "pt": "Adicionado '$$'",
+  "sv": "Lade till '$$'",
+  "fi": "Lis\u00e4tty '$$'"
  },
  "title": {
   "es": "t\u00edtulo",
@@ -7619,16 +6664,6 @@
   "sv": "Rubrik",
   "fi": "Otsikkoteksti"
  },
- "en": {
-  "es": "es",
-  "fr": "fr",
-  "it": "en",
-  "de": "de",
-  "nl": "nl",
-  "pt": "pt",
-  "sv": "sv",
-  "fi": "fi"
- },
  "click 'next' for latest  (": {
   "es": "haga clic en 'siguiente' para ver lo \u00faltimo (",
   "fr": "cliquez sur \u00ab\u00a0suivant\u00a0\u00bb pour le dernier (",
@@ -7709,15 +6744,15 @@
   "sv": "En Minecraft-server",
   "fi": "Minecraft-palvelin"
  },
- "20": {
-  "es": "20",
-  "fr": "20",
-  "it": "20",
-  "de": "20",
-  "nl": "20",
-  "pt": "20",
-  "sv": "20",
-  "fi": "20"
+ "3": {
+  "es": "3",
+  "fr": "3",
+  "it": "3",
+  "de": "3",
+  "nl": "3",
+  "pt": "3",
+  "sv": "3",
+  "fi": "3"
  },
  "dir": {
   "es": "directorio",
@@ -7751,13 +6786,13 @@
  },
  ", access control": {
   "es": ", Control de acceso",
-  "fr": ", Contr\u00f4le d'acc\u00e8s",
   "it": ", Controllo di accesso",
   "de": ", Zugangskontrolle",
   "nl": ", Toegangscontrole",
   "pt": ", Controle de acesso",
   "sv": ", \u00c5tkomstkontroll",
-  "fi": ", Kulunvalvonta"
+  "fi": ", Kulunvalvonta",
+  "fr": ", Contr\u00f4le d'acc\u00e8s"
  },
  ", back-ups": {
   "es": ", Copias de seguridad",
@@ -7799,7 +6834,7 @@
   "sv": ", Inst\u00e4llningar",
   "fi": ", Asetukset"
  },
- "server manager > ": {
+ "server manager >": {
   "es": "Administrador del servidor >",
   "fr": "Gestionnaire de serveur >",
   "it": "Gestione server >",
@@ -7830,14 +6865,14 @@
   "fi": "lis\u00e4\u00e4"
  },
  "togglebutton": {
-  "fi": "ToggleButton",
+  "es": "Bot\u00f3n de activaci\u00f3n",
   "fr": "Bouton \u00e0 bascule",
   "it": "Interruttore",
   "de": "Umschaltknopf",
   "nl": "Schakelknop",
   "pt": "Bot\u00e3o de altern\u00e2ncia",
   "sv": "V\u00e4xlingsknapp",
-  "es": "Bot\u00f3n de activaci\u00f3n"
+  "fi": "ToggleButton"
  },
  "live": {
   "es": "vivir",
@@ -7929,6 +6964,36 @@
   "sv": "s\u00f6ka efter vad som helst",
   "fi": "etsi\u00e4 mit\u00e4 tahansa"
  },
+ "pos": {
+  "es": "posici\u00f3n",
+  "fr": "position",
+  "it": "pos",
+  "de": "Pos",
+  "nl": "pos",
+  "pt": "posi\u00e7\u00e3o",
+  "sv": "pos",
+  "fi": "pos"
+ },
+ "size": {
+  "es": "tama\u00f1o",
+  "fr": "taille",
+  "it": "misurare",
+  "de": "Gr\u00f6\u00dfe",
+  "nl": "maat",
+  "pt": "tamanho",
+  "sv": "storlek",
+  "fi": "koko"
+ },
+ "header": {
+  "es": "encabezamiento",
+  "fr": "ent\u00eate",
+  "it": "intestazione",
+  "de": "Header",
+  "nl": "koptekst",
+  "pt": "cabe\u00e7alho",
+  "sv": "rubrik",
+  "fi": "otsikko"
+ },
  "progress screen": {
   "es": "Pantalla de progreso",
   "fr": "\u00c9cran de progression",
@@ -8008,16 +7073,6 @@
   "pt": "Criar '",
   "sv": "Skapa '",
   "fi": "Luo '"
- },
- "1.1": {
-  "es": "1.1",
-  "fr": "1.1",
-  "it": "1.1",
-  "de": "1.1",
-  "nl": "1.1",
-  "pt": "1.1",
-  "sv": "1.1",
-  "fi": "1.1"
  },
  "hover text": {
   "es": "texto flotante",
@@ -8168,16 +7223,6 @@
   "pt": "Insira nomes de usu\u00e1rio delimitados por v\u00edrgulas",
   "sv": "Ange anv\u00e4ndarnamn avgr\u00e4nsade med kommatecken",
   "fi": "Anna k\u00e4ytt\u00e4j\u00e4nimet pilkuilla eroteltuina"
- },
- "1.4.2": {
-  "es": "1.4.2",
-  "fr": "1.4.2",
-  "it": "1.4.2",
-  "de": "1.4.2",
-  "nl": "1.4.2",
-  "pt": "1.4.2",
-  "sv": "1.4.2",
-  "fi": "1.4.2"
  },
  "loading add-on info...": {
   "es": "Cargando informaci\u00f3n adicional...",
@@ -8339,6 +7384,16 @@
   "sv": "Automatiska s\u00e4kerhetskopieringar",
   "fi": "Automaattiset varmuuskopiot"
  },
+ "rgb": {
+  "es": "rgb",
+  "fr": "RVB",
+  "it": "RGB",
+  "de": "RGB",
+  "nl": "rgb",
+  "pt": "RGB",
+  "sv": "rgb",
+  "fi": "rgb"
+ },
  "maximize": {
   "es": "maximizar",
   "fr": "maximiser",
@@ -8419,6 +7474,26 @@
   "sv": ", Till\u00e4gg, Ladda ner",
   "fi": ", Lis\u00e4osat, Lataa"
  },
+ "protected": {
+  "es": "protegido",
+  "fr": "prot\u00e9g\u00e9",
+  "it": "protetto",
+  "de": "gesch\u00fctzt",
+  "nl": "beschermd",
+  "pt": "protegido",
+  "sv": "skyddad",
+  "fi": "suojattu"
+ },
+ "events": {
+  "es": "eventos",
+  "fr": "\u00e9v\u00e9nements",
+  "it": "eventi",
+  "de": "Veranstaltungen",
+  "nl": "evenementen",
+  "pt": "eventos",
+  "sv": "evenemang",
+  "fi": "Tapahtumat"
+ },
  "loading script info...": {
   "es": "Cargando informaci\u00f3n del script...",
   "fr": "Chargement des informations sur le script...",
@@ -8470,24 +7545,24 @@
   "fi": ", ampscript, Luo k\u00e4sikirjoitus"
  },
  "import or download scripts below": {
-  "es": "Importe o descargue los scripts a continuaci\u00f3n",
   "fr": "Importer ou t\u00e9l\u00e9charger des scripts ci-dessous",
-  "it": "Importa o scarica gli script di seguito",
+  "es": "Importe o descargue los scripts a continuaci\u00f3n",
   "de": "Importieren oder laden Sie die Skripte unten herunter",
   "nl": "Importeer of download onderstaande scripts",
   "pt": "Importe ou baixe os scripts abaixo",
   "sv": "Importera eller ladda ner skript nedan",
-  "fi": "Tuo tai lataa komentosarjat alla"
+  "fi": "Tuo tai lataa komentosarjat alla",
+  "it": "Importa o scarica gli script di seguito"
  },
  "reload scripts": {
-  "pt": "recarregar scripts",
   "es": "recargar guiones",
   "fr": "recharger les scripts",
   "it": "ricaricare gli script",
   "de": "Skripte neu laden",
   "nl": "scripts opnieuw laden",
-  "fi": "lataa skriptit uudelleen",
-  "sv": "ladda om skript"
+  "pt": "recarregar scripts",
+  "sv": "ladda om skript",
+  "fi": "lataa skriptit uudelleen"
  },
  "open directory": {
   "es": "directorio abierto",
@@ -8510,13 +7585,13 @@
   "fi": "Script Search"
  },
  ", amscript, download": {
-  "sv": ", ampscript, Ladda ner",
   "es": ", ampscript, Descargar",
   "fr": ", ampscript, T\u00e9l\u00e9charger",
   "it": ", ampscript, Scarica",
   "de": ", Ampscript, Herunterladen",
   "nl": ", ampscript, downloaden",
   "pt": ", Ampscript, Baixar",
+  "sv": ", ampscript, Ladda ner",
   "fi": ", ampscript, Lataa"
  },
  "search for text...": {
@@ -8659,7 +7734,7 @@
   "sv": "Ogiltig formatering",
   "fi": "Virheellinen muotoilu"
  },
- " (dev)": {
+ "(dev)": {
   "es": "(desarrollador)",
   "fr": "(d\u00e9veloppement)",
   "it": "(sviluppatore)",
@@ -8809,7 +7884,7 @@
   "sv": "varning",
   "fi": "Varoitus"
  },
- "progress ": {
+ "progress": {
   "es": "Progreso",
   "fr": "Progr\u00e8s",
   "it": "Progresso",
@@ -8920,14 +7995,14 @@
   "fi": "oletusarvo, osakekokemus"
  },
  "modded experience": {
-  "it": "esperienza modificata",
   "es": "experiencia modificada",
   "fr": "exp\u00e9rience modifi\u00e9e",
+  "it": "esperienza modificata",
+  "de": "modifizierte Erfahrung",
   "nl": "gemodificeerde ervaring",
   "pt": "experi\u00eancia modificada",
   "sv": "moddad upplevelse",
-  "fi": "modifioitu kokemus",
-  "de": "modifizierte Erfahrung"
+  "fi": "modifioitu kokemus"
  },
  "forge": {
   "es": "fragua",
@@ -9010,14 +8085,14 @@
   "fi": "tappi"
  },
  "legacy, supports plug-ins": {
-  "fi": "vanha, tukee laajennuksia",
+  "es": "heredado, admite complementos",
   "fr": "h\u00e9ritage, prend en charge les plug-ins",
   "it": "legacy, supporta i plug-in",
   "de": "Legacy, unterst\u00fctzt Plug-Ins",
   "nl": "legacy, ondersteunt plug-ins",
   "pt": "legado, suporta plug-ins",
   "sv": "\u00e4ldre, st\u00f6der plugin-program",
-  "es": "heredado, admite complementos"
+  "fi": "vanha, tukee laajennuksia"
  },
  "craftbukkit": {
   "es": "kit de manualidades",
@@ -9050,34 +8125,14 @@
   "fi": "Selaa..."
  },
  "superflat": {
-  "sv": "superplatt",
+  "es": "superplano",
   "fr": "super plat",
   "it": "superpiatto",
   "de": "superflach",
   "nl": "supervlak",
   "pt": "superplano",
-  "es": "superplano",
+  "sv": "superplatt",
   "fi": "supertasainen"
- },
- "1.3.1": {
-  "es": "1.3.1",
-  "fr": "1.3.1",
-  "it": "1.3.1",
-  "de": "1.3.1",
-  "nl": "1.3.1",
-  "pt": "1.3.1",
-  "sv": "1.3.1",
-  "fi": "1.3.1"
- },
- "1.7.2": {
-  "es": "1.7.2",
-  "fr": "1.7.2",
-  "it": "1.7.2",
-  "de": "1.7.2",
-  "nl": "1.7.2",
-  "pt": "1.7.2",
-  "sv": "1.7.2",
-  "fi": "1.7.2"
  },
  "large biomes": {
   "es": "grandes biomas",
@@ -9109,16 +8164,6 @@
   "sv": "Access Control Manager",
   "fi": "Access Control Manager"
  },
- "italic": {
-  "es": "it\u00e1lico",
-  "fr": "italique",
-  "it": "corsivo",
-  "de": "kursiv",
-  "nl": "cursief",
-  "pt": "it\u00e1lico",
-  "sv": "kursiv",
-  "fi": "kursivoitu"
- },
  "serveracloptionsinput": {
   "es": "OpcionesAclServidorEntrada",
   "fr": "ServerAclOptionsInput",
@@ -9138,16 +8183,6 @@
   "pt": "Atualmente online",
   "sv": "F\u00f6r n\u00e4rvarande online",
   "fi": "T\u00e4ll\u00e4 hetkell\u00e4 verkossa"
- },
- "127.": {
-  "es": "127.",
-  "fr": "127.",
-  "it": "127.",
-  "de": "127.",
-  "nl": "127.",
-  "pt": "127.",
-  "sv": "127.",
-  "fi": "127."
  },
  "][font=": {
   "es": "][fuente=",
@@ -9169,25 +8204,15 @@
   "sv": "][storlek=",
   "fi": "][koko="
  },
- "access to '$$": {
-  "es": "Acceso a '$$",
-  "fr": "Acc\u00e8s \u00e0 '$$",
-  "it": "Accesso a \"$$",
-  "de": "Zugriff auf '$$",
-  "nl": "Toegang tot '$$",
-  "pt": "Acesso a '$$",
-  "sv": "Tillg\u00e5ng till '$$",
-  "fi": "P\u00e4\u00e4sy kohteeseen '$$"
- },
- " ip": {
-  "es": "IP",
-  "fr": "PI",
-  "it": "IP",
-  "de": "IP",
-  "nl": "IK P",
-  "pt": "PI",
-  "sv": "IP",
-  "fi": "IP"
+ "access to '$$'": {
+  "es": "Acceso a '$$'",
+  "fr": "Acc\u00e8s \u00e0 '$$'",
+  "it": "Accesso a \"$$\"",
+  "de": "Zugriff auf \u201e$$\u201c",
+  "nl": "Toegang tot '$$'",
+  "pt": "Acesso a '$$'",
+  "sv": "Tillg\u00e5ng till '$$'",
+  "fi": "P\u00e4\u00e4sy kohteeseen $$"
  },
  "no options": {
   "es": "sin opciones",
@@ -9249,26 +8274,6 @@
   "sv": "L\u00e4gg till regler",
   "fi": "Lis\u00e4\u00e4 s\u00e4\u00e4nn\u00f6t"
  },
- "1.13.2": {
-  "es": "1.13.2",
-  "fr": "1.13.2",
-  "it": "1.13.2",
-  "de": "1.13.2",
-  "nl": "1.13.2",
-  "pt": "1.13.2",
-  "sv": "1.13.2",
-  "fi": "1.13.2"
- },
- "1.19": {
-  "es": "1.19",
-  "fr": "1.19",
-  "it": "1.19",
-  "de": "1.19",
-  "nl": "1.19",
-  "pt": "1.19",
-  "sv": "1.19",
-  "fi": "1.19"
- },
  "pvp": {
   "es": "JcJ",
   "fr": "pvp",
@@ -9329,17 +8334,7 @@
   "sv": "det finns inga objekt att visa",
   "fi": "n\u00e4ytett\u00e4vi\u00e4 kohteita ei ole"
  },
- "1.11": {
-  "es": "1.11",
-  "fr": "1.11",
-  "it": "1.11",
-  "de": "1.11",
-  "nl": "1.11",
-  "pt": "1.11",
-  "sv": "1.11",
-  "fi": "1.11"
- },
- " ticks": {
+ "ticks": {
   "es": "garrapatas",
   "fr": "tiques",
   "it": "zecche",
@@ -9348,26 +8343,6 @@
   "pt": "carrapatos",
   "sv": "f\u00e4stingar",
   "fi": "punkkeja"
- },
- " players": {
-  "es": "jugadores",
-  "fr": "joueurs",
-  "it": "Giocatori",
-  "de": "Spieler",
-  "nl": "spelers",
-  "pt": "jogadoras",
-  "sv": "spelare",
-  "fi": "pelaajia"
- },
- " player": {
-  "es": "jugador",
-  "fr": "joueur",
-  "it": "giocatore",
-  "de": "Spieler",
-  "nl": "speler",
-  "pt": "jogador",
-  "sv": "spelare",
-  "fi": "pelaaja"
  },
  "add-ons": {
   "es": "complementos",
@@ -9389,15 +8364,15 @@
   "sv": "Skapa server",
   "fi": "Luo palvelin"
  },
- "creating '$$": {
-  "es": "Creando '$$",
-  "fr": "Cr\u00e9er '$$",
-  "it": "Creazione di \"$$",
-  "de": "Erstellen von '$$",
-  "nl": "'$$' maken",
-  "pt": "Criando '$$",
-  "sv": "Skapar '$$",
-  "fi": "Luodaan '$$"
+ "creating '$$'": {
+  "es": "Creando '$$'",
+  "fr": "Cr\u00e9er '$$'",
+  "it": "Creazione di \"$$\"",
+  "de": "\u201e$$\u201c erstellen",
+  "nl": "'$$' aanmaken",
+  "pt": "Criando '$$'",
+  "sv": "Skapar '$$'",
+  "fi": "Luodaan '$$'"
  },
  "downloading 'server.jar'": {
   "es": "Descargando 'servidor.jar'",
@@ -9519,17 +8494,7 @@
   "sv": "beh\u00f6ver uppdatering",
   "fi": "tarvitsee p\u00e4ivityksen"
  },
- "  [font=": {
-  "es": "[fuente=",
-  "fr": "[police=",
-  "it": "[carattere=",
-  "de": "[Schriftart=",
-  "nl": "[lettertype=",
-  "pt": "[fonte=",
-  "sv": "[font=",
-  "fi": "[font="
- },
- "]n[/font]  ": {
+ "]n[/font]": {
   "es": "]N[/fuente]",
   "fr": "]N[/font]",
   "it": "]N[/carattere]",
@@ -9580,14 +8545,14 @@
   "fi": "prosessori"
  },
  "f": {
-  "pt": "f",
   "es": "F",
   "fr": "F",
   "it": "F",
   "de": "F",
   "nl": "F",
-  "fi": "f",
-  "sv": "f"
+  "pt": "f",
+  "sv": "f",
+  "fi": "f"
  },
  "console-panel": {
   "es": "panel de consola",
@@ -9639,7 +8604,7 @@
   "sv": "ange kommando...",
   "fi": "anna komento..."
  },
- " (b-": {
+ "(b-": {
   "es": "(b-",
   "fr": "(b-",
   "it": "(B-",
@@ -9649,15 +8614,15 @@
   "sv": "(b-",
   "fi": "(b-"
  },
- "restoring '$$": {
-  "es": "Restaurando '$$",
-  "fr": "Restauration de '$$",
-  "it": "Ripristino di '$$",
-  "de": "'$$ wird wiederhergestellt",
-  "nl": "Herstellen van '$$",
-  "pt": "Restaurando '$$",
-  "sv": "\u00c5terst\u00e4ller '$$",
-  "fi": "Palautetaan '$$"
+ "restoring '$$'": {
+  "es": "Restaurando '$$'",
+  "fr": "Restauration de '$$'",
+  "it": "Ripristino di '$$'",
+  "de": "'$$' wird wiederhergestellt",
+  "nl": "'$$' herstellen",
+  "pt": "Restaurando '$$'",
+  "sv": "\u00c5terst\u00e4ller '$$'",
+  "fi": "Palautetaan '$$'"
  },
  "restoring back-up": {
   "es": "Restaurando copia de seguridad",
@@ -9689,17 +8654,7 @@
   "sv": "Uppdaterar till\u00e4gg",
   "fi": "Lis\u00e4osien p\u00e4ivitt\u00e4minen"
  },
- " add-ons": {
-  "es": "complementos",
-  "fr": "modules compl\u00e9mentaires",
-  "it": "componenti aggiuntivi",
-  "de": "Add-ons",
-  "nl": "add-ons",
-  "pt": "complementos",
-  "sv": "till\u00e4gg",
-  "fi": "lis\u00e4osat"
- },
- "\n# author: ": {
+ "# author:": {
   "es": "# autor:",
   "fr": "# auteur:",
   "it": "#autore:",
@@ -9709,7 +8664,7 @@
   "sv": "# f\u00f6rfattare:",
   "fi": "# kirjoittaja:"
  },
- "\n# version: 1.0\n# description: \n#!\n\n\n\n# ": {
+ "# version: 1.0\n# description: \n#!\n\n\n\n#": {
   "es": "# versi\u00f3n: 1.0\n# descripci\u00f3n:\n#!\n\n\n\n#",
   "fr": "#version\u00a0: 1.0\n# description:\n#!\n\n\n\n#",
   "it": "# versione: 1.0\n# descrizione:\n#!\n\n\n\n#",
@@ -9719,7 +8674,7 @@
   "sv": "# version: 1.0\n# beskrivning:\n#!\n\n\n\n#",
   "fi": "# versio: 1.0\n# kuvaus:\n#!\n\n\n\n#"
  },
- " {server} {player}!\")\n": {
+ "{server} {player}!\")": {
   "es": "{servidor} {jugador}!\")",
   "fr": "{serveur} {joueur}!\")",
   "it": "{server} {giocatore}!\")",
@@ -9749,7 +8704,7 @@
   "sv": "Skapa ny",
   "fi": "Luo uusi"
  },
- " return the x value of the ref/anchor relative to the canvas ": {
+ "return the x value of the ref/anchor relative to the canvas": {
   "es": "Devuelve el valor x de la referencia/ancla relativa al lienzo",
   "fr": "Renvoie la valeur x de la r\u00e9f\u00e9rence/ancre par rapport au canevas",
   "it": "Restituisce il valore x del ref/anchor relativo alla tela",
@@ -9759,7 +8714,7 @@
   "sv": "Returnera x-v\u00e4rdet f\u00f6r ref/ankare i f\u00f6rh\u00e5llande till duken",
   "fi": "Palauttaa ref/ankkurin x-arvon suhteessa kankaaseen"
  },
- " return the y value of the ref/anchor relative to the canvas ": {
+ "return the y value of the ref/anchor relative to the canvas": {
   "es": "Devuelve el valor y de ref/ancla relativo al lienzo",
   "fr": "Renvoie la valeur y de la r\u00e9f\u00e9rence/ancre par rapport au canevas",
   "it": "Restituisce il valore y del ref/anchor relativo alla tela",
@@ -9769,7 +8724,7 @@
   "sv": "Returnera y-v\u00e4rdet f\u00f6r ref/ankare i f\u00f6rh\u00e5llande till duken",
   "fi": "Palauttaa viitteen/ankkurin y-arvon suhteessa kankaaseen"
  },
- " match": {
+ "match": {
   "es": "f\u00f3sforo",
   "fr": "correspondre",
   "it": "incontro",
@@ -9939,16 +8894,6 @@
   "sv": "Serverinst\u00e4llningar: '",
   "fi": "Palvelimen asetukset: '"
  },
- "efd49e": {
-  "es": "EFD49E",
-  "fr": "EFD49E",
-  "it": "EFD49E",
-  "de": "EFD49E",
-  "nl": "EFD49E",
-  "pt": "EFD49E",
-  "sv": "EFD49E",
-  "fi": "EFD49E"
- },
  "which distribution would you like to switch to?": {
   "es": "\u00bfA qu\u00e9 distribuci\u00f3n te gustar\u00eda cambiarte?",
   "fr": "Vers quelle distribution souhaiteriez-vous passer ?",
@@ -10009,7 +8954,7 @@
   "sv": "Skapar en s\u00e4kerhetskopia efter installation",
   "fi": "Asennuksen j\u00e4lkeisen varmuuskopion luominen"
  },
- "there are currently ": {
+ "there are currently": {
   "es": "Hay actualmente",
   "fr": "Il y a actuellement",
   "it": "attualmente ci sono",
@@ -10019,7 +8964,7 @@
   "sv": "Det finns f\u00f6r n\u00e4rvarande",
   "fi": "Niit\u00e4 on t\u00e4ll\u00e4 hetkell\u00e4"
  },
- " servers running. to continue, they will be closed.\n\nare you sure you want to continue?": {
+ "servers running. to continue, they will be closed.\n\nare you sure you want to continue?": {
   "es": "servidores en ejecuci\u00f3n. De continuar, estar\u00e1n cerrados.\n\nEst\u00e1s seguro de que quieres continuar?",
   "fr": "serveurs en cours d'ex\u00e9cution. Pour continuer, ils seront ferm\u00e9s.\n\nEs-tu sur de vouloir continuer?",
   "it": "server in esecuzione. Per continuare, verranno chiusi.\n\nSei sicuro di voler continuare?",
@@ -10048,6 +8993,16 @@
   "pt": "Esquema relativo",
   "sv": "Relativ layout",
   "fi": "RelativeLayout"
+ },
+ "label": {
+  "es": "Etiqueta",
+  "fr": "\u00c9tiquette",
+  "it": "Etichetta",
+  "de": "Etikett",
+  "nl": "Etiket",
+  "pt": "R\u00f3tulo",
+  "sv": "M\u00e4rka",
+  "fi": "Label"
  },
  "floatlayout": {
   "es": "Dise\u00f1o flotante",
@@ -10079,17 +9034,17 @@
   "sv": "Ogiltig IPv4 och port",
   "fi": "Virheellinen IPv4 ja portti"
  },
- " invalid port  (use 1024-65535)": {
+ "invalid port  (use 1024-65535)": {
+  "sv": "Ogiltig port (anv\u00e4nd 1024-65535)",
   "es": "Puerto no v\u00e1lido (use 1024-65535)",
   "fr": "Port invalide (utilisez 1024-65535)",
   "it": "Porta non valida (usa 1024-65535)",
   "de": "Ung\u00fcltiger Port (verwenden Sie 1024-65535)",
   "nl": "Ongeldige poort (gebruik 1024-65535)",
   "pt": "Porta inv\u00e1lida (use 1024-65535)",
-  "sv": "Ogiltig port (anv\u00e4nd 1024-65535)",
   "fi": "Virheellinen portti (k\u00e4yt\u00e4 numeroa 1024-65535)"
  },
- "   configure memory above": {
+ "configure memory above": {
   "es": "Configurar la memoria arriba",
   "fr": "Configurer la m\u00e9moire ci-dessus",
   "it": "Configura la memoria sopra",
@@ -10148,16 +9103,6 @@
   "pt": "por favor, aguarde...",
   "sv": "V\u00e4nta...",
   "fi": "odota..."
- },
- "bold": {
-  "es": "atrevido",
-  "fr": "audacieux",
-  "it": "grassetto",
-  "de": "deutlich",
-  "nl": "vetgedrukt",
-  "pt": "audacioso",
-  "sv": "dj\u00e4rv",
-  "fi": "lihavoitu"
  },
  "llbi.otf": {
   "es": "LLBI.otf",
@@ -10359,16 +9304,6 @@
   "sv": "En internetanslutning kr\u00e4vs f\u00f6r att forts\u00e4tta\n\nVerifiera anslutningen och f\u00f6rs\u00f6k igen",
   "fi": "Jatkamiseen tarvitaan Internet-yhteys\n\nTarkista yhteys ja yrit\u00e4 uudelleen"
  },
- "   [font=": {
-  "es": "[fuente=",
-  "fr": "[police=",
-  "it": "[carattere=",
-  "de": "[Schriftart=",
-  "nl": "[lettertype=",
-  "pt": "[fonte=",
-  "sv": "[font=",
-  "fi": "[font="
- },
  "downloading auto-mcs v": {
   "es": "Descargando auto-mcs v",
   "fr": "T\u00e9l\u00e9chargement de auto-mcs v",
@@ -10479,7 +9414,7 @@
   "sv": "globalisera styret",
   "fi": "globalisoida s\u00e4\u00e4nt\u00f6"
  },
- "unaffected ": {
+ "unaffected": {
   "es": "Inafectado",
   "fr": "Non affect\u00e9",
   "it": "Inalterato",
@@ -10488,16 +9423,6 @@
   "pt": "N\u00e3o afetado",
   "sv": "Op\u00e5verkad",
   "fi": "Ei vaikuta"
- },
- "0 ": {
-  "es": "0",
-  "fr": "0",
-  "it": "0",
-  "de": "0",
-  "nl": "0",
-  "pt": "0",
-  "sv": "0",
-  "fi": "0"
  },
  "subnet": {
   "es": "subred",
@@ -10509,25 +9434,15 @@
   "sv": "subn\u00e4t",
   "fi": "aliverkko"
  },
- "unaffected": {
-  "es": "inafectado",
-  "fr": "non affect\u00e9",
-  "it": "inalterato",
-  "de": "unber\u00fchrt",
-  "nl": "onaangetast",
-  "pt": "n\u00e3o afetado",
-  "sv": "op\u00e5verkad",
-  "fi": "ei vaikuta"
- },
- "$$' is now locally applied": {
-  "es": "$$' ahora se aplica localmente",
-  "fr": "$$' est d\u00e9sormais appliqu\u00e9 localement",
-  "it": "$$' \u00e8 ora applicato localmente",
-  "de": "$$' wird jetzt lokal angewendet",
-  "nl": "$$' wordt nu lokaal toegepast",
-  "pt": "$$' agora \u00e9 aplicado localmente",
-  "sv": "$$' till\u00e4mpas nu lokalt",
-  "fi": "$$' on nyt k\u00e4yt\u00f6ss\u00e4 paikallisesti"
+ "'$$' is now locally applied": {
+  "es": "'$$' ahora se aplica localmente",
+  "fr": "'$$' est d\u00e9sormais appliqu\u00e9 localement",
+  "it": "'$$' \u00e8 ora applicato localmente",
+  "de": "\u201e$$\u201c wird jetzt lokal angewendet",
+  "nl": "'$$' wordt nu lokaal toegepast",
+  "pt": "'$$' agora \u00e9 aplicado localmente",
+  "sv": "'$$' till\u00e4mpas nu lokalt",
+  "fi": "$$ on nyt k\u00e4yt\u00f6ss\u00e4 paikallisesti"
  },
  "globalize": {
   "es": "globalizar",
@@ -10549,7 +9464,7 @@
   "sv": "Inga resultat f\u00f6r '",
   "fi": "Ei tuloksia haulle"
  },
- "]1[/font] ": {
+ "]1[/font]": {
   "es": "]1[/fuente]",
   "fr": "]1[/police]",
   "it": "]1[/carattere]",
@@ -10579,25 +9494,15 @@
   "sv": "globalt styre",
   "fi": "globaali s\u00e4\u00e4nt\u00f6"
  },
- "' and ": {
-  "es": "' y",
-  "fr": "' et",
-  "it": "' E",
-  "de": "' Und",
-  "nl": "' En",
-  "pt": "' e",
-  "sv": "' och",
-  "fi": "' ja"
- },
- " more": {
-  "es": "m\u00e1s",
-  "fr": "plus",
-  "it": "Di pi\u00f9",
-  "de": "mehr",
-  "nl": "meer",
-  "pt": "mais",
-  "sv": "Mer",
-  "fi": "lis\u00e4\u00e4"
+ "'$$' and": {
+  "es": "'$$' y",
+  "fr": "'$$' et",
+  "it": "'$$' e",
+  "de": "'$$' und",
+  "nl": "'$$' en",
+  "pt": "'$$' e",
+  "sv": "'$$' och",
+  "fi": "'$$' ja"
  },
  "optionally, configure additional properties": {
   "es": "Opcionalmente, configure propiedades adicionales",
@@ -10620,14 +9525,14 @@
   "fi": "vaikeus"
  },
  "enable pvp": {
-  "de": "PVP aktivieren",
   "es": "habilitar PvP",
   "fr": "activer le PvP",
   "it": "abilita il PvP",
+  "de": "PVP aktivieren",
+  "nl": "schakel PVP in",
   "pt": "habilitar PVP",
   "sv": "aktivera PVP",
-  "fi": "ota PVP k\u00e4ytt\u00f6\u00f6n",
-  "nl": "schakel PVP in"
+  "fi": "ota PVP k\u00e4ytt\u00f6\u00f6n"
  },
  "spawn creatures": {
   "es": "generar criaturas",
@@ -10650,24 +9555,24 @@
   "fi": "Tarkista m\u00e4\u00e4ritykset"
  },
  ", verify": {
-  "es": ", Verificar",
   "fr": ", V\u00e9rifier",
-  "it": ", Verifica",
+  "es": ", Verificar",
   "de": ", Verifizieren",
   "nl": ", Controleer",
   "pt": ", Verificar",
   "sv": ", Verifiera",
-  "fi": ", Vahvista"
+  "fi": ", Vahvista",
+  "it": ", Verifica"
  },
- "$$' was created successfully": {
-  "es": "$$' fue creado exitosamente",
-  "fr": "$$' a \u00e9t\u00e9 cr\u00e9\u00e9 avec succ\u00e8s",
-  "it": "$$' \u00e8 stato creato con successo",
-  "de": "$$' wurde erfolgreich erstellt",
-  "nl": "$$' is succesvol aangemaakt",
-  "pt": "$$' foi criado com sucesso",
-  "sv": "$$' skapades framg\u00e5ngsrikt",
-  "fi": "$$' luotiin onnistuneesti"
+ "'$$' was created successfully": {
+  "es": "'$$' fue creado exitosamente",
+  "fr": "'$$' a \u00e9t\u00e9 cr\u00e9\u00e9 avec succ\u00e8s",
+  "it": "'$$' \u00e8 stato creato correttamente",
+  "de": "\u201e$$\u201c wurde erfolgreich erstellt",
+  "nl": "'$$' is succesvol aangemaakt",
+  "pt": "'$$' foi criado com sucesso",
+  "sv": "'$$' skapades framg\u00e5ngsrikt",
+  "fi": "'$$' luotiin onnistuneesti"
  },
  "add-oning add-ons": {
   "es": "Complementos complementarios",
@@ -10840,14 +9745,14 @@
   "fi": "prosessikoukut"
  },
  "close-hooks": {
+  "nl": "dichte haken",
   "es": "ganchos cerrados",
   "fr": "crochets rapproch\u00e9s",
   "it": "ganci stretti",
   "de": "Close-Hooks",
-  "nl": "dichte haken",
-  "pt": "ganchos pr\u00f3ximos",
   "sv": "n\u00e4ra krokar",
-  "fi": "tiiviit koukut"
+  "fi": "tiiviit koukut",
+  "pt": "ganchos pr\u00f3ximos"
  },
  "log": {
   "es": "registro",
@@ -10899,14 +9804,14 @@
   "sv": "V\u00e4lj en ny s\u00e4kerhetskopieringskatalog",
   "fi": "Valitse uusi varmuuskopiohakemisto"
  },
- "  back-up": {
-  "sv": "s\u00e4kerhetskopiering",
+ "back-up": {
   "es": "respaldo",
   "fr": "sauvegarde",
   "it": "backup",
   "de": "Backup",
   "nl": "back-up",
   "pt": "c\u00f3pia de seguran\u00e7a",
+  "sv": "s\u00e4kerhetskopiering",
   "fi": "varmuuskopioida"
  },
  "$' was restored to $": {
@@ -10999,7 +9904,7 @@
   "sv": "y",
   "fi": "y"
  },
- "ngrok proxy is ": {
+ "ngrok proxy is": {
   "es": "el proxy ngrok es",
   "fr": "Le proxy ngrok est",
   "it": "il proxy ngrok \u00e8",
@@ -11019,7 +9924,7 @@
   "sv": "kapabel",
   "fi": "kykenev\u00e4"
  },
- "\" config add-authtoken ": {
+ "\" config add-authtoken": {
   "es": "\" config agregar token de autenticaci\u00f3n",
   "fr": "\" config add-authtoken",
   "it": "\" configurazione aggiungi-token",
@@ -11160,14 +10065,14 @@
   "fi": "Mihin Minecraft-versioon haluaisit vaihtaa?"
  },
  "reinstalling": {
-  "de": "Neuinstallation",
   "es": "Reinstalar",
   "fr": "R\u00e9installation",
   "it": "Reinstallazione",
+  "de": "Neuinstallation",
+  "nl": "Opnieuw installeren",
   "pt": "Reinstalando",
   "sv": "Installerar om",
-  "fi": "Uudelleenasentaminen",
-  "nl": "Opnieuw installeren"
+  "fi": "Uudelleenasentaminen"
  },
  "reinstalled": {
   "es": "Reinstalado",
@@ -11179,15 +10084,15 @@
   "sv": "Ominstallerad",
   "fi": "Asennettu uudelleen"
  },
- "$$' successfully": {
-  "es": "$$' con \u00e9xito",
-  "fr": "$$' avec succ\u00e8s",
-  "it": "$$' con successo",
-  "de": "$$' erfolgreich",
-  "nl": "$$' succesvol",
-  "pt": "$$' com sucesso",
-  "sv": "$$' framg\u00e5ngsrikt",
-  "fi": "$$' onnistuneesti"
+ "'$$' successfully": {
+  "es": "'$$' exitosamente",
+  "fr": "'$$' avec succ\u00e8s",
+  "it": "'$$' con successo",
+  "de": "'$$' erfolgreich",
+  "nl": "'$$' succesvol",
+  "pt": "'$$' com sucesso",
+  "sv": "'$$' framg\u00e5ngsrikt",
+  "fi": "$$ onnistui"
  },
  "server warning": {
   "es": "Advertencia del servidor",
@@ -11198,6 +10103,26 @@
   "pt": "Aviso do servidor",
   "sv": "Servervarning",
   "fi": "Palvelimen varoitus"
+ },
+ "fullscreen": {
+  "es": "pantalla completa",
+  "fr": "plein \u00e9cran",
+  "it": "a schermo intero",
+  "de": "Vollbild",
+  "nl": "volledig scherm",
+  "pt": "tela cheia",
+  "sv": "fullsk\u00e4rm",
+  "fi": "koko n\u00e4ytt\u00f6"
+ },
+ "geometry": {
+  "es": "geometr\u00eda",
+  "fr": "g\u00e9om\u00e9trie",
+  "it": "geometria",
+  "de": "Geometrie",
+  "nl": "geometrie",
+  "pt": "geometria",
+  "sv": "geometri",
+  "fi": "geometria"
  },
  "locale": {
   "es": "lugar",
@@ -11302,12 +10227,12 @@
  "ok": {
   "es": "OK",
   "fr": "d'accord",
+  "it": "OK",
   "de": "OK",
   "nl": "OK",
   "pt": "OK",
   "sv": "ok",
-  "fi": "okei",
-  "it": "OK"
+  "fi": "okei"
  },
  "popup": {
   "es": "Surgir",
@@ -11319,16 +10244,6 @@
   "sv": "Dyka upp",
   "fi": "Ponnahdusikkuna"
  },
- "help ": {
-  "es": "ayuda",
-  "fr": "aide",
-  "it": "aiuto",
-  "de": "helfen",
-  "nl": "hulp",
-  "pt": "ajuda",
-  "sv": "hj\u00e4lp",
-  "fi": "auta"
- },
  "manage": {
   "es": "administrar",
   "fr": "g\u00e9rer",
@@ -11339,7 +10254,7 @@
   "sv": "hantera",
   "fi": "hallita"
  },
- "running auto-mcs as ": {
+ "running auto-mcs as": {
   "es": "Ejecutando auto-mcs como",
   "fr": "Ex\u00e9cuter auto-mcs en tant que",
   "it": "Esecuzione di auto-mcs come",
@@ -11349,7 +10264,7 @@
   "sv": "K\u00f6r auto-mcs som",
   "fi": "Auto-mcs k\u00e4ynniss\u00e4 nimell\u00e4"
  },
- " can expose your system to security vulnerabilities.\n\nplease restart with standard user privileges to continue": {
+ "can expose your system to security vulnerabilities.\n\nplease restart with standard user privileges to continue": {
   "es": "puede exponer su sistema a vulnerabilidades de seguridad.\n\nReinicie con privilegios de usuario est\u00e1ndar para continuar",
   "fr": "peut exposer votre syst\u00e8me \u00e0 des failles de s\u00e9curit\u00e9.\n\nVeuillez red\u00e9marrer avec les privil\u00e8ges utilisateur standard pour continuer",
   "it": "pu\u00f2 esporre il sistema a vulnerabilit\u00e0 della sicurezza.\n\nRiavviare con i privilegi utente standard per continuare",
@@ -11369,34 +10284,34 @@
   "sv": "mellanslagstangenten",
   "fi": "v\u00e4lily\u00f6nti"
  },
- "pardon": {
-  "es": "INDULTO",
-  "fr": "PARDON",
-  "it": "SCUSI",
-  "de": "BEGNADIGUNG",
-  "nl": "PARDON",
-  "pt": "PERD\u00c3O",
-  "sv": "F\u00d6RL\u00c5TA",
-  "fi": "ANTEEKSI"
+ "flat": {
+  "es": "departamento",
+  "fr": "plat",
+  "it": "Piatto",
+  "de": "Wohnung",
+  "nl": "vlak",
+  "pt": "plano",
+  "sv": "platt",
+  "fi": "tasainen"
  },
- "$$' was ": {
-  "es": "$$' era",
-  "fr": "$$' \u00e9tait",
-  "it": "$$' era",
-  "de": "$$' war",
-  "nl": "$$' was",
-  "pt": "$$' foi",
-  "sv": "$$' var",
-  "fi": "$$' oli"
+ "'$$' was": {
+  "es": "'$$' era",
+  "fr": "'$$' \u00e9tait",
+  "it": "\"$$\" era",
+  "de": "'$$' war",
+  "nl": "'$$' was",
+  "pt": "'$$' era",
+  "sv": "'$$' var",
+  "fi": "'$$' oli"
  },
- "$$' rule is now locally applied": {
-  "es": "La regla $$ ahora se aplica localmente",
-  "fr": "La r\u00e8gle $$ est d\u00e9sormais appliqu\u00e9e localement",
-  "it": "La regola $$' \u00e8 ora applicata localmente",
+ "'$$' rule is now locally applied": {
+  "es": "La regla '$$' ahora se aplica localmente",
+  "fr": "La r\u00e8gle '$$' est d\u00e9sormais appliqu\u00e9e localement",
+  "it": "La regola '$$' \u00e8 ora applicata localmente",
   "de": "Die Regel \u201e$$\u201c wird jetzt lokal angewendet",
-  "nl": "De $$'-regel wordt nu lokaal toegepast",
-  "pt": "A regra $$' agora \u00e9 aplicada localmente",
-  "sv": "$$'-regeln till\u00e4mpas nu lokalt",
+  "nl": "De regel '$$' wordt nu lokaal toegepast",
+  "pt": "A regra '$$' agora \u00e9 aplicada localmente",
+  "sv": "'$$'-regeln till\u00e4mpas nu lokalt",
   "fi": "$$-s\u00e4\u00e4nt\u00f6\u00e4 sovelletaan nyt paikallisesti"
  },
  "days": {
@@ -11409,7 +10324,7 @@
   "sv": "dagar",
   "fi": "p\u00e4iv\u00e4\u00e4"
  },
- "seconds ": {
+ "seconds": {
   "es": "segundos",
   "fr": "secondes",
   "it": "secondi",
@@ -11459,25 +10374,25 @@
   "sv": "ParagraphLabel",
   "fi": "kohtaLabel"
  },
- "$$' is now globally applied": {
-  "es": "$$' ahora se aplica globalmente",
-  "fr": "$$' est d\u00e9sormais appliqu\u00e9 globalement",
-  "it": "$$' \u00e8 ora applicato a livello globale",
-  "de": "$$' wird jetzt global angewendet",
-  "nl": "$$' wordt nu wereldwijd toegepast",
-  "pt": "$$' agora \u00e9 aplicado globalmente",
-  "sv": "$$' till\u00e4mpas nu globalt",
-  "fi": "$$' on nyt k\u00e4yt\u00f6ss\u00e4 maailmanlaajuisesti"
+ "'$$' is now globally applied": {
+  "es": "'$$' ahora se aplica globalmente",
+  "fr": "'$$' est d\u00e9sormais appliqu\u00e9 globalement",
+  "it": "'$$' \u00e8 ora applicato a livello globale",
+  "de": "\u201e$$\u201c wird jetzt global angewendet",
+  "nl": "'$$' wordt nu wereldwijd toegepast",
+  "pt": "'$$' agora \u00e9 aplicado globalmente",
+  "sv": "'$$' anv\u00e4nds nu globalt",
+  "fi": "$$ on nyt k\u00e4yt\u00f6ss\u00e4 maailmanlaajuisesti"
  },
- "$$' was demoted": {
-  "es": "$$' fue degradado",
-  "fr": "$$' a \u00e9t\u00e9 r\u00e9trograd\u00e9",
-  "it": "$$' \u00e8 stato retrocesso",
-  "de": "$$' wurde herabgestuft",
-  "nl": "$$' werd gedegradeerd",
-  "pt": "$$' foi rebaixado",
-  "sv": "$$' degraderades",
-  "fi": "$$' alennettiin"
+ "'$$' was demoted": {
+  "es": "'$$' fue degradado",
+  "fr": "'$$' a \u00e9t\u00e9 r\u00e9trograd\u00e9",
+  "it": "\"$$\" \u00e8 stato retrocesso",
+  "de": "\u201e$$\u201c wurde herabgestuft",
+  "nl": "'$$' werd gedegradeerd",
+  "pt": "'$$' foi rebaixado",
+  "sv": "'$$' degraderades",
+  "fi": "'$$' alennettiin"
  },
  "no rules": {
   "es": "Sin reglas",
@@ -11499,7 +10414,7 @@
   "sv": "inaktiv",
   "fi": "ep\u00e4aktiivinen"
  },
- "server whitelist ": {
+ "server whitelist": {
   "es": "Lista blanca de servidores",
   "fr": "Liste blanche des serveurs",
   "it": "Lista bianca del server",
@@ -11631,13 +10546,13 @@
  },
  "installing $$": {
   "es": "Instalando $$",
-  "it": "Installazione di $$",
   "fr": "Installation $$",
+  "it": "Installazione di $$",
+  "de": "$$ installieren",
   "nl": "$$ installeren",
   "pt": "Instalando $$",
   "sv": "Installerar $$",
-  "fi": "Asennetaan $$",
-  "de": "$$ installieren"
+  "fi": "Asennetaan $$"
  },
  "serverimportpathinput": {
   "es": "ServidorImportPathEntrada",
@@ -11658,26 +10573,6 @@
   "pt": "Selecione uma pasta do servidor",
   "sv": "V\u00e4lj en servermapp",
   "fi": "Valitse palvelinkansio"
- },
- "*.zip": {
-  "es": "*.cremallera",
-  "fr": "*.fermeture \u00e9clair",
-  "it": "*.cerniera lampo",
-  "de": "*.Rei\u00dfverschluss",
-  "nl": "*.zip",
-  "pt": "*.fecho eclair",
-  "sv": "*.blixtl\u00e5s",
-  "fi": "*.postinumero"
- },
- "*.mrpack": {
-  "es": "*.mrpack",
-  "fr": "*.mrpack",
-  "it": "*.mrpack",
-  "de": "*.mrpack",
-  "nl": "*.mrpack",
-  "pt": "*.mrpack",
-  "sv": "*.mrpack",
-  "fi": "*.mrpack"
  },
  "copied ip address  (right-click for lan)": {
   "es": "Direcci\u00f3n IP copiada (haga clic derecho para LAN)",
@@ -11739,7 +10634,7 @@
   "sv": "Kopiera IP",
   "fi": "Kopioi IP"
  },
- " marked as favorite": {
+ "marked as favorite": {
   "es": "marcado como favorito",
   "fr": "marqu\u00e9 comme favori",
   "it": "contrassegnato come preferito",
@@ -11749,7 +10644,7 @@
   "sv": "markerad som favorit",
   "fi": "merkitty suosikiksi"
  },
- " is no longer marked as favorite": {
+ "is no longer marked as favorite": {
   "es": "ya no est\u00e1 marcado como favorito",
   "fr": "n'est plus marqu\u00e9 comme favori",
   "it": "non \u00e8 pi\u00f9 contrassegnato come preferito",
@@ -11758,16 +10653,6 @@
   "pt": "n\u00e3o est\u00e1 mais marcado como favorito",
   "sv": "\u00e4r inte l\u00e4ngre markerad som favorit",
   "fi": "ei ole en\u00e4\u00e4 merkitty suosikiksi"
- },
- "00": {
-  "es": "00",
-  "fr": "00",
-  "it": "00",
-  "de": "00",
-  "nl": "00",
-  "pt": "00",
-  "sv": "00",
-  "fi": "00"
  },
  "current-players": {
   "es": "Los jugadores actuales",
@@ -11779,17 +10664,7 @@
   "sv": "nuvarande spelare",
   "fi": "nykyiset pelaajat"
  },
- "00:00:00:00": {
-  "es": "00:00:00:00",
-  "fr": "00:00:00:00",
-  "it": "00:00:00:00",
-  "de": "00:00:00:00",
-  "nl": "00:00:00:00",
-  "pt": "00:00:00:00",
-  "sv": "00:00:00:00",
-  "fi": "00:00:00:00"
- },
- "0 / ": {
+ "0 /": {
   "es": "0 /",
   "fr": "0 /",
   "it": "0/",
@@ -11809,16 +10684,6 @@
   "sv": "max-spelare",
   "fi": "maksimim\u00e4\u00e4r\u00e4 pelaajia"
  },
- "automatic back-ups ": {
-  "es": "Copias de seguridad autom\u00e1ticas",
-  "fr": "Sauvegardes automatiques",
-  "it": "Backup automatici",
-  "de": "Automatische Backups",
-  "nl": "Automatische back-ups",
-  "pt": "Backups autom\u00e1ticos",
-  "sv": "Automatiska s\u00e4kerhetskopieringar",
-  "fi": "Automaattiset varmuuskopiot"
- },
  "latest back-up": {
   "es": "\u00daltima copia de seguridad",
   "fr": "Derni\u00e8re sauvegarde",
@@ -11829,17 +10694,7 @@
   "sv": "Senaste s\u00e4kerhetskopian",
   "fi": "Uusin varmuuskopio"
  },
- "uninstall ": {
-  "es": "Desinstalar",
-  "fr": "D\u00e9sinstaller",
-  "it": "Disinstallare",
-  "de": "Deinstallieren",
-  "nl": "Verwijderen",
-  "pt": "Desinstalar",
-  "sv": "Avinstallera",
-  "fi": "Poista asennus"
- },
- " add-ons...": {
+ "add-ons...": {
   "es": "Complementos...",
   "fr": "Les modules compl\u00e9mentaires...",
   "it": "Componenti aggiuntivi...",
@@ -11859,7 +10714,7 @@
   "sv": "Installerade till\u00e4gg",
   "fi": "Asennetut lis\u00e4osat"
  },
- "]y[/font] ": {
+ "]y[/font]": {
   "es": "]y[/fuente]",
   "fr": "]y[/font]",
   "it": "]y[/carattere]",
@@ -12019,7 +10874,7 @@
   "sv": "En internetanslutning kr\u00e4vs f\u00f6r att installera ngrok\n\nKontrollera din anslutning och f\u00f6rs\u00f6k igen",
   "fi": "Internet-yhteys tarvitaan ngrokin asentamiseen\n\nTarkista yhteys ja yrit\u00e4 uudelleen"
  },
- "automatic server updates ": {
+ "automatic server updates": {
   "es": "Actualizaciones autom\u00e1ticas del servidor",
   "fr": "Mises \u00e0 jour automatiques du serveur",
   "it": "Aggiornamenti automatici del server",
@@ -12039,17 +10894,17 @@
   "sv": "Servern har bytt namn till '$$'!",
   "fi": "Palvelimen uudelleennime\u00e4minen '$$' onnistui!"
  },
- "delete '$$": {
-  "es": "Eliminar '$$",
-  "fr": "Supprimer '$$",
-  "it": "Elimina \"$$\".",
-  "de": "L\u00f6schen Sie '$$",
-  "nl": "Verwijder '$$",
-  "pt": "Excluir '$$",
-  "sv": "Ta bort '$$",
-  "fi": "Poista '$$"
+ "delete '$$'": {
+  "es": "Eliminar '$$'",
+  "fr": "Supprimer '$$'",
+  "it": "Elimina \"$$\"",
+  "de": "\u201e$$\u201c l\u00f6schen",
+  "nl": "'$$' verwijderen",
+  "pt": "Excluir '$$'",
+  "sv": "Ta bort '$$'",
+  "fi": "Poista '$$'"
  },
- "current version:  ": {
+ "current version:": {
   "es": "Versi\u00f3n actual:",
   "fr": "Version actuelle:",
   "it": "Versione attuale:",
@@ -12068,16 +10923,6 @@
   "pt": "b-",
   "sv": "b-",
   "fi": "b-"
- },
- "*.jar": {
-  "es": "*.frasco",
-  "fr": "*.pot",
-  "it": "*.vaso",
-  "de": "*.Krug",
-  "nl": "*.kan",
-  "pt": "*.jar",
-  "sv": "*.burk",
-  "fi": "*.purkki"
  },
  "addons": {
   "es": "complementos",
@@ -12129,15 +10974,15 @@
   "sv": "EULA.TXT",
   "fi": "EULA.TXT"
  },
- "installing ": {
-  "fi": "Asennus",
+ "installing": {
   "es": "Instalaci\u00f3n",
+  "fr": "Installation",
   "it": "Installazione",
   "de": "Installieren",
   "nl": "Installeren",
   "pt": "Instalando",
   "sv": "Installerar",
-  "fr": "Installation"
+  "fi": "Asennus"
  },
  "mcs": {
   "es": "Mcs",
@@ -12159,15 +11004,15 @@
   "sv": "niv\u00e5.dat",
   "fi": "taso.dat"
  },
- "' was created in version ": {
-  "fi": "' luotiin versiossa",
+ "' was created in version": {
+  "es": "'fue creado en la versi\u00f3n",
   "fr": "' a \u00e9t\u00e9 cr\u00e9\u00e9 dans la version",
   "it": "' \u00e8 stato creato nella versione",
   "de": "' wurde in der Version erstellt",
   "nl": "' is gemaakt in versie",
   "pt": "' foi criado na vers\u00e3o",
   "sv": "' skapades i version",
-  "es": "'fue creado en la versi\u00f3n"
+  "fi": "' luotiin versiossa"
  },
  ", which is newer than your server. this may cause a crash.\n\nwould you like to use this world anyway?": {
   "es": ", que es m\u00e1s nuevo que su servidor. Esto puede provocar un accidente.\n\n\u00bfTe gustar\u00eda usar este mundo de todos modos?",
@@ -12178,16 +11023,6 @@
   "pt": ", que \u00e9 mais recente que o seu servidor. Isto pode causar uma falha.\n\nVoc\u00ea gostaria de usar este mundo de qualquer maneira?",
   "sv": ", som \u00e4r nyare \u00e4n din server. Detta kan orsaka en krasch.\n\nSkulle du vilja anv\u00e4nda den h\u00e4r v\u00e4rlden \u00e4nd\u00e5?",
   "fi": ", joka on uudempi kuin palvelimesi. T\u00e4m\u00e4 voi aiheuttaa onnettomuuden.\n\nHaluaisitko silti k\u00e4ytt\u00e4\u00e4 t\u00e4t\u00e4 maailmaa?"
- },
- "1.9": {
-  "es": "1.9",
-  "fr": "1.9",
-  "it": "1.9",
-  "de": "1.9",
-  "nl": "1.9",
-  "pt": "1,9",
-  "sv": "1.9",
-  "fi": "1.9"
  },
  "window contextmenu error: failed to delete menu as the parent window doesn't exist": {
   "es": "Error de men\u00fa contextual de ventana: no se pudo eliminar el men\u00fa porque la ventana principal no existe",
@@ -12209,7 +11044,7 @@
   "sv": "F\u00f6nster popup-fel: Det gick inte att ta bort popup eftersom det \u00f6verordnade f\u00f6nstret inte finns",
   "fi": "Ikkunan ponnahdusikkunan virhe: Ponnahdusikkunan poistaminen ep\u00e4onnistui, koska p\u00e4\u00e4ikkunaa ei ole olemassa"
  },
- "progressscreen error on step ": {
+ "progressscreen error on step": {
   "es": "Error de ProgressScreen en el paso",
   "fr": "Erreur ProgressScreen \u00e0 l'\u00e9tape",
   "it": "Errore ProgressScreen al passaggio",
@@ -12240,14 +11075,14 @@
   "fi": "POISTA"
  },
  "restrict": {
-  "es": "RESTRINGIR",
+  "fi": "RAJOITTAA",
   "fr": "LIMITER",
   "it": "LIMITARE",
   "de": "BESCHR\u00c4NKEN",
   "nl": "BEPERKEN",
   "pt": "RESTRINGIR",
   "sv": "BEGR\u00c4NSA",
-  "fi": "RAJOITTAA"
+  "es": "RESTRINGIR"
  },
  "permit": {
   "es": "PERMISO",
@@ -12259,15 +11094,15 @@
   "sv": "TILL\u00c5TA",
   "fi": "LUPA"
  },
- "$$' is now ": {
-  "es": "$$' es ahora",
-  "fr": "$$' c'est maintenant",
-  "it": "$$' \u00e8 adesso",
-  "de": "$$' ist jetzt",
-  "nl": "$$' is nu",
-  "pt": "$$' \u00e9 agora",
-  "sv": "$$' \u00e4r nu",
-  "fi": "$$' on nyt"
+ "'$$' is now": {
+  "es": "'$$' es ahora",
+  "fr": "'$$' est maintenant",
+  "it": "'$$' \u00e8 adesso",
+  "de": "'$$' ist jetzt",
+  "nl": "'$$' is nu",
+  "pt": "'$$' \u00e9 agora",
+  "sv": "'$$' \u00e4r nu",
+  "fi": "'$$' on nyt"
  },
  "ly applied": {
   "es": "ly aplicado",
@@ -12320,14 +11155,14 @@
   "fi": "kuukaudet"
  },
  "hours": {
-  "de": "Std.",
   "es": "horas",
   "fr": "heures",
   "it": "ore",
+  "de": "Std.",
+  "nl": "uur",
   "pt": "horas",
   "sv": "timmar",
-  "fi": "tuntia",
-  "nl": "uur"
+  "fi": "tuntia"
  },
  "minutes": {
   "es": "minutos",
@@ -12338,16 +11173,6 @@
   "pt": "minutos",
   "sv": "minuter",
   "fi": "p\u00f6yt\u00e4kirja"
- },
- "seconds": {
-  "es": "segundos",
-  "fr": "secondes",
-  "it": "secondi",
-  "de": "Sekunden",
-  "nl": "seconden",
-  "pt": "segundos",
-  "sv": "sekunder",
-  "fi": "sekuntia"
  },
  "pardon ip & user": {
   "es": "perdonar IP y usuario",
@@ -12379,15 +11204,15 @@
   "sv": "ta bort regeln",
   "fi": "poista s\u00e4\u00e4nt\u00f6"
  },
- "$$' was promoted": {
-  "es": "$$' fue ascendido",
-  "fr": "$$' a \u00e9t\u00e9 promu",
-  "it": "$$' \u00e8 stato promosso",
-  "de": "$$' wurde hochgestuft",
-  "nl": "$$' werd gepromoot",
-  "pt": "$$' foi promovido",
-  "sv": "$$' befordrades",
-  "fi": "$$' ylennettiin"
+ "'$$' was promoted": {
+  "es": "'$$' fue promocionado",
+  "fr": "'$$' a \u00e9t\u00e9 promu",
+  "it": "\"$$\" \u00e8 stato promosso",
+  "de": "\u201e$$\u201c wurde hochgestuft",
+  "nl": "'$$' werd gepromoot",
+  "pt": "'$$' foi promovido",
+  "sv": "'$$' befordrades",
+  "fi": "'$$' ylennettiin"
  },
  "ban user": {
   "es": "prohibir usuario",
@@ -12418,6 +11243,16 @@
   "pt": "Nenhum resultado para",
   "sv": "Inga resultat f\u00f6r",
   "fi": "Ei tuloksia haulle"
+ },
+ "operator": {
+  "es": "operador",
+  "fr": "op\u00e9rateur",
+  "it": "operatore",
+  "de": "Operator",
+  "nl": "exploitant",
+  "pt": "operador",
+  "sv": "operat\u00f6r",
+  "fi": "operaattori"
  },
  "standard": {
   "es": "est\u00e1ndar",
@@ -12470,14 +11305,14 @@
   "fi": "ServerImportBackupInput"
  },
  "select an auto-mcs back-up file": {
-  "es": "Seleccione un archivo de respaldo de auto-mcs",
+  "es": "Seleccione un archivo de copia de seguridad de auto-mcs",
   "fr": "S\u00e9lectionnez un fichier de sauvegarde auto-mcs",
-  "it": "Seleziona un file di backup auto-mcs",
-  "de": "W\u00e4hlen Sie eine auto-mcs-Sicherungsdatei aus",
+  "it": "Seleziona un file di backup automatico-mcs",
+  "de": "W\u00e4hlen Sie eine Auto-MCS-Sicherungsdatei aus",
   "nl": "Selecteer een auto-mcs-back-upbestand",
-  "pt": "Selecione um arquivo de backup do auto-mcs",
-  "sv": "V\u00e4lj en auto-mcs-backup-fil",
-  "fi": "Valitse auto-mcs-varmuuskopiotiedosto"
+  "pt": "Selecione um arquivo de backup auto-mcs",
+  "sv": "V\u00e4lj en auto-mcs backup-fil",
+  "fi": "Valitse automaattinen mcs-varmuuskopiotiedosto"
  },
  "read": {
   "es": "leer",
@@ -12529,16 +11364,6 @@
   "sv": "anslutna spelare",
   "fi": "yhdistettyj\u00e4 pelaajia"
  },
- "*crickets*": {
-  "es": "*grillos*",
-  "fr": "*grillons*",
-  "it": "*grilli*",
-  "de": "*Grillen*",
-  "nl": "*krekels*",
-  "pt": "*grilos*",
-  "sv": "*syrsor*",
-  "fi": "*sirkat*"
- },
  "uh oh, '$$' has crashed": {
   "es": "Uh oh, '$$' se ha bloqueado",
   "fr": "Oh oh, '$$' s'est \u00e9cras\u00e9",
@@ -12549,7 +11374,7 @@
   "sv": "\u00c5h, '$$' har kraschat",
   "fi": "Oi, '$$' on kaatunut"
  },
- "consoleinput (sub-server ": {
+ "consoleinput (sub-server": {
   "es": "ConsoleInput (subservidor",
   "fr": "ConsoleInput (Sous-serveur",
   "it": "ConsoleInput (server secondario",
@@ -12589,15 +11414,15 @@
   "sv": "d",
   "fi": "d"
  },
- "backed up '$$": {
-  "es": "Copia de seguridad '$$",
-  "fr": "'$$ sauvegard\u00e9",
-  "it": "Backup di \"$$\".",
-  "de": "Sichert '$$",
-  "nl": "Er is een back-up gemaakt van '$$",
-  "pt": "Backup de '$$",
-  "sv": "S\u00e4kerhetskopierade '$$",
-  "fi": "Varmuuskopioi '$$"
+ "backed up '$$'": {
+  "es": "Copia de seguridad '$$'",
+  "fr": "'$$' sauvegard\u00e9",
+  "it": "Backup di \"$$\"",
+  "de": "\u201e$$\u201c wurde gesichert",
+  "nl": "Back-up gemaakt van '$$'",
+  "pt": "Backup de '$$'",
+  "sv": "S\u00e4kerhetskopierade '$$'",
+  "fi": "Varmuuskopioi '$$'"
  },
  "migrated back-up directory successfully": {
   "es": "Directorio de copia de seguridad migrado correctamente",
@@ -12649,7 +11474,7 @@
   "sv": "\u00c5terst\u00e4lla s\u00e4kerhetskopia",
   "fi": "Palauta varmuuskopio"
  },
- " add-ons successfully": {
+ "add-ons successfully": {
   "es": "complementos con \u00e9xito",
   "fr": "modules compl\u00e9mentaires avec succ\u00e8s",
   "it": "componenti aggiuntivi con successo",
@@ -12739,15 +11564,15 @@
   "sv": "ngrok \u00e4r en gratis proxytj\u00e4nst som skapar en tunnel till internet. Den kan anv\u00e4ndas f\u00f6r att kringg\u00e5 ISP-portblockering eller konflikter d\u00e4r klienten v\u00e4grar att ansluta (t.ex. strikt NAT).\n\nVill du installera ngrok?",
   "fi": "ngrok on ilmainen v\u00e4lityspalvelinpalvelu, joka luo tunnelin Internetiin. Sit\u00e4 voidaan k\u00e4ytt\u00e4\u00e4 ohittamaan Internet-palveluntarjoajan porttien esto tai konfliktit, joissa asiakas kielt\u00e4ytyy muodostamasta yhteytt\u00e4 (esim. tiukka NAT).\n\nHaluatko asentaa ngrokin?"
  },
- "$$' was deleted successfully": {
-  "de": "$$' wurde erfolgreich gel\u00f6scht",
-  "es": "$$' fue eliminado exitosamente",
-  "fr": "$$' a \u00e9t\u00e9 supprim\u00e9 avec succ\u00e8s",
-  "it": "$$' \u00e8 stato eliminato con successo",
-  "pt": "$$' foi exclu\u00eddo com sucesso",
-  "sv": "$$' raderades framg\u00e5ngsrikt",
-  "fi": "$$' poistettiin onnistuneesti",
-  "nl": "$$' is succesvol verwijderd"
+ "'$$' was deleted successfully": {
+  "es": "'$$' se elimin\u00f3 exitosamente",
+  "fr": "'$$' a \u00e9t\u00e9 supprim\u00e9 avec succ\u00e8s",
+  "it": "\"$$\" \u00e8 stato eliminato correttamente",
+  "de": "\u201e$$\u201c wurde erfolgreich gel\u00f6scht",
+  "nl": "'$$' is succesvol verwijderd",
+  "pt": "'$$' foi exclu\u00eddo com sucesso",
+  "sv": "'$$' raderades framg\u00e5ngsrikt",
+  "fi": "$$ poistettiin onnistuneesti"
  },
  "this server already exists": {
   "es": "Este servidor ya existe",
@@ -12819,7 +11644,7 @@
   "sv": "Denna server \u00e4r ogiltig eller korrupt",
   "fi": "T\u00e4m\u00e4 palvelin on virheellinen tai vioittunut"
  },
- " --wildcards": {
+ "--wildcards": {
   "es": "--comodines",
   "fr": "--caract\u00e8res g\u00e9n\u00e9riques",
   "it": "--caratteri jolly",
@@ -12838,16 +11663,6 @@
   "pt": "digite um caminho...",
   "sv": "skriv en v\u00e4g...",
   "fi": "kirjoita polku..."
- },
- "555599": {
-  "es": "555599",
-  "fr": "555599",
-  "it": "555599",
-  "de": "555599",
-  "nl": "555599",
-  "pt": "555599",
-  "sv": "555599",
-  "fi": "555599"
  },
  "supported": {
   "es": "Soportado",
@@ -12888,6 +11703,16 @@
   "pt": "administrador",
   "sv": "administrat\u00f6r",
   "fi": "j\u00e4rjestelm\u00e4nvalvoja"
+ },
+ "root": {
+  "es": "ra\u00edz",
+  "fr": "racine",
+  "it": "radice",
+  "de": "Wurzel",
+  "nl": "wortel",
+  "pt": "raiz",
+  "sv": "rot",
+  "fi": "juuri"
  },
  "body": {
   "es": "cuerpo",
@@ -12939,17 +11764,17 @@
   "sv": "fr\u00e4mjas",
   "fi": "ylennetty"
  },
- "$$' was removed": {
-  "es": "$$' fue eliminado",
-  "fr": "$$' a \u00e9t\u00e9 supprim\u00e9",
-  "it": "$$' \u00e8 stato rimosso",
-  "de": "$$' wurde entfernt",
-  "nl": "$$' is verwijderd",
-  "pt": "$$' foi removido",
-  "sv": "$$' togs bort",
-  "fi": "$$' poistettiin"
+ "'$$' was removed": {
+  "es": "'$$' fue eliminado",
+  "fr": "'$$' a \u00e9t\u00e9 supprim\u00e9",
+  "it": "\"$$\" \u00e8 stato rimosso",
+  "de": "\u201e$$\u201c wurde entfernt",
+  "nl": "'$$' is verwijderd",
+  "pt": "'$$' foi removido",
+  "sv": "'$$' togs bort",
+  "fi": "$$ poistettiin"
  },
- "' is ": {
+ "' is": {
   "es": "' es",
   "fr": "' est",
   "it": "' \u00c8",
@@ -12959,15 +11784,15 @@
   "sv": "' \u00e4r",
   "fi": "' On"
  },
- "$$' is ": {
-  "es": "$$' es",
-  "fr": "$$' est",
-  "it": "$$' \u00e8",
-  "de": "$$' ist",
-  "nl": "$$' is",
-  "pt": "$$' \u00e9",
-  "sv": "$$' \u00e4r",
-  "fi": "$$' on"
+ "'$$' is": {
+  "es": "'$$' es",
+  "fr": "'$$' est",
+  "it": "'$$' lo \u00e8",
+  "de": "'$$' ist",
+  "nl": "'$$' betekent",
+  "pt": "'$$' \u00e9",
+  "sv": "'$$' \u00e4r",
+  "fi": "'$$' on"
  },
  "]whitelisted": {
   "es": "]En la lista blanca",
@@ -12999,25 +11824,25 @@
   "sv": "urs\u00e4kta IP",
   "fi": "anteeksi IP"
  },
- "$$' is banned": {
-  "es": "$$' est\u00e1 prohibido",
-  "fr": "$$' est interdit",
-  "it": "$$' \u00e8 vietato",
-  "de": "$$' ist verboten",
-  "nl": "$$' is verboden",
-  "pt": "$$' foi banido",
-  "sv": "$$' \u00e4r f\u00f6rbjuden",
-  "fi": "$$' on kielletty"
+ "'$$' is banned": {
+  "es": "'$$' est\u00e1 prohibido",
+  "fr": "'$$' est interdit",
+  "it": "'$$' \u00e8 vietato",
+  "de": "\u201e$$\u201c ist verboten",
+  "nl": "'$$' is verboden",
+  "pt": "'$$' foi banido",
+  "sv": "'$$' \u00e4r f\u00f6rbjuden",
+  "fi": "'$$' on kielletty"
  },
- "$$' is pardoned": {
-  "es": "$$' es perdonado",
-  "fr": "$$' est graci\u00e9",
-  "it": "$$' viene graziato",
-  "de": "$$' wird begnadigt",
-  "nl": "$$' wordt vergeven",
-  "pt": "$$' est\u00e1 perdoado",
-  "sv": "$$' \u00e4r ben\u00e5dad",
-  "fi": "$$' anteeksi"
+ "'$$' is pardoned": {
+  "es": "'$$' es perdonado",
+  "fr": "'$$' est graci\u00e9",
+  "it": "'$$' \u00e8 graziato",
+  "de": "'$$' wird begnadigt",
+  "nl": "'$$' wordt vergeven",
+  "pt": "'$$' est\u00e1 perdoado",
+  "sv": "'$$' \u00e4r ben\u00e5dad",
+  "fi": "'$$' on anteeksi"
  },
  "pardon user": {
   "es": "perdonar usuario",
@@ -13089,25 +11914,15 @@
   "sv": "f\u00f6rem\u00e5l",
   "fi": "kohteita"
  },
- "removed '": {
-  "es": "Eliminado '",
-  "fr": "Supprim\u00e9 '",
-  "it": "RIMOSSO '",
-  "de": "ENTFERNT '",
-  "nl": "VERWIJDERD '",
-  "pt": "Removido '",
-  "sv": "Tog bort '",
-  "fi": "poistettu"
- },
- "' from the queue": {
-  "es": "' de la cola",
-  "fr": "' de la file d'attente",
-  "it": "' dalla coda",
-  "de": "' aus der Warteschlange",
-  "nl": "' uit de rij",
-  "pt": "'da fila",
-  "sv": "' fr\u00e5n k\u00f6n",
-  "fi": "' jonosta"
+ "removed '$$' from the queue": {
+  "es": "Se elimin\u00f3 '$$' de la cola",
+  "fr": "Suppression de '$$' de la file d'attente",
+  "it": "Rimosso '$$' dalla coda",
+  "de": "\u201e$$\u201c wurde aus der Warteschlange entfernt",
+  "nl": "'$$' uit de wachtrij verwijderd",
+  "pt": "'$$' removido da fila",
+  "sv": "Tog bort '$$' fr\u00e5n k\u00f6n",
+  "fi": "Poistettiin '$$' jonosta"
  },
  "no results": {
   "es": "No hay resultados",
@@ -13119,45 +11934,15 @@
   "sv": "Inga resultat",
   "fi": "Ei tuloksia"
  },
- "*.amb": {
-  "es": "*.amb",
-  "fr": "*.amb",
-  "it": "*.amb",
-  "de": "*.amb",
-  "nl": "*.amb",
-  "pt": "*.amb",
-  "sv": "*.amb",
-  "fi": "*.amb"
- },
- "*.tgz": {
-  "es": "*.tgz",
-  "fr": "*.tgz",
-  "it": "*.tgz",
-  "de": "*.tgz",
-  "nl": "*.tgz",
-  "pt": "*.tgz",
-  "sv": "*.tgz",
-  "fi": "*.tgz"
- },
- "update ": {
-  "es": "Actualizar",
-  "fr": "Mise \u00e0 jour",
-  "it": "Aggiornamento",
-  "de": "Aktualisieren",
-  "nl": "Update",
-  "pt": "Atualizar",
-  "sv": "Uppdatering",
-  "fi": "P\u00e4ivitt\u00e4\u00e4"
- },
- "$$' has crashed": {
-  "es": "$$' se ha estrellado",
-  "fr": "$$' s'est \u00e9cras\u00e9",
-  "it": "$$' si \u00e8 bloccato",
-  "de": "$$' ist abgest\u00fcrzt",
-  "nl": "$$' is gecrasht",
-  "pt": "$$' travou",
-  "sv": "$$' har kraschat",
-  "fi": "$$' on kaatunut"
+ "'$$' has crashed": {
+  "es": "'$$' ha fallado",
+  "fr": "'$$' s'est \u00e9cras\u00e9",
+  "it": "\"$$\" si \u00e8 bloccato",
+  "de": "'$$' ist abgest\u00fcrzt",
+  "nl": "'$$' is gecrasht",
+  "pt": "'$$' travou",
+  "sv": "'$$' har kraschat",
+  "fi": "'$$' on kaatunut"
  },
  "are you sure you want to stop and revert '": {
   "es": "\u00bfEst\u00e1 seguro de que desea detenerse y revertir?",
@@ -13169,7 +11954,7 @@
   "sv": "\u00c4r du s\u00e4ker p\u00e5 att du vill sluta och \u00e5terg\u00e5 '",
   "fi": "Oletko varma, ett\u00e4 haluat pys\u00e4hty\u00e4 ja palata"
  },
- "' to ": {
+ "' to": {
   "es": "' a",
   "fr": "' \u00e0",
   "it": "' A",
@@ -13239,7 +12024,7 @@
   "sv": "ServerSeedInput",
   "fi": "ServerSeedInput"
  },
- "bedrock support ": {
+ "bedrock support": {
   "es": "Soporte de roca",
   "fr": "Support rocheux",
   "it": "Supporto roccioso",
@@ -13289,7 +12074,7 @@
   "sv": "Addon Button",
   "fi": "AddonButton"
  },
- " (whitelist)": {
+ "(whitelist)": {
   "es": "(lista blanca)",
   "fr": "(liste blanche)",
   "it": "(lista bianca)",
@@ -13310,14 +12095,14 @@
   "fi": "Palvelinpainike"
  },
  "taskbarbutton (": {
-  "de": "TaskbarButton (",
   "es": "Bot\u00f3n de la barra de tareas (",
   "fr": "Bouton de la barre des t\u00e2ches (",
   "it": "Pulsante della barra delle applicazioni (",
+  "de": "TaskbarButton (",
   "nl": "TaakbalkKnop (",
+  "pt": "Bot\u00e3o da barra de tarefas (",
   "sv": "Aktivitetsf\u00e4ltsknapp (",
-  "fi": "Teht\u00e4v\u00e4palkin painike (",
-  "pt": "Bot\u00e3o da barra de tarefas ("
+  "fi": "Teht\u00e4v\u00e4palkin painike ("
  },
  "launching '": {
   "es": "Lanzamiento '",
@@ -13341,13 +12126,13 @@
  },
  "backupbutton": {
   "es": "Bot\u00f3n de copia de seguridad",
+  "fr": "Bouton de sauvegarde",
   "it": "Pulsante Backup",
   "de": "BackupButton",
   "nl": "Back-upknop",
   "pt": "Bot\u00e3o Backup",
   "sv": "Backup-knapp",
-  "fi": "Backup Button",
-  "fr": "Bouton de sauvegarde"
+  "fi": "Backup Button"
  },
  "can't disable while the server is running": {
   "es": "No se puede desactivar mientras el servidor se est\u00e1 ejecutando.",
@@ -13359,7 +12144,7 @@
   "sv": "kan inte inaktivera medan servern k\u00f6rs",
   "fi": "ei voi poistaa k\u00e4yt\u00f6st\u00e4 palvelimen ollessa k\u00e4ynniss\u00e4"
  },
- "' is now ": {
+ "' is now": {
   "es": "' es ahora",
   "fr": "' est maintenant",
   "it": "' \u00e8 ora",
@@ -13379,7 +12164,7 @@
   "sv": "mono-kursiv",
   "fi": "yksikursivoinen"
  },
- "ngrok was ": {
+ "ngrok was": {
   "es": "ngrok era",
   "fr": "ngrok \u00e9tait",
   "it": "ngrok era",
@@ -13399,55 +12184,45 @@
   "sv": "Nedgradering kan skada spara filen och krascha tills den ers\u00e4tts.\n\nVill du verkligen nedgradera?",
   "fi": "Vanheneminen voi vahingoittaa tallennustiedostoa ja kaatua, kunnes se korvataan.\n\nHaluatko todella alentaa luokitusta?"
  },
- "added '": {
-  "es": "Agregado '",
-  "fr": "Ajout\u00e9e '",
-  "it": "Aggiunto '",
-  "de": "Hinzugef\u00fcgt '",
-  "nl": "Toegevoegd '",
-  "pt": "Adicionado '",
-  "sv": "Lagt till '",
-  "fi": "lis\u00e4tty"
+ "added '$$' to the queue": {
+  "es": "Se agreg\u00f3 '$$' a la cola",
+  "fr": "Ajout de '$$' \u00e0 la file d'attente",
+  "it": "Aggiunto \"$$\" alla coda",
+  "de": "\u201e$$\u201c zur Warteschlange hinzugef\u00fcgt",
+  "nl": "'$$' aan de wachtrij toegevoegd",
+  "pt": "Adicionado '$$' \u00e0 fila",
+  "sv": "Lade till '$$' i k\u00f6n",
+  "fi": "'$$' lis\u00e4tty jonoon"
  },
- "' to the queue": {
-  "es": "' a la cola",
-  "fr": "' \u00e0 la file d'attente",
-  "it": "' in coda",
-  "de": "' in die Warteschlange",
-  "nl": "' in de rij",
-  "pt": "'para a fila",
-  "sv": "' till k\u00f6n",
-  "fi": "'jonoon"
- },
- " add-ons to the queue": {
-  "es": "complementos a la cola",
-  "fr": "ajouts \u00e0 la file d'attente",
-  "it": "componenti aggiuntivi in \u200b\u200bcoda",
-  "de": "Add-ons zur Warteschlange",
-  "nl": "toevoegingen aan de wachtrij",
-  "pt": "complementos para a fila",
-  "sv": "till\u00e4gg till k\u00f6n",
-  "fi": "lis\u00e4osia jonoon"
+ "added $$ add-ons to the queue": {
+  "es": "Se agregaron $$ complementos a la cola",
+  "fr": "Ajout de modules compl\u00e9mentaires $$ \u00e0 la file d'attente",
+  "it": "Aggiunti componenti aggiuntivi $$ alla coda",
+  "de": "$$-Add-ons zur Warteschlange hinzugef\u00fcgt",
+  "nl": "$$ add-ons aan de wachtrij toegevoegd",
+  "pt": "Adicionados complementos $$ \u00e0 fila",
+  "sv": "Lade till $$-till\u00e4gg i k\u00f6n",
+  "fi": "Lis\u00e4tty $$ lis\u00e4osia jonoon"
  },
  "imported '": {
-  "sv": "Importerad '",
   "es": "Importado '",
   "fr": "Import\u00e9 '",
   "it": "Importato '",
   "de": "Importiert '",
   "nl": "Ge\u00efmporteerd '",
   "pt": "Importado '",
+  "sv": "Importerad '",
   "fi": "tuotu"
  },
- "imported ": {
-  "fr": "Import\u00e9",
+ "imported": {
   "es": "Importado",
+  "fr": "Import\u00e9",
+  "it": "Importato",
   "de": "Importiert",
   "nl": "Ge\u00efmporteerd",
   "pt": "Importado",
   "sv": "Importerad",
-  "fi": "Tuotu",
-  "it": "Importato"
+  "fi": "Tuotu"
  },
  "popupaddon": {
   "es": "complemento emergente",
@@ -13478,16 +12253,6 @@
   "pt": "permitido",
   "sv": "till\u00e5tet",
   "fi": "sallittu"
- },
- "m ": {
-  "es": "metro",
-  "fr": "m",
-  "it": "M",
-  "de": "M",
-  "nl": "M",
-  "pt": "eu",
-  "sv": "m",
-  "fi": "m"
  },
  "copy username": {
   "es": "Copiar nombre de usuario",
@@ -13559,7 +12324,7 @@
   "sv": "Varning f\u00f6r nedgradering",
   "fi": "Varoitus alempaan versioon"
  },
- " scripts": {
+ "scripts": {
   "es": "guiones",
   "fr": "scripts",
   "it": "script",
@@ -13599,35 +12364,15 @@
   "sv": "skarp",
   "fi": "ter\u00e4v\u00e4"
  },
- "d ": {
-  "es": "d",
-  "fr": "d",
-  "it": "D",
-  "de": "D",
-  "nl": "D",
-  "pt": "d",
-  "sv": "d",
-  "fi": "d"
- },
- "h ": {
-  "es": "h",
-  "fr": "h",
-  "it": "H",
-  "de": "H",
-  "nl": "H",
-  "pt": "h",
-  "sv": "h",
-  "fi": "h"
- },
- "$$' is whitelisted": {
-  "es": "$$' est\u00e1 en la lista blanca",
-  "fr": "$$' est sur liste blanche",
-  "it": "$$' \u00e8 nella lista bianca",
-  "de": "$$' steht auf der Whitelist",
-  "nl": "$$' staat op de witte lijst",
-  "pt": "$$' est\u00e1 na lista de permiss\u00f5es",
-  "sv": "$$' \u00e4r vitlistad",
-  "fi": "$$' on sallittujen luettelossa"
+ "'$$' is whitelisted": {
+  "es": "'$$' est\u00e1 en la lista blanca",
+  "fr": "'$$' est sur liste blanche",
+  "it": "\"$$\" \u00e8 nella lista bianca",
+  "de": "\u201e$$\u201c steht auf der Whitelist",
+  "nl": "'$$' staat op de witte lijst",
+  "pt": "'$$' est\u00e1 na lista de permiss\u00f5es",
+  "sv": "'$$' \u00e4r vitlistad",
+  "fi": "'$$' on sallittujen luettelossa"
  },
  "copied $$ to clipboard": {
   "es": "Copiado $$ al portapapeles",
@@ -13641,13 +12386,13 @@
  },
  "installed '": {
   "es": "Instalado '",
-  "fr": "Install\u00e9e '",
   "it": "Installato '",
   "de": "Eingerichtet '",
   "nl": "Ge\u00efnstalleerd '",
   "pt": "Instalado '",
   "sv": "Installerad '",
-  "fi": "asennettu'"
+  "fi": "asennettu'",
+  "fr": "Install\u00e9e '"
  },
  "installed successfully": {
   "es": "instalado correctamente",
@@ -13700,14 +12445,14 @@
   "fi": "T\u00e4lle lis\u00e4osalle ei ole saatavilla tietoja"
  },
  "month": {
-  "es": "mes",
+  "fi": "kuukausi",
   "fr": "mois",
   "it": "mese",
   "de": "Monat",
   "nl": "maand",
   "pt": "m\u00eas",
   "sv": "m\u00e5nad",
-  "fi": "kuukausi"
+  "es": "mes"
  },
  "there is no data available for this script": {
   "es": "No hay datos disponibles para este script",
@@ -13800,14 +12545,14 @@
   "fi": "CreateServerAddon"
  },
  "select add-on files (.jar)": {
+  "it": "Seleziona file aggiuntivi (.jar)",
   "es": "Seleccione archivos complementarios (.jar)",
   "fr": "S\u00e9lectionnez les fichiers compl\u00e9mentaires (.jar)",
-  "it": "Seleziona file aggiuntivi (.jar)",
-  "de": "W\u00e4hlen Sie Add-on-Dateien (.jar) aus.",
   "nl": "Selecteer Add-on-bestanden (.jar)",
   "pt": "Selecione arquivos complementares (.jar)",
   "sv": "V\u00e4lj till\u00e4ggsfiler (.jar)",
-  "fi": "Valitse lis\u00e4tiedostot (.jar)"
+  "fi": "Valitse lis\u00e4tiedostot (.jar)",
+  "de": "W\u00e4hlen Sie Add-on-Dateien (.jar) aus."
  },
  "select amscripts (.ams)": {
   "es": "Seleccione amscripts (.ams)",
@@ -13820,23 +12565,13 @@
   "fi": "Valitse amscripts (.ams)"
  },
  "createserverreview": {
+  "it": "CreaRevisioneServer",
   "es": "Crear revisi\u00f3n del servidor",
   "fr": "CreateServerReview",
-  "it": "CreaRevisioneServer",
-  "de": "ServerReview erstellen",
   "nl": "Maak ServerReview",
   "pt": "CriarServerRevis\u00e3o",
   "sv": "CreateServerReview",
-  "fi": "CreateServerReview"
- },
- "*.ams": {
-  "es": "*.ams",
-  "fr": "*.ams",
-  "it": "*.ams",
-  "de": "*.ams",
-  "nl": "*.am",
-  "pt": "*.ams",
-  "sv": "*.ams",
-  "fi": "*.ams"
+  "fi": "CreateServerReview",
+  "de": "ServerReview erstellen"
  }
 }

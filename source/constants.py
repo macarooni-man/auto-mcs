@@ -310,7 +310,6 @@ available_locales = {
     "Swedish": {"name": 'Suédois', "code": 'sv'},
     "Finnish": {"name": 'Suomen', "code": 'fi'},
 
-
     # Requires special fonts:
 
     # "Chinese": {"name": '中文', "code": 'zh-CN'},
@@ -318,7 +317,8 @@ available_locales = {
     # "Korean": {"name": '한국어', "code": 'ko'},
     # "Arabic": {"name": 'العربية', "code": 'ar'},
     # "Russian": {"name": 'Русский', "code": 'ru'},
-    # "Ukranian": {"name": 'Українська', "code": 'uk'}
+    # "Ukranian": {"name": 'Українська', "code": 'uk'},
+    # "Serbian": {"name": 'Cрпски', "code": 'sr'}
 }
 def get_locale_string(*a):
     for k, v in available_locales.items():
@@ -394,16 +394,10 @@ def translate(text: str):
             new_text = re.sub('servidor\.properties', 'server.properties', new_text, re.IGNORECASE)
             new_text = re.sub('servidor\.jar', 'server.jar', new_text, re.IGNORECASE)
             new_text = re.sub('control S', 'Administrar', new_text, re.IGNORECASE)
+        if locale == 'it':
+            new_text = re.sub(r'ESENTATO', 'ESCI', new_text, re.IGNORECASE)
         if locale == 'fr':
             new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, re.IGNORECASE)
-
-
-        # Replace proper noun (rework this to iterate over each match, in case there are multiple
-        if conserve:
-            new_text = new_text.replace('$$', conserve)
-
-        # Remove dollar signs if they are still present for some reason
-        new_text = re.sub(r'\$(.*)\$', '\g<1>', new_text)
 
 
         # Get the spacing in front and after the text
@@ -421,15 +415,23 @@ def translate(text: str):
 
         # Keep case from original text
         if text == text.title():
-            return new_text.title()
+            new_text = new_text.title()
         elif text == text.upper():
-            return new_text.upper()
+            new_text = new_text.upper()
         elif text == text.lower():
-            return new_text.lower()
+            new_text = new_text.lower()
         elif text.strip() == text[0].strip().upper() + text[1:].strip().lower():
-            return new_text[0].upper() + new_text[1:].lower()
-        else:
-            return new_text
+            new_text = new_text[0].upper() + new_text[1:].lower()
+
+
+        # Replace proper noun (rework this to iterate over each match, in case there are multiple
+        if conserve:
+            new_text = new_text.replace('$$', conserve)
+
+        # Remove dollar signs if they are still present for some reason
+        new_text = re.sub(r'\$(.*)\$', '\g<1>', new_text)
+
+        return new_text
 
     # If not, return original text
     else:
@@ -556,6 +558,7 @@ rm \"{os.path.join(tempDir, script_name)}\""""
 # Restarts and updates auto-mcs by dynamically generating script
 def restart_update_app(*a):
     executable = os.path.basename(launch_path)
+    new_version = update_data['version']
     script_name = 'auto-mcs-update'
     update_log = os.path.join(tempDir, 'update-log')
     folder_check(tempDir)
@@ -582,7 +585,7 @@ timeout /t 3 /nobreak
 
 copy /b /v /y "{os.path.join(downDir, 'auto-mcs.exe')}" "{launch_path}"
 if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
-    echo banner-success@{translate("auto-mcs was updated to v" + update_data['version'] + ' successfully!')} > "{update_log}"
+    echo banner-success@{translate(f"auto-mcs was updated to v${new_version}$ successfully!")} > "{update_log}"
 ) else (
     echo banner-failure@{translate("Something went wrong with the update")} > "{update_log}"
 )
@@ -614,7 +617,7 @@ hdiutil mount "{dmg_path}"
 rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(launch_path), '../..')}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@{translate("auto-mcs was updated to v" + update_data['version'] + ' successfully!')} > "{update_log}"
+    echo banner-success@{translate(f"auto-mcs was updated to v${new_version}$ successfully!")} > "{update_log}"
 else
     echo banner-failure@{translate("Something went wrong with the update")} > "{update_log}"
 fi
@@ -649,7 +652,7 @@ sleep 2
 /bin/cp -rf "{os.path.join(downDir, 'auto-mcs')}" "{launch_path}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@{translate("auto-mcs was updated to v" + update_data['version'] + ' successfully!')} > "{update_log}"
+    echo banner-success@{translate(f"auto-mcs was updated to v${new_version}$ successfully!")} > "{update_log}"
 else
     echo banner-failure@{translate("Something went wrong with the update")} > "{update_log}"
 fi
