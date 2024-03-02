@@ -12470,14 +12470,14 @@
   "fi": "ServerImportBackupInput"
  },
  "select an auto-mcs back-up file": {
-  "es": "Seleccione un archivo de respaldo de Auto-MCS",
-  "fr": "S\u00e9lectionnez un fichier de sauvegarde Auto-MCS",
-  "it": "Seleziona un file di backup Auto-MCS",
-  "de": "W\u00e4hlen Sie eine Auto-MCS-Sicherungsdatei aus",
-  "nl": "Selecteer een Auto-MCS-back-upbestand",
-  "pt": "Selecione um arquivo de backup do Auto-MCS",
-  "sv": "V\u00e4lj en Auto-MCS-backup-fil",
-  "fi": "Valitse Auto-MCS-varmuuskopiotiedosto"
+  "es": "Seleccione un archivo de respaldo de auto-mcs",
+  "fr": "S\u00e9lectionnez un fichier de sauvegarde auto-mcs",
+  "it": "Seleziona un file di backup auto-mcs",
+  "de": "W\u00e4hlen Sie eine auto-mcs-Sicherungsdatei aus",
+  "nl": "Selecteer een auto-mcs-back-upbestand",
+  "pt": "Selecione um arquivo de backup do auto-mcs",
+  "sv": "V\u00e4lj en auto-mcs-backup-fil",
+  "fi": "Valitse auto-mcs-varmuuskopiotiedosto"
  },
  "read": {
   "es": "leer",
