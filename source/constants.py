@@ -341,7 +341,6 @@ def translate(text: str):
 
     # Searches locale_data for string
     def search_data(s, *a):
-        print(s.strip().lower())
         try:
             return locale_data[s.strip().lower()][locale]
         except KeyError:

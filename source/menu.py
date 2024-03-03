@@ -10775,7 +10775,7 @@ class CreateServerAclScreen(MenuBackground):
         def show_controls():
 
             controls_text = """This menu shows enabled rules from files like 'ops.json', and disabled rules as others who have joined. Global rules are applied to every server. Rules can be modified in a few different ways:
-            
+
 • Right-click a rule to view, and see more options
 
 • Left-click a rule to toggle permission

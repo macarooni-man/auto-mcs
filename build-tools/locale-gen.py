@@ -49,7 +49,7 @@ for script in glob(os.path.join(source_dir, '*.py')):
                     continue
 
                 if '$' not in string:
-                    if re.search(r'^(http|\!|\#|\.|\&|\-|\[\^|\[\/|\/|\\|\*|\@)', string) or re.search(r'(?=.*)(\.txt|\.png|\.json|\.ini$)', string):
+                    if re.search(r'^(http|\!|\#|\.|\&|\-|\[\^|\[\/|\/|\\|\*|\@)', string) or re.search(r'(\.txt|\.png|\.json|\.ini)$', string):
                         continue
                     if string.count('%') > 2:
                         continue
@@ -120,7 +120,7 @@ for x, string in enumerate(all_terms, 1):
         print(f'[ {progress}% ]  Translating "{string}"')
     except UnicodeEncodeError:
         print(f'[ {progress}% ]  Translating <not shown: unicode error>')
-        
+
     def process_locale(code, *a):
         if code == 'en':
             return
