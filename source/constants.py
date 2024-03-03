@@ -341,6 +341,7 @@ def translate(text: str):
 
     # Searches locale_data for string
     def search_data(s, *a):
+        print(s.strip().lower())
         try:
             return locale_data[s.strip().lower()][locale]
         except KeyError:
@@ -350,11 +351,11 @@ def translate(text: str):
 
 
     # Extract proper noun if present with flag
-    conserve = ''
+    conserve = []
     if text.count('$') >= 2:
-        dollar_pattern = re.compile(r'(?<=\$)(.*)(?=\$)')
-        conserve = re.search(dollar_pattern, text).group(1)
-        text = re.sub(dollar_pattern, '', text)
+        dollar_pattern = re.compile(r'\$([^\$]+)\$')
+        conserve = [i for i in re.findall(dollar_pattern, text)]
+        text = re.sub(dollar_pattern, '$$', text)
 
 
     # First, attempt to get translation through locale_data directly
@@ -425,11 +426,11 @@ def translate(text: str):
 
 
         # Replace proper noun (rework this to iterate over each match, in case there are multiple
-        if conserve:
-            new_text = new_text.replace('$$', conserve)
+        for match in conserve:
+            new_text = new_text.replace('$$', match, 1)
 
         # Remove dollar signs if they are still present for some reason
-        new_text = re.sub(r'\$(.*)\$', '\g<1>', new_text)
+        new_text = re.sub(r'\$([^\$]+)\$', '\g<1>', new_text)
 
         return new_text
 

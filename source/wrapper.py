@@ -118,14 +118,20 @@ if __name__ == '__main__':
 
 
     # Get default system language
-    from locale import getdefaultlocale
-    system_locale = getdefaultlocale()[0]
-    if '_' in system_locale:
-        system_locale = system_locale.split('_')[0]
-    for v in constants.available_locales.values():
-        if system_locale.startswith(v['code']):
-            constants.locale = v['code']
-            break
+    try:
+        if constants.os_name == 'macos':
+            system_locale = constants.run_proc("osascript -e 'user locale of (get system info)'", True)
+        else:
+            from locale import getdefaultlocale
+            system_locale = getdefaultlocale()[0]
+        if '_' in system_locale:
+            system_locale = system_locale.split('_')[0]
+        for v in constants.available_locales.values():
+            if system_locale.startswith(v['code']):
+                constants.locale = v['code']
+                break
+    except Exception as e:
+        print(f'Failed to determine locale: {e}')
 
 
     import main

@@ -147,7 +147,7 @@ def scale_size(obj, o, n, *a):
             obj.font_size = obj.__o_size__ - new_size
 def filter_text(string):
     if isinstance(string, str) and "$" in string:
-        return re.sub(r'\$(.*)\$', '\g<1>', string)
+        return re.sub(r'\$([^\$]+)\$', '\g<1>', string)
     else:
         return string
 class Label(Label):
@@ -7293,9 +7293,9 @@ def button_action(button_name, button, specific_screen=''):
                                 else:
                                     addon_name = addon.name[:23] + "..."
 
-                                banner_text = f"Imported '{addon_name}'"
+                                banner_text = f"Imported '${addon_name}$'"
                             else:
-                                banner_text = f"Imported {len(selection)} add-ons"
+                                banner_text = f"Imported ${len(selection)}$ add-ons"
 
                     if banner_text:
 
@@ -7360,9 +7360,9 @@ def button_action(button_name, button, specific_screen=''):
                                 else:
                                     script_name = script.title[:23] + "..."
 
-                                banner_text = f"Imported '{script_name}'"
+                                banner_text = f"Imported '${script_name}$'"
                             else:
-                                banner_text = f"Imported {len(selection)} scripts"
+                                banner_text = f"Imported ${len(selection)}$ scripts"
 
                     if banner_text:
 
@@ -12390,11 +12390,11 @@ class ServerImportProgressScreen(ProgressScreen):
                 final = original
             self.progress_bar.update_progress(final)
 
-
+        import_name = constants.import_data['name']
         self.page_contents = {
 
             # Page name
-            'title': f"Importing '{constants.import_data['name']}'",
+            'title': f"Importing '{import_name}'",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -12410,7 +12410,7 @@ class ServerImportProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(open_server, constants.import_data['name'], True, f"'{constants.import_data['name']}' was imported successfully"),
+            'after_function': functools.partial(open_server, import_name, True, f"'${import_name}$' was imported successfully"),
 
             # Screen to go to after complete
             'next_screen': None
@@ -12504,12 +12504,13 @@ class ServerImportModpackProgressScreen(ProgressScreen):
                 constants.folder_check(constants.tmpsvr)
 
         def after_func(*args):
+            import_name = constants.import_data['name']
             server_path = os.path.join(constants.serverDir, constants.import_data['name'])
             read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower() and 'me' in f.lower()]
             if read_me:
                 with open(read_me[0], 'r') as f:
                     read_me = f.read()
-            open_server(constants.import_data['name'], True, f"'{constants.import_data['name']}' was imported successfully", show_readme=read_me)
+            open_server(constants.import_data['name'], True, f"'${import_name}$' was imported successfully", show_readme=read_me)
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -13398,11 +13399,16 @@ class ServerManagerScreen(MenuBackground):
         if server_name in constants.server_manager.running_servers:
             constants.server_manager.running_servers[server_name].favorite = bool_favorite
 
+        if bool_favorite:
+            banner_message = f"'${server_name}$' marked as favorite"
+        else:
+            banner_message = f"'${server_name}$' is no longer marked as favorite"
+
         Clock.schedule_once(
             functools.partial(
                 screen_manager.current_screen.show_banner,
                 (0.85, 0.65, 1, 1) if bool_favorite else (0.68, 0.68, 1, 1),
-                f"'${server_name}$'" + (" marked as favorite" if bool_favorite else " is no longer marked as favorite"),
+                banner_message,
                 "heart-sharp.png" if bool_favorite else "heart-dislike-outline.png",
                 2,
                 {"center_x": 0.5, "center_y": 0.965}
@@ -16398,6 +16404,7 @@ class BackupButton(HoverButton):
 
         # Title of Server
         self.title = Label()
+        self.title.__translate__ = False
         self.title.id = "title"
         self.title.halign = "left"
         self.title.color = self.color_id[1]
@@ -16426,6 +16433,7 @@ class BackupButton(HoverButton):
 
         # Index label
         self.index_label = Label()
+        self.index_label.__translate__ = False
         self.index_label.id = "index_label"
         self.index_label.halign = "center"
         self.index_label.color = self.color_id[1]
@@ -16470,6 +16478,7 @@ class BackupButton(HoverButton):
 
         def TemplateLabel():
             template_label = AlignLabel()
+            template_label.__translate__ = False
             template_label.halign = "right"
             template_label.valign = "middle"
             template_label.text_size = template_label.size
@@ -16597,7 +16606,7 @@ class ServerBackupRestoreScreen(MenuBackground):
                         screen_manager.current_screen.show_popup(
                             "query",
                             "Restore Back-up",
-                            f"Are you sure you want to revert '{backup_obj.name}' to {backup_obj.date}?\n\nThis action can't be undone",
+                            f"Are you sure you want to revert '${backup_obj.name}$' to ${backup_obj.date}$?\n\nThis action can't be undone",
                             [None, functools.partial(Clock.schedule_once, functools.partial(restore_screen, backup_obj, False), 0.25)]
                         )
 
@@ -17187,7 +17196,7 @@ class AddonListButton(HoverButton):
                         functools.partial(
                             screen_manager.current_screen.show_banner,
                             (1, 0.5, 0.65, 1),
-                            f"'{self.properties.name}' was uninstalled",
+                            f"'${self.properties.name}$' was uninstalled",
                             "trash-sharp.png",
                             2.5,
                             {"center_x": 0.5, "center_y": 0.965}
@@ -17203,7 +17212,7 @@ class AddonListButton(HoverButton):
                 functools.partial(
                     screen_manager.current_screen.show_popup,
                     "warning_query",
-                    f'Uninstall {self.properties.name}',
+                    f'Uninstall ${self.properties.name}$',
                     "Do you want to permanently uninstall this add-on?\n\nYou'll need to re-import or download it again",
                     (None, functools.partial(reprocess_page))
                 ),
@@ -17621,11 +17630,16 @@ class ServerAddonScreen(MenuBackground):
                         )
 
                     else:
+                        if addon.enabled:
+                            banner_text = f"'${addon_name}$' is now disabled"
+                        else:
+                            banner_text = f"'${addon_name}$' is now enabled"
+
                         Clock.schedule_once(
                             functools.partial(
                                 self.show_banner,
                                 (1, 0.5, 0.65, 1) if addon.enabled else (0.553, 0.902, 0.675, 1),
-                                f"'{addon_name}' is now {'disabled' if addon.enabled else 'enabled'}",
+                                banner_text,
                                 "close-circle-sharp.png" if addon.enabled else "checkmark-circle-sharp.png",
                                 2.5,
                                 {"center_x": 0.5, "center_y": 0.965}
@@ -17974,7 +17988,7 @@ class ServerAddonSearchScreen(MenuBackground):
                                             functools.partial(
                                                 self.show_banner,
                                                 (1, 0.5, 0.65, 1),
-                                                f"'{addon_name}' was uninstalled",
+                                                f"'${addon_name}$' was uninstalled",
                                                 "trash-sharp.png",
                                                 2.5,
                                                 {"center_x": 0.5, "center_y": 0.965}
@@ -18568,7 +18582,7 @@ class AmscriptListButton(HoverButton):
                             functools.partial(
                                 screen_manager.current_screen.show_banner,
                                 (1, 0.5, 0.65, 1),
-                                f"'{self.properties.name}' was uninstalled",
+                                f"'${self.properties.name}$' was uninstalled",
                                 "trash-sharp.png",
                                 2.5,
                                 {"center_x": 0.5, "center_y": 0.965}
@@ -18583,7 +18597,7 @@ class AmscriptListButton(HoverButton):
                     functools.partial(
                         screen_manager.current_screen.show_popup,
                         "warning_query",
-                        f'Uninstall {self.properties.name}',
+                        f'Uninstall ${self.properties.name}$',
                         "Uninstalling this script will render it unavailable for every server.\n\nDo you want to permanently uninstall this script?",
                         (None, functools.partial(reprocess_page))
                     ),
@@ -18919,11 +18933,16 @@ class ServerAmscriptScreen(MenuBackground):
                             ), 0
                         )
                     else:
+                        if script.enabled:
+                            banner_text = f"'${script_name}$' is now disabled"
+                        else:
+                            banner_text = f"'${script_name}$' is now enabled"
+
                         Clock.schedule_once(
                             functools.partial(
                                 self.show_banner,
                                 (1, 0.5, 0.65, 1) if script.enabled else (0.553, 0.902, 0.675, 1),
-                                f"'{script_name}' is now {'disabled' if script.enabled else 'enabled'}",
+                                banner_text,
                                 "close-circle-sharp.png" if script.enabled else "checkmark-circle-sharp.png",
                                 2.5,
                                 {"center_x": 0.5, "center_y": 0.965}
@@ -19256,7 +19275,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
                                             functools.partial(
                                                 self.show_banner,
                                                 (1, 0.5, 0.65, 1),
-                                                f"'{script_name}' was uninstalled",
+                                                f"'${script_name}$' was uninstalled",
                                                 "trash-sharp.png",
                                                 2.5,
                                                 {"center_x": 0.5, "center_y": 0.965}
@@ -21454,7 +21473,7 @@ class MigrateServerVersionScreen(MenuBackground):
 
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.57}))
             float_layout.add_widget(page_counter(2, 2, (0, 0.77)))
-            float_layout.add_widget(HeaderText("What version of Minecraft would you like to switch to?", f'Current version:  {server_obj.version}', (0, 0.8)))
+            float_layout.add_widget(HeaderText("What version of Minecraft would you like to switch to?", f'Current version:  ${server_obj.version}$', (0, 0.8)))
             self.final_button = WaitButton("Change 'server.jar'", (0.5, 0.24), 'swap-horizontal-outline.png', click_func=migrate_server)
             float_layout.add_widget(ServerVersionInput(pos_hint={"center_x": 0.5, "center_y": 0.49}, text=constants.new_server_info['version'], enter_func=migrate_server))
             self.add_widget(self.final_button)
@@ -21477,15 +21496,23 @@ class MigrateServerProgressScreen(ProgressScreen):
         if constants.new_server_info['type'] != server_obj.type:
             desc_text = "Migrating"
             final_text = "Migrated"
+            "migrating '$$'"
+            "migrated '$$' successfully"
         elif constants.version_check(constants.new_server_info['version'], '<', server_obj.version):
             desc_text = "Downgrading"
             final_text = "Downgraded"
+            "downgrading '$$'"
+            "downgraded '$$' successfully"
         elif constants.version_check(constants.new_server_info['version'], '>', server_obj.version) or server_obj.update_string.startswith('b-'):
             desc_text = "Updating"
             final_text = "Updated"
+            "updating '$$'"
+            "updated '$$' successfully"
         else:
             desc_text = "Reinstalling"
             final_text = "Reinstalled"
+            "reinstalling '$$'"
+            "reinstalled '$$' successfully"
 
         def before_func(*args):
 
@@ -21870,9 +21897,9 @@ class MainApp(App):
                                 else:
                                     addon_name = addon.name[:23] + "..."
 
-                                banner_text = f"Imported '{addon_name}'"
+                                banner_text = f"Imported '${addon_name}$'"
                             else:
-                                banner_text = f"Imported {len(self.dropped_files)} add-ons"
+                                banner_text = f"Imported ${len(self.dropped_files)}$ add-ons"
 
                     if banner_text:
 
@@ -21925,9 +21952,9 @@ class MainApp(App):
                                     else:
                                         script_name = script.title[:23] + "..."
 
-                                    banner_text = f"Imported '{script_name}'"
+                                    banner_text = f"Imported '${script_name}$'"
                                 else:
-                                    banner_text = f"Imported {len(self.dropped_files)} scripts"
+                                    banner_text = f"Imported ${len(self.dropped_files)}$ scripts"
 
                         if banner_text:
 

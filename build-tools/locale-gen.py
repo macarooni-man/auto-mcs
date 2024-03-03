@@ -76,14 +76,15 @@ for script in glob(os.path.join(source_dir, '*.py')):
                     continue
                 if not string.strip():
                     continue
-                if not re.sub('[^a-zA-Z0-9]', '', string):
+                if not re.sub('[^a-zA-Z0-9$]', '', string):
                     continue
-                if len(re.sub('[a-zA-Z0-9 ]', '', string)) > len(re.sub('[^a-zA-Z0-9 ]', '', string)):
-                    continue
+                if string.count('$') < 2 and string.strip() != '$':
+                    if len(re.sub('[a-zA-Z0-9 ]', '', string)) > len(re.sub('[^a-zA-Z0-9 ]', '', string)):
+                        continue
 
 
                 # Get a unique list of strings
-                if string not in all_terms:
+                if string not in all_terms or '$' in string:
 
                     # Concatenate dollar sign markers for word replacement
                     if '$' in string and node.lineno == last_line and '$' in all_terms[-1]:
@@ -135,6 +136,6 @@ for x, string in enumerate(all_terms, 1):
 
     with ThreadPoolExecutor(max_workers=20) as pool:
         pool.map(process_locale, locale_codes)
-
+        
 with open(locale_file, "w") as f:
     f.write(json.dumps(locale_data))
