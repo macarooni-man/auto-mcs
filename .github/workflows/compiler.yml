@@ -54,6 +54,7 @@ jobs:
         run: |
           root=$(pwd)
           cd build-tools
+          mkdir -p /Users/runner/Library/Fonts
           chmod +x build-macos.sh
           sudo ./build-macos.sh
           chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
