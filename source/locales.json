@@ -1,13 +1,13 @@
 {
  "name": {
   "fr": "nom",
+  "it": "nome",
   "es": "nombre",
   "de": "Name",
   "nl": "naam",
   "pt": "nome",
   "sv": "namn",
-  "fi": "nimi",
-  "it": "nome"
+  "fi": "nimi"
  },
  "version": {
   "es": "versi\u00f3n",
@@ -322,12 +322,12 @@
  "servername": {
   "es": "nombre del servidor",
   "fr": "nom du serveur",
+  "it": "nome del server",
   "de": "Servername",
   "nl": "server naam",
   "pt": "nome do servidor",
   "sv": "server namn",
-  "fi": "palvelimen nimi",
-  "it": "nome del server"
+  "fi": "palvelimen nimi"
  },
  "serverversion": {
   "es": "versi\u00f3n del servidor",
@@ -550,14 +550,14 @@
   "fi": "arvo"
  },
  "w+": {
-  "nl": "w+",
   "es": "w+",
   "fr": "w+",
   "it": "w+",
   "de": "w+",
+  "nl": "w+",
+  "pt": "c+",
   "sv": "w+",
-  "fi": "w+",
-  "pt": "c+"
+  "fi": "w+"
  },
  "ips": {
   "es": "ips",
@@ -1951,13 +1951,13 @@
  },
  "braceright": {
   "es": "braceright",
-  "fr": "bracedroit",
   "it": "braceright",
   "de": "braceright",
   "nl": "goed",
   "pt": "chave direita",
   "sv": "braceright",
-  "fi": "bracerright"
+  "fi": "bracerright",
+  "fr": "bracedroit"
  },
  "%s+%sc": {
   "es": "%s+%sc",
@@ -2361,13 +2361,13 @@
  },
  "max-backup": {
   "es": "copia de seguridad m\u00e1xima",
+  "fr": "sauvegarde maximale",
   "it": "backup massimo",
   "de": "max-backup",
   "nl": "max-back-up",
   "pt": "backup m\u00e1ximo",
   "sv": "max-backup",
-  "fi": "max-varmuuskopio",
-  "fr": "sauvegarde maximale"
+  "fi": "max-varmuuskopio"
  },
  "latest-backup": {
   "es": "\u00faltima copia de seguridad",
@@ -2721,13 +2721,13 @@
  },
  "t": {
   "es": "t",
+  "fr": "T",
   "it": "T",
   "de": "T",
   "nl": "T",
   "pt": "T",
   "sv": "T",
-  "fi": "T",
-  "fr": "T"
+  "fi": "T"
  },
  "del /q /s /f *": {
   "es": "del /q /s /f *",
@@ -2740,14 +2740,14 @@
   "fi": "del /q /s /f *"
  },
  "backups": {
-  "fi": "Varmuuskopiot",
+  "es": "Copias de seguridad",
   "fr": "Sauvegardes",
   "it": "Backup",
   "de": "Backups",
   "nl": "Back-ups",
   "pt": "C\u00f3pias de seguran\u00e7a",
   "sv": "S\u00e4kerhetskopieringar",
-  "es": "Copias de seguridad"
+  "fi": "Varmuuskopiot"
  },
  "serverbuild": {
   "es": "servidorConstruir",
@@ -4090,14 +4090,14 @@
   "fi": "Palvelimen hallinta"
  },
  "create server (step 1)": {
-  "fi": "Luo palvelin (vaihe 1)",
   "es": "Crear servidor (paso 1)",
+  "fr": "Cr\u00e9er un serveur (\u00e9tape 1)",
   "it": "Crea server (passaggio 1)",
   "de": "Server erstellen (Schritt 1)",
   "nl": "Server maken (stap 1)",
   "pt": "Criar servidor (etapa 1)",
   "sv": "Skapa server (steg 1)",
-  "fr": "Cr\u00e9er un serveur (\u00e9tape 1)"
+  "fi": "Luo palvelin (vaihe 1)"
  },
  "create server (step 2)": {
   "es": "Crear servidor (paso 2)",
@@ -4200,14 +4200,14 @@
   "fi": "Back-up Manager"
  },
  "access control": {
-  "nl": "Toegangscontrole",
   "es": "Control de acceso",
   "fr": "Contr\u00f4le d'acc\u00e8s",
   "it": "Controllo di accesso",
   "de": "Zugangskontrolle",
+  "nl": "Toegangscontrole",
+  "pt": "Controle de acesso",
   "sv": "\u00c5tkomstkontroll",
-  "fi": "Kulunvalvonta",
-  "pt": "Controle de acesso"
+  "fi": "Kulunvalvonta"
  },
  "add-on manager": {
   "es": "Administrador de complementos",
@@ -5830,14 +5830,14 @@
   "fi": "vsync"
  },
  "mouse": {
+  "nl": "muis",
   "es": "rat\u00f3n",
   "fr": "souris",
   "it": "topo",
   "de": "Maus",
-  "nl": "muis",
-  "pt": "rato",
   "sv": "mus",
-  "fi": "hiiri"
+  "fi": "hiiri",
+  "pt": "rato"
  },
  "hidden": {
   "es": "oculto",
@@ -6650,14 +6650,14 @@
   "fi": "oletuksena"
  },
  "modify server configuration": {
-  "it": "Modifica la configurazione del server",
   "es": "Modificar la configuraci\u00f3n del servidor",
   "fr": "Modifier la configuration du serveur",
+  "it": "Modifica la configurazione del server",
+  "de": "Serverkonfiguration \u00e4ndern",
   "nl": "Wijzig de serverconfiguratie",
   "pt": "Modificar configura\u00e7\u00e3o do servidor",
   "sv": "\u00c4ndra serverkonfigurationen",
-  "fi": "Muokkaa palvelimen asetuksia",
-  "de": "Serverkonfiguration \u00e4ndern"
+  "fi": "Muokkaa palvelimen asetuksia"
  },
  "error.log": {
   "es": "registro de errores",
@@ -6675,7 +6675,7 @@
   "it": "Titolo",
   "de": "\u00dcberschrift",
   "nl": "Koptekst",
-  "pt": "Cabe\u00e7alhoTexto",
+  "pt": "Texto do cabe\u00e7alho",
   "sv": "Rubrik",
   "fi": "Otsikkoteksti"
  },
@@ -7060,14 +7060,14 @@
   "fi": "Tapahtui ongelma. Yrit\u00e4 my\u00f6hemmin uudelleen"
  },
  "initializing, please wait...": {
-  "it": "Inizializzazione in corso, attendere...",
   "es": "Inicializando, espere...",
   "fr": "Initialisation, veuillez patienter...",
+  "it": "Inizializzazione in corso, attendere...",
+  "de": "Initialisierung, bitte warten...",
   "nl": "Initialiseren, even geduld a.u.b....",
   "pt": "Inicializando, aguarde...",
   "sv": "Initierar, v\u00e4nta...",
-  "fi": "Alustetaan, odota...",
-  "de": "Initialisierung, bitte warten..."
+  "fi": "Alustetaan, odota..."
  },
  "reboot-msg": {
   "es": "mensaje de reinicio",
@@ -7990,14 +7990,14 @@
   "fi": "Hallitse Auto-MCS-palvelimia"
  },
  "update complete! restarting...": {
-  "pt": "Atualiza\u00e7\u00e3o completa! Reiniciando...",
   "es": "\u00a1Actualizacion completa! Reiniciando...",
   "fr": "Mise \u00e0 jour termin\u00e9e! Red\u00e9marrage...",
   "it": "Aggiornamento completato! Riavvio...",
   "de": "Aktualisierung abgeschlossen! Neustart...",
   "nl": "Update compleet! Opnieuw opstarten...",
-  "fi": "P\u00e4ivitys valmis! K\u00e4ynnistet\u00e4\u00e4n uudelleen...",
-  "sv": "Uppdatering klar! Startar om..."
+  "pt": "Atualiza\u00e7\u00e3o completa! Reiniciando...",
+  "sv": "Uppdatering klar! Startar om...",
+  "fi": "P\u00e4ivitys valmis! K\u00e4ynnistet\u00e4\u00e4n uudelleen..."
  },
  "updating auto-mcs": {
   "es": "Actualizaci\u00f3n de auto-mcs",
@@ -8110,14 +8110,14 @@
   "fi": "kokeellinen mod-alusta"
  },
  "fabric": {
+  "it": "tessuto",
   "es": "tela",
   "fr": "tissu",
-  "it": "tessuto",
-  "de": "Stoff",
   "nl": "stof",
   "pt": "tecido",
   "sv": "tyg",
-  "fi": "kangas"
+  "fi": "kangas",
+  "de": "Stoff"
  },
  "view more options": {
   "es": "ver m\u00e1s opciones",
@@ -8329,6 +8329,16 @@
   "sv": "ServerAclTypeInput",
   "fi": "ServerAclTypeInput"
  },
+ "'$$'": {
+  "es": "'$$'",
+  "fr": "'$$'",
+  "it": "'$$'",
+  "de": "'$$'",
+  "nl": "'$$'",
+  "pt": "'$$'",
+  "sv": "'$$'",
+  "fi": "'$$'"
+ },
  "add rules": {
   "es": "Agregar reglas",
   "fr": "Ajouter des r\u00e8gles",
@@ -8430,14 +8440,14 @@
   "fi": "Luo palvelin"
  },
  "creating '$$'": {
-  "pt": "Criando '$$'",
   "es": "Creando '$$'",
   "fr": "Cr\u00e9er '$$'",
   "it": "Creazione di \"$$\"",
   "de": "\u201e$$\u201c erstellen",
   "nl": "'$$' aanmaken",
-  "fi": "Luodaan '$$'",
-  "sv": "Skapar '$$'"
+  "pt": "Criando '$$'",
+  "sv": "Skapar '$$'",
+  "fi": "Luodaan '$$'"
  },
  "downloading 'server.jar'": {
   "es": "Descargando 'servidor.jar'",
@@ -8560,12 +8570,12 @@
   "fi": "tarvitsee p\u00e4ivityksen"
  },
  "]n[/font]": {
-  "pt": "]N[/font]",
   "es": "]N[/fuente]",
   "fr": "]N[/font]",
   "it": "]N[/carattere]",
   "de": "]N[/font]",
   "nl": "]N[/lettertype]",
+  "pt": "]N[/font]",
   "sv": "]N[/font]",
   "fi": "]E[/font]"
  },
@@ -8920,13 +8930,13 @@
   "fi": "auto"
  },
  "install ngrok": {
-  "sv": "Installera Ngrok",
   "es": "Instalar Ngrok",
   "fr": "Installer Ngrok",
   "it": "Installa Ngrok",
   "de": "Installieren Sie Ngrok",
   "nl": "Installeer Ngrok",
   "pt": "Instale o Ngrok",
+  "sv": "Installera Ngrok",
   "fi": "Asenna Ngrok"
  },
  "geyser": {
@@ -9090,14 +9100,14 @@
   "fi": "IconButton"
  },
  "relativelayout": {
+  "it": "Layout relativo",
   "es": "Disposici\u00f3n relativa",
   "fr": "Disposition relative",
-  "it": "Layout relativo",
-  "de": "RelativeLayout",
   "nl": "Relatieve layout",
   "pt": "Esquema relativo",
   "sv": "Relativ layout",
-  "fi": "RelativeLayout"
+  "fi": "RelativeLayout",
+  "de": "RelativeLayout"
  },
  "label": {
   "es": "Etiqueta",
@@ -9220,14 +9230,14 @@
   "fi": "LLBI.otf"
  },
  "gamemode": {
-  "fi": "pelitila",
+  "es": "modo de juego",
   "fr": "mode de jeu",
   "it": "modalit\u00e0 di gioco",
   "de": "Spielmodus",
   "nl": "spelmodus",
   "pt": "modo de jogo",
   "sv": "spell\u00e4ge",
-  "es": "modo de juego"
+  "fi": "pelitila"
  },
  "serverdiffinput": {
   "es": "EntradaDifServidor",
@@ -9530,14 +9540,14 @@
   "fi": "Ei vaikuta"
  },
  "subnet": {
-  "pt": "sub-rede",
   "es": "subred",
   "fr": "sous-r\u00e9seau",
   "it": "sottorete",
   "de": "Subnetz",
   "nl": "subnet",
-  "fi": "aliverkko",
-  "sv": "subn\u00e4t"
+  "pt": "sub-rede",
+  "sv": "subn\u00e4t",
+  "fi": "aliverkko"
  },
  "'$$' is now locally applied": {
   "es": "'$$' ahora se aplica localmente",
@@ -9919,25 +9929,25 @@
   "sv": "s\u00e4kerhetskopiering",
   "fi": "varmuuskopioida"
  },
- "$' was restored to $$": {
-  "es": "$' fue restaurado a $$",
-  "fr": "$' a \u00e9t\u00e9 restaur\u00e9 \u00e0 $$",
-  "it": "$' \u00e8 stato ripristinato in $$",
-  "de": "$' wurde auf $$ zur\u00fcckgesetzt",
-  "nl": "$' is hersteld naar $$",
-  "pt": "$' foi restaurado para $$",
-  "sv": "$' \u00e5terst\u00e4lldes till $$",
-  "fi": "$' palautettiin arvoon $$"
+ "'$$' was restored to $$": {
+  "es": "'$$' fue restaurado a $$",
+  "fr": "'$$' a \u00e9t\u00e9 restaur\u00e9 \u00e0 $$",
+  "it": "\"$$\" \u00e8 stato ripristinato in $$",
+  "de": "'$$' wurde auf $$ zur\u00fcckgesetzt",
+  "nl": "'$$' is hersteld naar $$",
+  "pt": "'$$' foi restaurado para $$",
+  "sv": "'$$' \u00e5terst\u00e4lldes till $$",
+  "fi": "'$$' palautettiin arvoon $$"
  },
  "uninstall add-on": {
-  "fr": "D\u00c9SINSTALLER LE ADD-ON",
   "es": "DESINSTALAR EL COMPLEMENTO",
+  "fr": "D\u00c9SINSTALLER LE ADD-ON",
+  "it": "DISINSTALLA IL COMPONENTE AGGIUNTIVO",
   "de": "ADD-ON DEINSTALLIEREN",
   "nl": "ADVERTENTIE VERWIJDEREN",
   "pt": "DESINSTALAR COMPLEMENTO",
   "sv": "AVINSTALLERA TILL\u00c4GG",
-  "fi": "POISTA LIS\u00c4ASENNUS",
-  "it": "DISINSTALLA IL COMPONENTE AGGIUNTIVO"
+  "fi": "POISTA LIS\u00c4ASENNUS"
  },
  "do you want to permanently uninstall this add-on?\n\nyou'll need to re-import or download it again": {
   "es": "\u00bfQuieres desinstalar permanentemente este complemento?\n\nTendr\u00e1s que volver a importarlo o descargarlo nuevamente.",
@@ -10280,14 +10290,14 @@
   "fi": "alue"
  },
  "warning: failed to focus input box (": {
-  "fi": "Varoitus: Sy\u00f6tt\u00f6ruudun tarkentaminen ep\u00e4onnistui (",
+  "es": "Advertencia: No se pudo enfocar el cuadro de entrada (",
   "fr": "Avertissement\u00a0: \u00c9chec de la mise au point de la zone de saisie (",
   "it": "Avviso: impossibile mettere a fuoco la casella di input (",
   "de": "Warnung: Eingabefeld konnte nicht fokussiert werden (",
   "nl": "Waarschuwing: Kan het invoervak \u200b\u200bniet scherpstellen (",
   "pt": "Aviso: Falha ao focar a caixa de entrada (",
   "sv": "Varning: Det gick inte att fokusera inmatningsrutan (",
-  "es": "Advertencia: No se pudo enfocar el cuadro de entrada ("
+  "fi": "Varoitus: Sy\u00f6tt\u00f6ruudun tarkentaminen ep\u00e4onnistui ("
  },
  "this server already exists!": {
   "es": "\u00a1Este servidor ya existe!",
@@ -10811,13 +10821,13 @@
  },
  "latest back-up": {
   "es": "\u00daltima copia de seguridad",
-  "it": "Ultimo backup",
   "fr": "Derni\u00e8re sauvegarde",
+  "it": "Ultimo backup",
+  "de": "Neuestes Backup",
   "nl": "Laatste back-up",
   "pt": "Backup mais recente",
   "sv": "Senaste s\u00e4kerhetskopian",
-  "fi": "Uusin varmuuskopio",
-  "de": "Neuestes Backup"
+  "fi": "Uusin varmuuskopio"
  },
  "uninstall $$": {
   "es": "Desinstalar $$",
@@ -11190,12 +11200,12 @@
   "fi": "ProgressScreen-virhe vaiheessa"
  },
  "switched language to $$": {
+  "pt": "Idioma alterado para $$",
   "es": "Idioma cambiado a $$",
   "fr": "Langue chang\u00e9e en $$",
   "it": "Ho cambiato lingua in $$",
   "de": "Sprache auf $$ umgestellt",
   "nl": "Taal gewijzigd naar $$",
-  "pt": "Idioma alterado para $$",
   "sv": "Bytte spr\u00e5k till $$",
   "fi": "Kieleksi vaihdettu $$"
  },
@@ -11320,14 +11330,14 @@
   "fi": "anteeksi IP ja k\u00e4ytt\u00e4j\u00e4"
  },
  "ban ip": {
-  "it": "vietare l'IP",
   "es": "prohibir propiedad intelectual",
   "fr": "interdire la propri\u00e9t\u00e9 intellectuelle",
+  "it": "vietare l'IP",
+  "de": "IP verbieten",
   "nl": "IP verbieden",
   "pt": "banir IP",
   "sv": "f\u00f6rbjuda IP",
-  "fi": "kielt\u00e4\u00e4 IP",
-  "de": "IP verbieten"
+  "fi": "kielt\u00e4\u00e4 IP"
  },
  "remove rule": {
   "es": "eliminar regla",
@@ -11490,14 +11500,14 @@
   "fi": "kapasiteettia"
  },
  "connected players": {
-  "nl": "aangesloten spelers",
   "es": "jugadores conectados",
   "fr": "joueurs connect\u00e9s",
   "it": "giocatori connessi",
   "de": "verbundene Spieler",
+  "nl": "aangesloten spelers",
+  "pt": "jogadores conectados",
   "sv": "anslutna spelare",
-  "fi": "yhdistettyj\u00e4 pelaajia",
-  "pt": "jogadores conectados"
+  "fi": "yhdistettyj\u00e4 pelaajia"
  },
  "uh oh, '$$' has crashed": {
   "es": "Uh oh, '$$' se ha bloqueado",
@@ -11641,13 +11651,13 @@
  },
  "amscript engine was restarted successfully": {
   "es": "El motor amscript se reinici\u00f3 exitosamente.",
+  "fr": "Le moteur amscript a \u00e9t\u00e9 red\u00e9marr\u00e9 avec succ\u00e8s",
   "it": "il motore amscript \u00e8 stato riavviato correttamente",
   "de": "Die Amscript-Engine wurde erfolgreich neu gestartet",
   "nl": "amscript-engine is succesvol opnieuw opgestart",
   "pt": "mecanismo amscript foi reiniciado com sucesso",
   "sv": "amscript-motorn startades om",
-  "fi": "amscript-moottori k\u00e4ynnistettiin uudelleen onnistuneesti",
-  "fr": "Le moteur amscript a \u00e9t\u00e9 red\u00e9marr\u00e9 avec succ\u00e8s"
+  "fi": "amscript-moottori k\u00e4ynnistettiin uudelleen onnistuneesti"
  },
  "dis": {
   "es": "dis",
@@ -11690,14 +11700,14 @@
   "fi": "Palvelinmaailmaa on muutettu onnistuneesti"
  },
  "ngrok is a free proxy service that creates a tunnel to the internet. it can be used to bypass isp port blocking or conflicts in which the client refuses to connect (e.g. strict nat).\n\nwould you like to install ngrok?": {
-  "it": "ngrok \u00e8 un servizio proxy gratuito che crea un tunnel verso Internet. Pu\u00f2 essere utilizzato per aggirare il blocco delle porte dell'ISP o i conflitti in cui il client rifiuta di connettersi (ad esempio NAT rigoroso).\n\nDesideri installare ngrok?",
   "es": "ngrok es un servicio proxy gratuito que crea un t\u00fanel hacia Internet. Se puede utilizar para evitar el bloqueo de puertos del ISP o conflictos en los que el cliente se niega a conectarse (por ejemplo, NAT estricta).\n\n\u00bfQuieres instalar ngrok?",
   "fr": "ngrok est un service proxy gratuit qui cr\u00e9e un tunnel vers Internet. Il peut \u00eatre utilis\u00e9 pour contourner le blocage des ports du FAI ou les conflits dans lesquels le client refuse de se connecter (par exemple NAT strict).\n\nSouhaitez-vous installer ngrok\u00a0?",
+  "it": "ngrok \u00e8 un servizio proxy gratuito che crea un tunnel verso Internet. Pu\u00f2 essere utilizzato per aggirare il blocco delle porte dell'ISP o i conflitti in cui il client rifiuta di connettersi (ad esempio NAT rigoroso).\n\nDesideri installare ngrok?",
   "de": "ngrok ist ein kostenloser Proxy-Dienst, der einen Tunnel zum Internet erstellt. Es kann verwendet werden, um ISP-Portblockierungen oder Konflikte zu umgehen, bei denen der Client die Verbindung verweigert (z. B. striktes NAT).\n\nM\u00f6chten Sie ngrok installieren?",
+  "nl": "ngrok is een gratis proxyservice die een tunnel naar internet cre\u00ebert. Het kan worden gebruikt om ISP-poortblokkering of conflicten waarbij de client weigert verbinding te maken (bijvoorbeeld strikte NAT) te omzeilen.\n\nWilt u ngrok installeren?",
   "pt": "ngrok \u00e9 um servi\u00e7o de proxy gratuito que cria um t\u00fanel para a Internet. Ele pode ser usado para contornar bloqueios de portas do ISP ou conflitos nos quais o cliente se recusa a se conectar (por exemplo, NAT estrito).\n\nGostaria de instalar o ngrok?",
   "sv": "ngrok \u00e4r en gratis proxytj\u00e4nst som skapar en tunnel till internet. Den kan anv\u00e4ndas f\u00f6r att kringg\u00e5 ISP-portblockering eller konflikter d\u00e4r klienten v\u00e4grar att ansluta (t.ex. strikt NAT).\n\nVill du installera ngrok?",
-  "fi": "ngrok on ilmainen v\u00e4lityspalvelinpalvelu, joka luo tunnelin Internetiin. Sit\u00e4 voidaan k\u00e4ytt\u00e4\u00e4 ohittamaan Internet-palveluntarjoajan porttien esto tai konfliktit, joissa asiakas kielt\u00e4ytyy muodostamasta yhteytt\u00e4 (esim. tiukka NAT).\n\nHaluatko asentaa ngrokin?",
-  "nl": "ngrok is een gratis proxyservice die een tunnel naar internet cre\u00ebert. Het kan worden gebruikt om ISP-poortblokkering of conflicten waarbij de client weigert verbinding te maken (bijvoorbeeld strikte NAT) te omzeilen.\n\nWilt u ngrok installeren?"
+  "fi": "ngrok on ilmainen v\u00e4lityspalvelinpalvelu, joka luo tunnelin Internetiin. Sit\u00e4 voidaan k\u00e4ytt\u00e4\u00e4 ohittamaan Internet-palveluntarjoajan porttien esto tai konfliktit, joissa asiakas kielt\u00e4ytyy muodostamasta yhteytt\u00e4 (esim. tiukka NAT).\n\nHaluatko asentaa ngrokin?"
  },
  "'$$' was deleted successfully": {
   "es": "'$$' se elimin\u00f3 exitosamente",
@@ -12718,5 +12728,45 @@
   "pt": "CriarServerRevis\u00e3o",
   "sv": "CreateServerReview",
   "fi": "CreateServerReview"
+ },
+ "exec": {
+  "fr": "ex\u00e9cutif",
+  "it": "esecutivo",
+  "es": "ejecutivo",
+  "de": "Gesch\u00e4ftsf\u00fchrer",
+  "nl": "uitvoerend",
+  "pt": "executivo",
+  "sv": "exec",
+  "fi": "exec"
+ },
+ "&\nrm \"": {
+  "es": "&\nrm \"",
+  "fr": "&\n\"",
+  "it": "&\nrm \"",
+  "de": "&\nrm \"",
+  "nl": "&\nrm \"",
+  "pt": "&\nrm\"",
+  "sv": "&\nrm\"",
+  "fi": "&\nrm\""
+ },
+ "error retrieving head for '": {
+  "es": "Error al recuperar el encabezado de '",
+  "fr": "Erreur lors de la r\u00e9cup\u00e9ration de la t\u00eate de '",
+  "it": "Errore durante il recupero dell'intestazione per '",
+  "de": "Fehler beim Abrufen des Headers f\u00fcr \u201e",
+  "nl": "Fout bij ophalen van hoofd voor '",
+  "pt": "Erro ao recuperar o cabe\u00e7alho para '",
+  "sv": "Det gick inte att h\u00e4mta huvudet f\u00f6r '",
+  "fi": "Virhe haettaessa p\u00e4\u00e4t\u00e4 '"
+ },
+ "your primary disk is almost full\n\nfree up space and try again": {
+  "es": "Su disco principal est\u00e1 casi lleno\n\nLibera espacio e int\u00e9ntalo de nuevo",
+  "fr": "Votre disque principal est presque plein\n\nLib\u00e9rez de l'espace et r\u00e9essayez",
+  "it": "Il tuo disco primario \u00e8 quasi pieno\n\nLibera spazio e riprova",
+  "de": "Ihre prim\u00e4re Festplatte ist fast voll\n\nGeben Sie Speicherplatz frei und versuchen Sie es erneut",
+  "nl": "Uw primaire schijf is bijna vol\n\nMaak ruimte vrij en probeer het opnieuw",
+  "pt": "Seu disco principal est\u00e1 quase cheio\n\nLibere espa\u00e7o e tente novamente",
+  "sv": "Din prim\u00e4ra disk \u00e4r n\u00e4stan full\n\nFrig\u00f6r utrymme och f\u00f6rs\u00f6k igen",
+  "fi": "Ensisijainen levysi on melkein t\u00e4ynn\u00e4\n\nVapauta tilaa ja yrit\u00e4 uudelleen"
  }
 }

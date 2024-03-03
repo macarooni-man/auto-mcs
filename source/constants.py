@@ -1,4 +1,4 @@
-from shutil import rmtree, copytree, copy, ignore_patterns, move
+from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
 from random import randrange, choices
 from difflib import SequenceMatcher
@@ -438,6 +438,11 @@ def translate(text: str):
         return re.sub(r'\$(.*)\$', '\g<1>', text)
 
 
+# Returns False if less than 500MB free
+def check_free_space():
+    free_space = round(disk_usage('/').free / 1048576)
+    return free_space > 500
+
 
 # Retrieves the refresh rate of the display to calculate consistent animation speed
 def get_refresh_rate():
@@ -559,6 +564,8 @@ rm \"{os.path.join(tempDir, script_name)}\""""
 def restart_update_app(*a):
     executable = os.path.basename(launch_path)
     new_version = update_data['version']
+    success_str = f"auto-mcs was updated to v${new_version}$ successfully!"
+    failure_str = "Something went wrong with the update"
     script_name = 'auto-mcs-update'
     update_log = os.path.join(tempDir, 'update-log')
     folder_check(tempDir)
@@ -585,9 +592,9 @@ timeout /t 3 /nobreak
 
 copy /b /v /y "{os.path.join(downDir, 'auto-mcs.exe')}" "{launch_path}"
 if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
-    echo banner-success@{translate(f"auto-mcs was updated to v${new_version}$ successfully!")} > "{update_log}"
+    echo banner-success@{success_str} > "{update_log}"
 ) else (
-    echo banner-failure@{translate("Something went wrong with the update")} > "{update_log}"
+    echo banner-failure@{failure_str} > "{update_log}"
 )
 
 start \"\" \"{launch_path}\"
@@ -617,9 +624,9 @@ hdiutil mount "{dmg_path}"
 rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(launch_path), '../..')}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@{translate(f"auto-mcs was updated to v${new_version}$ successfully!")} > "{update_log}"
+    echo banner-success@{success_str} > "{update_log}"
 else
-    echo banner-failure@{translate("Something went wrong with the update")} > "{update_log}"
+    echo banner-failure@{failure_str} > "{update_log}"
 fi
 
 hdiutil unmount /Volumes/auto-mcs
@@ -652,9 +659,9 @@ sleep 2
 /bin/cp -rf "{os.path.join(downDir, 'auto-mcs')}" "{launch_path}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@{translate(f"auto-mcs was updated to v${new_version}$ successfully!")} > "{update_log}"
+    echo banner-success@{success_str} > "{update_log}"
 else
-    echo banner-failure@{translate("Something went wrong with the update")} > "{update_log}"
+    echo banner-failure@{failure_str} > "{update_log}"
 fi
 
 chmod +x "{launch_path}"

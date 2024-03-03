@@ -8609,6 +8609,9 @@ class UpdateAppProgressScreen(ProgressScreen):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
+            elif not constants.check_free_space():
+                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+
 
         def after_func(*args):
             icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
@@ -12187,6 +12190,10 @@ class CreateServerProgressScreen(ProgressScreen):
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+
+            elif not constants.check_free_space():
+                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+
             else:
                 constants.folder_check(constants.tmpsvr)
 
@@ -12377,6 +12384,10 @@ class ServerImportProgressScreen(ProgressScreen):
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+
+            elif not constants.check_free_space():
+                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+
             else:
                 constants.folder_check(constants.tmpsvr)
 
@@ -12500,6 +12511,10 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+
+            elif not constants.check_free_space():
+                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+
             else:
                 constants.folder_check(constants.tmpsvr)
 
@@ -17379,6 +17394,10 @@ class ServerAddonUpdateScreen(ProgressScreen):
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+
+            elif not constants.check_free_space():
+                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+
             else:
                 # Clear folders beforehand
                 constants.safe_delete(constants.tmpsvr)
@@ -21521,6 +21540,10 @@ class MigrateServerProgressScreen(ProgressScreen):
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+
+            elif not constants.check_free_space():
+                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+
             else:
                 # Copy over existing server and remove the files which will be replaced
                 constants.copytree(server_obj.server_path, constants.tmpsvr)

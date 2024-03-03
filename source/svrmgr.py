@@ -1044,12 +1044,14 @@ class ServerObject():
                     self.script_object.start_event({'date': dt.now()})
 
 
-                # If start-cmd.tmp exists, run every command in file
+                # If start-cmd.tmp exists, run every command in file (that is allowed by the command_whitelist)
                 cmd_tmp = constants.server_path(self.name, constants.command_tmp)
+                command_whitelist = ('gamerule')
                 if cmd_tmp:
                     with open(cmd_tmp, 'r') as f:
                         for cmd in f.readlines():
-                            self.send_command(cmd.strip(), add_to_history=False, log_cmd=False)
+                            if cmd.split(' ')[0] in command_whitelist:
+                                self.send_command(cmd.strip(), add_to_history=False, log_cmd=False)
                     os.remove(cmd_tmp)
 
             # Server closed prematurely
