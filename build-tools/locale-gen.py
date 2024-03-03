@@ -115,7 +115,12 @@ for x, string in enumerate(all_terms, 1):
     if "$$'" in string and "'$$'" not in string:
         string = string.replace("$$'", "'$$'")
 
-    print(f'[ {round((x / len(all_terms)*100), 1)}% ]  Translating "{string}"')
+    progress = round((x / len(all_terms)*100), 1)
+    try:
+        print(f'[ {progress}% ]  Translating "{string}"')
+    except UnicodeEncodeError:
+        print(f'[ {progress}% ]  Translating <not shown: unicode error>')
+        
     def process_locale(code, *a):
         if code == 'en':
             return
