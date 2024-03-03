@@ -59,19 +59,23 @@ jobs:
           chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
 
           # Create .dmg from .app
-          sudo create-dmg \
-            --volname "auto-mcs" \
-            --volicon "$root/source/icon.icns" \
-            --background "$root/source/gui-assets/dmg-bg.png" \
-            --window-pos 200 120 \
-            --window-size 835 640 \
-            --icon-size 128 \
-            --text-size 16 \
-            --icon "auto-mcs.app" 230 277 \
-            --hide-extension "auto-mcs.app" \
-            --app-drop-link 593 277 \
-            "$root/build-tools/dist/auto-mcs.dmg" \
-            "$root/build-tools/dist/auto-mcs.app"
+          while : ; do
+            [[ -f "$root/build-tools/dist/auto-mcs.dmg" ]] && break
+            sleep 1
+            sudo create-dmg \
+              --volname "auto-mcs" \
+              --volicon "$root/source/icon.icns" \
+              --background "$root/source/gui-assets/dmg-bg.png" \
+              --window-pos 200 120 \
+              --window-size 835 640 \
+              --icon-size 128 \
+              --text-size 16 \
+              --icon "auto-mcs.app" 230 277 \
+              --hide-extension "auto-mcs.app" \
+              --app-drop-link 593 277 \
+              "$root/build-tools/dist/auto-mcs.dmg" \
+              "$root/build-tools/dist/auto-mcs.app"
+          done
 
       - name: Upload Binary
         uses: actions/upload-artifact@v3
@@ -119,7 +123,7 @@ jobs:
           python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
           cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
           fc-cache -f
-          python locale-gen.py
+          # python locale-gen.py
           echo Compiling auto-mcs
           export KIVY_AUDIO=ffpyplayer
           cd $current
