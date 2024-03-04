@@ -40,7 +40,7 @@ for script in glob(os.path.join(source_dir, '*.py')):
                 string = node.s
 
                 # Exclusions from translation
-                if os.path.basename(script) == 'constants.py' and (node.lineno < 4400 and node.lineno not in range(550,600)):
+                if os.path.basename(script) == 'constants.py' and (node.lineno < 4400 and node.lineno not in range(550,600) and node.lineno not in range(1900,2100)):
                     continue
                 if os.path.basename(script) == 'amseditor.py' and node.lineno < 880:
                     continue

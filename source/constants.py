@@ -1958,7 +1958,7 @@ def validate_version(server_info: dict):
                     final_info = [True, {'version': mcVer, 'build': buildNum}, "", serverLink]
 
                     if modifiedVersion > 0:
-                        final_info[2] = f"'{originalRequest}' could not be found, using '{mcVer}' instead"
+                        final_info[2] = f"'${originalRequest}$' could not be found, using '${mcVer}$' instead"
                     originalRequest = ""
 
                     version_loading = False
@@ -1994,7 +1994,7 @@ def validate_version(server_info: dict):
         pass
 
     if not mcVer:
-        final_info = [False, {'version': originalRequest, 'build': buildNum}, f"'{originalRequest}' doesn't exist, or can't be retrieved", None]
+        final_info = [False, {'version': originalRequest, 'build': buildNum}, f"'${originalRequest}$' doesn't exist, or can't be retrieved", None]
 
     version_loading = False
     return final_info
@@ -2523,6 +2523,11 @@ eula=true"""
         'hardcore': 3
     }
 
+    if new_server_info['server_settings']['motd'].lower() == 'a minecraft server':
+        motd = translate('A Minecraft Server')
+    else:
+        motd = new_server_info['server_settings']['motd']
+
     def bool_str(value):
         return 'true' if value else 'false'
 
@@ -2543,7 +2548,7 @@ generator-settings=
 resource-pack=
 player-idle-timeout=0
 level-name={world_name}
-motd={new_server_info['server_settings']['motd']}
+motd={motd}
 announce-player-achievements=true
 force-gamemode=false
 hardcore={bool_str(new_server_info['server_settings']['difficulty'] == 'hardcore')}

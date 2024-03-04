@@ -7069,8 +7069,7 @@ class PopupSearch(RelativeLayout):
         for widget in self.window.children:
             widget.opacity = 0
 
-        self.window_input.grab_focus()
-
+        Clock.schedule_once(self.window_input.grab_focus, 0)
         Clock.schedule_once(self.init_search, 0)
 
 
@@ -11963,7 +11962,7 @@ class CreateServerReviewScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget()
         scroll_anchor = AnchorLayout()
-        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, -10, 0, 60])
+        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=(1050 if constants.locale == 'en' else 1130), size_hint_y=None, padding=[0, -10, 0, 60])
 
 
         # Bind / cleanup height on resize
@@ -12015,10 +12014,37 @@ class CreateServerReviewScreen(MenuBackground):
                 else:
                     p.y = 0
 
+
+            # Format spacing appropriately for content
+            if constants.locale == 'en':
+                paragraph_width = 485
+                for line in text.splitlines():
+                    if '||' in line:
+                        new_line = line.replace(' ||', ' ', 1)
+                        text = text.replace(line, new_line)
+
+            else:
+                # Find the longest key in a paragraph to dynamically generate spacing
+                paragraph_width = 530
+                longest = 0
+                for line in text.splitlines():
+                    if '||' in line:
+                        key = line.split('||', 1)[0].strip()
+                        if len(key) > longest:
+                            longest = len(key)
+
+                longest += 3
+
+                # Replace text with proper spacing
+                for line in text.splitlines():
+                    if '||' in line:
+                        key, value = line.split('||', 1)
+                        text = text.replace(line, f'{key.strip()}{(longest - len(key.strip())) * " "}{value}')
+
             sub_layout = ScrollItem()
             content_size = sp(22)
             content_height = len(text.splitlines()) * (content_size + sp(9))
-            paragraph = paragraph_object(size=(485, content_height), name=name, content=text, font_size=content_size, font=pgh_font)
+            paragraph = paragraph_object(size=(paragraph_width, content_height), name=name, content=text, font_size=content_size, font=pgh_font)
             sub_layout.height = paragraph.height + 60
 
             sub_layout.bind(pos=functools.partial(repos, paragraph, sub_layout, cid))
@@ -12031,23 +12057,28 @@ class CreateServerReviewScreen(MenuBackground):
 
         # ----------------------------------------------- General ------------------------------------------------------
         content = ""
-        content += f"[color=6666AA]Name:      [/color]{constants.new_server_info['name']}\n"
-        content += f"[color=6666AA]Type:      [/color]{constants.new_server_info['type'].title()}\n"
-        content += f"[color=6666AA]Version:   [/color]{constants.new_server_info['version']}"
+        content += f"[color=6666AA]{constants.translate('Name')}:      ||[/color]{constants.new_server_info['name']}\n"
+        content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{constants.new_server_info['type'].title()}\n"
+        content += f"[color=6666AA]{constants.translate('Version')}:   ||[/color]{constants.new_server_info['version']}"
         if constants.new_server_info['build']:
             content += f" ({constants.new_server_info['build']})"
         content += "\n\n"
         if constants.new_server_info['server_settings']['world'] == "world":
-            content += f"[color=6666AA]World:     [/color]Create a new world\n"
+            content += f"[color=6666AA]{constants.translate('World')}:     ||[/color]{constants.translate('Create a new world')}\n"
             if constants.new_server_info['server_settings']['level_type']:
-                content += f"[color=6666AA]Type:      [/color]{constants.new_server_info['server_settings']['level_type'].title()}\n"
+                content += f"[color=6666AA]{constants.translate('Type')}:      ||[/color]{constants.translate(constants.new_server_info['server_settings']['level_type'].title())}\n"
             if constants.new_server_info['server_settings']['seed']:
-                content += f"[color=6666AA]Seed:      [/color]{constants.new_server_info['server_settings']['seed']}\n"
+                content += f"[color=6666AA]{constants.translate('Seed')}:      ||[/color]{constants.new_server_info['server_settings']['seed']}\n"
         else:
             box_text = os.path.join(*Path(os.path.abspath(constants.new_server_info['server_settings']['world'])).parts[-2:])
             box_text = box_text[:30] + "..." if len(box_text) > 30 else box_text
-            content += f"[color=6666AA]World:     [/color]{box_text}\n"
+            content += f"[color=6666AA]{constants.translate('World')}:     [/color]{box_text}\n"
 
+        def check_enabled(var):
+            if var:
+                return '[/color]' + constants.translate('Enabled')
+            else:
+                return constants.translate('Disabled') + '[/color]'
         create_paragraph('general', content, 0)
         # --------------------------------------------------------------------------------------------------------------
 
@@ -12055,31 +12086,31 @@ class CreateServerReviewScreen(MenuBackground):
 
         # ----------------------------------------------- Options ------------------------------------------------------
         content = ""
-        content += f"[color=6666AA]Gamemode:             [/color]{constants.new_server_info['server_settings']['gamemode'].title()}\n"
-        content += f"[color=6666AA]Difficulty:           [/color]{constants.new_server_info['server_settings']['difficulty'].title()}\n"
-        content += f"[color=6666AA]PVP:                  {'[/color]Enabled' if constants.new_server_info['server_settings']['pvp'] else 'Disabled[/color]'}\n"
-        content += f"[color=6666AA]Spawn protection:     {'[/color]Enabled' if constants.new_server_info['server_settings']['spawn_protection'] else 'Disabled[/color]'}"
+        content += f"[color=6666AA]{constants.translate('Gamemode')}:             ||[/color]{constants.translate(constants.new_server_info['server_settings']['gamemode'].title())}\n"
+        content += f"[color=6666AA]{constants.translate('Difficulty')}:           ||[/color]{constants.translate(constants.new_server_info['server_settings']['difficulty'].title())}\n"
+        content += f"[color=6666AA]PVP:                  ||{check_enabled(constants.new_server_info['server_settings']['pvp'])}\n"
+        content += f"[color=6666AA]{constants.translate('Spawn protection')}:     ||{check_enabled(constants.new_server_info['server_settings']['spawn_protection'])}"
 
         content += "\n\n"
 
         if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
-            content += f"[color=6666AA]Keep inventory:       {'[/color]Enabled' if constants.new_server_info['server_settings']['keep_inventory'] else 'Disabled[/color]'}\n"
+            content += f"[color=6666AA]{constants.translate('Keep inventory')}:       ||{check_enabled(constants.new_server_info['server_settings']['keep_inventory'])}\n"
 
-        content += f"[color=6666AA]Spawn creatures:      {'[/color]Enabled' if constants.new_server_info['server_settings']['spawn_creatures'] else 'Disabled[/color]'}\n"
+        content += f"[color=6666AA]{constants.translate('Spawn creatures')}:      ||{check_enabled(constants.new_server_info['server_settings']['spawn_creatures'])}\n"
 
         if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
             if constants.version_check(constants.new_server_info['version'], ">=", "1.11"):
-                content += f"[color=6666AA]Daylight/weather:     {'[/color]Enabled' if constants.new_server_info['server_settings']['daylight_weather_cycle'] else 'Disabled[/color]'}\n"
+                content += f"[color=6666AA]{constants.translate('Daylight/weather')}:     ||{check_enabled(constants.new_server_info['server_settings']['daylight_weather_cycle'])}\n"
             else:
-                content += f"[color=6666AA]Daylight cycle:       {'[/color]Enabled' if constants.new_server_info['server_settings']['daylight_weather_cycle'] else 'Disabled[/color]'}\n"
+                content += f"[color=6666AA]{constants.translate('Daylight cycle')}:       ||{check_enabled(constants.new_server_info['server_settings']['daylight_weather_cycle'] )}\n"
 
-        content += f"[color=6666AA]Command blocks:       {'[/color]Enabled' if constants.new_server_info['server_settings']['command_blocks'] else 'Disabled[/color]'}\n"
+        content += f"[color=6666AA]{constants.translate('Command blocks')}:       ||{check_enabled(constants.new_server_info['server_settings']['command_blocks'])}\n"
 
         if constants.version_check(constants.new_server_info['version'], ">=", "1.19") and constants.new_server_info['type'].lower() != "vanilla":
-            content += f"[color=6666AA]Chat reporting:       {'[/color]Enabled' if constants.new_server_info['server_settings']['disable_chat_reporting'] else 'Disabled[/color]'}\n"
+            content += f"[color=6666AA]{constants.translate('Chat reporting')}:       ||{check_enabled(constants.new_server_info['server_settings']['disable_chat_reporting'])}\n"
 
         if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
-            content += f"[color=6666AA]Random tick speed:    [/color]{constants.new_server_info['server_settings']['random_tick_speed']} ticks"
+            content += f"[color=6666AA]{constants.translate('Random tick speed')}:    ||[/color]{constants.new_server_info['server_settings']['random_tick_speed']} {constants.translate('ticks')}"
 
         create_paragraph('options', content, 0)
         # --------------------------------------------------------------------------------------------------------------
@@ -12089,38 +12120,41 @@ class CreateServerReviewScreen(MenuBackground):
         # ----------------------------------------------- Network ------------------------------------------------------
         formatted_ip = ("localhost" if not constants.new_server_info['ip'] else constants.new_server_info['ip']) + f":{constants.new_server_info['port']}"
         max_plr = constants.new_server_info['server_settings']['max_players']
-        formatted_players = (max_plr + (' players' if int(max_plr) != 1 else ' player'))
+        formatted_players = (max_plr + constants.translate(' players' if int(max_plr) != 1 else ' player'))
         content = ""
-        content += f"[color=6666AA]Server IP:      [/color]{formatted_ip}\n"
-        content += f"[color=6666AA]Max players:    [/color]{formatted_players}\n"
+        content += f"[color=6666AA]{constants.translate('Server IP')}:      ||[/color]{formatted_ip}\n"
+        content += f"[color=6666AA]{constants.translate('Max players')}:    ||[/color]{formatted_players}\n"
         if constants.new_server_info['server_settings']['geyser_support']:
-            content += f"[color=6666AA]Geyser:         [/color]Enabled"
+            content += f"[color=6666AA]Geyser:         ||[/color]{constants.translate('Enabled')}"
 
         content += "\n\n"
 
-        content += f"[color=6666AA]MOTD:\n[/color]{constants.new_server_info['server_settings']['motd']}"
+        if constants.new_server_info['server_settings']['motd'].lower() == 'a minecraft server':
+            content += f"[color=6666AA]MOTD:\n[/color]{constants.translate('A Minecraft Server')}"
+        else:
+            content += f"[color=6666AA]MOTD:\n[/color]{constants.new_server_info['server_settings']['motd']}"
 
         content += "\n\n\n"
 
         rule_count = constants.new_server_info['acl_object'].count_rules()
         if rule_count['total'] > 0:
-            content += f"[color=6666AA]          Access Control Rules[/color]"
+            content += f"[color=6666AA]          {constants.translate('Access Control Rules')}[/color]"
 
             if rule_count['ops'] > 0:
                 content += "\n\n"
-                content += f"[color=6666AA]Operators ({rule_count['ops']:,}):[/color]\n"
+                content += f"[color=6666AA]{constants.translate('Operators')} ({rule_count['ops']:,}):[/color]\n"
                 content += '    ' + '\n    '.join([rule.rule for rule in constants.new_server_info['acl_object'].rules['ops']])
 
             if rule_count['bans'] > 0:
                 content += "\n\n"
-                content += f"[color=6666AA]Bans ({rule_count['bans']:,}):[/color]\n"
+                content += f"[color=6666AA]{constants.translate('Bans')} ({rule_count['bans']:,}):[/color]\n"
                 bans = acl.deepcopy(constants.new_server_info['acl_object'].rules['bans'])
                 bans.extend(acl.deepcopy(constants.new_server_info['acl_object'].rules['subnets']))
-                content += '    ' + '\n    '.join([rule.rule if '!w' not in rule.rule else rule.rule.replace('!w','').strip()+' (whitelist)' for rule in bans])
+                content += '    ' + '\n    '.join([rule.rule if '!w' not in rule.rule else rule.rule.replace('!w','').strip()+f' ({constants.translate("whitelist")})' for rule in bans])
 
             if rule_count['wl'] > 0:
                 content += "\n\n"
-                content += f"[color=6666AA]Whitelist ({rule_count['wl']:,}):[/color]\n"
+                content += f"[color=6666AA]{constants.translate('Whitelist')} ({rule_count['wl']:,}):[/color]\n"
                 content += '    ' + '\n    '.join([rule.rule for rule in constants.new_server_info['acl_object'].rules['wl']])
 
         create_paragraph('network', content, 1)
@@ -12135,14 +12169,14 @@ class CreateServerReviewScreen(MenuBackground):
             [addons_sorted['import' if addon.addon_object_type == 'file' else 'download'].append(addon.name) for addon in constants.new_server_info['addon_objects']]
 
             if len(addons_sorted['download']) > 0:
-                content += f"[color=6666AA]Add-ons to download ({len(addons_sorted['download']):,}):[/color]\n"
+                content += f"[color=6666AA]{constants.translate('Add-ons to download')} ({len(addons_sorted['download']):,}):[/color]\n"
                 content += '    ' + '\n    '.join([(item[:32]+'...' if len(item) > 35 else item) for item in addons_sorted['download']])
 
                 if len(addons_sorted['import']) > 0:
                     content += "\n\n"
 
             if len(addons_sorted['import']) > 0:
-                content += f"[color=6666AA]Add-ons to import ({len(addons_sorted['import']):,}):[/color]\n"
+                content += f"[color=6666AA]{constants.translate('Add-ons to import')} ({len(addons_sorted['import']):,}):[/color]\n"
                 content += '    ' + '\n    '.join([(item[:32]+'...' if len(item) > 35 else item) for item in addons_sorted['import']])
 
             create_paragraph('add-ons', content, 1)
