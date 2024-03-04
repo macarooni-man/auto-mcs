@@ -189,8 +189,8 @@ else:
     gui_assets = os.path.join(executable_folder, 'gui-assets')
 
 
-# SSL crap on linux
-if os_name == 'linux':
+# SSL crap on unix
+if os_name != 'windows':
     os.environ['SSL_CERT_DIR'] = executable_folder
     os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'ca-bundle.crt')
 
