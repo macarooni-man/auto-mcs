@@ -206,6 +206,29 @@ class TextInput(TextInput):
         super().__setattr__(key, value)
 
 
+# Opens text file with logviewer
+def view_file(path: str, title=None):
+    data_dict = {
+        'app_title': constants.app_title,
+        'gui_assets': constants.gui_assets,
+        'background_color': constants.background_color,
+        'sub_processes': constants.sub_processes,
+        'os_name': constants.os_name,
+        'translate': constants.translate
+    }
+
+    if not title:
+        title = constants.server_manager.current_server.name
+
+    Clock.schedule_once(
+        functools.partial(
+            logviewer.open_log,
+            title,
+            path,
+            data_dict
+        ), 0.1
+    )
+
 
 def icon_path(name):
     return os.path.join(constants.gui_assets, 'icons', name)
@@ -5795,6 +5818,7 @@ class PopupWarningQuery(PopupWindow):
             widget.opacity = 0
 
 
+
 # Big popup widgets
 class BigPopupWindow(RelativeLayout):
 
@@ -5834,10 +5858,22 @@ class BigPopupWindow(RelativeLayout):
     def resize_window(*args):
         Window.on_resize(*Window.size)
 
+    def body_button_click(self):
+        pass
 
     def click_event(self, *args):
 
         if not self.clicked:
+
+            def check_body_button(*a):
+                if force_button == 'body' or (not force_button and ((self.body_button.x < rel_coord[0] < self.body_button.x + self.body_button.width) and (self.body_button.y < rel_coord[1] < self.body_button.y + self.body_button.height))):
+                    Animation.stop_all(self.body_button)
+                    self.body_button.background_color = (
+                    self.window_text_color[0], self.window_text_color[1], self.window_text_color[2], 0.3)
+                    Animation(background_color=self.window_text_color, duration=0.3).start(self.body_button)
+                    self.body_button_click()
+                    for x in range(10):
+                        Clock.schedule_once(self.resize_window, x/30)
 
             if isinstance(args[1], str):
                 force_button = args[1]
@@ -5860,8 +5896,11 @@ class BigPopupWindow(RelativeLayout):
 
                     Clock.schedule_once(functools.partial(self.self_destruct, True), 0.1)
 
+                else:
+                    check_body_button()
 
-            elif self.no_button and self.yes_button:
+
+            elif (self.no_button and self.yes_button) or self.__class__.__name__ == 'PopupFile':
 
                 # Right button
                 if force_button == 'yes' or (not force_button and (rel_coord[0] > self.no_button.width + 5 and rel_coord[1] < self.yes_button.height)):
@@ -5891,30 +5930,7 @@ class BigPopupWindow(RelativeLayout):
 
                 # Body button if it exists
                 elif self.body_button:
-                    if force_button == 'body' or (not force_button and ((self.body_button.x < rel_coord[0] < self.body_button.x + self.body_button.width) and (self.body_button.y < rel_coord[1] < self.body_button.y + self.body_button.height))):
-                        Animation.stop_all(self.body_button)
-                        self.body_button.background_color = (self.window_text_color[0], self.window_text_color[1], self.window_text_color[2], 0.3)
-                        Animation(background_color=self.window_text_color, duration=0.3).start(self.body_button)
-
-                        # Open link in browser
-                        if self.__class__.__name__ == "PopupAddon":
-                            if self.addon_object:
-                                if self.addon_object.type in ["forge", "fabric", "modpack"]:
-                                    url = self.addon_object.url
-                                else:
-                                    url = "https://dev.bukkit.org" + self.addon_object.url
-
-                                webbrowser.open_new_tab(url)
-
-                        # Open link in browser
-                        elif self.__class__.__name__ == "PopupScript":
-                            if self.script_object:
-                                webbrowser.open_new_tab(self.script_object.url)
-
-
-                        elif self.__class__.__name__ == "PopupUpdate":
-                            url = f'{constants.project_link}/releases/latest'
-                            webbrowser.open_new_tab(url)
+                    check_body_button()
 
 
     def resize(self):
@@ -6120,8 +6136,91 @@ class PopupControls(BigPopupWindow):
         for widget in self.window.children:
             widget.opacity = 0
 
+# Popup for text files
+class PopupFile(BigPopupWindow):
+    def body_button_click(self):
+        if self.file_path:
+            view_file(self.file_path)
+
+    def set_text(self, path: str, *a):
+        if os.path.isfile(path):
+            with open(path, 'r') as f:
+                self.window_content.text = f.read()
+                self.file_path = path
+        else:
+            self.window_content.text = 'No content available'
+
+    def __init__(self, **kwargs):
+        self.file_path = None
+
+        self.window_color = (0.42, 0.475, 1, 1)
+        self.window_text_color = (0.1, 0.1, 0.2, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'information-circle.png')
+        super().__init__(**kwargs)
+
+
+        # Align window content
+        self.window_content.__translate__ = False
+        self.window_content.halign = "left"
+        self.window_content.valign = "top"
+        self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.41}
+        self.window_content.max_lines = 14 # Cuts off the beginning of content??
+
+
+        # Modal specific settings
+        self.window_sound = None
+        self.no_button = None
+        self.yes_button = None
+        with self.canvas.after:
+
+            # Body Button (Open in logviewer)
+            self.body_button = Button()
+            self.body_button.id = "body_button"
+            self.body_button.size_hint = (None, None)
+            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
+            self.body_button.border = (0, 0, 0, 0)
+            self.body_button.background_color = self.window_text_color
+            self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
+            self.body_button.pos = ((self.window_background.size[0] / 2) - (self.body_button.size[0] / 2), 77)
+            self.body_button.text = "click to view more"
+            self.body_button.color = self.window_color
+            self.body_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            self.body_button.font_size = sp(20)
+
+
+            self.ok_button = Button()
+            self.ok_button.id = "ok_button"
+            self.ok_button.size_hint = (None, None)
+            self.ok_button.size = (650.6, 65)
+            self.ok_button.border = (0, 0, 0, 0)
+            self.ok_button.background_color = self.window_color
+            self.ok_button.background_normal = os.path.join(constants.gui_assets, "big_popup_full_button.png")
+            self.ok_button.pos_hint = {"center_x": 0.5006}
+            self.ok_button.text = "OKAY"
+            self.ok_button.color = self.window_text_color
+            self.ok_button.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["very-bold"]}.ttf')
+            self.ok_button.font_size = sp(22)
+            self.bind(on_touch_down=self.click_event)
+
+        self.window.add_widget(self.ok_button)
+        self.window.add_widget(self.body_button)
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+
 # Addon popup
 class PopupAddon(BigPopupWindow):
+    def body_button_click(self):
+        if self.addon_object:
+            if self.addon_object.type in ["forge", "fabric", "modpack"]:
+                url = self.addon_object.url
+            else:
+                url = "https://dev.bukkit.org" + self.addon_object.url
+
+            webbrowser.open_new_tab(url)
+
     def __init__(self, addon_object=None, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.1, 0.1, 0.2, 1)
@@ -6284,6 +6383,10 @@ class PopupAddon(BigPopupWindow):
 
 # Script popup
 class PopupScript(BigPopupWindow):
+    def body_button_click(self):
+        if self.script_object:
+            webbrowser.open_new_tab(self.script_object.url)
+
     def __init__(self, script_object=None, **kwargs):
 
         self.window_color = (0.42, 0.475, 1, 1)
@@ -6407,6 +6510,10 @@ class PopupScript(BigPopupWindow):
 
 # Update popup
 class PopupUpdate(BigPopupWindow):
+    def body_button_click(self):
+        url = f'{constants.project_link}/releases/latest'
+        webbrowser.open_new_tab(url)
+
     def __init__(self, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
         self.window_text_color = (0.1, 0.1, 0.2, 1)
@@ -6516,6 +6623,7 @@ class PopupUpdate(BigPopupWindow):
         self.blur_background.opacity = 0
         for widget in self.window.children:
             widget.opacity = 0
+
 
 
 # Global search bar
@@ -7545,10 +7653,12 @@ class MenuBackground(Screen):
 
     # Show popup; popup_type can be "info", "warning", "query"
     def show_popup(self, popup_type, title, content, callback=None, *args):
+        popup_types = ("info", "warning", "query", "warning_query", "controls", "addon", "script", "file")
+
         if self.context_menu:
             self.context_menu.hide()
 
-        if ((popup_type == "update") or (title and content and popup_type in ["info", "warning", "query", "warning_query", "controls", "addon", "script"])) and (self == screen_manager.current_screen):
+        if ((popup_type == "update") or (title and content and popup_type in popup_types)) and (self == screen_manager.current_screen):
 
             # self.show_popup("info", "Title", "This is an info popup!", functools.partial(callback_func))
             # self.show_popup("warning", "Title", "This is a warning popup!", functools.partial(callback_func))
@@ -7556,7 +7666,9 @@ class MenuBackground(Screen):
             # self.show_popup("warning_query", "Title", "Yes or no?", (functools.partial(callback_func_no), functools.partial(callback_func_yes)))
             # self.show_popup("controls", "Title", "Press X to do Y", functools.partial(callback_func))
             # self.show_popup("addon", "Title", "Description", (functools.partial(callback_func_web), functools.partial(callback_func_install)), addon_object)
+            # self.show_popup("script", "Title", "Description", (functools.partial(callback_func_web), functools.partial(callback_func_install)), script_object)
             # self.show_popup("update", (None, functools.partial(callback_func_install)))
+            # self.show_popup("file", "Title", file_path)
 
 
             # Log for crash info
@@ -7600,6 +7712,9 @@ class MenuBackground(Screen):
                     self.popup_widget = PopupUpdate()
                     title = ""
                     content = ""
+                elif popup_type == "file":
+                    self.popup_widget = PopupFile()
+                    Clock.schedule_once(functools.partial(self.popup_widget.set_text, content), 0)
 
             self.popup_widget.generate_blur_background()
 
@@ -12587,8 +12702,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
             server_path = os.path.join(constants.serverDir, constants.import_data['name'])
             read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower() and 'me' in f.lower()]
             if read_me:
-                with open(read_me[0], 'r') as f:
-                    read_me = f.read()
+                read_me = read_me[0]
             open_server(constants.import_data['name'], True, f"'${import_name}$' was imported successfully", show_readme=read_me)
 
         # Original is percentage before this function, adjusted is a percent of hooked value
@@ -12941,11 +13055,10 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         constants.screen_tree = ['MainMenuScreen', 'ServerManagerScreen']
 
 
-
         # If showing readme
         if show_readme:
             Clock.schedule_once(
-                functools.partial(screen_manager.current_screen.show_popup, "controls", "Author's Notes", show_readme, (None)),
+                functools.partial(screen_manager.current_screen.show_popup, "file", "Author's Notes", show_readme, (None)),
                 1
             )
 
@@ -15243,7 +15356,7 @@ class ConsolePanel(FloatLayout):
             'os_name': constants.os_name,
             'translate': constants.translate
         }
-        Clock.schedule_once(functools.partial(logviewer.open_log, self.server_name, constants.server_manager.current_server.crash_log, data_dict), 0.1)
+        view_file(constants.server_manager.current_server.crash_log)
         self.controls.log_button.button.on_leave()
         self.controls.log_button.button.on_release()
 
