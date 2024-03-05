@@ -324,11 +324,10 @@ available_locales = {
     # "Ukranian": {"name": 'Українська', "code": 'uk'},
     # "Serbian": {"name": 'Cрпски', "code": 'sr'}
 }
-def get_locale_string(*a):
+def get_locale_string(english=False, *a):
     for k, v in available_locales.items():
         if locale in v.values():
-            return f'{v["name"]} ({v["code"]})'
-
+            return f'{k if english else v["name"]} ({v["code"]})'
 
 def translate(text: str):
     global locale_data, locale

@@ -134,11 +134,14 @@ def scale_size(obj, o, n, *a):
 
             # Change popup sizes
             if (screen_manager.current_screen.popup_widget and parent_class == 'RelativeLayout'):
-                new_size = round(new_size / 32)
+                if screen_manager.current_screen.popup_widget.window_background.width > 500:
+                    new_size = round(new_size / 32)
+                else:
+                    new_size = round(new_size / 5)
 
             # Set a floor for resize
-            if obj.__o_size__ - new_size < obj.__o_size__ - 5:
-                new_size = 5
+            if obj.__o_size__ - new_size < obj.__o_size__ - 4:
+                new_size = 4
 
             # Change y-center of Input
             if obj.__class__.__name__.endswith('Input'):
@@ -2934,7 +2937,7 @@ class ServerFlagInput(BaseInput):
         self.title_text = "flags"
         self.halign = "left"
         self.padding_x = 25
-        self.hint_text = "enter custom launch flags..."
+        self.hint_text = "enter custom launch flags..." if constants.locale == 'en' else 'launch flags...'
 
         if self.server_obj.custom_flags:
             self.text = self.server_obj.custom_flags
@@ -3883,7 +3886,20 @@ class MainButton(FloatLayout):
         self.text.id = 'text'
         self.text.size_hint = (None, None)
         self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.text.text = name.upper()
+
+        # Justify text spacing for other languages
+        translated = constants.translate(name)
+        if auto_adjust_icon:
+            if position[0] >= 0.5:
+                text = name.upper() + (int(round(len(translated)*.7))*' ')
+            else:
+                text = (int(round(len(translated)*.7))*' ') + name.upper()
+        elif len(translated) > 28:
+            text = (int(round(len(translated)*.2))*' ') + name.upper()
+        else:
+            text = name.upper()
+        self.text.text = text
+
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.text.color = (0.6, 0.6, 1, 1)
@@ -4497,7 +4513,7 @@ def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickab
 
 
 
-class ExitButton(FloatLayout):
+class ExitButton(RelativeLayout):
 
     def __init__(self, name, position, cycle=False, **args):
         super().__init__(**args)
@@ -4516,7 +4532,15 @@ class ExitButton(FloatLayout):
         self.text.id = 'text'
         self.text.size_hint = (None, None)
         self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
-        self.text.text = name.upper()
+
+        # Justify text spacing for other languages
+        translated = constants.translate(name)
+        if len(translated) == len(name):
+            text = name.upper()
+        else:
+            text = (int(round(len(translated)*.7))*' ') + name.upper()
+        self.text.text = text
+
         self.text.font_size = sp(19)
         self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.text.color = (0.6, 0.6, 1, 1)
@@ -9205,6 +9229,7 @@ class RuleButton(FloatLayout):
         self.id = 'rule_button'
         self.enabled = True
         self.original_font_size = None
+        self.action_text = ''
 
 
         # Hover button object
@@ -9221,12 +9246,14 @@ class RuleButton(FloatLayout):
 
                 if self.rule.rule_scope == "global":
                     self.icon.source = icon_path("earth-strike.png")
-                    self.text.text = "LOCALIZE"
+                    self.text.text = constants.translate("LOCALIZE")
+                    self.action_text = "LOCALIZE"
                     Animation(background_color=self.global_icon_color, duration=0.05).start(self.button)
 
                 else:
                     self.icon.source = self.hover_attr[0]
-                    self.text.text = "   " + self.hover_attr[1]
+                    self.text.text = "   " + constants.translate(self.hover_attr[1])
+                    self.action_text = self.hover_attr[1]
                     Animation(background_color=self.hover_attr[2], duration=0.05).start(self.button)
                     Animation(opacity=1, duration=0.05).start(self.icon)
 
@@ -9249,7 +9276,7 @@ class RuleButton(FloatLayout):
             if not button_pressed or not isinstance(button_pressed, str):
                 button_pressed = self.button.button_pressed.lower().strip()
 
-            button_text = self.text.text.lower().strip()
+            button_text = self.action_text.lower().strip()
             current_list = screen_manager.current_screen.current_list.lower().strip()
             acl_object = screen_manager.current_screen.acl_object
             original_name = self.rule.rule
@@ -9501,7 +9528,7 @@ class AclRulePanel(RelativeLayout):
 
             def ref_text(self, *args):
 
-                self.copyable = not (("unknown" in self.text.lower()) or ("online" in self.text.lower()) or (("access") in self.text.lower()))
+                self.copyable = not ((constants.translate("unknown") in self.text.lower()) or (constants.translate("online") in self.text.lower()) or (constants.translate("access") in self.text.lower()))
 
                 if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
                     self.text = f'[ref=none]{self.text}[/ref]'
@@ -9760,10 +9787,10 @@ class AclRulePanel(RelativeLayout):
         if displayed_rule.rule_type == "player":
 
             # Effective access colors
-            if displayed_rule.display_data['effective_access'] == "Operator access":
+            if displayed_rule.display_data['effective_access'] == constants.translate("Operator access"):
                 widget_color = self.color_dict['blue']
                 self.player_layout.access_icon.source = icon_path('promote.png')
-            elif displayed_rule.display_data['effective_access'] == "No access":
+            elif displayed_rule.display_data['effective_access'] == constants.translate("No access"):
                 widget_color = self.color_dict['red']
                 self.player_layout.access_icon.source = icon_path('close-circle-outline.png')
             else:
@@ -9866,24 +9893,27 @@ class AclRulePanel(RelativeLayout):
 
             # Display ban data
             if displayed_rule.display_data['ip_ban'] and displayed_rule.display_data['ban']:
-                final_text += f"\n[color={self.color_dict['red']}]Banned IP & user[/color]"
+                final_text += f"\n[color={self.color_dict['red']}]{constants.translate('Banned IP & user')}[/color]"
                 banned = True
             elif displayed_rule.display_data['ip_ban']:
-                final_text += f"\n[color={self.color_dict['red']}]Banned IP[/color]"
+                final_text += f"\n[color={self.color_dict['red']}]{constants.translate('Banned IP')}[/color]"
                 banned = True
             elif displayed_rule.display_data['ban']:
-                final_text += f"\n[color={self.color_dict['red']}]Banned user[/color]"
+                final_text += f"\n[color={self.color_dict['red']}]{constants.translate('Banned user')}[/color]"
                 banned = True
             else:
                 final_text += "\n"
 
             # Display OP data
-            final_text += (f"\n[color={self.color_dict['blue']}]Operator[/color]" if displayed_rule.display_data['op'] else "\n")
+            final_text += (f"\n[color={self.color_dict['blue']}]{constants.translate('Operator')}[/color]" if displayed_rule.display_data['op'] else "\n")
 
             # Whitelist data
             if screen_manager.current_screen.acl_object._server['whitelist']:
                 self.player_layout.access_line_3.opacity = 1
-                final_text += ("\n[color=" + (f"{self.color_dict['green']}]Whitelisted" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]Not whitelisted") + "[/color]")
+                if constants.locale == 'en':
+                    final_text += ("\n[color=" + (f"{self.color_dict['green']}]Whitelisted" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]Not whitelisted") + "[/color]")
+                else:
+                    final_text += ("\n[color=" + (f"{self.color_dict['green']}]{constants.translate('Allowed')}" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]{constants.translate('Denied')}") + "[/color]")
             else:
                 self.player_layout.access_line_3.opacity = 0
                 self.player_layout.access_line_1.source = os.path.join(constants.gui_assets, "access_active.png")
@@ -9938,7 +9968,7 @@ class AclRulePanel(RelativeLayout):
                         widget.color = constants.brighten_color(widget_color, 0.34)
 
                 elif widget.__class__.__name__ == "ParagraphLabel":
-                    widget.color = self.color_dict['gray'] if "unknown" in widget.text.lower() else widget.default_color
+                    widget.color = self.color_dict['gray'] if constants.translate("unknown") in widget.text.lower() else widget.default_color
 
 
 
@@ -10737,7 +10767,7 @@ class CreateServerAclScreen(MenuBackground):
         # Legend for rule types
         self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749}, size_hint_max=(400, 100))
         self.list_header.global_rule = RelativeLayout()
-        self.list_header.global_rule.add_widget(BannerObject(size=(125, 32), color=test_rule.global_icon_color, text="global rule", icon="earth-sharp.png", icon_side="left"))
+        self.list_header.global_rule.add_widget(BannerObject(size=(120, 32), color=test_rule.global_icon_color, text="global", icon="earth-sharp.png", icon_side="left"))
         self.list_header.add_widget(self.list_header.global_rule)
 
         self.list_header.enabled_rule = RelativeLayout()
@@ -16933,7 +16963,7 @@ class ServerAclScreen(CreateServerAclScreen):
         # Legend for rule types
         self.list_header = BoxLayout(orientation="horizontal", pos_hint={"center_x": 0.5, "center_y": 0.749}, size_hint_max=(400, 100))
         self.list_header.global_rule = RelativeLayout()
-        self.list_header.global_rule.add_widget(BannerObject(size=(125, 32), color=test_rule.global_icon_color, text="global rule", icon="earth-sharp.png", icon_side="left"))
+        self.list_header.global_rule.add_widget(BannerObject(size=(120, 32), color=test_rule.global_icon_color, text="global", icon="earth-sharp.png", icon_side="left"))
         self.list_header.add_widget(self.list_header.global_rule)
 
         self.list_header.enabled_rule = RelativeLayout()
@@ -19119,7 +19149,7 @@ class ServerAmscriptScreen(MenuBackground):
         bottom_buttons.size_hint_max_x = 512
         bottom_buttons.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         bottom_buttons.add_widget(MainButton('Import', (0, 0.202), 'download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
-        bottom_buttons.add_widget(MainButton('Create New', (0.5, 0.202), '', width=245, icon_offset=-115, auto_adjust_icon=True))
+        bottom_buttons.add_widget(MainButton('Create New', (0.5, 0.202), '', width=245, icon_offset=-115, auto_adjust_icon=False))
         bottom_buttons.add_widget(MainButton('Download', (1, 0.202), 'cloud-download-outline.png', width=245, icon_offset=-115, auto_adjust_icon=True))
         buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
 

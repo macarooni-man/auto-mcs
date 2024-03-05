@@ -629,7 +629,7 @@ class AclManager():
         else:
 
             display_data = {
-                'effective_access': "Normal access",
+                'effective_access': constants.translate("Normal access"),
                 'ban': False,
                 'ip_ban': False,
                 'op': False,
@@ -716,14 +716,14 @@ class AclManager():
 
             # Generate effective access principle
             if display_data['ban'] or display_data['ip_ban']:
-                display_data['effective_access'] = "No access"
+                display_data['effective_access'] = constants.translate("No access")
 
             else:
                 if self._server['whitelist'] and not (display_data['wl'] or display_data['op']):
-                    display_data['effective_access'] = "No access"
+                    display_data['effective_access'] = constants.translate("No access")
 
                 elif display_data['op']:
-                    display_data['effective_access'] = "Operator access"
+                    display_data['effective_access'] = constants.translate("Operator access")
 
             # Build AclRule object
             try:
@@ -731,9 +731,9 @@ class AclManager():
 
             # Eventually set these to "retrieving info..." and make function to load all server latest.logs. also make algorithm to keep the newest date when iterating over every server
             except KeyError:
-                user['latest-ip'] = "Unknown"
-                user['latest-login'] = "Unknown"
-                user['ip-geo'] = "Unknown"
+                user['latest-ip'] = constants.translate("Unknown")
+                user['latest-login'] = constants.translate("Unknown")
+                user['ip-geo'] = constants.translate("Unknown")
 
             # Create algorithm when servers exist to change this dynamically
             user['online'] = False
@@ -1117,10 +1117,10 @@ def ip_info(addr: str):
             private_ip = socket.gethostbyname(socket.gethostname())
 
             if ip_obj.is_loopback or addr == private_ip:
-                location = constants.translate("This machine")
+                location = "This machine"
 
             else:
-                location = constants.translate("LAN device")
+                location = "LAN device"
 
         else:
             try:
