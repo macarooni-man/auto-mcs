@@ -4567,7 +4567,7 @@ class NextButton(HoverButton):
                     child.color = (0.6, 0.6, 1, 0)
                 break
 
-    def update_next(self, boolean_value, message):
+    def update_next(self, boolean_value, message, *a):
 
         if message:
             for child in self.parent.parent.children:
@@ -7163,7 +7163,7 @@ def button_action(button_name, button, specific_screen=''):
                                     constants.new_server_info['build'] = version_data[1]['build']
                                     constants.new_server_info['jar_link'] = version_data[3]
                                     child.loading(False)
-                                    child.update_next(version_data[0], version_data[2])
+                                    Clock.schedule_once(functools.partial(child.update_next, version_data[0], version_data[2]), 0)
 
                                     # Continue to next screen if valid input, and back button not pressed
                                     if version_data[0] and not version_data[2] and screen_manager.current == 'CreateServerVersionScreen':
@@ -21476,7 +21476,7 @@ class MigrateServerVersionScreen(MenuBackground):
 
         # Regular menus
         else:
-            def update_next(boolean_value, message):
+            def update_next(boolean_value, message, *a):
 
                 if message:
                     for child in float_layout.children:
@@ -21503,7 +21503,7 @@ class MigrateServerVersionScreen(MenuBackground):
                     constants.new_server_info['build'] = version_data[1]['build']
                     constants.new_server_info['jar_link'] = version_data[3]
                     self.final_button.loading(False)
-                    update_next(version_data[0], version_data[2])
+                    Clock.schedule_once(functools.partial(update_next, version_data[0], version_data[2]), 0)
 
                     # Continue to next screen if valid input, and back button not pressed
                     if version_data[0] and not version_data[2] and screen_manager.current == 'MigrateServerVersionScreen':

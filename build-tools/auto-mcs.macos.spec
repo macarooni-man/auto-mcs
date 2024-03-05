@@ -18,7 +18,7 @@ a = Analysis(['wrapper.py'],
                         ('./icon.icns', '.'),
                         ('./baselib.ams', '.'),
                         ('./locales.json', '.'),
-                        ('../build-tools/ca-bundle.crt', '.'),
+                        # ('../build-tools/ca-bundle.crt', '.'),
                         ('./gui-assets/icons/sm/*', './gui-assets/icons/sm')
                     ],
              hiddenimports=['plyer.platforms.macosx.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world'],
