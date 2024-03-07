@@ -4117,6 +4117,16 @@ class WaitButton(FloatLayout):
 
 class IconButton(FloatLayout):
 
+    def change_data(self, icon=None, text=None, click_func=None):
+        if icon:
+            self.icon.source = icon_path(icon)
+
+        if text:
+            self.text.text = text.lower()
+
+        if click_func:
+            self.button.on_release = functools.partial(click_func)
+
     def resize(self, *args):
         self.x = Window.width - self.default_pos[0]
         self.y = Window.height - self.default_pos[1]
@@ -4223,9 +4233,18 @@ class IconButton(FloatLayout):
 
 class RelativeIconButton(RelativeLayout):
 
+    def change_data(self, icon=None, text=None, click_func=None):
+        if icon:
+            self.icon.source = icon_path(icon)
+
+        if text:
+            self.text.text = text.lower()
+
+        if click_func:
+            self.button.on_release = functools.partial(click_func)
+
     def resize(self, *args):
         self.text.x = Window.width - self.text.texture_size[0] + 25
-
 
     def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, **kwargs):
         super().__init__(**kwargs)
@@ -15044,6 +15063,7 @@ class ConsolePanel(FloatLayout):
     # Launch server and update properties
     def launch_server(self, animate=True, *args):
         self.update_size()
+        self.toggle_deadlock(False)
         self.selected_labels = []
 
         for k in self.parent._ignore_keys:
@@ -15123,10 +15143,17 @@ class ConsolePanel(FloatLayout):
             screen_manager.current_screen.server.stop()
 
 
+    # Kills running process forcefully
+    def kill_server(self, *args):
+        if self.run_data:
+            screen_manager.current_screen.server.kill()
+
+
     # Restart server
     def restart_server(self, *args):
-        if self.run_data:
+        if self.run_data and not self.deadlocked:
             screen_manager.current_screen.server.restart()
+            self.toggle_deadlock(False)
 
 
     # Called from ServerObject when process stops
@@ -15224,6 +15251,7 @@ class ConsolePanel(FloatLayout):
                     Clock.schedule_once(disable_buttons, anim_speed*1.1)
 
                 def after_anim2(*a):
+                    self.toggle_deadlock(False)
                     self.controls.maximize_button.disabled = False
                     self.controls.stop_button.disabled = False
                     self.controls.restart_button.disabled = False
@@ -15277,7 +15305,10 @@ class ConsolePanel(FloatLayout):
             # Stop server button
             self.controls.remove_widget(self.controls.stop_button)
             del self.controls.stop_button
-            self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+            if not self.deadlocked:
+                self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+            else:
+                self.controls.stop_button = IconButton('kill server', {}, (123, 150), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
@@ -15317,7 +15348,10 @@ class ConsolePanel(FloatLayout):
             # Stop server button
             self.controls.remove_widget(self.controls.stop_button)
             del self.controls.stop_button
-            self.controls.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+            if not self.deadlocked:
+                self.controls.stop_button = RelativeIconButton('stop server', {}, (20, 20), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+            else:
+                self.controls.stop_button = RelativeIconButton('kill server', {}, (20, 20), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(8, 80), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
             self.controls.stop_button.opacity = 0
             self.controls.add_widget(self.controls.stop_button)
 
@@ -15346,16 +15380,19 @@ class ConsolePanel(FloatLayout):
             Clock.schedule_once(after_anim, (anim_speed*1.1))
 
 
+    # Toggles deadlock button visibility
+    def toggle_deadlock(self, boolean=True):
+        def main_thread(*a):
+            self.deadlocked = boolean
+            if boolean:
+                self.controls.stop_button.change_data('kill-server.png', 'kill server', self.kill_server)
+            else:
+                self.controls.stop_button.change_data('stop-server.png', 'stop server', self.stop_server)
+        Clock.schedule_once(main_thread, 0)
+
+
     # Opens crash log in default text editor
     def open_log(self, *args):
-        data_dict = {
-            'app_title': constants.app_title,
-            'gui_assets': constants.gui_assets,
-            'background_color': constants.background_color,
-            'sub_processes': constants.sub_processes,
-            'os_name': constants.os_name,
-            'translate': constants.translate
-        }
         view_file(constants.server_manager.current_server.crash_log)
         self.controls.log_button.button.on_leave()
         self.controls.log_button.button.on_release()
@@ -15500,6 +15537,7 @@ class ConsolePanel(FloatLayout):
         self.server_name = server_name
         self.server_obj = None
         self.server_button = server_button
+        self.deadlocked = False
         self.full_screen = False
         self.full_screen_offset = 95
         self.size_offset = (70, 550)

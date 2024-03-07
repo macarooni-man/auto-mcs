@@ -513,6 +513,7 @@ class ServerObject():
                 elif "Stopping server" in line:
                     type_label = "STOP"
                     type_color = (0.3, 1, 0.6, 1)
+                    self.check_for_deadlock()
 
 
                 # Player join log
@@ -1148,6 +1149,61 @@ class ServerObject():
     # Stops the server
     def stop(self):
         self.silent_command('stop')
+
+    # Forcefully ends the server process
+    def kill(self):
+
+        # Iterate over self and children to find Java process
+        parent = psutil.Process(self.run_data['process'].pid)
+        sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
+
+        # Windows
+        if constants.os_name == "windows":
+            children = parent.children(recursive=True)
+            for proc in children:
+                if proc.name() == "java.exe":
+                    constants.run_proc(f"taskkill /f /pid {proc.pid}")
+                    break
+
+        # macOS
+        elif constants.os_name == "macos":
+            if parent.name() == "java":
+                constants.run_proc(f"kill {parent.pid}")
+
+        # Linux
+        else:
+            if parent.name() == "java":
+                constants.run_proc(f"kill {parent.pid}")
+            else:
+                children = parent.children(recursive=True)
+                for proc in children:
+                    if proc.name() == "java":
+                        constants.run_proc(f"kill {proc.pid}")
+                        break
+
+
+    # Checks if a server has closed, but hangs
+    def check_for_deadlock(self):
+        ip = self.run_data['network']['private_ip']
+        port = int(self.run_data['network']['address']['port'])
+
+        def check(*a):
+            while self.running and constants.check_port(ip, port):
+                time.sleep(1)
+
+            # If after a delay the server is still running, it has deadlocked
+            time.sleep(1)
+            if self.running and self.name not in constants.backup_lock:
+                try:
+                    self.send_log(f"'{self.name}' is deadlocked, please kill it above to continue...", 'warning')
+                    self.run_data['console-panel'].toggle_deadlock(True)
+                except:
+                    pass
+
+        t = threading.Timer(0, check)
+        t.daemon = True
+        t.start()
+
 
     # Retrieves performance information
     def performance_stats(self, interval=0.5, update_players=False):

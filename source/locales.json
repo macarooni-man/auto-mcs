@@ -12948,5 +12948,45 @@
   "pt": "CreateServerReview",
   "sv": "CreateServerReview",
   "fi": "CreateServerReview"
+ },
+ "launch flags...": {
+  "it": "lanciare bandiere...",
+  "fr": "lancer des drapeaux...",
+  "de": "Flaggen starten...",
+  "nl": "vlaggen lanceren...",
+  "pt": "lan\u00e7ar bandeiras...",
+  "sv": "lansera flaggor...",
+  "fi": "laukaista liput...",
+  "es": "lanzar banderas..."
+ },
+ "no content available": {
+  "es": "No hay contenido disponible",
+  "fr": "Aucun contenu disponible",
+  "it": "Nessun contenuto disponibile",
+  "de": "Kein Inhalt verf\u00fcgbar",
+  "nl": "Geen inhoud beschikbaar",
+  "pt": "Nenhum conte\u00fado dispon\u00edvel",
+  "sv": "Inget inneh\u00e5ll tillg\u00e4ngligt",
+  "fi": "Sis\u00e4lt\u00f6\u00e4 ei ole saatavilla"
+ },
+ "popupfile": {
+  "es": "Archivo emergente",
+  "fr": "Fichier contextuel",
+  "it": "PopupFile",
+  "de": "PopupFile",
+  "nl": "Pop-upbestand",
+  "pt": "Arquivo pop-up",
+  "sv": "Popup-fil",
+  "fi": "PopupFile"
+ },
+ "kill server": {
+  "fr": "tuer le serveur",
+  "it": "uccidere il server",
+  "es": "matar servidor",
+  "de": "Server t\u00f6ten",
+  "nl": "dood server",
+  "pt": "matar servidor",
+  "sv": "d\u00f6da servern",
+  "fi": "tappaa palvelin"
  }
 }
