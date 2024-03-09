@@ -15146,11 +15146,11 @@ class ConsolePanel(FloatLayout):
         self.controls.launch_button.opacity = 0
         self.controls.add_widget(self.controls.launch_button)
         Animation(opacity=1, duration=0.15).start(self.controls.launch_button)
-        #put button in top right
+        # put button in top right
         self.controls.launch_button.pos = (self.width - 50, self.height - 50)
         self.controls.launch_button.size = (50, 50)
         self.controls.launch_button.background_normal = os.path.join(constants.gui_assets, 'launch.png')
-        
+
 
 
     # Kills running process forcefully

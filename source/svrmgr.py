@@ -1064,17 +1064,10 @@ class ServerObject():
 
     # Kill server and delete running configuration
     def terminate(self):
-        # before termination, save the log file to the json file, in the tempdir and name it with a hash of the server name
-
-        # Save log to file
-        log_file = os.path.join(constants.tempDir, f"{self._hash}.log")
-        with open(log_file, 'w+') as f:
-            for log in self.run_data['log']:
-                f.write(f"{log['text'][0]} [{log['text'][1]}]: {log['text'][2]}\n")
-        
-        # Save log file to json
-        with open(os.path.join(constants.tempDir, f"{self._hash}.json"), 'w+') as f:
-            json.dump(self.run_data['log'], f)
+        # before termination, save the log file to temp directory as a json file for later use
+        if self.run_data['log']:
+            with open(os.path.join(constants.tempDir, f"{self._hash}_log.json"), 'w+') as f:
+                json.dump(self.run_data['log'], f)
             
         if self.run_data['process'].poll() is None:
             self.run_data['process'].kill()
