@@ -139,11 +139,11 @@ def convert_date(m_time: int or float):
         dt_obj = m_time
     days = (dt.now().date() - dt_obj.date()).days
     if days == 0:
-        fmt = f"{constants.translate('Today')} %#I:%M %p" if constants.os_name == "windows" else f"{constants.translate('Today')} %-I:%M %p"
+        fmt = f"{constants.translate('Today')} {constants.fmt_date('%#I:%M %p')}"
     elif days == 1:
-        fmt = f"{constants.translate('Yesterday')} %#I:%M %p" if constants.os_name == "windows" else f"{constants.translate('Yesterday')} %-I:%M %p"
+        fmt = f"{constants.translate('Yesterday')} {constants.fmt_date('%#I:%M %p')}"
     else:
-        fmt = "%a %#I:%M %p %#m/%#d/%y" if constants.os_name == "windows" else "%a %-I:%M %p %-m/%-d/%y"
+        fmt = constants.fmt_date("%a %#I:%M %p %#m/%#d/%y")
 
     # Translate day
     if constants.locale != 'en':

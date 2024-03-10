@@ -90,7 +90,9 @@ class ServerObject():
             self.custom_flags = ''
         try:
             if self.config_file.get("general", "isModpack"):
-                self.is_modpack = self.config_file.get("general", "isModpack").lower() == 'true'
+                modpack = self.config_file.get("general", "isModpack").lower()
+                if modpack:
+                    self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
         except:
             self.is_modpack = False
         try:
@@ -223,7 +225,9 @@ class ServerObject():
             self.custom_flags = ''
         try:
             if self.config_file.get("general", "isModpack"):
-                self.is_modpack = self.config_file.get("general", "isModpack").lower() == 'true'
+                modpack = self.config_file.get("general", "isModpack").lower()
+                if modpack:
+                    self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
         except:
             self.is_modpack = False
         try:
@@ -360,7 +364,7 @@ class ServerObject():
 
             def format_time(string):
                 try:
-                    date = dt.strptime(string, "%H:%M:%S").strftime("%#I:%M:%S %p").rjust(11)
+                    date = dt.strptime(string, "%H:%M:%S").strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
                 except ValueError:
                     date = ''
                 return date
@@ -389,7 +393,7 @@ class ServerObject():
                         date_str = line.split("]", 1)[0].strip().replace("[", "")
                         date_label = format_time(date_str)
                     except IndexError:
-                        date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+                        date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # Old log formatting (server.log)
                 else:
@@ -398,11 +402,11 @@ class ServerObject():
                         date_str = line.split(" ", 1)[1].split("[", 1)[0].strip()
                         date_label = format_time(date_str)
                     except IndexError:
-                        date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+                        date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # If date_label is missing, it may be formatted differently
                 if not date_label:
-                    date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+                    date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # Format string as needed
 
@@ -716,7 +720,7 @@ class ServerObject():
 
                 # Show log
                 if log_cmd:
-                    self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'EXEC', f"Console issued server command: {new_cmd}", (1, 0.298, 0.6, 1))})
+                    self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'EXEC', f"Console issued server command: {new_cmd}", (1, 0.298, 0.6, 1))})
 
                 # Send script event
                 if self.script_object.enabled and not script:
@@ -750,17 +754,17 @@ class ServerObject():
                 self.run_data['launch-time'] = None
                 self.run_data['player-list'] = {}
                 self.run_data['network'] = {}
-                self.run_data['log'] = [{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
+                self.run_data['log'] = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
                 self.run_data['process-hooks'] = []
                 self.run_data['close-hooks'] = [self.auto_backup_func]
                 self.run_data['console-panel'] = None
                 self.run_data['performance-panel'] = None
                 self.run_data['command-history'] = []
             else:
-                self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
+                self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
 
             if self.custom_flags:
-                self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Using launch flags: '{self.custom_flags}'", (0.7, 0.7, 0.7, 1))})
+                self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Using launch flags: '{self.custom_flags}'", (0.7, 0.7, 0.7, 1))})
                 # Prevent bugs when closing immediately due to bad flags
                 time.sleep(1)
 
@@ -789,7 +793,7 @@ class ServerObject():
                         if constants.run_proc(f'netsh advfirewall firewall show rule name="auto-mcs java {exec_type}"') == 1:
                             net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs java {exec_type}" dir=in action=allow enable=yes program="{constants.java_executable[exec_type]}"', None, 0)
                             if net_test == 5:
-                                self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'WARN', f"Java is blocked by Windows Firewall: can't accept external connections", (1, 0.659, 0.42, 1))})
+                                self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Java is blocked by Windows Firewall: can't accept external connections", (1, 0.659, 0.42, 1))})
                                 firewall_block = True
 
                 # Check for networking conflicts and current IP
@@ -799,7 +803,7 @@ class ServerObject():
 
                 self.run_data['network'] = constants.get_current_ip(self.name, get_ngrok=(self.ngrok_enabled and constants.app_online))
                 if self.run_data['network']['original_port']:
-                    self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.659, 0.42, 1))})
+                    self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.659, 0.42, 1))})
 
                 # Run server
                 self.run_data['process'] = Popen(script_content, stdout=PIPE, stdin=PIPE, stderr=PIPE, cwd=self.server_path, shell=True)
@@ -917,7 +921,7 @@ class ServerObject():
                                 with open(crash_log, 'w+') as f:
                                     content = "---- Minecraft Crash Report ----\n"
                                     content += "// This report was generated by auto-mcs\n\n"
-                                    content += f"Time: {dt.now().strftime('%#m/%#d/%y, %#I:%M %p')}\n"
+                                    content += f"Time: {dt.now().strftime(constants.fmt_date('%#m/%#d/%y, %#I:%M %p'))}\n"
 
                                     if file:
                                         if "a server is already running on that port" in file.lower():
@@ -989,9 +993,9 @@ class ServerObject():
 
                         # Log shutdown data
                         if crash_info:
-                            self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"'{self.name}' has stopped unexpectedly", (1,0.5,0.65,1))})
+                            self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"'{self.name}' has stopped unexpectedly", (1,0.5,0.65,1))})
                         else:
-                            self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"'{self.name}' has stopped successfully", (0.7,0.7,0.7,1))})
+                            self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"'{self.name}' has stopped successfully", (0.7,0.7,0.7,1))})
 
                         close = True
 
@@ -1195,8 +1199,9 @@ class ServerObject():
             time.sleep(1)
             if self.running and self.name not in constants.backup_lock:
                 try:
-                    self.send_log(f"'{self.name}' is deadlocked, please kill it above to continue...", 'warning')
-                    self.run_data['console-panel'].toggle_deadlock(True)
+                    if self.run_data['performance']['cpu'] == 0:
+                        self.send_log(f"'{self.name}' is deadlocked, please kill it above to continue...", 'warning')
+                        self.run_data['console-panel'].toggle_deadlock(True)
                 except:
                     pass
 
@@ -1460,7 +1465,7 @@ class ServerObject():
             if message:
 
                 message_date_obj = dt.now()
-                date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+                date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # Format string as needed
 
@@ -1549,7 +1554,7 @@ class ServerObject():
 
             if message:
                 message_date_obj = dt.now()
-                date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+                date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 main_label = message.rstrip()
                 type_label = "AMS"
@@ -1694,7 +1699,9 @@ class ViewObject():
             pass
         try:
             if self.config_file.get("general", "isModpack"):
-                self.is_modpack = self.config_file.get("general", "isModpack").lower() == 'true'
+                modpack = self.config_file.get("general", "isModpack").lower()
+                if modpack:
+                    self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
         except:
             self.is_modpack = False
 

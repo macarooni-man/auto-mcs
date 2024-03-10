@@ -322,7 +322,8 @@ available_locales = {
     # "Arabic": {"name": 'العربية', "code": 'ar'},
     # "Russian": {"name": 'Русский', "code": 'ru'},
     # "Ukranian": {"name": 'Українська', "code": 'uk'},
-    # "Serbian": {"name": 'Cрпски', "code": 'sr'}
+    # "Serbian": {"name": 'Cрпски', "code": 'sr'},
+    # "Japanese": {"name": '日本語', "code": 'ja'}
 }
 def get_locale_string(english=False, *a):
     for k, v in available_locales.items():
@@ -679,9 +680,17 @@ rm \"{os.path.join(tempDir, script_name)}\""""
     sys.exit()
 
 
+
+# Format date string to be cross-platform compatible
+def fmt_date(date_string: str):
+    if os_name == 'windows':
+        return date_string
+    else:
+        return date_string.replace('%#','%-')
+
 # Returns current formatted time
 def format_now():
-    return datetime.datetime.now().strftime("%#I:%M:%S %p" if os_name == "windows" else "%-I:%M:%S %p")
+    return datetime.datetime.now().strftime(fmt_date("%#I:%M:%S %p"))
 
 
 # Global banner
@@ -3243,7 +3252,8 @@ def scan_modpack(progress_func=None):
         'type': None,
         'version': None,
         'build': None,
-        'launch_flags': []
+        'launch_flags': [],
+        'pack_type': 'zip'
     }
 
     if import_data['name']:
@@ -3252,6 +3262,7 @@ def scan_modpack(progress_func=None):
 
     # Approach #1: Look for "modrinth.index.json"
     if file_path.endswith('.mrpack'):
+        data['pack_type'] = 'mrpack'
         mr_index = os.path.join(test_server, 'modrinth.index.json')
         if os.path.isfile(mr_index):
             with open(mr_index, 'r') as f:
@@ -3522,7 +3533,8 @@ def scan_modpack(progress_func=None):
             'type': data['type'],
             'version': data['version'],
             'build': data['build'],
-            'launch_flags': data['launch_flags']
+            'launch_flags': data['launch_flags'],
+            'pack_type': data['pack_type']
         }
 
         if progress_func:
@@ -3574,7 +3586,7 @@ def finalize_modpack(progress_func=None, *args):
 
 
         # Create auto-mcs.ini
-        create_server_config(import_data, True, True)
+        create_server_config(import_data, True, import_data['pack_type'])
 
 
         # Copy folder to server path and delete tmpsvr
@@ -3744,7 +3756,7 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
     except:
         pass
     if modpack:
-        config.set('general', 'isModpack', 'true')
+        config.set('general', 'isModpack', str(modpack))
 
     config.add_section('bkup')
     config.set('bkup', 'bkupAuto', 'prompt')
@@ -4436,7 +4448,7 @@ class SearchManager():
         self.options_tree = {
 
             'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen'}),
+                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen'}, ['addonpack', 'modpack', 'import modpack']),
                 ScreenObject('Server Manager', 'ServerManagerScreen', generate_server_list),
             ],
 

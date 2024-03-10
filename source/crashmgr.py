@@ -70,8 +70,8 @@ def generate_log(exception):
     constants.folder_check(log_dir)
 
     # Timestamp
-    time_stamp = datetime.datetime.now().strftime("%#H-%M-%S_%#m-%#d-%y" if constants.os_name == "windows" else "%-H-%M-%S_%-m-%-d-%y")
-    time_formatted = datetime.datetime.now().strftime("%#I:%M:%S %p  %#m/%#d/%Y" if constants.os_name == "windows" else "%-I:%M:%S %p  %-m/%-d/%Y")
+    time_stamp = datetime.datetime.now().strftime(constants.fmt_date("%#H-%M-%S_%#m-%#d-%y"))
+    time_formatted = datetime.datetime.now().strftime(constants.fmt_date("%#I:%M:%S %p  %#m/%#d/%Y"))
 
     # Header
     header = f'Auto-MCS Exception:    {ame}  '
@@ -166,7 +166,8 @@ def open_log(log_path):
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
         'sub_processes': constants.sub_processes,
-        'os_name': constants.os_name
+        'os_name': constants.os_name,
+        'translate': constants.translate
     }
     logviewer.open_log('Crash Report', log_path, data_dict)
 

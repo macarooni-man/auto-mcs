@@ -1154,7 +1154,8 @@ class ServerVersionInput(BaseInput):
         super().__init__(**kwargs)
         self.enter_func = enter_func
         self.title_text = "version"
-        self.hint_text = f"click 'next' for latest  ({constants.latestMC[constants.new_server_info['type']]})"
+        server_type = constants.latestMC[constants.new_server_info['type']]
+        self.hint_text = f"click 'next' for latest  (${server_type}$)"
         self.bind(on_text_validate=self.on_enter)
 
 
@@ -5456,7 +5457,14 @@ class PopupWindow(RelativeLayout):
 
 
     def click_event(self, *args):
-        if not self.clicked:
+
+        button_pressed = 'ignore'
+        try:
+            button_pressed = args[1].button
+        except:
+            pass
+
+        if not self.clicked and button_pressed == 'left':
 
             if isinstance(args[1], str):
                 force_button = args[1]
@@ -5882,17 +5890,24 @@ class BigPopupWindow(RelativeLayout):
 
     def click_event(self, *args):
 
-        if not self.clicked:
+        button_pressed = 'ignore'
+        try:
+            button_pressed = args[1].button
+        except:
+            pass
+
+        if not self.clicked and button_pressed == 'left':
 
             def check_body_button(*a):
-                if force_button == 'body' or (not force_button and ((self.body_button.x < rel_coord[0] < self.body_button.x + self.body_button.width) and (self.body_button.y < rel_coord[1] < self.body_button.y + self.body_button.height))):
-                    Animation.stop_all(self.body_button)
-                    self.body_button.background_color = (
-                    self.window_text_color[0], self.window_text_color[1], self.window_text_color[2], 0.3)
-                    Animation(background_color=self.window_text_color, duration=0.3).start(self.body_button)
-                    self.body_button_click()
-                    for x in range(10):
-                        Clock.schedule_once(self.resize_window, x/30)
+                if self.body_button:
+                    if force_button == 'body' or (not force_button and ((self.body_button.x < rel_coord[0] < self.body_button.x + self.body_button.width) and (self.body_button.y < rel_coord[1] < self.body_button.y + self.body_button.height))):
+                        Animation.stop_all(self.body_button)
+                        self.body_button.background_color = (
+                        self.window_text_color[0], self.window_text_color[1], self.window_text_color[2], 0.3)
+                        Animation(background_color=self.window_text_color, duration=0.3).start(self.body_button)
+                        self.body_button_click()
+                        for x in range(10):
+                            Clock.schedule_once(self.resize_window, x/30)
 
             if isinstance(args[1], str):
                 force_button = args[1]
@@ -6053,6 +6068,7 @@ class BigPopupWindow(RelativeLayout):
         self.window_sound = None
         self.shown = False
         self.clicked = False
+        self.body_button = None
 
         with self.canvas.after:
             # Blurred background
@@ -6285,7 +6301,11 @@ class PopupAddon(BigPopupWindow):
             self.window_content.halign = "left"
             self.window_content.valign = "top"
             self.window_content.pos_hint = {"center_x": 0.5, "center_y": 0.465 if self.is_modpack else 0.4}
-        self.window_content.max_lines = 15 # Cuts off the beginning of content??
+
+        if self.is_modpack:
+            self.window_content.max_lines = 15 # Cuts off the beginning of content??
+        else:
+            self.window_content.max_lines = 13 if self.installed else 14  # Cuts off the beginning of content??
 
 
         # Modal specific settings
@@ -8481,11 +8501,21 @@ class MainMenuScreen(MenuBackground):
                 self.show_popup(
                     "warning",
                     "Privilege Error",
-                    f"Running auto-mcs as {'administrator' if constants.os_name == 'windows' else 'root'} can expose your system to security vulnerabilities.\n\nPlease restart with standard user privileges to continue",
+                    f"Running auto-mcs as ${'administrator' if constants.os_name == 'windows' else 'root'}$ can expose your system to security vulnerabilities.\n\nPlease restart with standard user privileges to continue",
                     Window.close
                 )
             Clock.schedule_once(admin_error, 0.5)
             return
+
+        elif not constants.check_free_space():
+            def disk_error(*_):
+                self.show_popup(
+                    "warning",
+                    "Storage Error",
+                    "auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up space on your disk to minimize issues",
+                    None
+                )
+            Clock.schedule_once(disk_error, 0.5)
 
 
         if constants.update_data['reboot-msg']:
@@ -15119,7 +15149,7 @@ class ConsolePanel(FloatLayout):
         def start_timer(*_):
             server_obj = screen_manager.current_screen.server
 
-            self.update_text(text=[{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{server_obj.name}', please wait...", (0.7,0.7,0.7,1))}])
+            self.update_text(text=[{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Launching '{server_obj.name}', please wait...", (0.7,0.7,0.7,1))}])
             while not server_obj.addon or not server_obj.backup or not server_obj.script_manager or not server_obj.acl:
                 time.sleep(0.05)
 
@@ -18191,7 +18221,7 @@ class ServerAddonSearchScreen(MenuBackground):
                                     functools.partial(
                                         self.show_banner,
                                         (0.553, 0.902, 0.675, 1),
-                                        f"Installed '{addon_name}'",
+                                        f"Installed '${addon_name}$'",
                                         "checkmark-circle-sharp.png",
                                         2.5,
                                         {"center_x": 0.5, "center_y": 0.965}
@@ -19478,7 +19508,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
                                     functools.partial(
                                         self.show_banner,
                                         (0.553, 0.902, 0.675, 1),
-                                        f"Installed '{script_name}'",
+                                        f"Installed '${script_name}$'",
                                         "checkmark-circle-sharp.png",
                                         2.5,
                                         {"center_x": 0.5, "center_y": 0.965}
@@ -21377,6 +21407,8 @@ class ServerSettingsScreen(MenuBackground):
 
         # Check for updates button
         sub_layout = ScrollItem()
+        while server_obj.name not in constants.update_list:
+            time.sleep(0.1)
         if constants.update_list[server_obj.name]['needsUpdate'] == 'true':
             if 'settings' in server_obj.viewed_notifs:
                 if server_obj.viewed_notifs['settings'] != server_obj.update_string:
@@ -22024,9 +22056,12 @@ class MainApp(App):
 
         # Screen manager override for testing
         # if not constants.app_compiled:
-        #     def open_menu(*a):
-        #         screen_manager.current = 'ServerImportModpackSearchScreen'
-        #     Clock.schedule_once(open_menu, 2)
+            # def open_menu(*a):
+            #     open_server('Reeee 1.8', launch=True)
+            # Clock.schedule_once(open_menu, 2)
+            # def open_menu(*a):
+            #     screen_manager.current = 'ServerImportModpackSearchScreen'
+            # Clock.schedule_once(open_menu, 2)
             # def open_menu(*args):
             #     open_server("acl test", launch=False)
             #     # def show_notif(*args):

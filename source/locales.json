@@ -165,7 +165,7 @@
   "it": "-ACL <",
   "de": "- ACL <",
   "nl": "- ACL <",
-  "pt": "-LCA <",
+  "pt": "-LCA<",
   "sv": "- ACL <",
   "fi": "- ACL <"
  },
@@ -320,14 +320,14 @@
   "fi": "yleist\u00e4"
  },
  "servername": {
+  "it": "nome del server",
   "es": "nombre del servidor",
   "fr": "nom du serveur",
-  "it": "nome del server",
-  "de": "Servername",
   "nl": "server naam",
   "pt": "nome do servidor",
   "sv": "server namn",
-  "fi": "palvelimen nimi"
+  "fi": "palvelimen nimi",
+  "de": "Servername"
  },
  "serverversion": {
   "es": "versi\u00f3n del servidor",
@@ -420,14 +420,14 @@
   "fi": "pelaajaluettelo"
  },
  "r": {
-  "it": "R",
   "es": "r",
   "fr": "r",
+  "it": "R",
+  "de": "R",
   "nl": "R",
   "pt": "R",
   "sv": "r",
-  "fi": "r",
-  "de": "R"
+  "fi": "r"
  },
  "cache": {
   "es": "cache",
@@ -470,14 +470,14 @@
   "fi": "ip-geo"
  },
  "view": {
-  "pt": "visualizar",
   "es": "vista",
   "fr": "voir",
   "it": "visualizzazione",
   "de": "Sicht",
   "nl": "weergave",
-  "fi": "n\u00e4kym\u00e4",
-  "sv": "se"
+  "pt": "visualizar",
+  "sv": "se",
+  "fi": "n\u00e4kym\u00e4"
  },
  "normal access": {
   "es": "Acceso normal",
@@ -660,14 +660,14 @@
   "fi": "Palvelin"
  },
  "forever": {
-  "fi": "ikuisesti",
+  "es": "para siempre",
   "fr": "pour toujours",
   "it": "per sempre",
   "de": "f\u00fcr immer",
   "nl": "voor altijd",
   "pt": "para sempre",
   "sv": "evigt",
-  "es": "para siempre"
+  "fi": "ikuisesti"
  },
  "date": {
   "es": "fecha",
@@ -845,19 +845,19 @@
   "it": "ban-ip",
   "de": "ban-ip",
   "nl": "ban-ip",
-  "pt": "banir ip",
+  "pt": "ban-ip",
   "sv": "ban-ip",
   "fi": "ban-ip"
  },
  "whitelist add": {
-  "fr": "ajouter \u00e0 la liste blanche",
   "es": "agregar a la lista blanca",
+  "fr": "ajouter \u00e0 la liste blanche",
+  "it": "aggiunta alla lista bianca",
   "de": "Whitelist hinzuf\u00fcgen",
   "nl": "witte lijst toevoegen",
   "pt": "adicionar \u00e0 lista de permiss\u00f5es",
   "sv": "vitlista l\u00e4gga till",
-  "fi": "lis\u00e4ys sallittujen luetteloon",
-  "it": "aggiunta alla lista bianca"
+  "fi": "lis\u00e4ys sallittujen luetteloon"
  },
  "deop": {
   "es": "deop",
@@ -971,13 +971,13 @@
  },
  "left": {
   "es": "izquierda",
+  "fr": "gauche",
   "it": "Sinistra",
   "de": "links",
   "nl": "links",
   "pt": "esquerda",
   "sv": "v\u00e4nster",
-  "fi": "vasemmalle",
-  "fr": "gauche"
+  "fi": "vasemmalle"
  },
  "redraws the widget": {
   "es": "Vuelve a dibujar el widget",
@@ -1191,13 +1191,13 @@
  },
  "insert": {
   "es": "insertar",
-  "fr": "ins\u00e9rer",
   "it": "inserire",
   "de": "einf\u00fcgen",
   "nl": "invoegen",
   "pt": "inserir",
   "sv": "F\u00f6ra in",
-  "fi": "lis\u00e4\u00e4"
+  "fi": "lis\u00e4\u00e4",
+  "fr": "ins\u00e9rer"
  },
  "insert + 1 line": {
   "es": "insertar + 1 l\u00ednea",
@@ -1280,14 +1280,14 @@
   "fi": "itse.ensin"
  },
  "sel.last": {
-  "fr": "sel.dernier",
   "es": "sel.\u00faltimo",
+  "fr": "sel.dernier",
+  "it": "sel.ultimo",
   "de": "sel.last",
   "nl": "sel.laatste",
   "pt": "sel.\u00faltimo",
   "sv": "sel.sist",
-  "fi": "sel.last",
-  "it": "sel.ultimo"
+  "fi": "sel.last"
  },
  "return": {
   "es": "Devolver",
@@ -1310,13 +1310,13 @@
   "fi": "Paeta"
  },
  "parenleft": {
-  "sv": "parenv\u00e4nster",
   "es": "padre izquierdo",
   "fr": "parengauche",
   "it": "parentleft",
   "de": "parenleft",
   "nl": "ouderlinks",
   "pt": "parenleft",
+  "sv": "parenv\u00e4nster",
   "fi": "vanhemman vasen"
  },
  "matchstart": {
@@ -1670,24 +1670,24 @@
   "fi": "klo"
  },
  "period": {
-  "es": "per\u00edodo",
   "fr": "p\u00e9riode",
-  "it": "periodo",
+  "es": "per\u00edodo",
   "de": "Zeitraum",
   "nl": "periode",
   "pt": "per\u00edodo",
   "sv": "period",
-  "fi": "ajanjaksoa"
+  "fi": "ajanjaksoa",
+  "it": "periodo"
  },
  "tab": {
+  "nl": "Tab",
   "es": "Pesta\u00f1a",
   "fr": "Languette",
   "it": "Tab",
   "de": "Tab",
-  "nl": "Tab",
-  "pt": "Aba",
   "sv": "Flik",
-  "fi": "Tab"
+  "fi": "Tab",
+  "pt": "Aba"
  },
  "parenright": {
   "es": "derecho de paternidad",
@@ -2050,14 +2050,14 @@
   "fi": "auta"
  },
  "tagged with \"sel\"": {
-  "it": "contrassegnato con \"sel\"",
   "es": "etiquetado con \"sel\"",
   "fr": "\u00e9tiquet\u00e9 avec \"sel\"",
+  "it": "contrassegnato con \"sel\"",
+  "de": "markiert mit \u201esel\u201c",
   "nl": "getagd met \"sel\"",
   "pt": "marcado com \"sel\"",
   "sv": "taggad med \"sel\"",
-  "fi": "merkitty sanalla \"sel\"",
-  "de": "markiert mit \u201esel\u201c"
+  "fi": "merkitty sanalla \"sel\""
  },
  "nothing to": {
   "es": "nada que",
@@ -2630,14 +2630,14 @@
   "fi": "tallenna kaikki huuhtele"
  },
  "save-off": {
+  "pt": "economia",
   "es": "ahorro",
   "fr": "\u00e9conomie",
   "it": "salva-fuori",
   "de": "Weg sparen",
   "nl": "sparen",
-  "pt": "economia",
-  "sv": "r\u00e4ddning",
-  "fi": "s\u00e4\u00e4st\u00e4\u00e4"
+  "fi": "s\u00e4\u00e4st\u00e4\u00e4",
+  "sv": "r\u00e4ddning"
  },
  "save-on": {
   "es": "ahorrar en",
@@ -2707,7 +2707,7 @@
   "nl": "server type",
   "pt": "tipo de servidor",
   "sv": "serverTyp",
-  "fi": "palvelintyyppi"
+  "fi": "palvelimen tyyppi"
  },
  "today": {
   "es": "Hoy",
@@ -2790,14 +2790,14 @@
   "fi": "tar -cvf \""
  },
  "something went wrong with the update": {
-  "nl": "Er is iets misgegaan met de update",
   "es": "Algo sali\u00f3 mal con la actualizaci\u00f3n.",
   "fr": "Quelque chose s'est mal pass\u00e9 avec la mise \u00e0 jour",
   "it": "Qualcosa \u00e8 andato storto con l'aggiornamento",
   "de": "Beim Update ist ein Fehler aufgetreten",
+  "nl": "Er is iets misgegaan met de update",
+  "pt": "Algo deu errado com a atualiza\u00e7\u00e3o",
   "sv": "N\u00e5got gick fel med uppdateringen",
-  "fi": "Jotain meni pieleen p\u00e4ivityksess\u00e4",
-  "pt": "Algo deu errado com a atualiza\u00e7\u00e3o"
+  "fi": "Jotain meni pieleen p\u00e4ivityksess\u00e4"
  },
  "auto-mcs-update": {
   "es": "actualizaci\u00f3n-autom\u00e1tica-mcs",
@@ -2870,13 +2870,13 @@
   "fi": "m\u00e4\u00e4rittelem\u00e4t\u00f6n"
  },
  "setting": {
+  "sv": "milj\u00f6",
   "es": "configuraci\u00f3n",
   "fr": "param\u00e8tre",
   "it": "collocamento",
   "de": "Einstellung",
   "nl": "instelling",
   "pt": "contexto",
-  "sv": "milj\u00f6",
   "fi": "asetusta"
  },
  "guide": {
@@ -2990,14 +2990,14 @@
   "fi": "3"
  },
  "modern": {
-  "fi": "moderni",
+  "es": "moderno",
   "fr": "moderne",
   "it": "moderno",
   "de": "modern",
   "nl": "modern",
   "pt": "moderno",
   "sv": "modern",
-  "es": "moderno"
+  "fi": "moderni"
  },
  "legacy": {
   "es": "legado",
@@ -3032,7 +3032,7 @@
  "serverimport": {
   "es": "Importaci\u00f3n de servidor",
   "fr": "Importation de serveur",
-  "it": "Importazione server",
+  "it": "Importazioneserver",
   "de": "ServerImport",
   "nl": "ServerImporteren",
   "pt": "Importa\u00e7\u00e3o de Servidor",
@@ -3261,13 +3261,13 @@
  },
  "that": {
   "es": "eso",
-  "fr": "que",
   "it": "Quello",
   "de": "Das",
   "nl": "Dat",
   "pt": "que",
   "sv": "den d\u00e4r",
-  "fi": "ett\u00e4"
+  "fi": "ett\u00e4",
+  "fr": "que"
  },
  "have": {
   "es": "tener",
@@ -3330,14 +3330,14 @@
   "fi": "kanssa"
  },
  "he": {
-  "es": "\u00e9l",
   "fr": "il",
   "it": "Lui",
   "de": "Er",
   "nl": "Hij",
   "pt": "ele",
   "sv": "han",
-  "fi": "h\u00e4n"
+  "fi": "h\u00e4n",
+  "es": "\u00e9l"
  },
  "as": {
   "es": "como",
@@ -3490,14 +3490,14 @@
   "fi": "an"
  },
  "will": {
+  "de": "Wille",
   "es": "voluntad",
   "fr": "volont\u00e9",
   "it": "Volere",
-  "de": "Wille",
-  "nl": "zullen",
   "pt": "vai",
   "sv": "kommer",
-  "fi": "tahtoa"
+  "fi": "tahtoa",
+  "nl": "zullen"
  },
  "my": {
   "es": "mi",
@@ -3530,14 +3530,14 @@
   "fi": "olisi"
  },
  "there": {
-  "de": "Dort",
   "es": "all\u00e1",
   "fr": "l\u00e0",
   "it": "L\u00e0",
+  "de": "Dort",
+  "nl": "daar",
   "pt": "l\u00e1",
   "sv": "d\u00e4r",
-  "fi": "siell\u00e4",
-  "nl": "daar"
+  "fi": "siell\u00e4"
  },
  "their": {
   "es": "su",
@@ -3940,14 +3940,14 @@
   "fi": "ajatella"
  },
  "also": {
-  "nl": "Ook",
   "es": "tambi\u00e9n",
   "fr": "aussi",
   "it": "Anche",
   "de": "Auch",
+  "nl": "Ook",
+  "pt": "tamb\u00e9m",
   "sv": "ocks\u00e5",
-  "fi": "my\u00f6s",
-  "pt": "tamb\u00e9m"
+  "fi": "my\u00f6s"
  },
  "back": {
   "es": "atr\u00e1s",
@@ -3980,13 +3980,13 @@
   "fi": "kaksi"
  },
  "how": {
+  "sv": "hur",
   "es": "c\u00f3mo",
   "fr": "comment",
   "it": "Come",
   "de": "Wie",
   "nl": "Hoe",
   "pt": "como",
-  "sv": "hur",
   "fi": "Miten"
  },
  "our": {
@@ -4030,14 +4030,14 @@
   "fi": "hyvin"
  },
  "way": {
-  "fr": "chemin",
   "es": "forma",
+  "fr": "chemin",
+  "it": "modo",
   "de": "Weg",
   "nl": "manier",
   "pt": "caminho",
   "sv": "s\u00e4tt",
-  "fi": "tapa",
-  "it": "modo"
+  "fi": "tapa"
  },
  "even": {
   "es": "incluso",
@@ -4081,13 +4081,13 @@
  },
  "any": {
   "es": "cualquier",
+  "fr": "n'importe lequel",
   "it": "Qualunque",
   "de": "beliebig",
   "nl": "elk",
   "pt": "qualquer",
   "sv": "n\u00e5gra",
-  "fi": "mink\u00e4 tahansa",
-  "fr": "n'importe lequel"
+  "fi": "mink\u00e4 tahansa"
  },
  "these": {
   "es": "estos",
@@ -4170,14 +4170,14 @@
   "fi": "lis\u00e4paketti"
  },
  "modpack": {
-  "fr": "pack de modules",
   "es": "paquete de mods",
+  "fr": "pack de modules",
+  "it": "modpack",
   "de": "Modpack",
   "nl": "modpack",
   "pt": "modpack",
   "sv": "modpack",
-  "fi": "modpack",
-  "it": "modpack"
+  "fi": "modpack"
  },
  "directory": {
   "es": "directorio",
@@ -4190,14 +4190,14 @@
   "fi": "hakemistosta"
  },
  "exec": {
-  "de": "Gesch\u00e4ftsf\u00fchrer",
   "es": "ejecutivo",
   "fr": "ex\u00e9cutif",
   "it": "esecutivo",
+  "de": "Gesch\u00e4ftsf\u00fchrer",
   "nl": "uitvoerend",
+  "pt": "executivo",
   "sv": "exec",
-  "fi": "exec",
-  "pt": "executivo"
+  "fi": "exec"
  },
  "&\nrm \"": {
   "es": "&\nrm \"",
@@ -4310,13 +4310,13 @@
   "fi": "rakentaa"
  },
  "home": {
-  "sv": "Hem",
   "es": "Hogar",
   "fr": "Maison",
   "it": "Casa",
   "de": "Heim",
   "nl": "Thuis",
   "pt": "Lar",
+  "sv": "Hem",
   "fi": "Koti"
  },
  "server manager": {
@@ -4340,14 +4340,14 @@
   "fi": "Luo palvelin (vaihe 1)"
  },
  "create server (step 2)": {
-  "de": "Server erstellen (Schritt 2)",
   "es": "Crear servidor (paso 2)",
   "fr": "Cr\u00e9er un serveur (\u00e9tape 2)",
   "it": "Crea server (passaggio 2)",
+  "de": "Server erstellen (Schritt 2)",
+  "nl": "Server maken (stap 2)",
   "pt": "Criar servidor (etapa 2)",
   "sv": "Skapa server (steg 2)",
-  "fi": "Luo palvelin (vaihe 2)",
-  "nl": "Server maken (stap 2)"
+  "fi": "Luo palvelin (vaihe 2)"
  },
  "create server (step 3)": {
   "es": "Crear servidor (paso 3)",
@@ -4571,7 +4571,7 @@
  },
  "error retrieving head for '": {
   "es": "Error al recuperar el encabezado de '",
-  "fr": "Erreur lors de la r\u00e9cup\u00e9ration de l'en-t\u00eate de '",
+  "fr": "Erreur lors de la r\u00e9cup\u00e9ration de la t\u00eate de '",
   "it": "Errore durante il recupero dell'intestazione per '",
   "de": "Fehler beim Abrufen des Headers f\u00fcr \u201e",
   "nl": "Fout bij ophalen van hoofd voor '",
@@ -4628,6 +4628,16 @@
   "pt": "Mudar idioma",
   "sv": "\u00c4ndra spr\u00e5k",
   "fi": "Vaihda kielt\u00e4"
+ },
+ "import modpack": {
+  "es": "importar paquete de mods",
+  "fr": "importer un pack de modules",
+  "it": "importa il pacchetto mod",
+  "de": "Modpack importieren",
+  "nl": "modpack importeren",
+  "pt": "importar modpack",
+  "sv": "importera modpack",
+  "fi": "tuonti modpack"
  },
  "server name": {
   "es": "Nombre del servidor",
@@ -4710,14 +4720,14 @@
   "fi": "Valitse Spigot"
  },
  "type in version": {
-  "fi": "Kirjoita versio",
+  "es": "Escriba la versi\u00f3n",
   "fr": "Tapez la version",
   "it": "Digita la versione",
   "de": "Geben Sie die Version ein",
   "nl": "Typ de versie",
   "pt": "Digite a vers\u00e3o",
   "sv": "Skriv in version",
-  "es": "Escriba la versi\u00f3n"
+  "fi": "Kirjoita versio"
  },
  "browse for a world": {
   "es": "Navegar por un mundo",
@@ -4732,7 +4742,7 @@
  "type in seed": {
   "es": "Escriba la semilla",
   "fr": "Tapez la graine",
-  "it": "Digita il seme",
+  "it": "Digita seme",
   "de": "Samen eintippen",
   "nl": "Typ zaad in",
   "pt": "Digite a semente",
@@ -4780,14 +4790,14 @@
   "fi": "M\u00e4\u00e4rit\u00e4 kulunvalvonta"
  },
  "configure bans": {
-  "fr": "Configurer les interdictions",
   "es": "Configurar prohibiciones",
+  "fr": "Configurer les interdictions",
+  "it": "Configura i divieti",
   "de": "Konfigurieren Sie Verbote",
   "nl": "Configureer verboden",
   "pt": "Configurar proibi\u00e7\u00f5es",
   "sv": "Konfigurera f\u00f6rbud",
-  "fi": "M\u00e4\u00e4rit\u00e4 kiellot",
-  "it": "Configura i divieti"
+  "fi": "M\u00e4\u00e4rit\u00e4 kiellot"
  },
  "configure operators": {
   "es": "Configurar operadores",
@@ -4940,7 +4950,7 @@
   "fi": "M\u00e4\u00e4rit\u00e4 pelaajien enimm\u00e4ism\u00e4\u00e4r\u00e4"
  },
  "enable spawn protection": {
-  "es": "Habilitar la protecci\u00f3n de generaci\u00f3n",
+  "es": "Habilitar protecci\u00f3n de generaci\u00f3n",
   "fr": "Activer la protection contre le spawn",
   "it": "Abilita la protezione dallo spawn",
   "de": "Aktivieren Sie den Spawn-Schutz",
@@ -5010,14 +5020,14 @@
   "fi": "Tuo auto-mcs-varmuuskopio"
  },
  "import a modpack": {
-  "fr": "Importer un Modpack",
   "es": "Importar un paquete de modificaciones",
+  "fr": "Importer un Modpack",
+  "it": "Importa un pacchetto di modifiche",
   "de": "Importieren Sie ein Modpack",
   "nl": "Importeer een Modpack",
   "pt": "Importe um Modpack",
   "sv": "Importera ett Modpack",
-  "fi": "Tuo Modpack",
-  "it": "Importa un pacchetto di modifiche"
+  "fi": "Tuo Modpack"
  },
  "download a modpack": {
   "es": "Descargar un paquete de modificaciones",
@@ -5097,7 +5107,7 @@
   "nl": "Schakel automatische back-ups in",
   "pt": "Habilite backups autom\u00e1ticos",
   "sv": "Aktivera automatiska s\u00e4kerhetskopieringar",
-  "fi": "Ota automaattiset varmuuskopiot k\u00e4ytt\u00f6\u00f6n"
+  "fi": "Ota automaattinen varmuuskopiointi k\u00e4ytt\u00f6\u00f6n"
  },
  "specify maximum back-ups": {
   "es": "Especificar copias de seguridad m\u00e1ximas",
@@ -5173,7 +5183,7 @@
   "es": "Descargar guiones",
   "fr": "T\u00e9l\u00e9charger des scripts",
   "it": "Scarica gli script",
-  "de": "Skripte herunterladen",
+  "de": "Laden Sie Skripte herunter",
   "nl": "Scripts downloaden",
   "pt": "Baixar scripts",
   "sv": "Ladda ner skript",
@@ -5307,7 +5317,7 @@
   "nl": "Wijzig de lanceervlaggen",
   "pt": "Alterar sinalizadores de lan\u00e7amento",
   "sv": "\u00c4ndra lanseringsflaggor",
-  "fi": "Muuta k\u00e4ynnistyslippuja"
+  "fi": "Vaihda laukaisulippuja"
  },
  "enable proxy (ngrok)": {
   "es": "Habilitar proxy (ngrok)",
@@ -5351,7 +5361,7 @@
  },
  "change 'server.jar'": {
   "es": "Cambiar 'servidor.jar'",
-  "fr": "Changer 'server.jar'",
+  "fr": "Changer 'serveur.jar'",
   "it": "Modifica \"server.jar\"",
   "de": "\u00c4ndern Sie 'server.jar'",
   "nl": "Wijzig 'server.jar'",
@@ -5490,14 +5500,14 @@
   "fi": "href"
  },
  "span": {
-  "it": "arco",
   "es": "durar",
   "fr": "port\u00e9e",
+  "it": "arco",
+  "de": "Spanne",
   "nl": "span",
   "pt": "per\u00edodo",
   "sv": "sp\u00e4nna",
-  "fi": "j\u00e4nnev\u00e4li",
-  "de": "Spanne"
+  "fi": "j\u00e4nnev\u00e4li"
  },
  "ul": {
   "es": "ul",
@@ -5590,14 +5600,14 @@
   "fi": "K\u00e4ytt\u00e4j\u00e4 agentti"
  },
  "'$$' could not be found, using '$$' instead": {
-  "fi": "Kohdetta '$$' ei l\u00f6ytynyt, sen sijaan k\u00e4ytet\u00e4\u00e4n '$$'",
+  "es": "'$$' no se pudo encontrar, usando '$$' en su lugar",
   "fr": "'$$' n'a pas pu \u00eatre trouv\u00e9, utilisez '$$' \u00e0 la place",
   "it": "Impossibile trovare \"$$\", utilizzando invece \"$$\".",
   "de": "\u201e$$\u201c konnte nicht gefunden werden. Stattdessen wurde \u201e$$\u201c verwendet",
   "nl": "'$$' kon niet worden gevonden. Gebruik in plaats daarvan '$$'",
   "pt": "'$$' n\u00e3o foi encontrado, usando '$$' em vez disso",
   "sv": "'$$' kunde inte hittas, anv\u00e4nd '$$' ist\u00e4llet",
-  "es": "'$$' no se pudo encontrar, usando '$$' en su lugar"
+  "fi": "Kohdetta '$$' ei l\u00f6ytynyt, sen sijaan k\u00e4ytet\u00e4\u00e4n '$$'"
  },
  "class": {
   "es": "clase",
@@ -5690,14 +5700,14 @@
   "fi": "Asentaa"
  },
  "allocate memory": {
-  "fr": "allouer de la m\u00e9moire",
   "es": "asignar memoria",
+  "fr": "allouer de la m\u00e9moire",
+  "it": "allocare memoria",
   "de": "Speicher zuweisen",
   "nl": "geheugen toewijzen",
   "pt": "alocar mem\u00f3ria",
   "sv": "allokera minne",
-  "fi": "varaa muistia",
-  "it": "allocare memoria"
+  "fi": "varaa muistia"
  },
  "- overview": {
   "es": "- Descripci\u00f3n general",
@@ -5790,14 +5800,14 @@
   "fi": "src"
  },
  "distribution": {
+  "pt": "distribui\u00e7\u00e3o",
   "es": "distribuci\u00f3n",
   "fr": "distribution",
   "it": "distribuzione",
   "de": "Verteilung",
   "nl": "verdeling",
-  "pt": "distribui\u00e7\u00e3o",
-  "sv": "distribution",
-  "fi": "jakelu"
+  "fi": "jakelu",
+  "sv": "distribution"
  },
  "server type": {
   "es": "Tipo de servidor",
@@ -6220,14 +6230,14 @@
   "fi": "InputTitle"
  },
  "enter a query...": {
-  "nl": "voer een vraag in...",
   "es": "ingrese una consulta...",
   "fr": "entrez une requ\u00eate...",
   "it": "inserisci una domanda...",
   "de": "Geben Sie eine Abfrage ein...",
+  "nl": "voer een vraag in...",
+  "pt": "insira uma consulta...",
   "sv": "ange en fr\u00e5ga...",
-  "fi": "kirjoita kysely...",
-  "pt": "insira uma consulta..."
+  "fi": "kirjoita kysely..."
  },
  "animations": {
   "es": "animaciones",
@@ -6442,7 +6452,7 @@
  "paste your ngrok authtoken...": {
   "es": "pega tu token de autenticaci\u00f3n de ngrok...",
   "fr": "collez votre jeton d'authentification ngrok...",
-  "it": "incolla il tuo token di autenticazione Ngrok...",
+  "it": "incolla il tuo token di autenticazione ngrok...",
   "de": "F\u00fcgen Sie Ihr Ngrok-Authentifizierungstoken ein ...",
   "nl": "plak je ngrok authtoken...",
   "pt": "cole seu token de autoriza\u00e7\u00e3o ngrok ...",
@@ -6458,16 +6468,6 @@
   "pt": "bandeiras",
   "sv": "flaggor",
   "fi": "liput"
- },
- "enter custom launch flags...": {
-  "es": "ingrese banderas de lanzamiento personalizadas...",
-  "fr": "entrez les indicateurs de lancement personnalis\u00e9s...",
-  "it": "inserisci flag di lancio personalizzati...",
-  "de": "Geben Sie benutzerdefinierte Startflags ein ...",
-  "nl": "voer aangepaste startvlaggen in...",
-  "pt": "insira sinalizadores de inicializa\u00e7\u00e3o personalizados...",
-  "sv": "ange anpassade lanseringsflaggor...",
-  "fi": "sy\u00f6t\u00e4 mukautetut k\u00e4ynnistysliput..."
  },
  "small-icon.ico": {
   "es": "icono-peque\u00f1o.ico",
@@ -6760,7 +6760,7 @@
   "fi": "etsi modpackeja yll\u00e4"
  },
  "server manager, import server, download modpack": {
-  "es": "Administrador del servidor, Importar servidor, Descargar modpack",
+  "es": "Administrador de servidores, Servidor de importaci\u00f3n, Descargar modpack",
   "fr": "Gestionnaire de serveur, serveur d'importation, t\u00e9l\u00e9chargement du modpack",
   "it": "Server Manager, Importa server, Scarica modpack",
   "de": "Server-Manager, Server importieren, Modpack herunterladen",
@@ -6790,14 +6790,14 @@
   "fi": "Valitse palvelin, jolla hallitaan"
  },
  "animate": {
-  "es": "animar",
+  "fi": "animoida",
   "fr": "animer",
   "it": "animare",
   "de": "animieren",
   "nl": "animeren",
   "pt": "animar",
   "sv": "animera",
-  "fi": "animoida"
+  "es": "animar"
  },
  "select a back-up to restore": {
   "es": "Seleccione una copia de seguridad para restaurar",
@@ -6880,14 +6880,14 @@
   "fi": "Muokkaa palvelimen asetuksia"
  },
  "error.log": {
-  "fi": "error.log",
+  "es": "registro de errores",
   "fr": "erreur.log",
   "it": "errore.log",
   "de": "Fehlerprotokoll",
   "nl": "fout.log",
   "pt": "erro.log",
   "sv": "felloggen",
-  "es": "registro de errores"
+  "fi": "error.log"
  },
  "headertext": {
   "es": "Texto de cabecera",
@@ -6900,14 +6900,14 @@
   "fi": "Otsikkoteksti"
  },
  "$$": {
-  "fi": "$$",
   "es": "$$",
+  "fr": "$$",
   "it": "$$",
   "de": "$$",
   "nl": "$$",
   "pt": "$$",
   "sv": "$$",
-  "fr": "$$"
+  "fi": "$$"
  },
  "\\$([^\\$]+)\\$": {
   "es": "\\$([^\\$]+)\\$",
@@ -6919,15 +6919,15 @@
   "sv": "\\$([^\\$]+)\\$",
   "fi": "\\$([^\\$]+)\\$"
  },
- "click 'next' for latest  (": {
-  "es": "haga clic en 'siguiente' para ver lo \u00faltimo (",
-  "fr": "cliquez sur \u00ab\u00a0suivant\u00a0\u00bb pour le dernier (",
-  "it": "fare clic su \"successivo\" per l'ultimo (",
-  "de": "Klicken Sie auf \u201eWeiter\u201c, um die neuesten Informationen anzuzeigen (",
-  "nl": "klik op 'volgende' voor de laatste (",
-  "pt": "clique em 'pr\u00f3ximo' para ver as \u00faltimas (",
-  "sv": "klicka p\u00e5 'n\u00e4sta' f\u00f6r senaste (",
-  "fi": "klikkaa 'seuraava' n\u00e4hd\u00e4ksesi uusimmat ("
+ "click 'next' for latest  ($$)": {
+  "es": "haga clic en 'siguiente' para ver lo \u00faltimo ($$)",
+  "fr": "cliquez sur \u00ab\u00a0suivant\u00a0\u00bb pour les derni\u00e8res ($$)",
+  "it": "fare clic su \"successivo\" per l'ultimo ($$)",
+  "de": "Klicken Sie auf \u201eWeiter\u201c, um die neuesten Informationen anzuzeigen ($$).",
+  "nl": "klik op 'volgende' voor de laatste ($$)",
+  "pt": "clique em 'pr\u00f3ximo' para ver o mais recente ($$)",
+  "sv": "klicka p\u00e5 \"n\u00e4sta\" f\u00f6r senaste ($$)",
+  "fi": "napsauta 'seuraava' n\u00e4hd\u00e4ksesi uusimmat ($$)"
  },
  "users": {
   "es": "Usuarios",
@@ -6978,6 +6978,26 @@
   "pt": "retroceder",
   "sv": "backsteg",
   "fi": "askelpalautin"
+ },
+ "enter custom launch flags...": {
+  "es": "ingrese banderas de lanzamiento personalizadas...",
+  "fr": "entrez les indicateurs de lancement personnalis\u00e9s...",
+  "it": "inserisci flag di lancio personalizzati...",
+  "de": "Geben Sie benutzerdefinierte Startflags ein ...",
+  "nl": "voer aangepaste startvlaggen in...",
+  "pt": "insira sinalizadores de inicializa\u00e7\u00e3o personalizados...",
+  "sv": "ange anpassade lanseringsflaggor...",
+  "fi": "sy\u00f6t\u00e4 mukautetut k\u00e4ynnistysliput..."
+ },
+ "launch flags...": {
+  "es": "lanzar banderas...",
+  "fr": "lancer des drapeaux...",
+  "it": "lanciare bandiere...",
+  "de": "Flaggen starten...",
+  "nl": "vlaggen lanceren...",
+  "pt": "lan\u00e7ar bandeiras...",
+  "sv": "lansera flaggor...",
+  "fi": "laukaista liput..."
  },
  "dir": {
   "es": "directorio",
@@ -7129,15 +7149,15 @@
   "sv": "JA",
   "fi": "JOO"
  },
- "description unavailable": {
-  "es": "descripci\u00f3n no disponible",
-  "fr": "description indisponible",
-  "it": "descrizione non disponibile",
-  "de": "Beschreibung nicht verf\u00fcgbar",
-  "nl": "beschrijving niet beschikbaar",
-  "pt": "descri\u00e7\u00e3o indispon\u00edvel",
-  "sv": "beskrivning inte tillg\u00e4nglig",
-  "fi": "kuvaus ei ole saatavilla"
+ "no content available": {
+  "es": "No hay contenido disponible",
+  "fr": "Aucun contenu disponible",
+  "it": "Nessun contenuto disponibile",
+  "de": "Kein Inhalt verf\u00fcgbar",
+  "nl": "Geen inhoud beschikbaar",
+  "pt": "Nenhum conte\u00fado dispon\u00edvel",
+  "sv": "Inget inneh\u00e5ll tillg\u00e4ngligt",
+  "fi": "Sis\u00e4lt\u00f6\u00e4 ei ole saatavilla"
  },
  "click to view more": {
   "es": "haga clic para ver m\u00e1s",
@@ -7148,6 +7168,16 @@
   "pt": "clique para ver mais",
   "sv": "klicka f\u00f6r att se mer",
   "fi": "napsauta n\u00e4hd\u00e4ksesi lis\u00e4\u00e4"
+ },
+ "description unavailable": {
+  "es": "descripci\u00f3n no disponible",
+  "fr": "description indisponible",
+  "it": "descrizione non disponibile",
+  "de": "Beschreibung nicht verf\u00fcgbar",
+  "nl": "beschrijving niet beschikbaar",
+  "pt": "descri\u00e7\u00e3o indispon\u00edvel",
+  "sv": "beskrivning inte tillg\u00e4nglig",
+  "fi": "kuvaus ei ole saatavilla"
  },
  "update available": {
   "es": "Actualizaci\u00f3n disponible",
@@ -7180,14 +7210,14 @@
   "fi": "Olen tekstitt\u00e4j\u00e4"
  },
  "search for anything": {
+  "pt": "procure por qualquer coisa",
   "es": "buscar cualquier cosa",
   "fr": "chercher n'importe quoi",
   "it": "cercare qualsiasi cosa",
   "de": "nach irgendetwas suchen",
   "nl": "zoek naar wat dan ook",
-  "pt": "procure por qualquer coisa",
-  "sv": "s\u00f6ka efter vad som helst",
-  "fi": "etsi\u00e4 mit\u00e4 tahansa"
+  "fi": "etsi\u00e4 mit\u00e4 tahansa",
+  "sv": "s\u00f6ka efter vad som helst"
  },
  "pos": {
   "es": "posici\u00f3n",
@@ -7208,6 +7238,26 @@
   "pt": "tamanho",
   "sv": "storlek",
   "fi": "koko"
+ },
+ "warning": {
+  "es": "advertencia",
+  "fr": "avertissement",
+  "it": "avvertimento",
+  "de": "Warnung",
+  "nl": "waarschuwing",
+  "pt": "aviso",
+  "sv": "varning",
+  "fi": "Varoitus"
+ },
+ "query": {
+  "es": "consulta",
+  "fr": "requ\u00eate",
+  "it": "domanda",
+  "de": "Abfrage",
+  "nl": "vraag",
+  "pt": "consulta",
+  "sv": "fr\u00e5ga",
+  "fi": "kysely"
  },
  "header": {
   "es": "encabezamiento",
@@ -7236,7 +7286,7 @@
   "de": "Lehnen Sie sich zur\u00fcck und entspannen Sie sich, es ist Zeit f\u00fcr die Automatisierung",
   "nl": "Leun achterover en ontspan, het is tijd voor automatisering",
   "pt": "Sente-se e relaxe, \u00e9 hora de automa\u00e7\u00e3o",
-  "sv": "Luta dig tillbaka och slappna av, det \u00e4r dags f\u00f6r automatisering",
+  "sv": "Luta dig tillbaka och koppla av, det \u00e4r dags f\u00f6r automatisering",
   "fi": "Istu alas ja rentoudu, on automaation aika"
  },
  "there was an issue, please try again later": {
@@ -7341,13 +7391,13 @@
  },
  "gray": {
   "es": "gris",
-  "fr": "gris",
   "it": "grigio",
-  "de": "grau",
-  "nl": "grijs",
-  "pt": "cinza",
   "sv": "gr\u00e5",
-  "fi": "harmaa"
+  "pt": "cinza",
+  "fi": "harmaa",
+  "nl": "grijs",
+  "de": "grau",
+  "fr": "gris"
  },
  "purple": {
   "es": "p\u00farpura",
@@ -7370,33 +7420,33 @@
   "fi": "VAIHTOEHDOT"
  },
  "uuid": {
-  "es": "UUID",
-  "fr": "UUID",
+  "fi": "UUID",
   "it": "UUID",
-  "de": "UUID",
   "nl": "UUID",
   "pt": "UUID",
   "sv": "UUID",
-  "fi": "UUID"
+  "fr": "UUID",
+  "de": "UUID",
+  "es": "UUID"
  },
  "rule type": {
-  "nl": "Regeltype",
   "es": "Tipo de regla",
   "fr": "Type de r\u00e8gle",
   "it": "Tipo di regola",
   "de": "Regeltyp",
+  "nl": "Regeltype",
+  "pt": "Tipo de regra",
   "sv": "Regeltyp",
-  "fi": "S\u00e4\u00e4nn\u00f6n tyyppi",
-  "pt": "Tipo de regra"
+  "fi": "S\u00e4\u00e4nn\u00f6n tyyppi"
  },
  "affected": {
+  "sv": "P\u00e5verkade",
   "es": "Afectado",
   "fr": "Affect\u00e9",
   "it": "Ricercato",
   "de": "Betroffen",
   "nl": "Aangetast",
   "pt": "Afetado",
-  "sv": "P\u00e5verkade",
   "fi": "Vaikuttaa"
  },
  "network": {
@@ -7579,16 +7629,6 @@
   "sv": "\u00e4r favorit",
   "fi": "on Suosikki"
  },
- "query": {
-  "es": "consulta",
-  "fr": "requ\u00eate",
-  "it": "domanda",
-  "de": "Abfrage",
-  "nl": "vraag",
-  "pt": "consulta",
-  "sv": "fr\u00e5ga",
-  "fi": "kysely"
- },
  "automatic updates": {
   "es": "Actualizaciones autom\u00e1ticas",
   "fr": "Mises \u00e0 jour automatiques",
@@ -7653,7 +7693,7 @@
   "es": "Guardar copia de seguridad ahora",
   "fr": "Enregistrer la sauvegarde maintenant",
   "it": "Salva il backup adesso",
-  "de": "Jetzt Backup speichern",
+  "de": "Jetzt Backup sichern",
   "nl": "Sla nu een back-up op",
   "pt": "Salvar backup agora",
   "sv": "Spara s\u00e4kerhetskopia nu",
@@ -7743,7 +7783,7 @@
   "es": "HABILITAR GUI\u00d3N",
   "fr": "ACTIVER LE SCRIPT",
   "it": "ABILITA SCRIPT",
-  "de": "Skript aktivieren",
+  "de": "SCRIPT AKTIVIEREN",
   "nl": "SCRIPT INSCHAKELEN",
   "pt": "ATIVAR SCRIPT",
   "sv": "AKTIVERA SCRIPT",
@@ -8110,24 +8150,14 @@
   "fi": "keskikokoinen"
  },
  "[font=": {
+  "nl": "[lettertype=",
   "es": "[fuente=",
   "fr": "[police=",
   "it": "[carattere=",
   "de": "[Schriftart=",
-  "nl": "[lettertype=",
-  "pt": "[fonte=",
   "sv": "[font=",
-  "fi": "[font="
- },
- "warning": {
-  "es": "advertencia",
-  "fr": "avertissement",
-  "it": "avvertimento",
-  "de": "Warnung",
-  "nl": "waarschuwing",
-  "pt": "aviso",
-  "sv": "varning",
-  "fi": "Varoitus"
+  "fi": "[font=",
+  "pt": "[fonte="
  },
  "progress": {
   "es": "Progreso",
@@ -8240,13 +8270,13 @@
   "fi": "modifioitu kokemus"
  },
  "performant fork of paper": {
+  "sv": "prestanda gaffel av papper",
   "es": "tenedor de papel eficaz",
   "fr": "fourchette de papier performante",
   "it": "forchetta di carta performante",
   "de": "leistungsf\u00e4hige Gabel aus Papier",
   "nl": "performante vork van papier",
   "pt": "garfo de papel de alto desempenho",
-  "sv": "prestanda gaffel av papper",
   "fi": "suorituskykyinen paperihaarukka"
  },
  "experimental mod platform": {
@@ -8450,7 +8480,7 @@
   "fi": "paikallistaa"
  },
  "very-bold": {
-  "es": "muy atrevido",
+  "es": "muy audaz",
   "fr": "tr\u00e8s audacieux",
   "it": "molto audace",
   "de": "sehr mutig",
@@ -8500,14 +8530,14 @@
   "fi": "Lis\u00e4\u00e4 s\u00e4\u00e4nn\u00f6t"
  },
  "daylight & weather cycle": {
-  "es": "ciclo de luz diurna y clima",
-  "fr": "cycle de la lumi\u00e8re du jour et de la m\u00e9t\u00e9o",
   "it": "ciclo della luce del giorno e del tempo",
-  "de": "Tageslicht- und Wetterzyklus",
+  "es": "ciclo de luz diurna y clima",
+  "sv": "dagsljus och v\u00e4dercykel",
+  "fi": "p\u00e4iv\u00e4nvalo ja s\u00e4\u00e4sykli",
   "nl": "daglicht- en weercyclus",
   "pt": "ciclo diurno e clim\u00e1tico",
-  "sv": "dagsljus och v\u00e4dercykel",
-  "fi": "p\u00e4iv\u00e4nvalo ja s\u00e4\u00e4sykli"
+  "fr": "cycle de la lumi\u00e8re du jour et de la m\u00e9t\u00e9o",
+  "de": "Tageslicht- und Wetterzyklus"
  },
  "daylight cycle": {
   "es": "ciclo de luz diurna",
@@ -8520,14 +8550,14 @@
   "fi": "p\u00e4iv\u00e4nvalosykli"
  },
  "server error": {
-  "es": "Error del Servidor",
+  "fi": "palvelinvirhe",
   "fr": "erreur du serveur",
   "it": "Errore del server",
   "de": "Serverfehler",
   "nl": "Serverfout",
+  "es": "Error del Servidor",
   "pt": "erro de servidor",
-  "sv": "Serverfel",
-  "fi": "palvelinvirhe"
+  "sv": "Serverfel"
  },
  "there was an issue reaching the add-on repository\n\nplease try again later": {
   "es": "Hubo un problema al llegar al repositorio de complementos.\n\nPor favor, int\u00e9ntelo de nuevo m\u00e1s tarde",
@@ -8673,7 +8703,7 @@
   "es": "Validando paquete de mods",
   "fr": "Validation du pack de modules",
   "it": "Convalida del pacchetto mod",
-  "de": "Validierung des Modpacks",
+  "de": "Modpack wird validiert",
   "nl": "Modpack valideren",
   "pt": "Validando modpack",
   "sv": "Validerar modpack",
@@ -8681,7 +8711,7 @@
  },
  "installing modpack": {
   "es": "Instalando modpack",
-  "fr": "Installation du modpack",
+  "fr": "Installation du pack de modules",
   "it": "Installazione del modpack",
   "de": "Modpack installieren",
   "nl": "Modpack installeren",
@@ -8712,7 +8742,7 @@
  "'$$' marked as favorite": {
   "es": "'$$' marcado como favorito",
   "fr": "'$$' marqu\u00e9 comme favori",
-  "it": "\"$$\" contrassegnato come preferito",
+  "it": "'$$' contrassegnato come preferito",
   "de": "'$$' als Favorit markiert",
   "nl": "'$$' gemarkeerd als favoriet",
   "pt": "'$$' marcado como favorito",
@@ -8771,13 +8801,13 @@
  },
  "f": {
   "es": "F",
+  "fr": "F",
   "it": "F",
   "de": "F",
   "nl": "F",
   "pt": "f",
   "sv": "f",
-  "fi": "f",
-  "fr": "F"
+  "fi": "f"
  },
  "console-panel": {
   "es": "panel de consola",
@@ -8987,7 +9017,7 @@
   "nl": "'server.properties' bekijken",
   "pt": "Visualizando 'server.properties'",
   "sv": "Visa \"server.properties\"",
-  "fi": "N\u00e4ytet\u00e4\u00e4n palvelin.properties"
+  "fi": "N\u00e4ytet\u00e4\u00e4n palvelin.ominaisuudet"
  },
  "q": {
   "es": "q",
@@ -9070,14 +9100,14 @@
   "fi": "Asenna Ngrok"
  },
  "geyser": {
-  "it": "geyser",
   "es": "g\u00e9iser",
   "fr": "geyser",
+  "it": "geyser",
+  "de": "Geysir",
   "nl": "geiser",
   "pt": "g\u00eaiser",
   "sv": "gejser",
-  "fi": "geysir",
-  "de": "Geysir"
+  "fi": "geysir"
  },
  "auto-update": {
   "es": "actualizaci\u00f3n autom\u00e1tica",
@@ -9460,44 +9490,44 @@
   "fi": "Vaihe 1"
  },
  "step 2": {
-  "es": "Paso 2",
-  "fr": "\u00c9tape 2",
-  "it": "Passo 2",
   "de": "Schritt 2",
-  "nl": "Stap 2",
   "pt": "Passo 2",
   "sv": "Steg 2",
-  "fi": "Vaihe 2"
+  "fr": "\u00c9tape 2",
+  "es": "Paso 2",
+  "nl": "Stap 2",
+  "fi": "Vaihe 2",
+  "it": "Passo 2"
  },
  "step 3": {
-  "es": "Paso 3",
-  "fr": "\u00c9tape 3",
-  "it": "Passaggio 3",
   "de": "Schritt 3",
   "nl": "Stap 3",
   "pt": "etapa 3",
+  "it": "Passaggio 3",
+  "fi": "Vaihe 3",
+  "fr": "\u00c9tape 3",
   "sv": "Steg 3",
-  "fi": "Vaihe 3"
+  "es": "Paso 3"
  },
  "step 4": {
-  "es": "Etapa 4",
-  "fr": "\u00c9tape 4",
-  "it": "Passaggio 4",
-  "de": "Schritt 4",
   "nl": "Stap 4",
-  "pt": "Passo 4",
+  "es": "Etapa 4",
+  "de": "Schritt 4",
   "sv": "Steg 4",
-  "fi": "Vaihe 4"
+  "pt": "Passo 4",
+  "it": "Passaggio 4",
+  "fi": "Vaihe 4",
+  "fr": "\u00c9tape 4"
  },
  "privilege error": {
-  "es": "Error de privilegio",
-  "fr": "Erreur de privil\u00e8ge",
   "it": "Errore di privilegio",
-  "de": "Berechtigungsfehler",
-  "nl": "Privilegefout",
   "pt": "Erro de privil\u00e9gio",
+  "fi": "Etuoikeusvirhe",
+  "fr": "Erreur de privil\u00e8ge",
+  "de": "Berechtigungsfehler",
   "sv": "Privilege-fel",
-  "fi": "Etuoikeusvirhe"
+  "es": "Error de privilegio",
+  "nl": "Privilegefout"
  },
  "changelog": {
   "es": "registro de cambios",
@@ -9520,14 +9550,14 @@
   "fi": "u"
  },
  "alt": {
-  "es": "alternativo",
+  "de": "alt",
+  "fi": "alt",
   "fr": "alt",
   "it": "alt",
-  "de": "alt",
   "nl": "alt",
+  "es": "alternativo",
   "pt": "alternativo",
-  "sv": "alt",
-  "fi": "alt"
+  "sv": "alt"
  },
  "an internet connection is required to continue\n\nverify connectivity and try again": {
   "es": "Se requiere una conexi\u00f3n a Internet para continuar.\n\nVerifica la conectividad y vuelve a intentarlo.",
@@ -9560,24 +9590,24 @@
   "fi": "Palvelimen luominen vaatii Internet-yhteyden"
  },
  "what would you like to name your server?": {
-  "es": "\u00bfC\u00f3mo le gustar\u00eda nombrar su servidor?",
-  "fr": "Comment souhaiteriez-vous nommer votre serveur\u00a0?",
-  "it": "Come vuoi chiamare il tuo server?",
-  "de": "Wie m\u00f6chten Sie Ihren Server nennen?",
-  "nl": "Hoe wilt u uw server noemen?",
   "pt": "Como voc\u00ea gostaria de nomear seu servidor?",
+  "fr": "Comment souhaiteriez-vous nommer votre serveur\u00a0?",
+  "nl": "Hoe wilt u uw server noemen?",
+  "es": "\u00bfC\u00f3mo le gustar\u00eda nombrar su servidor?",
   "sv": "Vad skulle du vilja d\u00f6pa din server till?",
-  "fi": "Mink\u00e4 nimen haluaisit palvelimellesi?"
+  "fi": "Mink\u00e4 nimen haluaisit palvelimellesi?",
+  "it": "Come vuoi chiamare il tuo server?",
+  "de": "Wie m\u00f6chten Sie Ihren Server nennen?"
  },
  "what version of minecraft do you wish to play?": {
-  "nl": "Welke versie van Minecraft wil je spelen?",
   "es": "\u00bfQu\u00e9 versi\u00f3n de Minecraft deseas jugar?",
   "fr": "\u00c0 quelle version de Minecraft souhaitez-vous jouer ?",
   "it": "A quale versione di Minecraft desideri giocare?",
   "de": "Welche Minecraft-Version m\u00f6chtest du spielen?",
+  "nl": "Welke versie van Minecraft wil je spelen?",
+  "pt": "Qual vers\u00e3o do Minecraft voc\u00ea deseja jogar?",
   "sv": "Vilken version av Minecraft vill du spela?",
-  "fi": "Mit\u00e4 Minecraft-versiota haluat pelata?",
-  "pt": "Qual vers\u00e3o do Minecraft voc\u00ea deseja jogar?"
+  "fi": "Mit\u00e4 Minecraft-versiota haluat pelata?"
  },
  "createserverworldinput": {
   "es": "CrearServerWorldEntrada",
@@ -9633,7 +9663,7 @@
   "es": "localizar regla",
   "fr": "localiser la r\u00e8gle",
   "it": "regola di localizzazione",
-  "de": "Regel lokalisieren",
+  "de": "Lokalisierungsregel",
   "nl": "regel lokaliseren",
   "pt": "regra de localiza\u00e7\u00e3o",
   "sv": "lokalisera regel",
@@ -9760,14 +9790,14 @@
   "fi": "kutemaan olentoja"
  },
  "please verify your configuration": {
+  "nl": "Controleer uw configuratie",
   "es": "Por favor verifique su configuraci\u00f3n",
   "fr": "Veuillez v\u00e9rifier votre configuration",
   "it": "Verifica la tua configurazione",
   "de": "Bitte \u00fcberpr\u00fcfen Sie Ihre Konfiguration",
-  "nl": "Controleer uw configuratie",
-  "pt": "Verifique sua configura\u00e7\u00e3o",
   "sv": "V\u00e4nligen verifiera din konfiguration",
-  "fi": "Tarkista m\u00e4\u00e4ritykset"
+  "fi": "Tarkista m\u00e4\u00e4ritykset",
+  "pt": "Verifique sua configura\u00e7\u00e3o"
  },
  "spawn protection": {
   "es": "Protecci\u00f3n de generaci\u00f3n",
@@ -9866,18 +9896,18 @@
   "de": "Auto-MCS-Backup importieren",
   "nl": "Importeer Auto-MCS-back-up",
   "pt": "Importar backup do Auto-MCS",
-  "sv": "Importera Auto-MCS-s\u00e4kerhetskopia",
+  "sv": "Importera Auto-MCS-backup",
   "fi": "Tuo Auto-MCS-varmuuskopio"
  },
  "'$$' was imported successfully": {
+  "de": "\u201e$$\u201c wurde erfolgreich importiert",
   "es": "'$$' se import\u00f3 correctamente",
   "fr": "'$$' a \u00e9t\u00e9 import\u00e9 avec succ\u00e8s",
   "it": "'$$' \u00e8 stato importato correttamente",
-  "de": "\u201e$$\u201c wurde erfolgreich importiert",
-  "nl": "'$$' is succesvol ge\u00efmporteerd",
   "pt": "'$$' foi importado com sucesso",
   "sv": "'$$' importerades framg\u00e5ngsrikt",
-  "fi": "'$$' tuotiin onnistuneesti"
+  "fi": "'$$' tuotiin onnistuneesti",
+  "nl": "'$$' is succesvol ge\u00efmporteerd"
  },
  "serverimportmodpackinput": {
   "es": "ServidorImportarModpackEntrada",
@@ -9891,7 +9921,7 @@
  },
  "select an modpack": {
   "es": "Seleccione un paquete de modificaciones",
-  "fr": "S\u00e9lectionnez un modpack",
+  "fr": "S\u00e9lectionnez un pack de modules",
   "it": "Seleziona un pacchetto mod",
   "de": "W\u00e4hlen Sie ein Modpack aus",
   "nl": "Selecteer een modpack",
@@ -9998,6 +10028,16 @@
   "pt": "registro",
   "sv": "logga",
   "fi": "Hirsi"
+ },
+ "kill server": {
+  "es": "matar servidor",
+  "fr": "tuer le serveur",
+  "it": "uccidere il server",
+  "de": "Server t\u00f6ten",
+  "nl": "dood server",
+  "pt": "matar servidor",
+  "sv": "d\u00f6da servern",
+  "fi": "tappaa palvelin"
  },
  "view crash log": {
   "es": "VER REGISTRO DE ACCIDENTES",
@@ -10250,14 +10290,14 @@
   "fi": "ota Geyser k\u00e4ytt\u00f6\u00f6n"
  },
  "update to $$": {
-  "es": "Actualizar a $$",
+  "fi": "P\u00e4ivit\u00e4 arvoon $$",
   "fr": "Mettre \u00e0 jour vers $$",
   "it": "Aggiorna a $$",
   "de": "Auf $$ aktualisieren",
   "nl": "Bijwerken naar $$",
   "pt": "Atualizar para $$",
   "sv": "Uppdatera till $$",
-  "fi": "P\u00e4ivit\u00e4 arvoon $$"
+  "es": "Actualizar a $$"
  },
  "do you want to permanently delete this server?\n\nthis action cannot be undone\n(your server can be re-imported from a back-up later)": {
   "es": "\u00bfQuieres eliminar permanentemente este servidor?\n\nEsta acci\u00f3n no se puede deshacer\n(Su servidor puede volver a importarse desde una copia de seguridad m\u00e1s adelante)",
@@ -10311,7 +10351,7 @@
  },
  "updated '$$' successfully": {
   "es": "actualizado '$$' exitosamente",
-  "fr": "mis \u00e0 jour '$$' avec succ\u00e8s",
+  "fr": "'$$' a \u00e9t\u00e9 mis \u00e0 jour avec succ\u00e8s",
   "it": "aggiornato '$$' con successo",
   "de": "'$$' erfolgreich aktualisiert",
   "nl": "'$$' succesvol bijgewerkt",
@@ -10420,14 +10460,14 @@
   "fi": "Varoitus: Sy\u00f6tt\u00f6ruudun tarkentaminen ep\u00e4onnistui ("
  },
  "this server already exists!": {
-  "it": "Questo server esiste gi\u00e0!",
   "es": "\u00a1Este servidor ya existe!",
   "fr": "Ce serveur existe d\u00e9j\u00e0 !",
+  "it": "Questo server esiste gi\u00e0!",
+  "de": "Dieser Server existiert bereits!",
   "nl": "Deze server bestaat al!",
   "pt": "Este servidor j\u00e1 existe!",
   "sv": "Denna server finns redan!",
-  "fi": "T\u00e4m\u00e4 palvelin on jo olemassa!",
-  "de": "Dieser Server existiert bereits!"
+  "fi": "T\u00e4m\u00e4 palvelin on jo olemassa!"
  },
  "\" server.properties": {
   "es": "\"servidor.propiedades",
@@ -10519,6 +10559,16 @@
   "sv": "Dyka upp",
   "fi": "Ponnahdusikkuna"
  },
+ "popupfile": {
+  "es": "Archivo emergente",
+  "fr": "Fichier contextuel",
+  "it": "PopupFile",
+  "de": "PopupFile",
+  "nl": "Pop-upbestand",
+  "pt": "Arquivo pop-up",
+  "sv": "Popup-fil",
+  "fi": "PopupFile"
+ },
  "manage": {
   "es": "administrar",
   "fr": "g\u00e9rer",
@@ -10529,25 +10579,35 @@
   "sv": "hantera",
   "fi": "hallita"
  },
- "running auto-mcs as": {
-  "es": "Ejecutando auto-mcs como",
-  "fr": "Ex\u00e9cuter auto-mcs en tant que",
-  "it": "Esecuzione di auto-mcs come",
-  "de": "Auto-MCS ausf\u00fchren als",
-  "nl": "Auto-mcs uitvoeren als",
-  "pt": "Executando auto-mcs como",
-  "sv": "K\u00f6r auto-mcs som",
-  "fi": "Auto-mcs k\u00e4ynniss\u00e4 nimell\u00e4"
+ "running auto-mcs as $$ can expose your system to security vulnerabilities.\n\nplease restart with standard user privileges to continue": {
+  "es": "Ejecutar auto-mcs como $$ puede exponer su sistema a vulnerabilidades de seguridad.\n\nReinicie con privilegios de usuario est\u00e1ndar para continuar",
+  "fr": "L'ex\u00e9cution d'auto-mcs en tant que $$ peut exposer votre syst\u00e8me \u00e0 des vuln\u00e9rabilit\u00e9s de s\u00e9curit\u00e9.\n\nVeuillez red\u00e9marrer avec les privil\u00e8ges utilisateur standard pour continuer",
+  "it": "L'esecuzione di auto-mcs come $$ pu\u00f2 esporre il tuo sistema a vulnerabilit\u00e0 della sicurezza.\n\nRiavviare con i privilegi utente standard per continuare",
+  "de": "Das Ausf\u00fchren von auto-mcs als $$ kann Ihr System Sicherheitsl\u00fccken aussetzen.\n\nBitte starten Sie mit Standardbenutzerrechten neu, um fortzufahren",
+  "nl": "Het uitvoeren van auto-mcs als $$ kan uw systeem blootstellen aan beveiligingsproblemen.\n\nStart opnieuw op met standaardgebruikersrechten om door te gaan",
+  "pt": "Executar auto-mcs como $$ pode expor seu sistema a vulnerabilidades de seguran\u00e7a.\n\nReinicie com privil\u00e9gios de usu\u00e1rio padr\u00e3o para continuar",
+  "sv": "Att k\u00f6ra auto-mcs som $$ kan uts\u00e4tta ditt system f\u00f6r s\u00e4kerhetsbrister.\n\nV\u00e4nligen starta om med vanliga anv\u00e4ndarr\u00e4ttigheter f\u00f6r att forts\u00e4tta",
+  "fi": "Auto-mcs:n suorittaminen nimell\u00e4 $$ voi altistaa j\u00e4rjestelm\u00e4si tietoturva-aukoille.\n\nJatka k\u00e4ynnist\u00e4m\u00e4ll\u00e4 uudelleen tavallisilla k\u00e4ytt\u00e4j\u00e4oikeuksilla"
  },
- "can expose your system to security vulnerabilities.\n\nplease restart with standard user privileges to continue": {
-  "es": "puede exponer su sistema a vulnerabilidades de seguridad.\n\nReinicie con privilegios de usuario est\u00e1ndar para continuar",
-  "fr": "peut exposer votre syst\u00e8me \u00e0 des failles de s\u00e9curit\u00e9.\n\nVeuillez red\u00e9marrer avec les privil\u00e8ges utilisateur standard pour continuer",
-  "it": "pu\u00f2 esporre il sistema a vulnerabilit\u00e0 della sicurezza.\n\nRiavviare con i privilegi utente standard per continuare",
-  "de": "kann Ihr System Sicherheitsl\u00fccken aussetzen.\n\nBitte starten Sie mit Standardbenutzerrechten neu, um fortzufahren",
-  "nl": "kan uw systeem blootstellen aan beveiligingsproblemen.\n\nStart opnieuw op met standaardgebruikersrechten om door te gaan",
-  "pt": "pode expor seu sistema a vulnerabilidades de seguran\u00e7a.\n\nReinicie com privil\u00e9gios de usu\u00e1rio padr\u00e3o para continuar",
-  "sv": "kan uts\u00e4tta ditt system f\u00f6r s\u00e4kerhetsbrister.\n\nV\u00e4nligen starta om med vanliga anv\u00e4ndarbeh\u00f6righeter f\u00f6r att forts\u00e4tta",
-  "fi": "voi altistaa j\u00e4rjestelm\u00e4si tietoturva-aukoille.\n\nJatka k\u00e4ynnist\u00e4m\u00e4ll\u00e4 uudelleen tavallisilla k\u00e4ytt\u00e4j\u00e4oikeuksilla"
+ "storage error": {
+  "es": "Error de almacenamiento",
+  "fr": "Erreur de stockage",
+  "it": "Errore di archiviazione",
+  "de": "Speicherfehler",
+  "nl": "Opslagfout",
+  "pt": "Erro de armazenamento",
+  "sv": "Lagringsfel",
+  "fi": "Tallennusvirhe"
+ },
+ "auto-mcs has limited functionality from low disk space. further changes can lead to corruption in your servers.\n\nplease free up space on your disk to minimize issues": {
+  "es": "auto-mcs tiene una funcionalidad limitada debido a poco espacio en disco. Otros cambios pueden provocar da\u00f1os en sus servidores.\n\nLibere espacio en su disco para minimizar los problemas",
+  "fr": "auto-mcs a des fonctionnalit\u00e9s limit\u00e9es en raison du faible espace disque. D'autres changements peuvent entra\u00eener une corruption de vos serveurs.\n\nVeuillez lib\u00e9rer de l'espace sur votre disque pour minimiser les probl\u00e8mes",
+  "it": "auto-mcs ha funzionalit\u00e0 limitate a causa dello spazio su disco insufficiente. Ulteriori modifiche possono portare alla corruzione dei tuoi server.\n\nLiberare spazio sul disco per ridurre al minimo i problemi",
+  "de": "auto-mcs verf\u00fcgt aufgrund des geringen Speicherplatzes \u00fcber eine eingeschr\u00e4nkte Funktionalit\u00e4t. Weitere \u00c4nderungen k\u00f6nnen zu einer Besch\u00e4digung Ihrer Server f\u00fchren.\n\nBitte geben Sie Speicherplatz auf Ihrer Festplatte frei, um Probleme zu minimieren",
+  "nl": "auto-mcs heeft beperkte functionaliteit vanwege weinig schijfruimte. Verdere wijzigingen kunnen leiden tot corruptie op uw servers.\n\nMaak ruimte vrij op uw schijf om problemen te minimaliseren",
+  "pt": "auto-mcs tem funcionalidade limitada devido ao pouco espa\u00e7o em disco. Outras altera\u00e7\u00f5es podem causar corrup\u00e7\u00e3o em seus servidores.\n\nLibere espa\u00e7o em seu disco para minimizar problemas",
+  "sv": "auto-mcs har begr\u00e4nsad funktionalitet fr\u00e5n l\u00e5gt diskutrymme. Ytterligare \u00e4ndringar kan leda till korruption p\u00e5 dina servrar.\n\nFrig\u00f6r utrymme p\u00e5 din disk f\u00f6r att minimera problem",
+  "fi": "auto-mcs:n toiminnallisuus on rajoitettua v\u00e4h\u00e4isen levytilan vuoksi. Muut muutokset voivat johtaa korruptioon palvelimissasi.\n\nVapauta levytilaa ongelmien minimoimiseksi"
  },
  "spacebar": {
   "es": "barra espaciadora",
@@ -11035,7 +11095,7 @@
   "it": "GeyserMC",
   "de": "GeyserMC",
   "nl": "Geiser MC",
-  "pt": "G\u00eaiserMC",
+  "pt": "G\u00eaiser MC",
   "sv": "GeyserMC",
   "fi": "GeyserMC"
  },
@@ -11120,13 +11180,13 @@
   "fi": "Asennetut skriptit"
  },
  "page": {
+  "sv": "sida",
   "es": "p\u00e1gina",
   "fr": "page",
   "it": "pagina",
   "de": "Seite",
   "nl": "bladzijde",
   "pt": "p\u00e1gina",
-  "sv": "sida",
   "fi": "sivu"
  },
  "es": {
@@ -11299,6 +11359,16 @@
   "sv": "F\u00f6nster popup-fel: Det gick inte att ta bort popup eftersom det \u00f6verordnade f\u00f6nstret inte finns",
   "fi": "Ikkunan ponnahdusikkunan virhe: Ponnahdusikkunan poistaminen ep\u00e4onnistui, koska p\u00e4\u00e4ikkunaa ei ole olemassa"
  },
+ "body": {
+  "es": "cuerpo",
+  "fr": "corps",
+  "it": "corpo",
+  "de": "K\u00f6rper",
+  "nl": "lichaam",
+  "pt": "corpo",
+  "sv": "kropp",
+  "fi": "kehon"
+ },
  "progressscreen error on step": {
   "es": "Error de ProgressScreen en el paso",
   "fr": "Erreur ProgressScreen \u00e0 l'\u00e9tape",
@@ -11330,14 +11400,14 @@
   "fi": "POISTA"
  },
  "restrict": {
-  "fi": "RAJOITTAA",
+  "es": "RESTRINGIR",
   "fr": "LIMITER",
   "it": "LIMITARE",
   "de": "BESCHR\u00c4NKEN",
   "nl": "BEPERKEN",
   "pt": "RESTRINGIR",
   "sv": "BEGR\u00c4NSA",
-  "es": "RESTRINGIR"
+  "fi": "RAJOITTAA"
  },
  "permit": {
   "es": "PERMISO",
@@ -11350,24 +11420,24 @@
   "fi": "LUPA"
  },
  "'$$' is now": {
-  "fr": "'$$' est maintenant",
   "es": "'$$' es ahora",
+  "fr": "'$$' est maintenant",
+  "it": "'$$' \u00e8 adesso",
   "de": "'$$' ist jetzt",
   "nl": "'$$' is nu",
   "pt": "'$$' \u00e9 agora",
   "sv": "'$$' \u00e4r nu",
-  "fi": "'$$' on nyt",
-  "it": "'$$' \u00e8 adesso"
+  "fi": "'$$' on nyt"
  },
  "ly applied": {
-  "es": "ly aplicado",
+  "fi": "ly sovellettu",
   "fr": "ly appliqu\u00e9",
   "it": "ly applicato",
   "de": "ly angewendet",
   "nl": "ly toegepast",
   "pt": "aplicado",
   "sv": "till\u00e4mpas",
-  "fi": "ly sovellettu"
+  "es": "ly aplicado"
  },
  "copied text to clipboard": {
   "es": "Texto copiado al portapapeles",
@@ -11600,14 +11670,14 @@
   "fi": "Valitse automaattinen mcs-varmuuskopiotiedosto"
  },
  "read": {
-  "de": "lesen",
   "es": "leer",
   "fr": "lire",
   "it": "Leggere",
+  "de": "lesen",
+  "nl": "lezen",
   "pt": "ler",
   "sv": "l\u00e4sa",
-  "fi": "lukea",
-  "nl": "lezen"
+  "fi": "lukea"
  },
  "uptime": {
   "es": "tiempo de actividad",
@@ -11820,14 +11890,14 @@
   "fi": "Ty\u00f6kalut"
  },
  "the destination world can't be the current world": {
+  "it": "Il mondo di destinazione non pu\u00f2 essere il mondo attuale",
   "es": "El mundo de destino no puede ser el mundo actual.",
   "fr": "Le monde de destination ne peut pas \u00eatre le monde actuel",
-  "it": "Il mondo di destinazione non pu\u00f2 essere il mondo attuale",
-  "de": "Die Zielwelt kann nicht die aktuelle Welt sein",
   "nl": "De bestemmingswereld kan niet de huidige wereld zijn",
   "pt": "O mundo de destino n\u00e3o pode ser o mundo atual",
   "sv": "Destinationsv\u00e4rlden kan inte vara den nuvarande v\u00e4rlden",
-  "fi": "Kohdemaailma ei voi olla nykyinen maailma"
+  "fi": "Kohdemaailma ei voi olla nykyinen maailma",
+  "de": "Die Zielwelt kann nicht die aktuelle Welt sein"
  },
  "the server world has been changed successfully": {
   "es": "El mundo del servidor ha sido cambiado con \u00e9xito.",
@@ -11860,14 +11930,14 @@
   "fi": "$$ poistettiin onnistuneesti"
  },
  "addons": {
+  "it": "componenti aggiuntivi",
   "es": "complementos",
   "fr": "modules compl\u00e9mentaires",
-  "it": "componenti aggiuntivi",
   "de": "Add-ons",
-  "nl": "add-ons",
   "pt": "complementos",
   "sv": "till\u00e4gg",
-  "fi": "lis\u00e4yksi\u00e4"
+  "fi": "lis\u00e4yksi\u00e4",
+  "nl": "add-ons"
  },
  "disabled-addons": {
   "es": "complementos-discapacitados",
@@ -11890,14 +11960,14 @@
   "fi": "modit"
  },
  "disabled-mods": {
-  "es": "mods discapacitados",
   "fr": "mods d\u00e9sactiv\u00e9s",
-  "it": "mod-disabili",
+  "es": "mods discapacitados",
   "de": "deaktivierte-Mods",
   "nl": "uitgeschakeld-mods",
   "pt": "mods desativados",
   "sv": "inaktiverade-mods",
-  "fi": "vammaiset-modit"
+  "fi": "vammaiset-modit",
+  "it": "mod-disabili"
  },
  "eula.txt": {
   "es": "CLUF.TXT",
@@ -12017,7 +12087,7 @@
   "nl": "Niet ondersteund",
   "pt": "N\u00e3o compat\u00edvel",
   "sv": "Utan st\u00f6d",
-  "fi": "Ei tueta"
+  "fi": "Ei tuettu"
  },
  "would you like to return to the main menu?\n\nyour progress will not be saved": {
   "es": "\u00bfQuieres volver al men\u00fa principal?\n\nTu progreso no se guardar\u00e1",
@@ -12048,16 +12118,6 @@
   "pt": "raiz",
   "sv": "rot",
   "fi": "juuri"
- },
- "body": {
-  "es": "cuerpo",
-  "fr": "corps",
-  "it": "corpo",
-  "de": "K\u00f6rper",
-  "nl": "lichaam",
-  "pt": "corpo",
-  "sv": "kropp",
-  "fi": "kehon"
  },
  "createserverseedinput": {
   "es": "CrearServidorSemillaEntrada",
@@ -12255,7 +12315,7 @@
   "it": "Rimosso '$$' dalla coda",
   "de": "\u201e$$\u201c wurde aus der Warteschlange entfernt",
   "nl": "'$$' uit de wachtrij verwijderd",
-  "pt": "'$$' removido da fila",
+  "pt": "Removido '$$' da fila",
   "sv": "Tog bort '$$' fr\u00e5n k\u00f6n",
   "fi": "Poistettiin '$$' jonosta"
  },
@@ -12300,14 +12360,14 @@
   "fi": "'"
  },
  "?\n\nthis action can't be undone": {
-  "es": "?\n\nEsta acci\u00f3n no se puede deshacer.",
+  "fi": "?\n\nT\u00e4t\u00e4 toimintoa ei voi kumota",
   "fr": "?\n\nCette action ne peut pas \u00eatre annul\u00e9e",
   "it": "?\n\nQuesta azione non pu\u00f2 essere annullata",
   "de": "?\n\nDiese Aktion kann nicht r\u00fcckg\u00e4ngig gemacht werden",
   "nl": "?\n\nDeze actie kan niet ongedaan worden gemaakt",
   "pt": "?\n\nEsta a\u00e7\u00e3o n\u00e3o pode ser desfeita",
   "sv": "?\n\nDen h\u00e4r \u00e5tg\u00e4rden kan inte \u00e5ngras",
-  "fi": "?\n\nT\u00e4t\u00e4 toimintoa ei voi kumota"
+  "es": "?\n\nEsta acci\u00f3n no se puede deshacer."
  },
  "are you sure you want to revert '$$' to $$?\n\nthis action can't be undone": {
   "es": "\u00bfEst\u00e1 seguro de que desea revertir '$$' a $$?\n\nEsta acci\u00f3n no se puede deshacer.",
@@ -12345,7 +12405,7 @@
   "it": "'$$' \u00e8 ora abilitato",
   "de": "\u201e$$\u201c ist jetzt aktiviert",
   "nl": "'$$' is nu ingeschakeld",
-  "pt": "'$$' agora est\u00e1 habilitado",
+  "pt": "'$$' agora est\u00e1 ativado",
   "sv": "'$$' \u00e4r nu aktiverat",
   "fi": "'$$' on nyt k\u00e4yt\u00f6ss\u00e4"
  },
@@ -12422,12 +12482,12 @@
  "]whitelisted": {
   "es": "]En la lista blanca",
   "fr": "]Sur liste blanche",
+  "it": "] Autorizzato",
   "de": "]Auf die Wei\u00dfe Liste gesetzt",
   "nl": "]Op de witte lijst gezet",
   "pt": "]Na lista de permiss\u00f5es",
   "sv": "]Vitlistad",
-  "fi": "]Sallittujen luetteloon",
-  "it": "] Autorizzato"
+  "fi": "]Sallittujen luetteloon"
  },
  "]not whitelisted": {
   "es": "]No incluido en la lista blanca",
@@ -12520,14 +12580,14 @@
   "fi": "ei voi poistaa k\u00e4yt\u00f6st\u00e4 palvelimen ollessa k\u00e4ynniss\u00e4"
  },
  "mono-italic": {
-  "it": "mono-corsivo",
   "es": "mono-cursiva",
   "fr": "mono-italique",
+  "it": "mono-corsivo",
+  "de": "monokursiv",
   "nl": "mono-cursief",
   "pt": "mono-it\u00e1lico",
   "sv": "mono-kursiv",
-  "fi": "yksikursivoinen",
-  "de": "monokursiv"
+  "fi": "yksikursivoinen"
  },
  "ngrok was": {
   "es": "ngrok era",
@@ -12541,12 +12601,12 @@
  },
  "downgrading can corrupt the save file and crash until it's replaced.\n\ndo you really wish to downgrade?": {
   "es": "La degradaci\u00f3n puede da\u00f1ar el archivo guardado y bloquearlo hasta que se reemplace.\n\n\u00bfRealmente deseas bajar de categor\u00eda?",
-  "fr": "La r\u00e9trogradation peut corrompre le fichier de sauvegarde et planter jusqu'\u00e0 ce qu'il soit remplac\u00e9.\n\nSouhaitez-vous vraiment r\u00e9trograder ?",
+  "fr": "La r\u00e9trogradation peut corrompre le fichier de sauvegarde et planter jusqu'\u00e0 ce qu'il soit remplac\u00e9.\n\nSouhaitez-vous vraiment r\u00e9trograder\u00a0?",
   "it": "Il downgrade pu\u00f2 corrompere il file di salvataggio e bloccarlo finch\u00e9 non viene sostituito.\n\nDesideri davvero eseguire il downgrade?",
   "de": "Ein Downgrade kann die Sicherungsdatei besch\u00e4digen und zum Absturz f\u00fchren, bis sie ersetzt wird.\n\nM\u00f6chten Sie wirklich ein Downgrade durchf\u00fchren?",
   "nl": "Downgraden kan het opslagbestand beschadigen en crashen totdat het wordt vervangen.\n\nWilt u echt downgraden?",
   "pt": "O downgrade pode corromper o arquivo salvo e travar at\u00e9 que seja substitu\u00eddo.\n\nVoc\u00ea realmente deseja fazer o downgrade?",
-  "sv": "Nedgradering kan skada spara filen och krascha tills den ers\u00e4tts.\n\nVill du verkligen nedgradera?",
+  "sv": "Nedgradering kan f\u00f6rst\u00f6ra sparfilen och krascha tills den ers\u00e4tts.\n\nVill du verkligen nedgradera?",
   "fi": "Vanheneminen voi vahingoittaa tallennustiedostoa ja kaatua, kunnes se korvataan.\n\nHaluatko todella alentaa luokitusta?"
  },
  "added '$$' to the queue": {
@@ -12588,16 +12648,6 @@
   "pt": "Complementos $$ importados",
   "sv": "Importerade $$-till\u00e4gg",
   "fi": "Tuodut $$ lis\u00e4osat"
- },
- "popupaddon": {
-  "es": "complemento emergente",
-  "fr": "Module compl\u00e9mentaire contextuel",
-  "it": "PopupAddon",
-  "de": "PopupAddon",
-  "nl": "Pop-upAddon",
-  "pt": "PopupAddon",
-  "sv": "PopupAddon",
-  "fi": "PopupAddon"
  },
  "pardoned": {
   "es": "perdonado",
@@ -12680,13 +12730,13 @@
   "fi": "ScriptButton"
  },
  "downgrade warning": {
+  "sv": "Varning f\u00f6r nedgradering",
   "es": "Advertencia de degradaci\u00f3n",
   "fr": "Avertissement de r\u00e9trogradation",
   "it": "Avviso di downgrade",
   "de": "Downgrade-Warnung",
   "nl": "Downgrade-waarschuwing",
   "pt": "Aviso de downgrade",
-  "sv": "Varning f\u00f6r nedgradering",
   "fi": "Varoitus alempaan versioon"
  },
  "imported $$ scripts": {
@@ -12698,16 +12748,6 @@
   "pt": "Scripts $$ importados",
   "sv": "Importerade $$-skript",
   "fi": "Tuodut $$-skriptit"
- },
- "popupscript": {
-  "es": "PopupScript",
-  "fr": "Script contextuel",
-  "it": "PopupScript",
-  "de": "PopupScript",
-  "nl": "Pop-upScript",
-  "pt": "PopupScript",
-  "sv": "PopupScript",
-  "fi": "PopupScript"
  },
  "strike": {
   "es": "huelga",
@@ -12772,62 +12812,52 @@
  "installed successfully": {
   "es": "instalado correctamente",
   "fr": "install\u00e9 avec succ\u00e8s",
-  "it": "installato con successo",
-  "de": "erfolgreich installiert",
-  "nl": "succesvol ge\u00efnstalleerd",
   "pt": "instalado com sucesso",
+  "nl": "succesvol ge\u00efnstalleerd",
+  "fi": "asennettu onnistuneesti",
   "sv": "installerat framg\u00e5ngsrikt",
-  "fi": "asennettu onnistuneesti"
+  "it": "installato con successo",
+  "de": "erfolgreich installiert"
  },
  "not installed": {
-  "es": "no instalado",
-  "fr": "pas install\u00e9",
-  "it": "non installato",
   "de": "nicht installiert",
+  "it": "non installato",
   "nl": "niet ge\u00efnstalleerd",
   "pt": "n\u00e3o instalado",
+  "fr": "pas install\u00e9",
+  "fi": "ei asennettu",
   "sv": "inte installerad",
-  "fi": "ei asennettu"
- },
- "popupupdate": {
-  "es": "Actualizaci\u00f3n emergente",
-  "fr": "Mise \u00e0 jour contextuelle",
-  "it": "PopupAggiornamento",
-  "de": "PopupUpdate",
-  "nl": "Pop-upupdate",
-  "pt": "Atualiza\u00e7\u00e3o pop-up",
-  "sv": "PopupUpdate",
-  "fi": "PopupUpdate"
+  "es": "no instalado"
  },
  "createservernetwork": {
+  "it": "Creareteserver",
   "es": "Crear red de servidores",
   "fr": "Cr\u00e9er un r\u00e9seau de serveurs",
-  "it": "Creareteserver",
+  "pt": "CriarServerNetwork",
+  "fi": "CreateServerNetwork",
   "de": "CreateServerNetwork",
   "nl": "Maak een servernetwerk",
-  "pt": "CriarServerNetwork",
-  "sv": "SkapaServerNetwork",
-  "fi": "CreateServerNetwork"
+  "sv": "SkapaServerNetwork"
  },
  "there is no data available for this add-on": {
   "es": "No hay datos disponibles para este complemento",
+  "de": "F\u00fcr dieses Add-on sind keine Daten verf\u00fcgbar",
+  "pt": "N\u00e3o h\u00e1 dados dispon\u00edveis para este complemento",
+  "fi": "T\u00e4lle lis\u00e4osalle ei ole saatavilla tietoja",
   "fr": "Aucune donn\u00e9e n'est disponible pour ce module compl\u00e9mentaire",
   "it": "Non sono disponibili dati per questo componente aggiuntivo",
-  "de": "F\u00fcr dieses Add-on sind keine Daten verf\u00fcgbar",
-  "nl": "Er zijn geen gegevens beschikbaar voor deze add-on",
-  "pt": "N\u00e3o h\u00e1 dados dispon\u00edveis para este complemento",
   "sv": "Det finns ingen tillg\u00e4nglig data f\u00f6r detta till\u00e4gg",
-  "fi": "T\u00e4lle lis\u00e4osalle ei ole saatavilla tietoja"
+  "nl": "Er zijn geen gegevens beschikbaar voor deze add-on"
  },
  "month": {
-  "es": "mes",
   "fr": "mois",
-  "it": "mese",
   "de": "Monat",
-  "nl": "maand",
+  "es": "mes",
   "pt": "m\u00eas",
   "sv": "m\u00e5nad",
-  "fi": "kuukausi"
+  "fi": "kuukausi",
+  "it": "mese",
+  "nl": "maand"
  },
  "there is no data available for this script": {
   "es": "No hay datos disponibles para este script",
@@ -12840,34 +12870,34 @@
   "fi": "T\u00e4lle skriptille ei ole saatavilla tietoja"
  },
  "error: 'dropbutton' does not exist, can't remove": {
-  "es": "Error: 'DropButton' no existe, no se puede eliminar",
-  "fr": "Erreur\u00a0:\u00a0\u00ab\u00a0DropButton\u00a0\u00bb n'existe pas, impossible de le supprimer",
   "it": "Errore: \"DropButton\" non esiste, impossibile rimuoverlo",
   "de": "Fehler: \u201eDropButton\u201c existiert nicht, kann nicht entfernt werden",
   "nl": "Fout: 'DropButton' bestaat niet, kan niet worden verwijderd",
   "pt": "Erro: 'DropButton' n\u00e3o existe, n\u00e3o \u00e9 poss\u00edvel remover",
   "sv": "Fel: 'DropButton' finns inte, kan inte ta bort",
-  "fi": "Virhe: \"DropButtonia\" ei ole olemassa, ei voi poistaa"
+  "fi": "Virhe: \"DropButtonia\" ei ole olemassa, ei voi poistaa",
+  "es": "Error: 'DropButton' no existe, no se puede eliminar",
+  "fr": "Erreur\u00a0:\u00a0\u00ab\u00a0DropButton\u00a0\u00bb n'existe pas, impossible de le supprimer"
  },
  "web": {
   "es": "web",
   "fr": "la toile",
-  "it": "ragnatela",
+  "sv": "webb",
   "de": "Netz",
+  "it": "ragnatela",
   "nl": "web",
   "pt": "rede",
-  "sv": "webb",
   "fi": "web"
  },
  "username": {
   "es": "nombre de usuario",
-  "fr": "nom d'utilisateur",
-  "it": "nome utente",
-  "de": "Nutzername",
-  "nl": "gebruikersnaam",
   "pt": "nome de usu\u00e1rio",
-  "sv": "Anv\u00e4ndarnamn",
-  "fi": "k\u00e4ytt\u00e4j\u00e4tunnus"
+  "de": "Nutzername",
+  "fi": "k\u00e4ytt\u00e4j\u00e4tunnus",
+  "it": "nome utente",
+  "nl": "gebruikersnaam",
+  "fr": "nom d'utilisateur",
+  "sv": "Anv\u00e4ndarnamn"
  },
  "ascii": {
   "es": "ascii",
@@ -12880,14 +12910,14 @@
   "fi": "ascii"
  },
  "nextbutton": {
-  "es": "Siguiente bot\u00f3n",
   "fr": "Bouton Suivant",
   "it": "Pulsante successivo",
   "de": "N\u00e4chster Knopf",
+  "fi": "Seuraava-painike",
   "nl": "VolgendeKnop",
   "pt": "Pr\u00f3ximo bot\u00e3o",
   "sv": "N\u00e4staknapp",
-  "fi": "Seuraava-painike"
+  "es": "Siguiente bot\u00f3n"
  },
  "dropbutton": {
   "es": "Bot\u00f3n de ca\u00edda",
@@ -12900,14 +12930,14 @@
   "fi": "DropButton"
  },
  "createserveroptions": {
-  "es": "Crear opciones de servidor",
-  "fr": "Options de cr\u00e9ation de serveur",
-  "it": "Opzioni CreaServer",
   "de": "CreateServer-Optionen",
-  "nl": "Serveropties maken",
+  "it": "Opzioni CreaServer",
+  "fr": "Options de cr\u00e9ation de serveur",
+  "es": "Crear opciones de servidor",
+  "fi": "CreateServer Options",
   "pt": "Op\u00e7\u00f5es de cria\u00e7\u00e3o de servidor",
   "sv": "Skapa serveralternativ",
-  "fi": "CreateServer Options"
+  "nl": "Serveropties maken"
  },
  "createserveraddon": {
   "es": "CrearServidorAddon",
@@ -12943,50 +12973,10 @@
   "es": "Crear revisi\u00f3n del servidor",
   "fr": "CreateServerReview",
   "it": "CreaRevisioneServer",
-  "de": "ServerReview erstellen",
+  "de": "CreateServerReview",
   "nl": "Maak ServerReview",
   "pt": "CreateServerReview",
   "sv": "CreateServerReview",
   "fi": "CreateServerReview"
- },
- "launch flags...": {
-  "it": "lanciare bandiere...",
-  "fr": "lancer des drapeaux...",
-  "de": "Flaggen starten...",
-  "nl": "vlaggen lanceren...",
-  "pt": "lan\u00e7ar bandeiras...",
-  "sv": "lansera flaggor...",
-  "fi": "laukaista liput...",
-  "es": "lanzar banderas..."
- },
- "no content available": {
-  "es": "No hay contenido disponible",
-  "fr": "Aucun contenu disponible",
-  "it": "Nessun contenuto disponibile",
-  "de": "Kein Inhalt verf\u00fcgbar",
-  "nl": "Geen inhoud beschikbaar",
-  "pt": "Nenhum conte\u00fado dispon\u00edvel",
-  "sv": "Inget inneh\u00e5ll tillg\u00e4ngligt",
-  "fi": "Sis\u00e4lt\u00f6\u00e4 ei ole saatavilla"
- },
- "popupfile": {
-  "es": "Archivo emergente",
-  "fr": "Fichier contextuel",
-  "it": "PopupFile",
-  "de": "PopupFile",
-  "nl": "Pop-upbestand",
-  "pt": "Arquivo pop-up",
-  "sv": "Popup-fil",
-  "fi": "PopupFile"
- },
- "kill server": {
-  "fr": "tuer le serveur",
-  "it": "uccidere il server",
-  "es": "matar servidor",
-  "de": "Server t\u00f6ten",
-  "nl": "dood server",
-  "pt": "matar servidor",
-  "sv": "d\u00f6da servern",
-  "fi": "tappaa palvelin"
  }
 }
