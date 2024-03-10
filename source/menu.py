@@ -15142,16 +15142,7 @@ class ConsolePanel(FloatLayout):
         if self.run_data:
             screen_manager.current_screen.server.stop()
         # Add button to top right when the server is closed
-        self.controls.launch_button.disabled = False
-        self.controls.launch_button.opacity = 0
-        self.controls.add_widget(self.controls.launch_button)
-        Animation(opacity=1, duration=0.15).start(self.controls.launch_button)
-        # put button in top right
-        self.controls.launch_button.pos = (self.width - 50, self.height - 50)
-        self.controls.launch_button.size = (50, 50)
-        self.controls.launch_button.background_normal = os.path.join(constants.gui_assets, 'launch.png')
-
-
+        view_log_button = RelativeIconButton('maximize', {}, (20, 20), (None, None), 'maximize.png',clickable=True, anchor='right', text_offset=(24, 80),force_color=self.panel.button_colors['maximize'],click_func=functools.partial(self.panel.maximize, True))
 
     # Kills running process forcefully
     def kill_server(self, *args):
