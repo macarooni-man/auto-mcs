@@ -379,7 +379,7 @@ def translate(text: str):
     if new_text:
 
         # Escape proper nouns that ignore translation
-        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB')
+        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip')
         for o in overrides:
             new_key = search_data(o)
             if not new_key:
@@ -765,6 +765,11 @@ def brighten_color(color: tuple or str, amount: float):
             color[x] = new_amount
 
     return convert_color(color)['hex'] if hex_input else tuple(color)
+
+
+# Returns similarity of strings with a metric of 0-1
+def similarity(a, b):
+    return round(SequenceMatcher(None, a, b).ratio(), 2)
 
 
 # Cloudscraper requests
@@ -3167,7 +3172,7 @@ eula=true"""
 
 
 # Imports a modpack from a .zip file
-def scan_modpack(progress_func=None):
+def scan_modpack(update=False, progress_func=None):
     global import_data
 
     # First, download modpack if it's a URL
@@ -3256,7 +3261,7 @@ def scan_modpack(progress_func=None):
         'pack_type': 'zip'
     }
 
-    if import_data['name']:
+    if import_data['name'] and not update:
         data['name'] = new_server_name(process_name(import_data['name']))
 
 
@@ -3546,7 +3551,7 @@ def scan_modpack(progress_func=None):
 
 
 # Moves tmpsvr to actual server and checks for ACL and other file validity
-def finalize_modpack(progress_func=None, *args):
+def finalize_modpack(update=False, progress_func=None, *args):
     global import_data
 
     test_server = os.path.join(tempDir, 'importtest')
@@ -3572,6 +3577,14 @@ def finalize_modpack(progress_func=None, *args):
                     copy(item, tmpsvr)
                     continue
 
+                elif file_name == 'modrinth.index.json':
+                    copy(item, tmpsvr)
+                    if os_name == 'windows':
+                        run_proc(f"attrib +H \"{os.path.join(tmpsvr, 'modrinth.index.json')}\"")
+                    else:
+                        os.rename(os.path.join(tmpsvr, 'modrinth.index.json'), os.path.join(tmpsvr, '.modrinth.index.json'))
+                    continue
+
                 elif file_name.endswith('.png'):
                     continue
 
@@ -3585,56 +3598,98 @@ def finalize_modpack(progress_func=None, *args):
                     copy(item, tmpsvr)
 
 
+        # Copy existing data from modpack if updating
+        new_path = os.path.join(serverDir, import_data['name'])
+        if update and os.path.isdir(new_path):
+            valid_files = ['server.properties', 'eula.txt', 'auto-mcs.ini', '.auto-mcs.ini', 'start-cmd.tmp']
+            for item in glob(os.path.join(new_path, '*')):
+                file_name = os.path.basename(item)
+                if os.path.isdir(item) or (os.path.isfile(item) and (file_name.endswith('.txt') or file_name.endswith('.yml') or file_name.endswith('.json') or file_name in valid_files)):
+                    if file_name == 'modrinth.index.json':
+                        continue
+
+                    elif os.path.isdir(item) and file_name in ['mods', 'config', 'versions', 'libraries', 'resources', '.fabric']:
+                        continue
+
+                    # Recursively copy folders, and simply copy files
+                    if os.path.isdir(item):
+                        copytree(item, os.path.join(tmpsvr, file_name), dirs_exist_ok=True)
+                    else:
+                        copy(item, tmpsvr)
+
+
         # Create auto-mcs.ini
-        create_server_config(import_data, True, import_data['pack_type'])
+        if update and os.path.isfile(os.path.join(new_path, server_ini)):
+            new_config = server_config(import_data['name'])
+            new_config.set('general', 'serverVersion', import_data['version'])
+            if import_data['build']:
+                new_config.set('general', 'serverBuild', str(import_data['build']))
+            try:
+                new_config.set('general', 'customFlags', ' '.join(import_data['launch_flags']))
+            except:
+                pass
+            new_config.set('general', 'serverType', import_data['type'])
+            server_config(import_data['name'], new_config, os.path.join(tmpsvr, server_ini))
+
+            if progress_func:
+                progress_func(33)
+
+            # Erase server folder after copying
+            safe_delete(new_path)
+
+        else:
+            create_server_config(import_data, True, import_data['pack_type'])
 
 
         # Copy folder to server path and delete tmpsvr
-        new_path = os.path.join(serverDir, import_data['name'])
+        folder_check(new_path)
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
 
         if progress_func:
-            progress_func(33)
+            progress_func(33 if not update else 66)
 
 
-        # Add global rules to ACL
-        from acl import AclManager
-        AclManager(import_data['name']).write_rules()
+        # Generate ACL, 'EULA.txt', and 'server.properties' if importing a new modpack
+        if not update:
 
-        if progress_func:
-            progress_func(66)
+            # Add global rules to ACL
+            from acl import AclManager
+            AclManager(import_data['name']).write_rules()
+
+            if progress_func:
+                progress_func(66)
 
 
-        # Write EULA and "server.properties"
-        time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
+            # Write EULA and "server.properties"
+            time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
 
-        # Generate EULA.txt
-        eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
+            # Generate EULA.txt
+            eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
 {time_stamp}
 eula=true"""
 
-        with open(os.path.join(server_path(import_data['name']), 'eula.txt'), 'w+') as f:
-            f.write(eula)
+            with open(os.path.join(server_path(import_data['name']), 'eula.txt'), 'w+') as f:
+                f.write(eula)
 
-        if server_path(import_data['name'], 'server.properties'):
-            content = []
-            with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'r') as f:
-                content = f.readlines()
-                edited = False
-                if len(content) >= 1:
-                    if content[1].startswith('#'):
-                        content[1] = f"#{time_stamp}\n"
-                        edited = True
-                if not edited:
-                    content.insert(0, f"#{time_stamp}\n")
-                    content.insert(0, "#Minecraft server properties\n")
+            if server_path(import_data['name'], 'server.properties'):
+                content = []
+                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'r') as f:
+                    content = f.readlines()
+                    edited = False
+                    if len(content) >= 1:
+                        if content[1].startswith('#'):
+                            content[1] = f"#{time_stamp}\n"
+                            edited = True
+                    if not edited:
+                        content.insert(0, f"#{time_stamp}\n")
+                        content.insert(0, "#Minecraft server properties\n")
 
-            with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'w+') as f:
-                f.writelines(content)
-        else:
-            fix_empty_properties(import_data['name'])
+                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'w+') as f:
+                    f.writelines(content)
+            else:
+                fix_empty_properties(import_data['name'])
 
 
         if server_path(import_data['name'], server_ini):
@@ -3703,7 +3758,7 @@ def server_config(server_name: str, write_object=None, config_path=None):
     # If write_object, write it to file path
     if write_object:
 
-        if write_object.get('general', 'serverType').lower() not in ['forge', 'paper']:
+        if write_object.get('general', 'serverType').lower() not in ['forge', 'paper', 'purpur']:
             write_object.remove_option('general', 'serverBuild')
 
         if os_name == "windows":
@@ -3987,6 +4042,42 @@ def generate_server_list():
     return server_list
 
 
+# Retrieve modrinth config for updates
+def get_modrinth_data(name: str):
+    index = os.path.join(server_path(name), f'{"" if os_name == "windows" else "."}modrinth.index.json')
+    index_data = {"name": None, "version": '0.0.0', "latest": '0.0.0'}
+
+    if index:
+        if os_name == 'windows':
+            run_proc(f"attrib -H \"{index}\"")
+
+        with open(index, 'r') as f:
+            data = json.loads(f.read())
+
+            try:
+                index_data['name'] = data['name']
+            except KeyError:
+                pass
+            try:
+                index_data['version'] = data['versionId']
+            except KeyError:
+                pass
+
+        if os_name == 'windows':
+            run_proc(f"attrib +H \"{index}\"")
+
+
+        # Check online for latest version
+        try:
+            online_modpack = addons.get_modpack_url(addons.search_modpacks(index_data['name'])[0])
+            index_data['latest'] = online_modpack.download_version
+            index_data['download_url'] = online_modpack.download_url
+        except IndexError:
+            pass
+
+
+    return index_data
+
 # Return list of every valid server update property in 'applicationFolder'
 def make_update_list():
     global update_list
@@ -3997,12 +4088,7 @@ def make_update_list():
 
         name = os.path.basename(name)
 
-        serverObject = {
-                            name: {
-                                    "updateAuto": "false",
-                                    "needsUpdate": "false"
-                                  }
-                       }
+        serverObject = {name: {"updateAuto": "false", "needsUpdate": "false", "updateString": None, "updateUrl": None}}
 
         configFile = os.path.abspath(os.path.join(applicationFolder, 'Servers', name, server_ini))
 
@@ -4020,15 +4106,31 @@ def make_update_list():
             except configparser.NoOptionError:
                 jarBuild = ""
 
-            new_version = latestMC[jarType.lower()]
-            current_version = jarVer
+            try:
+                isModpack = str(config.get("general", "isModpack"))
+            except configparser.NoOptionError:
+                isModpack = ""
 
-            if ((jarType.lower() in ["forge", "paper", "purpur"]) and (jarBuild != "")) and (new_version == current_version):
-                new_version += " b-" + str(latestMC["builds"][jarType.lower()])
-                current_version += " b-" + str(jarBuild)
 
-            if (new_version != current_version) and not current_version.startswith("0.0.0"):
-                serverObject[name]["needsUpdate"] = "true"
+            if isModpack:
+                if isModpack == 'mrpack':
+                    modpack_data = get_modrinth_data(name)
+                    if (modpack_data['version'] != modpack_data['latest']) and not modpack_data['latest'].startswith("0.0.0"):
+                        serverObject[name]["needsUpdate"] = "true"
+                        serverObject[name]["updateString"] = modpack_data['latest']
+                        serverObject[name]["updateUrl"] = modpack_data['download_url']
+
+
+            else:
+                new_version = latestMC[jarType.lower()]
+                current_version = jarVer
+
+                if ((jarType.lower() in ["forge", "paper", "purpur"]) and (jarBuild != "")) and (new_version == current_version):
+                    new_version += " b-" + str(latestMC["builds"][jarType.lower()])
+                    current_version += " b-" + str(jarBuild)
+
+                if (new_version != current_version) and not current_version.startswith("0.0.0"):
+                    serverObject[name]["needsUpdate"] = "true"
 
             serverObject[name]["updateAuto"] = updateAuto
 
@@ -4772,10 +4874,6 @@ class SearchManager():
 
             else:
                 return string
-
-        # Returns similarity of strings with a metric of 0-1
-        def similarity(a, b):
-            return round(SequenceMatcher(None, a, b).ratio(), 2)
 
 
         # Find matching objects

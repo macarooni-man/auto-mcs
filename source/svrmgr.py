@@ -40,7 +40,7 @@ class ServerObject():
         self.running = False
         self.restart_flag = False
         self.custom_flags = ''
-        self.is_modpack = False
+        self.is_modpack = ''
         self.crash_log = None
         self.max_log_size = 800
         self.run_data = {}
@@ -94,7 +94,7 @@ class ServerObject():
                 if modpack:
                     self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
         except:
-            self.is_modpack = False
+            self.is_modpack = ''
         try:
             if self.config_file.get("general", "enableNgrok"):
                 self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
@@ -127,9 +127,14 @@ class ServerObject():
 
         # Check update properties for UI stuff
         self.update_string = ''
-        self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
-        if not self.update_string and self.build:
-            self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+        if self.is_modpack:
+            if constants.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                self.update_string = constants.update_list[self.name]['updateString']
+        else:
+            self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
+            if not self.update_string and self.build:
+                self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+
 
         if self.update_string:
             self._view_notif('settings', viewed='')
@@ -229,7 +234,7 @@ class ServerObject():
                 if modpack:
                     self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
         except:
-            self.is_modpack = False
+            self.is_modpack = ''
         try:
             if self.config_file.get("general", "enableNgrok"):
                 self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
@@ -244,9 +249,14 @@ class ServerObject():
 
         # Check update properties for UI stuff
         self.update_string = ''
-        self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
-        if not self.update_string and self.build:
-            self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+        if self.is_modpack:
+            if constants.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                self.update_string = constants.update_list[self.name]['updateString']
+        else:
+            self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
+            if not self.update_string and self.build:
+                self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+
 
         if self.update_string:
             self._view_notif('settings', viewed='')
@@ -1703,13 +1713,17 @@ class ViewObject():
                 if modpack:
                     self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
         except:
-            self.is_modpack = False
+            self.is_modpack = ''
 
         # Check update properties for UI stuff
         self.update_string = ''
-        self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
-        if not self.update_string and self.build:
-            self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+        if self.is_modpack:
+            if constants.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                self.update_string = constants.update_list[self.name]['updateString']
+        else:
+            self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
+            if not self.update_string and self.build:
+                self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
 
 
         self.server_path = constants.server_path(server_name)

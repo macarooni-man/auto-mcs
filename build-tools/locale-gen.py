@@ -72,13 +72,15 @@ for script in glob(os.path.join(source_dir, '*.py')):
 
 
                 # Global ignores
+                if "\ngenerate-structures=true\nspawn-animals=true\nsnooper-enabled=true\n" in string:
+                    continue
                 if re.match('^\w+Screen$', string):
                     continue
                 if not string.strip():
                     continue
                 if not re.sub('[^a-zA-Z0-9$]', '', string):
                     continue
-                partial_matches = ("'$", "$'", '$$')
+                partial_matches = ("'$", "$'", '$$', '$)')
                 if string.count('$') < 2 and string.strip() != '$' and string.strip() not in partial_matches:
                     if len(re.sub('[a-zA-Z0-9 ]', '', string)) > len(re.sub('[^a-zA-Z0-9 ]', '', string)):
                         continue

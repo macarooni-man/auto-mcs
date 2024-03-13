@@ -12704,7 +12704,7 @@ class ServerImportModpackScreen(MenuBackground):
         start_path = constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
         buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505}))
         buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44}))
-        buttons.append(input_button('Browse...', (0.5, 0.44), ('file', start_path), input_name='ServerImportModpackInput', title='Select an modpack', ext_list=['*.zip', '*.mrpack']))
+        buttons.append(input_button('Browse...', (0.5, 0.44), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
 
         self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
         def remove_page(*a):
@@ -12749,7 +12749,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         def after_func(*args):
             import_name = constants.import_data['name']
             server_path = os.path.join(constants.serverDir, constants.import_data['name'])
-            read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower() and 'me' in f.lower()]
+            read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
             if read_me:
                 read_me = read_me[0]
             open_server(constants.import_data['name'], True, f"'${import_name}$' was imported successfully", show_readme=read_me)
@@ -12794,10 +12794,10 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
-            ('Validating modpack', functools.partial(constants.scan_modpack, functools.partial(adjust_percentage, 20)), 0),
+            ('Validating modpack', functools.partial(constants.scan_modpack, False, functools.partial(adjust_percentage, 20)), 0),
             ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 15), True), 0),
             ('Installing modpack',functools.partial(constants.install_server, None, True), 15),
-            ('Validating configuration', functools.partial(constants.finalize_modpack, functools.partial(adjust_percentage, 10)), 0),
+            ('Validating configuration', functools.partial(constants.finalize_modpack, False, functools.partial(adjust_percentage, 10)), 0),
             ('Creating initial back-up', functools.partial(constants.create_backup, True), 10)
         ]
 
@@ -13125,14 +13125,26 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update:
         while not server_obj.addon:
             time.sleep(0.05)
-        constants.new_server_init()
-        constants.init_update()
-        constants.new_server_info['type'] = server_obj.type
-        constants.new_server_info['version'] = constants.latestMC[server_obj.type]
-        if server_obj.type in ['forge', 'paper']:
-            constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
-        screen_manager.current = 'MigrateServerProgressScreen'
-        screen_manager.current_screen.page_contents['launch'] = launch
+
+        if server_obj.is_modpack == 'mrpack':
+            if constants.update_list[server_obj.name]['updateUrl']:
+                constants.import_data = {
+                    'name': server_obj.name,
+                    'url': constants.update_list[server_obj.name]['updateUrl']
+                }
+                constants.safe_delete(constants.tempDir)
+                screen_manager.current = 'UpdateModpackProgressScreen'
+                screen_manager.current_screen.page_contents['launch'] = launch
+
+        else:
+            constants.new_server_init()
+            constants.init_update()
+            constants.new_server_info['type'] = server_obj.type
+            constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+            if server_obj.type in ['forge', 'paper']:
+                constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+            screen_manager.current = 'MigrateServerProgressScreen'
+            screen_manager.current_screen.page_contents['launch'] = launch
 
     else:
         Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
@@ -13617,7 +13629,10 @@ class ServerButton(HoverButton):
                     {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings}
                 ]
             else:
-                u = self.properties.update_string
+                if self.properties.is_modpack == 'zip':
+                    u = None
+                else:
+                    u = self.properties.update_string
                 self.context_options = [
                     {'name': 'Launch', 'icon': 'start-server.png', 'action': launch},
                     {'name': f'Update {"build" if u.startswith("b-") else f"{u}"}', 'icon': 'arrow-up.png', 'action': update} if u else None,
@@ -14182,7 +14197,8 @@ def prompt_new_server(server_obj, *args):
         def wait_timer(*a):
             while screen_manager.current_screen.popup_widget:
                 time.sleep(0.1)
-            Clock.schedule_once(prompt_updates, 0)
+            if not constants.server_manager.current_server.is_modpack or constants.server_manager.current_server.is_modpack == 'mrpack':
+                Clock.schedule_once(prompt_updates, 0)
         threading.Timer(0, wait_timer).start()
 
     # Step 1 - prompt for backups
@@ -21092,6 +21108,7 @@ class ServerSettingsScreen(MenuBackground):
         self.edit_properties_button = None
         self.open_path_button = None
         self.update_button = None
+        self.update_label = None
         self.ngrok_button = None
         self.rename_input = None
         self.delete_button = None
@@ -21388,28 +21405,60 @@ class ServerSettingsScreen(MenuBackground):
                 ), 0
             )
 
+        disabled = server_obj.is_modpack and server_obj.is_modpack != 'mrpack'
         sub_layout = ScrollItem()
-        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='automatic updates'))
-        sub_layout.add_widget(toggle_button('auto-update', (0.5, 0.5), custom_func=toggle_auto_update, default_state=server_obj.auto_update == 'true'))
+        sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='automatic updates', disabled=disabled))
+        sub_layout.add_widget(toggle_button('auto-update', (0.5, 0.5), custom_func=toggle_auto_update, default_state=server_obj.auto_update == 'true', disabled=disabled))
         update_layout.add_widget(sub_layout)
 
         disabled = server_obj.running or not constants.app_online
 
         # Updates server
         def update_server(*a):
-            constants.new_server_init()
-            constants.init_update()
-            constants.new_server_info['type'] = server_obj.type
-            constants.new_server_info['version'] = constants.latestMC[server_obj.type]
-            if server_obj.type in ['forge', 'paper']:
-                constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
-            screen_manager.current = 'MigrateServerProgressScreen'
+            if server_obj.is_modpack == 'mrpack':
+                if constants.update_list[server_obj.name]['updateUrl']:
+                    constants.import_data = {
+                        'name': server_obj.name,
+                        'url': constants.update_list[server_obj.name]['updateUrl']
+                    }
+                    constants.safe_delete(constants.tempDir)
+                    screen_manager.current = 'UpdateModpackProgressScreen'
+
+            else:
+                constants.new_server_init()
+                constants.init_update()
+                constants.new_server_info['type'] = server_obj.type
+                constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+                if server_obj.type in ['forge', 'paper']:
+                    constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                screen_manager.current = 'MigrateServerProgressScreen'
 
         # Check for updates button
         sub_layout = ScrollItem()
         while server_obj.name not in constants.update_list:
             time.sleep(0.1)
-        if constants.update_list[server_obj.name]['needsUpdate'] == 'true':
+
+        # First check if the server is a '.zip' format modpack
+        if server_obj.is_modpack == 'zip':
+            def select_file(*a):
+                zip_file = file_popup("file", start_dir=constants.userDownloads, ext=["*.zip", "*.mrpack"], input_name=None, select_multiple=True, title='Select a modpack update')
+                if zip_file:
+                    zip_file = zip_file[0]
+                    if zip_file.endswith('.zip') or zip_file.endswith('.mrpack'):
+                        constants.import_data = {
+                            'name': server_obj.name,
+                            'path': os.path.abspath(zip_file)
+                        }
+                        constants.safe_delete(constants.tempDir)
+                        screen_manager.current = 'UpdateModpackProgressScreen'
+                    else:
+                        self.update_label.update_text('Invalid file type')
+
+            self.update_label = InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.05})
+            self.update_button = WaitButton("Update from '.zip'", (0.5, 0.5), 'modpack.png', disabled=not constants.app_online, click_func=select_file)
+
+
+        elif constants.update_list[server_obj.name]['needsUpdate'] == 'true':
             if 'settings' in server_obj.viewed_notifs:
                 if server_obj.viewed_notifs['settings'] != server_obj.update_string:
                     Clock.schedule_once(
@@ -21424,11 +21473,16 @@ class ServerSettingsScreen(MenuBackground):
                     )
             server_obj._view_notif('settings', viewed=server_obj.update_string)
             self.update_button = WaitButton(f"Update to ${server_obj.update_string}$", (0.5, 0.5), 'arrow-up-circle-outline.png', disabled=disabled, click_func=update_server)
+
+        # No updates are available
         else:
             self.update_button = WaitButton('Up to date', (0.5, 0.5), 'checkmark-circle.png', disabled=True)
             Animation.stop_all(self.update_button.icon)
             self.update_button.icon.opacity = 0.5
+
         sub_layout.add_widget(self.update_button)
+        if self.update_label:
+            sub_layout.add_widget(self.update_label)
         update_layout.add_widget(sub_layout)
 
 
@@ -21440,7 +21494,7 @@ class ServerSettingsScreen(MenuBackground):
             screen_manager.current = 'MigrateServerTypeScreen'
 
         sub_layout = ScrollItem()
-        sub_layout.add_widget(WaitButton("Change 'server.jar'", (0.5, 0.5), 'swap-horizontal-outline.png', disabled=disabled, click_func=migrate_server))
+        sub_layout.add_widget(WaitButton("Change 'server.jar'", (0.5, 0.5), 'swap-horizontal-outline.png', disabled=disabled or server_obj.is_modpack, click_func=migrate_server))
         update_layout.add_widget(sub_layout)
 
 
@@ -21882,6 +21936,87 @@ class MigrateServerProgressScreen(ProgressScreen):
 
         self.page_contents['function_list'] = tuple(function_list)
 
+class UpdateModpackProgressScreen(ProgressScreen):
+
+    # Only replace this function when making a child screen
+    # Set fail message in child functions to trigger an error
+    def contents(self):
+        server_obj = constants.server_manager.current_server
+
+        def before_func(*args):
+
+            # First, clean out any existing server in temp folder
+            constants.safe_delete(constants.tempDir)
+
+            if not constants.app_online:
+                self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
+
+            elif not constants.check_free_space():
+                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+
+            else:
+                constants.folder_check(constants.tmpsvr)
+
+        def after_func(*args):
+            constants.make_update_list()
+            server_obj._view_notif('add-ons', True)
+            server_obj._view_notif('settings', viewed=server_obj.update_string)
+            server_path = server_obj.server_path
+            read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
+            if read_me:
+                read_me = read_me[0]
+            open_server(server_obj.name, True, f"Updated '${server_obj.name}$' successfully", show_readme=read_me)
+
+        # Original is percentage before this function, adjusted is a percent of hooked value
+        def adjust_percentage(*args):
+            original = self.last_progress
+            adjusted = args[0]
+            total = args[1] * 0.01
+            final = original + round(adjusted * total)
+            if final < 0:
+                final = original
+            self.progress_bar.update_progress(final)
+
+
+        self.page_contents = {
+
+            # Page name
+            'title': f"Updating '${server_obj.name}$'",
+
+            # Header text
+            'header': "Sit back and relax, it's automation time...",
+
+            # Tuple of tuples for steps (label, function, percent)
+            # Percent of all functions must total 100
+            # Functions must return True, or default error will be executed
+            'default_error': "There was an issue updating this modpack.\n\nThe required resources were unobtainable and will require manual installation.",
+
+            'function_list': (),
+
+            # Function to run before steps (like checking for an internet connection)
+            'before_function': before_func,
+
+            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
+            'after_function': after_func,
+
+            # Screen to go to after complete
+            'next_screen': None
+        }
+
+        # Create function list
+        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
+        function_list = [
+            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            ('Validating modpack', functools.partial(constants.scan_modpack, True, functools.partial(adjust_percentage, 20)), 0),
+            ("Downloading 'server.jar'", functools.partial(constants.download_jar, functools.partial(adjust_percentage, 10), True), 0),
+            ('Installing modpack',functools.partial(constants.install_server, None, True), 15),
+            ('Creating pre-install back-up', functools.partial(constants.create_backup, True), 10),
+            ('Validating configuration', functools.partial(constants.finalize_modpack, True, functools.partial(adjust_percentage, 5)), 0),
+            ('Creating post-install back-up', functools.partial(constants.create_backup, True), 10)
+        ]
+
+        self.page_contents['function_list'] = tuple(function_list)
+
 
 
 # </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -22040,7 +22175,7 @@ class MainApp(App):
         screen_manager.transition = FadeTransition(duration=0.115)
 
         # Close splash screen if compiled
-        if constants.app_compiled:
+        if constants.app_compiled and constants.os_name != 'macos':
             import pyi_splash
             pyi_splash.close()
 
@@ -22055,10 +22190,10 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        # if not constants.app_compiled:
-            # def open_menu(*a):
-            #     open_server('Reeee 1.8', launch=True)
-            # Clock.schedule_once(open_menu, 2)
+        if not constants.app_compiled:
+            def open_menu(*a):
+                open_server('Cobblemon Official', launch=False)
+            Clock.schedule_once(open_menu, 2)
             # def open_menu(*a):
             #     screen_manager.current = 'ServerImportModpackSearchScreen'
             # Clock.schedule_once(open_menu, 2)

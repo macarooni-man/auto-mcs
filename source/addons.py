@@ -218,6 +218,9 @@ class AddonManager():
         if not self._addons_supported:
             return False
 
+        if self._server['is_modpack']:
+            return False
+
         if self.update_required:
             return True
 
@@ -1075,7 +1078,8 @@ def dump_config(server_name: str):
         'name': server_name,
         'version': None,
         'type': None,
-        'path': os.path.join(constants.applicationFolder, 'Servers', server_name)
+        'path': os.path.join(constants.applicationFolder, 'Servers', server_name),
+        'is_modpack': False
     }
 
 
@@ -1089,6 +1093,10 @@ def dump_config(server_name: str):
         if server_name == server_config.get("general", "serverName"):
             server_dict['version'] = server_config.get("general", "serverVersion")
             server_dict['type'] = server_config.get("general", "serverType").lower()
+            try:
+                server_dict['is_modpack'] = server_config.get("general", "isModpack").lower()
+            except:
+                pass
 
 
     return server_dict
@@ -1209,12 +1217,16 @@ def search_modpacks(query: str, *a):
         subtitle = mod['description'].split("\n", 1)[0]
         link = f"https://modrinth.com/modpack/{mod['slug']}"
         file_name = mod['slug']
+        score = constants.similarity(query.strip().lower(), name.strip().lower())
 
         if link:
             addon_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
+            addon_obj.score = score
             addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
             results.append(addon_obj)
 
+    if results:
+        results = sorted(results, key=lambda x: x.score, reverse=True)
 
     return results
 
@@ -1260,6 +1272,7 @@ def get_modpack_url(modpack: ModpackWebObject, *a):
     # Iterate through every page until a match is found
     file_link = f'https://api.modrinth.com/v2/project/{modpack.id}/version'
     page_content = constants.get_url(file_link, return_response=True).json()
+    modpack.download_version = page_content[0]['version_number']
 
     for data in page_content:
         try:
