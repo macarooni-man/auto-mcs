@@ -451,24 +451,24 @@ class InputLabel(RelativeLayout):
         self.id = 'InputLabel'
         self.text_size = sp(21)
 
-        text = Label()
-        text.id = 'text'
-        text.text = "Invalid input"
-        text.font_size = self.text_size
-        self.text_x = text.x
-        text.x += dp(15)
-        text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-        text.color = (1, 0.53, 0.58, 0)
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.text = "Invalid input"
+        self.text.font_size = self.text_size
+        self.text_x = self.text.x
+        self.text.x += dp(15)
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+        self.text.color = (1, 0.53, 0.58, 0)
 
-        icon = Image()
-        icon.id = 'icon'
-        icon.source = os.path.join(constants.gui_assets, 'icons', 'alert-circle-outline.png')
-        icon.color = (1, 0.53, 0.58, 0)
-        self.icon_x = icon.x
-        icon.x -= dp((len(text.text) * (self.text_size - 8)) / 3) - dp(20)
+        self.icon = Image()
+        self.icon.id = 'icon'
+        self.icon.source = os.path.join(constants.gui_assets, 'icons', 'alert-circle-outline.png')
+        self.icon.color = (1, 0.53, 0.58, 0)
+        self.icon_x = self.icon.x
+        self.icon.x -= dp((len(self.text.text) * (self.text_size - 8)) / 3) - dp(20)
 
-        self.add_widget(text)
-        self.add_widget(icon)
+        self.add_widget(self.text)
+        self.add_widget(self.icon)
 
 
     def disable_text(self, disable):
@@ -7247,7 +7247,10 @@ class PopupSearch(RelativeLayout):
 
 # Screen widgets
 def previous_screen(*args):
-    screen_manager.current = constants.screen_tree.pop(-1)
+    try:
+        screen_manager.current = constants.screen_tree.pop(-1)
+    except IndexError:
+        pass
     # print(constants.screen_tree)
 
 
@@ -13116,8 +13119,11 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     server_obj = constants.server_manager.current_server
 
     needs_update = False
-    if constants.update_list:
-        needs_update = constants.update_list[server_obj.name]['needsUpdate'] == 'true'
+    try:
+        if constants.update_list:
+            needs_update = constants.update_list[server_obj.name]['needsUpdate'] == 'true'
+    except:
+        pass
 
     # Automatically update if available
     if server_obj.running:
@@ -15091,6 +15097,7 @@ class ConsolePanel(FloatLayout):
 
         # Control buttons
         if self.controls.maximize_button and self.controls.stop_button and self.controls.restart_button and not self.full_screen:
+            self.controls.view_button.pos = (self.width - 142, self.height - 80) if self.log_view else (self.width - 90, self.height - 80)
             self.controls.maximize_button.pos = (self.width - 90, self.height - 80)
             self.controls.stop_button.pos = (self.width - 142, self.height - 80)
             self.controls.restart_button.pos = (self.width - 194, self.height - 80)
@@ -15132,6 +15139,8 @@ class ConsolePanel(FloatLayout):
 
         self.controls.crash_text.clear_text()
 
+        if self.controls.view_button:
+            Animation(opacity=0, duration=anim_speed).start(self.controls.view_button)
         Animation(opacity=0, duration=anim_speed).start(self.controls.button_shadow)
         Animation(opacity=0, duration=anim_speed).start(self.controls.background)
         Animation(opacity=0, duration=anim_speed).start(self.controls.background_ext)
@@ -15144,8 +15153,10 @@ class ConsolePanel(FloatLayout):
             self.controls.restart_button.disabled = False
             self.controls.remove_widget(self.controls.launch_button)
             self.controls.remove_widget(self.controls.log_button)
+            self.controls.remove_widget(self.controls.view_button)
             self.controls.launch_button.button.on_leave()
             self.controls.log_button.button.on_leave()
+            self.controls.view_button.button.on_leave()
             def delay(function, obj, delay):
                 def ad(*a):
                     function.start(obj)
@@ -15207,6 +15218,7 @@ class ConsolePanel(FloatLayout):
         if self.server_obj.restart_flag:
             return
 
+
         def reset(*args):
 
             # Show crash banner if not on server screen
@@ -15247,6 +15259,14 @@ class ConsolePanel(FloatLayout):
             if 'f' not in self.parent._ignore_keys:
                 self.parent._ignore_keys.append('f')
 
+
+            # Before deleting run data, save log to a file
+            constants.folder_check(constants.tempDir)
+            file_name = f"{constants.server_manager.current_server._hash}-latest.log"
+            with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
+                f.write(constants.json.dumps(self.run_data['log']))
+
+
             self.run_data = None
             self.ignore_keypress = True
 
@@ -15259,6 +15279,8 @@ class ConsolePanel(FloatLayout):
                 constants.hide_widget(self.controls.maximize_button, True)
                 constants.hide_widget(self.controls.stop_button, True)
                 constants.hide_widget(self.controls.restart_button, True)
+                self.controls.control_shadow.opacity = 0
+
 
             if self.full_screen:
                 self.maximize(False)
@@ -15302,6 +15324,10 @@ class ConsolePanel(FloatLayout):
                     self.controls.stop_button.disabled = False
                     self.controls.restart_button.disabled = False
                     self.scroll_layout.data = {}
+                    self.controls.control_shadow.opacity = 1
+
+                    # View log button
+                    self.add_log_button()
 
                 Clock.schedule_once(after_anim2, (anim_speed * 1.51))
 
@@ -15318,7 +15344,7 @@ class ConsolePanel(FloatLayout):
     def maximize(self, maximize=True, *args):
 
         # Make sure the buttons exist
-        if 'f' in self.parent._ignore_keys and maximize:
+        if 'f' in self.parent._ignore_keys and maximize and not self.log_view or self.full_screen == 'animate':
             return
 
         try:
@@ -15341,41 +15367,64 @@ class ConsolePanel(FloatLayout):
         if maximize:
             Animation(size_hint_max=(Window.width, Window.height - self.full_screen_offset), y=47, duration=anim_speed, transition='out_sine').start(self)
 
-            # Full screen button
-            self.controls.remove_widget(self.controls.maximize_button)
-            del self.controls.maximize_button
-            self.controls.maximize_button = IconButton('minimize', {}, (71, 150), (None, None), 'minimize.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, False))
-            self.controls.maximize_button.opacity = 0
-            self.controls.add_widget(self.controls.maximize_button)
+            # If server is not running
+            if self.log_view:
 
-            # Stop server button
-            self.controls.remove_widget(self.controls.stop_button)
-            del self.controls.stop_button
-            if not self.deadlocked:
-                self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+                # Hide log button
+                self.controls.remove_widget(self.controls.view_button)
+                del self.controls.view_button
+                self.controls.view_button = IconButton('hide log', {}, (71, 150), (None, None), 'hide-log.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=self.hide_log)
+                self.controls.view_button.opacity = 0
+                self.controls.add_widget(self.controls.view_button)
+
+                def after_anim(*a):
+                    self.full_screen = True
+                    self.ignore_keypress = False
+                    Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
+                    Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.view_button)
+
+                Clock.schedule_once(after_anim, (anim_speed * 1.1))
+
+
+            # If server is running
             else:
-                self.controls.stop_button = IconButton('kill server', {}, (123, 150), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
-            self.controls.stop_button.opacity = 0
-            self.controls.add_widget(self.controls.stop_button)
 
-            # Restart server button
-            self.controls.remove_widget(self.controls.restart_button)
-            del self.controls.restart_button
-            self.controls.restart_button = IconButton('restart server', {}, (175, 150), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
-            self.controls.restart_button.opacity = 0
-            self.controls.add_widget(self.controls.restart_button)
+                # Full screen button
+                self.controls.remove_widget(self.controls.maximize_button)
+                del self.controls.maximize_button
+                self.controls.maximize_button = IconButton('minimize', {}, (71, 150), (None, None), 'minimize.png', clickable=True, anchor='right', force_color=self.button_colors['maximize'], click_func=functools.partial(self.maximize, False))
+                self.controls.maximize_button.opacity = 0
+                self.controls.add_widget(self.controls.maximize_button)
 
-            def after_anim(*a):
-                self.full_screen = True
-                self.ignore_keypress = False
-                Animation(opacity=0, duration=(anim_speed*0.1), transition='out_sine').start(self.corner_mask)
-                Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
-                Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
-                Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
-                Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
-                fix_scroll()
+                # Stop server button
+                self.controls.remove_widget(self.controls.stop_button)
+                del self.controls.stop_button
+                if not self.deadlocked:
+                    self.controls.stop_button = IconButton('stop server', {}, (123, 150), (None, None), 'stop-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.stop_server, text_hover_color=(0.85, 0.7, 1, 1))
+                else:
+                    self.controls.stop_button = IconButton('kill server', {}, (123, 150), (None, None), 'kill-server.png', clickable=True, anchor='right', text_offset=(13, 50), force_color=self.button_colors['stop'], click_func=self.kill_server, text_hover_color=(0.85, 0.7, 1, 1))
+                self.controls.stop_button.opacity = 0
+                self.controls.add_widget(self.controls.stop_button)
 
-            Clock.schedule_once(after_anim, (anim_speed*1.1))
+                # Restart server button
+                self.controls.remove_widget(self.controls.restart_button)
+                del self.controls.restart_button
+                self.controls.restart_button = IconButton('restart server', {}, (175, 150), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-25, 50), force_color=self.button_colors['stop'], click_func=self.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
+                self.controls.restart_button.opacity = 0
+                self.controls.add_widget(self.controls.restart_button)
+
+                def after_anim(*a):
+                    self.full_screen = True
+                    self.ignore_keypress = False
+                    Animation(opacity=0, duration=(anim_speed*0.1), transition='out_sine').start(self.corner_mask)
+                    Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
+                    fix_scroll()
+
+                Clock.schedule_once(after_anim, (anim_speed*1.1))
 
 
         # Exiting full screen
@@ -15437,11 +15486,120 @@ class ConsolePanel(FloatLayout):
         Clock.schedule_once(main_thread, 0)
 
 
-    # Opens crash log in default text editor
+    # Opens crash log in auto-mcs logviewer
     def open_log(self, *args):
         view_file(constants.server_manager.current_server.crash_log)
         self.controls.log_button.button.on_leave()
         self.controls.log_button.button.on_release()
+
+
+    # Adds show/hide log button
+    def add_log_button(self, *args):
+        self.log_view = False
+        self.input.hint_text = "enter command..."
+
+        # Before deleting run data, save log to a file
+        constants.folder_check(constants.tempDir)
+        file_path = os.path.join(constants.tempDir, f"{constants.server_manager.current_server._hash}-latest.log")
+        if os.path.isfile(file_path):
+            self.deselect_all()
+            self.scroll_layout.data = []
+            def change_later(*a):
+                with open(file_path, 'r') as f:
+                    self.scroll_layout.data = constants.json.loads(f.read())
+            Clock.schedule_once(change_later, 0)
+
+            self.controls.remove_widget(self.controls.view_button)
+            del self.controls.view_button
+            self.controls.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png', clickable=True, anchor='right', text_offset=(18, 80), force_color=self.button_colors['maximize'], click_func=self.show_log)
+            self.controls.add_widget(self.controls.view_button)
+            self.controls.view_button.opacity = 0
+            Animation(opacity=1, duration=0.15).start(self.controls.view_button)
+            self.update_size()
+
+
+    # Shows previous console log in panel
+    def show_log(self, *args):
+
+        if self.run_data:
+            return
+
+
+        self.log_view = True
+
+        self.input.hint_text = "viewing last run..."
+        self.controls.control_shadow.size_hint_max = (135, 120)
+        self.selected_labels = []
+        anim_speed = 0.15
+        self.scroll_layout.scroll_y = 0
+        self.auto_scroll = False
+
+        Animation(opacity=0, duration=anim_speed).start(self.controls.view_button)
+        Animation(opacity=0, duration=anim_speed).start(self.controls.crash_text)
+        Animation(opacity=0, duration=anim_speed).start(self.controls.button_shadow)
+        Animation(opacity=0, duration=anim_speed).start(self.controls.background)
+        Animation(opacity=0, duration=anim_speed).start(self.controls.background_ext)
+        Animation(opacity=0, duration=(anim_speed * 1.5)).start(self.controls.launch_button)
+        Animation(opacity=0, duration=(anim_speed * 1.5)).start(self.controls.log_button)
+
+        def after_anim(*a):
+            self.controls.maximize_button.disabled = False
+            self.controls.remove_widget(self.controls.launch_button)
+            self.controls.remove_widget(self.controls.log_button)
+            self.controls.launch_button.button.on_leave()
+            self.controls.log_button.button.on_leave()
+
+        Clock.schedule_once(after_anim, (anim_speed * 1.51))
+        Clock.schedule_once(functools.partial(self.maximize, True), 0.2)
+
+
+    # Hides previous console log in panel
+    def hide_log(self, *args):
+
+        self.scroll_layout.data = []
+        self.selected_labels = []
+
+        def after_anim(*a):
+            anim_speed = 0.15
+
+            # Update crash widgets
+            if self.controls.crash_text.text.text.strip():
+                self.controls.log_button.disabled = False
+                self.controls.log_button.opacity = 0
+                self.controls.add_widget(self.controls.log_button)
+                Animation(opacity=1, duration=anim_speed).start(self.controls.log_button)
+                Animation(opacity=1, duration=anim_speed).start(self.controls.crash_text)
+
+            # Animate panel
+            self.controls.launch_button.disabled = False
+            self.input.disabled = True
+            self.input.text = ''
+
+            self.controls.launch_button.opacity = 0
+            self.controls.add_widget(self.controls.launch_button)
+
+            Animation(opacity=1, duration=anim_speed).start(self.controls.button_shadow)
+            Animation(opacity=1, duration=anim_speed).start(self.controls.launch_button)
+            Animation(opacity=1, duration=anim_speed).start(self.controls.background)
+            Animation(opacity=1, duration=anim_speed).start(self.controls.background_ext)
+
+            Clock.schedule_once(functools.partial(self.maximize, False), 0)
+
+            if self.controls.view_button.opacity > 0:
+                constants.hide_widget(self.controls.view_button, True)
+
+            def after_anim2(*a):
+                self.controls.view_button.disabled = False
+                self.scroll_layout.data = {}
+
+                # View log button
+                self.controls.control_shadow.size_hint_max = (255, 120)
+                Clock.schedule_once(self.update_size, -1)
+                self.add_log_button()
+
+            Clock.schedule_once(after_anim2, (anim_speed * 1.51))
+
+        Clock.schedule_once(after_anim, 0)
 
 
     # Select all ConsoleLabels
@@ -15584,6 +15742,7 @@ class ConsolePanel(FloatLayout):
         self.server_obj = None
         self.server_button = server_button
         self.deadlocked = False
+        self.log_view = False
         self.full_screen = False
         self.full_screen_offset = 95
         self.size_offset = (70, 550)
@@ -15638,6 +15797,13 @@ class ConsolePanel(FloatLayout):
                         pass
 
                 if text and screen_manager.current_screen.name == 'ServerViewScreen':
+
+                    if not self.console_panel:
+                        try:
+                            self.console_panel = screen_manager.current_screen.console_panel
+                        except:
+                            pass
+
                     self.date_label.text = text[0]
                     self.type_label.text = text[1]
                     self.main_label.text = text[2]
@@ -15962,7 +16128,6 @@ class ConsolePanel(FloatLayout):
                 self.control_shadow.size_hint_max = (255, 120)
                 self.add_widget(self.control_shadow)
 
-
                 # Full screen button
                 self.maximize_button = RelativeIconButton('maximize', {}, (20, 20), (None, None), 'maximize.png', clickable=True, anchor='right', text_offset=(24, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.maximize, True))
                 constants.hide_widget(self.maximize_button)
@@ -15977,6 +16142,10 @@ class ConsolePanel(FloatLayout):
                 self.restart_button = RelativeIconButton('restart server', {}, (20, 20), (None, None), 'restart-server.png', clickable=True, anchor='right', text_offset=(-30, 80), force_color=self.panel.button_colors['stop'], click_func=self.panel.restart_server, text_hover_color=(0.85, 0.7, 1, 1))
                 constants.hide_widget(self.restart_button)
                 self.add_widget(self.restart_button)
+
+                # View log button
+                self.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png', clickable=True, anchor='right', text_offset=(18, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.show_log, True))
+                Clock.schedule_once(self.panel.add_log_button, 0)
 
 
         # Popen object reference
@@ -16205,6 +16374,9 @@ class ServerViewScreen(MenuBackground):
                 if self.context_menu:
                     self.context_menu.hide()
 
+                elif self.console_panel.log_view:
+                    self.console_panel.hide_log()
+
                 elif self.console_panel.full_screen:
                     self.console_panel.maximize(False)
 
@@ -16221,14 +16393,16 @@ class ServerViewScreen(MenuBackground):
 
             # Start server when enter is pressed
             if (keycode[1] == 'enter' and 'enter' not in self._ignore_keys) and not self.server.run_data:
-                self.console_panel.controls.launch_button.button.on_enter()
-                Clock.schedule_once(self.console_panel.launch_server, 0.1)
+                if not self.console_panel.log_view:
+                    self.console_panel.controls.launch_button.button.on_enter()
+                    Clock.schedule_once(self.console_panel.launch_server, 0.1)
 
 
             # Use 'F' to toggle fullscreen
             if keycode[1] == 'f' and 'f' not in self._ignore_keys and self.server.run_data:
-                self.console_panel.maximize(not self.console_panel.full_screen)
-                self.console_panel.ignore_keypress = True
+                if not self.console_panel.log_view:
+                    self.console_panel.maximize(not self.console_panel.full_screen)
+                    self.console_panel.ignore_keypress = True
 
 
             # Focus text input if server is started
@@ -16241,15 +16415,15 @@ class ServerViewScreen(MenuBackground):
         if self.name == screen_manager.current_screen.name:
 
             # Copy selected console text
-            if ((keycode[1] == 'c' and control in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+            if ((keycode[1] == 'c' and control in modifiers) and ('c' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
                 self.console_panel.copy_selection()
 
             # Select all console text
-            if ((keycode[1] == 'a' and control in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+            if ((keycode[1] == 'a' and control in modifiers) and ('a' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
                 self.console_panel.select_all()
 
             # Deselect all console text
-            if ((keycode[1] == 'd' and control in modifiers) and ('c' not in self._ignore_keys)) and self.server.run_data:
+            if ((keycode[1] == 'd' and control in modifiers) and ('d' not in self._ignore_keys)) and (self.server.run_data or self.console_panel.log_view):
                 self.console_panel.deselect_all()
 
             # Stop the server if it's currently running
@@ -22190,10 +22364,10 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        if not constants.app_compiled:
-            def open_menu(*a):
-                open_server('Cobblemon Official', launch=False)
-            Clock.schedule_once(open_menu, 2)
+        # if not constants.app_compiled:
+        #     def open_menu(*a):
+        #         open_server('1.6 crash test', launch=True)
+        #     Clock.schedule_once(open_menu, 2)
             # def open_menu(*a):
             #     screen_manager.current = 'ServerImportModpackSearchScreen'
             # Clock.schedule_once(open_menu, 2)
