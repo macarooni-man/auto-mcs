@@ -13088,5 +13088,15 @@
   "pt": "CreateServerReview",
   "sv": "CreateServerReview",
   "fi": "CreateServerReview"
+ },
+ "auto-mcs has limited functionality from low disk space. further changes can lead to corruption in your servers.\n\nplease free up space on your disk to continue": {
+  "fr": "auto-mcs a des fonctionnalit\u00e9s limit\u00e9es en raison du faible espace disque. D'autres changements peuvent entra\u00eener une corruption de vos serveurs.\n\nVeuillez lib\u00e9rer de l'espace sur votre disque pour continuer",
+  "it": "auto-mcs ha funzionalit\u00e0 limitate a causa dello spazio su disco insufficiente. Ulteriori modifiche possono portare alla corruzione dei tuoi server.\n\nLibera spazio sul disco per continuare",
+  "es": "auto-mcs tiene una funcionalidad limitada debido a poco espacio en disco. Otros cambios pueden provocar da\u00f1os en sus servidores.\n\nLibere espacio en su disco para continuar",
+  "de": "auto-mcs verf\u00fcgt aufgrund des geringen Speicherplatzes \u00fcber eine eingeschr\u00e4nkte Funktionalit\u00e4t. Weitere \u00c4nderungen k\u00f6nnen zu einer Besch\u00e4digung Ihrer Server f\u00fchren.\n\nBitte geben Sie Speicherplatz auf Ihrer Festplatte frei, um fortfahren zu k\u00f6nnen",
+  "nl": "auto-mcs heeft beperkte functionaliteit vanwege weinig schijfruimte. Verdere wijzigingen kunnen leiden tot corruptie op uw servers.\n\nMaak ruimte op uw schijf vrij om door te gaan",
+  "pt": "auto-mcs tem funcionalidade limitada devido ao pouco espa\u00e7o em disco. Outras altera\u00e7\u00f5es podem causar corrup\u00e7\u00e3o em seus servidores.\n\nLibere espa\u00e7o em seu disco para continuar",
+  "sv": "auto-mcs har begr\u00e4nsad funktionalitet fr\u00e5n l\u00e5gt diskutrymme. Ytterligare \u00e4ndringar kan leda till korruption p\u00e5 dina servrar.\n\nFrig\u00f6r utrymme p\u00e5 din disk f\u00f6r att forts\u00e4tta",
+  "fi": "auto-mcs:n toiminnallisuus on rajoitettua v\u00e4h\u00e4isen levytilan vuoksi. Muut muutokset voivat johtaa korruptioon palvelimissasi.\n\nVapauta levytilaa jatkaaksesi"
  }
 }

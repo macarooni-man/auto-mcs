@@ -47,7 +47,6 @@ class BackupObject():
         constants.safe_delete(extract_folder)
         os.chdir(cwd)
 
-
     def __init__(self, server_name: str, backup_info: list, no_fetch=False):
         self.name = server_name
 
@@ -57,6 +56,7 @@ class BackupObject():
 
         self.type = 'Unknown'
         self.version = 'Unknown'
+        self.build = None
 
         if not no_fetch:
             self.grab_config()

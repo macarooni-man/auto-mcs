@@ -3091,6 +3091,9 @@ def blank_input(pos_hint, hint_text, disabled=False):
 # --------------------------------------------------  File chooser  ----------------------------------------------------
 
 def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, select_multiple=False, title=None):
+    if not constants.check_free_space():
+        return []
+
     final_path = ""
     file_icon = os.path.join(constants.gui_assets, "small-icon.ico")
 
@@ -5464,7 +5467,7 @@ class PopupWindow(RelativeLayout):
         except:
             pass
 
-        if not self.clicked and button_pressed == 'left':
+        if not self.clicked and button_pressed in ('left', 'ignore'):
 
             if isinstance(args[1], str):
                 force_button = args[1]
@@ -5477,7 +5480,7 @@ class PopupWindow(RelativeLayout):
 
             # Single, wide button
             if self.ok_button:
-                if force_button == 'ok' or (not force_button and (rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height)):
+                if (force_button in ('ok', 'yes')) or (not force_button and (rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height)):
                     self.ok_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
                     self.resize_window()
 
@@ -5896,7 +5899,7 @@ class BigPopupWindow(RelativeLayout):
         except:
             pass
 
-        if not self.clicked and button_pressed == 'left':
+        if not self.clicked and button_pressed in ('left', 'ignore'):
 
             def check_body_button(*a):
                 if self.body_button:
@@ -5920,7 +5923,7 @@ class BigPopupWindow(RelativeLayout):
 
             # Single, wide button
             if self.ok_button:
-                if force_button == 'ok' or (not force_button and (rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height)):
+                if (force_button in ('ok', 'yes')) or (not force_button and (rel_coord[0] < self.ok_button.width and rel_coord[1] < self.ok_button.height)):
                     self.ok_button.background_color = tuple([px + 0.12 if px < 0.88 else px for px in rel_color])
                     self.resize_window()
 
@@ -8489,7 +8492,7 @@ class ProgressScreen(MenuBackground):
 
 # ================================================== Main Menu =========================================================
 # <editor-fold desc="Main Menu">
-
+shown_disk_error = False
 class MainMenuScreen(MenuBackground):
 
     def __init__(self, **kwargs):
@@ -8499,6 +8502,7 @@ class MainMenuScreen(MenuBackground):
 
     # Prompt update/show banner when starting up
     def on_enter(self, *args):
+        global shown_disk_error
         if constants.is_admin():
             def admin_error(*_):
                 self.show_popup(
@@ -8510,7 +8514,8 @@ class MainMenuScreen(MenuBackground):
             Clock.schedule_once(admin_error, 0.5)
             return
 
-        elif not constants.check_free_space():
+        elif not constants.check_free_space() and not shown_disk_error:
+            shown_disk_error = True
             def disk_error(*_):
                 self.show_popup(
                     "warning",
@@ -8985,6 +8990,11 @@ class CreateServerNameScreen(MenuBackground):
         self.menu = 'init'
 
     def generate_menu(self, **kwargs):
+
+        # Return if no free space
+        if disk_popup():
+            return
+
         # Generate buttons on page load
         buttons = []
         float_layout = FloatLayout()
@@ -9012,6 +9022,7 @@ class CreateServerNameScreen(MenuBackground):
         float_layout.add_widget(generate_footer('Create new server'))
 
         self.add_widget(float_layout)
+
 
         if constants.app_online:
             name_input.grab_focus()
@@ -12131,7 +12142,7 @@ def server_demo_input(pos_hint, properties):
     demo_input.type_image.version_label.text = properties['version']
     demo_input.type_image.type_label.__translate__ = False
     demo_input.type_image.type_label.text = properties['type'].lower().replace("craft", "")
-    demo_input.type_image.image.source = os.path.join(constants.gui_assets, 'icons', 'big', f'{properties["type"]}_small.png')
+    demo_input.type_image.image.source = os.path.join(constants.gui_assets, 'icons', 'big', f'{properties["type"].lower()}_small.png')
     return demo_input
 
 class CreateServerReviewScreen(MenuBackground):
@@ -12564,6 +12575,10 @@ class ServerImportScreen(MenuBackground):
 
 
     def generate_menu(self, **kwargs):
+
+        # Return if no free space
+        if disk_popup():
+            return
 
         # Reset import path
         constants.import_data = {'name': None, 'path': None}
@@ -13128,7 +13143,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     # Automatically update if available
     if server_obj.running:
         ignore_update = True
-    if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update:
+    if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space():
         while not server_obj.addon:
             time.sleep(0.05)
 
@@ -13154,6 +13169,26 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
 
     else:
         Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
+
+def disk_popup(go_to='back'):
+    if not constants.check_free_space():
+        def go_back(*a):
+            constants.back_clicked = True
+            if go_to == 'back':
+                previous_screen()
+            else:
+                screen_manager.current = go_to
+            constants.back_clicked = False
+
+        def disk_error(*_):
+            screen_manager.current_screen.show_popup(
+                "warning",
+                "Storage Error",
+                "auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up space on your disk to continue",
+                go_back
+            )
+        Clock.schedule_once(disk_error, 0)
+        return True
 
 def refresh_ips(server_name):
     screen = screen_manager.current_screen
@@ -13449,7 +13484,7 @@ class ServerButton(HoverButton):
             self.type_image.image = CustomServerIcon()
         else:
             self.custom_icon = False
-            server_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type}_small.png')
+            server_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
             self.type_image.image = Image(source=server_icon)
 
         self.type_image.image.allow_stretch = True
@@ -15262,7 +15297,7 @@ class ConsolePanel(FloatLayout):
 
             # Before deleting run data, save log to a file
             constants.folder_check(constants.tempDir)
-            file_name = f"{constants.server_manager.current_server._hash}-latest.log"
+            file_name = f"{constants.server_manager.current_server.name}-latest.log"
             with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
                 f.write(constants.json.dumps(self.run_data['log']))
 
@@ -15500,7 +15535,7 @@ class ConsolePanel(FloatLayout):
 
         # Before deleting run data, save log to a file
         constants.folder_check(constants.tempDir)
-        file_path = os.path.join(constants.tempDir, f"{constants.server_manager.current_server._hash}-latest.log")
+        file_path = os.path.join(constants.tempDir, f"{constants.server_manager.current_server.name}-latest.log")
         if os.path.isfile(file_path):
             self.deselect_all()
             self.scroll_layout.data = []
@@ -16114,6 +16149,7 @@ class ConsolePanel(FloatLayout):
 
                 # Crash text
                 self.crash_text = InputLabel(pos_hint={'center_y': 0.78})
+                self.crash_text.text.text = ''
                 self.add_widget(self.crash_text)
                 if constants.server_manager.current_server.crash_log:
                     self.crash_text.update_text(f"Uh oh, '${self.panel.server_name}$' has crashed", False)
@@ -16554,6 +16590,11 @@ class ServerBackupScreen(MenuBackground):
                 v.disable(True) if loading else v.disable(False)
 
     def generate_menu(self, **kwargs):
+
+        # Return if no free space
+        if disk_popup('ServerViewScreen'):
+            return
+
         server_obj = constants.server_manager.current_server
         server_obj.backup._update_data()
         backup_stats = server_obj.backup._backup_stats
@@ -16777,6 +16818,7 @@ class ServerBackupScreen(MenuBackground):
         self.menu_taskbar = MenuTaskbar(selected_item='back-ups')
         self.add_widget(self.menu_taskbar)
 
+
 class BackupButton(HoverButton):
 
     def animate_button(self, image, color, **kwargs):
@@ -16918,9 +16960,10 @@ class BackupButton(HoverButton):
 
 
         # Type icon and info
+        "unknown_small.png"
         self.type_image = RelativeLayout()
         self.type_image.width = 400
-        self.type_image.image = Image(source=os.path.join(constants.gui_assets, 'icons', 'big', f'{backup_object.type}_small.png'))
+        self.type_image.image = Image(source=os.path.join(constants.gui_assets, 'icons', 'big', f'{backup_object.type.lower()}_small.png'))
         self.type_image.image.allow_stretch = True
         self.type_image.image.size_hint_max = (65, 65)
         self.type_image.image.color = self.color_id[1]
@@ -18148,6 +18191,11 @@ class ServerAddonScreen(MenuBackground):
             self.switch_page(keycode[1])
 
     def generate_menu(self, **kwargs):
+
+        # Return if no free space
+        if disk_popup('ServerViewScreen'):
+            return
+
         self.server = constants.server_manager.current_server
 
         # Scroll list
@@ -19452,6 +19500,11 @@ class ServerAmscriptScreen(MenuBackground):
             self.switch_page(keycode[1])
 
     def generate_menu(self, **kwargs):
+
+        # Return if no free space
+        if disk_popup('ServerViewScreen'):
+            return
+
         self.server = constants.server_manager.current_server
 
 
@@ -21099,6 +21152,11 @@ class ServerWorldScreen(MenuBackground):
         self.new_type = 'default'
 
     def generate_menu(self, **kwargs):
+
+        # Return if no free space
+        if disk_popup('ServerSettingsScreen'):
+            return
+
         server_obj = constants.server_manager.current_server
         self.new_world = 'world'
         self.new_seed = ''
@@ -21834,6 +21892,11 @@ class MigrateServerTypeScreen(MenuBackground):
         self.content_layout_2 = None
 
     def generate_menu(self, **kwargs):
+
+        # Return if no free space
+        if disk_popup('ServerSettingsScreen'):
+            return
+
         server_obj = constants.server_manager.current_server
 
         # Generate buttons on page load

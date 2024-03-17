@@ -1379,7 +1379,8 @@ class ServerObject():
             while not self.backup:
                 time.sleep(0.1)
 
-            self.backup.save()
+            if constants.check_free_space():
+                self.backup.save()
 
             # Delete server folder
             constants.safe_delete(self.server_path)
@@ -1415,11 +1416,13 @@ class ServerObject():
 
         elif auto_backup == 'true':
             if crash_info:
-                self.send_log(f"Skipping back-up due to a crash", 'error')
+                self.send_log("Skipping back-up due to a crash", 'error')
+            elif not constants.check_free_space():
+                self.send_log("Skipping back-up due to insufficient free space", 'error')
             else:
                 self.send_log(f"Saving a back-up of '{self.name}', please wait...", 'warning')
                 self.backup.save(ignore_running=True)
-                self.send_log(f"Back-up complete!", 'success')
+                self.send_log("Back-up complete!", 'success')
             return True
 
         else:
