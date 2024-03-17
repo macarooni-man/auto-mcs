@@ -4515,6 +4515,9 @@ def get_player_head(user: str):
             else:
                 os.remove(final_path)
 
+        elif not check_free_space():
+            return default_image
+
         folder_check(head_cache)
         download_url(url, user, head_cache)
 

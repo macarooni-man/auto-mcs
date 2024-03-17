@@ -3,6 +3,7 @@ from datetime import datetime as dt
 from urllib.request import urlopen
 from copy import deepcopy
 from glob import glob
+import json_repair
 import threading
 import ipaddress
 import constants
@@ -1467,7 +1468,20 @@ def get_uuid(user: str):
     if os.path.exists(uuid_db):
         try:
             with open(uuid_db, "r") as f:
-                file = json.load(f)
+                content = f.read()
+                try:
+                    file = json.loads(content)
+                except:
+
+                    # If failure, try to repair the json file
+                    try:
+                        print("Attempting to fix 'uuid-db.json' due to formatting error")
+                        file = json_repair.loads(content)
+                        if not file:
+                            raise TypeError
+                    except:
+                        print("'uuid-db.json' reset due to formatting error")
+                        file = None
         except OSError:
             file = None
 
@@ -1526,11 +1540,20 @@ def concat_db(only_delete=False):
         # Load current uuid-db.json into final_db
         try:
             with open(uuid_db, "r") as f:
+                content = f.read()
                 try:
-                    current_db = json.load(f)
+                    current_db = json.loads(content)
                 except:
-                    print("'uuid-db.json' reset due to formatting error")
-                    current_db = {}
+
+                    # If failure, try to repair the json file
+                    try:
+                        print("Attempting to fix 'uuid-db.json' due to formatting error")
+                        current_db = json_repair.loads(content)
+                        if not current_db:
+                            raise TypeError
+                    except:
+                        print("'uuid-db.json' reset due to formatting error")
+                        current_db = {}
                 uuid_list = [item['uuid'] for item in current_db]
 
         except OSError:
