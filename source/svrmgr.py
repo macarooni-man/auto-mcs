@@ -695,7 +695,26 @@ class ServerObject():
 
                 formatted_line = {'text': log_line}
                 if formatted_line not in self.run_data['log'] and formatted_line['text']:
-                    self.run_data['log'].append(formatted_line)
+
+                    # Progress bars for preparing spawn area
+                    def format_pct(line, *a):
+                        num = int(re.search(r'\d+', line).group(0))
+                        block = num // 4
+                        space = 24 - block
+                        return f' [{"=" * block}{" " * space}] {num}%'
+                    if log_line[2].startswith('Preparing spawn') and log_line[1] == 'INFO' and self.run_data['log'][-1]['text'][2].startswith('Preparing spawn'):
+                        new = formatted_line['text']
+                        self.run_data['log'][-1] = {'text': (new[0], new[1], f'Preparing spawn area: {format_pct(new[2])}', new[3])}
+
+                    else:
+                        if log_line[2].startswith('Time elapsed') and log_line[1] == 'INFO':
+                            last = self.run_data['log'][-1]['text']
+                            self.run_data['log'][-1] = {'text': (last[0], last[1], f'Preparing spawn area: {format_pct("100%")}', last[3])}
+                        elif log_line[2].startswith('Preparing spawn') and log_line[1] == 'INFO':
+                            last = formatted_line['text']
+                            formatted_line = {'text': (last[0], last[1], f'Preparing spawn area: {format_pct(last[2])}', last[3])}
+
+                        self.run_data['log'].append(formatted_line)
 
                     # Purge long ones
                     if len(self.run_data['log']) > self.max_log_size:
