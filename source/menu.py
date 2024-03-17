@@ -12279,7 +12279,7 @@ class CreateServerReviewScreen(MenuBackground):
                 content += f"[color=6666AA]{constants.translate('Seed')}:      ||[/color]{constants.new_server_info['server_settings']['seed']}\n"
         else:
             box_text = os.path.join(*Path(os.path.abspath(constants.new_server_info['server_settings']['world'])).parts[-2:])
-            box_text = box_text[:30] + "..." if len(box_text) > 30 else box_text
+            box_text = box_text[:27] + "..." if len(box_text) > 27 else box_text
             content += f"[color=6666AA]{constants.translate('World')}:     [/color]{box_text}\n"
 
         def check_enabled(var):
@@ -15358,7 +15358,7 @@ class ConsolePanel(FloatLayout):
                     self.controls.maximize_button.disabled = False
                     self.controls.stop_button.disabled = False
                     self.controls.restart_button.disabled = False
-                    self.scroll_layout.data = {}
+                    self.scroll_layout.data = []
                     self.controls.control_shadow.opacity = 1
 
                     # View log button
@@ -15562,6 +15562,7 @@ class ConsolePanel(FloatLayout):
 
         self.log_view = True
 
+        self.controls.control_shadow.opacity = 0
         self.input.hint_text = "viewing last run..."
         self.controls.control_shadow.size_hint_max = (135, 120)
         self.selected_labels = []
@@ -15583,6 +15584,7 @@ class ConsolePanel(FloatLayout):
             self.controls.remove_widget(self.controls.log_button)
             self.controls.launch_button.button.on_leave()
             self.controls.log_button.button.on_leave()
+            Animation(opacity=1, duration=anim_speed).start(self.controls.control_shadow)
 
         Clock.schedule_once(after_anim, (anim_speed * 1.51))
         Clock.schedule_once(functools.partial(self.maximize, True), 0.2)
@@ -15591,7 +15593,6 @@ class ConsolePanel(FloatLayout):
     # Hides previous console log in panel
     def hide_log(self, *args):
 
-        self.scroll_layout.data = []
         self.selected_labels = []
 
         def after_anim(*a):
@@ -15625,7 +15626,7 @@ class ConsolePanel(FloatLayout):
 
             def after_anim2(*a):
                 self.controls.view_button.disabled = False
-                self.scroll_layout.data = {}
+                self.scroll_layout.data = []
 
                 # View log button
                 self.controls.control_shadow.size_hint_max = (255, 120)
@@ -15641,16 +15642,18 @@ class ConsolePanel(FloatLayout):
     def select_all(self):
         self.selected_labels = [x['text'] for x in self.scroll_layout.data]
         for label in self.console_text.children:
+            Animation.stop_all(label.sel_cover)
             label.sel_cover.opacity = 0.2
+        Clock.schedule_once(self.scroll_layout.refresh_from_layout, 0)
 
 
     # Deselect all selected ConsoleLabels
     def deselect_all(self):
         self.selected_labels = []
         for label in self.console_text.children:
-            if label.sel_cover.opacity > 0:
-                Animation.stop_all(label.sel_cover)
-                Animation(opacity=0, duration=0.05).start(label.sel_cover)
+            Animation.stop_all(label.sel_cover)
+            Animation(opacity=0, duration=0.05).start(label.sel_cover)
+        Clock.schedule_once(self.scroll_layout.refresh_from_layout, 0.1)
 
 
     # Format and copy all selected text to clipboard
@@ -15673,7 +15676,7 @@ class ConsolePanel(FloatLayout):
                 Animation.stop_all(label.sel_cover)
                 label.sel_cover.opacity = 0.4
                 Animation(opacity=0, duration=0.2).start(label.sel_cover)
-
+        Clock.schedule_once(self.scroll_layout.refresh_from_layout, 0.41)
 
     # Check for drag select
     def on_touch_down(self, touch):
@@ -15833,7 +15836,7 @@ class ConsolePanel(FloatLayout):
 
                 if text and screen_manager.current_screen.name == 'ServerViewScreen':
 
-                    if not self.console_panel:
+                    if not self.console_panel and not constants.server_manager.current_server.run_data:
                         try:
                             self.console_panel = screen_manager.current_screen.console_panel
                         except:
@@ -15883,9 +15886,10 @@ class ConsolePanel(FloatLayout):
 
                         # Format selection color
                         if self.console_panel:
-                            self.sel_cover.opacity = 0.2 if self.original_text in self.console_panel.selected_labels else 0
+                            self.sel_cover.opacity = 0.2 if text in self.console_panel.selected_labels else 0
                         self.sel_cover.color = constants.brighten_color(type_color, 0.05)
                         self.sel_cover.width = self.width
+
 
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
@@ -15947,7 +15951,7 @@ class ConsolePanel(FloatLayout):
                 class SelectCover(Image):
 
                     def on_touch_down(self, touch):
-                        if self.collide_point(*touch.pos):
+                        if self.collide_point(*touch.pos) and touch.button == 'left':
                             if self.parent:
                                 for widget in self.parent.parent.children:
                                     widget.sel_cover.opacity = 0
@@ -15958,6 +15962,7 @@ class ConsolePanel(FloatLayout):
                                         self.parent.console_panel.last_touch = touch.pos
                                         self.parent.console_panel.selected_labels = [self.parent.original_text]
                                         self.opacity = 0.2
+                                        Clock.schedule_once(self.parent.console_panel.scroll_layout.refresh_from_layout, 0)
                                 except:
                                     pass
                         else:
