@@ -148,7 +148,7 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
 #### server.ams_version
 - `str`, contains the current amscript version to account for API changes
 
-#### server.console_log
+#### server.output
 - `list`, contains a formatted list of dictionaries organizing the items visible in the auto-mcs console from oldest to newest (limit of 850)
 
 <br><br>
