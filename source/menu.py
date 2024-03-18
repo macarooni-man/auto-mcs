@@ -16306,6 +16306,31 @@ class ConsolePanel(FloatLayout):
 
 class ServerViewScreen(MenuBackground):
 
+    # Fit background color across screen for transitions
+    def update_rect(self, *args):
+
+        # Hide context menu when screen is resized
+        if self.context_menu:
+            self.context_menu.hide(False)
+
+        self.rect.pos = self.pos
+        self.rect.size = self.size
+
+        # Resize popup if it exists
+        if self.popup_widget:
+            self.popup_widget.resize()
+
+        # Repos page switcher
+        if self.page_switcher:
+            self.page_switcher.resize_self()
+
+        # Repos console panel and widgets
+        if self.console_panel:
+            Clock.schedule_once(self.console_panel.update_size, 0)
+        if self.performance_panel:
+            Clock.schedule_once(self.performance_panel.update_rect, 0)
+        save_window_pos()
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
