@@ -2181,7 +2181,7 @@ class ServerImportBackupInput(DirectoryInput):
             server_name = None
             new_path = None
             test_path = constants.tempDir
-            cwd = os.path.abspath(os.curdir)
+            cwd = constants.get_cwd()
             print(self.selected_server)
             if (self.selected_server.endswith(".tgz") or self.selected_server.endswith(".amb") and os.path.isfile(self.selected_server)):
                 constants.folder_check(test_path)

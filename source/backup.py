@@ -14,7 +14,7 @@ import os
 class BackupObject():
 
     def grab_config(self):
-        cwd = os.path.abspath(os.curdir)
+        cwd = constants.get_cwd()
         extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
         constants.folder_check(extract_folder)
         os.chdir(extract_folder)
@@ -268,7 +268,7 @@ def backup_server(name: str, backup_stats=None, ignore_running=False):
             server_obj.silent_command('save-off')
             time.sleep(3)
 
-        cwd = os.path.abspath(os.curdir)
+        cwd = constants.get_cwd()
         bkup_time = dt.now().strftime("%H.%M %m-%d-%y")
         backup_path = backup_stats["backup-path"]
         file_name = f"{name}__{bkup_time}.amb"
@@ -340,7 +340,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
         if not backup_stats:
             backup_stats = dump_config(name)[1]
 
-        cwd = os.path.abspath(os.curdir)
+        cwd = constants.get_cwd()
         backup_path = backup_stats["backup-path"]
 
         # Reset backup path if imported to another OS
@@ -404,7 +404,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 # Migrate backup directory and backups
 def set_backup_directory(name: str, new_dir: str):
 
-    cwd = os.path.abspath(os.curdir)
+    cwd = constants.get_cwd()
     config_file = constants.server_config(name)
     current_dir = config_file.get('bkup', 'bkupDir')
     current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir
@@ -470,7 +470,7 @@ def set_backup_directory(name: str, new_dir: str):
 # Migrate backup names when server is renamed
 def rename_backups(name: str, new_name: str):
 
-    cwd = os.path.abspath(os.curdir)
+    cwd = constants.get_cwd()
     config_file = constants.server_config(new_name)
     current_dir = config_file.get('bkup', 'bkupDir')
     current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir

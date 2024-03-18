@@ -1056,6 +1056,14 @@ def open_folder(directory: str):
         return False
 
 
+# Get current directory, and revert to exec path if it doesn't exist
+def get_cwd():
+    try:
+        return os.path.abspath(os.curdir)
+    except:
+        return executable_folder
+
+
 # Extract archive
 def extract_archive(archive_file: str, export_path: str, skip_root=False):
     archive = None
@@ -2399,7 +2407,7 @@ def iter_addons(progress_func=None, update=False):
 def install_server(progress_func=None, imported=False):
 
     # Change directory to tmpsvr
-    cwd = os.path.abspath(os.curdir)
+    cwd = get_cwd()
     os.chdir(tmpsvr)
 
     if imported:
@@ -2716,7 +2724,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
     name = import_data['name']
     path = import_data['path']
 
-    cwd = os.path.abspath(os.curdir)
+    cwd = get_cwd()
     folder_check(tmpsvr)
     os.chdir(tmpsvr)
 
@@ -3181,7 +3189,7 @@ def scan_modpack(update=False, progress_func=None):
         return False
 
     # Set up directory structures and extract the modpack
-    cwd = os.path.abspath(os.curdir)
+    cwd = get_cwd()
     folder_check(tmpsvr)
     os.chdir(tmpsvr)
 
@@ -3943,7 +3951,7 @@ def calculate_ram(properties):
 def generate_run_script(properties, temp_server=False, custom_flags=None, no_flags=False):
 
     # Change directory to server path
-    cwd = os.path.abspath(os.curdir)
+    cwd = get_cwd()
     if temp_server:
         folder_check(tmpsvr)
         os.chdir(tmpsvr)
@@ -4178,7 +4186,7 @@ def install_ngrok():
 
         # Extract executable from archive
         folder_check(tool_path)
-        cwd = os.path.abspath(os.curdir)
+        cwd = get_cwd()
         os.chdir(tool_path)
         archive_file = ('ngrok.exe' if os_name == 'windows' else 'ngrok')
         run_proc(f"tar -xf \"{os.path.join(downDir, file_name)}\" \"{archive_file}\"")
