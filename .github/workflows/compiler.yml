@@ -54,7 +54,7 @@ jobs:
         run: |
           root=$(pwd)
           cd build-tools
-          sudo cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
+          sudo cp -f ../source/gui-assets/fonts/Consolas* /System/Library/Fonts
           mkdir -p /Users/runner/Library/Fonts
           chmod +x build-macos.sh
           sudo ./build-macos.sh
