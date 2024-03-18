@@ -1226,15 +1226,17 @@ class ServerObject():
             while self.running and constants.check_port(ip, port):
                 time.sleep(1)
 
-            # If after a delay the server is still running, it has deadlocked
+            # If after a delay the server is still running, it is likely deadlocked
             time.sleep(1)
             if self.running and self.name not in constants.backup_lock:
                 try:
-                    if self.run_data['performance']['cpu'] == 0:
-                        message = f"'{self.name}' is deadlocked, please kill it above to continue..."
-                        if message != self.run_data['log'][-1]['text'][2]:
-                            self.send_log(message, 'warning')
-                        self.run_data['console-panel'].toggle_deadlock(True)
+                    # Delay if CPU usage is higher than expected
+                    if self.run_data['performance']['cpu'] > 0.5:
+                        time.sleep(15)
+                    message = f"'{self.name}' is deadlocked, please kill it above to continue..."
+                    if message != self.run_data['log'][-1]['text'][2]:
+                        self.send_log(message, 'warning')
+                    self.run_data['console-panel'].toggle_deadlock(True)
                 except:
                     pass
 
