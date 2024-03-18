@@ -1296,9 +1296,9 @@ class ServerScriptObject():
         self.aliases = {}
         self.ams_version = constants.ams_version
         try:
-            self.console_log = server_obj.run_data['log']
+            self.output = server_obj.run_data['log']
         except KeyError:
-            self.console_log = []
+            self.output = []
 
         # Properties
         self.name = server_obj.name
