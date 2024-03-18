@@ -68,7 +68,7 @@ jobs:
               --volicon "$root/source/icon.icns" \
               --background "$root/source/gui-assets/dmg-bg.png" \
               --window-pos 200 120 \
-              --window-size 835 640 \
+              --window-size 835 620 \
               --icon-size 128 \
               --text-size 16 \
               --icon "auto-mcs.app" 230 277 \
