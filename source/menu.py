@@ -21207,22 +21207,25 @@ class ServerWorldScreen(MenuBackground):
                 return
 
             def change_thread(*a):
-                try:
-                    screen_manager.current_screen.world_button.loading(True)
-                except:
-                    pass
+                def update_button(*a):
+                    try:
+                        screen_manager.current_screen.world_button.loading(True)
+                    except:
+                        pass
+                Clock.schedule_once(update_button, 0)
 
                 # First, save backup
                 server_obj.backup.save()
 
                 # Delete current world
                 world_path = constants.server_path(server_obj.name, server_obj.world)
-                def delete_world(path):
-                    if os.path.exists(path):
-                        constants.safe_delete(path)
-                delete_world(world_path)
-                delete_world(world_path + "_nether")
-                delete_world(world_path + "_the_end")
+                if world_path:
+                    def delete_world(path):
+                        if os.path.exists(path):
+                            constants.safe_delete(path)
+                    delete_world(world_path)
+                    delete_world(world_path + "_nether")
+                    delete_world(world_path + "_the_end")
 
                 # Copy world to server if one is selected
                 world_name = 'world'
@@ -21242,24 +21245,27 @@ class ServerWorldScreen(MenuBackground):
                 server_obj.write_config()
                 server_obj.reload_config()
 
-                try:
-                    screen_manager.current_screen.world_button.loading(False)
-                except:
-                    pass
-
-                Clock.schedule_once(
-                    functools.partial(
-                        screen_manager.current_screen.show_banner,
+                def update_ui(*a):
+                    try:
+                        screen_manager.current_screen.world_button.loading(False)
+                    except:
+                        pass
+                    screen_manager.current_screen.show_banner(
                         (0.553, 0.902, 0.675, 1),
                         f"The server world has been changed successfully",
                         "checkmark-circle-outline.png",
                         2.5,
                         {"center_x": 0.5, "center_y": 0.965}
-                    ), 0
-                )
+                    )
+
+                Clock.schedule_once(update_ui, 0)
 
             previous_screen()
             constants.screen_tree.pop(-1)
+            try:
+                screen_manager.current_screen.scroll_widget.scroll_y = 0
+            except:
+                pass
             threading.Timer(0, change_thread).start()
 
         buttons.append(next_button('Next', (0.5, 0.24), False, next_screen='ServerSettingsScreen', click_func=change_world))

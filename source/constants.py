@@ -42,7 +42,7 @@ import amscript
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
 app_version = "2.1"
-ams_version = "1.1"
+ams_version = "1.2"
 app_title = "auto-mcs"
 dev_version = False
 window_size = (850, 850)
@@ -349,8 +349,6 @@ def translate(text: str):
             return locale_data[s.strip().lower()][locale]
         except KeyError:
             pass
-
-    new_text = None
 
 
     # Extract proper noun if present with flag
