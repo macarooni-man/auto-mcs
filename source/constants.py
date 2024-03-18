@@ -1099,22 +1099,17 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
 
                 if use_tar:
                     archive_file = os.path.abspath(archive_file)
-                    cwd = os.path.abspath(os.curdir)
-                    os.chdir(export_path)
-                    run_proc(f"tar -xf \"{archive_file}\"")
-                    os.chdir(cwd)
+                    run_proc(f"tar -xf \"{archive_file}\" -C \"{export_path}\"")
                 else:
                     archive.extractall(export_path)
 
             # Export from root folder instead
             else:
                 if use_tar:
-                    cwd = os.path.abspath(os.curdir)
-                    os.chdir(export_path)
-                    run_proc(f"tar -x{'z' if archive_file.endswith('.tar.gz') else ''}f \"{archive_file}\"")
+                    run_proc(f"tar -x{'z' if archive_file.endswith('.tar.gz') else ''}f \"{archive_file}\" -C \"{export_path}\"")
 
                     # Find sub-folders
-                    folders = [f for f in glob('*') if os.path.isdir(f)]
+                    folders = [f for f in glob(os.path.join(export_path, '*')) if os.path.isdir(f)]
                     target = os.path.join(export_path, folders[0])
 
                     # Move data to root, and delete the sub-folder
@@ -1122,7 +1117,6 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
                         move(f, os.path.join(export_path, os.path.basename(f)))
 
                     safe_delete(target)
-                    os.chdir(cwd)
 
                 elif archive_type == "tar":
                     def remove_root(file):
