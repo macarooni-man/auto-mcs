@@ -297,6 +297,7 @@ last_window = {}
 tab_str = '    '
 default_font_size = 16
 control = 'Control'
+font_name = 'Consolas'
 font_size = 15
 dead_zone = 10
 window = None
@@ -345,11 +346,11 @@ def save_script(script_path, *a):
 
 # Changes font size in editor
 def change_font_size(direction):
-    global font_size, open_frames
+    global font_size, font_name, open_frames
 
     def change_all(*a):
         for frame in open_frames.values():
-            frame.code_editor.configure(font=f'Consolas {font_size}')
+            frame.code_editor.configure(font=f'{font_name} {font_size}')
             frame.code_editor._set_color_scheme(frame.code_editor._color_scheme)
             frame.code_editor.recalc_lexer()
             if frame.ac.visible:
@@ -738,12 +739,13 @@ proc ::tabdrag::move {win x y} {
 
 # Opens the amscript editor with the specified path in a new tab
 def launch_window(path: str, data: dict, *a):
-    global window, color_search, open_frames, replace_shown, control
+    global window, color_search, open_frames, replace_shown, control, font_name
 
     # macOS specific changes
     if data['os_name'] == 'macos':
         import tkmacosx
         right_mouse = "<Button-2>"
+        font_name = "Menlo"
         class Button(tkmacosx.Button):
             def __init__(self, master, **args):
                 super().__init__(master, **args)
@@ -765,7 +767,7 @@ def launch_window(path: str, data: dict, *a):
 
         style = {
             'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_fg': "#DDDDFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': convert_color((0.13, 0.13, 0.26))['hex'],
-                'caret': convert_color((0.75, 0.75, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': f"Consolas {font_size} italic"},
+                'caret': convert_color((0.75, 0.75, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': f"{font_name} {font_size} italic"},
             'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': '#b3b1ad', 'keyword': '#FB71FB',
                 'name': '#819CE6', 'string': '#c2d94c', 'punctuation': '#68E3FF'},
             'keyword': {'constant': '#FB71FB', 'declaration': '#FB71FB', 'namespace': '#FB71FB', 'pseudo': '#FB71FB',
@@ -910,7 +912,7 @@ def launch_window(path: str, data: dict, *a):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = f"Consolas {default_font_size}",
+            font = f"{font_name} {default_font_size}",
         )
         window.bind(f"<{control}-f>", lambda *_: search.toggle_focus(True))
 
@@ -1234,7 +1236,7 @@ def launch_window(path: str, data: dict, *a):
                         dlineinfo[1] + 5.5,
                         text=f" {lineno} " if self.justify != "center" else f"{lineno}",
                         anchor={"left": "nw", "right": "ne", "center": "n"}[self.justify],
-                        font=f"Consolas {font_size}",
+                        font=f"{font_name} {font_size}",
                         fill=convert_color((1, 0.65, 0.65))['hex'] if err_index == lineno
                         else '#4CFF99' if search_match
                         else '#AAAAFF' if index == lineno
@@ -1700,7 +1702,7 @@ def launch_window(path: str, data: dict, *a):
                     fg = convert_color((0.3, 0.3, 0.65))['hex'],
                     bg = frame_background,
                     borderwidth = 0,
-                    font = f"Consolas {default_font_size-1} bold"
+                    font = f"{font_name} {default_font_size-1} bold"
                 )
 
                 self.index_label = Label(justify='right', anchor='se')
@@ -1709,7 +1711,7 @@ def launch_window(path: str, data: dict, *a):
                     fg = convert_color((0.6, 0.6, 1))['hex'],
                     bg = frame_background,
                     borderwidth = 0,
-                    font = f"Consolas {default_font_size-1}"
+                    font = f"{font_name} {default_font_size-1}"
                 )
 
                 self.error_label = Label(justify='right', anchor='se')
@@ -1717,7 +1719,7 @@ def launch_window(path: str, data: dict, *a):
                     fg = convert_color((1, 0.6, 0.6))['hex'],
                     bg = frame_background,
                     borderwidth = 0,
-                    font = f"Consolas {default_font_size-1} bold"
+                    font = f"{font_name} {default_font_size-1} bold"
                 )
 
                 # self.bind("<<ContentChanged>>", self.fix_tabs)
@@ -2857,7 +2859,7 @@ def launch_window(path: str, data: dict, *a):
         root.code_editor = HighlightText(
             root,
             color_scheme = style,
-            font = f"Consolas {font_size}",
+            font = f"{font_name} {font_size}",
             linenums_theme = ('#3E3E63', background_color),
             scrollbar=Scrollbar
         )
@@ -3106,7 +3108,7 @@ def launch_window(path: str, data: dict, *a):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = f"Consolas {default_font_size}",
+            font = f"{font_name} {default_font_size}",
         )
 
         # Replace All Button
@@ -3201,7 +3203,7 @@ def launch_window(path: str, data: dict, *a):
 
             def add_buttons(self):
                 for item in range(self.max_size):
-                    button = Button(self, text=item, font=f"Consolas {font_size} italic", background=self.background)
+                    button = Button(self, text=item, font=f"{font_name} {font_size} italic", background=self.background)
                     button.config(
                         command = functools.partial(self.click_func, item),
                         borderwidth = 5,

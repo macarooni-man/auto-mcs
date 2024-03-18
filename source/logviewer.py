@@ -7,6 +7,7 @@ import os
 
 default_font_size = 15
 control = 'Control'
+font_name = 'Consolas'
 
 
 # Converts between HEX and RGB decimal colors
@@ -70,12 +71,13 @@ def brighten_color(color: tuple or str, amount: float):
 
 # Opens a crash log in a read-only text editor
 def launch_window(server_name: str, path: str, data: dict):
-    global default_font_size, control
+    global default_font_size, font_name, control
 
     # Increase font size on macOS
     if data['os_name'] == 'macos':
         default_font_size += 5
         control = 'Command'
+        font_name = 'Menlo'
 
     # Get text
     crash_data = ''
@@ -155,7 +157,7 @@ def launch_window(server_name: str, path: str, data: dict):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = f"Consolas {default_font_size + 2} bold",
+            font = f"{font_name} {default_font_size + 2} bold",
         )
 
         # Bind CTRL-F to focus search box
@@ -349,7 +351,7 @@ def launch_window(server_name: str, path: str, data: dict):
                     fg = convert_color((0.3, 0.3, 0.65))['hex'],
                     bg = background_color,
                     borderwidth = 0,
-                    font = f"Consolas {default_font_size} bold"
+                    font = f"{font_name} {default_font_size} bold"
                 )
 
             def highlight_pattern(self, pattern, tag, start="1.0", end="end", regexp=False):
@@ -405,7 +407,7 @@ def launch_window(server_name: str, path: str, data: dict):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = f"Consolas {default_font_size}",
+            font = f"{font_name} {default_font_size}",
             state = DISABLED,
             spacing1 = 10
         )
