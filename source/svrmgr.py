@@ -700,8 +700,10 @@ class ServerObject():
                     def format_pct(line, *a):
                         num = int(re.search(r'\d+', line).group(0))
                         block = num // 4
+                        if num < 100 and block >= 24:
+                            block = 23
                         space = 24 - block
-                        return f' [{"=" * block}{" " * space}] {num}%'
+                        return f' [{"/" * block}{" " * space}] {num}%'
                     if log_line[2].startswith('Preparing spawn') and log_line[1] == 'INFO' and self.run_data['log'][-1]['text'][2].startswith('Preparing spawn'):
                         new = formatted_line['text']
                         self.run_data['log'][-1] = {'text': (new[0], new[1], f'Preparing spawn area: {format_pct(new[2])}', new[3])}

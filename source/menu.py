@@ -21263,7 +21263,8 @@ class ServerWorldScreen(MenuBackground):
             previous_screen()
             constants.screen_tree.pop(-1)
             try:
-                screen_manager.current_screen.scroll_widget.scroll_y = 0
+                delete_button = screen_manager.current_screen.delete_button
+                screen_manager.current_screen.scroll_widget.scroll_to(delete_button, animate=False)
             except:
                 pass
             threading.Timer(0, change_thread).start()
