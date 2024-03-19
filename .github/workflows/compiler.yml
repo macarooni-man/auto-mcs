@@ -65,8 +65,8 @@ jobs:
             sleep 1
             sudo create-dmg \
               --volname "auto-mcs" \
-              --volicon "$root/source/icon.icns" \
-              --background "$root/source/gui-assets/dmg-bg.png" \
+              --volicon "$root/other/macos-dmg/icon.icns" \
+              --background "$root/other/macos-dmg/bg.png" \
               --window-pos 200 120 \
               --window-size 835 620 \
               --icon-size 128 \
