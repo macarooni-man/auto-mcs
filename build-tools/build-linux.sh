@@ -159,7 +159,7 @@ fi
 
 
 # Rebuild locales.json
-su $(logname) -c "python locale-gen.py"
+# su $(logname) -c "python locale-gen.py"
 
 
 # Build

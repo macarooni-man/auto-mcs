@@ -96,16 +96,8 @@ pip install --upgrade -r ./reqs-macos.txt
 rm -rf $venv_path/lib/python3.9/site-packages/kivy/data/logo/*
 
 
-# Install Consolas if it doesn't exist and reload font cache
-if ! ls ~/Library/Fonts/Consolas* 1> /dev/null 2>&1; then
-    echo Installing Consolas font
-	cp -f ../source/gui-assets/fonts/Consolas* ~/Library/Fonts
-	atsutil databases -removeUser
-fi
-
-
 # Rebuild locales.json
-python locale-gen.py
+# python locale-gen.py
 
 
 # Build
