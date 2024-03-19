@@ -22327,7 +22327,7 @@ def check_running(final_func):
         if server_count == 1:
             desc = "There is currently 1 server running. To continue, it will be closed.\n\nAre you sure you want to continue?"
         else:
-            desc = f"There are currently {server_count} servers running. To continue, they will be closed.\n\nAre you sure you want to continue?"
+            desc = f"There are currently ${server_count}$ servers running. To continue, they will be closed.\n\nAre you sure you want to continue?"
 
         popup = screen_manager.current_screen.popup_widget
         if popup:
