@@ -4208,6 +4208,9 @@ def check_ngrok_creds():
     if os_name == 'windows':
         config_path = os.path.join(home, 'AppData', 'Local', 'ngrok', 'ngrok.yml')
         old_path = os.path.join(home, '.ngrok2', 'ngrok.yml')
+    elif os_name == 'macos':
+        config_path = os.path.join(appdata, 'ngrok', 'ngrok.yml')
+        old_path = os.path.join(home, '.config', 'ngrok', 'ngrok.yml')
     else:
         config_path = os.path.join(home, '.config', 'ngrok', 'ngrok.yml')
         old_path = os.path.join(home, '.ngrok2', 'ngrok.yml')
