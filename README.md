@@ -6,13 +6,13 @@ Welcome to auto-mcs! This software provides a simple and easy-to-digest experien
 
 Some notable features include:
  - Create a server in less than a minute
- - Full support for Paper, Fabric, Forge, Spigot, CraftBukkit, and Vanilla
+ - Full support for Paper, Purpur, Fabric, Forge, Spigot, CraftBukkit, and Vanilla
  - Automatic server installation & updates
- - Ability to import any existing server
+ - Ability to import any existing server, including modpacks
  - Switch worlds, versions, and distributions on the fly
  - Automatic backup management
  - Custom console with a [universal scripting API](https://auto-mcs.com/guides/amscript) (Compatible with Vanilla) and built-in IDE
- - Detailed crash detection with an easy to view report
+ - Detailed crash detection with an easily viewable report
  - Internal mod & plug-in browser/installer (auto-mcs can update plugins as well)
  - Firewall-like Access Control menu to manage bans, the whitelist, and operators from a single page
  - Built-in `server.properties` editor for ease of use
@@ -34,6 +34,7 @@ To start, you can either import a server you've made on your own or create a new
 
 ### Import a Server
 - auto-mcs can detect and manage a wide variety of servers that you have made yourself. Select the root folder of the server and click import to use all of auto-mcs's features!
+- Since v2.1, it's possible to import a modpack from the built-in browser, or by importing a `.zip`/`.mrpack` file. 
 > Note: Importing will copy your server to a different directory and create a backup. The original directory will be untouched
 
 <br>
