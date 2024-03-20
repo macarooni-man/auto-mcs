@@ -15062,11 +15062,14 @@ class ConsolePanel(FloatLayout):
                 Animation.stop_all(label.main_label)
                 label.main_label.opacity = 1
                 label.anim_cover.opacity = 0
-                if label.original_text == self.scroll_layout.data[-1]['text']:
-                    label.main_label.opacity = 0
-                    label.anim_cover.opacity = 1
-                    Animation(opacity=1, duration = 0.3).start(label.main_label)
-                    Animation(opacity=0, duration=0.3).start(label.anim_cover)
+                try:
+                    if label.original_text == self.scroll_layout.data[-1]['text']:
+                        label.main_label.opacity = 0
+                        label.anim_cover.opacity = 1
+                        Animation(opacity=1, duration = 0.3).start(label.main_label)
+                        Animation(opacity=0, duration=0.3).start(label.anim_cover)
+                except:
+                    pass
         if len(text) > original_len and animate_last:
             Clock.schedule_once(fade_animation, 0)
 
