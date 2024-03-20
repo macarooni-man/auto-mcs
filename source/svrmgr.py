@@ -39,6 +39,8 @@ class ServerObject():
         self.last_modified = os.path.getmtime(self.server_path)
         self.running = False
         self.restart_flag = False
+        self.custom_flags = ''
+        self.is_modpack = ''
         self.crash_log = None
         self.max_log_size = 800
         self.run_data = {}
@@ -82,6 +84,18 @@ class ServerObject():
         except:
             pass
         try:
+            if self.config_file.get("general", "customFlags"):
+                self.custom_flags = self.config_file.get("general", "customFlags").strip()
+        except:
+            self.custom_flags = ''
+        try:
+            if self.config_file.get("general", "isModpack"):
+                modpack = self.config_file.get("general", "isModpack").lower()
+                if modpack:
+                    self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
+        except:
+            self.is_modpack = ''
+        try:
             if self.config_file.get("general", "enableNgrok"):
                 self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
         except:
@@ -94,7 +108,7 @@ class ServerObject():
             # Check if Geyser actually exists
             def thread(*a):
                 geyser = 0
-                if constants.version_check(self.version, ">=", "1.13.2") and self.type.lower() in ['spigot', 'paper', 'fabric']:
+                if constants.version_check(self.version, ">=", "1.13.2") and self.type.lower() in ['spigot', 'paper', 'purpur', 'fabric']:
                     while not self.addon:
                         time.sleep(0.2)
                     addon_list = self.addon.return_single_list()
@@ -113,9 +127,14 @@ class ServerObject():
 
         # Check update properties for UI stuff
         self.update_string = ''
-        self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
-        if not self.update_string and self.build:
-            self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+        if self.is_modpack:
+            if constants.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                self.update_string = constants.update_list[self.name]['updateString']
+        else:
+            self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
+            if not self.update_string and self.build:
+                self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+
 
         if self.update_string:
             self._view_notif('settings', viewed='')
@@ -205,6 +224,18 @@ class ServerObject():
         except:
             pass
         try:
+            if self.config_file.get("general", "customFlags"):
+                self.custom_flags = self.config_file.get("general", "customFlags").strip()
+        except:
+            self.custom_flags = ''
+        try:
+            if self.config_file.get("general", "isModpack"):
+                modpack = self.config_file.get("general", "isModpack").lower()
+                if modpack:
+                    self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
+        except:
+            self.is_modpack = ''
+        try:
             if self.config_file.get("general", "enableNgrok"):
                 self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
         except:
@@ -218,9 +249,14 @@ class ServerObject():
 
         # Check update properties for UI stuff
         self.update_string = ''
-        self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
-        if not self.update_string and self.build:
-            self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+        if self.is_modpack:
+            if constants.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                self.update_string = constants.update_list[self.name]['updateString']
+        else:
+            self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
+            if not self.update_string and self.build:
+                self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+
 
         if self.update_string:
             self._view_notif('settings', viewed='')
@@ -338,7 +374,7 @@ class ServerObject():
 
             def format_time(string):
                 try:
-                    date = dt.strptime(string, "%H:%M:%S").strftime("%#I:%M:%S %p").rjust(11)
+                    date = dt.strptime(string, "%H:%M:%S").strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
                 except ValueError:
                     date = ''
                 return date
@@ -367,7 +403,7 @@ class ServerObject():
                         date_str = line.split("]", 1)[0].strip().replace("[", "")
                         date_label = format_time(date_str)
                     except IndexError:
-                        date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+                        date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # Old log formatting (server.log)
                 else:
@@ -376,11 +412,11 @@ class ServerObject():
                         date_str = line.split(" ", 1)[1].split("[", 1)[0].strip()
                         date_label = format_time(date_str)
                     except IndexError:
-                        date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+                        date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # If date_label is missing, it may be formatted differently
                 if not date_label:
-                    date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+                    date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # Format string as needed
 
@@ -491,6 +527,7 @@ class ServerObject():
                 elif "Stopping server" in line:
                     type_label = "STOP"
                     type_color = (0.3, 1, 0.6, 1)
+                    self.check_for_deadlock()
 
 
                 # Player join log
@@ -658,7 +695,28 @@ class ServerObject():
 
                 formatted_line = {'text': log_line}
                 if formatted_line not in self.run_data['log'] and formatted_line['text']:
-                    self.run_data['log'].append(formatted_line)
+
+                    # Progress bars for preparing spawn area
+                    def format_pct(line, *a):
+                        num = int(re.search(r'\d+', line).group(0))
+                        block = num // 4
+                        if num < 100 and block >= 24:
+                            block = 23
+                        space = 24 - block
+                        return f' [{"/" * block}{" " * space}] {num}%'
+                    if log_line[2].startswith('Preparing spawn') and log_line[1] == 'INFO' and self.run_data['log'][-1]['text'][2].startswith('Preparing spawn'):
+                        new = formatted_line['text']
+                        self.run_data['log'][-1] = {'text': (new[0], new[1], f'Preparing spawn area: {format_pct(new[2])}', new[3])}
+
+                    else:
+                        if log_line[2].startswith('Time elapsed') and log_line[1] == 'INFO':
+                            last = self.run_data['log'][-1]['text']
+                            self.run_data['log'][-1] = {'text': (last[0], last[1], f'Preparing spawn area: {format_pct("100%")}', last[3])}
+                        elif log_line[2].startswith('Preparing spawn') and log_line[1] == 'INFO':
+                            last = formatted_line['text']
+                            formatted_line = {'text': (last[0], last[1], f'Preparing spawn area: {format_pct(last[2])}', last[3])}
+
+                        self.run_data['log'].append(formatted_line)
 
                     # Purge long ones
                     if len(self.run_data['log']) > self.max_log_size:
@@ -693,7 +751,7 @@ class ServerObject():
 
                 # Show log
                 if log_cmd:
-                    self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'EXEC', f"Console issued server command: {new_cmd}", (1, 0.298, 0.6, 1))})
+                    self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'EXEC', f"Console issued server command: {new_cmd}", (1, 0.298, 0.6, 1))})
 
                 # Send script event
                 if self.script_object.enabled and not script:
@@ -721,20 +779,25 @@ class ServerObject():
             if self.auto_update == 'true' and constants.app_online:
                 self.auto_update_func()
 
-            script_path = constants.generate_run_script(self.properties_dict())
+            script_path = constants.generate_run_script(self.properties_dict(), custom_flags=self.custom_flags, no_flags=(not self.custom_flags and self.is_modpack))
 
             if not self.restart_flag:
                 self.run_data['launch-time'] = None
                 self.run_data['player-list'] = {}
                 self.run_data['network'] = {}
-                self.run_data['log'] = [{'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
+                self.run_data['log'] = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Launching '{self.name}', please wait...", (0.7,0.7,0.7,1))}]
                 self.run_data['process-hooks'] = []
                 self.run_data['close-hooks'] = [self.auto_backup_func]
                 self.run_data['console-panel'] = None
                 self.run_data['performance-panel'] = None
                 self.run_data['command-history'] = []
             else:
-                self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
+                self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
+
+            if self.custom_flags:
+                self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Using launch flags: '{self.custom_flags}'", (0.7, 0.7, 0.7, 1))})
+                # Prevent bugs when closing immediately due to bad flags
+                time.sleep(1)
 
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
 
@@ -761,7 +824,7 @@ class ServerObject():
                         if constants.run_proc(f'netsh advfirewall firewall show rule name="auto-mcs java {exec_type}"') == 1:
                             net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs java {exec_type}" dir=in action=allow enable=yes program="{constants.java_executable[exec_type]}"', None, 0)
                             if net_test == 5:
-                                self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'WARN', f"Java is blocked by Windows Firewall: can't accept external connections", (1, 0.659, 0.42, 1))})
+                                self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Java is blocked by Windows Firewall: can't accept external connections", (1, 0.659, 0.42, 1))})
                                 firewall_block = True
 
                 # Check for networking conflicts and current IP
@@ -771,7 +834,7 @@ class ServerObject():
 
                 self.run_data['network'] = constants.get_current_ip(self.name, get_ngrok=(self.ngrok_enabled and constants.app_online))
                 if self.run_data['network']['original_port']:
-                    self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.659, 0.42, 1))})
+                    self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.659, 0.42, 1))})
 
                 # Run server
                 self.run_data['process'] = Popen(script_content, stdout=PIPE, stdin=PIPE, stderr=PIPE, cwd=self.server_path, shell=True)
@@ -844,7 +907,7 @@ class ServerObject():
 
                                 # If the log was modified recently, try and scrape error from there
                                 use_error = True
-                                if ((dt.now() - dt.fromtimestamp(os.path.getmtime(log_file))).total_seconds() <= 30):
+                                if os.path.exists(log_file) and ((dt.now() - dt.fromtimestamp(os.path.getmtime(log_file))).total_seconds() <= 30):
 
                                     with open(log_file, 'r') as f:
                                         file = f.read()
@@ -889,7 +952,7 @@ class ServerObject():
                                 with open(crash_log, 'w+') as f:
                                     content = "---- Minecraft Crash Report ----\n"
                                     content += "// This report was generated by auto-mcs\n\n"
-                                    content += f"Time: {dt.now().strftime('%#m/%#d/%y, %#I:%M %p')}\n"
+                                    content += f"Time: {dt.now().strftime(constants.fmt_date('%#m/%#d/%y, %#I:%M %p'))}\n"
 
                                     if file:
                                         if "a server is already running on that port" in file.lower():
@@ -961,9 +1024,9 @@ class ServerObject():
 
                         # Log shutdown data
                         if crash_info:
-                            self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"'{self.name}' has stopped unexpectedly", (1,0.5,0.65,1))})
+                            self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"'{self.name}' has stopped unexpectedly", (1,0.5,0.65,1))})
                         else:
-                            self.run_data['log'].append({'text': (dt.now().strftime("%#I:%M:%S %p").rjust(11), 'INIT', f"'{self.name}' has stopped successfully", (0.7,0.7,0.7,1))})
+                            self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"'{self.name}' has stopped successfully", (0.7,0.7,0.7,1))})
 
                         close = True
 
@@ -1008,21 +1071,28 @@ class ServerObject():
 
 
             # Initialize ScriptObject
-            self.script_object = amscript.ScriptObject(self)
+            try:
+                self.script_object = amscript.ScriptObject(self)
 
-            # Fire server start event
-            if self.script_object.enabled:
-                self.script_object.construct()
-                self.script_object.start_event({'date': dt.now()})
+                # Fire server start event
+                if self.script_object.enabled:
+                    self.script_object.construct()
+                    self.script_object.start_event({'date': dt.now()})
 
 
-            # If start-cmd.tmp exists, run every command in file
-            cmd_tmp = constants.server_path(self.name, constants.command_tmp)
-            if cmd_tmp:
-                with open(cmd_tmp, 'r') as f:
-                    for cmd in f.readlines():
-                        self.send_command(cmd.strip(), add_to_history=False, log_cmd=False)
-                os.remove(cmd_tmp)
+                # If start-cmd.tmp exists, run every command in file (that is allowed by the command_whitelist)
+                cmd_tmp = constants.server_path(self.name, constants.command_tmp)
+                command_whitelist = ('gamerule')
+                if cmd_tmp:
+                    with open(cmd_tmp, 'r') as f:
+                        for cmd in f.readlines():
+                            if cmd.split(' ')[0] in command_whitelist:
+                                self.send_command(cmd.strip(), add_to_history=False, log_cmd=False)
+                    os.remove(cmd_tmp)
+
+            # Server closed prematurely
+            except AttributeError:
+                pass
 
             self.restart_flag = False
         return self.run_data
@@ -1049,17 +1119,21 @@ class ServerObject():
 
 
         # Fire server stop event
-        if self.script_object.enabled:
+        try:
+            if self.script_object.enabled:
 
-            crash_data = ''
-            if self.crash_log:
-                with open(self.crash_log, 'r') as f:
-                    crash_data = f.read()
+                crash_data = ''
+                if self.crash_log:
+                    with open(self.crash_log, 'r') as f:
+                        crash_data = f.read()
 
-            self.script_object.shutdown_event({'date': dt.now(), 'crash': crash_data})
-            self.script_object.deconstruct()
-        del self.script_object
-        self.script_object = None
+                self.script_object.shutdown_event({'date': dt.now(), 'crash': crash_data})
+                self.script_object.deconstruct()
+            del self.script_object
+            self.script_object = None
+
+        except AttributeError:
+            pass
 
 
         # Add and delete temp file to update last modified time of server directory
@@ -1105,7 +1179,71 @@ class ServerObject():
                 self.silent_command(f"kick {player} Server is restarting", log=False)
         except KeyError:
             pass
-        self.silent_command("stop")
+        self.stop()
+
+    # Stops the server
+    def stop(self):
+        self.silent_command('stop')
+
+    # Forcefully ends the server process
+    def kill(self):
+
+        # Iterate over self and children to find Java process
+        parent = psutil.Process(self.run_data['process'].pid)
+        sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
+
+        # Windows
+        if constants.os_name == "windows":
+            children = parent.children(recursive=True)
+            for proc in children:
+                if proc.name() == "java.exe":
+                    constants.run_proc(f"taskkill /f /pid {proc.pid}")
+                    break
+
+        # macOS
+        elif constants.os_name == "macos":
+            if parent.name() == "java":
+                constants.run_proc(f"kill {parent.pid}")
+
+        # Linux
+        else:
+            if parent.name() == "java":
+                constants.run_proc(f"kill {parent.pid}")
+            else:
+                children = parent.children(recursive=True)
+                for proc in children:
+                    if proc.name() == "java":
+                        constants.run_proc(f"kill {proc.pid}")
+                        break
+
+
+    # Checks if a server has closed, but hangs
+    def check_for_deadlock(self):
+        ip = self.run_data['network']['private_ip']
+        port = int(self.run_data['network']['address']['port'])
+
+        def check(*a):
+            while self.running and constants.check_port(ip, port):
+                time.sleep(1)
+
+            # If after a delay the server is still running, it is likely deadlocked
+            time.sleep(1)
+            if self.running and self.name not in constants.backup_lock:
+                try:
+                    # Delay if CPU usage is higher than expected
+                    if self.run_data['performance']['cpu'] > 0.5:
+                        time.sleep(15)
+                    message = f"'{self.name}' is deadlocked, please kill it above to continue..."
+                    if message != self.run_data['log'][-1]['text'][2]:
+                        self.send_log(message, 'warning')
+                    self.run_data['console-panel'].toggle_deadlock(True)
+                except:
+                    pass
+
+        t = threading.Timer(0, check)
+        t.daemon = True
+        t.start()
+
 
     # Retrieves performance information
     def performance_stats(self, interval=0.5, update_players=False):
@@ -1125,6 +1263,12 @@ class ServerObject():
                         perc_cpu = proc.cpu_percent(interval=interval)
                         perc_ram = round(proc.memory_info().private / 1048576, 2)
                         break
+
+            # Get RSS of parent on macOS
+            elif constants.os_name == "macos":
+                if parent.name() == "java":
+                    perc_cpu = parent.cpu_percent(interval=interval)
+                    perc_ram = round(parent.memory_info().rss / 1048576, 2)
 
             # Get performance stats of forked java process
             else:
@@ -1207,6 +1351,13 @@ class ServerObject():
 
         return enabled
 
+    # Updates custom flags
+    def update_flags(self, flags):
+        self.config_file = constants.server_config(self.name)
+        self.config_file.set("general", "customFlags", flags.strip())
+        self.custom_flags = flags.strip()
+        constants.server_config(self.name, self.config_file)
+
     # Renames server
     def rename(self, new_name: str):
         if not self.running:
@@ -1251,7 +1402,8 @@ class ServerObject():
             while not self.backup:
                 time.sleep(0.1)
 
-            self.backup.save()
+            if constants.check_free_space():
+                self.backup.save()
 
             # Delete server folder
             constants.safe_delete(self.server_path)
@@ -1264,7 +1416,7 @@ class ServerObject():
 
     # Checks modified advanced settings to check for a restart
     def __get_advanced_hash__(self):
-        return str(str(self.properties_hash) + str(self.ngrok_enabled).lower()[0] + str(self.geyser_enabled).lower()[0] + str(self.dedicated_ram)).strip()
+        return str(str(self.custom_flags) + str(self.properties_hash) + str(self.ngrok_enabled).lower()[0] + str(self.geyser_enabled).lower()[0] + str(self.dedicated_ram)).strip()
 
 
     # Attempts to automatically update the server
@@ -1287,11 +1439,13 @@ class ServerObject():
 
         elif auto_backup == 'true':
             if crash_info:
-                self.send_log(f"Skipping back-up due to a crash", 'error')
+                self.send_log("Skipping back-up due to a crash", 'error')
+            elif not constants.check_free_space():
+                self.send_log("Skipping back-up due to insufficient free space", 'error')
             else:
                 self.send_log(f"Saving a back-up of '{self.name}', please wait...", 'warning')
                 self.backup.save(ignore_running=True)
-                self.send_log(f"Back-up complete!", 'success')
+                self.send_log("Back-up complete!", 'success')
             return True
 
         else:
@@ -1349,7 +1503,7 @@ class ServerObject():
             if message:
 
                 message_date_obj = dt.now()
-                date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+                date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # Format string as needed
 
@@ -1438,7 +1592,7 @@ class ServerObject():
 
             if message:
                 message_date_obj = dt.now()
-                date_label = message_date_obj.strftime("%#I:%M:%S %p").rjust(11)
+                date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 main_label = message.rstrip()
                 type_label = "AMS"
@@ -1581,12 +1735,23 @@ class ViewObject():
                 self.build = self.config_file.get("general", "serverBuild").lower()
         except:
             pass
+        try:
+            if self.config_file.get("general", "isModpack"):
+                modpack = self.config_file.get("general", "isModpack").lower()
+                if modpack:
+                    self.is_modpack = 'zip' if modpack != 'mrpack' else 'mrpack'
+        except:
+            self.is_modpack = ''
 
         # Check update properties for UI stuff
         self.update_string = ''
-        self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
-        if not self.update_string and self.build:
-            self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+        if self.is_modpack:
+            if constants.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                self.update_string = constants.update_list[self.name]['updateString']
+        else:
+            self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
+            if not self.update_string and self.build:
+                self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
 
 
         self.server_path = constants.server_path(server_name)
@@ -1627,10 +1792,12 @@ class ServerManager():
         if constants.debug:
             print(vars(self.current_server))
 
+        return self.current_server
+
     # Reloads self.current_server
     def reload_server(self):
         if self.current_server:
-            self.open_server(self.current_server.name)
+            return self.open_server(self.current_server.name)
 
 # --------------------------------------------- General Functions ------------------------------------------------------
 

@@ -64,6 +64,10 @@ class AddonFileObject(AddonObject):
         hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
         self.hash = str(hash_data)[:8]
 
+# AddonObject for housing downloadable modpacks
+class ModpackWebObject(AddonWebObject):
+    pass
+
 # Server addon manager object for ServerManager()
 class AddonManager():
 
@@ -77,7 +81,7 @@ class AddonManager():
         self._addon_hash = self._set_hash()
 
         # Setup paths
-        addon_folder = "plugins" if self._server['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+        addon_folder = "plugins" if constants.server_type(self._server['type']) == 'bukkit' else 'mods'
         disabled_addon_folder = str("disabled-" + addon_folder)
         self.addon_path = constants.server_path(self._server['name'], addon_folder)
         self.disabled_addon_path = constants.server_path(self._server['name'], disabled_addon_folder)
@@ -214,6 +218,9 @@ class AddonManager():
         if not self._addons_supported:
             return False
 
+        if self._server['is_modpack']:
+            return False
+
         if self.update_required:
             return True
 
@@ -253,7 +260,7 @@ class AddonManager():
         if not self._addons_supported:
             return False
 
-        if self._server['type'] in ['spigot', 'paper', 'fabric']:
+        if self._server['type'] in ['spigot', 'paper', 'purpur', 'fabric']:
 
             # Check for geyser
             return 'geyser' in [addon.id.lower() for addon in self.return_single_list()]
@@ -277,11 +284,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
 
     # Determine which addons to look for
-    if server_properties['type'] in ["craftbukkit", "paper", "spigot"]:
-        server_type = "bukkit"
-    else:
-        server_type = server_properties['type']
-
+    server_type = constants.server_type(server_properties['type'])
 
     # Get addon information
     if jar_name.endswith(".jar"):
@@ -388,7 +391,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                 jar_file.extract('META-INF/mods.toml', addon_tmp)
                                 with open(os.path.join(addon_tmp, 'META-INF', 'mods.toml'), 'r') as toml:
                                     addon_type = server_type
-                                    file_contents = toml.read().split("[[dependencies")[0]
+                                    file_contents = toml.read().split("[[dependencies")[0].replace(' = ', '=')
                                     for line in file_contents.splitlines():
                                         if addon_author and addon_name and addon_version and addon_subtitle and addon_id:
                                             break
@@ -439,13 +442,20 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
 
                     constants.safe_delete(addon_tmp)
-            except:
-                # Delete addon if it's corrupted
-                try:
-                    os.remove(addon_path)
-                except OSError:
-                    pass
-                return None
+
+            # If there's an issue with decompilation
+            except Exception as e:
+                if constants.debug:
+                    print(e)
+
+                if not addon_version:
+                    addon_version = None
+
+                if not addon_subtitle:
+                    addon_subtitle = None
+
+                if not addon_author:
+                    addon_author = None
 
 
             # If information was not found, use file name instead
@@ -503,7 +513,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
     except TypeError:
         return False
 
-    addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
     destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else constants.server_path(server_properties['name'], addon_folder)
 
     # Make sure the addon_path and destination_path are not the same
@@ -540,10 +550,7 @@ def search_addons(query: str, server_properties):
     }
 
     # Determine which addons to search for
-    if server_properties['type'] in ["craftbukkit", "paper", "spigot"]:
-        server_type = "bukkit"
-    else:
-        server_type = server_properties['type']
+    server_type = constants.server_type(server_properties['type'])
 
 
     # If server_type is bukkit
@@ -874,10 +881,7 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
 
     # Force type
     if force_type:
-        if force_type.lower() in ['craftbukkit', 'spigot', 'paper']:
-            new_type = 'bukkit'
-        else:
-            new_type = force_type.lower()
+        new_type = constants.server_type(force_type)
     else:
         new_type = addon.type
 
@@ -934,7 +938,7 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
     if not addon.download_url:
         return False
 
-    addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
     destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(constants.server_path(server_properties['name']), addon_folder)
 
     # Download addon to "destination_path + file_name"
@@ -990,7 +994,7 @@ def enumerate_addons(server_properties, single_list=False):
         return {'enabled': [], 'disabled': []}
 
     # Define folder paths based on server info
-    addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
     disabled_addon_folder = str("disabled-" + addon_folder)
     addon_folder = constants.server_path(server_properties['name'], addon_folder)
     disabled_addon_folder = constants.server_path(server_properties['name'], disabled_addon_folder)
@@ -1030,7 +1034,7 @@ def enumerate_addons(server_properties, single_list=False):
 def addon_state(addon: AddonFileObject, server_properties, enabled=True):
 
     # Define folder paths based on server info
-    addon_folder = "plugins" if server_properties['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+    addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
     disabled_addon_folder = str("disabled-" + addon_folder)
     addon_folder = os.path.join(constants.server_path(server_properties['name']), addon_folder)
     disabled_addon_folder = os.path.join(constants.server_path(server_properties['name']), disabled_addon_folder)
@@ -1074,7 +1078,8 @@ def dump_config(server_name: str):
         'name': server_name,
         'version': None,
         'type': None,
-        'path': os.path.join(constants.applicationFolder, 'Servers', server_name)
+        'path': os.path.join(constants.applicationFolder, 'Servers', server_name),
+        'is_modpack': False
     }
 
 
@@ -1088,6 +1093,10 @@ def dump_config(server_name: str):
         if server_name == server_config.get("general", "serverName"):
             server_dict['version'] = server_config.get("general", "serverVersion")
             server_dict['type'] = server_config.get("general", "serverType").lower()
+            try:
+                server_dict['is_modpack'] = server_config.get("general", "isModpack").lower()
+            except:
+                pass
 
 
     return server_dict
@@ -1095,11 +1104,11 @@ def dump_config(server_name: str):
 
 # Returns chat reporting addon if it can be found
 def disable_report_addon(server_properties):
-    server_type = server_properties['type'].replace('craft','')
+    server_type = server_properties['type'].replace('craft','').replace('purpur', 'paper')
 
     item = None
 
-    if server_type in ['spigot', 'bukkit', 'paper']:
+    if constants.server_type(server_type) == 'bukkit':
         url = "https://modrinth.com/mod/freedomchat"
 
         # Find addon information
@@ -1123,10 +1132,7 @@ def disable_report_addon(server_properties):
 
 
     if item:
-        if server_properties['type'] in ["craftbukkit", "paper", "spigot"]:
-            server_type = "bukkit"
-        else:
-            server_type = server_properties['type']
+        server_type = constants.server_type(server_properties['type'])
 
         name = html.find('h1', class_='title').get_text()
         author = [x.div.p.text for x in html.find_all('a', class_='team-member') if 'owner' in x.get_text().lower()][0]
@@ -1145,7 +1151,7 @@ def geyser_addons(server_properties):
     final_list = []
 
     # Make AddonWebObjects for dependencies
-    if server_properties['type'] in ['spigot', 'paper']:
+    if server_properties['type'] in ['spigot', 'paper', 'purpur']:
 
         # Geyser bukkit
         url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot'
@@ -1191,6 +1197,89 @@ def geyser_addons(server_properties):
 
 
     return final_list
+
+
+# Returns list of modpack objects according to search
+# Query --> ModpackWebObject
+def search_modpacks(query: str, *a):
+
+    # Manually weighted search results
+    prioritized = ()
+
+    # Grab every modpack from search result and return results dict
+    url = f'https://api.modrinth.com/v2/search?facets=[["project_type:modpack"]]&limit=100&query={query}'
+    results = []
+    page_content = constants.get_url(url, return_response=True).json()
+
+    for mod in page_content['hits']:
+        name = mod['title']
+        author = mod['author']
+        subtitle = mod['description'].split("\n", 1)[0]
+        link = f"https://modrinth.com/modpack/{mod['slug']}"
+        file_name = mod['slug']
+        score = constants.similarity(query.strip().lower(), name.strip().lower())
+
+        if link:
+            addon_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
+            addon_obj.score = score
+            addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+            results.append(addon_obj)
+
+    if results:
+        results = sorted(results, key=lambda x: x.score, reverse=True)
+
+    return results
+
+
+# Returns advanced addon object properties
+# ModpackWebObject
+def get_modpack_info(modpack: ModpackWebObject, *a):
+
+    # For cleaning up description formatting
+    emoji_pattern = re.compile("["
+                               u"\U0001F600-\U0001F64F"  # emoticons
+                               u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+                               u"\U0001F680-\U0001F6FF"  # transport & map symbols
+                               u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                               "]+", flags=re.UNICODE)
+
+    versions = []
+
+    # Find addon information
+    file_link = f"https://api.modrinth.com/v2/project/{modpack.id}"
+    page_content = constants.get_url(file_link, return_response=True).json()
+    description = emoji_pattern.sub(r'', page_content['body']).replace("*","").replace("#","").replace('&nbsp;', ' ')
+    description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
+    description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
+    description = re.sub(r'\]\(*.+\)', '', description)
+
+    modpack.description = description
+    modpack.supported = "yes"
+
+    return modpack
+
+
+# Return the latest available supported download link
+# ModpackWebObject
+def get_modpack_url(modpack: ModpackWebObject, *a):
+
+    # Skip if addon doesn't exist for some reason
+    if not modpack:
+        return False
+
+    pages = 1
+
+    # Iterate through every page until a match is found
+    file_link = f'https://api.modrinth.com/v2/project/{modpack.id}/version'
+    page_content = constants.get_url(file_link, return_response=True).json()
+    modpack.download_version = page_content[0]['version_number']
+
+    for data in page_content:
+        try:
+            modpack.download_url = data['files'][0]['url']
+            return modpack
+        except:
+            continue
 
 
 

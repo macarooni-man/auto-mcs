@@ -1,5 +1,11 @@
 version: '{build}'
 
+branches:
+  only:
+  - main
+
+skip_tags: true
+
 image: Visual Studio 2019
 
 install:

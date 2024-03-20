@@ -14,7 +14,7 @@ import os
 class BackupObject():
 
     def grab_config(self):
-        cwd = os.path.abspath(os.curdir)
+        cwd = constants.get_cwd()
         extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
         constants.folder_check(extract_folder)
         os.chdir(extract_folder)
@@ -47,7 +47,6 @@ class BackupObject():
         constants.safe_delete(extract_folder)
         os.chdir(cwd)
 
-
     def __init__(self, server_name: str, backup_info: list, no_fetch=False):
         self.name = server_name
 
@@ -57,6 +56,7 @@ class BackupObject():
 
         self.type = 'Unknown'
         self.version = 'Unknown'
+        self.build = None
 
         if not no_fetch:
             self.grab_config()
@@ -139,11 +139,19 @@ def convert_date(m_time: int or float):
         dt_obj = m_time
     days = (dt.now().date() - dt_obj.date()).days
     if days == 0:
-        fmt = "Today %#I:%M %p" if constants.os_name == "windows" else "Today %-I:%M %p"
+        fmt = f"{constants.translate('Today')} {constants.fmt_date('%#I:%M %p')}"
     elif days == 1:
-        fmt = "Yesterday %#I:%M %p" if constants.os_name == "windows" else "Yesterday %-I:%M %p"
+        fmt = f"{constants.translate('Yesterday')} {constants.fmt_date('%#I:%M %p')}"
     else:
-        fmt = "%a %#I:%M %p %#m/%#d/%y" if constants.os_name == "windows" else "%a %-I:%M %p %-m/%-d/%y"
+        fmt = constants.fmt_date("%a %#I:%M %p %#m/%#d/%y")
+
+    # Translate day
+    if constants.locale != 'en':
+        date = dt_obj.strftime(fmt)
+        for day in ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']:
+            if day.startswith(date[:3]):
+                return constants.translate(day)[:3] + date[3:]
+
     return dt_obj.strftime(fmt)
 
 
@@ -260,7 +268,7 @@ def backup_server(name: str, backup_stats=None, ignore_running=False):
             server_obj.silent_command('save-off')
             time.sleep(3)
 
-        cwd = os.path.abspath(os.curdir)
+        cwd = constants.get_cwd()
         bkup_time = dt.now().strftime("%H.%M %m-%d-%y")
         backup_path = backup_stats["backup-path"]
         file_name = f"{name}__{bkup_time}.amb"
@@ -332,7 +340,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
         if not backup_stats:
             backup_stats = dump_config(name)[1]
 
-        cwd = os.path.abspath(os.curdir)
+        cwd = constants.get_cwd()
         backup_path = backup_stats["backup-path"]
 
         # Reset backup path if imported to another OS
@@ -396,7 +404,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 # Migrate backup directory and backups
 def set_backup_directory(name: str, new_dir: str):
 
-    cwd = os.path.abspath(os.curdir)
+    cwd = constants.get_cwd()
     config_file = constants.server_config(name)
     current_dir = config_file.get('bkup', 'bkupDir')
     current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir
@@ -462,7 +470,7 @@ def set_backup_directory(name: str, new_dir: str):
 # Migrate backup names when server is renamed
 def rename_backups(name: str, new_name: str):
 
-    cwd = os.path.abspath(os.curdir)
+    cwd = constants.get_cwd()
     config_file = constants.server_config(new_name)
     current_dir = config_file.get('bkup', 'bkupDir')
     current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir

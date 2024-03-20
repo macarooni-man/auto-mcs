@@ -3,6 +3,7 @@ from datetime import datetime as dt
 from urllib.request import urlopen
 from copy import deepcopy
 from glob import glob
+import json_repair
 import threading
 import ipaddress
 import constants
@@ -152,7 +153,10 @@ class AclManager():
         else:
 
             # Use usercache.json and fallback on resolving world playerdata
-            data_path = os.path.join(server_path, server_world, 'playerdata')
+            try:
+                data_path = os.path.join(server_path, server_world, 'playerdata')
+            except TypeError:
+                data_path = None
             usercache = []
             fallback = False
 
@@ -164,18 +168,19 @@ class AclManager():
             except FileNotFoundError:
                 fallback = True
 
-            if (not usercache) or (fallback):
+            if ((not usercache) or (fallback)) and data_path:
                 usercache = [os.path.basename(item).lower().split(".dat")[0] for item in glob(os.path.join(data_path, '*'))]
 
-            try:
-                with open(f"{cache_folder}\\uuid-db.json", "r") as f:
-                    db = json.load(f)
-                    uuid_list = [x['uuid'] for x in db]
-            except FileNotFoundError:
-                uuid_list = []
+            if usercache:
+                try:
+                    with open(f"{cache_folder}\\uuid-db.json", "r") as f:
+                        db = json.load(f)
+                        uuid_list = [x['uuid'] for x in db]
+                except FileNotFoundError:
+                    uuid_list = []
 
-            with ThreadPoolExecutor(max_workers=15) as pool:
-                pool.map(iter_usercache, usercache)
+                with ThreadPoolExecutor(max_workers=15) as pool:
+                    pool.map(iter_usercache, usercache)
 
         concat_db()
         return playerdata_list
@@ -597,9 +602,9 @@ class AclManager():
             ip_obj = ipaddress.ip_network(rule_name.replace("!w", "").strip(), False)
 
             if "!w" in rule_name:
-                display_data['rule_info'] = "Subnet whitelist" if "/" in rule_name else "IP whitelist"
+                display_data['rule_info'] = constants.translate("Subnet whitelist" if "/" in rule_name else "IP whitelist")
             else:
-                display_data['rule_info'] = "Subnet ban" if "/" in rule_name else "IP ban"
+                display_data['rule_info'] = constants.translate("Subnet ban" if "/" in rule_name else "IP ban")
 
             display_data['ip_range'] = f"{ip_obj.network_address} - {ip_obj.broadcast_address}"
             display_data['subnet_mask'] = str(ip_obj.netmask)
@@ -625,7 +630,7 @@ class AclManager():
         else:
 
             display_data = {
-                'effective_access': "Normal access",
+                'effective_access': constants.translate("Normal access"),
                 'ban': False,
                 'ip_ban': False,
                 'op': False,
@@ -712,14 +717,14 @@ class AclManager():
 
             # Generate effective access principle
             if display_data['ban'] or display_data['ip_ban']:
-                display_data['effective_access'] = "No access"
+                display_data['effective_access'] = constants.translate("No access")
 
             else:
                 if self._server['whitelist'] and not (display_data['wl'] or display_data['op']):
-                    display_data['effective_access'] = "No access"
+                    display_data['effective_access'] = constants.translate("No access")
 
                 elif display_data['op']:
-                    display_data['effective_access'] = "Operator access"
+                    display_data['effective_access'] = constants.translate("Operator access")
 
             # Build AclRule object
             try:
@@ -727,9 +732,9 @@ class AclManager():
 
             # Eventually set these to "retrieving info..." and make function to load all server latest.logs. also make algorithm to keep the newest date when iterating over every server
             except KeyError:
-                user['latest-ip'] = "Unknown"
-                user['latest-login'] = "Unknown"
-                user['ip-geo'] = "Unknown"
+                user['latest-ip'] = constants.translate("Unknown")
+                user['latest-login'] = constants.translate("Unknown")
+                user['ip-geo'] = constants.translate("Unknown")
 
             # Create algorithm when servers exist to change this dynamically
             user['online'] = False
@@ -1463,7 +1468,20 @@ def get_uuid(user: str):
     if os.path.exists(uuid_db):
         try:
             with open(uuid_db, "r") as f:
-                file = json.load(f)
+                content = f.read()
+                try:
+                    file = json.loads(content)
+                except:
+
+                    # If failure, try to repair the json file
+                    try:
+                        print("Attempting to fix 'uuid-db.json' due to formatting error")
+                        file = json_repair.loads(content)
+                        if not file:
+                            raise TypeError
+                    except:
+                        print("'uuid-db.json' reset due to formatting error")
+                        file = None
         except OSError:
             file = None
 
@@ -1522,11 +1540,20 @@ def concat_db(only_delete=False):
         # Load current uuid-db.json into final_db
         try:
             with open(uuid_db, "r") as f:
+                content = f.read()
                 try:
-                    current_db = json.load(f)
+                    current_db = json.loads(content)
                 except:
-                    print("'uuid-db.json' reset due to formatting error")
-                    current_db = {}
+
+                    # If failure, try to repair the json file
+                    try:
+                        print("Attempting to fix 'uuid-db.json' due to formatting error")
+                        current_db = json_repair.loads(content)
+                        if not current_db:
+                            raise TypeError
+                    except:
+                        print("'uuid-db.json' reset due to formatting error")
+                        current_db = {}
                 uuid_list = [item['uuid'] for item in current_db]
 
         except OSError:

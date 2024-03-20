@@ -48,9 +48,9 @@ if [ $errorlevel -ne 0 ]; then
 
 	# Determine system package manager and install appropriate packages
 	if [ -x "$(command -v apk)" ];       then apk add --no-cache wget gcc make gstreamer-dev sdl2_mixer-dev sdl2_ttf-dev pangomm-dev sdl2_image-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev portaudio-dev
-	elif [ -x "$(command -v apt-get)" ]; then apt-get install -y build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils liblzma-dev python3-dev libfreetype-dev libfreetype6 libasound2 libasound2-dev portaudio19-dev
+	elif [ -x "$(command -v apt)" ];     then apt install -y build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils liblzma-dev python3-dev libfreetype-dev libfreetype6 libasound2 libasound-dev libasound2-dev portaudio19-dev
 	elif [ -x "$(command -v dnf)" ];     then dnf -y groupinstall "Development Tools" && sudo dnf -y install wget gcc bzip2-devel libffi-devel xz-devel freetype-devel portaudio-devel
-	elif [ -x "$(command -v yum)" ];  then yum -y groupinstall "Development Tools" && sudo dnf -y install wget gcc bzip2-devel libffi-devel xz-devel freetype-devel portaudio-devel
+	elif [ -x "$(command -v yum)" ];     then yum -y groupinstall "Development Tools" && sudo dnf -y install wget gcc bzip2-devel libffi-devel xz-devel freetype-devel portaudio-devel
 	elif [ -x "$(command -v pacman)" ];  then pacman -S --noconfirm base-devel wget openssl-1.1 tk freetype2 portaudio
 	else echo "[WARNING] Package manager not found: You must manually install the Python 3.9 source dependencies">&2; fi
 
@@ -61,7 +61,7 @@ if [ $errorlevel -ne 0 ]; then
 
 	cd /tmp/
 	wget https://www.openssl.org/source/openssl-1.1.1g.tar.gz --no-check-certificate
-	tar xzf openssl-1.1.1g.tar.gz 
+	tar xzf openssl-1.1.1g.tar.gz
 	cd openssl-1.1.1g
 
 	mkdir -p $ssl_path/lib
@@ -139,22 +139,27 @@ source $venv_path/bin/activate
 su $(logname) -c "pip install --upgrade -r ./reqs-linux.txt"
 
 
-# Use Kivy 2.1.0 for Alpine
-if [ -x "$(command -v apk)" ]; then
-	su $(logname) -c "pip install --upgrade kivy==2.1.0"
-fi
-
-
 # Patch and install Kivy hook for Pyinstaller
 patch() {
 	kivy_path=$1"/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks"
-	sed 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
-	sed 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py > tmp.txt && mv tmp.txt $kivy_path/__init__.py
+	sed -i 's/from PyInstaller.compat import modname_tkinter/#/' $kivy_path/__init__.py
+	sed -i 's/excludedimports = \[modname_tkinter, /excludedimports = [/' $kivy_path/__init__.py
 	su $(logname) -c $venv_path"/bin/python3.9 -m kivy.tools.packaging.pyinstaller_hooks hook "$kivy_path"/kivy-hook.py"
 }
 patch $venv_path"/lib"
 patch $venv_path"/lib64"
 
+
+# Install Consolas if it doesn't exist and reload font cache
+if ! ls /usr/share/fonts/Consolas* 1> /dev/null 2>&1; then
+    echo Installing Consolas font
+    cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
+	fc-cache -f
+fi
+
+
+# Rebuild locales.json
+# su $(logname) -c "python locale-gen.py"
 
 
 # Build
@@ -173,5 +178,6 @@ deactivate
 if ! [ -f $current/dist/auto-mcs ]; then
 	error "[FAIL] Something went wrong during compilation"
 else
+	chmod +x $current/dist/auto-mcs
 	echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
 fi

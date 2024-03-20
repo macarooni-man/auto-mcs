@@ -35,6 +35,58 @@ jobs:
           retention-days: 5
 
 
+
+  macos:
+    name: macOS Build
+    runs-on: macos-12
+    steps:
+    
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Dependencies
+        run: |
+          brew install python@3.9 python-tk@3.9 upx create-dmg
+      
+      - name: Compile auto-mcs
+        run: |
+          root=$(pwd)
+          cd build-tools
+          mkdir -p /Users/runner/Library/Fonts
+          chmod +x build-macos.sh
+          sudo ./build-macos.sh
+          chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
+
+          # Create .dmg from .app
+          while : ; do
+            [[ -f "$root/build-tools/dist/auto-mcs.dmg" ]] && break
+            sleep 1
+            sudo create-dmg \
+              --volname "auto-mcs" \
+              --volicon "$root/other/macos-dmg/icon.icns" \
+              --background "$root/other/macos-dmg/bg.png" \
+              --window-pos 200 120 \
+              --window-size 835 620 \
+              --icon-size 128 \
+              --text-size 16 \
+              --icon "auto-mcs.app" 230 277 \
+              --hide-extension "auto-mcs.app" \
+              --app-drop-link 593 277 \
+              "$root/build-tools/dist/auto-mcs.dmg" \
+              "$root/build-tools/dist/auto-mcs.app"
+          done
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: auto-mcs-macos
+          path: build-tools/dist/auto-mcs.dmg
+          retention-days: 5
+
+
+
   linux:
     name: Linux Build
     runs-on: ubuntu-20.04
@@ -48,7 +100,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update -y
-          sudo apt install xvfb fluxbox libasound2 -y
+          sudo apt install xvfb fluxbox libasound2 libasound-dev tk8.6 libtk8.6 tcl8.6 libtcl8.6 -y
           export DISPLAY=:0.0
           Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
           sleep 1
@@ -61,16 +113,38 @@ jobs:
     
       - name: Compile auto-mcs
         run: |
-          mkdir -p /opt/python/
-          ln -s /opt/hostedtoolcache/Python/3.9.18/x64 /opt/python/3.9.18
+          spec_file="auto-mcs.linux.spec"
           sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
           export DISPLAY=:0.0
           cd build-tools
-          chmod +x build-linux.sh
-          sudo ./build-linux.sh
+          current=$( pwd )
+          python3.9 -m venv ./venv
+          source ./venv/bin/activate
+          pip install -r reqs-linux.txt
+          python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
+          cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
+          fc-cache -f
+          # python locale-gen.py
+          echo Compiling auto-mcs
+          export KIVY_AUDIO=ffpyplayer
+          cd $current
+          cp $spec_file ../source
+          cd ../source
+          pyinstaller $spec_file --upx-dir $current/upx/linux --clean
+          cd $current
+          rm -rf ../source/$spec_file
+          mv -f ../source/dist .
+          deactivate
+          if ! [ -f $current/dist/auto-mcs ]; then
+            "[FAIL] Something went wrong during compilation"
+            exit 1
+          else
+          	echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
+          fi
+          chmod +x dist/auto-mcs
 
-      #- name: Setup upterm session
-      #  uses: lhotari/action-upterm@v1
+      # - name: Setup upterm session
+      #   uses: lhotari/action-upterm@v1
 
       - name: Upload Binary
         uses: actions/upload-artifact@v3
@@ -78,3 +152,77 @@ jobs:
           name: auto-mcs-linux
           path: build-tools/dist/
           retention-days: 5
+
+
+
+  linux-arm:
+    name: Linux Build (arm64)
+    runs-on: ubuntu-20.04
+    steps:
+    
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          
+      - name: Create artifact directory
+        run: |
+          mkdir build-tools/dist
+          
+      - name: Configure VM & compile auto-mcs
+        uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a53
+          cpu_info: cpuinfo/raspberrypi_zero2_w_arm64
+          base_image: raspios_lite_arm64:2022-04-04
+          image_additional_mb: 4096
+          copy_artifact_path: build-tools/dist/*
+          copy_artifact_dest: build-tools/dist
+          commands: |
+              # Install dependencies
+              mkdir -p /usr/lib64/
+              sudo cp -f /usr/lib/aarch64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
+              sudo apt update -y
+              sudo apt install xvfb fluxbox libasound2 libasound-dev tk8.6 libtk8.6 tcl8.6 libtcl8.6 upx python3-venv python3-tk python3-dev fontconfig -y
+              export DISPLAY=:0.0
+              Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+              sleep 1
+              fluxbox > /dev/null 2>&1 &
+
+              # Build auto-mcs
+              spec_file="auto-mcs.linux.spec"
+              export DISPLAY=:0.0
+              cd build-tools
+              current=$( pwd )
+              python3 -m venv ./venv
+              . ./venv/bin/activate
+              pip install --upgrade pip setuptools wheel
+              pip install -r reqs-linux.txt
+              python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
+              cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
+              fc-cache -f
+              # python locale-gen.py
+              echo Compiling auto-mcs
+              export KIVY_AUDIO=ffpyplayer
+              cd $current
+              cp $spec_file ../source
+              cd ../source
+              pyinstaller $spec_file --upx-dir /usr/bin --clean
+              cd $current
+              rm -rf ../source/$spec_file
+              mv -f ../source/dist .
+              if ! [ -f $current/dist/auto-mcs ]; then
+                "[FAIL] Something went wrong during compilation"
+                exit 1
+              else
+              	echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
+              fi
+              chmod +x dist/auto-mcs
+              
+      - name: Upload Binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: auto-mcs-linux-arm64
+          path: build-tools/dist/
+          retention-days: 5
+

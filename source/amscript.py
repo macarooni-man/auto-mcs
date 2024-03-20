@@ -6,6 +6,7 @@ from copy import deepcopy
 from munch import Munch
 from glob import glob
 from nbt import nbt
+import json_repair
 import constants
 import traceback
 import functools
@@ -1290,10 +1291,14 @@ class ServerScriptObject():
         # Assign callable functions from main server object
         self.execute = server_obj.silent_command
         self.restart = server_obj.restart
-        self.stop = functools.partial(self.execute, 'stop')
+        self.stop = server_obj.stop
         self.log = server_obj.send_log
         self.aliases = {}
         self.ams_version = constants.ams_version
+        try:
+            self.output = server_obj.run_data['log']
+        except KeyError:
+            self.output = []
 
         # Properties
         self.name = server_obj.name
@@ -1357,7 +1362,7 @@ class ServerScriptObject():
         if tag.startswith("@p") or tag.startswith("@r"):
             user = None
 
-            if self.version_check(">", "1.13"):
+            if self.version_check(">=", "1.13"):
                 try:
                     log_data = self.execute(f'data get entity {tag}', log=False, _capture=f" has the following entity data: ", _send_twice=True)
                     user = log_data.split(" has the following entity data: ")[0].rsplit(":",1)[1].strip()
@@ -1471,7 +1476,7 @@ class PlayerScriptObject():
         new_nbt = None
 
         # If newer version, use "/data get" to gather updated playerdata
-        if self._version_check(">", "1.13"):
+        if self._version_check(">=", "1.13"):
 
             # Attempt to intercept player's entity data
             try:
@@ -1482,14 +1487,14 @@ class PlayerScriptObject():
                         return None
                     except PermissionError:
                         return None
+
                     try:
                         self.position = CoordinateObject({'x': fmt(new_nbt['Pos'][0]), 'y': fmt(new_nbt['Pos'][1]), 'z': fmt(new_nbt['Pos'][2])})
                     except:
                         pass
 
                     try:
-                        self.rotation = CoordinateObject(
-                            {'x': fmt(new_nbt['Rotation'][0]), 'y': fmt(new_nbt['Rotation'][1])})
+                        self.rotation = CoordinateObject({'x': fmt(new_nbt['Rotation'][0]), 'y': fmt(new_nbt['Rotation'][1])})
                     except:
                         pass
 
@@ -1582,11 +1587,10 @@ class PlayerScriptObject():
                     # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
                     try:
                         new_nbt = re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: json_regex(x), nbt_data).replace(";",",").replace("'{", '"{').replace("}'", '}"')
-                        new_nbt = json.loads(re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
+                        new_nbt = json_repair.loads(re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
                     except json.decoder.JSONDecodeError:
                         if constants.debug:
                             print('Failed to process NBT data')
-                        pass
 
             # If log doesn't contain entity content, revert NBT
             except IndexError:

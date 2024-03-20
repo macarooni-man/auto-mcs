@@ -1,13 +1,16 @@
-from shutil import rmtree, copytree, copy, ignore_patterns
+from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
 from random import randrange, choices
+from difflib import SequenceMatcher
 from urllib.request import Request
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 from platform import system
 from threading import Timer
 from copy import deepcopy
+from pathlib import Path
 from glob import glob
+from PIL import Image
 from nbt import nbt
 import configparser
 import cloudscraper
@@ -27,6 +30,7 @@ import socket
 import time
 import json
 import math
+import yaml
 import sys
 import os
 import re
@@ -35,12 +39,12 @@ import addons
 import backup
 import amscript
 
-
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.0.7"
-ams_version = "1.1"
+app_version = "2.1"
+ams_version = "1.2"
 app_title = "auto-mcs"
+dev_version = False
 window_size = (850, 850)
 refresh_rate = 60
 anim_speed = 1
@@ -51,8 +55,8 @@ project_link = "https://github.com/macarooni-man/auto-mcs"
 website = "https://auto-mcs.com"
 update_data = {
     "version": '',
-    "urls": {'windows': None, 'linux': None},
-    "md5": {'windows': None, 'linux': None},
+    "urls": {'windows': None, 'linux': None, 'linux-arm64': None, 'macos': None},
+    "md5": {'windows': None, 'linux': None, 'linux-arm64': None, 'macos': None},
     "desc": '',
     "reboot-msg": [],
     "auto-show": True
@@ -84,6 +88,7 @@ latestMC = {
     "vanilla": "0.0.0",
     "forge": "0.0.0",
     "paper": "0.0.0",
+    "purpur": "0.0.0",
     "spigot": "0.0.0",
     "craftbukkit": "0.0.0",
     "fabric": "0.0.0",
@@ -91,6 +96,7 @@ latestMC = {
     "builds": {
         "forge": "0",
         "paper": "0",
+        "purpur": "0"
     }
 }
 
@@ -150,10 +156,10 @@ start_script_name = "Start"
 # Paths
 os_name = 'windows' if os.name == 'nt' else 'macos' if system().lower() == 'darwin' else 'linux' if os.name == 'posix' else os.name
 home = os.path.expanduser('~')
-appdata = os.getenv("APPDATA") if os_name == 'windows' else '~/Library/Application Support' if os_name == 'macos' else home
+appdata = os.getenv("APPDATA") if os_name == 'windows' else f'{home}/Library/Application Support' if os_name == 'macos' else home
 applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
 
-saveFolder = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' else "~/Library/Application Support/minecraft/saves"
+saveFolder = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' else f"{home}/Library/Application Support/minecraft/saves"
 downDir = os.path.join(applicationFolder, 'Downloads')
 backupFolder = os.path.join(applicationFolder, 'Backups')
 userDownloads = os.path.join(home, 'Downloads')
@@ -164,6 +170,7 @@ tmpsvr = os.path.join(tempDir, 'tmpsvr')
 cacheDir = os.path.join(applicationFolder, 'Cache')
 configDir = os.path.join(applicationFolder, 'Config')
 scriptDir = os.path.join(applicationFolder, 'Tools', 'amscript')
+javaDir = os.path.join(applicationFolder, 'Tools', 'java')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 global_conf = os.path.join(configDir, 'app-config.json')
 username = ''
@@ -182,10 +189,14 @@ else:
     gui_assets = os.path.join(executable_folder, 'gui-assets')
 
 
-# SSL crap on linux
+# SSL crap
 if os_name == 'linux':
     os.environ['SSL_CERT_DIR'] = executable_folder
     os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'ca-bundle.crt')
+
+elif os_name == 'macos':
+    os.environ['SSL_CERT_DIR'] = os.path.join(executable_folder, 'certifi')
+    os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'certifi', 'cacert.pem')
 
 
 # Ngrok info
@@ -202,6 +213,7 @@ check_ngrok()
 
 # Bigboi server manager
 server_manager = None
+search_manager = None
 import_data = {'name': None, 'path': None}
 backup_lock = {}
 
@@ -209,6 +221,36 @@ backup_lock = {}
 # Maximum memory
 total_ram = round(psutil.virtual_memory().total / 1073741824)
 max_memory = int(round(total_ram - (total_ram / 4)))
+
+# Replacement for os.system to prevent CMD flashing
+def run_proc(cmd, return_text=False):
+    if return_text:
+        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
+        if debug:
+            print(f'{cmd}: returned exit code {result.returncode}')
+        return result.stdout.decode('utf-8', errors='ignore')
+    else:
+        return_code = subprocess.call(cmd, shell=True)
+        if debug:
+            print(f'{cmd}: returned exit code {return_code}')
+        return return_code
+
+
+
+# Check if running in Docker
+def check_docker():
+    cgroup = Path('/proc/self/cgroup')
+    return Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
+is_docker = check_docker()
+
+# Check if OS is ARM
+def check_arm():
+    if os_name != 'windows':
+        return run_proc('uname -m', True).strip() == 'aarch64'
+    else:
+        return run_proc('echo %PROCESSOR_ARCHITECTURE%', True).strip() == 'ARM64'
+is_arm = check_arm()
+
 
 
 # Global amscripts
@@ -254,6 +296,156 @@ def get_repo_scripts():
 
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
+# Functions and data for translation
+locale = 'en'
+locale_file = os.path.join(executable_folder, 'locales.json')
+locale_data = {}
+if os.path.isfile(locale_file):
+    with open(locale_file, 'r') as f:
+        locale_data = json.loads(f.read())
+available_locales = {
+    "English": {"name": 'English', "code": 'en'},
+    "Spanish": {"name": 'Español', "code": 'es'},
+    "French": {"name": 'Français', "code": 'fr'},
+    "Italian": {"name": 'Italiano', "code": 'it'},
+    "German": {"name": 'Deutsch', "code": 'de'},
+    "Dutch": {"name": 'Nederlands', "code": 'nl'},
+    "Portuguese": {"name": 'Português', "code": 'pt'},
+    "Swedish": {"name": 'Suédois', "code": 'sv'},
+    "Finnish": {"name": 'Suomen', "code": 'fi'},
+
+    # Requires special fonts:
+
+    # "Chinese": {"name": '中文', "code": 'zh-CN'},
+    # "Japanese": {"name": '日本語', "code": 'ja'},
+    # "Korean": {"name": '한국어', "code": 'ko'},
+    # "Arabic": {"name": 'العربية', "code": 'ar'},
+    # "Russian": {"name": 'Русский', "code": 'ru'},
+    # "Ukranian": {"name": 'Українська', "code": 'uk'},
+    # "Serbian": {"name": 'Cрпски', "code": 'sr'},
+    # "Japanese": {"name": '日本語', "code": 'ja'}
+}
+def get_locale_string(english=False, *a):
+    for k, v in available_locales.items():
+        if locale in v.values():
+            return f'{k if english else v["name"]} ({v["code"]})'
+
+def translate(text: str):
+    global locale_data, locale
+
+    # Ignore if text is blank, or locale is set to english
+    if not text.strip() or locale.startswith('en'):
+        return text
+
+    # Create translator object
+    # if not translator:
+    #     translator = Translator()
+    # return translator.translate(text, src='en', dest=locale).text
+
+
+    # Searches locale_data for string
+    def search_data(s, *a):
+        try:
+            return locale_data[s.strip().lower()][locale]
+        except KeyError:
+            pass
+
+
+    # Extract proper noun if present with flag
+    conserve = []
+    if text.count('$') >= 2:
+        dollar_pattern = re.compile(r'\$([^\$]+)\$')
+        conserve = [i for i in re.findall(dollar_pattern, text)]
+        text = re.sub(dollar_pattern, '$$', text)
+
+
+    # First, attempt to get translation through locale_data directly
+    new_text = search_data(text, False)
+
+    # Second, attempt to translate matched words with regex
+    if not new_text:
+        def match_data(s, *a):
+            try:
+                return locale_data[s.group(0).strip().lower()][locale]
+            except KeyError:
+                pass
+            return s.group(0)
+        new_text = re.sub(r'\b\S+\b', match_data, text)
+
+
+    # If a match was found, return text in its original case
+    if new_text:
+
+        # Escape proper nouns that ignore translation
+        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip')
+        for o in overrides:
+            new_key = search_data(o)
+            if not new_key:
+                continue
+
+            if new_key in new_text:
+                new_text = new_text.replace(new_key, o)
+            elif new_key.upper() in new_text:
+                new_text = new_text.replace(new_key.upper(), o.upper())
+            elif new_key.lower() in new_text:
+                new_text = new_text.replace(new_key.lower(), o.lower())
+
+
+        # Manual overrides
+        if locale == 'es':
+            new_text = re.sub('servidor\.properties', 'server.properties', new_text, re.IGNORECASE)
+            new_text = re.sub('servidor\.jar', 'server.jar', new_text, re.IGNORECASE)
+            new_text = re.sub('control S', 'Administrar', new_text, re.IGNORECASE)
+        if locale == 'it':
+            new_text = re.sub(r'ESENTATO', 'ESCI', new_text, re.IGNORECASE)
+        if locale == 'fr':
+            new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, re.IGNORECASE)
+
+
+        # Get the spacing in front and after the text
+        if text.startswith(' ') or text.endswith(' '):
+            try:
+                before = re.search(r'(^\s+)', text).group(1)
+            except:
+                before = ''
+            try:
+                after = re.search(r'(?=.*)(\s+$)', text).group(1)
+            except:
+                after = ''
+            new_text = f'{before}{new_text}{after}'
+
+
+        # Keep case from original text
+        if text == text.title():
+            new_text = new_text.title()
+        elif text == text.upper():
+            new_text = new_text.upper()
+        elif text == text.lower():
+            new_text = new_text.lower()
+        elif text.strip() == text[0].strip().upper() + text[1:].strip().lower():
+            new_text = new_text[0].upper() + new_text[1:].lower()
+
+
+        # Replace proper noun (rework this to iterate over each match, in case there are multiple
+        for match in conserve:
+            new_text = new_text.replace('$$', match, 1)
+
+        # Remove dollar signs if they are still present for some reason
+        new_text = re.sub(r'\$([^\$]+)\$', '\g<1>', new_text)
+
+        return new_text
+
+    # If not, return original text
+    else:
+        return re.sub(r'\$(.*)\$', '\g<1>', text)
+
+
+# Returns False if less than 500MB free
+def check_free_space():
+    free_space = round(disk_usage('/').free / 1048576)
+    return free_space > 500
+
+
 # Retrieves the refresh rate of the display to calculate consistent animation speed
 def get_refresh_rate():
     global refresh_rate, anim_speed
@@ -264,6 +456,12 @@ def get_refresh_rate():
             if "CurrentRefreshRate" in rate:
                 refresh_rate = round(float(rate.splitlines()[0].split(":")[1].strip()))
 
+        elif os_name == 'macos':
+            rate = run_proc('system_profiler SPDisplaysDataType | grep Hz', True)
+            if "@ " in rate and "Hz" in rate:
+                refresh_rate = round(float(re.search(r'(?<=@ ).*(?=Hz)', rate.strip())[0]))
+
+        # Linux
         else:
             rate = run_proc('xrandr | grep "*"', True)
             if rate.strip().endswith("*"):
@@ -304,6 +502,7 @@ def check_app_version(current, latest, limit=None):
     normalize(l_list, max_size)
 
     for x in range(max_size):
+
         if limit:
             if x >= limit:
                 return False
@@ -311,7 +510,7 @@ def check_app_version(current, latest, limit=None):
         if l_list[x] > c_list[x]:
             return True
 
-        elif c_list[0] > l_list[0]:
+        elif c_list[x] > l_list[x]:
             return False
     else:
         return False
@@ -340,7 +539,7 @@ del \"{os.path.join(tempDir, script_name)}\""""
             run_proc(f"\"{batch_path}\" > nul 2>&1")
 
 
-    # Generate Linux script to restart
+    # Generate Linux/macOS script to restart
     else:
         script_name = f'{script_name}.sh'
         folder_check(tempDir)
@@ -366,9 +565,20 @@ rm \"{os.path.join(tempDir, script_name)}\""""
 # Restarts and updates auto-mcs by dynamically generating script
 def restart_update_app(*a):
     executable = os.path.basename(launch_path)
+    new_version = update_data['version']
+    success_str = f"auto-mcs was updated to v${new_version}$ successfully!"
+    failure_str = "Something went wrong with the update"
     script_name = 'auto-mcs-update'
     update_log = os.path.join(tempDir, 'update-log')
     folder_check(tempDir)
+
+    # Delete guide cache in case of update
+    guide_cache = os.path.join(cacheDir, 'guide-cache.json')
+    if os.path.exists(guide_cache):
+        try:
+            os.remove(guide_cache)
+        except:
+            pass
 
     # Generate Windows script to restart
     if os_name == "windows":
@@ -384,9 +594,9 @@ timeout /t 3 /nobreak
 
 copy /b /v /y "{os.path.join(downDir, 'auto-mcs.exe')}" "{launch_path}"
 if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
-    echo banner-success@auto-mcs was updated to v{update_data['version']} successfully! > "{update_log}"
+    echo banner-success@{success_str} > "{update_log}"
 ) else (
-    echo banner-failure@Something went wrong with the update > "{update_log}"
+    echo banner-failure@{failure_str} > "{update_log}"
 )
 
 start \"\" \"{launch_path}\"
@@ -395,6 +605,43 @@ del \"{os.path.join(tempDir, script_name)}\""""
 
             batch_file.close()
             run_proc(f"\"{batch_path}\" > nul 2>&1")
+
+
+    # Generate macOS script to restart
+    elif os_name == 'macos':
+        script_name = f'{script_name}.sh'
+        folder_check(tempDir)
+        shell_path = os.path.join(tempDir, script_name)
+        shell_file = open(shell_path, 'w+')
+        escaped_path = launch_path.replace(" ", "\ ")
+        dmg_path = os.path.join(downDir, 'auto-mcs.dmg')
+
+        if app_compiled:  # Running as compiled
+            shell_file.write(
+                f"""#!/bin/bash
+kill {os.getpid()}
+sleep 2
+
+hdiutil mount "{dmg_path}"
+rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(launch_path), '../..')}"
+errorlevel=$?
+if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
+    echo banner-success@{success_str} > "{update_log}"
+else
+    echo banner-failure@{failure_str} > "{update_log}"
+fi
+
+hdiutil unmount /Volumes/auto-mcs
+rm -rf "{dmg_path}"
+chmod +x "{launch_path}"
+exec {escaped_path} &
+rm \"{os.path.join(tempDir, script_name)}\""""
+            )
+
+            shell_file.close()
+            with open(shell_path, 'r') as f:
+                print(f.read())
+            run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
 
 
     # Generate Linux script to restart
@@ -414,9 +661,9 @@ sleep 2
 /bin/cp -rf "{os.path.join(downDir, 'auto-mcs')}" "{launch_path}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@auto-mcs was updated to v{update_data['version']} successfully! > "{update_log}"
+    echo banner-success@{success_str} > "{update_log}"
 else
-    echo banner-failure@Something went wrong with the update > "{update_log}"
+    echo banner-failure@{failure_str} > "{update_log}"
 fi
 
 chmod +x "{launch_path}"
@@ -431,26 +678,21 @@ rm \"{os.path.join(tempDir, script_name)}\""""
     sys.exit()
 
 
+
+# Format date string to be cross-platform compatible
+def fmt_date(date_string: str):
+    if os_name == 'windows':
+        return date_string
+    else:
+        return date_string.replace('%#','%-')
+
 # Returns current formatted time
 def format_now():
-    return datetime.datetime.now().strftime("%#I:%M:%S %p" if os_name == "windows" else "%-I:%M:%S %p")
+    return datetime.datetime.now().strftime(fmt_date("%#I:%M:%S %p"))
 
 
 # Global banner
 global_banner = None
-
-# Replacement for os.system to prevent CMD flashing
-def run_proc(cmd, return_text=False):
-    if return_text:
-        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
-        if debug:
-            print(f'{cmd}: returned exit code {result.returncode}')
-        return result.stdout.decode('utf-8', errors='ignore')
-    else:
-        return_code = subprocess.call(cmd, shell=True)
-        if debug:
-            print(f'{cmd}: returned exit code {return_code}')
-        return return_code
 
 
 # Hide kivy widgets
@@ -523,6 +765,11 @@ def brighten_color(color: tuple or str, amount: float):
     return convert_color(color)['hex'] if hex_input else tuple(color)
 
 
+# Returns similarity of strings with a metric of 0-1
+def similarity(a, b):
+    return round(SequenceMatcher(None, a, b).ratio(), 2)
+
+
 # Cloudscraper requests
 global_scraper = None
 def return_scraper(url_path: str, head=False):
@@ -567,6 +814,7 @@ def cs_download_url(url: str, file_name: str, destination_path: str):
         try:
             web_file = return_scraper(url)
             full_path = os.path.join(destination_path, file_name)
+            folder_check(destination_path)
             with open(full_path, 'wb') as file:
                 file.write(web_file.content)
 
@@ -591,7 +839,7 @@ def sanitize_name(value, addon=False):
 
     value = value.split(":")[0]
     value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-    value = re.sub(r'[^\w\s-]', '', value)
+    value = re.sub(r'[^\'\w\s-]', '', value)
     return re.sub(r'[-\s]+', '-', value).strip('-_')
 
 # Comparison tool for Minecraft version strings
@@ -797,6 +1045,8 @@ def open_folder(directory: str):
     try:
         if os_name == 'linux':
             subprocess.Popen(['xdg-open', directory])
+        elif os_name == 'macos':
+            subprocess.Popen(['open', directory])
         elif os_name == 'windows':
             subprocess.Popen(['explorer', directory])
 
@@ -806,12 +1056,21 @@ def open_folder(directory: str):
         return False
 
 
+# Get current directory, and revert to exec path if it doesn't exist
+def get_cwd():
+    try:
+        return os.path.abspath(os.curdir)
+    except:
+        return executable_folder
+
+
 # Extract archive
 def extract_archive(archive_file: str, export_path: str, skip_root=False):
     archive = None
     archive_type = None
 
-    print(f"Extracting '{archive_file}' to '{export_path}'...")
+    if debug:
+        print(f"Extracting '{archive_file}' to '{export_path}'...")
 
     try:
         if archive_file.endswith("tar.gz"):
@@ -820,20 +1079,54 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
         elif archive_file.endswith("tar"):
             archive = tarfile.open(archive_file, "r:", compresslevel=6)
             archive_type = "tar"
-        elif archive_file.endswith("zip"):
+        elif archive_file.endswith("zip") or archive_file.endswith("mrpack"):
             archive = zipfile.ZipFile(archive_file, 'r')
             archive_type = "zip"
 
         if archive and applicationFolder in os.path.split(export_path)[0]:
             folder_check(export_path)
 
+            # Use tar if available, for speed
+            use_tar = False
+            if archive_type == 'tar':
+                try:
+                    rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL)
+                    use_tar = rc == 0
+
+                except Exception as e:
+                    if debug:
+                        print(e)
+                    use_tar = False
+
+            if debug and use_tar:
+                print('Extract: Using "tar" as a provider')
+
+
             # Keep integrity of archive
             if not skip_root:
-                archive.extractall(export_path)
+
+                if use_tar:
+                    archive_file = os.path.abspath(archive_file)
+                    run_proc(f"tar -xf \"{archive_file}\" -C \"{export_path}\"")
+                else:
+                    archive.extractall(export_path)
 
             # Export from root folder instead
             else:
-                if archive_type == "tar":
+                if use_tar:
+                    run_proc(f"tar -x{'z' if archive_file.endswith('.tar.gz') else ''}f \"{archive_file}\" -C \"{export_path}\"")
+
+                    # Find sub-folders
+                    folders = [f for f in glob(os.path.join(export_path, '*')) if os.path.isdir(f)]
+                    target = os.path.join(export_path, folders[0])
+
+                    # Move data to root, and delete the sub-folder
+                    for f in glob(os.path.join(target, '*')):
+                        move(f, os.path.join(export_path, os.path.basename(f)))
+
+                    safe_delete(target)
+
+                elif archive_type == "tar":
                     def remove_root(file):
                         root_path = file.getmembers()[0].path
                         if "/" in root_path:
@@ -855,22 +1148,43 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
                         zip_info.filename = zip_info.filename[len(root_path):]
                         archive.extract(zip_info, export_path)
 
-            print(f"Extracted '{archive_file}' to '{export_path}'")
-        else:
+            if debug:
+                print(f"Extracted '{archive_file}' to '{export_path}'")
+        elif debug:
             print(f"Archive '{archive_file}' was not found")
 
     except Exception as e:
         print(f"Something went wrong extracting '{archive_file}': {e}")
 
 
+# Check if root is a folder instead of files, and move sub-folders to destination
+def move_files_root(source, destination=None):
+    destination = source if not destination else destination
+    folder_list = [d for d in glob(os.path.join(source, '*')) if os.path.isdir(d)]
+    file_list = [f for f in glob(os.path.join(source, '*')) if os.path.isdir(f)]
+    if len(folder_list) == 1 and len(file_list) <= 1:
+
+        # Move data to root, and delete the sub-folder
+        for f in glob(os.path.join(folder_list[0], '*')):
+            move(f, os.path.join(destination, os.path.basename(f)))
+        safe_delete(folder_list[0])
+
+    # If destination is a different path and there is no root folder, move anyway
+    elif source != destination:
+        for f in glob(os.path.join(source, '*')):
+            move(f, os.path.join(destination, os.path.basename(f)))
+
+
 # Download file from URL to directory
 def download_url(url: str, file_name: str, output_path: str, progress_func=None):
-
-    # with DownloadProgressBar(unit='B', unit_scale=True, bar_format='{l_bar}{bar:40}\x1b[97m{r_bar}\x1b[97m{bar:-40b}', colour="GREEN", miniters=1, desc=file_name) as t:
     opener = urllib.request.build_opener()
     opener.addheaders = [('User-agent', 'Mozilla/5.0')]
     urllib.request.install_opener(opener)
-    urllib.request.urlretrieve(url, filename=os.path.join(output_path, file_name), reporthook=progress_func)
+    file_path = os.path.join(output_path, file_name)
+    folder_check(output_path)
+    urllib.request.urlretrieve(url, filename=file_path, reporthook=progress_func)
+    if os.path.isfile(file_path):
+        return file_path
 
 
 # Will attempt to delete dir tree without error
@@ -984,17 +1298,18 @@ def gen_rstring(size: int):
     return ''.join(choices(string.ascii_uppercase + string.ascii_lowercase, k=size))
 
 
+
 # --------------------------------------------- Startup Functions ------------------------------------------------------
 
 # Check if client has an internet connection
 def check_app_updates():
-    global project_link, app_version, app_latest, app_online, update_data, auto_update
+    global project_link, app_version, dev_version, app_latest, app_online, update_data, auto_update
 
     # Check if updates are available
     try:
         # Grab release data
         latest_release = f"https://api.github.com/repos{project_link.split('.com')[1]}/releases/latest"
-        req = requests.get(latest_release)
+        req = requests.get(latest_release, timeout=5)
         status_code = req.status_code
         app_online = status_code in (200, 403)
         release_data = req.json()
@@ -1023,6 +1338,14 @@ def check_app_updates():
                     checksum = "windows"
                     continue
 
+                if "macOS" in line:
+                    checksum = "macos"
+                    continue
+
+                if "arm64" in line.lower():
+                    checksum = "linux-arm64"
+                    continue
+
                 if "Linux" in line:
                     checksum = "linux"
                     continue
@@ -1044,16 +1367,26 @@ def check_app_updates():
 
         # Download links
         for file in release_data['assets']:
-            if 'linux' in file['name']:
-                update_data['urls']['linux'] = file['browser_download_url']
-                continue
             if 'windows' in file['name']:
                 update_data['urls']['windows'] = file['browser_download_url']
+                continue
+            if 'macos' in file['name']:
+                update_data['urls']['macos'] = file['browser_download_url']
+                continue
+            if 'arm64' in file['name']:
+                update_data['urls']['linux-arm64'] = file['browser_download_url']
+                continue
+            if 'linux' in file['name']:
+                update_data['urls']['linux'] = file['browser_download_url']
                 continue
 
         # Check if app needs to be updated, and URL was successful
         if check_app_version(str(app_version), str(update_data['version'])):
             app_latest = False
+
+        # Check if dev version
+        elif (str(app_version) != str(update_data['version'])) and check_app_version(str(update_data['version']), str(app_version)):
+            dev_version = True
 
     except Exception as e:
         if debug:
@@ -1062,13 +1395,14 @@ def check_app_updates():
 
 # Get latest game versions
 def find_latest_mc():
+    timeout = 15
 
     def latest_version(name, url):
 
         if name == "vanilla":
             # Vanilla
             try:
-                reqs = requests.get(url)
+                reqs = requests.get(url, timeout=timeout)
                 soup = BeautifulSoup(reqs.text, 'html.parser')
 
                 for div in soup.find_all('div', "item flex items-center p-3 border-b border-gray-700 snap-start ncItem"):
@@ -1088,14 +1422,14 @@ def find_latest_mc():
 
         elif name == "forge":
             # Forge
-            reqs = requests.get(url)
+            reqs = requests.get(url, timeout=timeout)
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
             # Get side panel latest version
             a = soup.find('ul', 'nav-collapsible nav-collapsible-open')
             try:
                 new_url = url.rsplit('/', 1)[0] + '/' + a.find('a').get('href')
-                reqs = requests.get(new_url)
+                reqs = requests.get(new_url, timeout=timeout)
                 soup = BeautifulSoup(reqs.text, 'html.parser')
             except:
                 pass
@@ -1103,13 +1437,13 @@ def find_latest_mc():
             title_list = soup.find_all('div', "title")
 
             for div in title_list:
-                if "download latest" in div.text.lower():
+                if "download recommended" in div.text.lower():
                     latestMC["forge"] = div.small.text.split(" -")[0]
                     latestMC["builds"]["forge"] = div.small.text.split(" - ")[1]
                     break
             else:
                 for div in title_list:
-                    if "download recommended" in div.text.lower():
+                    if "download latest" in div.text.lower():
                         latestMC["forge"] = div.small.text.split(" -")[0]
                         latestMC["builds"]["forge"] = div.small.text.split(" - ")[1]
                         break
@@ -1117,22 +1451,35 @@ def find_latest_mc():
 
         elif name == "paper":
             # Paper
-            reqs = requests.get(url)
-            soup = BeautifulSoup(reqs.text, 'html.parser')
+            reqs = requests.get(url, timeout=timeout)
 
             jsonObject = json.loads(reqs.text)
             version = jsonObject['versions'][-1]
             latestMC["paper"] = version
 
-            build_url = f"https://papermc.io/api/v2/projects/paper/versions/{version}"
+            build_url = f"{url}/versions/{version}"
             reqs = requests.get(build_url)
             jsonObject = json.loads(reqs.text)
             latestMC["builds"]["paper"] = jsonObject['builds'][-1]
 
 
+        elif name == "purpur":
+            # Purpur
+            reqs = requests.get(url, timeout=timeout)
+
+            jsonObject = json.loads(reqs.text)
+            version = jsonObject['versions'][-1]
+            latestMC["purpur"] = version
+
+            build_url = f"{url}/{version}"
+            reqs = requests.get(build_url)
+            jsonObject = json.loads(reqs.text)
+            latestMC["builds"]["purpur"] = jsonObject['builds']['latest']
+
+
         elif name == "spigot":
             # Spigot
-            reqs = requests.get(url)
+            reqs = requests.get(url, timeout=timeout)
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
             latestMC["spigot"] = soup.find('div', "row vdivide").h2.text
@@ -1140,7 +1487,7 @@ def find_latest_mc():
 
         elif name == "craftbukkit":
             # Craftbukkit
-            reqs = requests.get(url)
+            reqs = requests.get(url, timeout=timeout)
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
             latestMC["craftbukkit"] = soup.find('div', "row vdivide").h2.text
@@ -1153,7 +1500,7 @@ def find_latest_mc():
             installer = "https://meta.fabricmc.net/v2/versions/installer"
 
             # Game version
-            reqs = requests.get(version)
+            reqs = requests.get(version, timeout=timeout)
             jsonObject = json.loads(reqs.text)
 
             for item in jsonObject:
@@ -1162,7 +1509,7 @@ def find_latest_mc():
                     break
 
             # Loader build
-            reqs = requests.get(loader)
+            reqs = requests.get(loader, timeout=timeout)
             jsonObject = json.loads(reqs.text)
 
             for item in jsonObject:
@@ -1171,7 +1518,7 @@ def find_latest_mc():
                     break
 
             # Installer build
-            reqs = requests.get(installer)
+            reqs = requests.get(installer, timeout=timeout)
             jsonObject = json.loads(reqs.text)
 
             for item in jsonObject:
@@ -1186,13 +1533,14 @@ def find_latest_mc():
     version_links = {
         "vanilla": "https://mcversions.net/index.html",
         "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/index.html",
-        "paper": "https://papermc.io/api/v2/projects/paper/",
+        "paper": "https://papermc.io/api/v2/projects/paper",
+        "purpur": "https://api.purpurmc.org/v2/purpur",
         "spigot": "https://getbukkit.org/download/spigot",
         "craftbukkit": "https://getbukkit.org/download/craftbukkit",
         "fabric": "https://fabricmc.net/use/server/"
     }
 
-    with ThreadPoolExecutor(max_workers=10) as pool:
+    with ThreadPoolExecutor(max_workers=6) as pool:
         pool.map(latest_version, version_links.keys(), version_links.values())
 
 
@@ -1313,20 +1661,24 @@ def generate_splash(crash=False):
     session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
 
 
-# Downloads the latest version of Auto-MCS if available
+# Downloads the latest version of auto-mcs if available
 def download_update(progress_func=None):
 
     def hook(a, b, c):
         if progress_func:
             progress_func(round(100 * a * b / c))
 
-    update_url = update_data['urls']['windows' if os_name == 'windows' else 'linux']
+    if os_name == 'linux' and is_arm:
+        update_url = update_data['urls']['linux-arm64']
+    else:
+        update_url = update_data['urls'][os_name]
+
     if not update_url:
         return False
 
-    # Attempt at most 5 times to download server.jar
+    # Attempt at most 3 times to download auto-mcs
     fail_count = 0
-    while fail_count < 5:
+    while fail_count < 3:
 
         safe_delete(downDir)
         folder_check(downDir)
@@ -1338,22 +1690,30 @@ def download_update(progress_func=None):
 
 
             # Specify names
-            binary_zip = 'auto-mcs.zip'
-            binary_name = 'auto-mcs.exe' if os_name == 'windows' else 'auto-mcs'
+            if os_name == 'macos':
+                binary_zip = 'auto-mcs.dmg'
+                binary_name = 'auto-mcs.app'
+            else:
+                binary_zip = 'auto-mcs.zip'
+                binary_name = 'auto-mcs.exe' if os_name == 'windows' else 'auto-mcs'
 
             # Download binary zip, and extract the binary from the archive
             download_url(update_url, binary_zip, downDir, hook)
             update_path = os.path.join(downDir, binary_zip)
-            extract_archive(update_path, downDir)
-            binary_file = os.path.join(downDir, binary_name)
-            os.remove(update_path)
+
+            if os_name == 'macos':
+                binary_file = update_path
+            else:
+                extract_archive(update_path, downDir)
+                os.remove(update_path)
+                binary_file = os.path.join(downDir, binary_name)
 
 
             # If successful, copy to tmpsvr
             if os.path.isfile(binary_file):
 
                 # If the hash matches, continue
-                if get_checksum(binary_file) == update_data['md5']['windows' if os_name == 'windows' else 'linux']:
+                if get_checksum(binary_file) == update_data['md5'][os_name]:
 
                     if progress_func:
                         progress_func(100)
@@ -1497,6 +1857,22 @@ def validate_version(server_info: dict):
                         url = ""
 
 
+            elif str.lower(mcType) == "purpur":
+
+                # Workaround to prevent downloading Java 16 as well
+                if mcVer != "1.17":
+
+                    try:
+                        paper_url = f"https://api.purpurmc.org/v2/purpur/{mcVer}"
+                        reqs = requests.get(paper_url)
+                        jsonObject = json.loads(reqs.text)
+                        buildNum = jsonObject['builds']['latest']
+
+                        url = f"https://api.purpurmc.org/v2/purpur/{mcVer}/{buildNum}/download"
+                    except:
+                        url = ""
+
+
             elif str.lower(mcType) == "forge":
                 print(modifiedVersion)
                 # 1.16.3 is unavailable due to issues with Java
@@ -1507,9 +1883,20 @@ def validate_version(server_info: dict):
                         forge_url = f"https://files.minecraftforge.net/net/minecraftforge/forge/index_{mcVer}.html"
                         reqs = requests.get(forge_url)
                         soup = BeautifulSoup(reqs.text, 'html.parser')
-                        div = soup.find('div', "link link-boosted")
 
-                        urls = div.a.get('href').split("&url=")
+                        download_divs = soup.find_all('div', "download")
+                        dl = None
+                        for div in download_divs:
+                            if "download recommended" in div.find('div', "title").text.lower() and version_check(mcVer, '<=', '1.15.2'):
+                                dl = div.find('div', "link link-boosted")
+                                break
+                        else:
+                            for div in download_divs:
+                                if "download latest" in div.find('div', "title").text.lower():
+                                    dl = div.find('div', "link link-boosted")
+                                    break
+
+                        urls = dl.a.get('href').split("&url=")
 
                         for possible_url in urls:
                             if ".jar" in possible_url:
@@ -1588,7 +1975,7 @@ def validate_version(server_info: dict):
                     final_info = [True, {'version': mcVer, 'build': buildNum}, "", serverLink]
 
                     if modifiedVersion > 0:
-                        final_info[2] = f"'{originalRequest}' could not be found, using '{mcVer}' instead"
+                        final_info[2] = f"'${originalRequest}$' could not be found, using '${mcVer}$' instead"
                     originalRequest = ""
 
                     version_loading = False
@@ -1624,7 +2011,7 @@ def validate_version(server_info: dict):
         pass
 
     if not mcVer:
-        final_info = [False, {'version': originalRequest, 'build': buildNum}, f"'{originalRequest}' doesn't exist, or can't be retrieved", None]
+        final_info = [False, {'version': originalRequest, 'build': buildNum}, f"'${originalRequest}$' doesn't exist, or can't be retrieved", None]
 
     version_loading = False
     return final_info
@@ -1634,7 +2021,7 @@ def search_version(server_info: dict):
         server_info['version'] = latestMC[server_info['type']]
 
         # Set build info
-        if server_info['type'] in ["forge", "paper"]:
+        if server_info['type'] in ["forge", "paper", "purpur"]:
             server_info['build'] = latestMC['builds'][server_info['type']]
 
     return validate_version(server_info)
@@ -1688,6 +2075,22 @@ def new_server_init():
     }
 
 
+# Generate new server name
+def new_server_name(existing_server=None):
+    def iter_name(new_name):
+        x = 1
+        while new_name.lower() in server_list_lower:
+            new_name = f'{new_name} ({x})'
+            x += 1
+        return new_name
+
+    if existing_server:
+        return iter_name(existing_server)
+
+    elif not new_server_info['name']:
+        new_server_info['name'] = iter_name('New Server')
+
+
 # Verify portable java is available in '.auto-mcs\Tools', if not install it
 modern_pct = 0
 legacy_pct = 0
@@ -1704,6 +2107,10 @@ def java_check(progress_func=None):
         'linux': {
             "modern": "https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/linux-i586/jre-8u331-linux-x64.tar.gz"
+        },
+        'linux-arm64': {
+            "modern": "https://download.oracle.com/java/17/latest/jdk-17_linux-aarch64_bin.tar.gz",
+            "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_281-b09/89d678f2be164786b292527658ca1605/linux-i586/jdk-8u281-linux-aarch64.tar.gz"
         },
         'macos': {
             "modern": "https://download.oracle.com/java/17/latest/jdk-17_macos-x64_bin.tar.gz",
@@ -1723,11 +2130,19 @@ def java_check(progress_func=None):
             return False
 
         # Check if installations function before doing anything
-        if os.path.exists(os.path.abspath(os.path.join(applicationFolder, 'Tools', 'java'))):
+        if os.path.exists(os.path.abspath(javaDir)):
 
-            modern_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'bin', 'java.exe' if os_name == "windows" else 'java')
-            legacy_path = os.path.join(applicationFolder, 'Tools', 'java', 'legacy', 'bin', 'java.exe' if os_name == "windows" else 'java')
-            jar_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'bin', 'jar.exe' if os_name == "windows" else 'jar')
+            # Gather paths to Java installed internally
+            if os_name == 'macos':
+                modern_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'Contents', 'Home', 'bin', 'java')
+                legacy_path = os.path.join(applicationFolder, 'Tools', 'java', 'legacy', 'Contents', 'Home', 'bin', 'java')
+                jar_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'Contents', 'Home', 'bin', 'jar')
+
+            else:
+                modern_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'bin', 'java.exe' if os_name == "windows" else 'java')
+                legacy_path = os.path.join(applicationFolder, 'Tools', 'java', 'legacy', 'bin', 'java.exe' if os_name == "windows" else 'java')
+                jar_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'bin', 'jar.exe' if os_name == "windows" else 'jar')
+
 
             if (run_proc(f'"{os.path.abspath(modern_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(legacy_path)}" -version') == 0):
 
@@ -1775,6 +2190,14 @@ def java_check(progress_func=None):
                 timer.daemon = True
                 timer.start()  # Checks for potential crash
 
+
+            # Detect if running on ARM
+            if os_name == 'linux' and is_arm:
+                os_download = 'linux-arm64'
+            else:
+                os_download = os_name
+
+
             with ThreadPoolExecutor(max_workers=2) as pool:
 
                 def hook1(a, b, c):
@@ -1787,7 +2210,7 @@ def java_check(progress_func=None):
 
                 pool.map(
                     download_url,
-                    [java_url[os_name]['modern'], java_url[os_name]['legacy']],
+                    [java_url[os_download]['modern'], java_url[os_download]['legacy']],
                     [modern_filename, legacy_filename],
                     [downDir, downDir],
                     [hook1 if progress_func else None, hook2 if progress_func else None]
@@ -1797,8 +2220,8 @@ def java_check(progress_func=None):
                 timer.cancel()
 
             # Install java by extracting the files to their respective folder
-            modern_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern')
-            legacy_path = os.path.join(applicationFolder, 'Tools', 'java', 'legacy')
+            modern_path = os.path.join(javaDir, 'modern')
+            legacy_path = os.path.join(javaDir, 'legacy')
 
             safe_delete(modern_path)
             safe_delete(legacy_path)
@@ -1824,13 +2247,16 @@ def java_check(progress_func=None):
 # Create New Server stuffies
 
 # Downloads jar file from new_server_info, and generates link if it doesn't exist
-def download_jar(progress_func=None):
+def download_jar(progress_func=None, imported=False):
 
     def hook(a, b, c):
         if progress_func:
             progress_func(round(100 * a * b / c))
 
-    if not new_server_info['jar_link']:
+    if imported:
+        import_data['jar_link'] = search_version(import_data)[3]
+
+    elif not new_server_info['jar_link']:
         new_server_info['jar_link'] = search_version(new_server_info)[3]
 
     # Attempt at most 5 times to download server.jar
@@ -1846,9 +2272,14 @@ def download_jar(progress_func=None):
             if progress_func and fail_count > 0:
                 progress_func(0)
 
-            jar_name = ('forge' if new_server_info['type'] == 'forge' else 'server') + '.jar'
+            if imported:
+                jar_name = ('forge' if import_data['type'] == 'forge' else 'server') + '.jar'
+                download_url(import_data['jar_link'], jar_name, downDir, hook)
 
-            download_url(new_server_info['jar_link'], jar_name, downDir, hook)
+            else:
+                jar_name = ('forge' if new_server_info['type'] == 'forge' else 'server') + '.jar'
+                download_url(new_server_info['jar_link'], jar_name, downDir, hook)
+
             jar_path = os.path.join(downDir, jar_name)
 
             # If successful, copy to tmpsvr
@@ -1889,7 +2320,7 @@ def iter_addons(progress_func=None, update=False):
     if new_server_info['server_settings']['geyser_support']:
 
         # Add vault for permissions
-        if new_server_info['type'] in ['craftbukkit', 'spigot', 'paper']:
+        if server_type(new_server_info['type']) == 'bukkit':
             vault = addons.find_addon('vault', new_server_info)
             if vault:
                 if vault not in all_addons:
@@ -1913,7 +2344,7 @@ def iter_addons(progress_func=None, update=False):
     if addon_count == 0:
         return True
 
-    addon_folder = "plugins" if new_server_info['type'] in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+    addon_folder = "plugins" if server_type(new_server_info['type']) == 'bukkit' else 'mods'
     folder_check(os.path.join(tmpsvr, addon_folder))
     folder_check(os.path.join(tmpsvr, "disabled-" + addon_folder))
 
@@ -1932,7 +2363,7 @@ def iter_addons(progress_func=None, update=False):
                     addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
                     downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
                     if not downloaded:
-                        disabled_folder = "plugins" if server_manager.current_server.type in ['spigot', 'craftbukkit', 'paper'] else 'mods'
+                        disabled_folder = "plugins" if server_type(server_manager.current_server.type) == 'bukkit' else 'mods'
                         copy(addon_object.path, os.path.join(tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
 
                     return True
@@ -1973,20 +2404,27 @@ def iter_addons(progress_func=None, update=False):
 
 
 # If Fabric or Forge, install server
-def install_server(progress_func=None):
+def install_server(progress_func=None, imported=False):
 
     # Change directory to tmpsvr
-    cwd = os.path.abspath(os.curdir)
+    cwd = get_cwd()
     os.chdir(tmpsvr)
+
+    if imported:
+        jar_version = import_data['version']
+        jar_type = import_data['type']
+    else:
+        jar_version = new_server_info['version']
+        jar_type = new_server_info['type']
 
 
     # Install Forge server
-    if new_server_info['type'] == 'forge':
+    if jar_type == 'forge':
 
         run_proc(f'"{java_executable["modern"]}" -jar forge.jar -installServer')
 
         # Modern
-        if version_check(new_server_info['version'], ">=", "1.17"):
+        if version_check(jar_version, ">=", "1.17"):
             for f in glob("run*"):
                 os.remove(f)
 
@@ -1998,7 +2436,7 @@ def install_server(progress_func=None):
 
 
         # 1.6 to 1.16
-        elif version_check(new_server_info['version'], ">=", "1.6") and version_check(new_server_info['version'], "<", "1.17"):
+        elif version_check(jar_version, ">=", "1.6") and version_check(jar_version, "<", "1.17"):
             if os_name == "windows":
                 run_proc("move *forge-*.jar server.jar")
             else:
@@ -2009,7 +2447,7 @@ def install_server(progress_func=None):
 
 
     # Install Fabric server
-    elif new_server_info['type'] == 'fabric':
+    elif jar_type == 'fabric':
 
         print("test", f'"{java_executable["modern"]}" -jar server.jar nogui')
 
@@ -2102,6 +2540,11 @@ eula=true"""
         'hardcore': 3
     }
 
+    if new_server_info['server_settings']['motd'].lower() == 'a minecraft server':
+        motd = translate('A Minecraft Server')
+    else:
+        motd = new_server_info['server_settings']['motd']
+
     def bool_str(value):
         return 'true' if value else 'false'
 
@@ -2122,7 +2565,7 @@ generator-settings=
 resource-pack=
 player-idle-timeout=0
 level-name={world_name}
-motd={new_server_info['server_settings']['motd']}
+motd={motd}
 announce-player-achievements=true
 force-gamemode=false
 hardcore={bool_str(new_server_info['server_settings']['difficulty'] == 'hardcore')}
@@ -2275,13 +2718,13 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 
 # Import Server stuffies
 
-# Figures out type and version of server. Returns information to constants.import_data dict
+# Figures out type and version of server. Returns information to import_data dict
 # There will be issues importing 1.17.0 bukkit derivatives due to Java 16 requirement
 def scan_import(bkup_file=False, progress_func=None, *args):
     name = import_data['name']
     path = import_data['path']
 
-    cwd = os.path.abspath(os.curdir)
+    cwd = get_cwd()
     folder_check(tmpsvr)
     os.chdir(tmpsvr)
 
@@ -2314,6 +2757,10 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             import_data['build'] = str(config_file.get('general', 'serverBuild'))
         except:
             pass
+        try:
+            import_data['launch_flags'] = str(config_file.get('general', 'customFlags'))
+        except:
+            pass
         import_data['config_file'] = config_file
 
         # Then delete it for later
@@ -2338,10 +2785,13 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             # Find server jar name
             with open(file, 'r') as f:
                 output = f.read()
+                raw_output = output
                 f.close()
+                start_script = False
 
                 if "-jar" in output and ".jar" in output:
-                    file_name = output.split("-jar ")[1].split(".jar")[0]
+                    start_script = True
+                    file_name = re.search(r'\S+(?=\.jar)', output).group(0)
 
                     # copy jar file to test directory
                     copy(os.path.join(str(path), f'{file_name}.jar'), test_server)
@@ -2368,6 +2818,10 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                         elif "modloader" in output.lower() or "forge" in output.lower() or "fml" in output.lower():
                             import_data['type'] = "forge"
 
+                        # Purpur keywords
+                        elif "purpur" in version_output.lower():
+                            import_data['type'] = "purpur"
+
                         # Paper keywords
                         elif "paperclip" in output.lower():
                             import_data['type'] = "paper"
@@ -2379,7 +2833,6 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                         import_data['build'] = str(json.load(f)['currentVersion'].lower().split('paper-')[1].split(' ')[0].strip())
                                 except:
                                     pass
-
 
                         # Spigot keywords
                         elif "spigot" in output.lower() or "spigot" in version_output.lower():
@@ -2429,7 +2882,7 @@ eula=true"""
                         # Run latest version of java
                         else:
                             # If paper, copy pre-downloaded vanilla .jar files if they exist
-                            if import_data['type'] == "paper":
+                            if import_data['type'] in ["paper", "purpur"]:
                                 copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
                             server = subprocess.Popen(f"\"{java_executable['modern']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar server.jar nogui", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
@@ -2475,6 +2928,7 @@ eula=true"""
 
                 # New versions of forge
                 elif "@libraries/net/minecraftforge/forge/" in output:
+                    start_script = True
 
                     version = output.split("@libraries/net/minecraftforge/forge/")[1].split("-")[0]
 
@@ -2490,6 +2944,39 @@ eula=true"""
                             import_data['version'] = version_list[0].split("-")[0].lower()
                             import_data['build'] = str(version_list[0].split("-")[1])
                             break
+
+
+                # Gather launch flags
+                if start_script:
+                    if 'launch_flags' not in import_data.keys():
+                        import_data['launch_flags'] = []
+                    def process_flags(flags):
+                        if (flags.startswith('"') and flags.endswith('"')) or (flags.startswith("'") and flags.endswith("'")):
+                            flags = flags[1:-1]
+
+                        for flag in flags.split(' '):
+
+                            # Clean up flags
+                            for qt in ['"', "'"]:
+                                if flag.startswith(qt):
+                                    flag = flag[1:]
+                                if flag.endswith(qt):
+                                    flag = flag[:-1]
+
+                            # Ignore flags with invalid data
+                            if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
+                                continue
+                            for exclude in ['-install', '-server', '-jar', '--nogui', '-Command', '-fullversion',
+                                            '-version']:
+                                if exclude in flag:
+                                    break
+
+                            else:
+                                # Add flag to final data
+                                if flag.strip() not in import_data['launch_flags'] and flag.strip():
+                                    import_data['launch_flags'].append(flag.strip())
+                    for match in re.findall(r'(?<= |=)--?\S+', raw_output):
+                        process_flags(match)
 
 
             # Import files and such
@@ -2540,6 +3027,11 @@ eula=true"""
 
             try:
                 config_file.set('general', 'allocatedMemory', str(import_data['config_file'].get('general', 'allocatedMemory')).lower())
+            except configparser.NoOptionError:
+                pass
+
+            try:
+                config_file.set('general', 'customFlags', str(import_data['config_file'].get('general', 'customFlags')).lower())
             except configparser.NoOptionError:
                 pass
 
@@ -2597,6 +3089,7 @@ eula=true"""
 
 # Moves tmpsvr to actual server and checks for ACL and other file validity
 def finalize_import(progress_func=None, *args):
+    global import_data
 
     if import_data['name']:
 
@@ -2631,10 +3124,22 @@ eula=true"""
                 f.write(eula)
 
             if server_path(import_data['name'], 'server.properties'):
-                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'w+') as f:
+                content = []
+                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'r') as f:
                     content = f.readlines()
-                    content[1] = f"#{time_stamp}"
+                    edited = False
+                    if len(content) >= 1:
+                        if content[1].startswith('#'):
+                            content[1] = f"#{time_stamp}\n"
+                            edited = True
+                    if not edited:
+                        content.insert(0, f"#{time_stamp}\n")
+                        content.insert(0, "#Minecraft server properties\n")
+
+                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'w+') as f:
                     f.writelines(content)
+            else:
+                fix_empty_properties(import_data['name'])
 
 
         if os_name == "windows":
@@ -2666,6 +3171,537 @@ eula=true"""
             return True
 
 
+# Imports a modpack from a .zip file
+def scan_modpack(update=False, progress_func=None):
+    global import_data
+
+    # First, download modpack if it's a URL
+    try:
+        url = import_data['url']
+    except KeyError:
+        file_path = import_data['path']
+    else:
+        file_path = import_data['path'] = download_url(url, f"{sanitize_name(import_data['name'])}.{url.rsplit('.',1)[-1]}", downDir)
+
+
+    # Test archive first
+    if not os.path.isfile(file_path) or file_path.split('.')[-1] not in ['zip', 'mrpack']:
+        return False
+
+    # Set up directory structures and extract the modpack
+    cwd = get_cwd()
+    folder_check(tmpsvr)
+    os.chdir(tmpsvr)
+
+    test_server = os.path.join(tempDir, 'importtest')
+    folder_check(test_server)
+    os.chdir(test_server)
+
+    extract_archive(file_path, test_server)
+    move_files_root(test_server)
+
+    if progress_func:
+        progress_func(50)
+
+
+    # Clean-up name
+    def process_name(name):
+
+        # First, sanitize the name of encoded data and irrelevant characters
+        name = name.encode('ascii').decode('unicode_escape')
+        name = re.sub(r'§\S', '', name).replace('\\', '')
+        name = re.sub(r'v?\d+(\.?\d+)+\w?', '', name)
+        name = re.sub(r'fabric|forge|modpack', '', name, flags=re.IGNORECASE)
+        name = re.sub('[^a-zA-Z0-9 .\']', '', name).strip()
+        name = re.sub(r'\s+',' ', name)
+
+        if name:
+
+            # Filter words in the title
+            articles = ('a', 'an', 'the', 'and', 'of', 'with', 'in', 'for')
+            name = ' '.join([w for w in name.split(' ') if (w[0].isupper() or w[0].isdigit() or w in articles)]).strip()
+
+            data['name'] = name
+
+        return name
+
+    # Clean-up launch flags
+    def process_flags(flags):
+        if (flags.startswith('"') and flags.endswith('"')) or (flags.startswith("'") and flags.endswith("'")):
+            flags = flags[1:-1]
+
+        for flag in flags.split(' '):
+
+            # Clean up flags
+            for qt in ['"', "'"]:
+                if flag.startswith(qt):
+                    flag = flag[1:]
+                if flag.endswith(qt):
+                    flag = flag[:-1]
+
+            # Ignore flags with invalid data
+            if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
+                continue
+            for exclude in ['-install', '-server', '-jar', '--nogui', '-Command', '-fullversion', '-version']:
+                if exclude in flag:
+                    break
+
+            else:
+                # Add flag to final data
+                if flag.strip() not in data['launch_flags'] and flag.strip():
+                    data['launch_flags'].append(flag.strip())
+
+
+    data = {
+        'name': None,
+        'type': None,
+        'version': None,
+        'build': None,
+        'launch_flags': [],
+        'pack_type': 'zip'
+    }
+
+    if import_data['name'] and not update:
+        data['name'] = new_server_name(process_name(import_data['name']))
+
+
+    # Approach #1: Look for "modrinth.index.json"
+    if file_path.endswith('.mrpack'):
+        data['pack_type'] = 'mrpack'
+        mr_index = os.path.join(test_server, 'modrinth.index.json')
+        if os.path.isfile(mr_index):
+            with open(mr_index, 'r') as f:
+
+                # Reorganize .json for ease of iteration
+                metadata = [
+                    {
+                        'url':i['downloads'][0],
+                        'file_name':os.path.basename(i['path']),
+                        'destination':os.path.join(test_server, os.path.dirname(i['path']))
+                    }
+                    for i in json.loads(f.read())["files"]
+                ]
+
+                def get_mod_url(mod_data):
+                    try:
+                        return cs_download_url(mod_data['url'], mod_data['file_name'], mod_data['destination'])
+                    except Exception as e:
+                        return False
+
+                # Iterate over additional content to see if it's available to be downloaded
+                with ThreadPoolExecutor(max_workers=20) as pool:
+                    for result in pool.map(get_mod_url, metadata):
+                        if not result:
+                            return result
+
+
+    # Approach #2: look for "ServerStarter"
+    server_starter = False
+    yaml_list = []
+    for file in glob(os.path.join(test_server, '*.*')):
+        with open(file, 'r', encoding='utf-8', errors='ignore') as f:
+            text_content = f.read()
+            file_name = os.path.basename(file)
+            if 'serverstarter' in text_content.lower() or 'serverstarter' in file_name.lower():
+                server_starter = True
+            if file_name.rsplit('.', 1)[1] in ['yml', 'yaml']:
+                try:
+                    yaml_list.append(text_content)
+                except:
+                    pass
+    if server_starter and yaml_list:
+        for raw_content in yaml_list:
+            content = yaml.safe_load(raw_content)
+            if 'modpack' in content.keys() and '_specver' in content.keys():
+                data['name'] = content['modpack']['name']
+                data['version'] = content['install']['mcVersion']
+                data['build'] = content['install']['loaderVersion']
+                data['launch_flags'] = content['launch']['javaArgs']
+
+                matches = {'forge': 0, 'fabric': 0}
+                matches['forge'] += len(re.findall(r'\bforge\b', raw_content, re.IGNORECASE))
+                matches['fabric'] += len(re.findall(r'\bfabric\b', raw_content, re.IGNORECASE))
+                data['type'] = 'fabric' if matches['fabric'] > matches['forge'] else 'forge'
+
+                # Install additional content if required
+                try:
+                    if content['install']['modpackUrl']:
+                        url = content['install']['modpackUrl']
+                        additional_extract = os.path.join(tempDir, 'additional_extract')
+                        additional = os.path.join(test_server, 'modpack_additional.zip')
+
+                        # Download additional content defined in the .yaml
+                        if cs_download_url(url, os.path.basename(additional), test_server):
+                            folder_check(additional_extract)
+                            extract_archive(additional, additional_extract)
+                            move_files_root(additional_extract, test_server)
+
+                            # Download mods from "manifest.json"
+                            mod_dict = os.path.join(additional_extract, 'manifest.json')
+
+                            if os.path.isfile(mod_dict):
+                                with open(mod_dict, 'r') as f:
+                                    metadata = json.loads(f.read())
+
+                                    def get_mod_url(mod_data):
+                                        destination = os.path.join(test_server, 'mods')
+                                        mod_name = None
+                                        mod_url = None
+
+                                        # If URL is provided
+                                        try:
+                                            if mod_data['downloadUrl']:
+                                                if mod_data['downloadUrl'].endswith('.jar'):
+                                                    mod_name = sanitize_name(
+                                                        mod_data['downloadUrl'].rsplit('/', 1)[-1])[:-3] + '.jar'
+                                                else:
+                                                    mod_name = mod_data['downloadUrl'].rsplit('/', 1)[-1]
+                                                mod_url = mod_data['downloadUrl']
+                                        except KeyError:
+                                            pass
+
+                                        if mod_name and mod_url:
+                                            return cs_download_url(mod_url, mod_name, destination)
+                                        else:
+                                            return False
+
+                                    # Iterate over additional content to see if it's available to be downloaded
+                                    with ThreadPoolExecutor(max_workers=20) as pool:
+                                        for result in pool.map(get_mod_url, metadata['files']):
+                                            if not result:
+                                                return result
+
+                except KeyError:
+                    pass
+
+    # Approach #3: inspect "variables.txt"
+    if os.path.exists('variables.txt'):
+        with open('variables.txt', 'r', encoding='utf-8', errors='ignore') as f:
+            variables = {}
+            for line in f.readlines():
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    variables[key.lower()] = value.replace('\n','')
+            data['version'] = variables['minecraft_version'].strip()
+            data['build'] = variables['modloader_version'].strip()
+            data['type'] = variables['modloader'].lower().strip()
+            process_flags(variables['java_args'])
+
+    # Approach #4: inspect launch scripts and server.jar
+    if not data['version'] or not data['type']:
+
+        # Generate script list and iterate through each one
+        file_list = glob(os.path.join(str(test_server), "*.bat"))
+        file_list.extend(glob(os.path.join(str(test_server), "*.sh")))
+        jar_exists_name_fail = False
+
+        # First, search through all the scripts to find the type, version, and launch flags
+        for file in file_list:
+
+            # Find server jar name
+            with open(file, 'r', encoding='utf-8', errors='ignore') as f:
+                output = f.read()
+                f.close()
+
+                # Reformat variables set in config files (Forge)
+                for match in re.findall(r'forge.*\.jar', output):
+                    if '$' in match or '%' in match:
+                        jar_exists_name_fail = True
+                        continue
+
+                    split_match = match.split('-')
+                    if len(split_match) >= 3:
+                        jar_exists_name_fail = False
+                        data['version'] = split_match[1]
+                        data['type'] = 'forge'
+                        data['build'] = split_match[2].replace('.jar','')
+                        break
+
+                # Reformat variables set in config files (Fabric)
+                for match in re.findall(r'fabric.*\.jar', output):
+                    if '$' in match or '%' in match:
+                        jar_exists_name_fail = True
+                        continue
+
+                    split_match = match.split('-')
+                    if len(split_match) >= 3:
+                        jar_exists_name_fail = False
+                        data['version'] = split_match[2].replace('mc.','')
+                        data['type'] = 'fabric'
+                        data['build'] = split_match[3].replace('loader.','')
+                        break
+
+                # Gather launch flags
+                for match in re.findall(r'(?<= |=)--?\S+', output):
+                    process_flags(match)
+
+
+        # If a file exists but the name could not be determined, look for it manually
+        if jar_exists_name_fail:
+
+            # Reformat variables set in config files (Forge)
+            for match in glob(os.path.join(test_server, 'forge-*.jar')):
+                split_match = os.path.basename(match).split('-')
+                if len(split_match) >= 3:
+                    data['version'] = split_match[1]
+                    data['type'] = 'forge'
+                    data['build'] = split_match[2].replace('.jar', '')
+                    break
+
+            # Reformat variables set in config files (Fabric)
+            for match in glob(os.path.join(test_server, 'fabric-*.jar')):
+                split_match = os.path.basename(match).split('-')
+                if len(split_match) >= 3:
+                    data['version'] = split_match[2].replace('mc.', '')
+                    data['type'] = 'fabric'
+                    data['build'] = split_match[3].replace('loader.', '')
+                    break
+
+    # Approach #3: inspect server files
+    if not data['version'] or not data['type']:
+
+        # Generate script list and iterate through each one
+        file_list = glob(os.path.join(test_server, "*.txt"))
+        if os.path.exists(os.path.join(test_server, 'scripts')):
+            file_list = glob(os.path.join(test_server, "scripts", "*.*"))
+        if os.path.exists(os.path.join(test_server, 'config')):
+            file_list.extend(glob(os.path.join(test_server, "config", "*.*")))
+
+        matches = {
+            'forge': 0,
+            'fabric': 0,
+            'versions': []
+        }
+
+        def process_matches(content):
+            matches['forge'] += len(re.findall(r'\bforge\b', content, re.IGNORECASE))
+            matches['fabric'] += len(re.findall(r'\bfabric\b', content, re.IGNORECASE))
+            matches['versions'].extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
+
+        # First, search through all the files to find the type, version, and launch flags
+        for file in file_list:
+
+            # Find server jar name
+            with open(file, 'r', encoding='utf-8', errors='ignore') as f:
+                output = f.read()
+                f.close()
+                process_matches(output)
+                process_matches(os.path.basename(file))
+
+        process_matches(os.path.basename(file_path))
+
+        # Second, search through all the mod names to more accurately determine the MC version
+        if os.path.exists(os.path.join(test_server, 'mods')):
+            for mod in glob(os.path.join(test_server, "mods", "*.jar")):
+                process_matches(os.path.basename(mod))
+
+        data['type'] = 'fabric' if matches['fabric'] > matches['forge'] else 'forge'
+        if matches['versions']:
+            data['version'] = max(set(matches['versions']), key=matches['versions'].count)
+
+
+    # Get the modpack name
+    if not data['name']:
+
+        # Get the name from "server.properties"
+        if os.path.isfile('server.properties'):
+            with open('server.properties', 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f.readlines():
+                    if line.lower().startswith('motd='):
+                        line = line.split('motd=', 1)[1]
+                        process_name(line)
+                        break
+
+        # Get the name from the file if not declared in the "server.properties"
+        if not data['name'] or data['name'].lower() == 'a minecraft server':
+            name = os.path.basename(file_path).rsplit('.',1)[0]
+            name = re.sub(r'(?<=\S)(-|_|\+)(?=\S)', ' ', name)
+            if 'server' in name.lower():
+                name = name[:len(name.lower().split('server')[0])].strip()
+            process_name(name)
+
+    # Look in alternate locations for launch flags
+    for file in glob(os.path.join(test_server, '*.*')):
+        for key in ['jvm', 'args', 'arguments', 'param']:
+            if key in os.path.basename(file):
+                with open(file, 'r') as f:
+                    text = f.read()
+                    for match in re.findall(r'(?<= |=|\n)--?\S+', text):
+                        process_flags(match)
+                    break
+
+
+    if data['type'] and data['version'] and data['name']:
+        import_data = {
+            'name': data['name'],
+            'path': import_data['path'],
+            'type': data['type'],
+            'version': data['version'],
+            'build': data['build'],
+            'launch_flags': data['launch_flags'],
+            'pack_type': data['pack_type']
+        }
+
+        if progress_func:
+            progress_func(100)
+
+        return data
+    else:
+        return False
+
+
+# Moves tmpsvr to actual server and checks for ACL and other file validity
+def finalize_modpack(update=False, progress_func=None, *args):
+    global import_data
+
+    test_server = os.path.join(tempDir, 'importtest')
+
+    if import_data['name'] and os.path.exists(test_server):
+
+        # Finish migrating data to tmpsvr
+        for item in glob(os.path.join(test_server, '*')):
+            file_name = os.path.basename(item)
+            if os.path.isdir(item) or (os.path.isfile(item) and (file_name.endswith('.txt') or file_name.endswith('.png') or file_name.endswith('.yml') or file_name.endswith('.json') or file_name in ['server.properties'])):
+
+                # Scale and migrate image for "server-icon.png", if one is not provided
+                if file_name.lower() == 'icon.png' and not os.path.exists(os.path.join(tmpsvr, 'server-icon.png')):
+                    try:
+                        im = Image.open(file_name)
+                        im.thumbnail((64, 64), Image.LANCZOS)
+                        im.save(os.path.join(tmpsvr, 'server-icon.png'), 'png')
+                    except IOError:
+                        print("Error: can't create thumbnail for server icon")
+                    continue
+
+                elif file_name == 'server-icon.png':
+                    copy(item, tmpsvr)
+                    continue
+
+                elif file_name == 'modrinth.index.json':
+                    copy(item, tmpsvr)
+                    if os_name == 'windows':
+                        run_proc(f"attrib +H \"{os.path.join(tmpsvr, 'modrinth.index.json')}\"")
+                    else:
+                        os.rename(os.path.join(tmpsvr, 'modrinth.index.json'), os.path.join(tmpsvr, '.modrinth.index.json'))
+                    continue
+
+                elif file_name.endswith('.png'):
+                    continue
+
+                if file_name.lower() == 'eula.txt':
+                    continue
+
+                # Recursively copy folders, and simply copy files
+                if os.path.isdir(item):
+                    copytree(item, os.path.join(tmpsvr, file_name), dirs_exist_ok=True)
+                else:
+                    copy(item, tmpsvr)
+
+
+        # Copy existing data from modpack if updating
+        new_path = os.path.join(serverDir, import_data['name'])
+        if update and os.path.isdir(new_path):
+            valid_files = ['server.properties', 'eula.txt', 'auto-mcs.ini', '.auto-mcs.ini', 'start-cmd.tmp']
+            for item in glob(os.path.join(new_path, '*')):
+                file_name = os.path.basename(item)
+                if os.path.isdir(item) or (os.path.isfile(item) and (file_name.endswith('.txt') or file_name.endswith('.yml') or file_name.endswith('.json') or file_name in valid_files)):
+                    if file_name == 'modrinth.index.json':
+                        continue
+
+                    elif os.path.isdir(item) and file_name in ['mods', 'config', 'versions', 'libraries', 'resources', '.fabric']:
+                        continue
+
+                    # Recursively copy folders, and simply copy files
+                    if os.path.isdir(item):
+                        copytree(item, os.path.join(tmpsvr, file_name), dirs_exist_ok=True)
+                    else:
+                        copy(item, tmpsvr)
+
+
+        # Create auto-mcs.ini
+        if update and os.path.isfile(os.path.join(new_path, server_ini)):
+            new_config = server_config(import_data['name'])
+            new_config.set('general', 'serverVersion', import_data['version'])
+            if import_data['build']:
+                new_config.set('general', 'serverBuild', str(import_data['build']))
+            try:
+                new_config.set('general', 'customFlags', ' '.join(import_data['launch_flags']))
+            except:
+                pass
+            new_config.set('general', 'serverType', import_data['type'])
+            server_config(import_data['name'], new_config, os.path.join(tmpsvr, server_ini))
+
+            if progress_func:
+                progress_func(33)
+
+            # Erase server folder after copying
+            safe_delete(new_path)
+
+        else:
+            create_server_config(import_data, True, import_data['pack_type'])
+
+
+        # Copy folder to server path and delete tmpsvr
+        folder_check(new_path)
+        copytree(tmpsvr, new_path, dirs_exist_ok=True)
+        safe_delete(tempDir)
+        safe_delete(downDir)
+
+        if progress_func:
+            progress_func(33 if not update else 66)
+
+
+        # Generate ACL, 'EULA.txt', and 'server.properties' if importing a new modpack
+        if not update:
+
+            # Add global rules to ACL
+            from acl import AclManager
+            AclManager(import_data['name']).write_rules()
+
+            if progress_func:
+                progress_func(66)
+
+
+            # Write EULA and "server.properties"
+            time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
+
+            # Generate EULA.txt
+            eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
+{time_stamp}
+eula=true"""
+
+            with open(os.path.join(server_path(import_data['name']), 'eula.txt'), 'w+') as f:
+                f.write(eula)
+
+            if server_path(import_data['name'], 'server.properties'):
+                content = []
+                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'r') as f:
+                    content = f.readlines()
+                    edited = False
+                    if len(content) >= 1:
+                        if content[1].startswith('#'):
+                            content[1] = f"#{time_stamp}\n"
+                            edited = True
+                    if not edited:
+                        content.insert(0, f"#{time_stamp}\n")
+                        content.insert(0, "#Minecraft server properties\n")
+
+                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'w+') as f:
+                    f.writelines(content)
+            else:
+                fix_empty_properties(import_data['name'])
+
+
+        if server_path(import_data['name'], server_ini):
+            safe_delete(tempDir)
+            safe_delete(downDir)
+            make_update_list()
+            if progress_func:
+                progress_func(100)
+            return True
+
+
+
 # Generates new information for a server update
 def init_update():
     server_obj = server_manager.current_server
@@ -2693,7 +3729,16 @@ def init_update():
     new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled
 
 
+
 # ------------------------------------------------ Server Functions ----------------------------------------------------
+
+# Returns general server type from specific type
+def server_type(specific_type: str):
+    if specific_type.lower().strip() in ['craftbukkit', 'bukkit', 'spigot', 'paper', 'purpur']:
+        return 'bukkit'
+    else:
+        return specific_type.lower().strip()
+
 
 # Returns absolute file path of server directories
 def server_path(server_name: str, *args):
@@ -2713,7 +3758,7 @@ def server_config(server_name: str, write_object=None, config_path=None):
     # If write_object, write it to file path
     if write_object:
 
-        if write_object.get('general', 'serverType').lower() not in ['forge', 'paper']:
+        if write_object.get('general', 'serverType').lower() not in ['forge', 'paper', 'purpur']:
             write_object.remove_option('general', 'serverBuild')
 
         if os_name == "windows":
@@ -2740,7 +3785,7 @@ def server_config(server_name: str, write_object=None, config_path=None):
 
 
 # Creates new auto-mcs.ini config file
-def create_server_config(properties: dict, temp_server=False):
+def create_server_config(properties: dict, temp_server=False, modpack=False):
 
     # Write default config
     config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
@@ -2761,6 +3806,12 @@ def create_server_config(properties: dict, temp_server=False):
     except:
         config.set('general', 'enableGeyser', 'false')
     config.set('general', 'enableNgrok', 'false')
+    try:
+        config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
+    except:
+        pass
+    if modpack:
+        config.set('general', 'isModpack', str(modpack))
 
     config.add_section('bkup')
     config.set('bkup', 'bkupAuto', 'prompt')
@@ -2897,10 +3948,10 @@ def calculate_ram(properties):
 
 
 # Generates server batch/shell script
-def generate_run_script(properties, temp_server=False):
+def generate_run_script(properties, temp_server=False, custom_flags=None, no_flags=False):
 
     # Change directory to server path
-    cwd = os.path.abspath(os.curdir)
+    cwd = get_cwd()
     if temp_server:
         folder_check(tmpsvr)
         os.chdir(tmpsvr)
@@ -2911,7 +3962,14 @@ def generate_run_script(properties, temp_server=False):
 
     script = ""
     ram = calculate_ram(properties)
-    start_flags = '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true -Dlog4j2.formatMsgNoLookups=true'
+
+    # Use custom flags, or Aikar's flags if none are provided
+    if no_flags:
+        start_flags = ''
+    elif not custom_flags:
+        start_flags = ' -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
+    else:
+        start_flags = f' {custom_flags}'
 
 
     # For every version except Forge
@@ -2921,10 +3979,14 @@ def generate_run_script(properties, temp_server=False):
         java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['modern']
 
         # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
-        script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true'
+        script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
 
-        if version_check(properties['version'], "<", "1.16.5") and properties['type'] == 'paper':
+        if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
             script += ' -DPaper.ignoreJavaVersion=true'
+
+        # Improve performance on Purpur
+        if properties['type'] == 'purpur':
+            script += ' --add-modules=jdk.incubator.vector'
 
         script += ' -jar server.jar nogui'
 
@@ -2980,6 +4042,42 @@ def generate_server_list():
     return server_list
 
 
+# Retrieve modrinth config for updates
+def get_modrinth_data(name: str):
+    index = os.path.join(server_path(name), f'{"" if os_name == "windows" else "."}modrinth.index.json')
+    index_data = {"name": None, "version": '0.0.0', "latest": '0.0.0'}
+
+    if index:
+        if os_name == 'windows':
+            run_proc(f"attrib -H \"{index}\"")
+
+        with open(index, 'r') as f:
+            data = json.loads(f.read())
+
+            try:
+                index_data['name'] = data['name']
+            except KeyError:
+                pass
+            try:
+                index_data['version'] = data['versionId']
+            except KeyError:
+                pass
+
+        if os_name == 'windows':
+            run_proc(f"attrib +H \"{index}\"")
+
+
+        # Check online for latest version
+        try:
+            online_modpack = addons.get_modpack_url(addons.search_modpacks(index_data['name'])[0])
+            index_data['latest'] = online_modpack.download_version
+            index_data['download_url'] = online_modpack.download_url
+        except IndexError:
+            pass
+
+
+    return index_data
+
 # Return list of every valid server update property in 'applicationFolder'
 def make_update_list():
     global update_list
@@ -2990,12 +4088,7 @@ def make_update_list():
 
         name = os.path.basename(name)
 
-        serverObject = {
-                            name: {
-                                    "updateAuto": "false",
-                                    "needsUpdate": "false"
-                                  }
-                       }
+        serverObject = {name: {"updateAuto": "false", "needsUpdate": "false", "updateString": None, "updateUrl": None}}
 
         configFile = os.path.abspath(os.path.join(applicationFolder, 'Servers', name, server_ini))
 
@@ -3013,15 +4106,31 @@ def make_update_list():
             except configparser.NoOptionError:
                 jarBuild = ""
 
-            new_version = latestMC[jarType.lower()]
-            current_version = jarVer
+            try:
+                isModpack = str(config.get("general", "isModpack"))
+            except configparser.NoOptionError:
+                isModpack = ""
 
-            if ((jarType.lower() in ["forge", "paper"]) and (jarBuild != "")) and (new_version == current_version):
-                new_version += " b-" + str(latestMC["builds"][jarType.lower()])
-                current_version += " b-" + str(jarBuild)
 
-            if (new_version != current_version) and not current_version.startswith("0.0.0"):
-                serverObject[name]["needsUpdate"] = "true"
+            if isModpack:
+                if isModpack == 'mrpack':
+                    modpack_data = get_modrinth_data(name)
+                    if (modpack_data['version'] != modpack_data['latest']) and not modpack_data['latest'].startswith("0.0.0"):
+                        serverObject[name]["needsUpdate"] = "true"
+                        serverObject[name]["updateString"] = modpack_data['latest']
+                        serverObject[name]["updateUrl"] = modpack_data['download_url']
+
+
+            else:
+                new_version = latestMC[jarType.lower()]
+                current_version = jarVer
+
+                if ((jarType.lower() in ["forge", "paper", "purpur"]) and (jarBuild != "")) and (new_version == current_version):
+                    new_version += " b-" + str(latestMC["builds"][jarType.lower()])
+                    current_version += " b-" + str(jarBuild)
+
+                if (new_version != current_version) and not current_version.startswith("0.0.0"):
+                    serverObject[name]["needsUpdate"] = "true"
 
             serverObject[name]["updateAuto"] = updateAuto
 
@@ -3047,7 +4156,17 @@ def install_ngrok():
                 file_name = "ngrok.zip"
                 break
 
-            if os_name == "linux" and "stable-linux-amd64" in dl_url:
+            if os_name == "macos" and "stable-darwin-amd64" in dl_url:
+                final_url = dl_url
+                file_name = "ngrok.zip"
+                break
+
+            if os_name == "linux" and is_arm and "stable-linux-arm64" in dl_url:
+                final_url = dl_url
+                file_name = "ngrok.tgz"
+                break
+
+            if os_name == "linux" and not is_arm and "stable-linux-amd64" in dl_url:
                 final_url = dl_url
                 file_name = "ngrok.tgz"
                 break
@@ -3067,7 +4186,7 @@ def install_ngrok():
 
         # Extract executable from archive
         folder_check(tool_path)
-        cwd = os.path.abspath(os.curdir)
+        cwd = get_cwd()
         os.chdir(tool_path)
         archive_file = ('ngrok.exe' if os_name == 'windows' else 'ngrok')
         run_proc(f"tar -xf \"{os.path.join(downDir, file_name)}\" \"{archive_file}\"")
@@ -3089,6 +4208,9 @@ def check_ngrok_creds():
     if os_name == 'windows':
         config_path = os.path.join(home, 'AppData', 'Local', 'ngrok', 'ngrok.yml')
         old_path = os.path.join(home, '.ngrok2', 'ngrok.yml')
+    elif os_name == 'macos':
+        config_path = os.path.join(appdata, 'ngrok', 'ngrok.yml')
+        old_path = os.path.join(home, '.config', 'ngrok', 'ngrok.yml')
     else:
         config_path = os.path.join(home, '.config', 'ngrok', 'ngrok.yml')
         old_path = os.path.join(home, '.ngrok2', 'ngrok.yml')
@@ -3375,6 +4497,7 @@ def control_backspace(text, index):
     new_index = len(text) - len(final_text)
     return final_text, new_index
 
+
 # Get player head to .png: pass player object
 def get_player_head(user: str):
 
@@ -3395,6 +4518,9 @@ def get_player_head(user: str):
             else:
                 os.remove(final_path)
 
+        elif not check_free_space():
+            return default_image
+
         folder_check(head_cache)
         download_url(url, user, head_cache)
 
@@ -3407,3 +4533,541 @@ def get_player_head(user: str):
         if debug:
             print(f"Error retrieving head for '{user}': {e}")
         return default_image
+
+
+
+# ---------------------------------------------- Global Search Function ------------------------------------------------
+
+# Generates content for all global searches
+class SearchManager():
+    
+    def __init__(self):
+
+        # Used to contain attributes of pages
+        class ScreenObject():
+            def __init__(self, name: str, screen_id: str, options: list or staticmethod, helper_keywords=[]):
+                self.id = screen_id
+                self.name = name
+                self.options = options
+                self.helper_keywords = helper_keywords
+                self.score = 0
+
+        self.guide_tree = {}
+        self.options_tree = {
+
+            'MainMenu': [
+                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen'}, ['addonpack', 'modpack', 'import modpack']),
+                ScreenObject('Server Manager', 'ServerManagerScreen', generate_server_list),
+            ],
+
+            'CreateServer': [
+                ScreenObject('Create Server (Step 1)', 'CreateServerNameScreen', {'Server Name': None}),
+                ScreenObject('Create Server (Step 2)', 'CreateServerTypeScreen', {'Select Vanilla': None, 'Select Paper': None, 'Select Purpur': None, 'Select Fabric': None, 'Select CraftBukkit': None, 'Select Forge': None, 'Select Spigot': None}),
+                ScreenObject('Create Server (Step 3)', 'CreateServerVersionScreen', {'Type in version': None}),
+                ScreenObject('Create Server (Step 4)', 'CreateServerWorldScreen', {'Browse for a world': None, 'Type in seed': None, 'Select world type': None}),
+                ScreenObject('Create Server (Step 5)', 'CreateServerNetworkScreen', {'Specify IP/port': None, 'Type in Message Of The Day': None, 'Configure Access Control': 'CreateServerAclScreen'}),
+                ScreenObject('Create Server (Access Control)', 'CreateServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
+                ScreenObject('Create Server (Add-on Manager)', 'CreateServerAddonScreen', {'Download add-ons': 'CreateServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None}, ['mod', 'plugin', 'addon', 'extension']),
+                ScreenObject('Create Server (Step 6)', 'CreateServerOptionsScreen', {'Change gamemode': None, 'Change difficulty': None, 'Specify maximum players': None, 'Enable spawn protection': None, 'Configure gamerules': None, 'Specify randomTickSpeed': None, 'Enable Bedrock support': None}),
+                ScreenObject('Create Server (Step 7)', 'CreateServerReviewScreen', {'Review & create server': None})
+            ],
+
+            'ServerImport': [
+                ScreenObject('Import Server', 'ServerImportScreen', {'Import a server folder': None, 'Import an auto-mcs back-up': None, 'Import a Modpack': None, 'Download a Modpack': None}),
+            ],
+
+            'Server': [
+                ScreenObject('Server Manager', 'ServerViewScreen', {'Launch server': None, 'Stop server': None, 'Restart server': None, 'Enter console commands': None}),
+                ScreenObject('Back-up Manager', 'ServerBackupScreen', {'Save a back-up now': None, 'Restore from a back-up': 'ServerBackupRestoreScreen', 'Enable automatic back-ups': None, 'Specify maximum back-ups': None, 'Open back-up directory': None, 'Migrate back-up directory': None}, ['backup', 'revert', 'snapshot', 'restore', 'save']),
+                ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
+                ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}, ['mod', 'plugin', 'addon', 'extension']),
+                ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}, ['amscript', 'script', 'ide', 'develop']),
+                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (ngrok)': None, 'Install proxy (ngrok)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'update', 'jvm', 'motd'])
+            ]
+        }
+
+    # Cache the guides to a .json file
+    def cache_pages(self):
+        if not app_online:
+            return False
+
+        def get_html_contents(url: str):
+            while True:
+                req = requests.get(url)
+                if req.status_code == 200:
+                    break
+                else:
+                    time.sleep(3)
+
+            return BeautifulSoup(req.content, features='html.parser')
+
+        cache_file = os.path.join(cacheDir, 'guide-cache.json')
+        cache_data = {}
+
+        # If cache file exists, load data from there instead
+        if os.path.exists(cache_file):
+            with open(cache_file, 'r') as f:
+                self.guide_tree = json.loads(f.read())
+                return True
+
+        # If not, scrape the website
+        base_url = "https://www.auto-mcs.com/guides"
+        content = get_html_contents(base_url)
+
+        for a in content.find_all('a', class_="portfolio-hover-item"):
+
+            sub_url = base_url + a.get('href').replace('guides/', '')
+            title = a.get_text().strip()
+
+            guide = get_html_contents(sub_url)
+            time.sleep(1)
+
+            # Clean-up guide by removing unnecessary elements
+            for tag in guide("div", id='toc'):
+                tag.decompose()
+            for tag in guide("section", id='itemPagination'):
+                tag.decompose()
+            for tag in guide("section", class_='page-section'):
+                if '<  guides' in tag.get_text() or 'help@auto-mcs.com' in tag.get_text():
+                    tag.decompose()
+
+            # Format specific tags in a custom way
+            for tag in guide("code"):
+                add_space = tag.text[-1] == ' '
+                tag.replace_with(f'`{tag.text.strip()}`{" " if add_space else ""}')
+
+            for tag in guide("a"):
+                try:
+                    href = tag.get('href')
+                    if href:
+                        if href.startswith('/'):
+                            href = f'https://auto-mcs.com{href}'
+
+                        if href.endswith('.png') or href.endswith('.jpg'):
+                            new_href = requests.get(href, allow_redirects=True).history[-1].headers['location']
+                            time.sleep(1)
+                            tag.replace_with(BeautifulSoup(f'<img src="{new_href}">', 'html.parser').img)
+                            continue
+
+                        tag.replace_with(f'[{tag.text}](<{href}>)')
+                except:
+                    pass
+
+            # Organize page contents into a dictionary of headers and paragraphs
+            page_content = {}
+            images = {}
+            last = None
+            last_header = ''
+            header_list = ['h1', 'h2', 'h3']
+            for element in guide.find_all():
+                text = element.text.strip()
+
+                accordion_header = 'accordion-item__title' in element.get('class', []) and element.name == 'span'
+
+                if element.name in ['p', 'ul', 'img'] or element.name in header_list or accordion_header:
+                    if len(element.text) > 10000:
+                        continue
+
+                    if last:
+                        if last.name in header_list and element.name in header_list:
+                            continue
+
+                    # Format lists
+                    if element.name == 'ul':
+                        text = '\n'.join([f'- {l.text.strip()}' for l in element.find_all('li') if l.text.strip()])
+                    elif element.name == 'li' or element.parent.name == 'li':
+                        continue
+
+                    # Format images
+                    if element.name == 'img':
+                        try:
+                            text = f"[⠀]({element.get('src')})"
+                            images[last_header].append(text)
+                        except:
+                            pass
+                        continue
+
+                    last = element
+
+                    # Ignore certain headers
+                    if ('controls' == text.lower() or 'some notable features include' in text.lower()):
+                        text = f"## {text}"
+
+                    # Add header
+                    elif element.name in header_list or accordion_header:
+                        last_header = text.lower()
+                        page_content[last_header] = ''
+                        images[last_header] = []
+                        continue
+
+                    page_content[last_header] += re.sub(r'\n\n+', '\n\n', text) + '\n'
+
+            # Format text to read better
+            for header, content in page_content.items():
+                content = re.sub(r'\.(?=[A-Z])', '.\n\n', content)
+                content = re.sub(r'(\n+Note:  )(.*)(\n+)', lambda x: f'\n\n> *Note:*  **{x.group(2)}**\n\n', f'\n{content}\n').strip()
+                content = re.sub(r'(?<=(\w|\d|\.|\?|\!))(\n)(?=(\w|\d|\.|\?|\!))', '\n\n', content).strip()
+                content = content.replace('permissions**\n\n!`auto-mcs --launch "Server 1, Server 2"`', 'permissions! `auto-mcs --launch "Server 1, Server 2"`**')
+                content = content.replace('`java.lang.**\n\nOutOfMemoryError: Java heap space`', '`java.lang.OutOfMemoryError: Java heap space`**')
+                if header in images:
+                    content += ' '.join(list(set(images[header])))
+
+                # Remove empty data
+                if not content.strip():
+                    del page_content[header]
+
+                page_content[header] = content
+
+            cache_data[title] = {'url': sub_url, 'content': page_content}
+
+        with open(cache_file, 'w+') as f:
+            f.write(json.dumps(cache_data))
+        self.guide_tree = cache_data
+        return True
+
+    # Generates a list of available options based on the current screen
+    def filter_options(self, current_screen):
+        screen_list = self.options_tree['MainMenu']
+        final_list = []
+
+        if current_screen.startswith('ServerImport'):
+            screen_list.extend(self.options_tree['ServerImport'])
+
+        if current_screen.startswith('CreateServer'):
+            for screen in self.options_tree['CreateServer']:
+                if not (new_server_info['type'] == 'vanilla' and screen.id == 'ServerAddonScreen'):
+                    if screen not in screen_list:
+                        screen_list.append(screen)
+
+        if server_manager.current_server:
+            for screen in self.options_tree['Server']:
+                if not (server_manager.current_server.type == 'vanilla' and screen.id == 'ServerAddonScreen'):
+                    if screen not in screen_list:
+                        screen_list.append(screen)
+
+
+        # Iterate through available screens to create search objects
+        for screen in screen_list:
+            if screen.id == 'ServerManagerScreen':
+                final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, screen.helper_keywords))
+                for server in screen.options():
+                    final_list.append(ServerResult(server, 'Installed server', None))
+
+            elif (screen.id.startswith('Server') and 'Import' not in screen.id) and server_manager.current_server:
+                keywords = list(screen.options.keys())
+                keywords.extend(screen.helper_keywords)
+                if current_screen != screen.id:
+                    final_list.append(ScreenResult(screen.name, f'Configuration page ({server_manager.current_server.name})', screen.id, keywords))
+                for setting, value in screen.options.items():
+
+                    # Ignore results for running server
+                    if server_manager.current_server.running and setting.lower() in ('launch server', 'update this server', "change 'server.jar'", 'rename this server', 'change world file', 'delete this server'):
+                        continue
+                    elif not server_manager.current_server.running and setting.lower() in ('restart server', 'stop server'):
+                        continue
+
+                    # Change results for ngrok installation
+                    if setting.lower() == 'enable proxy (ngrok)' and not ngrok_installed:
+                        continue
+                    if setting.lower() == 'install proxy (ngrok)' and ngrok_installed:
+                        continue
+
+                    # If server is up to date, hide update prompt
+                    if setting.lower() == 'update this server' and not server_manager.current_server.update_string:
+                        continue
+
+                    final_list.append(SettingResult(setting, f'Action in {screen.name} ({server_manager.current_server.name})', value if value else screen.id, keywords))
+
+            else:
+                keywords = list(screen.options.keys())
+                keywords.extend(screen.helper_keywords)
+                final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, keywords))
+                for setting, value in screen.options.items():
+
+                    if setting.lower() == 'update auto-mcs' and app_latest:
+                        continue
+
+                    final_list.append(SettingResult(setting, f'Action in {screen.name}', value if value else screen.id, keywords))
+
+
+        # Return a list of all created screens, settings, and guides
+        return final_list
+
+    # Generate a list of weighted results from a search
+    def execute_search(self, current_screen, query):
+        
+        match_list = {
+            'guide': SearchObject(),
+            'setting': [],
+            'screen': [],
+            'server': []
+        }
+
+        # Cleanup strings
+        def clean_str(string):
+            return string.strip().lower().replace('-', '')
+
+        # Removes common words to improve search results
+        def remove_common_words(string):
+            common_words = ['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'I', 'it', 'for', 'not',
+                            'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they',
+                            'we', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there',
+                            'their', 'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me',
+                            'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know', 'take', 'people',
+                            'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than', 'then',
+                            'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also', 'back', 'after', 'two',
+                            'how', 'our', 'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any',
+                            'these', 'give', 'day', 'most', 'us', 'is']
+
+            final_words = []
+
+            for w in string.split(' '):
+                if w.lower().strip() not in common_words:
+                    final_words.append(w)
+
+            return ' '.join(final_words)
+
+        # Manual query overrides for improved results
+        def check_overrides(string):
+            def check_word(w):
+                return len(re.findall(fr'\b{w}\b', string)) > 0
+
+            if (check_word('automcs') or check_word('this')) and 'what' in query.lower():
+                return 'getting started'
+
+            elif (check_word('automcs') or check_word(
+                'this')) and 'addon' not in query.lower() and 'script' not in query.lower() and (
+                check_word('download') or check_word('use') or check_word('install') or check_word('get')):
+                return 'installation'
+
+            elif (check_word('level') or check_word('world')) and (
+                'back' not in query.lower() and 'up' not in query.lower()):
+                return 'change the world'
+
+            elif check_word('ram') or check_word('memory'):
+                return 'allocate memory'
+
+            elif check_word('ide'):
+                return 'amscript ide'
+
+            elif 'modding' in query.lower():
+                return 'installing addons'
+
+            elif check_word('distribution'):
+                return 'server type'
+
+            elif (check_word('use') or check_word('controls') or check_word('help') or check_word('manager')) and (
+                check_word('acl') or 'access control' in query.lower()):
+                return 'what are rules'
+
+            elif (check_word('make') or check_word('create')) and check_word('server'):
+                return 'create a server'
+
+            elif check_word('amscript') and 'what is' in query.lower():
+                return 'amscript'
+
+            elif 'port forward' in query.lower() or check_word(
+                'nat') or 'address translation' in query.lower() or check_word('tcp') or check_word(
+                'udp') or 'port trigger' in query.lower():
+                return 'wan config'
+
+            elif check_word('port') or check_word('ip'):
+                return 'lan config'
+
+            elif check_word('amscript') and (
+                check_word('download') or check_word('use') or check_word('install') or check_word('get')):
+                return 'amscript getting started'
+
+            else:
+                return string
+
+
+        # Find matching objects
+        options_list = self.filter_options(current_screen)
+        if options_list:
+            o_query = query
+
+            # First check for a title match
+            query = clean_str(query).replace('?', '').replace(',', '').replace('help','').replace('guide','')
+            query = query.replace('mod', 'addon').replace('plugin', 'addon').replace('folder', 'directory').replace('path', 'directory').replace('addonpack', 'modpack')
+            query = check_overrides(query)
+
+            for obj in options_list:
+                title = obj.title
+                simple_query = remove_common_words(query)
+                if simple_query in clean_str(obj.title):
+                    obj.score = 100
+                    if obj not in match_list[obj.type]:
+                        match_list[obj.type].append(obj)
+
+            # If no match was found, search every content header
+            else:
+                for obj in options_list:
+                    title = clean_str(obj.title)
+                    obj.score = 0
+
+                    if query == title:
+                        obj.score = 100
+
+                    else:
+                        # Initial score based on title match
+                        obj.score = similarity(query, title) * 10
+
+                        # Increase score comparing word by word
+                        for w1 in title.split(' '):
+                            for w2 in query.split(' '):
+                                obj.score += ((similarity(w1, w2) * len(w2)) * 2)
+
+                        # Finally, increase score by pre-existing keyword matches
+                        for keyword in obj.keywords:
+                            if keyword in query:
+                                obj.score += 5
+
+                        # Modify values based on object type
+                        if obj.type == 'server' and current_screen == 'ServerManagerScreen':
+                            obj.score *= 2
+                        elif obj.type == 'server' and (current_screen.startswith('Server') or current_screen.startswith('CreateServer')):
+                            obj.score /= 1.5
+
+                    if obj not in match_list[obj.type]:
+                        match_list[obj.type].append(obj)
+
+
+        # Search through every guide to return relevant information from a query
+        if app_online and self.guide_tree:
+            o_query = query
+
+            # First check for a title match
+            query = clean_str(query).replace('?', '').replace(',', '').replace('help','').replace('guide','')
+            query = query.replace('mod', 'addon').replace('plugin', 'addon').replace('folder', 'directory').replace('path', 'directory')
+            query = check_overrides(query)
+
+            for title in self.guide_tree.keys():
+                simple_query = remove_common_words(query)
+                if simple_query in clean_str(title):
+                    match_list['guide'] = GuideResult(
+                        f'{title} - Overview',
+                        'View guide from auto-mcs.com',
+                        self.guide_tree[title]['url'],
+                        score = 100
+                    )
+
+            # If no match was found, search every content header
+            else:
+                for page_title, data in self.guide_tree.items():
+                    url = data['url']
+                    content = data['content']
+
+                    o_page_title = page_title
+                    page_title = clean_str(page_title)
+
+                    # Ignore pages based on query
+                    def check_word_in_title(w1, w2=None, invert=False):
+                        if not w2:
+                            w2 = w1
+                        if invert:
+                            return w1 in query and w2 not in page_title
+                        else:
+                            return w1 not in query and w2 in page_title
+
+                    if check_word_in_title('addon') or check_word_in_title('backup') or check_word_in_title('amscript'):
+                        continue
+
+                    if check_word_in_title('addon', invert=True) or check_word_in_title('backup', invert=True) or check_word_in_title('amscript', invert=True):
+                        continue
+
+                    for title, paragraph in content.items():
+                        o_paragraph = paragraph
+                        o_title = title
+                        title = clean_str(title)
+                        paragraph = clean_str(paragraph)
+
+                        # If title matches query, give it a high score
+                        if query == title:
+                            similarity_score = 100
+                        else:
+                            # Calculate the similarity score
+                            similarity_score = round(similarity(paragraph, query)) + similarity(title, query)
+
+                            # If words from search are in the paragraph, increase score
+                            for word in remove_common_words(query).split():
+                                if len(word) > 2:
+                                    similarity_score += (len(re.findall(fr'\b{word}\b', paragraph)) / 10)
+                                    similarity_score += (len(re.findall(fr'\b{word}\b', title)) / 10)
+
+                        # print(similarity_score)
+                        if similarity_score > match_list['guide'].score:
+                            if 'https://' in o_title.lower():
+                                continue
+                            match_list['guide'] = GuideResult(
+                                f'{o_page_title} - {o_title.title()}',
+                                'View guide from auto-mcs.com',
+                                url + '#' + o_title.lower().replace(' ', '-'),
+                                score = similarity_score
+                            )
+
+            if 'guide' in o_query.lower() or 'help' in o_query.lower():
+                match_list['guide'].score = 1000
+
+        match_list['setting'] = tuple(sorted(match_list['setting'], key=lambda x: x.score, reverse=True))
+        match_list['screen'] = tuple(sorted(match_list['screen'], key=lambda x: x.score, reverse=True))
+        match_list['server'] = tuple(sorted(match_list['server'], key=lambda x: x.score, reverse=True))
+        return match_list
+
+# Base search result
+class SearchObject():
+    def __init__(self):
+        self.type = 'undefined'
+        self.score = 0
+
+# Search result that matches a setting
+class SettingResult(SearchObject):
+    def __init__(self, title, subtitle, target, keywords=[], score=0):
+        super().__init__()
+        self.type = 'setting'
+        self.icon = os.path.join(gui_assets, 'icons', 'play-circle-sharp.png')
+        self.color = (0.7, 0.7, 1, 1)
+        self.title = title
+        self.subtitle = subtitle
+        self.target = target
+        self.keywords = keywords
+        self.score = score
+
+# Search result that matches an online guide
+class GuideResult(SearchObject):
+    def __init__(self, title, subtitle, target, keywords=[], score=0):
+        super().__init__()
+        self.type = 'guide'
+        self.icon = os.path.join(gui_assets, 'icons', 'newspaper.png')
+        self.color = (0.6, 1, 0.75, 1)
+        self.title = title
+        self.subtitle = subtitle
+        self.target = target
+        self.keywords = keywords
+        self.score = score
+
+# Search result that matches an installed server
+class ServerResult(SearchObject):
+    def __init__(self, title, subtitle, target, keywords=[], score=0):
+        super().__init__()
+        self.type = 'server'
+        self.icon = os.path.join(gui_assets, 'icons', 'sm', 'terminal.png')
+        self.color = (1, 0.598, 0.9, 1)
+        self.title = title
+        self.subtitle = subtitle
+        self.target = target
+        self.keywords = keywords
+        self.score = score
+
+# Search result that matches a configuration page
+class ScreenResult(SearchObject):
+    def __init__(self, title, subtitle, target, keywords=[], score=0):
+        super().__init__()
+        self.type = 'screen'
+        self.icon = os.path.join(gui_assets, 'icons', 'exit-sharp.png')
+        self.color = (0.639, 1, 1, 1)
+        self.title = title
+        self.subtitle = subtitle
+        self.target = target
+        self.keywords = keywords
+        self.score = score

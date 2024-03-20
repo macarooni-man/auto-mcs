@@ -1,5 +1,6 @@
 # Local imports
 from svrmgr import ServerManager
+from constants import SearchManager
 import constants
 
 
@@ -46,6 +47,7 @@ def mainLoop():
 #   
 #   - Windows 10 1909, 20H2, 21H2
 #   - Windows 11 22H2
+#   - macOS Monterey (Intel, 12.7.3)
 #   - Manjaro KDE 2022 - 5.10, 5.16, 6.1, 6.3
 #   - Manjaro XFCE 2022 - 5.15.8  //No file dialog, requires installation of Zenity
 #   - Arch Linux (KDE) - 6.6.9

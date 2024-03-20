@@ -16,6 +16,7 @@ a = Analysis(['wrapper.py'],
              datas = [
                         ('./icon.ico', '.'),
                         ('./baselib.ams', '.'),
+                        ('./locales.json', '.'),
                         ('../build-tools/ca-bundle.crt', '.'),
                         ('/usr/lib64/libcrypt.so.2', '.'),
                         ('./gui-assets/icons/sm/*', './gui-assets/icons/sm')

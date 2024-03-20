@@ -1,4 +1,4 @@
-from tkinter import Tk, Entry, SUNKEN, Canvas, PhotoImage, Button, CENTER, END
+from tkinter import Tk, Entry, SUNKEN, Canvas, PhotoImage, CENTER, END
 from platform import platform, architecture
 from operator import itemgetter
 from PIL import ImageTk, Image
@@ -13,6 +13,18 @@ import os
 
 import constants
 import logviewer
+
+
+# Remove border on macOS buttons
+if constants.os_name == 'macos':
+    import tkmacosx
+    class Button(tkmacosx.Button):
+        def __init__(self, **args):
+            super().__init__(**args)
+            self.config(borderless=1, focusthickness=0, state='active')
+else:
+    from tkinter import Button
+
 
 
 # Generates crash report
@@ -58,8 +70,8 @@ def generate_log(exception):
     constants.folder_check(log_dir)
 
     # Timestamp
-    time_stamp = datetime.datetime.now().strftime("%#H-%M-%S_%#m-%#d-%y" if constants.os_name == "windows" else "%-H-%M-%S_%-m-%-d-%y")
-    time_formatted = datetime.datetime.now().strftime("%#I:%M:%S %p  %#m/%#d/%Y" if constants.os_name == "windows" else "%-I:%M:%S %p  %-m/%-d/%Y")
+    time_stamp = datetime.datetime.now().strftime(constants.fmt_date("%#H-%M-%S_%#m-%#d-%y"))
+    time_formatted = datetime.datetime.now().strftime(constants.fmt_date("%#I:%M:%S %p  %#m/%#d/%Y"))
 
     # Header
     header = f'Auto-MCS Exception:    {ame}  '
@@ -73,6 +85,8 @@ def generate_log(exception):
     calculated_space = 0
     splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)
 
+    formatted_os_name = constants.os_name.title() if constants.os_name != 'macos' else 'macOS'
+
     log = f"""{'=' * (header_len * 3)}
 {"||" + (' ' * round((header_len * 1.5) - (len(header) / 2) - 1)) + header + (' ' * round((header_len * 1.5) - (len(header)) + 14)) + "||"}
 {splash_line + (((header_len * 3) - len(splash_line) - 2) * " ") + "||"}
@@ -81,8 +95,9 @@ def generate_log(exception):
 
     General Info:
 
-        Version:           {constants.app_version} - {constants.os_name.title()} ({platform()})
+        Version:           {constants.app_version} - {formatted_os_name} ({"Docker, " if constants.is_docker else ""}{platform()})
         Online:            {constants.app_online}
+        UI Language:       {constants.get_locale_string(True)}
         Sub-servers:       {', '.join([f"{x}: {y.type} {y.version}" for x, y in enumerate(constants.server_manager.running_servers.values(), 1)]) if constants.server_manager.running_servers else "None"}
         ngrok:             {"Active" if constants.ngrok_ip['ip'] == "" else "Inactive"}
 
@@ -150,7 +165,9 @@ def open_log(log_path):
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
-        'sub_processes': constants.sub_processes
+        'sub_processes': constants.sub_processes,
+        'os_name': constants.os_name,
+        'translate': constants.translate
     }
     logviewer.open_log('Crash Report', log_path, data_dict)
 

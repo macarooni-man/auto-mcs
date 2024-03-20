@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tkinter import Tk, Entry, Label, Canvas, BOTTOM, X, BOTH, END, FIRST, IntVar, Frame, PhotoImage, BaseWidget,\
-    Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, Button, SUNKEN, CURRENT, SEL, INSERT
+    Event, Misc, TclError, Text, ttk, RIGHT, Y, getboolean, SEL_FIRST, SEL_LAST, SUNKEN, CURRENT, SEL, INSERT
 
 from typing import Any, Callable, Optional, Type, Union
 from pygments.token import Keyword, Number, Name
@@ -296,6 +296,8 @@ start_size = (1100, 700)
 last_window = {}
 tab_str = '    '
 default_font_size = 16
+control = 'Control'
+font_name = 'Consolas'
 font_size = 15
 dead_zone = 10
 window = None
@@ -344,11 +346,11 @@ def save_script(script_path, *a):
 
 # Changes font size in editor
 def change_font_size(direction):
-    global font_size, open_frames
+    global font_size, font_name, open_frames
 
     def change_all(*a):
         for frame in open_frames.values():
-            frame.code_editor.configure(font=f'Consolas {font_size}')
+            frame.code_editor.configure(font=f'{font_name} {font_size}')
             frame.code_editor._set_color_scheme(frame.code_editor._color_scheme)
             frame.code_editor.recalc_lexer()
             if frame.ac.visible:
@@ -370,9 +372,14 @@ def change_font_size(direction):
 
 # Init Tk window
 def create_root(data, wdata, name=''):
-    global window, close_window, currently_open, font_size, start_size
+    global window, close_window, currently_open, font_size, default_font_size, start_size, control
 
     if not window:
+
+        # Increase font size on macOS
+        if data['os_name'] == 'macos':
+            default_font_size += 5
+            control = 'Command'
 
         drag_code = """namespace eval tabdrag {}
 bind TNotebook <Destroy> {+tabdrag::destroy %W}
@@ -472,6 +479,9 @@ proc ::tabdrag::move {win x y} {
 
         window = Tk()
         window.tk.eval(drag_code)
+        img = PhotoImage(file=file_icon)
+        window.tk.call('wm', 'iconphoto', window._w, img)
+        window.configure(bg=background_color)
 
         preconfigured = False
         if geometry:
@@ -491,15 +501,12 @@ proc ::tabdrag::move {win x y} {
             y = int((height / 2) - (start_size[1] / 2)) - 15
         window.geometry(f"{start_size[0]}x{start_size[1]}+{x}+{y}")
         window.minsize(width=min_size[0], height=min_size[1])
+        window.title(f'{data["app_title"]} - amscript IDE')
         if fullscreen:
-            if os.name == 'nt':
+            if data['os_name'] in ['windows', 'macos']:
                 window.state('zoomed')
             else:
                 window.attributes('-zoomed', True)
-        window.title(f'{data["app_title"]} - amscript IDE')
-        img = PhotoImage(file=file_icon)
-        window.tk.call('wm', 'iconphoto', window._w, img)
-        window.configure(bg=background_color)
         close_window = False
 
         def autosave(*a):
@@ -723,8 +730,8 @@ proc ::tabdrag::move {win x y} {
             save_window_pos()
             window.after(1000, check_new)
 
-        window.bind_all('<Control-equal>', lambda *_: change_font_size('up'))
-        window.bind_all('<Control-minus>', lambda *_: change_font_size('down'))
+        window.bind_all(f"<{control}-equal>", lambda *_: change_font_size('up'))
+        window.bind_all(f"<{control}-minus>", lambda *_: change_font_size('down'))
 
         check_new()
         window.mainloop()
@@ -732,7 +739,21 @@ proc ::tabdrag::move {win x y} {
 
 # Opens the amscript editor with the specified path in a new tab
 def launch_window(path: str, data: dict, *a):
-    global window, color_search, open_frames, replace_shown
+    global window, color_search, open_frames, replace_shown, control, font_name
+
+    # macOS specific changes
+    if data['os_name'] == 'macos':
+        import tkmacosx
+        right_mouse = "<Button-2>"
+        font_name = "Menlo"
+        class Button(tkmacosx.Button):
+            def __init__(self, master, **args):
+                super().__init__(master, **args)
+                self.config(borderless=1, focusthickness=0, state='active')
+    else:
+        from tkinter import Button
+        right_mouse = "<Button-3>"
+
 
     # Get text
     ams_data = ''
@@ -746,7 +767,7 @@ def launch_window(path: str, data: dict, *a):
 
         style = {
             'editor': {'bg': background_color, 'fg': '#b3b1ad', 'select_fg': "#DDDDFF", 'select_bg': convert_color((0.2, 0.2, 0.4))['hex'], 'inactive_select_bg': convert_color((0.13, 0.13, 0.26))['hex'],
-                'caret': convert_color((0.75, 0.75, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': f"Consolas {font_size} italic"},
+                'caret': convert_color((0.75, 0.75, 1, 1))['hex'], 'caret_width': '3', 'border_width': '0', 'focus_border_width': '0', 'font': f"{font_name} {font_size} italic"},
             'general': {'comment': '#626a73', 'error': '#ff3333', 'escape': '#b3b1ad', 'keyword': '#FB71FB',
                 'name': '#819CE6', 'string': '#c2d94c', 'punctuation': '#68E3FF'},
             'keyword': {'constant': '#FB71FB', 'declaration': '#FB71FB', 'namespace': '#FB71FB', 'pseudo': '#FB71FB',
@@ -775,7 +796,7 @@ def launch_window(path: str, data: dict, *a):
             current_frame = list(open_frames.values())[current_tab_index]
             current_frame.save()
 
-        root.bind_all('<Control-s>', save_current)
+        root.bind_all(f"<{control}-s>", save_current)
 
         placeholder_frame = Frame(root, height=40, highlightbackground=frame_background, background=frame_background)
         placeholder_frame.pack(fill=X, side=BOTTOM)
@@ -800,10 +821,10 @@ def launch_window(path: str, data: dict, *a):
 
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
-                self.bind("<Control-BackSpace>", self.ctrl_bs)
+                self.bind(f"<{control}-BackSpace>", self.ctrl_bs)
                 self.bind('<Escape>', lambda *_: hide_replace(), add=True)
                 self.bind('<KeyPress>', self.process_keys)
-                self.bind("<Control-h>", lambda *_: replace.toggle_focus(True))
+                self.bind(f"<{control}-{'H' if data['os_name'] == 'macos' else 'h'}>", lambda *_: replace.toggle_focus(True))
                 self.bind('<Shift-Return>', lambda *_: trigger_replace())
 
                 self.put_placeholder()
@@ -880,7 +901,7 @@ def launch_window(path: str, data: dict, *a):
         search_frame = Frame(root, height=1)
         search_frame.configure(bg=frame_background, borderwidth=0, highlightthickness=0)
         search_frame.place(rely=1, y=-45, relwidth=1, height=55)
-        root.search = SearchBox(search_frame, placeholder='search for text')
+        root.search = SearchBox(search_frame, placeholder=data['translate']('search for text'))
         search = root.search
         search.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
         search.configure(
@@ -891,9 +912,9 @@ def launch_window(path: str, data: dict, *a):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = f"Consolas {default_font_size}",
+            font = f"{font_name} {default_font_size}",
         )
-        window.bind('<Control-f>', lambda *_: search.toggle_focus(True))
+        window.bind(f"<{control}-f>", lambda *_: search.toggle_focus(True))
 
         class Scrollbar(Canvas):
 
@@ -1215,7 +1236,7 @@ def launch_window(path: str, data: dict, *a):
                         dlineinfo[1] + 5.5,
                         text=f" {lineno} " if self.justify != "center" else f"{lineno}",
                         anchor={"left": "nw", "right": "ne", "center": "n"}[self.justify],
-                        font=f"Consolas {font_size}",
+                        font=f"{font_name} {font_size}",
                         fill=convert_color((1, 0.65, 0.65))['hex'] if err_index == lineno
                         else '#4CFF99' if search_match
                         else '#AAAAFF' if index == lineno
@@ -1457,11 +1478,11 @@ def launch_window(path: str, data: dict, *a):
                     tabs=Font(font=kwargs["font"]).measure(" " * tab_width),
                 )
 
-                self.bind(f"<Control-a>", self._select_all)
-                self.bind(f"<Control-z>", self.undo)
-                self.bind(f"<Control-r>", self.redo)
-                self.bind(f"<Control-y>", self.redo)
-                self.bind(f"<Control-d>", self.duplicate_line)
+                self.bind(f"<{control}-a>", self._select_all)
+                self.bind(f"<{control}-z>", self.undo)
+                self.bind(f"<{control}-r>", self.redo)
+                self.bind(f"<{control}-y>", self.redo)
+                self.bind(f"<{control}-d>", self.duplicate_line)
                 self.bind("<<ContentChanged>>", self.scroll_line_update, add=True)
                 self.bind("<Button-1>", self._line_numbers.redraw, add=True)
 
@@ -1681,7 +1702,7 @@ def launch_window(path: str, data: dict, *a):
                     fg = convert_color((0.3, 0.3, 0.65))['hex'],
                     bg = frame_background,
                     borderwidth = 0,
-                    font = f"Consolas {default_font_size-1} bold"
+                    font = f"{font_name} {default_font_size-1} bold"
                 )
 
                 self.index_label = Label(justify='right', anchor='se')
@@ -1690,7 +1711,7 @@ def launch_window(path: str, data: dict, *a):
                     fg = convert_color((0.6, 0.6, 1))['hex'],
                     bg = frame_background,
                     borderwidth = 0,
-                    font = f"Consolas {default_font_size-1}"
+                    font = f"{font_name} {default_font_size-1}"
                 )
 
                 self.error_label = Label(justify='right', anchor='se')
@@ -1698,28 +1719,28 @@ def launch_window(path: str, data: dict, *a):
                     fg = convert_color((1, 0.6, 0.6))['hex'],
                     bg = frame_background,
                     borderwidth = 0,
-                    font = f"Consolas {default_font_size-1} bold"
+                    font = f"{font_name} {default_font_size-1} bold"
                 )
 
                 # self.bind("<<ContentChanged>>", self.fix_tabs)
                 self.bind("<BackSpace>", self.delete_spaces)
                 self.bind('<KeyPress>', self.process_keys)
-                self.bind('<Control-slash>', self.block_comment)
+                self.bind(f"<{control}-slash>", self.block_comment)
                 self.bind('<Shift-Tab>', lambda *_: self.block_indent(False))
-                self.bind("<Control-BackSpace>", self.ctrl_bs)
+                self.bind(f"<{control}-BackSpace>", self.ctrl_bs)
 
                 # Redraw lineno
-                self.bind("<Control-h>", lambda *_: replace.toggle_focus(True))
-                self.bind("<Control-k>", lambda *_: "break")
+                self.bind(f"<{control}-{'H' if data['os_name'] == 'macos' else 'h'}>", lambda *_: replace.toggle_focus(True))
+                self.bind(f"<{control}-k>", lambda *_: "break")
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
                 self.bind("<<ContentChanged>>", self.autosave, add=True)
                 self.bind("<<Selection>>", lambda *_: self.after(0, self.highlight_matching_parentheses))
                 self.bind("<<Selection>>", self.redo_search, add=True)
-                self.bind("<Control-S>", self.search_selection)
+                self.bind(f"<{control}-S>", self.search_selection)
                 root.bind('<Configure>', self.set_error, add=True)
                 self.error_label.bind("<Button-1>", lambda *_: self.after(0, self.view_error), add=True)
                 self.bind("<KeyRelease>", lambda *_: self.after(0, self.highlight_matching_parentheses))
-                self.bind("<Button-3>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
+                self.bind(right_mouse, lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
                 self.hl_pair = (None, None)
 
                 self.default_timer = 0.25
@@ -1732,8 +1753,8 @@ def launch_window(path: str, data: dict, *a):
                 self.save_lock = False
                 self.first_run = True
 
-                self.bind(f"<Control-c>", self._copy, add=True)
-                self.bind(f"<Control-v>", self._paste, add=True)
+                self.bind(f"<{control}-c>", self._copy, add=True)
+                self.bind(f"<{control}-v>", self._paste, add=True)
 
                 self.bind("<ButtonPress-1>", self.on_press)
                 self.bind("<B1-Motion>", self.on_drag)
@@ -2018,7 +2039,7 @@ def launch_window(path: str, data: dict, *a):
                                         c_tag = self.tag_names(start_closing)[0]
                                     except IndexError:
                                         continue
-                                    for tag in ('Comment', 'String.Single', 'String.Double', 'String.Doc', 'String.Heredoc', 'sel'):
+                                    for tag in ('Comment', 'String.Single', 'String.Double', 'String.Doc', 'String.Heredoc'): # 'sel'
                                         if tag in o_tag or tag in c_tag:
                                             break
                                     else:
@@ -2793,7 +2814,7 @@ def launch_window(path: str, data: dict, *a):
                         break
 
                     if tag == "highlight":
-                        if str(search.cget('fg')) == '#4A4A70' and search.get() == 'search for text':
+                        if str(search.cget('fg')) == '#4A4A70' and search.get() == data['translate']('search for text'):
                             break
 
                     self.mark_set("matchStart", index)
@@ -2838,7 +2859,7 @@ def launch_window(path: str, data: dict, *a):
         root.code_editor = HighlightText(
             root,
             color_scheme = style,
-            font = f"Consolas {font_size}",
+            font = f"{font_name} {font_size}",
             linenums_theme = ('#3E3E63', background_color),
             scrollbar=Scrollbar
         )
@@ -2872,10 +2893,10 @@ def launch_window(path: str, data: dict, *a):
 
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
-                self.bind("<Control-BackSpace>", self.ctrl_bs)
+                self.bind(f"<{control}-BackSpace>", self.ctrl_bs)
                 self.bind('<Escape>', lambda *_: self.toggle_focus(False))
                 self.bind('<KeyPress>', self.process_keys)
-                self.bind("<Control-h>", lambda *_: self.toggle_focus(False))
+                self.bind(f"<{control}-{'H' if data['os_name'] == 'macos' else 'h'}>", lambda *_: self.toggle_focus(False))
                 self.bind('<Shift-Return>', lambda *_: trigger_replace())
 
                 self.put_placeholder()
@@ -2944,7 +2965,7 @@ def launch_window(path: str, data: dict, *a):
                 pattern_text = search.get()
                 replace_text = self.get()
 
-                if replace_text in ('replace with...', ''):
+                if replace_text in (data['translate']('replace with...'), ''):
                     return
 
                 start = f"{current_line}.0"
@@ -2990,7 +3011,11 @@ def launch_window(path: str, data: dict, *a):
                 replace_text = self.get()
                 search_text = search.get()
 
-                if replace_text in ('replace with...', ''):
+                if data['os_name'] == 'macos':
+                    replace_button['state'] = 'active'
+                    root.focus_force()
+
+                if replace_text in (data['translate']('replace with...'), ''):
                     return
 
                 for x in code_editor.match_list:
@@ -3041,9 +3066,9 @@ def launch_window(path: str, data: dict, *a):
             def on_leave(self, *a):
                 self.config(image=self.background_image)
 
-            def __init__(self, button_id, click_func, **args):
-                super().__init__(**args)
-                self.master = root
+            def __init__(self, master, button_id, click_func, **args):
+                super().__init__(master, **args)
+                self.master = master
                 self.id = button_id
                 self.background_image = PhotoImage(file=os.path.join(data['gui_assets'], f'{self.id}.png'))
                 self.background_hover = PhotoImage(file=os.path.join(data['gui_assets'], f'{self.id}_hover.png'))
@@ -3063,12 +3088,15 @@ def launch_window(path: str, data: dict, *a):
                     activebackground=frame_background
                 )
 
+                if data['os_name'] == 'macos':
+                    self.config(borderwidth=0, highlightbackground=frame_background)
+
                 # Bind hover events
                 self.bind('<Enter>', self.on_enter)
                 self.bind('<Leave>', self.on_leave)
         replace_frame = Frame(root, height=1)
         replace_frame.configure(bg=frame_background, borderwidth=0, highlightthickness=0)
-        root.replace = ReplaceBox(replace_frame, placeholder='replace with...')
+        root.replace = ReplaceBox(replace_frame, placeholder=data['translate']('replace with...'))
         replace = root.replace
         replace.pack(fill=BOTH, expand=True, padx=(60, 5), pady=(0, 10), side=BOTTOM, ipady=0, anchor='s')
         replace.bind('<Tab>', lambda *_: root.after(0, lambda *_: search.focus_force()))
@@ -3080,11 +3108,11 @@ def launch_window(path: str, data: dict, *a):
             selectbackground = convert_color((0.2, 0.2, 0.4))['hex'],
             insertwidth = 3,
             insertbackground = convert_color((0.55, 0.55, 1, 1))['hex'],
-            font = f"Consolas {default_font_size}",
+            font = f"{font_name} {default_font_size}",
         )
 
         # Replace All Button
-        replace_button = HoverButton('replace_button', click_func=replace.replace_all)
+        replace_button = HoverButton(replace, 'replace_button', click_func=replace.replace_all)
         replace_button.config(anchor='se')
         replace_button.place(in_=replace, relwidth=0.2, relx=0.798, x=-2, y=-4)
 
@@ -3094,7 +3122,7 @@ def launch_window(path: str, data: dict, *a):
                 root.after(100, replace_button.on_leave)
                 return "break"
 
-        root.bind('<Control-h>', lambda *_: replace.toggle_focus())
+        root.bind(f"<{control}-{'H' if data['os_name'] == 'macos' else 'h'}>", lambda *_: replace.toggle_focus())
         if replace_shown:
             replace.toggle_focus(True, r=1, anim=False)
 
@@ -3103,7 +3131,7 @@ def launch_window(path: str, data: dict, *a):
             if not search_text:
                 search_text = search.get()
 
-            if str(search.cget('fg')) == '#4A4A70' and search_text == 'search for text':
+            if str(search.cget('fg')) == '#4A4A70' and search_text == data['translate']('search for text'):
                 search_text = ''
 
             search.last_index = 0
@@ -3165,13 +3193,17 @@ def launch_window(path: str, data: dict, *a):
                         b.config(text=item, command=functools.partial(self.click_func, item))
                         if not visible:
                             b.grid(sticky="w")
+                        if data['os_name'] == 'macos':
+                            b['state'] = 'active'
+                            b.label.config(text=item)
+                            b.label.bind("<Button-1>", b.cget('command'))
                     except IndexError:
                         if visible:
                             b.grid_remove()
 
             def add_buttons(self):
                 for item in range(self.max_size):
-                    button = Button(self, text=item, font=f"Consolas {font_size} italic", background=self.background)
+                    button = Button(self, text=item, font=f"{font_name} {font_size} italic", background=self.background)
                     button.config(
                         command = functools.partial(self.click_func, item),
                         borderwidth = 5,
@@ -3185,6 +3217,21 @@ def launch_window(path: str, data: dict, *a):
                         padx=10,
                         pady=5
                     )
+
+                    if data['os_name'] == 'macos':
+                        button.configure(activebackground=self.background, activeforeground=self.background, width=300)
+                        button.label = Label(
+                            master=button,
+                            anchor="w",
+                            justify='left',
+                            foreground=text_color,
+                            background=self.background,
+                            font=button.cget('font'),
+                            padx=9.2,
+                            pady=5
+                        )
+                        button.label.pack()
+
                     self.button_list.append(button)
 
             def show(self, start, x, y):
@@ -3258,6 +3305,10 @@ def launch_window(path: str, data: dict, *a):
                 self.last_matches = matches
 
             def iterate_selection(self, forward=True):
+
+                if data['os_name'] == 'macos':
+                    return
+
                 if self.visible:
                     active_x = -1
                     if forward:
@@ -3298,7 +3349,7 @@ def launch_window(path: str, data: dict, *a):
                 else:
                     self.button_list[0].invoke()
 
-            def click_func(self, val):
+            def click_func(self, val, *a):
                 self.hide()
 
                 cursor_pos = code_editor.index(INSERT)
@@ -3375,11 +3426,19 @@ def launch_window(path: str, data: dict, *a):
                     background=text_color
                 )
 
+                if data['os_name'] == 'macos':
+                    self.configure(activebackground=text_color)
+                    self.label.config(foreground=self.background, background=text_color)
+
             def on_leave(self, *a):
                 self.config(
                     foreground=text_color,
                     background=self.background
                 )
+
+                if data['os_name'] == 'macos':
+                    self.configure(activebackground=self.background)
+                    self.label.config(foreground=text_color, background=self.background)
 
             def __init__(self, master, text, font, background, click_func, **args):
                 Button.__init__(self, master)
@@ -3402,6 +3461,21 @@ def launch_window(path: str, data: dict, *a):
                     padx=12,
                     pady=5
                 )
+
+                if data['os_name'] == 'macos':
+                    self.configure(activebackground=self.background, activeforeground=self.background)
+                    self.label = Label(
+                        master=self,
+                        anchor="w",
+                        justify='left',
+                        foreground=text_color,
+                        background=self.background,
+                        font=self.cget('font'),
+                        padx=9.2,
+                        pady=5,
+                        width=10
+                    )
+                    self.label.pack()
 
                 # Bind hover events
                 self.bind('<Enter>', self.on_enter)
@@ -3426,9 +3500,13 @@ def launch_window(path: str, data: dict, *a):
                     visible = b.winfo_ismapped()
                     try:
                         item = items[x]
-                        b.config(text=item, command=functools.partial(self.click_func, item))
+                        b.config(text=data['translate'](item), command=functools.partial(self.click_func, item))
                         if not visible:
                             b.grid(sticky="w")
+                        if data['os_name'] == 'macos':
+                            b['state'] = 'active'
+                            b.label.config(text=item)
+                            b.label.bind("<Button-1>", b.cget('command'))
                     except IndexError:
                         if visible:
                             b.grid_remove()
@@ -3524,34 +3602,39 @@ def launch_window(path: str, data: dict, *a):
                 else:
                     self.button_list[0].invoke()
 
-            def click_func(self, val):
+            def click_func(self, val, *a):
                 self.hide()
 
                 if val == 'Cut':
-                    code_editor.event_generate("<Control-x>")
+                    code_editor.event_generate(f"<{control}-x>")
                 elif val == 'Copy':
-                    code_editor.event_generate("<Control-c>")
+                    code_editor.event_generate(f"<{control}-c>")
                 elif val == 'Paste':
-                    code_editor.event_generate("<Control-v>")
+                    code_editor.event_generate(f"<{control}-v>")
                 elif val == 'Comment':
-                    code_editor.event_generate("<Control-slash>")
+                    code_editor.event_generate(f"<{control}-slash>")
                 elif val == 'Search':
-                    code_editor.event_generate("<Control-S>")
+                    code_editor.event_generate(f"<{control}-S>")
                 elif val == 'Zoom in':
-                    code_editor.event_generate("<Control-equal>")
+                    code_editor.event_generate(f"<{control}-equal>")
                 elif val == 'Zoom out':
-                    code_editor.event_generate("<Control-minus>")
+                    code_editor.event_generate(f"<{control}-minus>")
                 elif val == 'Undo':
-                    code_editor.event_generate("<Control-z>")
+                    code_editor.event_generate(f"<{control}-z>")
                 elif val == 'Redo':
-                    code_editor.event_generate("<Control-r>")
+                    code_editor.event_generate(f"<{control}-r>")
                 elif val == 'Help':
                     webbrowser.open('https://www.auto-mcs.com/guides/amscript')
+
+                # Graphically deselect button on macOS
+                if data['os_name'] == 'macos':
+                    for b in self.button_list:
+                        b['state'] = 'active'
 
                 return "break"
 
         context_menu = ContextMenu()
-        root.bind_all("<Button-3>", context_menu.show, add=True)
+        root.bind_all(right_mouse, context_menu.show, add=True)
         root.bind_all("<Button-1>", context_menu.check_hover, add=True)
         window.root.bind("<<NotebookTabChanged>>", context_menu.hide, add=True)
 
@@ -3606,7 +3689,7 @@ if os.name == 'nt':
 #
 #     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
 #     from svrmgr import ServerObject
-#     server_obj = ServerObject('test')
+#     server_obj = ServerObject('macOS')
 #     while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
 #         time.sleep(0.2)
 #
@@ -3623,17 +3706,18 @@ if os.name == 'nt':
 #             'protected': script_obj.protected_variables,
 #             'events': script_obj.valid_events
 #         },
-#         'suggestions': server_obj.retrieve_suggestions(script_obj)
+#         'suggestions': server_obj.retrieve_suggestions(script_obj),
+#         'os_name': 'macos'
 #     }
 #
 #     path = constants.scriptDir
 #     class Test():
 #         def __init__(self):
-#             self.value = os.path.join(path, 'test2.ams')
-#             import threading
-#             def test():
-#                 self.value = os.path.join(path, 'wiki-search.ams')
-#             threading.Timer(1, test).start()
+#             self.value = os.path.join(path, 'os-terminal.ams')
+#             # import threading
+#             # def test():
+#             #     self.value = os.path.join(path, 'wiki-search.ams')
+#             # threading.Timer(1, test).start()
 #             # def test():
 #             #     self.value = os.path.join(path, 'test.ams')
 #             # threading.Timer(2, test).start()
