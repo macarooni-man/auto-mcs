@@ -466,10 +466,13 @@ if os.name == 'nt':
     from ctypes import windll, c_int64
 
     # Calculate screen width and disable DPI scaling if bigger than a certain resolution
-    width = windll.user32.GetSystemMetrics(0)
-    scale = windll.shcore.GetScaleFactorForDevice(0) / 100
-    if (width * scale) < 2000:
-        windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
+    try:
+        width = windll.user32.GetSystemMetrics(0)
+        scale = windll.shcore.GetScaleFactorForDevice(0) / 100
+        if (width * scale) < 2000:
+            windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
+    except:
+        print('Error: failed to set DPI context')
 
 
 
