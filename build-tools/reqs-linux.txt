@@ -13,7 +13,7 @@ Kivy==2.1.0
 Kivy-Garden==0.1.5
 munch==3.0.0
 NBT==1.5.1
-Pillow==10.2.0
+Pillow==10.3.0
 plyer>=2.1.0
 psutil==5.9.2
 Pygments==2.16.1
