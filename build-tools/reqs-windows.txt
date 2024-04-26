@@ -4,10 +4,10 @@ beautifulsoup4==4.11.1
 certifi>=2023.7.22
 charset-normalizer==2.1.1
 cloudscraper>=1.2.71
-dnspython==2.2.1
+dnspython==2.6.1
 docutils==0.19
 future==0.18.3
-idna>=2.5
+idna>=3.7
 ipaddress==1.0.23
 Kivy==2.0.0
 kivy-deps.angle==0.3.2

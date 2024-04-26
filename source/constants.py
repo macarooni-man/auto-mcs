@@ -41,10 +41,11 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.1"
+app_version = "2.1.1"
 ams_version = "1.2"
 app_title = "auto-mcs"
 dev_version = False
+update_java = True
 window_size = (850, 850)
 refresh_rate = 60
 anim_speed = 1
@@ -2098,22 +2099,23 @@ def java_check(progress_func=None):
     global java_executable, modern_pct, legacy_pct
     max_retries = 3
     retries = 0
+    modern_version = 21
 
     java_url = {
         'windows': {
-            "modern": "https://download.oracle.com/java/17/latest/jdk-17_windows-x64_bin.zip",
+            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_windows-x64_bin.zip",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/windows-i586/jre-8u331-windows-x64.tar.gz"
         },
         'linux': {
-            "modern": "https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz",
+            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_linux-x64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/linux-i586/jre-8u331-linux-x64.tar.gz"
         },
         'linux-arm64': {
-            "modern": "https://download.oracle.com/java/17/latest/jdk-17_linux-aarch64_bin.tar.gz",
+            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_linux-aarch64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_281-b09/89d678f2be164786b292527658ca1605/linux-i586/jdk-8u281-linux-aarch64.tar.gz"
         },
         'macos': {
-            "modern": "https://download.oracle.com/java/17/latest/jdk-17_macos-x64_bin.tar.gz",
+            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_macos-x64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/unix-i586/jre-8u331-macosx-x64.tar.gz"
         }
     }
@@ -2146,19 +2148,22 @@ def java_check(progress_func=None):
 
             if (run_proc(f'"{os.path.abspath(modern_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(legacy_path)}" -version') == 0):
 
-                java_executable = {
-                    "modern": str(os.path.abspath(modern_path)),
-                    "legacy": str(os.path.abspath(legacy_path)),
-                    "jar": str(os.path.abspath(jar_path))
-                }
+                # Check for appropriate modern version
+                if run_proc(f'"{os.path.abspath(modern_path)}" --version', return_text=True).startswith(f'java {modern_version}.'):
 
-                if debug:
-                    print('\nValid Java installations detected\n')
+                    java_executable = {
+                        "modern": str(os.path.abspath(modern_path)),
+                        "legacy": str(os.path.abspath(legacy_path)),
+                        "jar": str(os.path.abspath(jar_path))
+                    }
 
-                if progress_func:
-                    progress_func(100)
+                    if debug:
+                        print('\nValid Java installations detected\n')
 
-                return True
+                    if progress_func:
+                        progress_func(100)
+
+                    return True
 
 
         # If valid java installs are not detected, install them to '.auto-mcs\Tools'
