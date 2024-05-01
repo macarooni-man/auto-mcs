@@ -567,6 +567,7 @@ def restart_update_app(*a):
     executable = os.path.basename(launch_path)
     new_version = update_data['version']
     success_str = f"auto-mcs was updated to v${new_version}$ successfully!"
+    success_unix = f"auto-mcs was updated to v\${new_version}\$ successfully!"
     failure_str = "Something went wrong with the update"
     script_name = 'auto-mcs-update'
     update_log = os.path.join(tempDir, 'update-log')
@@ -626,7 +627,7 @@ hdiutil mount "{dmg_path}"
 rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(launch_path), '../..')}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@{success_str} > "{update_log}"
+    echo banner-success@{success_unix} > "{update_log}"
 else
     echo banner-failure@{failure_str} > "{update_log}"
 fi
@@ -661,7 +662,7 @@ sleep 2
 /bin/cp -rf "{os.path.join(downDir, 'auto-mcs')}" "{launch_path}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@{success_str} > "{update_log}"
+    echo banner-success@{success_unix} > "{update_log}"
 else
     echo banner-failure@{failure_str} > "{update_log}"
 fi
