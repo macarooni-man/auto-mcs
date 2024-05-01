@@ -5,15 +5,15 @@ bs4==0.0.1
 certifi>=2023.7.22
 charset-normalizer==2.1.1
 cloudscraper>=1.2.71
-dnspython==2.2.1
+dnspython==2.6.1
 docutils==0.19
-idna>=2.5
+idna==3.7
 ipaddress==1.0.23
 Kivy==2.1.0
 Kivy-Garden==0.1.5
 munch==3.0.0
 NBT==1.5.1
-Pillow==10.2.0
+Pillow==10.3.0
 plyer>=2.1.0
 psutil==5.9.2
 Pygments==2.16.1
@@ -29,5 +29,4 @@ urllib3==1.26.18
 tkmacosx>=1.0.5
 pyobjus>=1.2.3
 PyYAML>=6.0.1
-googletrans==3.1.0a0
 json_repair==0.10.1

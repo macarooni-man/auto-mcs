@@ -14,7 +14,7 @@ jobs:
           fetch-depth: 1
         
       - name: Install Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
           
@@ -28,7 +28,7 @@ jobs:
           powershell -noprofile -executionpolicy bypass -file .\build-tools\build-windows.ps1
 
       - name: Upload Executable
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: auto-mcs-windows
           path: build-tools/dist/
@@ -79,7 +79,7 @@ jobs:
           done
 
       - name: Upload Binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: auto-mcs-macos
           path: build-tools/dist/auto-mcs.dmg
@@ -107,7 +107,7 @@ jobs:
           fluxbox > /dev/null 2>&1 &
           
       - name: Install Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
     
@@ -147,7 +147,7 @@ jobs:
       #   uses: lhotari/action-upterm@v1
 
       - name: Upload Binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: auto-mcs-linux
           path: build-tools/dist/
@@ -220,7 +220,7 @@ jobs:
               chmod +x dist/auto-mcs
               
       - name: Upload Binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: auto-mcs-linux-arm64
           path: build-tools/dist/

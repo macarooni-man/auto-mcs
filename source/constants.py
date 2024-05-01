@@ -41,7 +41,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.1"
+app_version = "2.1.1"
 ams_version = "1.2"
 app_title = "auto-mcs"
 dev_version = False
@@ -2093,32 +2093,38 @@ def new_server_name(existing_server=None):
 
 # Verify portable java is available in '.auto-mcs\Tools', if not install it
 modern_pct = 0
+lts_pct = 0
 legacy_pct = 0
 def java_check(progress_func=None):
-    global java_executable, modern_pct, legacy_pct
+    global java_executable, modern_pct, lts_pct, legacy_pct
     max_retries = 3
     retries = 0
+    modern_version = 21
 
     java_url = {
         'windows': {
-            "modern": "https://download.oracle.com/java/17/latest/jdk-17_windows-x64_bin.zip",
+            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_windows-x64_bin.zip",
+            "lts": f"https://download.oracle.com/java/17/latest/jdk-17_windows-x64_bin.zip",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/windows-i586/jre-8u331-windows-x64.tar.gz"
         },
         'linux': {
-            "modern": "https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz",
+            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_linux-x64_bin.tar.gz",
+            "lts": f"https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/linux-i586/jre-8u331-linux-x64.tar.gz"
         },
         'linux-arm64': {
-            "modern": "https://download.oracle.com/java/17/latest/jdk-17_linux-aarch64_bin.tar.gz",
+            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_linux-aarch64_bin.tar.gz",
+            "lts": f"https://download.oracle.com/java/17/latest/jdk-17_linux-aarch64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_281-b09/89d678f2be164786b292527658ca1605/linux-i586/jdk-8u281-linux-aarch64.tar.gz"
         },
         'macos': {
-            "modern": "https://download.oracle.com/java/17/latest/jdk-17_macos-x64_bin.tar.gz",
+            "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_macos-x64_bin.tar.gz",
+            "lts": f"https://download.oracle.com/java/17/latest/jdk-17_macos-x64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/unix-i586/jre-8u331-macosx-x64.tar.gz"
         }
     }
 
-    while not java_executable['modern'] or not java_executable['legacy']:
+    while not (java_executable['modern'] and java_executable['lts'] and java_executable['legacy']):
 
         # Delete downloads folder
         safe_delete(downDir)
@@ -2135,34 +2141,40 @@ def java_check(progress_func=None):
             # Gather paths to Java installed internally
             if os_name == 'macos':
                 modern_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'Contents', 'Home', 'bin', 'java')
+                lts_path = os.path.join(applicationFolder, 'Tools', 'java', 'lts', 'Contents', 'Home', 'bin', 'java')
                 legacy_path = os.path.join(applicationFolder, 'Tools', 'java', 'legacy', 'Contents', 'Home', 'bin', 'java')
                 jar_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'Contents', 'Home', 'bin', 'jar')
 
             else:
                 modern_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'bin', 'java.exe' if os_name == "windows" else 'java')
+                lts_path = os.path.join(applicationFolder, 'Tools', 'java', 'lts', 'bin', 'java.exe' if os_name == "windows" else 'java')
                 legacy_path = os.path.join(applicationFolder, 'Tools', 'java', 'legacy', 'bin', 'java.exe' if os_name == "windows" else 'java')
                 jar_path = os.path.join(applicationFolder, 'Tools', 'java', 'modern', 'bin', 'jar.exe' if os_name == "windows" else 'jar')
 
 
-            if (run_proc(f'"{os.path.abspath(modern_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(legacy_path)}" -version') == 0):
+            if (run_proc(f'"{os.path.abspath(modern_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(lts_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(legacy_path)}" -version') == 0):
 
-                java_executable = {
-                    "modern": str(os.path.abspath(modern_path)),
-                    "legacy": str(os.path.abspath(legacy_path)),
-                    "jar": str(os.path.abspath(jar_path))
-                }
+                # Check for appropriate modern version
+                if run_proc(f'"{os.path.abspath(modern_path)}" --version', return_text=True).startswith(f'java {modern_version}.'):
 
-                if debug:
-                    print('\nValid Java installations detected\n')
+                    java_executable = {
+                        "modern": str(os.path.abspath(modern_path)),
+                        "lts": str(os.path.abspath(lts_path)),
+                        "legacy": str(os.path.abspath(legacy_path)),
+                        "jar": str(os.path.abspath(jar_path))
+                    }
 
-                if progress_func:
-                    progress_func(100)
+                    if debug:
+                        print('\nValid Java installations detected\n')
 
-                return True
+                    if progress_func:
+                        progress_func(100)
+
+                    return True
 
 
         # If valid java installs are not detected, install them to '.auto-mcs\Tools'
-        if not java_executable['modern'] or not java_executable['legacy']:
+        if not (java_executable['modern'] and java_executable['lts'] and java_executable['legacy']):
 
             if debug:
                 print('\nJava is not detected, installing...\n')
@@ -2171,18 +2183,20 @@ def java_check(progress_func=None):
             folder_check(downDir)
 
             modern_filename = f'modern-java.{os.path.basename(java_url[os_name]["modern"]).split(".", 1)[1]}'
+            lts_filename = f'lts-java.{os.path.basename(java_url[os_name]["lts"]).split(".", 1)[1]}'
             legacy_filename = f'legacy-java.{os.path.basename(java_url[os_name]["legacy"]).split(".", 1)[1]}'
 
             # Use timer and combined function to get total percentage of both installs
             modern_pct = 0
+            lts_pct = 0
             legacy_pct = 0
 
             def avg_total(*args):
                 global modern_pct, legacy_pct
                 while True:
-                    progress_func(round((modern_pct + legacy_pct) / 2))
+                    progress_func(round((modern_pct + lts_pct + legacy_pct) / 3))
                     time.sleep(0.2)
-                    if (modern_pct >= 100 and legacy_pct >= 100):
+                    if (modern_pct >= 100 and lts_pct >= 100 and legacy_pct >= 100):
                         break
 
             if progress_func:
@@ -2201,19 +2215,23 @@ def java_check(progress_func=None):
             with ThreadPoolExecutor(max_workers=2) as pool:
 
                 def hook1(a, b, c):
-                    global modern_pct, legacy_pct
+                    global modern_pct
                     modern_pct = round(100 * a * b / c)
 
                 def hook2(a, b, c):
-                    global modern_pct, legacy_pct
+                    global lts_pct
+                    lts_pct = round(100 * a * b / c)
+
+                def hook3(a, b, c):
+                    global legacy_pct
                     legacy_pct = round(100 * a * b / c)
 
                 pool.map(
                     download_url,
-                    [java_url[os_download]['modern'], java_url[os_download]['legacy']],
-                    [modern_filename, legacy_filename],
-                    [downDir, downDir],
-                    [hook1 if progress_func else None, hook2 if progress_func else None]
+                    [java_url[os_download]['modern'], java_url[os_download]['lts'], java_url[os_download]['legacy']],
+                    [modern_filename, lts_filename, legacy_filename],
+                    [downDir, downDir, downDir],
+                    [hook1 if progress_func else None, hook2 if progress_func else None, hook3 if progress_func else None]
                 )
 
             if progress_func:
@@ -2221,17 +2239,19 @@ def java_check(progress_func=None):
 
             # Install java by extracting the files to their respective folder
             modern_path = os.path.join(javaDir, 'modern')
+            lts_path = os.path.join(javaDir, 'lts')
             legacy_path = os.path.join(javaDir, 'legacy')
 
             safe_delete(modern_path)
+            safe_delete(lts_path)
             safe_delete(legacy_path)
 
             with ThreadPoolExecutor(max_workers=2) as pool:
                 pool.map(
                     extract_archive,
-                    [os.path.join(downDir, modern_filename), os.path.join(downDir, legacy_filename)],
-                    [modern_path, legacy_path],
-                    [True, True]
+                    [os.path.join(downDir, modern_filename), os.path.join(downDir, lts_filename), os.path.join(downDir, legacy_filename)],
+                    [modern_path, lts_path, legacy_path],
+                    [True, True, True]
                 )
 
             retries += 1
@@ -3976,7 +3996,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     if properties['type'] != 'forge':
 
         # Make sure this works non-spigot versions
-        java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['modern']
+        java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<','1.20.5') else java_executable['modern']
 
         # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
         script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
@@ -3996,9 +4016,10 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
         # Modern
         if version_check(properties['version'], ">=", "1.17"):
+            java = java_executable["lts"] if version_check(properties['version'], '<', '1.20.5') else java_executable['modern']
             version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*"))]
             arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
-            script = f'"{java_executable["modern"]}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+            script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
 
         # 1.6 to 1.16
         elif version_check(properties['version'], ">=", "1.6") and version_check(properties['version'], "<", "1.17"):
