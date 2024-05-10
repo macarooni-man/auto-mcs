@@ -41,7 +41,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.1.1"
+app_version = "2.1.2"
 ams_version = "1.2"
 app_title = "auto-mcs"
 dev_version = False
