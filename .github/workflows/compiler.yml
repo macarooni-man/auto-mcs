@@ -178,6 +178,7 @@ jobs:
           image_additional_mb: 4096
           copy_artifact_path: build-tools/dist/*
           copy_artifact_dest: build-tools/dist
+          optimize: no
           commands: |
               # Install dependencies
               mkdir -p /usr/lib64/
