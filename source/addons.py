@@ -842,17 +842,18 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
 
         for data in page_content:
             files = data['files']
-            url = data['files'][-1]['url']
-            for version in data['game_versions']:
-                if version not in link_list.keys() and version.startswith("1.") and "-" not in version:
-                    addon_version = None
-                    for gv in data['game_versions']:
-                        gv_str = f'-{gv}-'
-                        if gv_str in data['version_number']:
-                            addon_version = format_version(data['version_number'].split(gv_str)[-1])
-                            break
-                    link_list[version] = url
-                    version_list[version] = addon_version
+            if files:
+                url = files[-1]['url']
+                for version in data['game_versions']:
+                    if version not in link_list.keys() and version.startswith("1.") and "-" not in version:
+                        addon_version = None
+                        for gv in data['game_versions']:
+                            gv_str = f'-{gv}-'
+                            if gv_str in data['version_number']:
+                                addon_version = format_version(data['version_number'].split(gv_str)[-1])
+                                break
+                        link_list[version] = url
+                        version_list[version] = addon_version
 
 
     # In case a link is not found, find the latest compatible version
