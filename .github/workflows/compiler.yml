@@ -170,7 +170,7 @@ jobs:
           mkdir build-tools/dist
           
       - name: Configure VM & compile auto-mcs
-        uses: pguyot/arm-runner-action@v2.6.5
+        uses: pguyot/arm-runner-action@v2.6.0
         with:
           cpu: cortex-a53
           cpu_info: cpuinfo/raspberrypi_zero2_w_arm64
