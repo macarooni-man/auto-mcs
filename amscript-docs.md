@@ -168,12 +168,12 @@ Accessed by an applicable event, or by the `server.get_player()` method
 
 Sets a custom permission for [**@player.on_alias**](#playeron_alias) events.
 
-- The `player.check_permission()` method can also be used with only the `permission` argument to return a `bool` if the player has the specified permission. Note that the server console has all custom permissions.
+- The `player.check_permission()` method can also be used with only the `permission` argument to return a `bool` if the player has the specified permission. Note that the server console has all custom permissions. Note that these are arbitrary permissions for moderating auto-mcs commands, and have no relation to Bukkit.
 
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `permission*` | `str` of username, or selector. Only players will be matched |
+| `permission*` | `str` of the permission name |
 | `enabled` | `bool` to enable or disable the permission. Defaults to `True` |
 
 <br>
