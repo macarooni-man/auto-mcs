@@ -1135,7 +1135,7 @@ Fired upon player successfully connecting to the server.
 
 ```
 @player.on_join(player, data):
-    player.log(f'Welcome to the server {player.name}!')
+    player.log(f'Welcome to the server {player}!')
 ```
 
 <br>
@@ -1155,7 +1155,7 @@ Fired upon player disconnecting from the server.
 
 ```
 @player.on_leave(player, data):
-    server.execute(f'/say Goodbye, {player.name}!')
+    server.execute(f'/say Goodbye, {player}!')
 ```
 
 <br>
@@ -1198,7 +1198,7 @@ Fired upon player dying to the environment or another player.
 ```
 @player.on_death(player, enemy, message):
     if enemy:
-        enemy.log(f"/say Did you know: murder is a crime {enemy}?")
+        enemy.log(f"Did you know: murder is a crime {enemy}?")
         acl.ban_player(enemy)
     else:
         player.log(f"You should really be more careful {player}!")
