@@ -1644,7 +1644,7 @@ def generate_splash(crash=False):
             "?What are you doing here stranger¿", "Get outta my swamp!", "Whoever put the word fun in funeral?",
             "A new day is like a new day.", "Everywhere is within walking distance if you have the time.",
             "empty blank", "Money doesn’t buy happiness, but it does buy everything else.",
-            "Congragulations! It's a pizza!",
+            "Congratulations! It's a pizza!",
             "Silence is golden, but duck tape is silver.", "Welcome to flavortown!",
             "I get enough exercise pushing my luck.",
             "Unicorns ARE real, they’re just fat, grey, and we call them rhinos.",
@@ -1776,6 +1776,7 @@ def validate_version(server_info: dict):
     mcType = server_info['type']
     buildNum = server_info['build']
     final_info = [False, {'version': mcVer, 'build': buildNum}, '', None] # [if version acceptable, {version, build}, message]
+    url = ""
 
     # Remove below 1.6 versions for Forge
     try:
@@ -1830,7 +1831,7 @@ def validate_version(server_info: dict):
                     soup = BeautifulSoup(reqs.text, 'html.parser')
 
                     for div in soup.find_all('div', "row vdivide"):
-                        if div.h2.text == str(mcVer):
+                        if div.h2.text.strip() == str(mcVer):
 
                             reqs = requests.get(div.a.get('href'))
                             soup = BeautifulSoup(reqs.text, 'html.parser')
@@ -1875,7 +1876,7 @@ def validate_version(server_info: dict):
 
 
             elif str.lower(mcType) == "forge":
-                print(modifiedVersion)
+
                 # 1.16.3 is unavailable due to issues with Java
                 # https://www.reddit.com/r/Minecraft/comments/s7ce50/serverhosting_forge_minecraft_keeps_crashing_on/
                 if mcVer != "1.16.3":
@@ -2801,6 +2802,21 @@ def scan_import(bkup_file=False, progress_func=None, *args):
         script_list = glob(os.path.join(str(path), "*.bat"))
         script_list.extend(glob(os.path.join(str(path), "*.sh")))
 
+
+        # If no startup scripts were found, generate a temp script for each .jar file
+        if not script_list:
+            jar_list = glob(os.path.join(str(path), '*.jar'))
+            if jar_list:
+                for jar in sorted(jar_list, key=lambda x: os.path.getsize(x)):
+                    folder_check(tempDir)
+                    jar_name = os.path.basename(jar)
+                    script_name = os.path.join(tempDir, jar_name + '.bat')
+                    with open(script_name, 'w+') as f:
+                        f.write(f'java -jar {jar_name}')
+                    script_list.append(script_name)
+
+
+        # First, check for any run scripts to see if the .jar is contained within
         for file in script_list:
 
             # Find server jar name
@@ -2987,8 +3003,7 @@ eula=true"""
                             # Ignore flags with invalid data
                             if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
                                 continue
-                            for exclude in ['-install', '-server', '-jar', '--nogui', '-Command', '-fullversion',
-                                            '-version']:
+                            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version']:
                                 if exclude in flag:
                                     break
 
@@ -3011,6 +3026,8 @@ eula=true"""
                     os.rmdir(tmpsvr)
                 except FileNotFoundError:
                     pass
+                except PermissionError:
+                    pass
                 copy_to(str(path), tempDir, os.path.basename(tmpsvr))
 
                 # Delete all startup scripts in directory
@@ -3023,6 +3040,10 @@ eula=true"""
                 for jar in glob(os.path.join(str(path), '*.jar'), recursive=False):
                     if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name in jar)):
                         os.remove(jar)
+
+                    # Rename actual .jar file to server.jar to prevent crashes
+                    if file_name in jar:
+                        run_proc(f"{'move' if os_name == 'windows' else 'mv'} \"{os.path.join(tmpsvr, os.path.basename(jar))}\" \"{os.path.join(tmpsvr, 'server.jar')}\"")
 
 
     # print(import_data)
@@ -3263,7 +3284,7 @@ def scan_modpack(update=False, progress_func=None):
             # Ignore flags with invalid data
             if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
                 continue
-            for exclude in ['-install', '-server', '-jar', '--nogui', '-Command', '-fullversion', '-version']:
+            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version']:
                 if exclude in flag:
                     break
 
