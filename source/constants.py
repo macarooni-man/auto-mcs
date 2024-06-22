@@ -312,7 +312,7 @@ available_locales = {
     "Dutch": {"name": 'Nederlands', "code": 'nl'},
     "Portuguese": {"name": 'Português', "code": 'pt'},
     "Swedish": {"name": 'Suédois', "code": 'sv'},
-    "Finnish": {"name": 'Suomen', "code": 'fi'},
+    "Finnish": {"name": 'Suomi', "code": 'fi'},
 
     # Requires special fonts:
 

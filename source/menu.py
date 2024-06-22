@@ -15683,6 +15683,9 @@ class ConsolePanel(FloatLayout):
 
     # Check for drag select
     def on_touch_down(self, touch):
+        if touch.device == "wm_touch":
+            touch.button = "left"
+
 
         # Copy when right-clicked
         if self.selected_labels and touch.button == "right":
@@ -15690,8 +15693,14 @@ class ConsolePanel(FloatLayout):
             return True
 
         # Select code for a single ConsoleLabel is under "SelectCover.on_touch_down()"
-        if touch.button == "left":
-            self.last_self_touch = self.console_text.to_widget(*touch.pos)
+        try:
+            if touch.button == "left":
+                self.last_self_touch = self.console_text.to_widget(*touch.pos)
+
+        # Ignore invalid inputs from non-standard input devices
+        except AttributeError:
+            pass
+
         return super().on_touch_down(touch)
 
 
