@@ -356,10 +356,18 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 
 
             # Delete all files in server directory
-            if constants.os_name == 'windows':
-                constants.run_proc(f'del /q /s /f *')
-            else:
-                constants.run_proc('rm -rf -- ..?* .[!.]* *')
+            for f in glob(os.path.join(constants.server_path(name), '*')):
+                try:
+                    if os.path.isdir(f):
+                        constants.safe_delete(f)
+                    else:
+                        os.remove(f)
+
+                # Log issues to console during debug
+                except Exception as e:
+                    if constants.debug:
+                        print(f'Error deleting file/folder during restore: {e}')
+
 
 
             # Restore backup
