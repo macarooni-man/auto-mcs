@@ -849,7 +849,7 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
         for data in page_content:
             files = data['files']
             if files:
-                url = files[-1]['url']
+                url = files[0]['url']
                 for version in data['game_versions']:
                     if version not in link_list.keys() and version.startswith("1.") and "-" not in version:
                         addon_version = None
