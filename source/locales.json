@@ -13088,5 +13088,65 @@
   "pt": "Revis\u00e3o do CreateServer",
   "sv": "CreateServerReview",
   "fi": "CreateServerReview"
+ },
+ "error: failed to set dpi context": {
+  "fr": "Erreur\u00a0: \u00e9chec de la d\u00e9finition du contexte DPI",
+  "it": "Errore: impossibile impostare il contesto DPI",
+  "es": "Error: no se pudo establecer el contexto DPI",
+  "de": "Fehler: DPI-Kontext konnte nicht festgelegt werden",
+  "nl": "Fout: kan de DPI-context niet instellen",
+  "pt": "Erro: falha ao definir o contexto de DPI",
+  "sv": "Fel: Det gick inte att st\u00e4lla in DPI-kontext",
+  "fi": "Virhe: DPI-kontekstin asettaminen ep\u00e4onnistui"
+ },
+ "broadcast()": {
+  "es": "transmisi\u00f3n()",
+  "fr": "diffuser()",
+  "it": "trasmissione()",
+  "de": "\u00fcbertragen()",
+  "nl": "uitzending()",
+  "pt": "transmiss\u00e3o()",
+  "sv": "uts\u00e4nda()",
+  "fi": "l\u00e4hett\u00e4\u00e4()"
+ },
+ "error deleting file/folder during restore:": {
+  "es": "Error al eliminar el archivo/carpeta durante la restauraci\u00f3n:",
+  "fr": "Erreur lors de la suppression du fichier/dossier lors de la restauration\u00a0:",
+  "it": "Errore durante l'eliminazione di file/cartelle durante il ripristino:",
+  "de": "Fehler beim L\u00f6schen der Datei/des Ordners w\u00e4hrend der Wiederherstellung:",
+  "nl": "Fout bij verwijderen van bestand/map tijdens herstel:",
+  "pt": "Erro ao excluir arquivo/pasta durante a restaura\u00e7\u00e3o:",
+  "sv": "Fel vid borttagning av fil/mapp under \u00e5terst\u00e4llning:",
+  "fi": "Virhe poistettaessa tiedostoa/kansiota palautuksen aikana:"
+ },
+ "auto-mcs was updated to v\\$\\$ successfully!": {
+  "es": "\u00a1auto-mcs se actualiz\u00f3 a v\\$\\$ exitosamente!",
+  "fr": "auto-mcs a \u00e9t\u00e9 mis \u00e0 jour vers v\\$\\$ avec succ\u00e8s !",
+  "it": "auto-mcs \u00e8 stato aggiornato con successo a v\\$\\$!",
+  "de": "auto-mcs wurde erfolgreich auf v\\$\\$ aktualisiert!",
+  "nl": "auto-mcs is succesvol bijgewerkt naar v\\$\\$!",
+  "pt": "auto-mcs foi atualizado para v\\$\\$ com sucesso!",
+  "sv": "auto-mcs uppdaterades till v\\$\\$ framg\u00e5ngsrikt!",
+  "fi": "auto-mcs p\u00e4ivitettiin muotoon v\\$\\$ onnistuneesti!"
+ },
+ "success": {
+  "es": "\u00e9xito",
+  "fr": "succ\u00e8s",
+  "it": "successo",
+  "de": "Erfolg",
+  "nl": "succes",
+  "pt": "sucesso",
+  "sv": "Framg\u00e5ng",
+  "fi": "menestys"
+ },
+ "initialized ngrok connection '": {
+  "es": "Conexi\u00f3n ngrok inicializada '",
+  "fr": "Connexion ngrok initialis\u00e9e '",
+  "it": "Connessione ngrok inizializzata '",
+  "de": "Ngrok-Verbindung initialisiert '",
+  "nl": "Ge\u00efnitialiseerde ngrok-verbinding '",
+  "pt": "Conex\u00e3o ngrok inicializada '",
+  "sv": "Initialiserad ngrok-anslutning '",
+  "fi": "Aloitettu ngrok-yhteys '"
  }
 }
