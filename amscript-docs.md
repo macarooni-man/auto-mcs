@@ -57,6 +57,22 @@ Sends a custom log event to the console. This output is displayed only while the
 
 
 
+### server.broadcast(*message, log_type*)
+
+Sends a custom chat message to all players and the console. This output is displayed only while the server is running, and is not saved to `latest.log`.
+
+- `server.broadcast_success()`, `server.broadcast_warning()`, and `server.broadcast_error()` methods can also be used, and only require the `message` parameter.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `message*` | `str` of log content |
+| `log_type` | `str` can be `'info'`, `'success'`, `'warning'` or `'error'`. Defaults to `'info'` |
+
+<br>
+
+
+
 ### server.execute(*command*)
 
 Executes any Minecraft command in the server console.

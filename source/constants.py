@@ -42,7 +42,7 @@ import amscript
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
 app_version = "2.1.2"
-ams_version = "1.2"
+ams_version = "1.2.1"
 app_title = "auto-mcs"
 dev_version = False
 window_size = (850, 850)

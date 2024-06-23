@@ -3394,7 +3394,7 @@ def launch_window(path: str, data: dict, *a):
                         code_editor.recalc_lexer()
                     code_editor.after(1, newline)
 
-                elif val in ['log()', 'execute()'] or val.startswith('log_'):
+                elif val in ['log()', 'execute()', 'broadcast()'] or val.startswith('log_') or val.startswith('broadcast_'):
                     del_suggest()
                     cursor_pos = code_editor.index(INSERT)
                     code_editor.insert(cursor_pos, val.replace("()", "(f'')"))
