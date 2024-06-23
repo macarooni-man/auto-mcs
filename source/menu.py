@@ -21736,7 +21736,8 @@ class ServerSettingsScreen(MenuBackground):
                         self.update_label.update_text('Invalid file type')
 
             self.update_label = InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.05})
-            self.update_button = WaitButton("Update from '.zip'", (0.5, 0.5), 'modpack.png', disabled=not constants.app_online, click_func=select_file)
+            disabled = (not constants.app_online) or server_obj.running
+            self.update_button = WaitButton("Update from '.zip'", (0.5, 0.5), 'modpack.png', disabled=disabled, click_func=select_file)
 
 
         elif constants.update_list[server_obj.name]['needsUpdate'] == 'true':
