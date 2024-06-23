@@ -1427,9 +1427,10 @@ def find_latest_mc():
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
             # Get side panel latest version
-            a = soup.find('ul', 'nav-collapsible nav-collapsible-open')
+            li = soup.find('li', 'li-version-list')
+
             try:
-                new_url = url.rsplit('/', 1)[0] + '/' + a.find('a').get('href')
+                new_url = url.rsplit('/', 1)[0] + '/' + li.find_all('a')[-1].get('href')
                 reqs = requests.get(new_url, timeout=timeout)
                 soup = BeautifulSoup(reqs.text, 'html.parser')
             except:
@@ -1533,7 +1534,7 @@ def find_latest_mc():
 
     version_links = {
         "vanilla": "https://mcversions.net/index.html",
-        "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/index.html",
+        "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/",
         "paper": "https://papermc.io/api/v2/projects/paper",
         "purpur": "https://api.purpurmc.org/v2/purpur",
         "spigot": "https://getbukkit.org/download/spigot",
