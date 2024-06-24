@@ -163,11 +163,11 @@ class Label(Label):
         if constants.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
-            if key in ('text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+            if key in ['text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ('text'):
+        elif constants.locale == 'en' and key in ['text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 class Button(Button):
@@ -180,11 +180,11 @@ class Button(Button):
         if constants.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
-            if key in ('text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+            if key in ['text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ('text'):
+        elif constants.locale == 'en' and key in ['text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 class TextInput(TextInput):
@@ -197,11 +197,11 @@ class TextInput(TextInput):
         if constants.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
-            if key in ('hint_text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+            if key in ['hint_text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ('hint_text'):
+        elif constants.locale == 'en' and key in ['hint_text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 
