@@ -163,11 +163,11 @@ class Label(Label):
         if constants.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
-            if key in ('text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+            if key in ['text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ('text'):
+        elif constants.locale == 'en' and key in ['text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 class Button(Button):
@@ -180,11 +180,11 @@ class Button(Button):
         if constants.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
-            if key in ('text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+            if key in ['text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ('text'):
+        elif constants.locale == 'en' and key in ['text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 class TextInput(TextInput):
@@ -197,11 +197,11 @@ class TextInput(TextInput):
         if constants.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
-            if key in ('hint_text') and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
+            if key in ['hint_text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ('hint_text'):
+        elif constants.locale == 'en' and key in ['hint_text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 
@@ -7790,6 +7790,9 @@ class MenuBackground(Screen):
         if "ProgressScreen" in self.__class__.__name__:
             return
 
+        if "BlurredLoadingScreen" in self.__class__.__name__:
+            return
+
         if self.context_menu:
             self.context_menu.hide()
 
@@ -8484,6 +8487,101 @@ class ProgressScreen(MenuBackground):
 
         self.timer = threading.Timer(0, self.execute_steps)
         self.timer.start()
+
+# Blurred loading screen for blocking operations
+class BlurredLoadingScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self._ignore_tree = True
+
+        self.generating_background = False
+        self.blur_background = None
+        self.load_icon = None
+        self.load_label = None
+
+    def generate_blur_background(self, *args):
+        image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+
+        if not self.generating_background:
+            self.generating_background = True
+            self.blur_background.opacity = 0
+
+            screen_manager.get_screen(constants.screen_tree[-1]).export_to_png(image_path)
+            im = PILImage.open(image_path)
+            im = ImageEnhance.Brightness(im)
+            im = im.enhance(popup_blur_darkness)
+            im1 = im.filter(GaussianBlur(popup_blur_amount))
+            im1.save(image_path)
+            self.blur_background.reload()
+
+            self.blur_background.opacity = 1
+
+    def on_pre_enter(self, *args):
+        super().on_pre_enter()
+        constants.ignore_close = True
+
+    def on_leave(self, *args):
+        super().on_leave()
+        constants.ignore_close = False
+
+    def resize_self(self, *args):
+        self.load_label.x = (Window.width / 2) - 75
+        self.load_icon.x = (Window.width / 2) - 160
+
+
+    def generate_menu(self, **kwargs):
+        # Generate buttons on page load
+
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        # Blurred background
+        self.blur_background = Image()
+        self.blur_background.opacity = 0
+        self.blur_background.id = "blur_background"
+        self.blur_background.source = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
+        self.blur_background.allow_stretch = True
+        self.blur_background.keep_ratio = False
+        self.generating_background = False
+        float_layout.add_widget(self.blur_background)
+        Clock.schedule_once(self.generate_blur_background, -1)
+
+
+        # Loading icon to swap button
+        self.load_icon = AsyncImage()
+        self.load_icon.id = "load_icon"
+        self.load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_icon.size_hint_max = (65, 65)
+        self.load_icon.color = (0.8, 0.8, 1, 1)
+        self.load_icon.pos_hint = {"center_y": 0.5}
+        self.load_icon.allow_stretch = True
+        self.load_icon.anim_delay = constants.anim_speed * 0.02
+        float_layout.add_widget(self.load_icon)
+
+
+        # Loading label
+        self.load_label = AlignLabel()
+        self.load_label.halign = 'left'
+        self.load_label.valign = 'center'
+        self.load_label.id = 'label'
+        self.load_label.size_hint_max = (300, 50)
+        self.load_label.pos_hint = {"center_y": 0.5}
+        self.load_label.text = 'please wait...'
+        self.load_label.font_size = sp(35)
+        self.load_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.load_label.color = (0.8, 0.8, 1, 1)
+        float_layout.add_widget(self.load_label)
+
+
+        self.blur_background.size_hint_min = Window.size
+        float_layout.bind(pos=self.resize_self, size=self.resize_self)
+
+        self.add_widget(float_layout)
+
 
 # </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -15683,6 +15781,9 @@ class ConsolePanel(FloatLayout):
 
     # Check for drag select
     def on_touch_down(self, touch):
+        if touch.device == "wm_touch":
+            touch.button = "left"
+
 
         # Copy when right-clicked
         if self.selected_labels and touch.button == "right":
@@ -15690,8 +15791,14 @@ class ConsolePanel(FloatLayout):
             return True
 
         # Select code for a single ConsoleLabel is under "SelectCover.on_touch_down()"
-        if touch.button == "left":
-            self.last_self_touch = self.console_text.to_widget(*touch.pos)
+        try:
+            if touch.button == "left":
+                self.last_self_touch = self.console_text.to_widget(*touch.pos)
+
+        # Ignore invalid inputs from non-standard input devices
+        except AttributeError:
+            pass
+
         return super().on_touch_down(touch)
 
 
@@ -21727,7 +21834,8 @@ class ServerSettingsScreen(MenuBackground):
                         self.update_label.update_text('Invalid file type')
 
             self.update_label = InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.05})
-            self.update_button = WaitButton("Update from '.zip'", (0.5, 0.5), 'modpack.png', disabled=not constants.app_online, click_func=select_file)
+            disabled = (not constants.app_online) or server_obj.running
+            self.update_button = WaitButton("Update from '.zip'", (0.5, 0.5), 'modpack.png', disabled=disabled, click_func=select_file)
 
 
         elif constants.update_list[server_obj.name]['needsUpdate'] == 'true':
@@ -21781,37 +21889,54 @@ class ServerSettingsScreen(MenuBackground):
         transilience_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
         def rename_server(name, *args):
+            def loading_screen(*a):
+                screen_manager.current = 'BlurredLoadingScreen'
+            Clock.schedule_once(loading_screen, 0)
 
             # Actually rename the server files
             server_obj.rename(name)
 
             # Change header and footer text to reflect change
-            self.remove_widget(self.title_widget)
-            self.remove_widget(self.footer_widget)
-            del self.title_widget
-            del self.footer_widget
-            self.title_widget = generate_title(f"Server Settings: '{name}'")
-            self.footer_widget = generate_footer(f"{name}, Settings", color='EFD49E')
-            self.add_widget(self.title_widget)
-            self.add_widget(self.footer_widget)
+            def change_data(*a):
+                def go_back(*a):
+                    screen_manager.current = 'ServerSettingsScreen'
+                    effect_y = screen_manager.current_screen.scroll_widget.effect_y
+                    screen_manager.current_screen.scroll_widget.effect_y = None
+                    screen_manager.current_screen.scroll_widget.scroll_y = 0
+                    def reset_effect(*a):
+                        screen_manager.current_screen.scroll_widget.effect_y = effect_y
+                    Clock.schedule_once(reset_effect, 0)
+                Clock.schedule_once(go_back, 0)
 
-            # Display banner to show success
-            Clock.schedule_once(
-                functools.partial(
-                    screen_manager.current_screen.show_banner,
-                    (0.553, 0.902, 0.675, 1),
-                    f"Server renamed to '${name}$' successfully!",
-                    "rename.png",
-                    2.5,
-                    {"center_x": 0.5, "center_y": 0.965}
-                ), 0
-            )
+                self.remove_widget(self.title_widget)
+                self.remove_widget(self.footer_widget)
+                del self.title_widget
+                del self.footer_widget
+                self.title_widget = generate_title(f"Server Settings: '{name}'")
+                self.footer_widget = generate_footer(f"{name}, Settings", color='EFD49E')
+                self.add_widget(self.title_widget)
+                self.add_widget(self.footer_widget)
+
+                # Display banner to show success
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        (0.553, 0.902, 0.675, 1),
+                        f"Server renamed to '${name}$' successfully!",
+                        "rename.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0
+                )
+            Clock.schedule_once(change_data, 0)
+        def rename_thread(name, *a):
+            threading.Timer(0, functools.partial(rename_server, name)).start()
 
         # Rename server input
         sub_layout = ScrollItem()
         input_label = InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.2})
         sub_layout.add_widget(input_label)
-        self.rename_input = ServerRenameInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=server_obj.name, on_validate=rename_server, disabled=server_obj.running)
+        self.rename_input = ServerRenameInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=server_obj.name, on_validate=rename_thread, disabled=server_obj.running)
         self.rename_input.size_hint_max_x = 435
         sub_layout.add_widget(self.rename_input)
         transilience_layout.add_widget(sub_layout)
@@ -21833,6 +21958,10 @@ class ServerSettingsScreen(MenuBackground):
 
         # Delete server button
         def delete_server(*args):
+            def loading_screen(*a):
+                screen_manager.current = 'BlurredLoadingScreen'
+            Clock.schedule_once(loading_screen, 0)
+
             server_name = server_obj.name
             server_obj.delete()
             constants.server_manager.current_server = None
@@ -21856,6 +21985,8 @@ class ServerSettingsScreen(MenuBackground):
                     ), 0.1
                 )
             Clock.schedule_once(switch_screens, 0.5)
+        def timer_delete(*a):
+            threading.Timer(0, delete_server).start()
         def prompt_delete(*args):
             Clock.schedule_once(
                 functools.partial(
@@ -21863,7 +21994,7 @@ class ServerSettingsScreen(MenuBackground):
                     "warning_query",
                     f"Delete '${server_obj.name}$'",
                     "Do you want to permanently delete this server?\n\nThis action cannot be undone\n(Your server can be re-imported from a back-up later)",
-                    (None, functools.partial(Clock.schedule_once, delete_server, 0.5))
+                    (None, functools.partial(Clock.schedule_once, timer_delete, 0.5))
                 ),
                 0
             )

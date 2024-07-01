@@ -524,7 +524,7 @@ class ServerObject():
 
 
                 # Server stop log
-                elif "Stopping server" in line:
+                elif "Stopping server" in line or "Failed to start the minecraft server" in line:
                     type_label = "STOP"
                     type_color = (0.3, 1, 0.6, 1)
                     self.check_for_deadlock()
@@ -820,7 +820,7 @@ class ServerObject():
 
                     # Check if Windows Firewall is enabled
                     if "OFF" not in str(run('netsh advfirewall show allprofiles | findstr State', shell=True, stdout=PIPE, stderr=PIPE).stdout):
-                        exec_type = 'legacy' if constants.java_executable['legacy'] in script_content else 'modern'
+                        exec_type = 'legacy' if constants.java_executable['legacy'] in script_content else 'modern' if constants.java_executable['modern'] in script_content else 'lts'
                         if constants.run_proc(f'netsh advfirewall firewall show rule name="auto-mcs java {exec_type}"') == 1:
                             net_test = ctypes.windll.shell32.ShellExecuteW(None, "runas", 'netsh', f'advfirewall firewall add rule name="auto-mcs java {exec_type}" dir=in action=allow enable=yes program="{constants.java_executable[exec_type]}"', None, 0)
                             if net_test == 5:

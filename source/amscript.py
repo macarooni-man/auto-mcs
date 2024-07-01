@@ -1351,6 +1351,71 @@ class ServerScriptObject():
     def log_success(self, msg):
         self.log(msg, log_type='success')
 
+    # Version compatible message system for every player
+    def broadcast(self, msg, color="gray", style='italic', tag=False):
+        if not msg:
+            return
+
+        # Send to server console as well
+        self.log(msg, log_type=('success' if color == 'green' else 'warning' if color == 'gold' else 'error' if color == 'red' else 'info'))
+
+        msg = str(msg)
+        if tag:
+            msg = f'[auto-mcs] {msg}'
+
+        style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
+
+        # Use /tellraw if it's supported, else /tell
+        if constants.version_check(str(self.version), '>=', '1.7.2'):
+            msg = f'/tellraw @a {{"text": {json.dumps(msg)}, "color": "{color}"}}'
+            if style != 'normal':
+                msg = msg[:-1] + f', "{style}": true}}'
+            self.execute(msg, log=False)
+
+        # Pre 1.7.2
+        else:
+            color_table = {
+                'dark_red': '§4',
+                'red': '§c',
+                'gold': '§6',
+                'yellow': '§e',
+                'dark_green': '§2',
+                'green': '§a',
+                'aqua': '§b',
+                'dark_aqua': '§3',
+                'dark_blue': '§1',
+                'blue': '§9',
+                'light_purple': '§d',
+                'dark_purple': '§5',
+                'white': '§f',
+                'gray': '§7',
+                'dark_gray': '§8',
+                'black': '§0'
+            }
+            style_table = {
+                'obfuscated': '§k',
+                'bold': '§l',
+                'underlined': '§n',
+                'strikethrough': '§m',
+                'italic': '§o'
+            }
+            final_code = ''
+
+            if color in list(color_table.keys()):
+                final_code += color_table[color]
+
+            # If user is server, send to server instead
+            if style != 'normal':
+                final_code += style_table[style]
+            msg = f'/tell @a {final_code}{("§r "+final_code).join(msg.rstrip().split(" "))}§r'
+            self.execute(msg, log=False)
+    def broadcast_warning(self, msg, tag=False):
+        self.broadcast(msg, "gold", "normal", tag=tag)
+    def broadcast_error(self, msg, tag=False):
+        self.broadcast(msg, "red", "normal", tag=tag)
+    def broadcast_success(self, msg, tag=False):
+        self.broadcast(msg, "green", "normal", tag=tag)
+
     # Version check
     def version_check(self, operand, version):
         return constants.version_check(self.version, operand, version)
@@ -2568,7 +2633,6 @@ class CoordinateObject(Munch):
 
         else:
             raise TypeError('Operand must be <int> or <float>')
-
 
     def __str__(self):
         return " ".join([str(i) for k, i in self.items() if k != '$_amsclass'])

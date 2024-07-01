@@ -27,11 +27,11 @@ pyparsing==3.0.9
 pypiwin32==223
 pywin32==304
 pywin32-ctypes==0.2.2
-requests==2.31.0
+requests==2.32.0
 requests-toolbelt==0.10.0
 simpleaudio==1.0.4
 six==1.16.0
 soupsieve==2.3.2.post1
-urllib3==1.26.18
+urllib3==1.26.19
 PyYAML>=6.0.1
 json_repair==0.10.1

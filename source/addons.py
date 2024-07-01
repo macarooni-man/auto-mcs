@@ -228,14 +228,18 @@ class AddonManager():
         if constants.app_online:
             for addon in self.installed_addons['enabled']:
                 try:
-                    # Check for Geyser updates
+                    # Check for Geyser updates on Bukkit with any version, or on Fabric if version >= 1.21
                     if addon.author.lower() == 'geysermc':
-                        if addon.id == 'geyser':
-                            update = requests.get('https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest').json()
-                            if constants.check_app_version(addon.addon_version, update['version'], limit=3):
-                                # print(addon.name, addon.addon_version, update.addon_version)
-                                self.update_required = True
+                        if (constants.version_check(self._server['version'], '>=', '1.21') and self._server['type'] == 'fabric') or self._server['type'] != 'fabric':
+                            if addon.id == 'geyser':
+                                update = requests.get('https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest').json()
+                                if constants.check_app_version(addon.addon_version, update['version'], limit=3):
+                                    # print(addon.name, addon.addon_version, update.addon_version)
+                                    self.update_required = True
                                 return True
+
+                        else:
+                            continue
 
                     # Everything else
                     update = get_update_url(addon, self._server['version'], self._server['type'])
@@ -722,8 +726,10 @@ def get_addon_info(addon: AddonWebObject, server_properties):
 
 
 # Return the latest available supported download link
+# - compat_mode: allows older addon versions to be selected as a download if the MC version is not available
+# - force_available: if the server is older than the oldest addon version, use the oldest one available
 # AddonWebObject
-def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
+def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, force_available=False):
 
     # Skip if addon doesn't exist for some reason
     if not addon:
@@ -842,17 +848,18 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
 
         for data in page_content:
             files = data['files']
-            url = data['files'][-1]['url']
-            for version in data['game_versions']:
-                if version not in link_list.keys() and version.startswith("1.") and "-" not in version:
-                    addon_version = None
-                    for gv in data['game_versions']:
-                        gv_str = f'-{gv}-'
-                        if gv_str in data['version_number']:
-                            addon_version = format_version(data['version_number'].split(gv_str)[-1])
-                            break
-                    link_list[version] = url
-                    version_list[version] = addon_version
+            if files:
+                url = files[0]['url']
+                for version in data['game_versions']:
+                    if version not in link_list.keys() and version.startswith("1.") and "-" not in version:
+                        addon_version = None
+                        for gv in data['game_versions']:
+                            gv_str = f'-{gv}-'
+                            if gv_str in data['version_number']:
+                                addon_version = format_version(data['version_number'].split(gv_str)[-1])
+                                break
+                        link_list[version] = url
+                        version_list[version] = addon_version
 
 
     # In case a link is not found, find the latest compatible version
@@ -865,6 +872,14 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True):
                 final_addon_version = version_list[final_version]
                 addon.supported = "no"
                 break
+
+    # If no candidate is found with a legacy server, use the oldest version available if specified
+    if not final_link and force_available:
+        item = sorted(list(link_list.items()), key=lambda x: x[0], reverse=True)[-1]
+        final_link = item[1]
+        final_version = item[0]
+        final_addon_version = version_list[final_version]
+        addon.supported = "no"
 
     addon.download_url = final_link
     addon.download_version = final_version
@@ -1178,20 +1193,21 @@ def geyser_addons(server_properties):
     elif server_properties['type'] == 'fabric':
 
         # Geyser fabric
-        url = 'https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/fabric'
-        addon = AddonWebObject('Geyser', 'fabric', 'GeyserMC', 'Bedrock packet compatibility layer', url, 'geyser', None)
-        addon.download_url = url
-        final_list.append(addon)
+        results = search_addons('Geyser', server_properties)
+        if results:
+            addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
+            final_list.append(addon)
 
         # Floodgate fabric
-        url = 'https://ci.opencollab.dev/job/GeyserMC/job/Floodgate-Fabric/job/master/lastSuccessfulBuild/artifact/build/libs/floodgate-fabric.jar'
-        addon = AddonWebObject('Floodgate', 'fabric', 'GeyserMC', 'Bedrock account compatibility layer', url, 'floodgate', None)
-        addon.download_url = url
-        final_list.append(addon)
+        results = search_addons('Floodgate', server_properties)
+        if results:
+            addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
+            final_list.append(addon)
 
         # ViaVersion fabric
         # url = requests.get('https://api.github.com/repos/ViaVersion/ViaFabric/releases/latest').json()['assets'][-1]['browser_download_url']
         # addon = AddonWebObject('ViaFabric', 'fabric', 'ViaVersion', 'Allows newer clients to connect to legacy servers', url, 'viafabric')
+        # addon.download_url = url
         # addon.download_url = url
         # final_list.append(addon)
 

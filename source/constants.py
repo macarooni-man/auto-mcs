@@ -41,8 +41,8 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.1.1"
-ams_version = "1.2"
+app_version = "2.1.2"
+ams_version = "1.2.1"
 app_title = "auto-mcs"
 dev_version = False
 window_size = (850, 850)
@@ -312,7 +312,7 @@ available_locales = {
     "Dutch": {"name": 'Nederlands', "code": 'nl'},
     "Portuguese": {"name": 'Português', "code": 'pt'},
     "Swedish": {"name": 'Suédois', "code": 'sv'},
-    "Finnish": {"name": 'Suomen', "code": 'fi'},
+    "Finnish": {"name": 'Suomi', "code": 'fi'},
 
     # Requires special fonts:
 
@@ -567,6 +567,7 @@ def restart_update_app(*a):
     executable = os.path.basename(launch_path)
     new_version = update_data['version']
     success_str = f"auto-mcs was updated to v${new_version}$ successfully!"
+    success_unix = f"auto-mcs was updated to v\${new_version}\$ successfully!"
     failure_str = "Something went wrong with the update"
     script_name = 'auto-mcs-update'
     update_log = os.path.join(tempDir, 'update-log')
@@ -626,7 +627,7 @@ hdiutil mount "{dmg_path}"
 rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(launch_path), '../..')}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@{success_str} > "{update_log}"
+    echo banner-success@{success_unix} > "{update_log}"
 else
     echo banner-failure@{failure_str} > "{update_log}"
 fi
@@ -661,7 +662,7 @@ sleep 2
 /bin/cp -rf "{os.path.join(downDir, 'auto-mcs')}" "{launch_path}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
-    echo banner-success@{success_str} > "{update_log}"
+    echo banner-success@{success_unix} > "{update_log}"
 else
     echo banner-failure@{failure_str} > "{update_log}"
 fi
@@ -1426,9 +1427,10 @@ def find_latest_mc():
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
             # Get side panel latest version
-            a = soup.find('ul', 'nav-collapsible nav-collapsible-open')
+            li = soup.find('li', 'li-version-list')
+
             try:
-                new_url = url.rsplit('/', 1)[0] + '/' + a.find('a').get('href')
+                new_url = url.rsplit('/', 1)[0] + '/' + li.find_all('a')[-1].get('href')
                 reqs = requests.get(new_url, timeout=timeout)
                 soup = BeautifulSoup(reqs.text, 'html.parser')
             except:
@@ -1532,7 +1534,7 @@ def find_latest_mc():
 
     version_links = {
         "vanilla": "https://mcversions.net/index.html",
-        "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/index.html",
+        "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/",
         "paper": "https://papermc.io/api/v2/projects/paper",
         "purpur": "https://api.purpurmc.org/v2/purpur",
         "spigot": "https://getbukkit.org/download/spigot",
@@ -1643,7 +1645,7 @@ def generate_splash(crash=False):
             "?What are you doing here stranger¿", "Get outta my swamp!", "Whoever put the word fun in funeral?",
             "A new day is like a new day.", "Everywhere is within walking distance if you have the time.",
             "empty blank", "Money doesn’t buy happiness, but it does buy everything else.",
-            "Congragulations! It's a pizza!",
+            "Congratulations! It's a pizza!",
             "Silence is golden, but duck tape is silver.", "Welcome to flavortown!",
             "I get enough exercise pushing my luck.",
             "Unicorns ARE real, they’re just fat, grey, and we call them rhinos.",
@@ -1775,6 +1777,7 @@ def validate_version(server_info: dict):
     mcType = server_info['type']
     buildNum = server_info['build']
     final_info = [False, {'version': mcVer, 'build': buildNum}, '', None] # [if version acceptable, {version, build}, message]
+    url = ""
 
     # Remove below 1.6 versions for Forge
     try:
@@ -1829,7 +1832,7 @@ def validate_version(server_info: dict):
                     soup = BeautifulSoup(reqs.text, 'html.parser')
 
                     for div in soup.find_all('div', "row vdivide"):
-                        if div.h2.text == str(mcVer):
+                        if div.h2.text.strip() == str(mcVer):
 
                             reqs = requests.get(div.a.get('href'))
                             soup = BeautifulSoup(reqs.text, 'html.parser')
@@ -1874,7 +1877,7 @@ def validate_version(server_info: dict):
 
 
             elif str.lower(mcType) == "forge":
-                print(modifiedVersion)
+
                 # 1.16.3 is unavailable due to issues with Java
                 # https://www.reddit.com/r/Minecraft/comments/s7ce50/serverhosting_forge_minecraft_keeps_crashing_on/
                 if mcVer != "1.16.3":
@@ -2800,6 +2803,21 @@ def scan_import(bkup_file=False, progress_func=None, *args):
         script_list = glob(os.path.join(str(path), "*.bat"))
         script_list.extend(glob(os.path.join(str(path), "*.sh")))
 
+
+        # If no startup scripts were found, generate a temp script for each .jar file
+        if not script_list:
+            jar_list = glob(os.path.join(str(path), '*.jar'))
+            if jar_list:
+                for jar in sorted(jar_list, key=lambda x: os.path.getsize(x)):
+                    folder_check(tempDir)
+                    jar_name = os.path.basename(jar)
+                    script_name = os.path.join(tempDir, jar_name + '.bat')
+                    with open(script_name, 'w+') as f:
+                        f.write(f'java -jar {jar_name}')
+                    script_list.append(script_name)
+
+
+        # First, check for any run scripts to see if the .jar is contained within
         for file in script_list:
 
             # Find server jar name
@@ -2986,8 +3004,7 @@ eula=true"""
                             # Ignore flags with invalid data
                             if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
                                 continue
-                            for exclude in ['-install', '-server', '-jar', '--nogui', '-Command', '-fullversion',
-                                            '-version']:
+                            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version']:
                                 if exclude in flag:
                                     break
 
@@ -3010,6 +3027,8 @@ eula=true"""
                     os.rmdir(tmpsvr)
                 except FileNotFoundError:
                     pass
+                except PermissionError:
+                    pass
                 copy_to(str(path), tempDir, os.path.basename(tmpsvr))
 
                 # Delete all startup scripts in directory
@@ -3022,6 +3041,10 @@ eula=true"""
                 for jar in glob(os.path.join(str(path), '*.jar'), recursive=False):
                     if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name in jar)):
                         os.remove(jar)
+
+                    # Rename actual .jar file to server.jar to prevent crashes
+                    if file_name in jar:
+                        run_proc(f"{'move' if os_name == 'windows' else 'mv'} \"{os.path.join(tmpsvr, os.path.basename(jar))}\" \"{os.path.join(tmpsvr, 'server.jar')}\"")
 
 
     # print(import_data)
@@ -3262,7 +3285,7 @@ def scan_modpack(update=False, progress_func=None):
             # Ignore flags with invalid data
             if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
                 continue
-            for exclude in ['-install', '-server', '-jar', '--nogui', '-Command', '-fullversion', '-version']:
+            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version']:
                 if exclude in flag:
                     break
 
@@ -4017,7 +4040,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
         # Modern
         if version_check(properties['version'], ">=", "1.17"):
             java = java_executable["lts"] if version_check(properties['version'], '<', '1.20.5') else java_executable['modern']
-            version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*"))]
+            version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*")) if os.listdir(file)]
             arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
             script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
 

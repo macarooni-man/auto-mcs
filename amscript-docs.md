@@ -57,6 +57,22 @@ Sends a custom log event to the console. This output is displayed only while the
 
 
 
+### server.broadcast(*message, log_type*)
+
+Sends a custom chat message to all players and the console. This output is displayed only while the server is running, and is not saved to `latest.log`.
+
+- `server.broadcast_success()`, `server.broadcast_warning()`, and `server.broadcast_error()` methods can also be used, and only require the `message` parameter.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `message*` | `str` of log content |
+| `log_type` | `str` can be `'info'`, `'success'`, `'warning'` or `'error'`. Defaults to `'info'` |
+
+<br>
+
+
+
 ### server.execute(*command*)
 
 Executes any Minecraft command in the server console.
@@ -168,12 +184,12 @@ Accessed by an applicable event, or by the `server.get_player()` method
 
 Sets a custom permission for [**@player.on_alias**](#playeron_alias) events.
 
-- The `player.check_permission()` method can also be used with only the `permission` argument to return a `bool` if the player has the specified permission. Note that the server console has all custom permissions.
+- The `player.check_permission()` method can also be used with only the `permission` argument to return a `bool` if the player has the specified permission. Note that the server console has all custom permissions. Note that these are arbitrary permissions for moderating auto-mcs commands, and have no relation to Bukkit.
 
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `permission*` | `str` of username, or selector. Only players will be matched |
+| `permission*` | `str` of the permission name |
 | `enabled` | `bool` to enable or disable the permission. Defaults to `True` |
 
 <br>
@@ -1135,7 +1151,7 @@ Fired upon player successfully connecting to the server.
 
 ```
 @player.on_join(player, data):
-    player.log(f'Welcome to the server {player.name}!')
+    player.log(f'Welcome to the server {player}!')
 ```
 
 <br>
@@ -1155,7 +1171,7 @@ Fired upon player disconnecting from the server.
 
 ```
 @player.on_leave(player, data):
-    server.execute(f'/say Goodbye, {player.name}!')
+    server.execute(f'/say Goodbye, {player}!')
 ```
 
 <br>
@@ -1198,7 +1214,7 @@ Fired upon player dying to the environment or another player.
 ```
 @player.on_death(player, enemy, message):
     if enemy:
-        enemy.log(f"/say Did you know: murder is a crime {enemy}?")
+        enemy.log(f"Did you know: murder is a crime {enemy}?")
         acl.ban_player(enemy)
     else:
         player.log(f"You should really be more careful {player}!")
