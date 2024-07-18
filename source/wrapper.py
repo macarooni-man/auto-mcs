@@ -201,7 +201,6 @@ if __name__ == '__main__':
         # Update variables in the background
         connect_counter = 0
         while True:
-            print(True)
 
             # Exit this thread if the main thread closes, or crashes
             if exitApp or crash:

@@ -2,13 +2,13 @@
 # import sys
 # sys.path.append('/')
 
-
 from fastapi import FastAPI, Body
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, create_model
 from typing import Callable, get_type_hints, Optional
 from functools import partial
 import threading
+import asyncio
 import inspect
 import uvicorn
 
@@ -26,24 +26,22 @@ import constants
 # This will communicate with the endpoints
 def api_wrapper(obj_name, method_name: str, *args, **kwargs):
     print(f"Calling API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
-    lookup = {
-        'AclManager': 'acl',
-        'AddonManager': 'addon',
-        'ScriptManager': 'script_manager',
-        'BackupManager': 'backup',
-    }
 
+    # Manipulate strings to execute an function call to the actual server manager
+    lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
     args = ', '.join([f"{key}='{value}'" for key, value in kwargs.items()])
-    command = f'constants.server_manager.current_server.'
+    command = f'returned = constants.server_manager.current_server.'
     if obj_name in lookup:
         command += f'{lookup[obj_name]}.'
     command += f'{method_name}({args})'
+    # print(command)
 
-    print(constants, command)
-    exec(command, globals(), locals())
+    # Format locals() to include a new "returned" variable which will store the data to be returned
+    local_data = locals()
+    local_data['returned'] = None
+    exec(command, globals(), local_data)
 
-    # return endpoint_request(function, *args, **kwargs)
-    pass
+    return local_data['returned']
 
 
 # Creates a wrapper clone of obj where all methods point to api_wrapper
@@ -161,7 +159,7 @@ def create_schema():
         routes=app.routes,
     )
     openapi_schema["info"]["x-logo"] = {
-        "url": "https://raw.githubusercontent.com/macarooni-man/auto-mcs/main/other/github-banner-cropped.png"
+        "url": "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
     }
     app.openapi_schema = openapi_schema
     return app.openapi_schema
@@ -198,7 +196,8 @@ class WebAPI():
     def stop(self):
         # This still doesn't work for whatever reason?
         if self.running:
-            threading.Timer(0, self.server.shutdown).start()
+            self.server.force_exit = True
+            asyncio.run(self.server.shutdown())
             self.server = None
             self.running = False
 
@@ -212,5 +211,3 @@ app.openapi = create_schema
 
 constants.api_manager = WebAPI(app, '0.0.0.0', 8000)
 constants.api_manager.start()
-constants.api_manager.stop()
-
