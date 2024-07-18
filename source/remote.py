@@ -121,16 +121,20 @@ def create_remote(obj: object, request=True):
     )
 
 
-# Returns {param: type} from the parameters of any function
+# Returns {param: (type, Ellipsis or default value)} from the parameters of any function
 def get_function_params(method: Callable):
     parameters = inspect.signature(method).parameters
 
     if not parameters or ("self" in parameters and len(parameters) == 1):
         return None
+
+    def get_default_value(param):
+        return ... if param.default is inspect._empty else param.default
+
     return {
         param.name: (
             object if 'Object' in param.annotation.__name__ else param.annotation if param.annotation != inspect._empty else str,
-            ...,
+            get_default_value(param),
         )
         for param in parameters.values()
         if param.name != "self"
