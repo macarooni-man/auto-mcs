@@ -34,15 +34,20 @@ def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *arg
     def format_args():
         formatted = {}
         args_list = list(args)
+        param_keys = list(params.keys())
 
-        for key, (data_type, _) in params.items():
-            if key in kwargs:
-                formatted[key] = data_type(kwargs[key])
-            elif args_list:
-                formatted[key] = data_type(args_list.pop(0))
-            else:
-                # Skip assignment if the argument is missing
-                continue
+        # Convert *args to corresponding parameters
+        for i, arg in enumerate(args_list):
+            if i < len(param_keys):
+                key = param_keys[i]
+                data_type, _ = params[key]
+                formatted[key] = data_type(arg)
+
+        # Process **kwargs and overwrite any conflicts
+        for key, value in kwargs.items():
+            if key in params:
+                data_type, _ = params[key]
+                formatted[key] = data_type(value)
 
         return formatted
 
@@ -70,18 +75,16 @@ def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *arg
         # Manipulate strings to execute an function call to the actual server manager
         lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
         args = ', '.join([f"{key}='{value}'" for key, value in kwargs.items()])
-        command = f'returned = constants.server_manager.current_server.'
+        command = f'returned = server_manager.current_server.'
         if obj_name in lookup:
             command += f'{lookup[obj_name]}.'
-        command += f'{method_name}({args})'
-        # print(command)
+        command += f'{method_name}'
 
         # Format locals() to include a new "returned" variable which will store the data to be returned
-        local_data = locals()
-        local_data['returned'] = None
-        exec(command, globals(), local_data)
+        exec_memory = {'locals': {'returned': None}, 'globals': {'server_manager': constants.server_manager}}
+        exec(command, exec_memory['globals'], exec_memory['locals'])
 
-        return local_data['returned']
+        return exec_memory['locals']['returned'](**kwargs)
 
 
 # Creates a wrapper clone of obj where all methods point to api_wrapper
@@ -131,9 +134,20 @@ def get_function_params(method: Callable):
     def get_default_value(param):
         return ... if param.default is inspect._empty else param.default
 
+    def get_param_type(param):
+        final_type = str
+        if 'Object' in param.annotation.__name__:
+            final_type = object
+        elif param.annotation != inspect._empty:
+            final_type = param.annotation
+        if final_type == str:
+            if param.default != inspect._empty:
+                final_type = type(param.default)
+        return final_type
+
     return {
         param.name: (
-            object if 'Object' in param.annotation.__name__ else param.annotation if param.annotation != inspect._empty else str,
+            get_param_type(param),
             get_default_value(param),
         )
         for param in parameters.values()
