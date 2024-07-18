@@ -214,6 +214,7 @@ def generate_endpoints(app: FastAPI, instance):
                 methods=["POST" if input_model else "GET"],
                 response_model=response_model,
                 name=name,
+                tags=[instance._obj_name]
             )
 
 
