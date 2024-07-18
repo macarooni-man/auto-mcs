@@ -43,6 +43,7 @@ import amscript
 
 app_version = "2.1.2"
 ams_version = "1.2.1"
+api_version = "0.0.1"
 app_title = "auto-mcs"
 dev_version = False
 window_size = (850, 850)
@@ -214,6 +215,7 @@ check_ngrok()
 # Bigboi server manager
 server_manager = None
 search_manager = None
+api_manager = None
 import_data = {'name': None, 'path': None}
 backup_lock = {}
 
