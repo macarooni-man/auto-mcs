@@ -194,17 +194,19 @@ if __name__ == '__main__':
         background_launch(constants.load_addon_cache)
         background_launch(constants.check_data_cache)
         background_launch(constants.search_manager.cache_pages)
+
         # FastAPI process
-        uvicorn_process = subprocess.Popen(
-            [
-                "uvicorn",
-                "api.main:app",
-                "--host",
-                "0.0.0.0",
-                "--port",
-                "8000",
-            ]
-        )
+        # uvicorn_process = subprocess.Popen(
+        #     [
+        #         "uvicorn",
+        #         "api.remote:app",
+        #         "--host",
+        #         "0.0.0.0",
+        #         "--port",
+        #         "8000",
+        #     ]
+        # )
+        import remote
 
         # Update variables in the background
         connect_counter = 0
@@ -212,7 +214,7 @@ if __name__ == '__main__':
 
             # Exit this thread if the main thread closes, or crashes
             if exitApp or crash:
-                uvicorn_process.terminate()
+                # uvicorn_process.terminate()
                 break
             else:
 
