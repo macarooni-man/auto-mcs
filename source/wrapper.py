@@ -196,6 +196,7 @@ if __name__ == '__main__':
         background_launch(constants.search_manager.cache_pages)
 
         # FastAPI process
+        # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
         import remote
 
         # Update variables in the background

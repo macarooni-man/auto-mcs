@@ -8,6 +8,7 @@ from pydantic import BaseModel, create_model
 from typing import Callable, get_type_hints, Optional
 from functools import partial
 import threading
+import requests
 import asyncio
 import inspect
 import uvicorn
@@ -22,30 +23,70 @@ import constants
 
 
 
+# Placeholder for authentication
+def get_token():
+    return 'token'
+
 
 # This will communicate with the endpoints
-def api_wrapper(obj_name, method_name: str, *args, **kwargs):
-    print(f"Calling API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
+# "request" parameter is in context to this particular session, or subjectively, "am I requesting data?"
+def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *args, **kwargs):
+    def format_args():
+        formatted = {}
+        args_list = list(args)
 
-    # Manipulate strings to execute an function call to the actual server manager
-    lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
-    args = ', '.join([f"{key}='{value}'" for key, value in kwargs.items()])
-    command = f'returned = constants.server_manager.current_server.'
-    if obj_name in lookup:
-        command += f'{lookup[obj_name]}.'
-    command += f'{method_name}({args})'
-    # print(command)
+        for key, (data_type, _) in params.items():
+            if key in kwargs:
+                formatted[key] = data_type(kwargs[key])
+            elif args_list:
+                formatted[key] = data_type(args_list.pop(0))
+            else:
+                # Skip assignment if the argument is missing
+                continue
 
-    # Format locals() to include a new "returned" variable which will store the data to be returned
-    local_data = locals()
-    local_data['returned'] = None
-    exec(command, globals(), local_data)
+        return formatted
 
-    return local_data['returned']
+    operation = 'Requesting' if request else 'Responding to'
+    print(f"{operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
+
+
+    # If this session is requesting data from a remote session
+    if request:
+        url = f"http://localhost:8000/{obj_name}/{method_name}"
+        headers = {
+            "Authorization": f"Token {get_token()}",
+            "Content-Type": "application/json",
+        }
+
+        # Determine POST or GET based on params
+        data = requests.post(url, headers=headers, json=format_args()) if params else requests.get(url, headers=headers)
+        return data
+
+
+
+    # If this session is responding to a remote request
+    else:
+
+        # Manipulate strings to execute an function call to the actual server manager
+        lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
+        args = ', '.join([f"{key}='{value}'" for key, value in kwargs.items()])
+        command = f'returned = constants.server_manager.current_server.'
+        if obj_name in lookup:
+            command += f'{lookup[obj_name]}.'
+        command += f'{method_name}({args})'
+        # print(command)
+
+        # Format locals() to include a new "returned" variable which will store the data to be returned
+        local_data = locals()
+        local_data['returned'] = None
+        exec(command, globals(), local_data)
+
+        return local_data['returned']
 
 
 # Creates a wrapper clone of obj where all methods point to api_wrapper
-def create_remote(obj: object):
+# "request" parameter is in context to this particular session, or subjectively, "am I requesting data?"
+def create_remote(obj: object, request=True):
     global app
 
     # First, sort through all the attributes and methods
@@ -59,11 +100,14 @@ def create_remote(obj: object):
             if name.endswith('__'):
                 continue
 
-            data['methods'][name] = partial(api_wrapper, obj.__name__, name)
-            data['attributes']['_arg_map'][name] = getattr(obj, name, None)
+            attr = getattr(obj, name, None)
+            params = get_function_params(attr)
+
+            data['methods'][name] = partial(api_wrapper, obj.__name__, name, request, params)
+            data['attributes']['_arg_map'][name] = attr
 
 
-        # If 'i' in an attribute
+        # If 'i' is an attribute
         else:
             data['attributes'][name] = None
 
@@ -77,13 +121,13 @@ def create_remote(obj: object):
     )
 
 
-# noinspection PyTypeChecker
-def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
+# Returns {param: type} from the parameters of any function
+def get_function_params(method: Callable):
     parameters = inspect.signature(method).parameters
 
     if not parameters or ("self" in parameters and len(parameters) == 1):
         return None
-    fields = {
+    return {
         param.name: (
             object if 'Object' in param.annotation.__name__ else param.annotation if param.annotation != inspect._empty else str,
             ...,
@@ -91,6 +135,13 @@ def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
         for param in parameters.values()
         if param.name != "self"
     }
+
+
+# noinspection PyTypeChecker
+def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
+    fields = get_function_params(method)
+    if not fields:
+        return None
 
     model = create_model(
         f"{method.__name__}Input",
@@ -202,11 +253,30 @@ class WebAPI():
             self.running = False
 
 
+# Create objects to import for the rest of the app to request data
+class RemoteServerObject(create_remote(ServerObject)):
+    def __init__(self):
+        self.backup = RemoteBackupManager()
+        self.addon = RemoteAddonManager()
+        self.acl = RemoteAclManager()
+        self.script_manager = RemoteScriptManager()
+
+
+RemoteViewObject = create_remote(ViewObject)
+RemoteAmsFileObject = create_remote(AmsFileObject)
+RemoteScriptManager = create_remote(ScriptManager)
+RemoteAddonFileObject = create_remote(AddonFileObject)
+RemoteAddonManager = create_remote(AddonManager)
+RemoteBackupManager = create_remote(BackupManager)
+RemoteAclManager = create_remote(AclManager)
+
+
+
 
 # Instantiate the API, and create all the endpoints
 app = FastAPI()
 obj_list = (ServerObject, ViewObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)
-remote_obj_list = [generate_endpoints(app, create_remote(r)()) for r in obj_list]
+remote_obj_list = [generate_endpoints(app, create_remote(r, False)()) for r in obj_list]
 app.openapi = create_schema
 
 constants.api_manager = WebAPI(app, '0.0.0.0', 8000)
