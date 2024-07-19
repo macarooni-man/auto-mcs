@@ -197,9 +197,8 @@ if __name__ == '__main__':
 
         # FastAPI process
         # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
-        enable_api = True
-        if enable_api:
-            constants.api_manager = remote.WebAPI('0.0.0.0', 8000)
+        if constants.api_data['enabled']:
+            constants.api_manager = remote.WebAPI(constants.api_data['default-host'], constants.api_data['default-port'])
             constants.api_manager.start()
 
 

@@ -43,7 +43,6 @@ import amscript
 
 app_version = "2.1.2"
 ams_version = "1.2.1"
-api_version = "0.1.0"
 app_title = "auto-mcs"
 dev_version = False
 window_size = (850, 850)
@@ -190,6 +189,27 @@ else:
     gui_assets = os.path.join(executable_folder, 'gui-assets')
 
 
+# API stuff
+def get_private_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0)
+    try:
+        # doesn't even have to be reachable
+        s.connect(('10.254.254.254', 1))
+        return s.getsockname()[0]
+    finally:
+        s.close()
+api_manager = None
+api_data = {
+    "enabled": True,
+    "version": "0.2.0",
+    "default-host": get_private_ip(),
+    "default-port": 7001,
+    "logo": "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
+}
+
+
+
 # SSL crap
 if os_name == 'linux':
     os.environ['SSL_CERT_DIR'] = executable_folder
@@ -215,7 +235,6 @@ check_ngrok()
 # Bigboi server manager
 server_manager = None
 search_manager = None
-api_manager = None
 import_data = {'name': None, 'path': None}
 backup_lock = {}
 
@@ -4359,14 +4378,7 @@ def get_current_ip(name: str, get_ngrok=False):
 
         # More ip info
         if not private_ip:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(0)
-            try:
-                # doesn't even have to be reachable
-                s.connect(('10.254.254.254', 1))
-                private_ip = s.getsockname()[0]
-            finally:
-                s.close()
+            private_ip = get_private_ip()
 
 
         if not get_ngrok:

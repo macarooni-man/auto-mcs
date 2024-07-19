@@ -1,6 +1,7 @@
 # This file abstracts all the program managers to control a server remotely
 # import sys
 # sys.path.append('/')
+import time
 
 from fastapi import FastAPI, Body
 from fastapi.openapi.utils import get_openapi
@@ -248,12 +249,12 @@ def create_schema():
         return app.openapi_schema
     openapi_schema = get_openapi(
         title="auto-mcs Web API",
-        version=constants.api_version,
-        summary="This is the auto-mcs Web API. Useful for interacting with the auto-mcs application remotely.",
+        version=constants.api_data['version'],
+        summary="Welcome to the auto-mcs Web API! You can use this utility to manage the application remotely.",
         routes=app.routes,
     )
     openapi_schema["info"]["x-logo"] = {
-        "url": "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
+        "url": constants.api_data['logo']
     }
     app.openapi_schema = openapi_schema
     return app.openapi_schema
@@ -271,6 +272,10 @@ class WebAPI():
         self.port = port
         self.update_config(host=host, port=port)
 
+    def _run_uvicorn(self):
+        self.server = uvicorn.Server(self.config)
+        self.server.run()
+
     def update_config(self, host: str, port: int):
         self.host = host
         self.port = port
@@ -283,14 +288,15 @@ class WebAPI():
             # limit_max_requests=1
         )
 
-    def run_uvicorn(self):
-        self.server = uvicorn.Server(self.config)
-        self.server.run()
+        # Restart if running
+        if self.running:
+            self.restart()
 
     def start(self):
         if not self.running:
             self.running = True
-            threading.Timer(0, self.run_uvicorn).start()
+            print(f'WebAPI: active on "{self.host}:{self.port}"')
+            threading.Timer(0, self._run_uvicorn).start()
 
     def stop(self):
         # This still doesn't work for whatever reason?
@@ -299,6 +305,11 @@ class WebAPI():
             asyncio.run(self.server.shutdown())
             self.server = None
             self.running = False
+
+    def restart(self):
+        self.stop()
+        time.sleep(1)
+        self.start()
 
 
 # Create objects to import for the rest of the app to request data
@@ -322,7 +333,10 @@ RemoteAclManager = create_remote(AclManager)
 
 
 # Instantiate the API, and create all the endpoints
-app = FastAPI()
+def get_docs_url(type: str):
+    if not constants.app_compiled:
+        return "/docs" if "docs" in type else "/redoc"
+app = FastAPI(docs_url=get_docs_url("docs"), redoc_url=get_docs_url("redoc"))
 app.openapi = create_schema
 
 
