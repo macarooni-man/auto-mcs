@@ -164,6 +164,7 @@ downDir = os.path.join(applicationFolder, 'Downloads')
 backupFolder = os.path.join(applicationFolder, 'Backups')
 userDownloads = os.path.join(home, 'Downloads')
 serverDir = os.path.join(applicationFolder, 'Servers')
+remoteFile = os.path.join(serverDir, 'remote.json')
 
 tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')

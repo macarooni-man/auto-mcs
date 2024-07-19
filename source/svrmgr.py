@@ -1811,10 +1811,11 @@ class ServerManager():
 
     # Loads servers from "remote.json" in Servers directory
     def load_remote_servers(self):
-        json_path = os.path.join(constants.applicationFolder, 'Servers', 'remote.json')
-        with open(json_path, 'r') as f:
-            self.remote_servers = json.loads(f.read())
-        return self.remote_servers
+        # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
+        if os.path.exists(constants.remoteFile):
+            with open(constants.remoteFile, 'r') as f:
+                self.remote_servers = json.loads(f.read())
+            return self.remote_servers
 
 # --------------------------------------------- General Functions ------------------------------------------------------
 
