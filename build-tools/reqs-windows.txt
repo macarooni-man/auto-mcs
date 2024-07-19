@@ -21,7 +21,7 @@ Pillow==10.3.0
 plyer>=2.1.0
 psutil==5.9.2
 Pygments==2.16.1
-pyinstaller>=6.9.0
+pyinstaller==6.1.0
 pyinstaller-hooks-contrib>=2024.7
 pyparsing==3.0.9
 pypiwin32==223
