@@ -43,7 +43,7 @@ import amscript
 
 app_version = "2.1.2"
 ams_version = "1.2.1"
-api_version = "0.0.1"
+api_version = "0.1.0"
 app_title = "auto-mcs"
 dev_version = False
 window_size = (850, 850)
@@ -4123,6 +4123,7 @@ def get_modrinth_data(name: str):
 
 
     return index_data
+
 
 # Return list of every valid server update property in 'applicationFolder'
 def make_update_list():

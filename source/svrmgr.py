@@ -6,6 +6,7 @@ from copy import deepcopy
 from glob import glob
 import functools
 import threading
+import requests
 import psutil
 import ctypes
 import time
@@ -19,6 +20,7 @@ from addons import AddonManager
 import constants
 import amscript
 import backup
+import remote
 
 
 # Auto-MCS Server Manager API
@@ -1769,6 +1771,7 @@ class ViewObject():
 class ServerManager():
 
     def __init__(self):
+        self.remote_servers = []
         self.server_list = create_server_list()
         self.current_server = None
         self.running_servers = {}
@@ -1776,7 +1779,7 @@ class ServerManager():
 
     # Refreshes self.server_list with current info
     def refresh_list(self):
-        self.server_list = create_server_list()
+        self.server_list = create_server_list(self.load_remote_servers())
 
     # Sets self.current_server to selected ServerObject
     def open_server(self, name):
@@ -1806,10 +1809,17 @@ class ServerManager():
         if self.current_server:
             return self.open_server(self.current_server.name)
 
+    # Loads servers from "remote.json" in Servers directory
+    def load_remote_servers(self):
+        json_path = os.path.join(constants.applicationFolder, 'Servers', 'remote.json')
+        with open(json_path, 'r') as f:
+            self.remote_servers = json.loads(f.read())
+        return self.remote_servers
+
 # --------------------------------------------- General Functions ------------------------------------------------------
 
 # Generates sorted dict of server information for menu
-def create_server_list():
+def create_server_list(remote_data=None):
 
     final_list = []
     normal_list = []
@@ -1825,6 +1835,24 @@ def create_server_list():
 
     with ThreadPoolExecutor(max_workers=10) as pool:
         pool.map(grab_terse_props, constants.generate_server_list())
+
+
+    # If remote servers are specified, grab them all with an API request
+    if remote_data:
+        for r in remote_data:
+            try:
+                print(r)
+                url = f"http://{r['host']}:{r['port']}/main/create_server_list"
+                headers = {
+                    "Authorization": f"Token {remote.get_token()}",
+                    "Content-Type": "application/json",
+                }
+                data = requests.get(url, headers=headers, timeout=0.01)
+                data = data.json() if data else None
+                print(data)
+                
+            except requests.exceptions.ConnectionError:
+                pass
 
 
     normal_list = sorted(normal_list, key=lambda x: x.last_modified, reverse=True)

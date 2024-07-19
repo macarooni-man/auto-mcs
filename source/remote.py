@@ -14,12 +14,13 @@ import inspect
 import uvicorn
 
 # Local imports
-from svrmgr import ServerObject, ViewObject
 from amscript import AmsFileObject, ScriptManager
 from addons import AddonFileObject, AddonManager
 from backup import BackupManager
+from svrmgr import ServerObject
 from acl import AclManager
 import constants
+import svrmgr
 
 
 
@@ -57,7 +58,8 @@ def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *arg
 
     # If this session is requesting data from a remote session
     if request:
-        url = f"http://localhost:8000/{obj_name}/{method_name}"
+        api_mgr = constants.api_manager
+        url = f"http://{api_mgr.host}:{api_mgr.port}/{obj_name}/{method_name}"
         headers = {
             "Authorization": f"Token {get_token()}",
             "Content-Type": "application/json",
@@ -190,19 +192,20 @@ def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
     return model
 
 
+# Create an endpoint from a function
+def create_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
+    async def endpoint(input: input_model = Body(...) if input_model else None):
+        if input_model:
+            result = func(**input.dict())
+        else:
+            result = func()
+        return result
+
+    return endpoint
+
+
 # Generate endpoints from all instance methods
 def generate_endpoints(app: FastAPI, instance):
-
-    # Create an endpoint from a function
-    def create_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
-        async def endpoint(input: input_model = Body(...) if input_model else None):
-            if input_model:
-                result = func(**input.dict())
-            else:
-                result = func()
-            return result
-
-        return endpoint
 
     # Check if a function is a partial
     def is_partial(m):
@@ -258,14 +261,19 @@ def create_schema():
 
 # Internal wrapper for API functionality
 class WebAPI():
-    def __init__(self, app: FastAPI, host: str, port: int):
+    def __init__(self, host: str, port: int):
+        global app
         self.app = app
         self.config = None
         self.server = None
         self.running = False
+        self.host = host
+        self.port = port
         self.update_config(host=host, port=port)
 
     def update_config(self, host: str, port: int):
+        self.host = host
+        self.port = port
         self.config = uvicorn.Config(
             app=app,
             host=host,
@@ -303,7 +311,6 @@ class RemoteServerObject(create_remote(ServerObject)):
         self.script_manager = RemoteScriptManager()
 
 
-RemoteViewObject = create_remote(ViewObject)
 RemoteAmsFileObject = create_remote(AmsFileObject)
 RemoteScriptManager = create_remote(ScriptManager)
 RemoteAddonFileObject = create_remote(AddonFileObject)
@@ -316,9 +323,17 @@ RemoteAclManager = create_remote(AclManager)
 
 # Instantiate the API, and create all the endpoints
 app = FastAPI()
-obj_list = (ServerObject, ViewObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)
-remote_obj_list = [generate_endpoints(app, create_remote(r, False)()) for r in obj_list]
 app.openapi = create_schema
 
-constants.api_manager = WebAPI(app, '0.0.0.0', 8000)
-constants.api_manager.start()
+
+# Generate endpoints both statically & dynamically
+[generate_endpoints(app, create_remote(r, False)()) for r in
+ (ServerObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)]
+
+app.add_api_route(
+    f"/main/create_server_list",
+    create_endpoint(svrmgr.create_server_list),
+    methods=["GET"],
+    name='create_server_list',
+    tags=['main']
+)

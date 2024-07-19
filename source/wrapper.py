@@ -8,7 +8,6 @@ import time
 import sys
 import os
 import gc
-import subprocess
 
 
 if __name__ == '__main__':
@@ -29,6 +28,7 @@ if __name__ == '__main__':
 
     # Import constants and set variables
     import constants
+    import remote
 
 
     # Initialize Tk before Kivy due to a bug with SDL2
@@ -197,7 +197,11 @@ if __name__ == '__main__':
 
         # FastAPI process
         # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
-        import remote
+        enable_api = True
+        if enable_api:
+            constants.api_manager = remote.WebAPI('0.0.0.0', 8000)
+            constants.api_manager.start()
+
 
         # Update variables in the background
         connect_counter = 0
@@ -205,6 +209,7 @@ if __name__ == '__main__':
 
             # Exit this thread if the main thread closes, or crashes
             if exitApp or crash:
+                constants.api_manager.stop()
                 break
             else:
 
