@@ -4,3 +4,6 @@ source/build
 source/__pycache__
 build-tools/.DS_Store
 .DS_Store
+.idea
+*.pyc
+source/gui-assets/live

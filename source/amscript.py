@@ -75,6 +75,10 @@ class AmsFileObject():
 
         self.hash = base64.b64encode(f'{self.title}/{self.author}/{self.version}'.encode())
 
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return getattr(self, name)
+
 # House an .ams file in the online repository
 class AmsWebObject():
     def __init__(self, data: tuple or list):
@@ -142,6 +146,10 @@ class ScriptManager():
         self._online_scripts = constants.ams_web_list
         self._script_hash = None
         self._enumerate_scripts()
+
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return getattr(self, name)
 
     # Sets script hash to determine changes
     def _set_hash(self):

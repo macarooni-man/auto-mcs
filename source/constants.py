@@ -164,6 +164,7 @@ downDir = os.path.join(applicationFolder, 'Downloads')
 backupFolder = os.path.join(applicationFolder, 'Backups')
 userDownloads = os.path.join(home, 'Downloads')
 serverDir = os.path.join(applicationFolder, 'Servers')
+remoteFile = os.path.join(serverDir, 'remote.json')
 
 tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
@@ -187,6 +188,27 @@ if hasattr(sys, '_MEIPASS'):
 else:
     executable_folder = os.path.abspath(".")
     gui_assets = os.path.join(executable_folder, 'gui-assets')
+
+
+# API stuff
+def get_private_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0)
+    try:
+        # doesn't even have to be reachable
+        s.connect(('10.254.254.254', 1))
+        return s.getsockname()[0]
+    finally:
+        s.close()
+api_manager = None
+api_data = {
+    "enabled": True,
+    "version": "0.2.0",
+    "default-host": get_private_ip(),
+    "default-port": 7001,
+    "logo": "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
+}
+
 
 
 # SSL crap
@@ -4122,6 +4144,7 @@ def get_modrinth_data(name: str):
 
     return index_data
 
+
 # Return list of every valid server update property in 'applicationFolder'
 def make_update_list():
     global update_list
@@ -4356,14 +4379,7 @@ def get_current_ip(name: str, get_ngrok=False):
 
         # More ip info
         if not private_ip:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(0)
-            try:
-                # doesn't even have to be reachable
-                s.connect(('10.254.254.254', 1))
-                private_ip = s.getsockname()[0]
-            finally:
-                s.close()
+            private_ip = get_private_ip()
 
 
         if not get_ngrok:
