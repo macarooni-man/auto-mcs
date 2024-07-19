@@ -30,3 +30,6 @@ tkmacosx>=1.0.5
 pyobjus>=1.2.3
 PyYAML>=6.0.1
 json_repair==0.10.1
+fastapi>=0.111.1
+fastapi-cli>=0.0.4
+uvicorn>=0.30.1

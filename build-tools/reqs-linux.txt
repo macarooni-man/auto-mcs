@@ -28,3 +28,7 @@ soupsieve==2.3.2.post1
 urllib3==1.26.19
 PyYAML>=6.0.1
 json_repair==0.10.1
+fastapi>=0.111.1
+fastapi-cli>=0.0.4
+uvicorn>=0.30.1
+
