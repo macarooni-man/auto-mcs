@@ -199,6 +199,10 @@ class ServerObject():
 
         print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
 
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return getattr(self, name)
+
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
 
@@ -1757,6 +1761,9 @@ class ViewObject():
         self.server_path = constants.server_path(server_name)
         self.last_modified = os.path.getmtime(self.server_path)
 
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return getattr(self, name)
 
 # Houses all server information
 class ServerManager():

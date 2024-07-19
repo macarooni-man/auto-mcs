@@ -64,6 +64,10 @@ class AddonFileObject(AddonObject):
         hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
         self.hash = str(hash_data)[:8]
 
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return getattr(self, name)
+
 # AddonObject for housing downloadable modpacks
 class ModpackWebObject(AddonWebObject):
     pass
@@ -95,6 +99,10 @@ class AddonManager():
 
         # Write addons to cache
         constants.load_addon_cache(True)
+
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return getattr(self, name)
 
     # Sets addon hash to determine changes
     def _set_hash(self):

@@ -65,16 +65,16 @@ def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *arg
 
         # Determine POST or GET based on params
         data = requests.post(url, headers=headers, json=format_args()) if params else requests.get(url, headers=headers)
-        return data
+
+        return data.json() if data else None
 
 
 
     # If this session is responding to a remote request
     else:
 
-        # Manipulate strings to execute an function call to the actual server manager
+        # Manipulate strings to execute a function call to the actual server manager
         lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
-        args = ', '.join([f"{key}='{value}'" for key, value in kwargs.items()])
         command = f'returned = server_manager.current_server.'
         if obj_name in lookup:
             command += f'{lookup[obj_name]}.'
@@ -92,8 +92,28 @@ def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *arg
 def create_remote(obj: object, request=True):
     global app
 
+    # Replace __getattr__
+    def __getattr__(self, name):
+        if name.endswith('__'):
+            return
+        try:
+            return api_wrapper(
+                self._obj_name,
+                '_sync_attr',
+                True,
+                {'name': (str, ...)},
+                name
+            )
+        except:
+            pass
+        # raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+
     # First, sort through all the attributes and methods
-    data = {'attributes': {'_obj_name': obj.__name__, '_arg_map': {}}, 'methods': {}}
+    data = {
+        'attributes': {'_obj_name': obj.__name__, '_arg_map': {}, '_func_list': []},
+        'methods': {'__getattr__': __getattr__} if request else {}
+    }
 
     for method in dir(obj):
         name = str(method)
@@ -108,6 +128,7 @@ def create_remote(obj: object, request=True):
 
             data['methods'][name] = partial(api_wrapper, obj.__name__, name, request, params)
             data['attributes']['_arg_map'][name] = attr
+            data['attributes']['_func_list'].append(name)
 
 
         # If 'i' is an attribute
@@ -274,6 +295,7 @@ class WebAPI():
 
 # Create objects to import for the rest of the app to request data
 class RemoteServerObject(create_remote(ServerObject)):
+
     def __init__(self):
         self.backup = RemoteBackupManager()
         self.addon = RemoteAddonManager()

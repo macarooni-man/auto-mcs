@@ -79,6 +79,9 @@ class AclManager():
         self.whitelist_enabled = self._server['whitelist']
         self.displayed_rule = None
 
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return getattr(self, name)
 
     # Scrape the server's joined users
     def _get_playerdata(self):
