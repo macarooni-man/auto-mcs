@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     # Import constants and set variables
     import constants
-    import remote
+    import telepath
 
 
     # Initialize Tk before Kivy due to a bug with SDL2
@@ -198,7 +198,7 @@ if __name__ == '__main__':
         # FastAPI process
         # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
         if constants.api_data['enabled']:
-            constants.api_manager = remote.WebAPI(constants.api_data['default-host'], constants.api_data['default-port'])
+            constants.api_manager = telepath.WebAPI(constants.api_data['default-host'], constants.api_data['default-port'])
             constants.api_manager.start()
 
 

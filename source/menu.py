@@ -13412,6 +13412,12 @@ class ServerButton(HoverButton):
         self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 13
         self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
 
+        # Telepath icon
+        if self.telepath_data:
+            self.type_image.tp_shadow.pos = (self.type_image.image.x - 2, self.type_image.image.y)
+            self.type_image.tp_icon.pos = (self.type_image.image.x - 2, self.type_image.image.y)
+
+
         self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
         self.type_image.type_label.y = self.y + (self.height * 0.05)
 
@@ -13474,8 +13480,20 @@ class ServerButton(HoverButton):
 
         self.subtitle.opacity = self.subtitle.default_opacity
 
+    def generate_name(self, color='#7373A2'):
+        if self.telepath_data:
+            tld = self.telepath_data['host']
+            if self.telepath_data['nickname']:
+                tld = self.telepath_data['nickname']
+            return f'[color={color}]{tld}/[/color]{self.properties.name}'
+        else:
+            return self.properties.name
+
     def __init__(self, server_object, click_function=None, fade_in=0.0, highlight=None, update_banner="", view_only=False, **kwargs):
         super().__init__(**kwargs)
+
+        # Check if server is remote
+        self.telepath_data = server_object._telepath_data
 
         self.view_only = view_only
 
@@ -13515,12 +13533,12 @@ class ServerButton(HoverButton):
         self.title.color = self.color_id[1]
         self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
-        self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
         self.title.shorten = True
         self.title.markup = True
         self.title.shorten_from = "right"
         self.title.max_lines = 1
-        self.title.text = server_object.name
+        self.title.text = self.generate_name()
         self.add_widget(self.title)
 
 
@@ -13589,6 +13607,25 @@ class ServerButton(HoverButton):
         self.type_image.image.size_hint_max = (65, 65)
         self.type_image.image.color = self.color_id[1]
         self.type_image.add_widget(self.type_image.image)
+
+
+        # Show icon on self.type_image to specify
+        if self.telepath_data:
+            self.type_image.tp_shadow = Image(source=icon_path('shadow.png'))
+            self.type_image.tp_shadow.allow_stretch = True
+            self.type_image.tp_shadow.size_hint_max = (33, 33)
+            self.type_image.tp_shadow.color = self.color_id[0]
+            self.type_image.add_widget(self.type_image.tp_shadow)
+
+            self.type_image.tp_icon = Image(source=icon_path('telepath.png'))
+            self.type_image.tp_icon.allow_stretch = True
+            self.type_image.tp_icon.size_hint_max = (33, 33)
+            self.type_image.tp_icon.color = self.color_id[1]
+            self.type_image.add_widget(self.type_image.tp_icon)
+        else:
+            self.type_image.tp_shadow = None
+            self.type_image.tp_icon = None
+
 
         def TemplateLabel():
             template_label = AlignLabel()
@@ -13696,10 +13733,21 @@ class ServerButton(HoverButton):
     def on_enter(self, *args):
         if not self.ignore_hover:
             self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_hover.png'), color=self.color_id[0], hover_action=True)
+        self.title.text = self.generate_name('#2D2D4E')
+
+        if self.telepath_data:
+            Animation(color=constants.brighten_color(self.color_id[1], -0.2), duration=0.1).start(self.type_image.tp_shadow)
+            Animation(color=self.color_id[0], duration=0.1).start(self.type_image.tp_icon)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
             self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png'), color=self.color_id[1], hover_action=False)
+        self.title.text = self.generate_name()
+
+        if self.telepath_data:
+            Animation(color=self.color_id[0], duration=0.1).start(self.type_image.tp_shadow)
+            Animation(color=self.color_id[1], duration=0.1).start(self.type_image.tp_icon)
+
 
     def update_context_options(self):
 
@@ -13784,13 +13832,10 @@ class ServerManagerScreen(MenuBackground):
 
     # Toggles favorite of item, and reload list
     def favorite(self, server_name):
-        config_file = constants.server_config(server_name)
-        config_file.set('general', 'isFavorite', ('false' if config_file.get('general', 'isFavorite') == 'true' else 'true'))
-        constants.server_config(server_name, config_file)
 
+        bool_favorite = constants.toggle_favorite(server_name)
 
         # Show banner
-        bool_favorite = bool(config_file.get('general', 'isFavorite') == 'true')
         if server_name in constants.server_manager.running_servers:
             constants.server_manager.running_servers[server_name].favorite = bool_favorite
 

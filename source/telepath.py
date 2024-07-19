@@ -59,18 +59,7 @@ def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *arg
 
     # If this session is requesting data from a remote session
     if request:
-        api_mgr = constants.api_manager
-        url = f"http://{api_mgr.host}:{api_mgr.port}/{obj_name}/{method_name}"
-        headers = {
-            "Authorization": f"Token {get_token()}",
-            "Content-Type": "application/json",
-        }
-
-        # Determine POST or GET based on params
-        data = requests.post(url, headers=headers, json=format_args()) if params else requests.get(url, headers=headers)
-
-        return data.json() if data else None
-
+        return constants.api_manager.request(endpoint=f'{obj_name}/{method_name}', json=(format_args() if params else None))
 
 
     # If this session is responding to a remote request
@@ -92,7 +81,7 @@ def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *arg
 
 # Creates a wrapper clone of obj where all methods point to api_wrapper
 # "request" parameter is in context to this particular session, or subjectively, "am I requesting data?"
-def create_remote(obj: object, request=True):
+def create_remote_obj(obj: object, request=True):
     global app
 
     # Replace __getattr__
@@ -148,6 +137,17 @@ def create_remote(obj: object, request=True):
     )
 
 
+# Creates an endpoint from a method, tagged, and optionally if it contains parameters
+def create_endpoint(method: Callable, tag: str, params=False):
+    app.add_api_route(
+        f"/{tag}/{method.__name__}",
+        return_endpoint(constants.toggle_favorite, create_pydantic_model(constants.toggle_favorite) if params else None),
+        methods=["POST" if params else "GET"],
+        name=method.__name__,
+        tags=[tag]
+    )
+
+
 # Returns {param: (type, Ellipsis or default value)} from the parameters of any function
 def get_function_params(method: Callable):
     parameters = inspect.signature(method).parameters
@@ -194,7 +194,7 @@ def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
 
 
 # Create an endpoint from a function
-def create_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
+def return_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
     async def endpoint(input: input_model = Body(...) if input_model else None):
         if input_model:
             result = func(**input.dict())
@@ -231,7 +231,7 @@ def generate_endpoints(app: FastAPI, instance):
         if not name.endswith("__"):
             method = partial_to_function(method)
             input_model = create_pydantic_model(instance._arg_map[name])
-            endpoint = create_endpoint(method, input_model)
+            endpoint = return_endpoint(method, input_model)
             response_model = get_type_hints(method).get("return", None)
             app.add_api_route(
                 f"/{instance._obj_name}/{name}",
@@ -248,9 +248,9 @@ def create_schema():
     if app.openapi_schema:
         return app.openapi_schema
     openapi_schema = get_openapi(
-        title="auto-mcs Web API",
+        title="auto-mcs - Telepath API",
         version=constants.api_data['version'],
-        summary="Welcome to the auto-mcs Web API! You can use this utility to manage the application remotely.",
+        summary="Welcome to the auto-mcs Telepath API! You can use this utility for seamless remote management.",
         routes=app.routes,
     )
     openapi_schema["info"]["x-logo"] = {
@@ -311,9 +311,30 @@ class WebAPI():
         time.sleep(1)
         self.start()
 
+    # Send a POST or GET request to an endpoint
+    def request(self, endpoint: str, host=None, port=None, json=None, timeout=1):
+        if endpoint.startswith('/'):
+            endpoint = endpoint[1:]
+        if endpoint.endswith('/'):
+            endpoint = endpoint[:-1]
+        if not host:
+            host = self.host
+        if not port:
+            port = self.port
+
+        url = f"http://{host}:{port}/{endpoint}"
+        headers = {
+            "Authorization": f"Token {get_token()}",
+            "Content-Type": "application/json",
+        }
+
+        # Determine POST or GET based on params
+        data = requests.post(url, headers=headers, json=json, timeout=timeout) if json else requests.get(url, headers=headers, timeout=timeout)
+        return data.json() if data else None
+
 
 # Create objects to import for the rest of the app to request data
-class RemoteServerObject(create_remote(ServerObject)):
+class RemoteServerObject(create_remote_obj(ServerObject)):
 
     def __init__(self):
         self.backup = RemoteBackupManager()
@@ -322,12 +343,12 @@ class RemoteServerObject(create_remote(ServerObject)):
         self.script_manager = RemoteScriptManager()
 
 
-RemoteAmsFileObject = create_remote(AmsFileObject)
-RemoteScriptManager = create_remote(ScriptManager)
-RemoteAddonFileObject = create_remote(AddonFileObject)
-RemoteAddonManager = create_remote(AddonManager)
-RemoteBackupManager = create_remote(BackupManager)
-RemoteAclManager = create_remote(AclManager)
+RemoteAmsFileObject = create_remote_obj(AmsFileObject)
+RemoteScriptManager = create_remote_obj(ScriptManager)
+RemoteAddonFileObject = create_remote_obj(AddonFileObject)
+RemoteAddonManager = create_remote_obj(AddonManager)
+RemoteBackupManager = create_remote_obj(BackupManager)
+RemoteAclManager = create_remote_obj(AclManager)
 
 
 
@@ -341,13 +362,8 @@ app.openapi = create_schema
 
 
 # Generate endpoints both statically & dynamically
-[generate_endpoints(app, create_remote(r, False)()) for r in
+[generate_endpoints(app, create_remote_obj(r, False)()) for r in
  (ServerObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)]
 
-app.add_api_route(
-    f"/main/create_server_list",
-    create_endpoint(svrmgr.create_server_list),
-    methods=["GET"],
-    name='create_server_list',
-    tags=['main']
-)
+create_endpoint(svrmgr.create_server_list, 'main')
+create_endpoint(constants.toggle_favorite, 'main', True)

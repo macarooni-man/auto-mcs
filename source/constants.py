@@ -164,7 +164,7 @@ downDir = os.path.join(applicationFolder, 'Downloads')
 backupFolder = os.path.join(applicationFolder, 'Backups')
 userDownloads = os.path.join(home, 'Downloads')
 serverDir = os.path.join(applicationFolder, 'Servers')
-remoteFile = os.path.join(serverDir, 'remote.json')
+telepathFile = os.path.join(serverDir, 'telepath.json')
 
 tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
@@ -3796,6 +3796,15 @@ def init_update():
 
 
 # ------------------------------------------------ Server Functions ----------------------------------------------------
+
+# Toggles favorite status in Server Manager
+def toggle_favorite(server_name: str):
+    config_file = server_config(server_name)
+    config_file.set('general', 'isFavorite', ('false' if config_file.get('general', 'isFavorite') == 'true' else 'true'))
+    server_config(server_name, config_file)
+
+    return bool(config_file.get('general', 'isFavorite') == 'true')
+
 
 # Returns general server type from specific type
 def server_type(specific_type: str):

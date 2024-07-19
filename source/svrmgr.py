@@ -18,9 +18,9 @@ from acl import AclManager, get_uuid
 from backup import BackupManager
 from addons import AddonManager
 import constants
+import telepath
 import amscript
 import backup
-import remote
 
 
 # Auto-MCS Server Manager API
@@ -32,6 +32,7 @@ class ServerObject():
 
     def __init__(self, server_name: str):
 
+        self._telepath_data = None
         self.gamemode_dict = ['survival', 'creative', 'adventure', 'spectator']
         self.difficulty_dict = ['peaceful', 'easy', 'normal', 'hard', 'hardcore']
 
@@ -1718,6 +1719,7 @@ class ViewObject():
 
     def __init__(self, server_name: str):
 
+        self._telepath_data = None
         self.name = server_name
         self.running = self.name in constants.server_manager.running_servers.keys()
 
@@ -1767,6 +1769,13 @@ class ViewObject():
     def _sync_attr(self, name):
         return getattr(self, name)
 
+# Loads remote server data locally for a ViewClass in the Server Manager screen
+class RemoteViewObject():
+    def __init__(self, instance_data: dict, server_data: dict):
+        self._telepath_data = instance_data
+        for k, v in server_data.items():
+            setattr(self, k, v)
+
 # Houses all server information
 class ServerManager():
 
@@ -1812,8 +1821,8 @@ class ServerManager():
     # Loads servers from "remote.json" in Servers directory
     def load_remote_servers(self):
         # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
-        if os.path.exists(constants.remoteFile):
-            with open(constants.remoteFile, 'r') as f:
+        if os.path.exists(constants.telepathFile):
+            with open(constants.telepathFile, 'r') as f:
                 self.remote_servers = json.loads(f.read())
             return self.remote_servers
 
@@ -1840,19 +1849,30 @@ def create_server_list(remote_data=None):
 
     # If remote servers are specified, grab them all with an API request
     if remote_data:
-        for r in remote_data:
+        for instance in remote_data:
             try:
-                print(r)
-                url = f"http://{r['host']}:{r['port']}/main/create_server_list"
-                headers = {
-                    "Authorization": f"Token {remote.get_token()}",
-                    "Content-Type": "application/json",
-                }
-                data = requests.get(url, headers=headers, timeout=0.01)
-                data = data.json() if data else None
-                print(data)
-                
+                remote_servers = constants.api_manager.request(
+                    endpoint='/main/create_server_list',
+                    host=instance['host'],
+                    port=instance['port'],
+                    timeout=0.1
+                )
+
+                def process_remote_props(server_data):
+                    remote_object = RemoteViewObject(instance, server_data)
+
+                    if remote_object.favorite:
+                        favorite_list.append(remote_object)
+                    else:
+                        normal_list.append(remote_object)
+
+                with ThreadPoolExecutor(max_workers=10) as pool:
+                    pool.map(process_remote_props, remote_servers)
+
+            # Don't load server if it can't be found
             except requests.exceptions.ConnectionError:
+                pass
+            except requests.exceptions.ReadTimeout:
                 pass
 
 
