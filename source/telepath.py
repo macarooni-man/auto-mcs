@@ -352,8 +352,7 @@ RemoteAclManager = create_remote_obj(AclManager)
 
 
 
-
-# Instantiate the API, and create all the endpoints
+# Instantiate the API
 def get_docs_url(type: str):
     if not constants.app_compiled:
         return "/docs" if "docs" in type else "/redoc"
@@ -366,4 +365,3 @@ app.openapi = create_schema
  (ServerObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)]
 
 create_endpoint(svrmgr.create_server_list, 'main')
-create_endpoint(constants.toggle_favorite, 'main', True)

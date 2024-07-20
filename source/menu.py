@@ -13399,7 +13399,7 @@ class ServerButton(HoverButton):
 
         # Title and description
         padding = 2.17
-        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (6 if self.favorite else 0) + 30, self.y + 31)
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (5.3 if self.favorite else 8.3) + 30, self.y + 31)
         self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1 + 30 - 100, self.y + 8)
 
 
@@ -13487,7 +13487,7 @@ class ServerButton(HoverButton):
                 tld = self.telepath_data['nickname']
             return f'[color={color}]{tld}/[/color]{self.properties.name}'
         else:
-            return self.properties.name
+            return self.properties.name.strip()
 
     def __init__(self, server_object, click_function=None, fade_in=0.0, highlight=None, update_banner="", view_only=False, **kwargs):
         super().__init__(**kwargs)
@@ -13679,7 +13679,7 @@ class ServerButton(HoverButton):
         favorite = None
         if not view_only:
             try:
-                favorite = functools.partial(screen_manager.current_screen.favorite, server_object.name)
+                favorite = functools.partial(screen_manager.current_screen.favorite, server_object.name, server_object)
             except AttributeError:
                 pass
 
@@ -13747,7 +13747,6 @@ class ServerButton(HoverButton):
         if self.telepath_data:
             Animation(color=self.color_id[0], duration=0.1).start(self.type_image.tp_shadow)
             Animation(color=self.color_id[1], duration=0.1).start(self.type_image.tp_icon)
-
 
     def update_context_options(self):
 
@@ -13831,9 +13830,12 @@ class ServerButton(HoverButton):
 class ServerManagerScreen(MenuBackground):
 
     # Toggles favorite of item, and reload list
-    def favorite(self, server_name):
+    def favorite(self, server_name, properties):
+        if properties._telepath_data:
+            bool_favorite = properties.toggle_favorite()
 
-        bool_favorite = constants.toggle_favorite(server_name)
+        else:
+            bool_favorite = constants.toggle_favorite(server_name)
 
         # Show banner
         if server_name in constants.server_manager.running_servers:

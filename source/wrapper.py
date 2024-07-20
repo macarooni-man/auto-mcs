@@ -195,12 +195,6 @@ if __name__ == '__main__':
         background_launch(constants.check_data_cache)
         background_launch(constants.search_manager.cache_pages)
 
-        # FastAPI process
-        # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
-        if constants.api_data['enabled']:
-            constants.api_manager = telepath.WebAPI(constants.api_data['default-host'], constants.api_data['default-port'])
-            constants.api_manager.start()
-
 
         # Update variables in the background
         connect_counter = 0
@@ -253,6 +247,13 @@ if __name__ == '__main__':
             # Normal Python behavior when testing
             if not constants.app_compiled:
                 raise e
+
+
+    # Launch API before UI
+    # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
+    if constants.api_data['enabled']:
+        constants.api_manager = telepath.WebAPI(constants.api_data['default-host'], constants.api_data['default-port'])
+        constants.api_manager.start()
 
 
     # Launch/threading logic

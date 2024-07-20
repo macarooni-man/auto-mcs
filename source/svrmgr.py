@@ -1771,16 +1771,34 @@ class ViewObject():
 
 # Loads remote server data locally for a ViewClass in the Server Manager screen
 class RemoteViewObject():
+    def is_favorite(self):
+        try:
+            if self.name in self._telepath_data['added-servers']:
+                return self._telepath_data['added-servers'][self.name]['favorite']
+        except KeyError:
+            pass
+        return False
+
+    def toggle_favorite(self):
+        if self.name not in self._telepath_data['added-servers']:
+            self._telepath_data['added-servers'][self.name] = {}
+        self._telepath_data['added-servers'][self.name]['favorite'] = not self.favorite
+        self.favorite = not self.favorite
+        constants.server_manager.write_telepath_servers(self._telepath_data)
+
+
     def __init__(self, instance_data: dict, server_data: dict):
         self._telepath_data = instance_data
         for k, v in server_data.items():
             setattr(self, k, v)
 
+        self.favorite = self.is_favorite()
+
 # Houses all server information
 class ServerManager():
 
     def __init__(self):
-        self.remote_servers = []
+        self.telepath_servers = {}
         self.server_list = create_server_list()
         self.current_server = None
         self.running_servers = {}
@@ -1788,7 +1806,7 @@ class ServerManager():
 
     # Refreshes self.server_list with current info
     def refresh_list(self):
-        self.server_list = create_server_list(self.load_remote_servers())
+        self.server_list = create_server_list(self.load_telepath_servers())
 
     # Sets self.current_server to selected ServerObject
     def open_server(self, name):
@@ -1819,12 +1837,26 @@ class ServerManager():
             return self.open_server(self.current_server.name)
 
     # Loads servers from "remote.json" in Servers directory
-    def load_remote_servers(self):
+    def load_telepath_servers(self):
         # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
         if os.path.exists(constants.telepathFile):
             with open(constants.telepathFile, 'r') as f:
-                self.remote_servers = json.loads(f.read())
-            return self.remote_servers
+                self.telepath_servers = json.loads(f.read())
+        return self.telepath_servers
+
+    def write_telepath_servers(self, instance: None):
+        self.telepath_servers = self.load_telepath_servers()
+        if instance:
+            self.telepath_servers[instance['host']] = instance
+            del instance['host']
+        with open(constants.telepathFile, 'w+') as f:
+            f.write(json.dumps(self.telepath_servers))
+        return self.telepath_servers
+
+    def add_telepath_server(self, host: str, port: int, nickname: str):
+        self.telepath_servers[host] = {"port": port, "nickname": nickname, "added-servers": {}}
+        self.write_telepath_servers()
+
 
 # --------------------------------------------- General Functions ------------------------------------------------------
 
@@ -1849,7 +1881,8 @@ def create_server_list(remote_data=None):
 
     # If remote servers are specified, grab them all with an API request
     if remote_data:
-        for instance in remote_data:
+        for host, instance in remote_data.items():
+            instance['host'] = host
             try:
                 remote_servers = constants.api_manager.request(
                     endpoint='/main/create_server_list',
@@ -1860,7 +1893,6 @@ def create_server_list(remote_data=None):
 
                 def process_remote_props(server_data):
                     remote_object = RemoteViewObject(instance, server_data)
-
                     if remote_object.favorite:
                         favorite_list.append(remote_object)
                     else:
