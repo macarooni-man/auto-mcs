@@ -204,7 +204,7 @@ api_manager = None
 api_data = {
     "enabled": True,
     "version": "0.2.0",
-    "default-host": get_private_ip(),
+    "default-host": "0.0.0.0",
     "default-port": 7001,
     "logo": "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
 }
@@ -3796,6 +3796,16 @@ def init_update():
 
 
 # ------------------------------------------------ Server Functions ----------------------------------------------------
+
+# Gets a variable from this module, remotely
+def get_remote_var(var: str):
+    try:
+        var = getattr(sys.modules[__name__], var)
+    except:
+        var = None
+    return var
+
+
 
 # Toggles favorite status in Server Manager
 def toggle_favorite(server_name: str):

@@ -9,7 +9,6 @@ from pydantic import BaseModel, create_model
 from fastapi import FastAPI, Body
 import threading
 import requests
-import asyncio
 import inspect
 import uvicorn
 
@@ -93,7 +92,7 @@ def create_remote_obj(obj: object, request=True):
         if name.endswith('__'):
             return
         try:
-            return api_wrapper(
+            response = api_wrapper(
                 self,
                 self._obj_name,
                 '_sync_attr',
@@ -101,9 +100,10 @@ def create_remote_obj(obj: object, request=True):
                 {'name': (str, ...)},
                 name
             )
+            return response
+
         except:
-            pass
-        # raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
 
     # First, sort through all the attributes and methods
@@ -269,6 +269,9 @@ class WebAPI():
         self.server = uvicorn.Server(self.config)
         self.server.run()
 
+    def _kill_uvicorn(self):
+        self.server.should_exit = True
+
     def update_config(self, host: str, port: int):
         self.host = host
         self.port = port
@@ -294,8 +297,7 @@ class WebAPI():
     def stop(self):
         # This still doesn't work for whatever reason?
         if self.running:
-            self.server.force_exit = True
-            asyncio.run(self.server.shutdown())
+            self._kill_uvicorn()
             self.server = None
             self.running = False
 
@@ -322,7 +324,7 @@ class WebAPI():
         }
 
         # Determine POST or GET based on params
-        data = requests.post(url, headers=headers, json=json, timeout=timeout) if json else requests.get(url, headers=headers, timeout=timeout)
+        data = requests.post(url, headers=headers, json=json, timeout=timeout) if json is not None else requests.get(url, headers=headers, timeout=timeout)
         return data.json() if data else None
 
 
@@ -375,3 +377,4 @@ app.openapi = create_schema
  (ServerObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)]
 
 create_endpoint(svrmgr.create_server_list, 'main')
+create_endpoint(constants.get_remote_var, 'main', True)

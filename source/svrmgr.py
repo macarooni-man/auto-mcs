@@ -1798,6 +1798,8 @@ class ServerManager():
 
     def __init__(self):
         self.telepath_servers = {}
+        self.telepath_updates = {}
+
         self.server_list = create_server_list()
         self.current_server = None
         self.remote_server = None
@@ -1893,6 +1895,7 @@ class ServerManager():
         if os.path.exists(constants.telepathFile):
             with open(constants.telepathFile, 'r') as f:
                 self.telepath_servers = json.loads(f.read())
+
         return self.telepath_servers
 
     def write_telepath_servers(self, instance: None):
@@ -1908,6 +1911,24 @@ class ServerManager():
         self.telepath_servers[host] = {"port": port, "nickname": nickname, "added-servers": {}}
         self.write_telepath_servers()
 
+    def reload_telepath_updates(self, host_data=None):
+        # Load remote update list
+        if host_data:
+            self.telepath_updates[host_data['host']] = constants.api_manager.request(
+                endpoint='/main/get_remote_var',
+                host=host_data['host'],
+                port=host_data['port'],
+                json={'var': 'update_list'}
+            )
+
+        else:
+            for name, instance in self.telepath_servers.items():
+                self.telepath_updates[name] = constants.api_manager.request(
+                    endpoint='/main/get_remote_var',
+                    host=name,
+                    port=instance['port'],
+                    json={'var': 'update_list'}
+                )
 
 # --------------------------------------------- General Functions ------------------------------------------------------
 

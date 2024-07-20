@@ -21915,8 +21915,14 @@ class ServerSettingsScreen(MenuBackground):
 
         # Check for updates button
         sub_layout = ScrollItem()
-        while server_obj.name not in constants.update_list:
-            time.sleep(0.1)
+
+        if server_obj._telepath_data:
+            while server_obj.name not in constants.server_manager.telepath_updates[server_obj._telepath_data['host']]:
+                constants.server_manager.reload_telepath_updates(server_obj._telepath_data)
+                time.sleep(0.5)
+        else:
+            while server_obj.name not in constants.update_list:
+                time.sleep(0.1)
 
         # First check if the server is a '.zip' format modpack
         if server_obj.is_modpack == 'zip':
