@@ -1786,12 +1786,11 @@ class RemoteViewObject():
         self.favorite = not self.favorite
         constants.server_manager.write_telepath_servers(self._telepath_data)
 
-
     def __init__(self, instance_data: dict, server_data: dict):
-        self._telepath_data = instance_data
         for k, v in server_data.items():
             setattr(self, k, v)
 
+        self._telepath_data = instance_data
         self.favorite = self.is_favorite()
 
 # Houses all server information
@@ -1806,7 +1805,7 @@ class ServerManager():
 
         # Enable endpoint
         if constants.api_data['enabled']:
-            telepath.create_endpoint(self.open_remote_server, 'main')
+            telepath.create_endpoint(self.open_remote_server, 'main', True)
 
         print("[INFO] [auto-mcs] Server Manager initialized")
 
@@ -1950,8 +1949,10 @@ def create_server_list(remote_data=None):
                     else:
                         normal_list.append(remote_object)
 
-                with ThreadPoolExecutor(max_workers=10) as pool:
-                    pool.map(process_remote_props, remote_servers)
+                for s in remote_servers:
+                    process_remote_props(s)
+                # with ThreadPoolExecutor(max_workers=10) as pool:
+                #     pool.map(process_remote_props, remote_servers)
 
             # Don't load server if it can't be found
             except requests.exceptions.ConnectionError:

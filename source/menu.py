@@ -13268,11 +13268,12 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     else:
         Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
 
-def open_remote_server(instance: dict):
+def open_remote_server(instance: dict, server_name: str):
     remote_obj = constants.api_manager.request(
         endpoint='/main/open_remote_server',
         host=instance['host'],
-        port=instance['port']
+        port=instance['port'],
+        json={'name': server_name}
     )
     constants.server_manager._init_telepathy()
     return remote_obj
@@ -13959,7 +13960,7 @@ class ServerManagerScreen(MenuBackground):
                         if not selected_button.telepath_data:
                             open_server(server.name, ignore_update=False)
                         else:
-                            open_remote_server(selected_button.telepath_data)
+                            open_remote_server(selected_button.telepath_data, server.name)
 
                     # Favorite
                     elif selected_button.last_touch.button == "middle":
