@@ -13268,6 +13268,16 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     else:
         Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
 
+def open_remote_server(instance: dict):
+    remote_obj = constants.api_manager.request(
+        endpoint='/main/open_remote_server',
+        host=instance['host'],
+        port=instance['port']
+    )
+    constants.server_manager._init_telepathy()
+    return remote_obj
+
+
 def disk_popup(go_to='back'):
     if not constants.check_free_space():
         def go_back(*a):
@@ -13946,7 +13956,10 @@ class ServerManagerScreen(MenuBackground):
 
                     # View Server
                     if selected_button.last_touch.button == "left":
-                        open_server(server.name, ignore_update=False)
+                        if not selected_button.telepath_data:
+                            open_server(server.name, ignore_update=False)
+                        else:
+                            open_remote_server(selected_button.telepath_data)
 
                     # Favorite
                     elif selected_button.last_touch.button == "middle":

@@ -1801,8 +1801,17 @@ class ServerManager():
         self.telepath_servers = {}
         self.server_list = create_server_list()
         self.current_server = None
+        self.remote_server = None
         self.running_servers = {}
+
+        # Enable endpoint
+        if constants.api_data['enabled']:
+            telepath.create_endpoint(self.open_remote_server, 'main')
+
         print("[INFO] [auto-mcs] Server Manager initialized")
+
+    def _init_telepathy(self):
+        self.current_server = telepath.RemoteServerObject()
 
     # Refreshes self.server_list with current info
     def refresh_list(self):
@@ -1810,6 +1819,16 @@ class ServerManager():
 
     # Sets self.current_server to selected ServerObject
     def open_server(self, name):
+        try:
+            if self.remote_server.name == name:
+                self.current_server = self.remote_server
+                if constants.debug:
+                    print(vars(self.current_server))
+                return self.current_server
+        except AttributeError:
+            pass
+
+
         if self.current_server:
             crash_info = (self.current_server.name, self.current_server.crash_log)
         else:
@@ -1830,6 +1849,39 @@ class ServerManager():
             print(vars(self.current_server))
 
         return self.current_server
+
+    # Sets self.remote_server to selected ServerObject
+    def open_remote_server(self, name):
+        try:
+            if self.current_server.name == name:
+                self.remote_server = self.current_server
+                if constants.debug:
+                    print(vars(self.remote_server))
+                return None
+        except AttributeError:
+            pass
+
+
+        if self.remote_server:
+            crash_info = (self.remote_server.name, self.remote_server.crash_log)
+        else:
+            crash_info = (None, None)
+
+        del self.remote_server
+        self.remote_server = None
+
+        # Check if server is running
+        if name in self.running_servers.keys():
+            self.remote_server = self.running_servers[name]
+        else:
+            self.remote_server = ServerObject(name)
+            if crash_info[0] == name:
+                self.remote_server.crash_log = crash_info[1]
+
+        if constants.debug:
+            print(vars(self.remote_server))
+
+        return None
 
     # Reloads self.current_server
     def reload_server(self):

@@ -67,7 +67,7 @@ def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *arg
 
         # Manipulate strings to execute a function call to the actual server manager
         lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
-        command = f'returned = server_manager.current_server.'
+        command = f'returned = server_manager.remote_server.'
         if obj_name in lookup:
             command += f'{lookup[obj_name]}.'
         command += f'{method_name}'
