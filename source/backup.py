@@ -535,6 +535,13 @@ def rename_backups(name: str, new_name: str):
 # Sets maximum backup limit
 # amount: <int> or 'unlimited'
 def set_backup_amount(name: str, amount: int or str):
+
+    # Try to convert to an integer if possible
+    try:
+        amount = int(amount)
+    except:
+        pass
+
     if str(amount) == "unlimited" or isinstance(amount, int):
         config_file = constants.server_config(name)
         config_file.set("bkup", "bkupMax", str(amount))
