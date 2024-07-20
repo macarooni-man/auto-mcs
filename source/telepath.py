@@ -141,7 +141,7 @@ def create_remote_obj(obj: object, request=True):
 def create_endpoint(method: Callable, tag: str, params=False):
     app.add_api_route(
         f"/{tag}/{method.__name__}",
-        return_endpoint(constants.toggle_favorite, create_pydantic_model(constants.toggle_favorite) if params else None),
+        return_endpoint(method, create_pydantic_model(method) if params else None),
         methods=["POST" if params else "GET"],
         name=method.__name__,
         tags=[tag]
