@@ -3,11 +3,10 @@
 # sys.path.append('/')
 import time
 
-from fastapi import FastAPI, Body
+from typing import Callable, get_type_hints, Optional
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, create_model
-from typing import Callable, get_type_hints, Optional
-from functools import partial
+from fastapi import FastAPI, Body
 import threading
 import requests
 import asyncio
@@ -32,7 +31,7 @@ def get_token():
 
 # This will communicate with the endpoints
 # "request" parameter is in context to this particular session, or subjectively, "am I requesting data?"
-def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *args, **kwargs):
+def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None, *args, **kwargs):
     def format_args():
         formatted = {}
         args_list = list(args)
@@ -52,14 +51,19 @@ def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *arg
                 formatted[key] = data_type(value)
 
         return formatted
-
     operation = 'Requesting' if request else 'Responding to'
     print(f"{operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
 
 
     # If this session is requesting data from a remote session
     if request:
-        return constants.api_manager.request(endpoint=f'{obj_name}/{method_name}', json=(format_args() if params else None))
+        data = self._telepath_data
+        return constants.api_manager.request(
+            endpoint=f'{obj_name}/{method_name}',
+            host=data['host'],
+            port=data['port'],
+            json=(format_args() if params else None)
+        )
 
 
     # If this session is responding to a remote request
@@ -67,7 +71,7 @@ def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *arg
 
         # Manipulate strings to execute a function call to the actual server manager
         lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
-        command = f'returned = server_manager.remote_server.'
+        command = 'returned = server_manager.remote_server.'
         if obj_name in lookup:
             command += f'{lookup[obj_name]}.'
         command += f'{method_name}'
@@ -84,12 +88,13 @@ def api_wrapper(obj_name: str, method_name: str, request=True, params=None, *arg
 def create_remote_obj(obj: object, request=True):
     global app
 
-    # Replace __getattr__
+    # Replace magic methods
     def __getattr__(self, name):
         if name.endswith('__'):
             return
         try:
             return api_wrapper(
+                self,
                 self._obj_name,
                 '_sync_attr',
                 True,
@@ -105,6 +110,7 @@ def create_remote_obj(obj: object, request=True):
     data = {
         'attributes': {'_obj_name': obj.__name__, '_arg_map': {}, '_func_list': []},
         'methods': {'__getattr__': __getattr__} if request else {}
+        # , '__init__': __init__
     }
 
     for method in dir(obj):
@@ -118,7 +124,14 @@ def create_remote_obj(obj: object, request=True):
             attr = getattr(obj, name, None)
             params = get_function_params(attr)
 
-            data['methods'][name] = partial(api_wrapper, obj.__name__, name, request, params)
+
+            # Define a wrapper that takes 'self' and calls the original method
+            def param_wrapper(func_name, func_params):
+                def method_wrapper(self, *args, **kwargs):
+                    return api_wrapper(self, self._obj_name, func_name, request, func_params, *args, **kwargs)
+                return method_wrapper
+
+            data['methods'][name] = param_wrapper(name, params)
             data['attributes']['_arg_map'][name] = attr
             data['attributes']['_func_list'].append(name)
 
@@ -132,8 +145,7 @@ def create_remote_obj(obj: object, request=True):
     return type(
         f'Remote{obj.__name__}',
         (),
-        {**data['attributes'],
-         **data['methods']}
+        {**data['attributes'], **data['methods']}
     )
 
 
@@ -208,28 +220,9 @@ def return_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
 # Generate endpoints from all instance methods
 def generate_endpoints(app: FastAPI, instance):
 
-    # Check if a function is a partial
-    def is_partial(m):
-        return isinstance(m, partial)
-
-    # Convert partial to function
-    def partial_to_function(partial):
-        # Extract original function and its arguments
-        func = partial.func
-        args = partial.args
-        keywords = partial.keywords
-
-        # Create a new function with fixed arguments
-        def new_func(*additional_args, **additional_kwargs):
-            all_args = args + additional_args
-            return func(*all_args, **keywords, **additional_kwargs)
-
-        return new_func
-
     # Loop over instance to create endpoints from each method
-    for name, method in inspect.getmembers(instance, predicate=is_partial):
+    for name, method in inspect.getmembers(instance, predicate=inspect.ismethod):
         if not name.endswith("__"):
-            method = partial_to_function(method)
             input_model = create_pydantic_model(instance._arg_map[name])
             endpoint = return_endpoint(method, input_model)
             response_model = get_type_hints(method).get("return", None)
@@ -336,19 +329,36 @@ class WebAPI():
 # Create objects to import for the rest of the app to request data
 class RemoteServerObject(create_remote_obj(ServerObject)):
 
-    def __init__(self):
-        self.backup = RemoteBackupManager()
-        self.addon = RemoteAddonManager()
-        self.acl = RemoteAclManager()
-        self.script_manager = RemoteScriptManager()
+    def __init__(self, telepath_data: dict):
+        self._telepath_data = telepath_data
+        self.backup = RemoteBackupManager(telepath_data)
+        self.addon = RemoteAddonManager(telepath_data)
+        self.acl = RemoteAclManager(telepath_data)
+        self.script_manager = RemoteScriptManager(telepath_data)
 
+class RemoteAmsFileObject(create_remote_obj(AmsFileObject)):
+    def __init__(self, telepath_data: dict):
+        self._telepath_data = telepath_data
 
-RemoteAmsFileObject = create_remote_obj(AmsFileObject)
-RemoteScriptManager = create_remote_obj(ScriptManager)
-RemoteAddonFileObject = create_remote_obj(AddonFileObject)
-RemoteAddonManager = create_remote_obj(AddonManager)
-RemoteBackupManager = create_remote_obj(BackupManager)
-RemoteAclManager = create_remote_obj(AclManager)
+class RemoteScriptManager(create_remote_obj(ScriptManager)):
+    def __init__(self, telepath_data: dict):
+        self._telepath_data = telepath_data
+
+class RemoteAddonFileObject(create_remote_obj(AddonFileObject)):
+    def __init__(self, telepath_data: dict):
+        self._telepath_data = telepath_data
+
+class RemoteAddonManager(create_remote_obj(AddonManager)):
+    def __init__(self, telepath_data: dict):
+        self._telepath_data = telepath_data
+
+class RemoteBackupManager(create_remote_obj(BackupManager)):
+    def __init__(self, telepath_data: dict):
+        self._telepath_data = telepath_data
+
+class RemoteAclManager(create_remote_obj(AclManager)):
+    def __init__(self, telepath_data: dict):
+        self._telepath_data = telepath_data
 
 
 

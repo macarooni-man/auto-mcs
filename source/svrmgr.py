@@ -1809,8 +1809,8 @@ class ServerManager():
 
         print("[INFO] [auto-mcs] Server Manager initialized")
 
-    def _init_telepathy(self):
-        self.current_server = telepath.RemoteServerObject()
+    def _init_telepathy(self, telepath_data: dict):
+        self.current_server = telepath.RemoteServerObject(telepath_data)
 
     # Refreshes self.server_list with current info
     def refresh_list(self):
