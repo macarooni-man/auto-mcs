@@ -61,7 +61,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
             endpoint=f'{obj_name}/{method_name}',
             host=data['host'],
             port=data['port'],
-            json=(format_args() if params else None)
+            args=(format_args() if params else None)
         )
 
 
@@ -307,7 +307,7 @@ class WebAPI():
         self.start()
 
     # Send a POST or GET request to an endpoint
-    def request(self, endpoint: str, host=None, port=None, json=None, timeout=1):
+    def request(self, endpoint: str, host=None, port=None, args=None, timeout=1):
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
         if endpoint.endswith('/'):
@@ -324,7 +324,7 @@ class WebAPI():
         }
 
         # Determine POST or GET based on params
-        data = requests.post(url, headers=headers, json=json, timeout=timeout) if json is not None else requests.get(url, headers=headers, timeout=timeout)
+        data = requests.post(url, headers=headers, json=args, timeout=timeout) if args is not None else requests.get(url, headers=headers, timeout=timeout)
         return data.json() if data else None
 
 
@@ -337,6 +337,20 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.addon = RemoteAddonManager(telepath_data)
         self.acl = RemoteAclManager(telepath_data)
         self.script_manager = RemoteScriptManager(telepath_data)
+
+        host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
+        print(f"[INFO] [auto-mcs] Server Manager (Telepathy): Loaded '{host}/{self.name}'")
+
+    # Check if remote instance is not currently being blocked by a synchronous activity (update, create, restore, etc.)
+    # Returns True if available
+    def progress_available(self):
+        return not constants.api_manager.request(
+            endpoint='/main/get_remote_var',
+            host=self._telepath_data['host'],
+            port=self._telepath_data['port'],
+            args={'var': 'ignore_close'}
+        )
+
 
 class RemoteAmsFileObject(create_remote_obj(AmsFileObject)):
     def __init__(self, telepath_data: dict):
@@ -386,3 +400,4 @@ app.openapi = create_schema
 
 create_endpoint(svrmgr.create_server_list, 'main')
 create_endpoint(constants.get_remote_var, 'main', True)
+create_endpoint(constants.java_check, 'main', True)

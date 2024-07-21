@@ -2121,6 +2121,19 @@ modern_pct = 0
 lts_pct = 0
 legacy_pct = 0
 def java_check(progress_func=None):
+
+    # If telepath, check if Java is installed remotely
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+        if telepath_data:
+            return api_manager.request(
+                endpoint='/main/java_check',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={}
+            )
+
+
     global java_executable, modern_pct, lts_pct, legacy_pct
     max_retries = 3
     retries = 0
@@ -2722,6 +2735,11 @@ def create_backup(import_server=False, *args):
 
 # Restore backup and track progress for ServerBackupRestoreProgressScreen
 def restore_server(backup_obj: backup.BackupObject, progress_func=None):
+
+    # Restore a remote backup
+    if 'RemoteBackupObject' in backup_obj.__class__.__name__:
+        return server_manager.current_server.backup.restore(backup_obj)
+
 
     # Get file count of backup
     total_files = 0

@@ -1919,7 +1919,7 @@ class ServerManager():
                 endpoint='/main/get_remote_var',
                 host=host_data['host'],
                 port=host_data['port'],
-                json={'var': 'update_list'}
+                args={'var': 'update_list'}
             )
 
         else:
@@ -1928,7 +1928,7 @@ class ServerManager():
                     endpoint='/main/get_remote_var',
                     host=name,
                     port=instance['port'],
-                    json={'var': 'update_list'}
+                    args={'var': 'update_list'}
                 )
 
     # Returns and updates remote update list

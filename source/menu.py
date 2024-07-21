@@ -13310,7 +13310,7 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
         endpoint='/main/open_remote_server',
         host=instance['host'],
         port=instance['port'],
-        json={'name': server_name}
+        args={'name': server_name}
     )
     telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
     constants.server_manager._init_telepathy(telepath_data)
