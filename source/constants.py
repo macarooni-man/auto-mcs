@@ -215,7 +215,7 @@ def sync_attr(self, name):
         return getattr(self, name)
     else:
         blacklist = ['addon', 'backup', 'acl', 'script_manager']
-        return {a: v for a, v in dir(self) if not callable(v) and str(v) not in blacklist and not str(v).endswith('__')}
+        return {a: getattr(self, a) for a in dir(self) if not callable(a) and str(a) not in blacklist and not str(a).endswith('__')}
 api_manager = None
 api_data = {
     "enabled": True,

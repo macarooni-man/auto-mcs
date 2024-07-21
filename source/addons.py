@@ -73,10 +73,6 @@ class ModpackWebObject(AddonWebObject):
 class AddonManager():
 
     def __init__(self, server_name: str):
-
-        # Returns the value of the requested attribute (for remote)
-        self._sync_attr = constants.sync_attr
-
         self._server = dump_config(server_name)
         self._addons_supported = self._server['type'].lower() != 'vanilla'
         self._update_notified = False
@@ -100,6 +96,10 @@ class AddonManager():
 
         # Write addons to cache
         constants.load_addon_cache(True)
+
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return constants.sync_attr(self, name)
 
     # Sets addon hash to determine changes
     def _set_hash(self):

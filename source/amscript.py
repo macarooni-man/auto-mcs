@@ -27,10 +27,6 @@ import gc
 # House an .ams file and relevant details
 class AmsFileObject():
     def __init__(self, path, enabled=False):
-
-        # Returns the value of the requested attribute (for remote)
-        self._sync_attr = constants.sync_attr
-
         self.script_object_type = 'file'
         self.path = path
         self.file_name = os.path.basename(path)
@@ -138,10 +134,6 @@ class AmsWebObject():
 class ScriptManager():
 
     def __init__(self, server_name):
-
-        # Returns the value of the requested attribute (for remote)
-        self._sync_attr = constants.sync_attr
-
         self._server_name = server_name
         self._server_path = constants.server_path(server_name)
         self.script_path = constants.scriptDir
@@ -150,6 +142,10 @@ class ScriptManager():
         self._online_scripts = constants.ams_web_list
         self._script_hash = None
         self._enumerate_scripts()
+
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return constants.sync_attr(self, name)
 
     # Sets script hash to determine changes
     def _set_hash(self):

@@ -31,10 +31,6 @@ import backup
 class ServerObject():
 
     def __init__(self, server_name: str):
-
-        # Returns the value of the requested attribute (for remote)
-        self._sync_attr = constants.sync_attr
-
         self._telepath_data = None
         self.gamemode_dict = ['survival', 'creative', 'adventure', 'spectator']
         self.difficulty_dict = ['peaceful', 'easy', 'normal', 'hard', 'hardcore']
@@ -205,6 +201,9 @@ class ServerObject():
 
         print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
 
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return constants.sync_attr(self, name)
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
