@@ -8243,7 +8243,27 @@ class ProgressScreen(MenuBackground):
         }
 
 
+    # Check if there's a telepath client or server, and if it's using a blocking action
+    def check_telepath(self):
+        if constants.ignore_close and constants.server_manager.remote_server:
+            self.execute_error('An operation is currently running through a Telepath session.\n\nPlease try again later.', reset_close=False)
+            return True
+
+        elif constants.server_manager.current_server._telepath_data:
+            self.telepath = True
+            if not constants.server_manager.current_server.progress_available():
+                self.execute_error('An operation is currently running locally on this server.\n\nPlease try again later.')
+                return True
+
+        return False
+
+
     def execute_steps(self):
+
+        # Before doing anything, check telepath data to prevent issues with concurrency
+        if self.check_telepath():
+            return
+
         icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
 
         constants.ignore_close = True
@@ -8308,8 +8328,9 @@ class ProgressScreen(MenuBackground):
             Clock.schedule_once(next_screen, 0.8)
 
 
-    def execute_error(self, msg, *args):
-        constants.ignore_close = False
+    def execute_error(self, msg, reset_close=True, *args):
+        if reset_close:
+            constants.ignore_close = False
         self.error = True
 
         def close(*args):
@@ -8330,6 +8351,7 @@ class ProgressScreen(MenuBackground):
         self.menu = 'init'
 
         self._ignore_tree = True
+        self.telepath = False
 
         self.title = None
         self.footer = None
@@ -8430,6 +8452,7 @@ class ProgressScreen(MenuBackground):
         # Generate buttons on page load
         self.contents()
         self.start = False
+        self.telepath = False
         self.last_progress = 0
 
         float_layout = FloatLayout()

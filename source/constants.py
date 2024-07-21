@@ -203,7 +203,7 @@ def get_private_ip():
 api_manager = None
 api_data = {
     "enabled": True,
-    "version": "0.3.0",
+    "version": "0.4.0",
     "default-host": "0.0.0.0",
     "default-port": 7001,
     "logo": "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
@@ -2741,7 +2741,10 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 
     # Restore a remote backup
     if 'RemoteBackupObject' in backup_obj.__class__.__name__:
-        return server_manager.current_server.backup.restore(backup_obj)
+        success = server_manager.current_server.backup.restore(backup_obj)
+        if progress_func:
+            progress_func(100)
+        return success
 
 
     # Get file count of backup
