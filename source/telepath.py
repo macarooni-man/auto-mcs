@@ -137,12 +137,12 @@ def create_remote_obj(obj: object, request=True):
         except:
             pass
         super().__getattribute__(name)
-
     def __setattr__(self, attribute, value):
-        self._attr_cache[attribute]['value'] = value
-        reset_expiry(self, attribute)
+        blacklist = ['_telepath_data', 'addon', 'acl', 'backup', 'script_manager']
+        if self._attr_cache and attribute not in blacklist and not attribute.endswith('__'):
+            self._attr_cache[attribute]['value'] = value
+            reset_expiry(self, attribute)
         super().__setattr__(attribute, value)
-
     def _clear_attr_cache(self):
         self._attr_cache = {}
 
