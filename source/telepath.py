@@ -91,8 +91,43 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
 def create_remote_obj(obj: object, request=True):
     global app
 
-    # Replace magic methods
-    def request_attr(self, name):
+    # Replace methods
+    def __getattr__(self, name):
+        if name.endswith('__'):
+            return
+
+        # try:
+        # If cache does not exist, grab everything and set expiry
+        if not self._attr_cache:
+            for k, v in self._request_attr('__all__').items():
+                self._attr_cache[k] = {'value': k, 'expire': self._reset_expiry()}
+            return self._attr_cache[name]['value']
+
+        # First, check if cache exists and is not expired
+        if self._attr_cache and self._attr_cache['__expire__']:
+            if self._attr_cache['__expire__'] > dt.now():
+                self._attr_cache = {}
+
+        # If cache exists and is not expired, use that
+        if name in self._attr_cache and self._attr_cache[name]['expire']:
+            if self._attr_cache[name]['expire'] > dt.now():
+                self._attr_cache[name]['expire'] = None
+                return self._attr_cache[name]['value']
+
+        # If cache exists and is expired, get name, update cache, and reset expired
+        response = self._request_attr(name)
+        self._attr_cache[name] = {'value': response, 'expire': self._reset_expiry()}
+        return response
+
+        # except:
+        #     pass
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+    def __setattr__(self, attribute, value):
+        blacklist = ['_telepath_data', 'addon', 'acl', 'backup', 'script_manager']
+        if self._attr_cache and attribute not in blacklist and not attribute.endswith('__'):
+            self._attr_cache[attribute] = {'value': value, 'expire': self._reset_expiry()}
+        return object.__setattr__(self, attribute, value)
+    def _request_attr(self, name):
         return api_wrapper(
             self,
             self._obj_name,
@@ -101,48 +136,10 @@ def create_remote_obj(obj: object, request=True):
             {'name': (str, ...)},
             name
         )
-    def reset_expiry(obj, n: str, length=15):
+    def _reset_expiry(self, length=15):
         expiry_date = dt.now() + td(seconds=length)
-        obj._attr_cache[n]['expire'] = expiry_date
-        obj._attr_cache['__expire__'] = expiry_date
-    def __getattr__(self, name):
-        if name.endswith('__'):
-            return
-
-        try:
-            # First, check if cache exists and is not expired
-            if self._attr_cache and self._attr_cache['__expire__']:
-                if self._attr_cache[name]['expire'] > dt.now():
-                    self._attr_cache = None
-
-            # If cache does not exist, grab everything and set expiry
-            if not self._attr_cache:
-                self._attr_cache = request_attr(self, '__all__')
-                for k in self._attr_cache:
-                    reset_expiry(self, k)
-                return self._attr_cache[name]['value']
-
-            # If cache exists and is not expired, use that
-            if name in self._attr_cache and self._attr_cache[name]['expire']:
-                if self._attr_cache[name]['expire'] > dt.now():
-                    self._attr_cache[name]['expire'] = None
-                    return self._attr_cache[name]['value']
-
-            # If cache exists and is expired, get name, update cache, and reset expired
-            response = request_attr(self, name)
-            self._attr_cache[name]['value'] = response
-            reset_expiry(self, name)
-            return response
-
-        except:
-            pass
-        super().__getattribute__(name)
-    def __setattr__(self, attribute, value):
-        blacklist = ['_telepath_data', 'addon', 'acl', 'backup', 'script_manager']
-        if self._attr_cache and attribute not in blacklist and not attribute.endswith('__'):
-            self._attr_cache[attribute]['value'] = value
-            reset_expiry(self, attribute)
-        super().__setattr__(attribute, value)
+        self._attr_cache['__expire__'] = expiry_date
+        return expiry_date
     def _clear_attr_cache(self):
         self._attr_cache = {}
 
@@ -156,7 +153,9 @@ def create_remote_obj(obj: object, request=True):
         },
         'methods': {
             '__getattr__': __getattr__,
-            '__setattr__': __setattr__,
+            # '__setattr__': __setattr__,
+            '_request_attr': _request_attr,
+            '_reset_expiry': _reset_expiry,
             '_clear_attr_cache': _clear_attr_cache
         } if request else {}
     }

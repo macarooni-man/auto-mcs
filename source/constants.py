@@ -215,8 +215,8 @@ def sync_attr(self, name):
         return getattr(self, name)
     else:
         blacklist = ['addon', 'backup', 'acl', 'script_manager']
-        allow = lambda x: (not callable(x) and str(x) not in blacklist and not str(x).endswith('__'))
-        return {a: {'value': getattr(self, a), 'expire': None} for a in dir(self) if allow(a)}
+        allow = lambda x: ((not callable(x)) and (str(x) not in blacklist) and (not str(x).endswith('__')))
+        return {a: getattr(self, a) for a in dir(self) if allow(a)}
 api_manager = None
 api_data = {
     "enabled": True,
