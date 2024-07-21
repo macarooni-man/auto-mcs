@@ -8244,7 +8244,7 @@ class ProgressScreen(MenuBackground):
 
 
     # Check if there's a telepath client or server, and if it's using a blocking action
-    def check_telepath(self):
+    def _check_telepath(self):
         if constants.ignore_close and constants.server_manager.remote_server:
             self.execute_error('An operation is currently running through a Telepath session.\n\nPlease try again later.', reset_close=False)
             return True
@@ -8257,16 +8257,28 @@ class ProgressScreen(MenuBackground):
 
         return False
 
+    def allow_close(self, allow: bool):
+        if self.telepath:
+            telepath_data = constants.server_manager.current_server._telepath_data
+            constants.api_manager.request(
+                endpoint='/main/allow_close',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'allow': allow}
+            )
+        else:
+            constants.allow_close(allow)
+
 
     def execute_steps(self):
 
         # Before doing anything, check telepath data to prevent issues with concurrency
-        if self.check_telepath():
+        if self._check_telepath():
             return
 
         icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
 
-        constants.ignore_close = True
+        self.allow_close(False)
 
         # Execute before function
         if self.page_contents['before_function']:
@@ -8319,7 +8331,7 @@ class ProgressScreen(MenuBackground):
             self.page_contents['after_function']()
 
         # Switch to next_page after it's done
-        constants.ignore_close = False
+        self.allow_close(True)
         if not self.error and self.page_contents['next_screen']:
             def next_screen(*args):
                 constants.back_clicked = True
@@ -8330,7 +8342,7 @@ class ProgressScreen(MenuBackground):
 
     def execute_error(self, msg, reset_close=True, *args):
         if reset_close:
-            constants.ignore_close = False
+            self.allow_close(True)
         self.error = True
 
         def close(*args):

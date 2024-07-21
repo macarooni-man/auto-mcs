@@ -426,3 +426,4 @@ app.openapi = create_schema
 create_endpoint(svrmgr.create_server_list, 'main')
 create_endpoint(constants.get_remote_var, 'main', True)
 create_endpoint(constants.java_check, 'main', True)
+create_endpoint(constants.allow_close, 'main', True)

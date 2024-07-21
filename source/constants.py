@@ -69,8 +69,14 @@ version_loading = False
 screen_tree = []
 back_clicked = False
 session_splash = ''
-ignore_close = False
 boot_launches = []
+
+# Prevent app from closing during critical operations
+ignore_close = False
+def allow_close(allow: bool):
+    global ignore_close
+    ignore_close = allow
+
 
 # Global debug mode and app_compiled, set debug to false before release
 debug = False
