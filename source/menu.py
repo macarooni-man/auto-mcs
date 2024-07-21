@@ -8081,9 +8081,9 @@ def telepath_banner(message: str, finished: bool):
             (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
             message,
             "checkmark-circle-sharp.png" if finished else "telepath.png",
-            2,
+            3,
             {"center_x": 0.5, "center_y": 0.965}
-        ), 1
+        ), 0.1
     )
 constants.telepath_banner = telepath_banner
 
