@@ -164,7 +164,7 @@ downDir = os.path.join(applicationFolder, 'Downloads')
 backupFolder = os.path.join(applicationFolder, 'Backups')
 userDownloads = os.path.join(home, 'Downloads')
 serverDir = os.path.join(applicationFolder, 'Servers')
-telepathFile = os.path.join(serverDir, 'telepath.json')
+telepathFile = os.path.join(serverDir, 'telepath-servers.json')
 
 tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
@@ -203,7 +203,7 @@ def get_private_ip():
 api_manager = None
 api_data = {
     "enabled": True,
-    "version": "0.2.0",
+    "version": "0.3.0",
     "default-host": "0.0.0.0",
     "default-port": 7001,
     "logo": "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
