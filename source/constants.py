@@ -41,7 +41,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.1.2"
+app_version = "2.2"
 ams_version = "1.2.1"
 app_title = "auto-mcs"
 dev_version = False
@@ -221,7 +221,7 @@ def sync_attr(self, name):
 api_manager = None
 api_data = {
     "enabled": True,
-    "version": "0.4.1",
+    "version": "0.5.0",
     "default-host": "0.0.0.0",
     "default-port": 7001,
     "logo": "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"

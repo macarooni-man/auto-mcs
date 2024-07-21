@@ -3247,10 +3247,19 @@ def generate_title(title):
 
 def footer_label(path, color, progress_screen=False):
 
+    # If remote server, put the instance name behind it
+    if constants.server_manager.current_server:
+        server_obj = constants.server_manager.current_server
+        data = server_obj._telepath_data
+        if data and path.strip().startswith(server_obj.name):
+            path = f'[color=#353565]{data["nickname" if data["nickname"] else "host"]}/[/color]{path}'
+
     # Translate footer paths that don't include the server name
     t_path = []
     for i in path.split(', '):
-        if i.lower() in constants.server_list_lower:
+        if '/' in i.lower():
+            t_path.append(i)
+        elif i.lower() in constants.server_list_lower:
             t_path.append(i)
         else:
             t_path.append(constants.translate(i))
@@ -8287,6 +8296,12 @@ class ProgressScreen(MenuBackground):
         else:
             constants.allow_close(allow)
 
+    def open_server(self, *args, **kwargs):
+        if self.telepath:
+            open_remote_server(self.telepath, *args, **kwargs)
+        else:
+            open_server(*args, **kwargs)
+
 
     def execute_steps(self):
 
@@ -8381,7 +8396,7 @@ class ProgressScreen(MenuBackground):
         self.menu = 'init'
 
         self._ignore_tree = True
-        self.telepath = False
+        self.telepath = None
 
         self.title = None
         self.footer = None
@@ -8482,7 +8497,7 @@ class ProgressScreen(MenuBackground):
         # Generate buttons on page load
         self.contents()
         self.start = False
-        self.telepath = False
+        self.telepath = None
         self.last_progress = 0
 
         float_layout = FloatLayout()
@@ -12921,7 +12936,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
             read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
             if read_me:
                 read_me = read_me[0]
-            open_server(constants.import_data['name'], True, f"'${import_name}$' was imported successfully", show_readme=read_me)
+            self.open_server(constants.import_data['name'], True, f"'${import_name}$' was imported successfully", show_readme=read_me)
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -17530,10 +17545,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
 
         def after_func(server_obj, restore_date):
             message = f"'${server_obj.name}$' was restored to ${restore_date}$"
-            if self.telepath:
-                open_remote_server(self.telepath, self.telepath['server-name'], True, message)
-            else:
-                open_server(server_obj.name, True, message)
+            self.open_server(server_obj.name, True, message)
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -22456,7 +22468,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             constants.make_update_list()
             server_obj._view_notif('add-ons', False)
             server_obj._view_notif('settings', viewed=constants.new_server_info['version'])
-            open_server(server_obj.name, True, f"{final_text} '${server_obj.name}$' successfully", launch=self.page_contents['launch'])
+            self.open_server(server_obj.name, True, f"{final_text} '${server_obj.name}$' successfully", launch=self.page_contents['launch'])
 
 
         # Original is percentage before this function, adjusted is a percent of hooked value
@@ -22552,7 +22564,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
             read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
             if read_me:
                 read_me = read_me[0]
-            open_server(server_obj.name, True, f"Updated '${server_obj.name}$' successfully", show_readme=read_me)
+            self.open_server(server_obj.name, True, f"Updated '${server_obj.name}$' successfully", show_readme=read_me)
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):

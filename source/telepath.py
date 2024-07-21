@@ -52,7 +52,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
 
         return formatted
     operation = 'Requesting' if request else 'Responding to'
-    print(f"{operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
+    print(f"[INFO] [telepath] {operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
 
 
     # If this session is requesting data from a remote session
@@ -96,31 +96,33 @@ def create_remote_obj(obj: object, request=True):
         if name.endswith('__'):
             return
 
-        # try:
-        # If cache does not exist, grab everything and set expiry
-        if not self._attr_cache:
-            for k, v in self._request_attr('__all__').items():
-                self._attr_cache[k] = {'value': k, 'expire': self._reset_expiry()}
-            return self._attr_cache[name]['value']
+        try:
+            # First, check if cache exists and is not expired
+            if self._attr_cache and self._attr_cache['__expire__']:
+                if self._attr_cache['__expire__'] < dt.now():
+                    self._attr_cache = {}
 
-        # First, check if cache exists and is not expired
-        if self._attr_cache and self._attr_cache['__expire__']:
-            if self._attr_cache['__expire__'] > dt.now():
-                self._attr_cache = {}
-
-        # If cache exists and is not expired, use that
-        if name in self._attr_cache and self._attr_cache[name]['expire']:
-            if self._attr_cache[name]['expire'] > dt.now():
-                self._attr_cache[name]['expire'] = None
+            # If cache does not exist, grab everything and set expiry
+            if not self._attr_cache:
+                for k, v in self._request_attr('__all__').items():
+                    self._attr_cache[k] = {'value': v, 'expire': self._reset_expiry()}
                 return self._attr_cache[name]['value']
 
-        # If cache exists and is expired, get name, update cache, and reset expired
-        response = self._request_attr(name)
-        self._attr_cache[name] = {'value': response, 'expire': self._reset_expiry()}
-        return response
+            # If cache exists and is not expired, use that
+            if name in self._attr_cache and self._attr_cache[name]['expire']:
+                if self._attr_cache[name]['expire'] > dt.now():
+                    return self._attr_cache[name]['value']
+                else:
+                    self._attr_cache[name]['expire'] = None
 
-        # except:
-        #     pass
+            # If cache exists and is expired, get name, update cache, and reset expired
+            response = self._request_attr(name)
+            self._attr_cache[name] = {'value': response, 'expire': self._reset_expiry()}
+            return response
+
+        except Exception as e:
+            if constants.debug:
+                print(f'Error (telepath): failed to fetch attribute, {e}')
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
     def __setattr__(self, attribute, value):
         blacklist = ['_telepath_data', 'addon', 'acl', 'backup', 'script_manager']
@@ -136,10 +138,10 @@ def create_remote_obj(obj: object, request=True):
             {'name': (str, ...)},
             name
         )
-    def _reset_expiry(self, length=15):
-        expiry_date = dt.now() + td(seconds=length)
-        self._attr_cache['__expire__'] = expiry_date
-        return expiry_date
+    def _reset_expiry(self, length=60):
+        expiry = dt.now() + td(seconds=length)
+        self._attr_cache['__expire__'] = expiry
+        return expiry
     def _clear_attr_cache(self):
         self._attr_cache = {}
 
@@ -153,7 +155,7 @@ def create_remote_obj(obj: object, request=True):
         },
         'methods': {
             '__getattr__': __getattr__,
-            # '__setattr__': __setattr__,
+            '__setattr__': __setattr__,
             '_request_attr': _request_attr,
             '_reset_expiry': _reset_expiry,
             '_clear_attr_cache': _clear_attr_cache
@@ -416,16 +418,20 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.addon = RemoteAddonManager(telepath_data)
         self.acl = RemoteAclManager(telepath_data)
         self.script_manager = RemoteScriptManager(telepath_data)
+        self._clear_all_cache()
 
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
-        print(f"[INFO] [auto-mcs] Server Manager (Telepathy): Loaded '{host}/{self.name}'")
+        print(f"[INFO] [auto-mcs] Server Manager (Telepath): Loaded '{host}/{self.name}'")
 
-    def reload_config(self, *args, **kwargs):
+    def _clear_all_cache(self):
         self._clear_attr_cache()
         self.backup._clear_attr_cache()
         self.addon._clear_attr_cache()
         self.acl._clear_attr_cache()
         self.script_manager._clear_attr_cache()
+
+    def reload_config(self, *args, **kwargs):
+        self._clear_all_cache()
         super().reload_config(*args, **kwargs)
 
     # Check if remote instance is not currently being blocked by a synchronous activity (update, create, restore, etc.)
