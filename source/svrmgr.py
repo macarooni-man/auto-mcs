@@ -1889,7 +1889,7 @@ class ServerManager():
         if self.current_server:
             return self.open_server(self.current_server.name)
 
-    # Loads servers from "remote.json" in Servers directory
+    # Loads servers from "telepath.json" in Servers directory
     def load_telepath_servers(self):
         # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
         if os.path.exists(constants.telepathFile):
@@ -1898,7 +1898,7 @@ class ServerManager():
 
         return self.telepath_servers
 
-    def write_telepath_servers(self, instance: None):
+    def write_telepath_servers(self, instance=None):
         self.telepath_servers = self.load_telepath_servers()
         if instance:
             self.telepath_servers[instance['host']] = instance
@@ -1911,6 +1911,7 @@ class ServerManager():
         self.telepath_servers[host] = {"port": port, "nickname": nickname, "added-servers": {}}
         self.write_telepath_servers()
 
+    # Retrieves remote update list
     def reload_telepath_updates(self, host_data=None):
         # Load remote update list
         if host_data:
@@ -1929,6 +1930,15 @@ class ServerManager():
                     port=instance['port'],
                     json={'var': 'update_list'}
                 )
+
+    # Returns and updates remote update list
+    def get_telepath_update(self, host_data: dict, server_name: str):
+        if host_data['host'] not in constants.server_manager.telepath_updates:
+            self.telepath_updates[host_data['host']] = {}
+            self.reload_telepath_updates(host_data)
+        if server_name in self.telepath_updates[host_data['host']]:
+            return self.telepath_updates[host_data['host']][server_name]
+        return {}
 
 # --------------------------------------------- General Functions ------------------------------------------------------
 

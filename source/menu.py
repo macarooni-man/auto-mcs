@@ -26,6 +26,7 @@ import re
 import amseditor
 import logviewer
 import constants
+import telepath
 import amscript
 import addons
 import backup
@@ -17396,7 +17397,7 @@ class ServerBackupRestoreScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
-        backup_list = [backup.BackupObject(server_obj.name, file) for file in server_obj.backup._backup_stats['backup-list']]
+        backup_list = server_obj.backup.return_backup_list()
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
@@ -21917,7 +21918,7 @@ class ServerSettingsScreen(MenuBackground):
         sub_layout = ScrollItem()
 
         if server_obj._telepath_data:
-            while server_obj.name not in constants.server_manager.telepath_updates[server_obj._telepath_data['host']]:
+            while not constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name):
                 constants.server_manager.reload_telepath_updates(server_obj._telepath_data)
                 time.sleep(0.5)
         else:
@@ -21925,6 +21926,16 @@ class ServerSettingsScreen(MenuBackground):
                 time.sleep(0.1)
 
         # First check if the server is a '.zip' format modpack
+        needs_update = False
+        if server_obj._telepath_data:
+            try:
+                needs_update = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['needsUpdate'] == 'true'
+            except KeyError:
+                pass
+        else:
+            needs_update = constants.update_list[server_obj.name]['needsUpdate'] == 'true'
+
+
         if server_obj.is_modpack == 'zip':
             def select_file(*a):
                 zip_file = file_popup("file", start_dir=constants.userDownloads, ext=["*.zip", "*.mrpack"], input_name=None, select_multiple=True, title='Select a modpack update')
@@ -21945,7 +21956,7 @@ class ServerSettingsScreen(MenuBackground):
             self.update_button = WaitButton("Update from '.zip'", (0.5, 0.5), 'modpack.png', disabled=disabled, click_func=select_file)
 
 
-        elif constants.update_list[server_obj.name]['needsUpdate'] == 'true':
+        elif needs_update:
             if 'settings' in server_obj.viewed_notifs:
                 if server_obj.viewed_notifs['settings'] != server_obj.update_string:
                     Clock.schedule_once(

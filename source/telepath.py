@@ -15,7 +15,7 @@ import uvicorn
 # Local imports
 from amscript import AmsFileObject, ScriptManager
 from addons import AddonFileObject, AddonManager
-from backup import BackupManager
+from backup import BackupManager, BackupObject
 from svrmgr import ServerObject
 from acl import AclManager
 import constants
@@ -356,6 +356,10 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
     def __init__(self, telepath_data: dict):
+        self._telepath_data = telepath_data
+
+class RemoteBackupObject(create_remote_obj(BackupObject)):
+    def __init__(self, telepath_data: dict, ):
         self._telepath_data = telepath_data
 
 class RemoteAclManager(create_remote_obj(AclManager)):

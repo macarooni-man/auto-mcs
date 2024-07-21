@@ -96,6 +96,18 @@ class BackupManager():
         else:
             self.latest = None
 
+    # Retrieves data from local back-up file
+    # name --> dict
+    def _retrieve_telepath_backup(self, file_path: str):
+        for backup in self.list:
+            if file_path == backup.path:
+                return backup
+
+    # Retrieves deep scan of all back-up files
+    def return_backup_list(self):
+        self.list = [BackupObject(self._server['name'], file) for file in self._backup_stats['backup-list']]
+        return self.list
+
 
     # Backup functions
 
@@ -255,6 +267,7 @@ def dump_config(server_name: str, new_server=False):
 
 
 # ---------------------------------------------- Backup Functions ------------------------------------------------------
+
 
 # name --> backup to directory
 def backup_server(name: str, backup_stats=None, ignore_running=False):
