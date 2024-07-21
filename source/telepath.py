@@ -1,16 +1,17 @@
 # This file abstracts all the program managers to control a server remotely
 # import sys
 # sys.path.append('/')
-import time
 
 from typing import Callable, get_type_hints, Optional
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, create_model
 from fastapi import FastAPI, Body
+from munch import Munch
 import threading
 import requests
 import inspect
 import uvicorn
+import time
 
 # Local imports
 from amscript import AmsFileObject, ScriptManager
@@ -163,9 +164,12 @@ def create_endpoint(method: Callable, tag: str, params=False):
 # Reconstructs a serialized object to "__reconstruct__"
 def reconstruct_object(data: dict):
     final_data = data
+    print(True, 1)
     if '__reconstruct__' in data:
+        print(True, 2)
         if data['__reconstruct__'] == 'RemoteBackupObject':
             final_data = RemoteBackupObject(data['_telepath_data',], data)
+            print(final_data)
 
     return final_data
 
@@ -392,16 +396,15 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
     def return_backup_list(self):
         return [RemoteBackupObject(self._telepath_data, data) for data in super().return_backup_list()]
 
-class RemoteBackupObject(dict):
+class RemoteBackupObject(Munch):
     def __init__(self, telepath_data: dict, backup_data: dict):
-        dict.__init__(self)
+        super().__init__()
         self._telepath_data = telepath_data
+        self.__reconstruct__ = self.__class__.__name__
+
         for key, value in backup_data.items():
-            setattr(self, key, value)
-    def __dict__(self):
-        data = {name: getattr(self, name) for name in dir(self) if not name.endswith('__')}
-        data['__reconstruct__'] = 'RemoteBackupObject'
-        return data
+            if not key.endswith('__'):
+                setattr(self, key, value)
 
 class RemoteAclManager(create_remote_obj(AclManager)):
     def __init__(self, telepath_data: dict):
