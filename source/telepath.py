@@ -70,7 +70,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
     else:
         # Reconstruct data if available
         if isinstance(kwargs, dict):
-            kwargs = {k: (reconstruct_object(v) if '__reconstruct__' in v else v) for k, v in kwargs.items()}
+            kwargs = {k: reconstruct_object(v) for k, v in kwargs.items()}
 
         # Manipulate strings to execute a function call to the actual server manager
         lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
@@ -210,9 +210,10 @@ def create_endpoint(method: Callable, tag: str, params=False):
 # Reconstructs a serialized object to "__reconstruct__"
 def reconstruct_object(data: dict):
     final_data = data
-    if '__reconstruct__' in data:
-        if data['__reconstruct__'] == 'RemoteBackupObject':
-            final_data = RemoteBackupObject(data['_telepath_data'], data)
+    if isinstance(data, dict):
+        if '__reconstruct__' in data:
+            if data['__reconstruct__'] == 'RemoteBackupObject':
+                final_data = RemoteBackupObject(data['_telepath_data'], data)
 
     return final_data
 
