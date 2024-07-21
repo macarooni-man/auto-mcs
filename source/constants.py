@@ -73,9 +73,13 @@ boot_launches = []
 
 # Prevent app from closing during critical operations
 ignore_close = False
-def allow_close(allow: bool):
+telepath_banner = None
+def allow_close(allow: bool, banner=None):
     global ignore_close
     ignore_close = not allow
+
+    if banner and telepath_banner:
+        telepath_banner(banner, allow)
 
 
 # Global debug mode and app_compiled, set debug to false before release

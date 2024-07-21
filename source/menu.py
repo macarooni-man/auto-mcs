@@ -8073,6 +8073,20 @@ class MenuBackground(Screen):
         self.popup_bind = None
 
 
+# Telepath notifications
+def telepath_banner(message: str, finished: bool):
+    Clock.schedule_once(
+        functools.partial(
+            screen_manager.current_screen.show_banner,
+            (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
+            message,
+            "checkmark-circle-sharp.png" if finished else "telepath.png",
+            2,
+            {"center_x": 0.5, "center_y": 0.965}
+        ), 1
+    )
+constants.telepath_banner = telepath_banner
+
 # Template for loading/busy screens
 class ProgressWidget(RelativeLayout):
 
@@ -8203,6 +8217,7 @@ class ProgressWidget(RelativeLayout):
         self.add_widget(self.percentage)
 
         self.update_progress(self.value)
+
 class ProgressScreen(MenuBackground):
 
     # Returns current progress bar value
@@ -8245,28 +8260,28 @@ class ProgressScreen(MenuBackground):
 
     # Check if there's a telepath client or server, and if it's using a blocking action
     def _check_telepath(self):
-        if constants.ignore_close and constants.server_manager.remote_server:
-            self.execute_error('A critical operation is currently running through a Telepath session.\n\nPlease try again later.', reset_close=False)
+        server_obj = constants.server_manager.current_server
+        if constants.ignore_close and server_obj.remote_server:
+            self.execute_error('A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later.', reset_close=False)
             return True
 
-        elif constants.server_manager.current_server._telepath_data:
-            self.telepath = True
-            server_obj = constants.server_manager.current_server
-            host = server_obj._telepath_data['nickname'] if server_obj._telepath_data['nickname'] else server_obj._telepath_data['host']
+        elif server_obj._telepath_data:
+            self.telepath = server_obj._telepath_data
+            host = self.telepath['nickname'] if self.telepath['nickname'] else self.telepath['host']
             if not server_obj.progress_available():
-                self.execute_error(f"A critical operation is currently running locally on '{host}'.\n\nPlease try again later.", reset_close=False)
+                self.execute_error(f"A critical operation is currently running locally on '${host}$'.\n\nPlease try again later.", reset_close=False)
                 return True
 
         return False
 
     def allow_close(self, allow: bool):
         if self.telepath:
-            telepath_data = constants.server_manager.current_server._telepath_data
+            banner = f'$Telepath$ action {"finished" if allow else "started"}: {self.page_contents["title"]}'
             constants.api_manager.request(
                 endpoint='/main/allow_close',
-                host=telepath_data['host'],
-                port=telepath_data['port'],
-                args={'allow': allow}
+                host=self.telepath['host'],
+                port=self.telepath['port'],
+                args={'allow': allow, 'banner': banner}
             )
         else:
             constants.allow_close(allow)
