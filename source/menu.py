@@ -13837,20 +13837,22 @@ class ServerButton(HoverButton):
     def on_enter(self, *args):
         if not self.ignore_hover:
             self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_hover.png'), color=self.color_id[0], hover_action=True)
-        self.title.text = self.generate_name('#2D2D4E')
 
-        if self.telepath_data:
-            Animation(color=constants.brighten_color(self.color_id[1], -0.2), duration=0.1).start(self.type_image.tp_shadow)
-            Animation(color=self.color_id[0], duration=0.1).start(self.type_image.tp_icon)
+            self.title.text = self.generate_name('#2D2D4E')
+
+            if self.telepath_data:
+                Animation(color=constants.brighten_color(self.color_id[1], -0.2), duration=0.1).start(self.type_image.tp_shadow)
+                Animation(color=self.color_id[0], duration=0.1).start(self.type_image.tp_icon)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
             self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png'), color=self.color_id[1], hover_action=False)
-        self.title.text = self.generate_name()
 
-        if self.telepath_data:
-            Animation(color=self.color_id[0], duration=0.1).start(self.type_image.tp_shadow)
-            Animation(color=self.color_id[1], duration=0.1).start(self.type_image.tp_icon)
+            self.title.text = self.generate_name()
+
+            if self.telepath_data:
+                Animation(color=self.color_id[0], duration=0.1).start(self.type_image.tp_shadow)
+                Animation(color=self.color_id[1], duration=0.1).start(self.type_image.tp_icon)
 
     def update_context_options(self):
 
