@@ -119,6 +119,7 @@ class BackupManager():
 
     # Restores server from file name
     def restore(self, backup_obj: BackupObject):
+
         if self._server['name'] not in constants.server_manager.running_servers:
             backup = restore_server(self._server['name'], backup_obj.path, self._backup_stats)
             self._update_data()

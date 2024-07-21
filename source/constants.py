@@ -2126,12 +2126,15 @@ def java_check(progress_func=None):
     if server_manager.current_server:
         telepath_data = server_manager.current_server._telepath_data
         if telepath_data:
-            return api_manager.request(
+            response = api_manager.request(
                 endpoint='/main/java_check',
                 host=telepath_data['host'],
                 port=telepath_data['port'],
                 args={}
             )
+            if progress_func and response:
+                progress_func(100)
+            return response
 
 
     global java_executable, modern_pct, lts_pct, legacy_pct

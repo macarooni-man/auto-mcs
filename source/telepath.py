@@ -41,7 +41,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
             if i < len(param_keys):
                 key = param_keys[i]
                 data_type, _ = params[key]
-                formatted[key] = data_type(arg)
+                formatted[key] = arg if data_type == object else data_type(arg)
 
         # Process **kwargs and overwrite any conflicts
         for key, value in kwargs.items():
@@ -158,6 +158,16 @@ def create_endpoint(method: Callable, tag: str, params=False):
         name=method.__name__,
         tags=[tag]
     )
+
+
+# Reconstructs a serialized object to "__reconstruct__"
+def reconstruct_object(data: dict):
+    final_data = data
+    if '__reconstruct__' in data:
+        if data['__reconstruct__'] == 'RemoteBackupObject':
+            final_data = RemoteBackupObject(data['_telepath_data',], data)
+
+    return final_data
 
 
 # Returns {param: (type, Ellipsis or default value)} from the parameters of any function
@@ -325,7 +335,15 @@ class WebAPI():
 
         # Determine POST or GET based on params
         data = requests.post(url, headers=headers, json=args, timeout=timeout) if args is not None else requests.get(url, headers=headers, timeout=timeout)
-        return data.json() if data else None
+
+        if not data:
+            return None
+
+        json_data = data.json()
+        if isinstance(json_data, dict) and "__reconstruct__" in json_data:
+            return reconstruct_object(json_data)
+
+        return json_data
 
 
 # Create objects to import for the rest of the app to request data
@@ -374,11 +392,16 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
     def return_backup_list(self):
         return [RemoteBackupObject(self._telepath_data, data) for data in super().return_backup_list()]
 
-class RemoteBackupObject():
+class RemoteBackupObject(dict):
     def __init__(self, telepath_data: dict, backup_data: dict):
+        dict.__init__(self)
         self._telepath_data = telepath_data
         for key, value in backup_data.items():
             setattr(self, key, value)
+    def __dict__(self):
+        data = {name: getattr(self, name) for name in dir(self) if not name.endswith('__')}
+        data['__reconstruct__'] = 'RemoteBackupObject'
+        return data
 
 class RemoteAclManager(create_remote_obj(AclManager)):
     def __init__(self, telepath_data: dict):
