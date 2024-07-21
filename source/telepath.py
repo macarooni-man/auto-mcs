@@ -1,6 +1,4 @@
 # This file abstracts all the program managers to control a server remotely
-# import sys
-# sys.path.append('/')
 
 from typing import Callable, get_type_hints, Optional
 from fastapi.openapi.utils import get_openapi
@@ -71,7 +69,8 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
     # If this session is responding to a remote request
     else:
         # Reconstruct data if available
-        kwargs = {k: (reconstruct_object(v) if '__reconstruct__' in v else v) for k, v in kwargs.items()}
+        if isinstance(kwargs, dict):
+            kwargs = {k: (reconstruct_object(v) if '__reconstruct__' in v else v) for k, v in kwargs.items()}
 
         # Manipulate strings to execute a function call to the actual server manager
         lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
@@ -87,7 +86,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         return exec_memory['locals']['returned'](**kwargs)
 
 
-# Creates a wrapper clone of obj where all methods point to api_wrapper
+# Creates a thin wrapper of obj where all methods point to api_wrapper
 # "request" parameter is in context to this particular session, or subjectively, "am I requesting data?"
 def create_remote_obj(obj: object, request=True):
     global app
@@ -102,40 +101,64 @@ def create_remote_obj(obj: object, request=True):
             {'name': (str, ...)},
             name
         )
+    def reset_expiry(obj, n: str, length=15):
+        expiry_date = dt.now() + td(seconds=length)
+        obj._attr_cache[n]['expire'] = expiry_date
+        obj._attr_cache['__expire__'] = expiry_date
     def __getattr__(self, name):
         if name.endswith('__'):
             return
-        try:
-            def reset_expiry(length=15):
-                self._attr_cache['__expire__'] = dt.now() + td(seconds=length)
 
+        try:
             # First, check if cache exists and is not expired
+            if self._attr_cache and self._attr_cache['__expire__']:
+                if self._attr_cache[name]['expire'] > dt.now():
+                    self._attr_cache = None
+
             # If cache does not exist, grab everything and set expiry
             if not self._attr_cache:
                 self._attr_cache = request_attr(self, '__all__')
-                reset_expiry()
-                return self._attr_cache[name]
+                for k in self._attr_cache:
+                    reset_expiry(self, k)
+                return self._attr_cache[name]['value']
 
             # If cache exists and is not expired, use that
-            if '__expire__' in self._attr_cache:
-                if self._attr_cache['__expire__'] > dt.now():
-                    return self._attr_cache[name]
+            if name in self._attr_cache and self._attr_cache[name]['expire']:
+                if self._attr_cache[name]['expire'] > dt.now():
+                    self._attr_cache[name]['expire'] = None
+                    return self._attr_cache[name]['value']
 
             # If cache exists and is expired, get name, update cache, and reset expired
             response = request_attr(self, name)
-            self._attr_cache[name] = response
-            reset_expiry(5)
+            self._attr_cache[name]['value'] = response
+            reset_expiry(self, name)
             return response
 
         except:
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+            pass
+        super().__getattribute__(name)
 
+    def __setattr__(self, attribute, value):
+        self._attr_cache[attribute]['value'] = value
+        reset_expiry(self, attribute)
+        super().__setattr__(attribute, value)
+
+    def _clear_attr_cache(self):
+        self._attr_cache = {}
 
     # First, sort through all the attributes and methods
     data = {
-        'attributes': {'_obj_name': obj.__name__, '_arg_map': {}, '_func_list': [], '_attr_cache': {}},
-        'methods': {'__getattr__': __getattr__} if request else {}
-        # , '__init__': __init__
+        'attributes': {
+            '_obj_name': obj.__name__,
+            '_arg_map': {},
+            '_func_list': [],
+            '_attr_cache': {}
+        },
+        'methods': {
+            '__getattr__': __getattr__,
+            '__setattr__': __setattr__,
+            '_clear_attr_cache': _clear_attr_cache
+        } if request else {}
     }
 
     for method in dir(obj):
@@ -365,6 +388,7 @@ class WebAPI():
         else:
             session = requests.Session()
             self.sessions[host] = session
+            print(f"[INFO] [telepath] Opened session to '{host}'")
 
         # Determine POST or GET based on params
         data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
@@ -379,8 +403,9 @@ class WebAPI():
         return json_data
 
     def close_sessions(self):
-        for session in self.sessions:
+        for host, session in self.sessions.items():
             session.close()
+            print(f"[INFO] [telepath] Closed session to '{host}'")
 
 # Create objects to import for the rest of the app to request data
 class RemoteServerObject(create_remote_obj(ServerObject)):
@@ -394,6 +419,14 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
         print(f"[INFO] [auto-mcs] Server Manager (Telepathy): Loaded '{host}/{self.name}'")
+
+    def reload_config(self, *args, **kwargs):
+        self._clear_attr_cache()
+        self.backup._clear_attr_cache()
+        self.addon._clear_attr_cache()
+        self.acl._clear_attr_cache()
+        self.script_manager._clear_attr_cache()
+        super().reload_config(*args, **kwargs)
 
     # Check if remote instance is not currently being blocked by a synchronous activity (update, create, restore, etc.)
     # Returns True if available
@@ -414,6 +447,10 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
 
+    def _enumerate_scripts(self):
+        self._clear_attr_cache()
+        super()._enumerate_scripts()
+
 class RemoteAddonFileObject(create_remote_obj(AddonFileObject)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
@@ -422,9 +459,18 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
 
+    def _refresh_addons(self):
+        self._clear_attr_cache()
+        super()._refresh_addons()
+
 class RemoteBackupManager(create_remote_obj(BackupManager)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
+
+    def _update_data(self):
+        self._clear_attr_cache()
+        super()._update_data()
+
     def return_backup_list(self):
         return [RemoteBackupObject(self._telepath_data, data) for data in super().return_backup_list()]
 
@@ -442,6 +488,13 @@ class RemoteAclManager(create_remote_obj(AclManager)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
 
+    def _gen_list_items(self):
+        self._clear_attr_cache()
+        super()._gen_list_items()
+
+    def get_rule(self):
+        self._clear_attr_cache()
+        super().get_rule()
 
 
 # Instantiate the API

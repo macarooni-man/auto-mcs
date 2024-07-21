@@ -215,11 +215,12 @@ def sync_attr(self, name):
         return getattr(self, name)
     else:
         blacklist = ['addon', 'backup', 'acl', 'script_manager']
-        return {a: getattr(self, a) for a in dir(self) if not callable(a) and str(a) not in blacklist and not str(a).endswith('__')}
+        allow = lambda x: (not callable(x) and str(x) not in blacklist and not str(x).endswith('__'))
+        return {a: {'value': getattr(self, a), 'expire': None} for a in dir(self) if allow(a)}
 api_manager = None
 api_data = {
     "enabled": True,
-    "version": "0.4.0",
+    "version": "0.4.1",
     "default-host": "0.0.0.0",
     "default-port": 7001,
     "logo": "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
