@@ -74,7 +74,7 @@ boot_launches = []
 # Prevent app from closing during critical operations
 ignore_close = False
 telepath_banner = None
-def allow_close(allow: bool, banner=None):
+def allow_close(allow: bool, banner=''):
     global ignore_close
     ignore_close = not allow
 
