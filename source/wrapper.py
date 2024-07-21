@@ -203,6 +203,7 @@ if __name__ == '__main__':
             # Exit this thread if the main thread closes, or crashes
             if exitApp or crash:
                 constants.api_manager.stop()
+                constants.api_manager.close_sessions()
                 break
             else:
 

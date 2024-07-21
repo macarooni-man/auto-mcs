@@ -5,6 +5,8 @@
 from typing import Callable, get_type_hints, Optional
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, create_model
+from datetime import timedelta as td
+from datetime import datetime as dt
 from fastapi import FastAPI, Body
 from munch import Munch
 import threading
@@ -91,18 +93,38 @@ def create_remote_obj(obj: object, request=True):
     global app
 
     # Replace magic methods
+    def request_attr(self, name):
+        return api_wrapper(
+            self,
+            self._obj_name,
+            '_sync_attr',
+            True,
+            {'name': (str, ...)},
+            name
+        )
     def __getattr__(self, name):
         if name.endswith('__'):
             return
         try:
-            response = api_wrapper(
-                self,
-                self._obj_name,
-                '_sync_attr',
-                True,
-                {'name': (str, ...)},
-                name
-            )
+            def reset_expiry(length=15):
+                self._attr_cache['__expire__'] = dt.now() + td(seconds=length)
+
+            # First, check if cache exists and is not expired
+            # If cache does not exist, grab everything and set expiry
+            if not self._attr_cache:
+                self._attr_cache = request_attr(self, '__all__')
+                reset_expiry()
+                return self._attr_cache[name]
+
+            # If cache exists and is not expired, use that
+            if '__expire__' in self._attr_cache:
+                if self._attr_cache['__expire__'] > dt.now():
+                    return self._attr_cache[name]
+
+            # If cache exists and is expired, get name, update cache, and reset expired
+            response = request_attr(self, name)
+            self._attr_cache[name] = response
+            reset_expiry(5)
             return response
 
         except:
@@ -111,7 +133,7 @@ def create_remote_obj(obj: object, request=True):
 
     # First, sort through all the attributes and methods
     data = {
-        'attributes': {'_obj_name': obj.__name__, '_arg_map': {}, '_func_list': []},
+        'attributes': {'_obj_name': obj.__name__, '_arg_map': {}, '_func_list': [], '_attr_cache': {}},
         'methods': {'__getattr__': __getattr__} if request else {}
         # , '__init__': __init__
     }
@@ -276,6 +298,7 @@ class WebAPI():
         self.running = False
         self.host = host
         self.port = port
+        self.sessions = {}
         self.update_config(host=host, port=port)
 
     def _run_uvicorn(self):
@@ -320,7 +343,7 @@ class WebAPI():
         self.start()
 
     # Send a POST or GET request to an endpoint
-    def request(self, endpoint: str, host=None, port=None, args=None, timeout=1):
+    def request(self, endpoint: str, host=None, port=None, args=None, timeout=5):
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
         if endpoint.endswith('/'):
@@ -336,8 +359,15 @@ class WebAPI():
             "Content-Type": "application/json",
         }
 
+        # Check if session exists
+        if host in self.sessions:
+            session = self.sessions[host]
+        else:
+            session = requests.Session()
+            self.sessions[host] = session
+
         # Determine POST or GET based on params
-        data = requests.post(url, headers=headers, json=args, timeout=timeout) if args is not None else requests.get(url, headers=headers, timeout=timeout)
+        data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
 
         if not data:
             return None
@@ -348,6 +378,9 @@ class WebAPI():
 
         return json_data
 
+    def close_sessions(self):
+        for session in self.sessions:
+            session.close()
 
 # Create objects to import for the rest of the app to request data
 class RemoteServerObject(create_remote_obj(ServerObject)):
