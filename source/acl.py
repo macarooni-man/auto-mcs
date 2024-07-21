@@ -68,6 +68,9 @@ class AclManager():
 
     def __init__(self, server_name: str):
 
+        # Returns the value of the requested attribute (for remote)
+        self._sync_attr = constants.sync_attr
+
         # Check if config file exists to determine new server status
         self._new_server = (not constants.server_path(server_name, constants.server_ini))
 
@@ -78,10 +81,6 @@ class AclManager():
         self.list_items = self._gen_list_items()
         self.whitelist_enabled = self._server['whitelist']
         self.displayed_rule = None
-
-    # Returns the value of the requested attribute (for remote)
-    def _sync_attr(self, name):
-        return getattr(self, name)
 
     # Scrape the server's joined users
     def _get_playerdata(self):

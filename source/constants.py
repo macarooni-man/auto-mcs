@@ -210,6 +210,12 @@ def get_private_ip():
         return s.getsockname()[0]
     finally:
         s.close()
+def sync_attr(self, name):
+    if name != '__all__':
+        return getattr(self, name)
+    else:
+        blacklist = ['addon', 'backup', 'acl', 'script_manager']
+        return {a: v for a, v in dir(self) if not callable(v) and str(v) not in blacklist and not str(v).endswith('__')}
 api_manager = None
 api_data = {
     "enabled": True,

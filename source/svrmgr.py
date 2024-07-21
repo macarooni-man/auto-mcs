@@ -32,6 +32,9 @@ class ServerObject():
 
     def __init__(self, server_name: str):
 
+        # Returns the value of the requested attribute (for remote)
+        self._sync_attr = constants.sync_attr
+
         self._telepath_data = None
         self.gamemode_dict = ['survival', 'creative', 'adventure', 'spectator']
         self.difficulty_dict = ['peaceful', 'easy', 'normal', 'hard', 'hardcore']
@@ -202,9 +205,6 @@ class ServerObject():
 
         print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
 
-    # Returns the value of the requested attribute (for remote)
-    def _sync_attr(self, name):
-        return getattr(self, name)
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
@@ -1765,9 +1765,6 @@ class ViewObject():
         self.server_path = constants.server_path(server_name)
         self.last_modified = os.path.getmtime(self.server_path)
 
-    # Returns the value of the requested attribute (for remote)
-    def _sync_attr(self, name):
-        return getattr(self, name)
 
 # Loads remote server data locally for a ViewClass in the Server Manager screen
 class RemoteViewObject():
@@ -1882,7 +1879,7 @@ class ServerManager():
         if constants.debug:
             print(vars(self.remote_server))
 
-        return None
+        return bool(self.remote_server)
 
     # Reloads self.current_server
     def reload_server(self):

@@ -67,6 +67,10 @@ class BackupObject():
 class BackupManager():
 
     def __init__(self, server_name: str):
+
+        # Returns the value of the requested attribute (for remote)
+        self._sync_attr = constants.sync_attr
+
         self._server, self._backup_stats = dump_config(server_name)
         self.directory = self._backup_stats['backup-path']
         self.auto_backup = self._backup_stats['auto-backup']
@@ -78,10 +82,6 @@ class BackupManager():
         else:
             self.latest = None
         self._restore_file = None
-
-    # Returns the value of the requested attribute (for remote)
-    def _sync_attr(self, name):
-        return getattr(self, name)
 
     # Refreshes self._backup_stats
     def _update_data(self):
