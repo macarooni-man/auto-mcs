@@ -75,7 +75,7 @@ boot_launches = []
 ignore_close = False
 def allow_close(allow: bool):
     global ignore_close
-    ignore_close = allow
+    ignore_close = not allow
 
 
 # Global debug mode and app_compiled, set debug to false before release
