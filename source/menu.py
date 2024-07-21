@@ -8254,7 +8254,7 @@ class ProgressScreen(MenuBackground):
             server_obj = constants.server_manager.current_server
             host = server_obj._telepath_data['nickname'] if server_obj._telepath_data['nickname'] else server_obj._telepath_data['host']
             if not server_obj.progress_available():
-                self.execute_error(f"A critical operation is currently running locally on '{host}'.\n\nPlease try again later.")
+                self.execute_error(f"A critical operation is currently running locally on '{host}'.\n\nPlease try again later.", reset_close=False)
                 return True
 
         return False
