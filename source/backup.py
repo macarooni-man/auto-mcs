@@ -13,7 +13,7 @@ import os
 # server_name, file_path --> BackupObject
 class BackupObject():
 
-    def grab_config(self):
+    def _grab_config(self):
         cwd = constants.get_cwd()
         extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
         constants.folder_check(extract_folder)
@@ -59,7 +59,7 @@ class BackupObject():
         self.build = None
 
         if not no_fetch:
-            self.grab_config()
+            self._grab_config()
 
 
 # Instantiate class with "server_name" (case-sensitive)

@@ -26,7 +26,6 @@ import re
 import amseditor
 import logviewer
 import constants
-import telepath
 import amscript
 import addons
 import backup
