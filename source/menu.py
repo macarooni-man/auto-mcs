@@ -8267,6 +8267,7 @@ class ProgressScreen(MenuBackground):
 
         elif server_obj._telepath_data:
             self.telepath = server_obj._telepath_data
+            self.telepath['server-name'] = server_obj.name
             host = self.telepath['nickname'] if self.telepath['nickname'] else self.telepath['host']
             if not server_obj.progress_available():
                 self.execute_error(f"A critical operation is currently running locally on '${host}$'.\n\nPlease try again later.", reset_close=False)
@@ -17525,6 +17526,13 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
             constants.safe_delete(constants.tempDir)
             constants.folder_check(constants.tmpsvr)
 
+        def after_func(server_obj, restore_date):
+            message = f"'${server_obj.name}$' was restored to ${restore_date}$"
+            if self.telepath:
+                open_remote_server(self.telepath, self.telepath['server-name'], True, message)
+            else:
+                open_server(server_obj.name, True, message)
+
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
             original = self.last_progress
@@ -17557,7 +17565,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(open_server, server_obj.name, True, f"'${server_obj.name}$' was restored to ${restore_date}$"),
+            'after_function': functools.partial(after_func, server_obj, restore_date),
 
             # Screen to go to after complete
             'next_screen': None
