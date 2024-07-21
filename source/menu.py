@@ -16054,7 +16054,7 @@ class ConsolePanel(FloatLayout):
         return super().on_touch_move(touch)
 
 
-    def __init__(self, server_name, server_button=None, **kwargs):
+    def __init__(self, server_name, server_button=None, start_launched=False, **kwargs):
         super().__init__(**kwargs)
 
         self.server_name = server_name
@@ -16585,6 +16585,9 @@ class ConsolePanel(FloatLayout):
         self.bind(size=self.update_size)
         Clock.schedule_once(self.update_size, 0)
 
+        if start_launched:
+            Clock.schedule_once(functools.partial(self.launch_server, False), 0)
+
 class ServerViewScreen(MenuBackground):
 
     # Fit background color across screen for transitions
@@ -16837,7 +16840,7 @@ class ServerViewScreen(MenuBackground):
 
         # Add performance panel
         perf_layout = ScrollItem()
-        if self.server.run_data:
+        if self.server.run_data and self.server.run_data['performance-panel']:
             self.performance_panel = self.server.run_data['performance-panel']
             try:
                 if self.performance_panel.parent:
@@ -16851,12 +16854,16 @@ class ServerViewScreen(MenuBackground):
 
 
         # Add ConsolePanel
-        if self.server.run_data:
+        if self.server.run_data and self.server.run_data['console-panel']:
             self.console_panel = self.server.run_data['console-panel']
             self.console_panel.scroll_layout.data = []
             Clock.schedule_once(functools.partial(self.console_panel.update_text, self.server.run_data['log'], True, False), 0)
         else:
-            self.console_panel = ConsolePanel(self.server.name, self.server_button)
+            try:
+                launch = bool(self.server.run_data)
+            except:
+                launch = False
+            self.console_panel = ConsolePanel(self.server.name, self.server_button, start_launched=launch)
 
         self.add_widget(self.console_panel)
         self.console_panel.server_obj = self.server
