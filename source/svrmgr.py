@@ -203,7 +203,10 @@ class ServerObject():
 
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
-        return constants.sync_attr(self, name)
+        if name == 'run_data':
+            return self._telepath_run_data()
+        else:
+            return constants.sync_attr(self, name)
 
     # Returns serialized version of self.run_data for telepath sessions
     def _telepath_run_data(self):
