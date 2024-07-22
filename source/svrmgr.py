@@ -212,8 +212,17 @@ class ServerObject():
     def _telepath_run_data(self):
         new_data = {}
         for k, v in self.run_data.items():
-            if k not in ['console-panel', 'performance-panel', 'close-hooks', 'process-hooks']:
+            if k not in [
+                    'console-panel',
+                    'performance-panel',
+                    'close-hooks',
+                    'process-hooks',
+                    'thread',
+                    'process',
+                    'command-history'
+                    'send-command']:
                 new_data[k] = v
+        print(new_data)
         return new_data
 
     # Reloads server information from static files
