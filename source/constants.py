@@ -71,16 +71,6 @@ back_clicked = False
 session_splash = ''
 boot_launches = []
 
-# Prevent app from closing during critical operations
-ignore_close = False
-telepath_banner = None
-def allow_close(allow: bool, banner=''):
-    global ignore_close
-    ignore_close = not allow
-
-    if banner and telepath_banner:
-        telepath_banner(banner, allow)
-
 
 # Global debug mode and app_compiled, set debug to false before release
 debug = False
@@ -222,10 +212,22 @@ api_manager = None
 api_data = {
     "enabled": True,
     "version": "0.5.0",
+    "show-banners": True,
     "default-host": "0.0.0.0",
     "default-port": 7001,
     "logo": "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
 }
+
+# Prevent app from closing during critical operations
+ignore_close = False
+telepath_banner = None
+def allow_close(allow: bool, banner=''):
+    global ignore_close
+    ignore_close = not allow
+
+    if banner and telepath_banner and api_data['show-banners']:
+        telepath_banner(banner, allow)
+
 
 
 

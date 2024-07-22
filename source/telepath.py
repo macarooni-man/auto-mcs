@@ -95,6 +95,8 @@ def create_remote_obj(obj: object, request=True):
     def __getattr__(self, name):
         if name.endswith('__'):
             return
+        if name == 'run_data':
+            return self._telepath_run_data()
 
         try:
             # First, check if cache exists and is not expired
@@ -430,9 +432,18 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.acl._clear_attr_cache()
         self.script_manager._clear_attr_cache()
 
+    def _telepath_run_data(self):
+        for k, v in super()._telepath_run_data(self):
+            self.run_data[k] = v
+
     def reload_config(self, *args, **kwargs):
         self._clear_all_cache()
-        super().reload_config(*args, **kwargs)
+        return super().reload_config(*args, **kwargs)
+
+    def launch(self, *args, **kwargs):
+        self._clear_all_cache()
+        super().launch(*args, **kwargs)
+        return self._telepath_run_data()
 
     # Check if remote instance is not currently being blocked by a synchronous activity (update, create, restore, etc.)
     # Returns True if available
@@ -444,22 +455,13 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
             args={'var': 'ignore_close'}
         )
 
-
-class RemoteAmsFileObject(create_remote_obj(AmsFileObject)):
-    def __init__(self, telepath_data: dict):
-        self._telepath_data = telepath_data
-
 class RemoteScriptManager(create_remote_obj(ScriptManager)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
 
     def _enumerate_scripts(self):
         self._clear_attr_cache()
-        super()._enumerate_scripts()
-
-class RemoteAddonFileObject(create_remote_obj(AddonFileObject)):
-    def __init__(self, telepath_data: dict):
-        self._telepath_data = telepath_data
+        return super()._enumerate_scripts()
 
 class RemoteAddonManager(create_remote_obj(AddonManager)):
     def __init__(self, telepath_data: dict):
@@ -467,7 +469,7 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
 
     def _refresh_addons(self):
         self._clear_attr_cache()
-        super()._refresh_addons()
+        return super()._refresh_addons()
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
     def __init__(self, telepath_data: dict):
@@ -475,10 +477,40 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
 
     def _update_data(self):
         self._clear_attr_cache()
-        super()._update_data()
+        return super()._update_data()
 
     def return_backup_list(self):
         return [RemoteBackupObject(self._telepath_data, data) for data in super().return_backup_list()]
+
+class RemoteAclManager(create_remote_obj(AclManager)):
+    def __init__(self, telepath_data: dict):
+        self._telepath_data = telepath_data
+
+    def _gen_list_items(self):
+        self._clear_attr_cache()
+        return super()._gen_list_items()
+
+    def get_rule(self):
+        self._clear_attr_cache()
+        return super().get_rule()
+
+class RemoteAddonFileObject(Munch):
+    def __init__(self, telepath_data, addon_data: dict):
+        self._telepath_data = telepath_data
+        self.__reconstruct__ = self.__class__.__name__
+
+        for key, value in addon_data.items():
+            if not key.endswith('__'):
+                setattr(self, key, value)
+
+class RemoteAmsFileObject(Munch):
+    def __init__(self, telepath_data, script_data: dict):
+        self._telepath_data = telepath_data
+        self.__reconstruct__ = self.__class__.__name__
+
+        for key, value in script_data.items():
+            if not key.endswith('__'):
+                setattr(self, key, value)
 
 class RemoteBackupObject(Munch):
     def __init__(self, telepath_data: dict, backup_data: dict):
@@ -490,17 +522,6 @@ class RemoteBackupObject(Munch):
             if not key.endswith('__'):
                 setattr(self, key, value)
 
-class RemoteAclManager(create_remote_obj(AclManager)):
-    def __init__(self, telepath_data: dict):
-        self._telepath_data = telepath_data
-
-    def _gen_list_items(self):
-        self._clear_attr_cache()
-        super()._gen_list_items()
-
-    def get_rule(self):
-        self._clear_attr_cache()
-        super().get_rule()
 
 
 # Instantiate the API

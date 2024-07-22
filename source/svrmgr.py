@@ -205,6 +205,14 @@ class ServerObject():
     def _sync_attr(self, name):
         return constants.sync_attr(self, name)
 
+    # Returns serialized version of self.run_data for telepath sessions
+    def _telepath_run_data(self):
+        new_data = {}
+        for k, v in self.run_data.items():
+            if k not in ['console-panel', 'performance-panel', 'close-hooks', 'process-hooks']:
+                new_data[k] = v
+        return new_data
+
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
 
