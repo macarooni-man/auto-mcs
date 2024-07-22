@@ -208,7 +208,7 @@ class ServerObject():
 
         data = constants.sync_attr(self, name)
 
-        if 'run_data' in data:
+        if name == '__all__':
             data['run_data'] = self._telepath_run_data()
 
         return data

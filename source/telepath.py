@@ -433,11 +433,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.script_manager._clear_attr_cache()
 
     def _telepath_run_data(self):
-        try:
-            for k, v in super()._telepath_run_data(self).items():
-                self.run_data[k] = v
-        except:
-            return {}
+        return super()._telepath_run_data()
 
     def reload_config(self, *args, **kwargs):
         self._clear_all_cache()
