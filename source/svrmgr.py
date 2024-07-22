@@ -205,8 +205,14 @@ class ServerObject():
     def _sync_attr(self, name):
         if name == 'run_data':
             return self._telepath_run_data()
-        else:
-            return constants.sync_attr(self, name)
+
+        data = constants.sync_attr(self, name)
+
+        if 'run_data' in data:
+            data['run_data'] = self._telepath_run_data()
+
+        return data
+
 
     # Returns serialized version of self.run_data for telepath sessions
     def _telepath_run_data(self):
@@ -222,7 +228,6 @@ class ServerObject():
                     'command-history'
                     'send-command']:
                 new_data[k] = v
-        print(new_data)
         return new_data
 
     # Reloads server information from static files
