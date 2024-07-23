@@ -216,18 +216,20 @@ class ServerObject():
 
     # Returns serialized version of self.run_data for telepath sessions
     def _telepath_run_data(self):
-        new_data = {}
-        for k, v in self.run_data.items():
-            if k not in [
+        blacklist = [
                     'console-panel',
                     'performance-panel',
                     'close-hooks',
                     'process-hooks',
                     'thread',
                     'process',
-                    'command-history'
-                    'send-command']:
-                new_data[k] = v
+                    'command-history',
+                    'send-command'
+        ]
+        new_data = {}
+        for k, v in self.run_data.items():
+            if k not in blacklist:
+                new_data[k] = deepcopy(v)
         return new_data
 
     # Reloads server information from static files
@@ -1126,6 +1128,11 @@ class ServerObject():
                 pass
 
             self.restart_flag = False
+
+        # Return stripped data if telepath session
+        if constants.server_manager.remote_server:
+            if constants.server_manager.remote_server.name == self.name:
+                return self._sync_attr('run_data')
         return self.run_data
 
     # Kill server and delete running configuration
