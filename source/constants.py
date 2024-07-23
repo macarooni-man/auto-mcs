@@ -204,7 +204,7 @@ def sync_attr(self, name):
     if name != '__all__':
         return getattr(self, name)
     else:
-        blacklist = ['addon', 'backup', 'acl', 'script_manager', 'script_object', 'run_data']
+        blacklist = ['addon', 'backup', 'acl', 'script_manager', 'script_object', 'run_data', 'taskbar']
         def allow(x):
             return ((not callable(getattr(self, x))) and (str(x) not in blacklist) and (not str(x).endswith('__')))
         return {a: getattr(self, a) for a in dir(self) if allow(a)}

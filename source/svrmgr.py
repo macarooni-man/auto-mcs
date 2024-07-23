@@ -32,7 +32,7 @@ class ServerObject():
 
     def __init__(self, server_name: str):
         self._telepath_data = None
-        self._loop_player_clock = 0
+        self._loop_clock = 0
         self.gamemode_dict = ['survival', 'creative', 'adventure', 'spectator']
         self.difficulty_dict = ['peaceful', 'easy', 'normal', 'hard', 'hardcore']
 
@@ -242,21 +242,26 @@ class ServerObject():
 
     # Updates performance data on a clock until server stops
     def _start_performance_clock(self):
-        self._loop_player_clock = 0
+        self._loop_clock = 0
         def loop(*a):
             if self.running:
-
                 if self._is_telepath_session():
-                    self.performance_stats(0.5, (self._loop_player_clock == 3))
-                    self._loop_player_clock += 1
-                    if self._loop_player_clock > 5:
-                        self._loop_player_clock = 0
+                    self.performance_stats(1, (self._loop_clock == 3))
+                    self._loop_clock += 1
+                    if self._loop_clock > 6:
+                        self._loop_clock = 1
                 else:
                     time.sleep(0.5)
 
                 loop()
 
-        threading.Timer(0, loop).start()
+            # Reset on close
+            else:
+                self._loop_clock = 0
+
+        # Don't run on telepath
+        if not self._telepath_data:
+            threading.Timer(0, loop).start()
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):

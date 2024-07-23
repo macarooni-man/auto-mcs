@@ -14552,7 +14552,7 @@ class PerformancePanel(RelativeLayout):
     def refresh_data(self, interval=0.5, *args):
 
         # Get performance stats if running locally
-        if not constants.server_manager.current_server._telepath_data:
+        if constants.server_manager.current_server._loop_clock == 0:
             threading.Timer(0, functools.partial(constants.server_manager.current_server.performance_stats, interval, (self.player_clock == 3))).start()
 
         def update_data(*args):
