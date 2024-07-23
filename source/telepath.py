@@ -6,6 +6,7 @@ from pydantic import BaseModel, create_model
 from datetime import timedelta as td
 from datetime import datetime as dt
 from fastapi import FastAPI, Body
+from copy import deepcopy
 from munch import Munch
 import threading
 import requests
@@ -119,7 +120,7 @@ def create_remote_obj(obj: object, request=True):
 
             # If cache exists and is expired, get name, update cache, and reset expired
             response = self._request_attr(name)
-            self._attr_cache[name] = {'value': response, 'expire': self._reset_expiry()}
+            self._attr_cache[name] = {'value': response, 'expire': self._reset_expiry(response)}
             return response
 
         except Exception as e:
@@ -140,7 +141,9 @@ def create_remote_obj(obj: object, request=True):
             {'name': (str, ...)},
             name
         )
-    def _reset_expiry(self, length=60):
+    def _reset_expiry(self, value=None, length=60):
+        if value == 'run_data':
+            length = 1
         expiry = dt.now() + td(seconds=length)
         self._attr_cache['__expire__'] = expiry
         return expiry
@@ -416,6 +419,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
+        self.run_data = {}
         self.backup = RemoteBackupManager(telepath_data)
         self.addon = RemoteAddonManager(telepath_data)
         self.acl = RemoteAclManager(telepath_data)
@@ -432,8 +436,15 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.acl._clear_attr_cache()
         self.script_manager._clear_attr_cache()
 
+    # Gather remote run_data from a running server
     def _telepath_run_data(self):
-        return super()._telepath_run_data()
+        run_data = super()._telepath_run_data()
+        run_data['send-command'] = self.send_command
+
+        for k, v in run_data.items():
+            self.run_data[k] = v
+
+        return self.run_data
 
     def reload_config(self, *args, **kwargs):
         self._clear_all_cache()
@@ -445,7 +456,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         return self._telepath_run_data()
 
     def performance_stats(self, interval=0.5, update_players=False):
-        return self.run_data['performance']
+        if self.run_data and 'performance' in self.run_data:
+            return self.run_data['performance']
+        else:
+            return {}
 
     # Check if remote instance is not currently being blocked by a synchronous activity (update, create, restore, etc.)
     # Returns True if available

@@ -1163,7 +1163,7 @@ class ServerObject():
 
         # Return stripped data if telepath session
         try:
-            if constants.server_manager.remote_server and constants.server_manager.current_server.name != self.name:
+            if not constants.server_manager.current_server or (constants.server_manager.remote_server and constants.server_manager.current_server.name != self.name):
                 if constants.server_manager.remote_server.name == self.name:
                     return self._sync_attr('run_data')
         except AttributeError:

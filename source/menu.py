@@ -14552,8 +14552,28 @@ class PerformancePanel(RelativeLayout):
     def refresh_data(self, interval=0.5, *args):
 
         # Get performance stats if running locally
-        if constants.server_manager.current_server._loop_clock == 0:
-            threading.Timer(0, functools.partial(constants.server_manager.current_server.performance_stats, interval, (self.player_clock == 3))).start()
+        server_obj = constants.server_manager.current_server
+        if server_obj._loop_clock == 0:
+            threading.Timer(0, functools.partial(server_obj.performance_stats, interval, (self.player_clock == 3))).start()
+
+        # If the server is running remotely, update the console text as needed
+        # This should probably be moved, though, it's the only client loop
+        elif screen_manager.current_screen.name == 'ServerViewScreen':
+            if server_obj.running and server_obj.run_data:
+                print(True)
+                server_obj._telepath_run_data()
+                console_panel = screen_manager.current_screen.console_panel
+                data_len = len(console_panel.scroll_layout.data)
+                run_len = len(server_obj.run_data['log'])
+                try:
+                    if data_len <= run_len:
+                        console_panel.update_text(server_obj.run_data['log'], animate_last=(run_len > data_len))
+                except KeyError:
+                    pass
+
+            # Close the console if remotely launched, and no logs exist
+            else:
+                screen_manager.current_screen.console_panel.reset_panel()
 
         def update_data(*args):
             try:
