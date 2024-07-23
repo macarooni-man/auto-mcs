@@ -2514,7 +2514,7 @@ class ServerPortInput(CreateServerPortInput):
         if not fail:
             server_obj.ip = new_ip
             server_obj.server_properties['server-ip'] = new_ip
-            server_obj.properties_hash = server_obj.__get_properties_hash__()
+            server_obj.properties_hash = server_obj._get_properties_hash()
             screen_manager.current_screen.check_changes(server_obj, force_banner=True)
 
         if new_port and not fail:
@@ -2589,7 +2589,7 @@ class ServerMOTDInput(BaseInput):
         print(text, self.server_obj.server_properties['motd'])
         if text != self.server_obj.server_properties['motd'] and text:
             self.server_obj.server_properties['motd'] = text
-            self.server_obj.properties_hash = self.server_obj.__get_properties_hash__()
+            self.server_obj.properties_hash = self.server_obj._get_properties_hash()
             screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
             constants.server_properties(self.server_obj.name, write_object=self.server_obj.server_properties)
             self.server_obj.reload_config()
@@ -16840,7 +16840,7 @@ class ServerViewScreen(MenuBackground):
 
         # Add performance panel
         perf_layout = ScrollItem()
-        if self.server.run_data and self.server.run_data['performance-panel']:
+        if self.server.run_data and 'performance-panel' in self.server.run_data and self.server.run_data['performance-panel']:
             self.performance_panel = self.server.run_data['performance-panel']
             try:
                 if self.performance_panel.parent:
@@ -16854,7 +16854,7 @@ class ServerViewScreen(MenuBackground):
 
 
         # Add ConsolePanel
-        if self.server.run_data and self.server.run_data['console-panel']:
+        if self.server.run_data and 'console-panel' in self.server.run_data and self.server.run_data['console-panel']:
             self.console_panel = self.server.run_data['console-panel']
             self.console_panel.scroll_layout.data = []
             Clock.schedule_once(functools.partial(self.console_panel.update_text, self.server.run_data['log'], True, False), 0)
@@ -21677,8 +21677,8 @@ class ServerSettingsScreen(MenuBackground):
 
     def check_changes(self, server_obj, force_banner=False):
         if server_obj.running:
-            # print(server_obj.run_data['advanced-hash'], server_obj.__get_advanced_hash__(), sep="\n")
-            if server_obj.run_data['advanced-hash'] != server_obj.__get_advanced_hash__():
+            # print(server_obj.run_data['advanced-hash'], server_obj._get_advanced_hash(), sep="\n")
+            if server_obj.run_data['advanced-hash'] != server_obj._get_advanced_hash():
                 if "[font=" not in self.header.text.text:
                     icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
                     self.header.text.text = f"[color=#EFD49E][font={icons}]y[/font] " + self.header.text.text + "[/color]"

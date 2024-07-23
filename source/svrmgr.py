@@ -66,7 +66,7 @@ class ServerObject():
             self.server_properties = constants.server_properties(server_name)
 
         self.config_file = constants.server_config(server_name)
-        self.properties_hash = self.__get_properties_hash__()
+        self.properties_hash = self._get_properties_hash()
 
 
         # Server properties
@@ -213,7 +213,6 @@ class ServerObject():
 
         return data
 
-
     # Returns serialized version of self.run_data for telepath sessions
     def _telepath_run_data(self):
         blacklist = [
@@ -232,13 +231,14 @@ class ServerObject():
                 new_data[k] = deepcopy(v)
         return new_data
 
+
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
 
         # Server files
         self.config_file = constants.server_config(self.name)
         self.server_properties = constants.server_properties(self.name)
-        self.properties_hash = self.__get_properties_hash__()
+        self.properties_hash = self._get_properties_hash()
 
         # Server properties
         self.favorite = self.config_file.get("general", "isFavorite").lower() == 'true'
@@ -835,8 +835,8 @@ class ServerObject():
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
 
             # Run data hashes to check for configuration changes post launch
-            self.run_data['properties-hash'] = self.__get_properties_hash__()
-            self.run_data['advanced-hash'] = self.__get_advanced_hash__()
+            self.run_data['properties-hash'] = self._get_properties_hash()
+            self.run_data['advanced-hash'] = self._get_advanced_hash()
             self.run_data['addon-hash'] = None
             if self.addon:
                 self.run_data['addon-hash'] = deepcopy(self.addon._addon_hash)
@@ -1130,7 +1130,7 @@ class ServerObject():
             self.restart_flag = False
 
         # Return stripped data if telepath session
-        if constants.server_manager.remote_server:
+        if constants.server_manager.remote_server and constants.server_manager.current_server.name != self.name:
             if constants.server_manager.remote_server.name == self.name:
                 return self._sync_attr('run_data')
         return self.run_data
@@ -1448,12 +1448,12 @@ class ServerObject():
             del self
 
     # Checks for modified 'server.properties'
-    def __get_properties_hash__(self):
+    def _get_properties_hash(self):
         # return hash(frozenset(self.server_properties.items()))
         return ''.join(sorted([str(a).strip() for a in self.server_properties.values()]))
 
     # Checks modified advanced settings to check for a restart
-    def __get_advanced_hash__(self):
+    def _get_advanced_hash(self):
         return str(str(self.custom_flags) + str(self.properties_hash) + str(self.ngrok_enabled).lower()[0] + str(self.geyser_enabled).lower()[0] + str(self.dedicated_ram)).strip()
 
 
