@@ -1130,9 +1130,12 @@ class ServerObject():
             self.restart_flag = False
 
         # Return stripped data if telepath session
-        if constants.server_manager.remote_server and constants.server_manager.current_server.name != self.name:
-            if constants.server_manager.remote_server.name == self.name:
-                return self._sync_attr('run_data')
+        try:
+            if constants.server_manager.remote_server and constants.server_manager.current_server.name != self.name:
+                if constants.server_manager.remote_server.name == self.name:
+                    return self._sync_attr('run_data')
+        except AttributeError:
+            pass
         return self.run_data
 
     # Kill server and delete running configuration

@@ -444,6 +444,9 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         super().launch(*args, **kwargs)
         return self._telepath_run_data()
 
+    def performance_stats(self, interval=0.5, update_players=False):
+        return self.run_data['performance']
+
     # Check if remote instance is not currently being blocked by a synchronous activity (update, create, restore, etc.)
     # Returns True if available
     def progress_available(self):
