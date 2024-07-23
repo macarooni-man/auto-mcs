@@ -14551,8 +14551,9 @@ class PerformancePanel(RelativeLayout):
     # Updates data in panel while the server is running
     def refresh_data(self, interval=0.5, *args):
 
-        # Get performance stats
-        threading.Timer(0, functools.partial(constants.server_manager.current_server.performance_stats, interval, (self.player_clock == 3))).start()
+        # Get performance stats if running locally
+        if not constants.server_manager.current_server._telepath_data:
+            threading.Timer(0, functools.partial(constants.server_manager.current_server.performance_stats, interval, (self.player_clock == 3))).start()
 
         def update_data(*args):
             try:

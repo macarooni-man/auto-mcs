@@ -32,6 +32,7 @@ class ServerObject():
 
     def __init__(self, server_name: str):
         self._telepath_data = None
+        self._loop_player_clock = 0
         self.gamemode_dict = ['survival', 'creative', 'adventure', 'spectator']
         self.difficulty_dict = ['peaceful', 'easy', 'normal', 'hard', 'hardcore']
 
@@ -231,6 +232,31 @@ class ServerObject():
                 new_data[k] = deepcopy(v)
         return new_data
 
+    # Checks if server was initialized remotely
+    def _is_telepath_session(self):
+        try:
+            return constants.server_manager.remote_server.name == self.name
+        except AttributeError:
+            pass
+        return False
+
+    # Updates performance data on a clock until server stops
+    def _start_performance_clock(self):
+        self._loop_player_clock = 0
+        def loop(*a):
+            if self.running:
+
+                if self._is_telepath_session():
+                    self.performance_stats(0.5, (self._loop_player_clock == 3))
+                    self._loop_player_clock += 1
+                    if self._loop_player_clock > 5:
+                        self._loop_player_clock = 0
+                else:
+                    time.sleep(0.5)
+
+                loop()
+
+        threading.Timer(0, loop).start()
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
@@ -1094,6 +1120,7 @@ class ServerObject():
             self.run_data['launch-time'] = dt.now()
 
             constants.server_manager.running_servers[self.name] = self
+            self._start_performance_clock()
 
 
             # Add and delete temp file to update last modified time of server directory
