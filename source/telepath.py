@@ -94,10 +94,15 @@ def create_remote_obj(obj: object, request=True):
 
     # Replace methods
     def __getattr__(self, name):
+
+        # Attribute hard overrides
         if name.endswith('__'):
             return
         if name == 'run_data':
             return self._telepath_run_data()
+        if name == 'crash_log':
+            return self._sync_telepath_stop()['crash']
+
 
         try:
             # First, check if cache exists and is not expired
