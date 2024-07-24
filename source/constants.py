@@ -209,6 +209,7 @@ def sync_attr(self, name):
             return ((not callable(getattr(self, x))) and (str(x) not in blacklist) and (not str(x).endswith('__')))
         return {a: getattr(self, a) for a in dir(self) if allow(a)}
 api_manager = None
+headless = False
 api_data = {
     "enabled": True,
     "version": "0.5.0",

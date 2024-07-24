@@ -63,12 +63,14 @@ if __name__ == '__main__':
     # Check for additional arguments
     try:
         parser = argparse.ArgumentParser(description='CLI options for auto-mcs')
-        parser.add_argument('-d', '--debug', default='',help='execute auto-mcs with verbose console logging', action='store_true')
+        parser.add_argument('-d', '--debug', default='' ,help='execute auto-mcs with verbose console logging', action='store_true')
         parser.add_argument('-l', '--launch', type=str, default='', help='specify a server name (or list of server names) to launch automatically', metavar='"Server 1, Server 2"')
+        parser.add_argument('-s', '--headless', default='', help='launch without initializing the UI and enable the Telepath API', action='store_true')
         args = parser.parse_args()
 
         # Check for debug mode
         constants.debug = args.debug
+        constants.headless = args.headless
 
         # Check for auto-start
         if args.launch:
@@ -252,7 +254,7 @@ if __name__ == '__main__':
 
     # Launch API before UI
     # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
-    if constants.api_data['enabled']:
+    if constants.api_data['enabled'] or constants.headless:
         constants.api_manager = telepath.WebAPI(constants.api_data['default-host'], constants.api_data['default-port'])
         constants.api_manager.start()
 

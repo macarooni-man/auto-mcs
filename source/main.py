@@ -1,6 +1,5 @@
 # Local imports
 from svrmgr import ServerManager
-from constants import SearchManager
 import constants
 
 
@@ -8,7 +7,7 @@ import constants
 def mainLoop():
 
     # Fixes display scaling on Windows - Eventually add this to the beginning of wrapper.py
-    if constants.os_name == "windows":
+    if constants.os_name == "windows" and not constants.headless:
         from ctypes import windll, c_int64
 
         # Calculate screen width and disable DPI scaling if bigger than a certain resolution
@@ -22,7 +21,6 @@ def mainLoop():
 
 
     # Cleanup temp files and generate splash text
-    from menu import run_application
     constants.cleanup_old_files()
     constants.generate_splash()
     constants.get_refresh_rate()
@@ -30,7 +28,18 @@ def mainLoop():
     # Instantiate Server Manager
     constants.server_manager = ServerManager()
     print("Current server_list: ", constants.server_manager.server_list)
-    run_application()
+
+
+    # Only start the UI if not headless
+    if not constants.headless:
+        from menu import run_application
+        run_application()
+
+    # Otherwise, start a loop for a CLI interpreter with basic commands
+    else:
+        import time
+        while True:
+            time.sleep(1)
 
 
 
