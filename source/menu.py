@@ -15518,7 +15518,7 @@ class ConsolePanel(FloatLayout):
                 endpoint='/main/telepath_banner',
                 host=server_obj._telepath_data['host'],
                 port=server_obj._telepath_data['port'],
-                args={'allow': True, 'banner': f"$Telepath$ action: Launched '${server_obj.name}$'"}
+                args={'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
             )
 
         Clock.schedule_once(after_anim, (anim_speed*1.51) if animate else 0)
