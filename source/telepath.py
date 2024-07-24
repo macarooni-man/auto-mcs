@@ -430,6 +430,8 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
             self._telepath_data['display-name'] = self._telepath_data['nickname']
         else:
             self._telepath_data['display-name'] = self._telepath_data['host']
+        self._view_name = f"{self._telepath_data['display-name']}/{self._telepath_data['name']}"
+        self.favorite = self._is_favorite()
 
         self.run_data = {}
         self.backup = RemoteBackupManager(telepath_data)
@@ -440,6 +442,15 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
         print(f"[INFO] [auto-mcs] Server Manager (Telepath): Loaded '{host}/{self.name}'")
+
+    def _is_favorite(self):
+        try:
+            telepath = constants.server_manager.telepath_servers[self._telepath_data['host']]
+            if self.name in telepath['added-servers']:
+                return telepath['added-servers'][self.name]['favorite']
+        except KeyError:
+            pass
+        return False
 
     def _clear_all_cache(self):
         self._clear_attr_cache()
@@ -469,6 +480,12 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         else:
             self._clear_all_cache()
             return {}
+
+    def _sync_telepath_stop(self):
+        if self.run_data:
+            self.run_data = {}
+            self._clear_all_cache()
+        return super()._sync_telepath_stop()
 
     def reload_config(self, *args, **kwargs):
         self._clear_all_cache()

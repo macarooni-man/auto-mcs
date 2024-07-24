@@ -32,6 +32,7 @@ class ServerObject():
 
     def __init__(self, server_name: str):
         self._telepath_data = None
+        self._view_name = server_name
         self._loop_clock = 0
         self._last_telepath_log = {}
 
@@ -1800,6 +1801,7 @@ class ViewObject():
 
         self._telepath_data = None
         self.name = server_name
+        self._view_name = server_name
         self.running = self.name in constants.server_manager.running_servers.keys()
 
         if self.running:
@@ -1847,7 +1849,7 @@ class ViewObject():
 
 # Loads remote server data locally for a ViewClass in the Server Manager screen
 class RemoteViewObject():
-    def is_favorite(self):
+    def _is_favorite(self):
         try:
             if self.name in self._telepath_data['added-servers']:
                 return self._telepath_data['added-servers'][self.name]['favorite']
@@ -1867,7 +1869,15 @@ class RemoteViewObject():
             setattr(self, k, v)
 
         self._telepath_data = instance_data
-        self.favorite = self.is_favorite()
+
+        # Set display name
+        if self._telepath_data['nickname']:
+            self._telepath_data['display-name'] = self._telepath_data['nickname']
+        else:
+            self._telepath_data['display-name'] = self._telepath_data['host']
+        self._view_name = f"{self._telepath_data['display-name']}/{server_data['name']}"
+
+        self.favorite = self._is_favorite()
 
 # Houses all server information
 class ServerManager():

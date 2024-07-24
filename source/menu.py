@@ -13490,6 +13490,7 @@ class ServerButton(HoverButton):
         self.title.text_size = (self.size_hint_max[0] * (0.7 if favorite else 0.94), self.size_hint_max[1])
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png')
         self.resize_self()
+        return favorite
 
     def animate_button(self, image, color, **kwargs):
         image_animate = Animation(duration=0.05)
@@ -13953,7 +13954,8 @@ class ServerManagerScreen(MenuBackground):
     # Toggles favorite of item, and reload list
     def favorite(self, server_name, properties):
         if properties._telepath_data:
-            bool_favorite = properties.toggle_favorite()
+            properties.toggle_favorite()
+            bool_favorite = properties.favorite
 
         else:
             bool_favorite = constants.toggle_favorite(server_name)
@@ -13980,7 +13982,7 @@ class ServerManagerScreen(MenuBackground):
 
 
         constants.server_manager.refresh_list()
-        self.gen_search_results(constants.server_manager.server_list, fade_in=False, highlight=server_name)
+        self.gen_search_results(constants.server_manager.server_list, fade_in=False, highlight=properties._view_name)
 
     def switch_page(self, direction):
 
@@ -14015,7 +14017,7 @@ class ServerManagerScreen(MenuBackground):
 
                 return final_list
 
-            for x, l in enumerate(divide_chunks([x.name for x in results], self.page_size), 1):
+            for x, l in enumerate(divide_chunks([x._view_name for x in results], self.page_size), 1):
                 if highlight in l:
                     if self.current_page != x:
                         self.current_page = x
@@ -14055,13 +14057,10 @@ class ServerManagerScreen(MenuBackground):
         # Show servers if they exist
         if server_count != 0:
 
-            # Create list of server names
-            server_names = [server.name for server in constants.server_manager.server_list]
-
             # Clear and add all ServerButtons
-            for x, server_object in enumerate(page_list, 1):
+            for x, server_obj in enumerate(page_list, 1):
 
-                # Activated when addon is clicked
+                # Activated when server is clicked
                 def view_server(server, index, *args):
                     selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ServerButton"][index - 1]
 
@@ -14079,21 +14078,21 @@ class ServerManagerScreen(MenuBackground):
 
                 # Check if updates are available
                 update_banner = ""
-                if server_object.auto_update == 'true':
-                    update_banner = server_object.update_string
+                if server_obj.auto_update == 'true':
+                    update_banner = server_obj.update_string
 
 
                 # Add-on button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
                         widget = ServerButton(
-                            server_object = server_object,
+                            server_object = server_obj,
                             fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            highlight = (highlight == server_object.name),
+                            highlight = (highlight == server_obj._view_name),
                             update_banner = update_banner,
                             click_function = functools.partial(
                                 view_server,
-                                server_object,
+                                server_obj,
                                 x
                             )
                         )
@@ -14203,8 +14202,9 @@ class ServerManagerScreen(MenuBackground):
 
         # Highlight the last server that was last selected
         def highlight_last_server(*args):
-            if constants.server_manager.current_server:
-                highlight = constants.server_manager.current_server.name
+            server_obj = constants.server_manager.current_server
+            if server_obj:
+                highlight = server_obj._view_name
                 self.gen_search_results(constants.server_manager.server_list, highlight=highlight, animate_scroll=False)
         Clock.schedule_once(highlight_last_server, 0)
 
@@ -14553,13 +14553,12 @@ class PerformancePanel(RelativeLayout):
 
         # Get performance stats if running locally
         server_obj = constants.server_manager.current_server
-        if server_obj._loop_clock == 0:
+        if not server_obj._telepath_data:
             threading.Timer(0, functools.partial(server_obj.performance_stats, interval, (self.player_clock == 3))).start()
 
         # If the server is running remotely, update the console text as needed
         # This should probably be moved, though, it's the only client loop
         elif screen_manager.current_screen.name == 'ServerViewScreen' and server_obj._telepath_data:
-            server_obj
             console_panel = screen_manager.current_screen.console_panel
             if server_obj.running and server_obj.run_data:
                 server_obj._telepath_run_data()
@@ -14577,6 +14576,13 @@ class PerformancePanel(RelativeLayout):
                     server_obj.crash_log = data['crash']
                     console_panel.update_text(data['log'])
                     console_panel.reset_panel(data['crash'])
+
+                    # Before closing, save contents to temp for view screen
+                    constants.folder_check(constants.tempDir)
+                    file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
+                    with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
+                        f.write(constants.json.dumps(data['log']))
+
 
         def update_data(*args):
             try:
@@ -15510,7 +15516,7 @@ class ConsolePanel(FloatLayout):
             server_obj = screen_manager.current_screen.server
 
             if server_obj._telepath_data:
-                boot_text = f"Connecting to '{server_obj._telepath_data['display-name']}/{server_obj.name}', please wait..."
+                boot_text = f"Connecting to '{server_obj._view_name}', please wait..."
             else:
                 boot_text = f"Launching '{server_obj.name}', please wait..."
 
@@ -15559,6 +15565,7 @@ class ConsolePanel(FloatLayout):
 
 
         def reset(*args):
+            server_obj = constants.server_manager.current_server
 
             # Show crash banner if not on server screen
             def show_crash_banner(*args):
@@ -15600,10 +15607,11 @@ class ConsolePanel(FloatLayout):
 
 
             # Before deleting run data, save log to a file
-            constants.folder_check(constants.tempDir)
-            file_name = f"{constants.server_manager.current_server.name}-latest.log"
-            with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
-                f.write(constants.json.dumps(self.run_data['log']))
+            if not server_obj._telepath_data:
+                constants.folder_check(constants.tempDir)
+                file_name = f"{server_obj.name}-latest.log"
+                with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
+                    f.write(constants.json.dumps(self.run_data['log']))
 
 
             self.run_data = None
@@ -15831,8 +15839,7 @@ class ConsolePanel(FloatLayout):
         title = None
 
         if server_obj._telepath_data:
-            data = server_obj._telepath_data
-            title = f'{data["display-name"]}/{server_obj.name}'
+            title = f'{server_obj._view_name}'
 
         view_file(server_obj.crash_log, title)
         self.controls.log_button.button.on_leave()
@@ -15844,9 +15851,16 @@ class ConsolePanel(FloatLayout):
         self.log_view = False
         self.input.hint_text = "enter command..."
 
+        # Choose path based on server name
+        server_obj = constants.server_manager.current_server
+        if server_obj._telepath_data:
+            log_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
+        else:
+            log_name = f"{server_obj.name}-latest.log"
+
         # Before deleting run data, save log to a file
         constants.folder_check(constants.tempDir)
-        file_path = os.path.join(constants.tempDir, f"{constants.server_manager.current_server.name}-latest.log")
+        file_path = os.path.join(constants.tempDir, log_name)
         if os.path.isfile(file_path):
             self.deselect_all()
             self.scroll_layout.data = []
