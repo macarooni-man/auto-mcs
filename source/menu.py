@@ -8272,17 +8272,22 @@ class ProgressScreen(MenuBackground):
     # Check if there's a telepath client or server, and if it's using a blocking action
     def _check_telepath(self):
         server_obj = constants.server_manager.current_server
-        if constants.ignore_close and server_obj.remote_server:
-            self.execute_error('A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later.', reset_close=False)
-            return True
 
-        elif server_obj._telepath_data:
-            self.telepath = server_obj._telepath_data
-            self.telepath['server-name'] = server_obj.name
-            host = self.telepath['nickname'] if self.telepath['nickname'] else self.telepath['host']
-            if not server_obj.progress_available():
-                self.execute_error(f"A critical operation is currently running locally on '${host}$'.\n\nPlease try again later.", reset_close=False)
+        try:
+            if constants.ignore_close and server_obj.remote_server:
+                self.execute_error('A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later.', reset_close=False)
                 return True
+
+            elif server_obj._telepath_data:
+                self.telepath = server_obj._telepath_data
+                self.telepath['server-name'] = server_obj.name
+                host = self.telepath['nickname'] if self.telepath['nickname'] else self.telepath['host']
+                if not server_obj.progress_available():
+                    self.execute_error(f"A critical operation is currently running locally on '${host}$'.\n\nPlease try again later.", reset_close=False)
+                    return True
+
+        except AttributeError:
+            return False
 
         return False
 
