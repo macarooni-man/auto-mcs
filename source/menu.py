@@ -14006,7 +14006,7 @@ class ServerManagerScreen(MenuBackground):
 
     def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True, *args):
 
-        # Set to proper page on favorite/unfavorite
+        # Set to proper page on favorite/un-favorite
         default_scroll = 1
         if highlight:
             def divide_chunks(l, n):
@@ -15508,6 +15508,15 @@ class ConsolePanel(FloatLayout):
         Clock.schedule_once(update_launch_data, 3 if wait_for_ip else 1)
         if wait_for_ip:
             Clock.schedule_once(update_launch_data, 6)
+
+        # Show telepath banner when server is started remotely
+        if not wait_for_ip and self.server._telepath_data:
+            constants.api_manager.request(
+                endpoint='/main/telepath_banner',
+                host=self._telepath_data['host'],
+                port=self._telepath_data['port'],
+                args={'allow': True, 'banner': f"$Telepath$ action: Launched '${self.server.name}$'"}
+            )
 
         Clock.schedule_once(after_anim, (anim_speed*1.51) if animate else 0)
 

@@ -3850,7 +3850,6 @@ def get_remote_var(var: str):
     return var
 
 
-
 # Toggles favorite status in Server Manager
 def toggle_favorite(server_name: str):
     config_file = server_config(server_name)
