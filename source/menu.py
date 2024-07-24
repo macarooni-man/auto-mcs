@@ -27,6 +27,7 @@ import amseditor
 import logviewer
 import constants
 import amscript
+import telepath
 import addons
 import backup
 import acl
@@ -8095,6 +8096,7 @@ def telepath_banner(message: str, finished: bool):
         ), 0.1
     )
 constants.telepath_banner = telepath_banner
+telepath.create_endpoint(constants.telepath_banner, 'main', True)
 
 # Template for loading/busy screens
 class ProgressWidget(RelativeLayout):
