@@ -1174,7 +1174,7 @@ class ServerObject():
 
         # Return stripped data if telepath session
         try:
-            if self._is_telepath_session() or return_telepath:
+            if self._is_telepath_session() and return_telepath:
                 return self._sync_attr('run_data')
         except AttributeError:
             pass
