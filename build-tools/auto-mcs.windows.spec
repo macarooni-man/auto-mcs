@@ -19,7 +19,7 @@ a = Analysis(['wrapper.py'],
                         ('.\\locales.json', '.'),
                         ('.\\gui-assets\\icons\\sm\\*', '.\\gui-assets\\icons\\sm')
                     ],
-             hiddenimports=['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world'],
+             hiddenimports=['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern'],
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],
