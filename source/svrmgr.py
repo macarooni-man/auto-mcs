@@ -842,7 +842,7 @@ class ServerObject():
                             print("Error: Command sent after process shutdown")
 
     # Launch server, or reconnect to background server
-    def launch(self):
+    def launch(self, return_telepath=False):
 
         if not self.running:
 
@@ -1173,10 +1173,8 @@ class ServerObject():
 
         # Return stripped data if telepath session
         try:
-            sm = constants.server_manager
-            if not sm.current_server or (sm.remote_server and sm.current_server.name != self.name):
-                if sm.remote_server.name == self.name:
-                    return self._sync_attr('run_data')
+            if self._is_telepath_session() and return_telepath:
+                return self._sync_attr('run_data')
         except AttributeError:
             pass
         return self.run_data
@@ -1228,6 +1226,11 @@ class ServerObject():
 
 
         if not self.restart_flag:
+
+            # First, copy log for telepath stop data if remote
+            if self._is_telepath_session():
+                self._last_telepath_log = deepcopy(self.run_data['log'])
+
             # Delete log from memory (hopefully)
             for item in self.run_data['log']:
                 self.run_data['log'].remove(item)
@@ -1243,10 +1246,6 @@ class ServerObject():
                         Popen("taskkill /f /im \"ngrok-v3.exe\"", shell=False, stdout=False, stderr=False)
             except KeyError:
                 pass
-
-            # Delete run data
-            if self._telepath_data:
-                self._last_telepath_log = deepcopy(self.run_data['log'])
 
             self.run_data.clear()
             self.running = False

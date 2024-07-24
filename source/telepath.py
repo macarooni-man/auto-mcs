@@ -446,19 +446,24 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     # Gather remote run_data from a running server
     def _telepath_run_data(self):
         run_data = super()._telepath_run_data()
-        run_data['send-command'] = self.send_command
-        add_list = ['process-hooks', 'command-history']
+        if run_data:
+            run_data['send-command'] = self.send_command
+            add_list = ['process-hooks', 'command-history']
 
-        # Add missing keys for client-side additions
-        for key in add_list:
-            if key not in self.run_data:
-                run_data[key] = []
+            # Add missing keys for client-side additions
+            for key in add_list:
+                if key not in self.run_data:
+                    run_data[key] = []
 
-        # Fill in remote details to local run_data
-        for k, v in run_data.items():
-            self.run_data[k] = v
+            # Fill in remote details to local run_data
+            for k, v in run_data.items():
+                self.run_data[k] = v
 
-        return self.run_data
+            return self.run_data
+
+        else:
+            self._clear_all_cache()
+            return {}
 
     def reload_config(self, *args, **kwargs):
         self._clear_all_cache()
@@ -466,7 +471,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
     def launch(self, *args, **kwargs):
         self._clear_all_cache()
-        super().launch(*args, **kwargs)
+        super().launch(return_telepath=True, *args, **kwargs)
         return self._telepath_run_data()
 
     def send_command(self, *args, **kwargs):

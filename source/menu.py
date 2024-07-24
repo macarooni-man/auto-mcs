@@ -14558,7 +14558,8 @@ class PerformancePanel(RelativeLayout):
 
         # If the server is running remotely, update the console text as needed
         # This should probably be moved, though, it's the only client loop
-        elif screen_manager.current_screen.name == 'ServerViewScreen':
+        elif screen_manager.current_screen.name == 'ServerViewScreen' and server_obj._telepath_data:
+            server_obj
             console_panel = screen_manager.current_screen.console_panel
             if server_obj.running and server_obj.run_data:
                 server_obj._telepath_run_data()
@@ -14570,12 +14571,12 @@ class PerformancePanel(RelativeLayout):
                 except KeyError:
                     pass
 
-            # Close the console if remotely launched, and no logs exist
-            else:
-                data = server_obj._sync_telepath_stop()
-                server_obj.crash_log = data['crash']
-                console_panel.update_text(server_obj.run_data['log'])
-                console_panel.reset_panel(data['crash'])
+                # Close the console if remotely launched, and no logs exist
+                if not server_obj.running or not server_obj.run_data:
+                    data = server_obj._sync_telepath_stop()
+                    server_obj.crash_log = data['crash']
+                    console_panel.update_text(data['log'])
+                    console_panel.reset_panel(data['crash'])
 
         def update_data(*args):
             try:
