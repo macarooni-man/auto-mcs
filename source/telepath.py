@@ -589,7 +589,7 @@ class RemoteBackupObject(Munch):
 
 
 
-# Instantiate the API
+# Instantiate the API if main
 def get_docs_url(type: str):
     if not constants.app_compiled:
         return "/docs" if "docs" in type else "/redoc"

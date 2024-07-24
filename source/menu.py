@@ -15512,12 +15512,13 @@ class ConsolePanel(FloatLayout):
             Clock.schedule_once(update_launch_data, 6)
 
         # Show telepath banner when server is started remotely
-        if not wait_for_ip and self.server._telepath_data:
+        server_obj = constants.server_manager.current_server
+        if wait_for_ip and server_obj._telepath_data:
             constants.api_manager.request(
                 endpoint='/main/telepath_banner',
-                host=self._telepath_data['host'],
-                port=self._telepath_data['port'],
-                args={'allow': True, 'banner': f"$Telepath$ action: Launched '${self.server.name}$'"}
+                host=server_obj._telepath_data['host'],
+                port=server_obj._telepath_data['port'],
+                args={'allow': True, 'banner': f"$Telepath$ action: Launched '${server_obj.name}$'"}
             )
 
         Clock.schedule_once(after_anim, (anim_speed*1.51) if animate else 0)
