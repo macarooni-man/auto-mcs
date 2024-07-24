@@ -3252,7 +3252,7 @@ def footer_label(path, color, progress_screen=False):
         server_obj = constants.server_manager.current_server
         data = server_obj._telepath_data
         if data and path.strip().startswith(server_obj.name):
-            path = f'[color=#353565]{data["nickname" if data["nickname"] else "host"]}/[/color]{path}'
+            path = f'[color=#353565]{data["display-name"]}/[/color]{path}'
 
     # Translate footer paths that don't include the server name
     t_path = []
@@ -14559,10 +14559,9 @@ class PerformancePanel(RelativeLayout):
         # If the server is running remotely, update the console text as needed
         # This should probably be moved, though, it's the only client loop
         elif screen_manager.current_screen.name == 'ServerViewScreen':
+            console_panel = screen_manager.current_screen.console_panel
             if server_obj.running and server_obj.run_data:
-                print(True)
                 server_obj._telepath_run_data()
-                console_panel = screen_manager.current_screen.console_panel
                 data_len = len(console_panel.scroll_layout.data)
                 run_len = len(server_obj.run_data['log'])
                 try:
@@ -14573,7 +14572,10 @@ class PerformancePanel(RelativeLayout):
 
             # Close the console if remotely launched, and no logs exist
             else:
-                screen_manager.current_screen.console_panel.reset_panel()
+                data = server_obj._sync_telepath_stop()
+                server_obj.crash_log = data['crash']
+                console_panel.update_text(server_obj.run_data['log'])
+                console_panel.reset_panel(data['crash'])
 
         def update_data(*args):
             try:
@@ -15442,7 +15444,7 @@ class ConsolePanel(FloatLayout):
 
 
     # Launch server and update properties
-    def launch_server(self, animate=True, *args):
+    def launch_server(self, animate=True, wait_for_ip=True, *args):
         self.update_size()
         self.toggle_deadlock(False)
         self.selected_labels = []
@@ -15486,9 +15488,9 @@ class ConsolePanel(FloatLayout):
             self.controls.log_button.button.on_leave()
             self.controls.view_button.button.on_leave()
             def delay(function, obj, delay):
-                def ad(*a):
+                def anim_delay(*a):
                     function.start(obj)
-                Clock.schedule_once(ad, delay)
+                Clock.schedule_once(anim_delay, delay)
             delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.restart_button, 0.12)
             delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.stop_button, 0.06)
             Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine').start(self.controls.maximize_button)
@@ -15496,7 +15498,9 @@ class ConsolePanel(FloatLayout):
         def update_launch_data(*args):
             if self.server_button:
                 self.server_button.update_subtitle(self.run_data)
-        Clock.schedule_once(update_launch_data, 3)
+        Clock.schedule_once(update_launch_data, 3 if wait_for_ip else 1)
+        if wait_for_ip:
+            Clock.schedule_once(update_launch_data, 6)
 
         Clock.schedule_once(after_anim, (anim_speed*1.51) if animate else 0)
 
@@ -15504,7 +15508,13 @@ class ConsolePanel(FloatLayout):
         def start_timer(*_):
             server_obj = screen_manager.current_screen.server
 
-            self.update_text(text=[{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Launching '{server_obj.name}', please wait...", (0.7,0.7,0.7,1))}])
+            if server_obj._telepath_data:
+                boot_text = f"Connecting to '{server_obj._telepath_data['display-name']}/{server_obj.name}', please wait..."
+            else:
+                boot_text = f"Launching '{server_obj.name}', please wait..."
+
+
+            self.update_text(text=[{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7,0.7,0.7,1))}])
             while not server_obj.addon or not server_obj.backup or not server_obj.script_manager or not server_obj.acl:
                 time.sleep(0.05)
 
@@ -15816,7 +15826,14 @@ class ConsolePanel(FloatLayout):
 
     # Opens crash log in auto-mcs logviewer
     def open_log(self, *args):
-        view_file(constants.server_manager.current_server.crash_log)
+        server_obj = constants.server_manager.current_server
+        title = None
+
+        if server_obj._telepath_data:
+            data = server_obj._telepath_data
+            title = f'{data["display-name"]}/{server_obj.name}'
+
+        view_file(server_obj.crash_log, title)
         self.controls.log_button.button.on_leave()
         self.controls.log_button.button.on_release()
 
@@ -16607,7 +16624,7 @@ class ConsolePanel(FloatLayout):
         Clock.schedule_once(self.update_size, 0)
 
         if start_launched:
-            Clock.schedule_once(functools.partial(self.launch_server, False), 0)
+            Clock.schedule_once(functools.partial(self.launch_server, False, False), 0)
 
 class ServerViewScreen(MenuBackground):
 
@@ -16880,11 +16897,7 @@ class ServerViewScreen(MenuBackground):
             self.console_panel.scroll_layout.data = []
             Clock.schedule_once(functools.partial(self.console_panel.update_text, self.server.run_data['log'], True, False), 0)
         else:
-            try:
-                launch = bool(self.server.run_data)
-            except:
-                launch = False
-            self.console_panel = ConsolePanel(self.server.name, self.server_button, start_launched=launch)
+            self.console_panel = ConsolePanel(self.server.name, self.server_button, start_launched=self.server.running)
 
         self.add_widget(self.console_panel)
         self.console_panel.server_obj = self.server

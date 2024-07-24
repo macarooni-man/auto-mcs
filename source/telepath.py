@@ -419,6 +419,13 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
+
+        # Set display name
+        if self._telepath_data['nickname']:
+            self._telepath_data['display-name'] = self._telepath_data['nickname']
+        else:
+            self._telepath_data['display-name'] = self._telepath_data['host']
+
         self.run_data = {}
         self.backup = RemoteBackupManager(telepath_data)
         self.addon = RemoteAddonManager(telepath_data)
@@ -440,7 +447,14 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     def _telepath_run_data(self):
         run_data = super()._telepath_run_data()
         run_data['send-command'] = self.send_command
+        add_list = ['process-hooks', 'command-history']
 
+        # Add missing keys for client-side additions
+        for key in add_list:
+            if key not in self.run_data:
+                run_data[key] = []
+
+        # Fill in remote details to local run_data
         for k, v in run_data.items():
             self.run_data[k] = v
 
@@ -454,6 +468,14 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self._clear_all_cache()
         super().launch(*args, **kwargs)
         return self._telepath_run_data()
+
+    def send_command(self, *args, **kwargs):
+        super().send_command(*args, **kwargs)
+        def update_console(*a):
+            self._telepath_run_data()
+            for hook in self.run_data['process-hooks']:
+                hook(self.run_data['log'])
+        threading.Timer(0.1, update_console).start()
 
     def performance_stats(self, interval=0.5, update_players=False):
         if self.run_data and 'performance' in self.run_data:

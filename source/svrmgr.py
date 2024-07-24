@@ -33,6 +33,8 @@ class ServerObject():
     def __init__(self, server_name: str):
         self._telepath_data = None
         self._loop_clock = 0
+        self._last_telepath_log = {}
+
         self.gamemode_dict = ['survival', 'creative', 'adventure', 'spectator']
         self.difficulty_dict = ['peaceful', 'easy', 'normal', 'hard', 'hardcore']
 
@@ -223,7 +225,6 @@ class ServerObject():
                     'process-hooks',
                     'thread',
                     'process',
-                    'command-history',
                     'send-command'
         ]
         new_data = {}
@@ -239,6 +240,15 @@ class ServerObject():
         except AttributeError:
             pass
         return False
+
+    # Returns last log and crash info
+    def _sync_telepath_stop(self):
+        crash_log = ''
+        if self.crash_log:
+            with open(self.crash_log, 'r') as f:
+                crash_log = f.read()
+
+        return {'log': self._last_telepath_log, 'crash': crash_log}
 
     # Updates performance data on a clock until server stops
     def _start_performance_clock(self):
@@ -1163,8 +1173,9 @@ class ServerObject():
 
         # Return stripped data if telepath session
         try:
-            if not constants.server_manager.current_server or (constants.server_manager.remote_server and constants.server_manager.current_server.name != self.name):
-                if constants.server_manager.remote_server.name == self.name:
+            sm = constants.server_manager
+            if not sm.current_server or (sm.remote_server and sm.current_server.name != self.name):
+                if sm.remote_server.name == self.name:
                     return self._sync_attr('run_data')
         except AttributeError:
             pass
@@ -1234,6 +1245,9 @@ class ServerObject():
                 pass
 
             # Delete run data
+            if self._telepath_data:
+                self._last_telepath_log = deepcopy(self.run_data['log'])
+
             self.run_data.clear()
             self.running = False
             del constants.server_manager.running_servers[self.name]

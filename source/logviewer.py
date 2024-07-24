@@ -82,9 +82,12 @@ def launch_window(server_name: str, path: str, data: dict):
     # Get text
     crash_data = ''
     if path:
-
-        with open(path, 'r') as f:
-            crash_data = f.read()
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                crash_data = f.read()
+        else:
+            crash_data = path
+            path = 'telepath'
 
 
         # Init Tk window
