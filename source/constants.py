@@ -268,12 +268,13 @@ max_memory = int(round(total_ram - (total_ram / 4)))
 # Replacement for os.system to prevent CMD flashing
 def run_proc(cmd, return_text=False):
     if return_text:
-        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
+        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         if debug:
             print(f'{cmd}: returned exit code {result.returncode}')
         return result.stdout.decode('utf-8', errors='ignore')
     else:
-        return_code = subprocess.call(cmd, shell=True)
+        kwargs = {'stdout': subprocess.DEVNULL, 'stderr': subprocess.DEVNULL} if headless else {}
+        return_code = subprocess.call(cmd, shell=True, **kwargs)
         if debug:
             print(f'{cmd}: returned exit code {return_code}')
         return return_code
