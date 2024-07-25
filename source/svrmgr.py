@@ -203,7 +203,8 @@ class ServerObject():
             self.script_manager = amscript.ScriptManager(self.name)
         Timer(0, load_scriptmgr).start()
 
-        print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
+        if not constants.headless:
+            print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
 
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):

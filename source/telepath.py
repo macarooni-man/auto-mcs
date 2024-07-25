@@ -6,12 +6,12 @@ from pydantic import BaseModel, create_model
 from datetime import timedelta as td
 from datetime import datetime as dt
 from fastapi import FastAPI, Body
-from copy import deepcopy
 from munch import Munch
 import threading
 import requests
 import inspect
 import uvicorn
+import logging
 import time
 
 # Local imports
@@ -53,7 +53,9 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
 
         return formatted
     operation = 'Requesting' if request else 'Responding to'
-    print(f"[INFO] [telepath] {operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
+
+    if not constants.headless:
+        print(f"[INFO] [telepath] {operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
 
 
     # If this session is requesting data from a remote session
@@ -252,7 +254,7 @@ def get_function_params(method: Callable):
         return final_type
 
     return {
-        param.name: (
+        param.name.strip('_'): (
             get_param_type(param),
             get_default_value(param),
         )
@@ -336,6 +338,12 @@ class WebAPI():
         self.sessions = {}
         self.update_config(host=host, port=port)
 
+        # Disable low importance uvicorn logging
+        logging.getLogger("uvicorn.error").handlers = []
+        logging.getLogger("uvicorn.error").propagate = False
+        logging.getLogger("uvicorn.access").handlers = []
+        logging.getLogger("uvicorn.access").propagate = False
+
     def _run_uvicorn(self):
         self.server = uvicorn.Server(self.config)
         self.server.run()
@@ -362,8 +370,15 @@ class WebAPI():
     def start(self):
         if not self.running:
             self.running = True
-            print(f'WebAPI: active on "{self.host}:{self.port}"')
             threading.Timer(0, self._run_uvicorn).start()
+
+            message = f'initialized API on "{self.host}:{self.port}"'
+            if not constants.headless:
+                print(f'[INFO] [telepath] {message}')
+            else:
+                return message
+        elif constants.headless:
+            return 'Telepath API is already running'
 
     def stop(self):
         # This still doesn't work for whatever reason?
@@ -371,6 +386,14 @@ class WebAPI():
             self._kill_uvicorn()
             self.server = None
             self.running = False
+
+            message = f'disabled API on "{self.host}:{self.port}"'
+            if not constants.headless:
+                print(f'[INFO] [telepath] {message}')
+            else:
+                return message
+        elif constants.headless:
+            return 'Telepath API is not running'
 
     def restart(self):
         self.stop()
@@ -419,6 +442,10 @@ class WebAPI():
             session.close()
             print(f"[INFO] [telepath] Closed session to '{host}'")
 
+    # Returns data for pairing a remote session
+    def pair(self):
+        pass
+
 # Create objects to import for the rest of the app to request data
 class RemoteServerObject(create_remote_obj(ServerObject)):
 
@@ -441,7 +468,9 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self._clear_all_cache()
 
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
-        print(f"[INFO] [auto-mcs] Server Manager (Telepath): Loaded '{host}/{self.name}'")
+
+        if not constants.headless:
+            print(f"[INFO] [auto-mcs] Server Manager (Telepath): Loaded '{host}/{self.name}'")
 
     def _is_favorite(self):
         try:
