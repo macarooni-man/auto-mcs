@@ -429,7 +429,9 @@ loop = urwid.MainLoop(frame, unhandled_input=handle_input)
 def run_application():
 
     try:
-        if constants.os_name != 'windows':
+        if constants.os_name == 'windows':
+            sys.stderr = NullWriter()
+        else:
             sys.stdout = NullWriter()
         loop.run()
 
