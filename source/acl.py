@@ -439,7 +439,7 @@ class AclManager():
     # "Name1, !g Name2, 192.168.1.0/24, !w 10.1.1.2"
     # !g denotes global rule, !w denotes whitelisted IP
     # This function is to be passed from a search bar as it can't remove rules
-    def _process_query(self, search_list: str or list, list_type=None):
+    def _process_query(self, search_list: str or list, list_type=""):
 
         final_list = {'global': [], 'local': []}
         cache_lookup = None
@@ -834,6 +834,8 @@ class AclManager():
         if server_obj.running:
             for player in rule_list:
                 server_obj.silent_command(f'kick {player}{reason}')
+            return True
+        return False
 
     # op_player("BlUe_KAZoo, kchicken, test")
     # "Rule1, Rule2" --> [AclObject1, AclObject2]

@@ -17,9 +17,9 @@ import time
 # Local imports
 from amscript import AmsFileObject, ScriptManager
 from addons import AddonFileObject, AddonManager
+from acl import AclManager, AclRule
 from backup import BackupManager
 from svrmgr import ServerObject
-from acl import AclManager
 import constants
 import svrmgr
 
@@ -43,7 +43,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
             if i < len(param_keys):
                 key = param_keys[i]
                 data_type, _ = params[key]
-                formatted[key] = arg if data_type == object else data_type(arg)
+                formatted[key] = arg if (data_type == object or data_type.__name__ == 'NoneType') else data_type(arg)
 
         # Process **kwargs and overwrite any conflicts
         for key, value in kwargs.items():
@@ -115,6 +115,7 @@ def create_remote_obj(obj: object, request=True):
             # If cache does not exist, grab everything and set expiry
             if not self._attr_cache:
                 for k, v in self._request_attr('__all__').items():
+                    v = self._override_attr(k, v)
                     self._attr_cache[k] = {'value': v, 'expire': self._reset_expiry()}
                 return self._attr_cache[name]['value']
 
@@ -126,9 +127,7 @@ def create_remote_obj(obj: object, request=True):
                     self._attr_cache[name]['expire'] = None
 
             # If cache exists and is expired, get name, update cache, and reset expired
-            response = self._request_attr(name)
-            self._attr_cache[name] = {'value': response, 'expire': self._reset_expiry(response)}
-            return response
+            return self._refresh_attr(name)
 
         except Exception as e:
             if constants.debug:
@@ -139,6 +138,17 @@ def create_remote_obj(obj: object, request=True):
         if self._attr_cache and attribute not in blacklist and not attribute.endswith('__'):
             self._attr_cache[attribute] = {'value': value, 'expire': self._reset_expiry()}
         return object.__setattr__(self, attribute, value)
+
+    # Override values to store in cache
+    def _override_attr(self, k, v):
+        if self.__class__.__name__ == 'RemoteAclManager':
+            if k in ['list_items', 'displayed_rule']:
+                return self._reconstruct_list(v)
+        return v
+    def _refresh_attr(self, name):
+        response = self._override_attr(name, self._request_attr(name))
+        self._attr_cache[name] = {'value': response, 'expire': self._reset_expiry(response)}
+        return response
     def _request_attr(self, name):
         return api_wrapper(
             self,
@@ -154,8 +164,11 @@ def create_remote_obj(obj: object, request=True):
         expiry = dt.now() + td(seconds=length)
         self._attr_cache['__expire__'] = expiry
         return expiry
-    def _clear_attr_cache(self):
-        self._attr_cache = {}
+    def _clear_attr_cache(self, name=None):
+        if name:
+            self._attr_cache[name]['expire'] = None
+        else:
+            self._attr_cache = {}
 
     # First, sort through all the attributes and methods
     data = {
@@ -168,6 +181,8 @@ def create_remote_obj(obj: object, request=True):
         'methods': {
             '__getattr__': __getattr__,
             '__setattr__': __setattr__,
+            '_override_attr': _override_attr,
+            '_refresh_attr': _refresh_attr,
             '_request_attr': _request_attr,
             '_reset_expiry': _reset_expiry,
             '_clear_attr_cache': _clear_attr_cache
@@ -580,13 +595,84 @@ class RemoteAclManager(create_remote_obj(AclManager)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
 
+    # Reconstruct AclRule objects from a dictionary representing a rule, or rule list(s)
+    def _reconstruct_list(self, rule_list: dict):
+        def create_rule(rule_data):
+            rule = AclRule(
+                rule_data['rule'],
+                rule_data['acl_group'],
+                bool(rule_data['rule_scope'] == 'global'),
+                rule_data['extra_data']
+            )
+            rule.display_data = rule_data['display_data']
+            rule.list_enabled = rule_data['list_enabled']
+            return rule
+
+        if isinstance(rule_list, dict):
+
+            # Convert single rule
+            if 'rule' in rule_list:
+                return create_rule(rule_list)
+
+            # Convert single list
+            elif 'enabled' in rule_list and 'disabled' in rule_list:
+                return {enabled: [create_rule(r) for r in rules] for enabled, rules in rule_list.items()}
+
+            # Convert rule lists
+            elif 'ops' in rule_list or 'wl' in rule_list or 'bans' in rule_list:
+                is_sorted = False
+                try:
+                    is_sorted = isinstance(list(rule_list.values())[0], dict)
+                except:
+                    pass
+
+                # Convert sorted menu list
+                if is_sorted:
+                    return {
+                        list_type: {
+                            'enabled': [create_rule(rule) for rule in rules['enabled']],
+                            'disabled': [create_rule(rule) for rule in rules['disabled']]
+                        } for list_type, rules in rule_list.items()
+                    }
+
+                # Convert unsorted menu list
+                else:
+                    return {
+                        list_type: [create_rule(rule) for rule in rules]
+                        for list_type, rules in rule_list.items()
+                    }
+
+        return rule_list
+
     def _gen_list_items(self):
         self._clear_attr_cache()
-        return super()._gen_list_items()
+        return self._reconstruct_list(super()._gen_list_items())
 
-    def get_rule(self):
+    def get_rule(self, *args, **kwargs):
         self._clear_attr_cache()
-        return super().get_rule()
+        return self._reconstruct_list(super().get_rule(*args, **kwargs))
+
+    def op_player(self, *args, **kwargs):
+        self._clear_attr_cache()
+        return self._reconstruct_list(super().op_player(*args, **kwargs))
+
+    def ban_player(self, *args, **kwargs):
+        self._clear_attr_cache()
+        return self._reconstruct_list(super().ban_player(*args, **kwargs))
+
+    def whitelist_player(self, *args, **kwargs):
+        self._clear_attr_cache()
+        return self._reconstruct_list(super().whitelist_player(*args, **kwargs))
+
+    def enable_whitelist(self, enabled=True):
+        data = super().enable_whitelist(enabled)
+        self._refresh_attr('_server')
+        return data
+
+    def add_global_rule(self, *args, **kwargs):
+        self._clear_attr_cache()
+        return self._reconstruct_list(super().add_global_rule(*args, **kwargs))
+
 
 class RemoteAddonFileObject(Munch):
     def __init__(self, telepath_data, addon_data: dict):
