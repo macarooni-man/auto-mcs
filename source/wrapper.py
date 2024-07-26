@@ -57,7 +57,7 @@ if __name__ == '__main__':
     reset_config = False
     try:
         parser = argparse.ArgumentParser(description='CLI options for auto-mcs')
-        parser.add_argument('-d', '--debug', default='' ,help='execute auto-mcs with verbose console logging', action='store_true')
+        parser.add_argument('-d', '--debug', default='', help='execute auto-mcs with verbose console logging', action='store_true')
         parser.add_argument('-l', '--launch', type=str, default='', help='specify a server name (or list of server names) to launch automatically', metavar='"Server 1, Server 2"')
         parser.add_argument('-s', '--headless', default='', help='launch without initializing the UI and enable the Telepath API', action='store_true')
         parser.add_argument('-r', '--reset', default='', help='reset global configuration file before launch', action='store_true')
@@ -67,6 +67,12 @@ if __name__ == '__main__':
         constants.debug = args.debug
         constants.headless = args.headless
         reset_config = args.reset
+
+        # Close splash if headless & compiled
+        if constants.app_compiled and constants.os_name != 'macos':
+            import pyi_splash
+            pyi_splash.close()
+
 
         # Check for auto-start
         if args.launch:
