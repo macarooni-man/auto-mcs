@@ -68,6 +68,10 @@ if __name__ == '__main__':
         constants.headless = args.headless
         reset_config = args.reset
 
+        # Force headless if display is not set
+        if constants.os_name == 'linux' and not os.environ['DISPLAY']:
+            constants.headless = True
+
         # Close splash if headless & compiled
         if constants.app_compiled and constants.headless and constants.os_name == 'windows':
             import pyi_splash
