@@ -22847,7 +22847,7 @@ class MainApp(App):
         screen_manager.transition = FadeTransition(duration=0.115)
 
         # Close splash screen if compiled
-        if constants.app_compiled and constants.os_name != 'macos':
+        if constants.app_compiled and constants.os_name == 'windows':
             import pyi_splash
             pyi_splash.close()
 

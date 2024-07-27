@@ -69,7 +69,7 @@ if __name__ == '__main__':
         reset_config = args.reset
 
         # Close splash if headless & compiled
-        if constants.app_compiled and constants.os_name != 'macos':
+        if constants.app_compiled and constants.headless and constants.os_name == 'windows':
             import pyi_splash
             pyi_splash.close()
 
