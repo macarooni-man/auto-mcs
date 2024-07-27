@@ -141,8 +141,12 @@ def create_remote_obj(obj: object, request=True):
 
     # Override values to store in cache
     def _override_attr(self, k, v):
-        if self.__class__.__name__ == 'RemoteAclManager':
+        class_name = self.__class__.__name__
+        if class_name == 'RemoteAclManager':
             if k in ['list_items', 'displayed_rule']:
+                return self._reconstruct_list(v)
+        elif class_name == 'RemoteAddonManager':
+            if k in ['installed_addons']:
                 return self._reconstruct_list(v)
         return v
     def _refresh_attr(self, name):
@@ -243,6 +247,12 @@ def reconstruct_object(data: dict):
         if '__reconstruct__' in data:
             if data['__reconstruct__'] == 'RemoteBackupObject':
                 final_data = RemoteBackupObject(data['_telepath_data'], data)
+
+            if data['__reconstruct__'] == 'RemoteAddonFileObject':
+                final_data = RemoteAddonFileObject(data['_telepath_data'], data)
+
+            if data['__reconstruct__'] == 'RemoteAmsFileObject':
+                final_data = RemoteAmsFileObject(data['_telepath_data'], data)
 
     return final_data
 
@@ -568,17 +578,36 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
 
+    def _reconstruct_list(self, script_list: dict):
+        return {
+            'enabled': [RemoteAmsFileObject(self._telepath_data, script) for script in script_list['enabled']],
+            'disabled': [RemoteAmsFileObject(self._telepath_data, script) for script in script_list['disabled']]
+        }
+
     def _enumerate_scripts(self):
         self._clear_attr_cache()
         return super()._enumerate_scripts()
+
+    def return_single_list(self):
+        return [RemoteAmsFileObject(self._telepath_data, data) for data in super().return_single_list()]
 
 class RemoteAddonManager(create_remote_obj(AddonManager)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
 
+    def _reconstruct_list(self, addon_list: dict):
+        return {
+            'enabled': [RemoteAddonFileObject(self._telepath_data, addon) for addon in addon_list['enabled']],
+            'disabled': [RemoteAddonFileObject(self._telepath_data, addon) for addon in addon_list['disabled']]
+        }
+
     def _refresh_addons(self):
         self._clear_attr_cache()
         return super()._refresh_addons()
+
+    def return_single_list(self):
+        return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
+
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
     def __init__(self, telepath_data: dict):
