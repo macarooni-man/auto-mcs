@@ -770,7 +770,7 @@ class SearchInput(BaseInput):
         self.cursor_color = (0.55, 0.55, 1, 1)
         self.selection_color = (0.5, 0.5, 1, 0.4)
 
-def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}):
+def search_input(return_function=None, pos_hint={"center_x": 0.5, "center_y": 0.5}):
     class SearchLayout(FloatLayout):
 
         def __init__(self, **kwargs):
@@ -787,7 +787,7 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
                 results = False
 
                 try:
-                    results = return_function(query, server_info)
+                    results = return_function(query)
 
                 except ConnectionRefusedError:
                     pass
@@ -12211,7 +12211,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
 
         search_function = addons.search_addons
-        self.search_bar = search_input(return_function=search_function, server_info=constants.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -13239,7 +13239,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
 
 
         search_function = addons.search_modpacks
-        self.search_bar = search_input(return_function=search_function, server_info='import_modpack', pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -19022,9 +19022,9 @@ class ServerAddonSearchScreen(MenuBackground):
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
         float_layout.add_widget(self.blank_label)
 
-
-        search_function = addons.search_addons
-        self.search_bar = search_input(return_function=search_function, server_info=constants.server_manager.current_server.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
+        server_obj = constants.server_manager.current_server
+        search_function = server_obj.addon.search_addons
+        self.search_bar = search_input(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -20264,7 +20264,8 @@ class ServerAmscriptSearchScreen(MenuBackground):
                     pass
 
     def generate_menu(self, **kwargs):
-        script_manager = constants.server_manager.current_server.script_manager
+        server_obj = constants.server_manager.current_server
+        script_manager = server_obj.script_manager
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.437))
@@ -20314,9 +20315,8 @@ class ServerAmscriptSearchScreen(MenuBackground):
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
         float_layout.add_widget(self.blank_label)
 
-
         search_function = script_manager.search_scripts
-        self.search_bar = search_input(return_function=search_function, server_info=constants.server_manager.current_server.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, server_info=server_obj.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 

@@ -251,8 +251,14 @@ def reconstruct_object(data: dict):
             if data['__reconstruct__'] == 'RemoteAddonFileObject':
                 final_data = RemoteAddonFileObject(data['_telepath_data'], data)
 
+            if data['__reconstruct__'] == 'RemoteAddonWebObject':
+                final_data = RemoteAddonWebObject(data['_telepath_data'], data)
+
             if data['__reconstruct__'] == 'RemoteAmsFileObject':
                 final_data = RemoteAmsFileObject(data['_telepath_data'], data)
+
+            if data['__reconstruct__'] == 'RemoteAmsWebObject':
+                final_data = RemoteAmsWebObject(data['_telepath_data'], data)
 
     return final_data
 
@@ -591,6 +597,16 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
     def return_single_list(self):
         return [RemoteAmsFileObject(self._telepath_data, data) for data in super().return_single_list()]
 
+    def search_scripts(self, query: str):
+        return [RemoteAmsWebObject(self._telepath_data, data) for data in super().search_scripts(query)]
+
+    def get_script(self, script_name: str, online=False):
+        return [
+            RemoteAddonWebObject(self._telepath_data, data) if online else
+            RemoteAddonFileObject(self._telepath_data, data)
+            for data in super().get_script(script_name, online)
+        ]
+
 class RemoteAddonManager(create_remote_obj(AddonManager)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
@@ -608,6 +624,15 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
     def return_single_list(self):
         return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
 
+    def search_addons(self, query: str):
+        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query)]
+
+    def get_addon(self, addon_name: str, online=False):
+        return [
+            RemoteAddonWebObject(self._telepath_data, data) if online else
+            RemoteAddonFileObject(self._telepath_data, data)
+            for data in super().get_addon(addon_name, online)
+        ]
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
     def __init__(self, telepath_data: dict):
@@ -703,35 +728,25 @@ class RemoteAclManager(create_remote_obj(AclManager)):
         return self._reconstruct_list(super().add_global_rule(*args, **kwargs))
 
 
-class RemoteAddonFileObject(Munch):
-    def __init__(self, telepath_data, addon_data: dict):
-        self._telepath_data = telepath_data
+class RemoteObject(Munch):
+    def __init__(self, telepath_data, data: dict):
+        self._telepath_data = data
         self.__reconstruct__ = self.__class__.__name__
 
-        for key, value in addon_data.items():
+        for key, value in data.items():
             if not key.endswith('__'):
                 setattr(self, key, value)
 
-class RemoteAmsFileObject(Munch):
-    def __init__(self, telepath_data, script_data: dict):
-        self._telepath_data = telepath_data
-        self.__reconstruct__ = self.__class__.__name__
-
-        for key, value in script_data.items():
-            if not key.endswith('__'):
-                setattr(self, key, value)
-
-class RemoteBackupObject(Munch):
-    def __init__(self, telepath_data: dict, backup_data: dict):
-        super().__init__()
-        self._telepath_data = telepath_data
-        self.__reconstruct__ = self.__class__.__name__
-
-        for key, value in backup_data.items():
-            if not key.endswith('__'):
-                setattr(self, key, value)
-
-
+class RemoteBackupObject(RemoteObject):
+    pass
+class RemoteAddonFileObject(RemoteObject):
+    pass
+class RemoteAddonWebObject(RemoteObject):
+    pass
+class RemoteAmsFileObject(RemoteObject):
+    pass
+class RemoteAmsWebObject(RemoteObject):
+    pass
 
 # Instantiate the API if main
 def get_docs_url(type: str):

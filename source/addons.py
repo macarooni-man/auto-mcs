@@ -152,12 +152,12 @@ class AddonManager():
             return []
 
     # Downloads addon directly from the closest match of name, or from AddonWebObject
-    def download_addon(self, addon: str or AddonWebObject):
+    def download_addon(self, addon: AddonWebObject or str):
         if not self._addons_supported:
             return None
 
         # If AddonWebObject was provided
-        if isinstance(addon, AddonWebObject):
+        if not isinstance(addon, str):
             if not addon.download_url:
                 addon = get_addon_url(addon, self._server)
             if addon:

@@ -248,7 +248,7 @@ class ScriptManager():
         return final_list
 
     # Downloads script and enables it
-    def download_script(self, script: str or AmsWebObject):
+    def download_script(self, script: AmsWebObject or str):
 
         # If string was provided
         if isinstance(script, str):
