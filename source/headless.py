@@ -113,6 +113,10 @@ def manage_server(name: str, action: str):
     # Create a new stock Vanilla server
     if action == 'create':
 
+        # Ignore if offline
+        if not constants.app_online:
+            return "Server creation requires an internet connection"
+
         # Name input validation
         if len(name) < 25:
             if '\n' in name:
