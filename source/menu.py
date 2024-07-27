@@ -8744,6 +8744,18 @@ class MainMenuScreen(MenuBackground):
         logo = Image(source=os.path.join(constants.gui_assets, 'logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
         splash.add_widget(logo)
 
+        anim_logo = Image(
+            source=os.path.join(constants.gui_assets, 'animations', 'animated_logo.gif'),
+            allow_stretch=True,
+            size_hint=(None, None),
+            width=dp(550),
+            pos_hint={"center_x": 0.5, "center_y": 0.77},
+            anim_loop=1,
+            anim_delay=constants.anim_speed * 0.02
+        )
+        splash.add_widget(anim_logo)
+
+
         version_text = f"{constants.app_version}{' (dev)' if constants.dev_version else ''}"
         version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
         version.__translate__ = False
@@ -8795,9 +8807,9 @@ class MainMenuScreen(MenuBackground):
             if not self.loaded:
                 self.loaded = True
 
-                logo.opacity = 0
+                anim_logo.opacity = logo.opacity = 0
                 logo_width = logo.width
-                logo.width = logo.width * 0.97
+                anim_logo.width = logo.width = logo.width * 0.97
 
                 version.opacity = 0
                 version_x = version.x
@@ -8808,6 +8820,7 @@ class MainMenuScreen(MenuBackground):
                 quit_button.opacity = 0
 
                 Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(logo)
+                Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(anim_logo)
                 Animation(opacity=1, duration=1, x=version_x, transition='out_sine').start(version)
 
                 def button_1(*b):
