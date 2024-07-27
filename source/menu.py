@@ -8741,7 +8741,7 @@ class MainMenuScreen(MenuBackground):
 
         splash = FloatLayout()
 
-        logo = Image(source=os.path.join(constants.gui_assets, 'logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
+        logo = Image(source=os.path.join(constants.gui_assets, 'title.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
         splash.add_widget(logo)
 
         anim_logo = Image(
