@@ -70,8 +70,7 @@ if __name__ == '__main__':
 
         # Close splash if headless & compiled
         if constants.app_compiled and constants.os_name != 'macos':
-            import pyi_splash
-            pyi_splash.close()
+            os.environ['PYINSTALLER_SUPPRESS_SPLASH_SCREEN'] = '1'
 
 
         # Check for auto-start
