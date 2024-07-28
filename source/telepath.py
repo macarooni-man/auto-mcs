@@ -768,7 +768,7 @@ app.openapi = create_schema
 
 
 # Upload file endpoint
-@app.post("/main/upload_file/")
+@app.post("/main/upload_file", tags=['main'])
 async def upload_file(file: UploadFile = File(...), is_dir=False):
     try:
         file_name = file.filename

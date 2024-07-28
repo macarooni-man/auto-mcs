@@ -1234,6 +1234,8 @@ def create_archive(file_path: str, export_path: str, archive_type='tar'):
     if debug:
         print(f"Compressing '{file_path}' to '{export_path}'...")
 
+    folder_check(export_path)
+
     # Create a .tar archive
     if archive_type == 'tar':
         try:
