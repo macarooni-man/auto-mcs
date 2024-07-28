@@ -2485,6 +2485,7 @@ def download_jar(progress_func=None, imported=False):
 hook_lock = False
 def iter_addons(progress_func=None, update=False, telepath=False):
     global hook_lock
+    server_obj = server_manager.current_server
 
     # If telepath, update addons remotely
     if server_manager.current_server:
@@ -2556,7 +2557,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
                 if update:
 
                     # Ignore updates for Geyser and Floodgate because they are already added
-                    if addon_object.author.lower() == 'geysermc':
+                    if addons.is_geyser_addon(addon_object):
                         return True
 
                     addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
@@ -2606,7 +2607,6 @@ def pre_addon_update(telepath=False):
 
     # If telepath, do this remotely
     telepath_data = server_obj._telepath_data
-    print(telepath_data)
     if telepath_data:
         response = api_manager.request(
             endpoint='/addon/pre_addon_update',
@@ -2617,8 +2617,7 @@ def pre_addon_update(telepath=False):
         return response
 
     if telepath:
-        server_manager.current_server = server_manager.remote_server
-        server_obj = server_manager.current_server
+        server_obj = server_manager.remote_server
 
 
     # Clear folders beforehand
@@ -2647,8 +2646,7 @@ def post_addon_update(telepath=False):
         return response
 
     if telepath:
-        server_manager.current_server = server_manager.remote_server
-        server_obj = server_manager.current_server
+        server_obj = server_manager.remote_server
 
 
     server_obj.addon.update_required = False
