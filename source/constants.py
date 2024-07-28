@@ -2606,7 +2606,8 @@ def pre_addon_update(telepath=False):
     server_obj = server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_server
+        server_manager.current_server = server_manager.remote_server
+        server_obj = server_manager.current_server
 
     # If remote, do this through telepath
     else:
@@ -2636,7 +2637,8 @@ def post_addon_update(telepath=False):
     server_obj = server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_server
+        server_manager.current_server = server_manager.remote_server
+        server_obj = server_manager.current_server
 
     # If remote, do this through telepath
     else:
