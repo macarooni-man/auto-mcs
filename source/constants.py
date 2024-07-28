@@ -1864,19 +1864,22 @@ def get_checksum(file_path):
 
 
 # Grabs addon_cache if it exists
-def load_addon_cache(write=False):
+def load_addon_cache(write=False, telepath=False):
 
     # If telepath, clear addon_cache remotely
     if server_manager.current_server:
         telepath_data = server_manager.current_server._telepath_data
         if telepath_data:
             response = api_manager.request(
-                endpoint='/main/load_addon_cache',
+                endpoint='/addon/load_addon_cache',
                 host=telepath_data['host'],
                 port=telepath_data['port'],
-                args={'write': write}
+                args={'write': write, 'telepath': True}
             )
             return response
+
+    if telepath:
+        server_manager.current_server = server_manager.remote_server
 
 
     global addon_cache
@@ -2480,7 +2483,7 @@ def download_jar(progress_func=None, imported=False):
 
 # Iterates through new server addon objects and downloads/installs them to tmpsvr
 hook_lock = False
-def iter_addons(progress_func=None, update=False):
+def iter_addons(progress_func=None, update=False, telepath=False):
     global hook_lock
 
     # If telepath, update addons remotely
@@ -2488,14 +2491,17 @@ def iter_addons(progress_func=None, update=False):
         telepath_data = server_manager.current_server._telepath_data
         if telepath_data:
             response = api_manager.request(
-                endpoint='/main/iter_addons',
+                endpoint='/addon/iter_addons',
                 host=telepath_data['host'],
                 port=telepath_data['port'],
-                args={'update': update}
+                args={'update': update, 'telepath': True}
             )
             if progress_func and response:
                 progress_func(100)
             return response
+
+    if telepath:
+        server_manager.current_server = server_manager.remote_server
 
 
 
@@ -2594,20 +2600,25 @@ def iter_addons(progress_func=None, update=False):
         progress_func(100)
 
     return True
-def pre_addon_update():
+def pre_addon_update(telepath=False):
     global new_server_info
     server_obj = server_manager.current_server
 
     # If telepath, do this remotely
     telepath_data = server_obj._telepath_data
+    print(telepath_data)
     if telepath_data:
         response = api_manager.request(
-            endpoint='/main/pre_addon_update',
+            endpoint='/addon/pre_addon_update',
             host=telepath_data['host'],
             port=telepath_data['port'],
-            args={}
+            args={'telepath': True}
         )
         return response
+
+    if telepath:
+        server_manager.current_server = server_manager.remote_server
+        server_obj = server_manager.current_server
 
 
     # Clear folders beforehand
@@ -2620,7 +2631,7 @@ def pre_addon_update():
     new_server_info = server_obj.properties_dict()
     init_update()
     new_server_info['addon_objects'] = server_obj.addon.return_single_list()
-def post_addon_update():
+def post_addon_update(telepath=False):
     global new_server_info
     server_obj = server_manager.current_server
 
@@ -2628,12 +2639,16 @@ def post_addon_update():
     telepath_data = server_obj._telepath_data
     if telepath_data:
         response = api_manager.request(
-            endpoint='/main/post_addon_update',
+            endpoint='/addon/post_addon_update',
             host=telepath_data['host'],
             port=telepath_data['port'],
-            args={}
+            args={'telepath': True}
         )
         return response
+
+    if telepath:
+        server_manager.current_server = server_manager.remote_server
+        server_obj = server_manager.current_server
 
 
     server_obj.addon.update_required = False
