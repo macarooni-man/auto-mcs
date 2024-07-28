@@ -810,3 +810,8 @@ create_endpoint(constants.get_remote_var, 'main', True)
 create_endpoint(constants.java_check, 'main', True)
 create_endpoint(constants.allow_close, 'main', True)
 create_endpoint(constants.clear_uploads, 'main')
+
+create_endpoint(constants.load_addon_cache, 'addon', True)
+create_endpoint(constants.pre_addon_update, 'addon')
+create_endpoint(constants.iter_addons, 'addon', True)
+create_endpoint(constants.post_addon_update, 'addon')

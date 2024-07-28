@@ -1865,6 +1865,20 @@ def get_checksum(file_path):
 
 # Grabs addon_cache if it exists
 def load_addon_cache(write=False):
+
+    # If telepath, clear addon_cache remotely
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/main/load_addon_cache',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'write': write}
+            )
+            return response
+
+
     global addon_cache
     file_name = "addon-db.json"
     file_path = os.path.join(cacheDir, file_name)
@@ -2469,6 +2483,22 @@ hook_lock = False
 def iter_addons(progress_func=None, update=False):
     global hook_lock
 
+    # If telepath, update addons remotely
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/main/iter_addons',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'update': update}
+            )
+            if progress_func and response:
+                progress_func(100)
+            return response
+
+
+
     all_addons = deepcopy(new_server_info['addon_objects'])
 
     # Add additional addons based on server config
@@ -2564,6 +2594,63 @@ def iter_addons(progress_func=None, update=False):
         progress_func(100)
 
     return True
+def pre_addon_update():
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    # If telepath, do this remotely
+    telepath_data = server_obj._telepath_data
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/main/pre_addon_update',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        return response
+
+
+    # Clear folders beforehand
+    safe_delete(tmpsvr)
+    safe_delete(tempDir)
+    safe_delete(downDir)
+
+    # Generate server info for downloading proper add-on versions
+    new_server_init()
+    new_server_info = server_obj.properties_dict()
+    init_update()
+    new_server_info['addon_objects'] = server_obj.addon.return_single_list()
+def post_addon_update():
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    # If telepath, do this remotely
+    telepath_data = server_obj._telepath_data
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/main/post_addon_update',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        return response
+
+
+    server_obj.addon.update_required = False
+
+    # Clear items from addon cache to re-cache
+    for addon in server_obj.addon.installed_addons['enabled']:
+        if addon.hash in addon_cache:
+            del addon_cache[addon.hash]
+    load_addon_cache(True)
+
+    # Copy folder to server path and delete tmpsvr
+    new_path = os.path.join(serverDir, new_server_info['name'])
+    copytree(tmpsvr, new_path, dirs_exist_ok=True)
+    safe_delete(tempDir)
+    safe_delete(downDir)
+
+    new_server_info = {}
 
 
 # If Fabric or Forge, install server

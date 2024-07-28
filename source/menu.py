@@ -7665,7 +7665,7 @@ class MenuBackground(Screen):
 
         self.canvas.clear()
         self.clear_widgets()
-        # gc.collect()
+
 
 
     def reload_menu(self, *args):
@@ -10998,7 +10998,6 @@ class CreateServerAclScreen(MenuBackground):
             for rule_button in self.scroll_layout.children:
                 rule_button.change_properties(rule_button.rule)
 
-            # gc.collect()
 
             # Dirty fix to hide grid resize that fixes RuleButton text.pos_hint x
             if list_changed:
@@ -11729,7 +11728,6 @@ class CreateServerAddonScreen(MenuBackground):
         page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
-        # gc.collect()
 
         # Generate header
         addon_count = len(results)
@@ -11755,12 +11753,9 @@ class CreateServerAddonScreen(MenuBackground):
         else:
             constants.hide_widget(self.blank_label, True)
 
-            # Create list of addon names
-            installed_addon_names = [addon.name for addon in constants.new_server_info["addon_objects"]]
-
             # Clear and add all addons
             for x, addon_object in enumerate(page_list, 1):
-                
+
                 # Function to remove addon
                 def remove_addon(index):
                     selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
@@ -11991,7 +11986,6 @@ class CreateServerAddonSearchScreen(MenuBackground):
             page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
             self.scroll_layout.clear_widgets()
-            # gc.collect()
 
 
             # Generate header
@@ -13054,7 +13048,6 @@ class ServerImportModpackSearchScreen(MenuBackground):
             page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
             self.scroll_layout.clear_widgets()
-            # gc.collect()
 
 
             # Generate header
@@ -14062,7 +14055,7 @@ class ServerManagerScreen(MenuBackground):
         page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
-        # gc.collect()
+
 
         # Generate header
         server_count = len(constants.server_manager.server_list)
@@ -17454,7 +17447,7 @@ class ServerBackupRestoreScreen(MenuBackground):
         page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
-        # gc.collect()
+
 
         # Generate header
         backup_count = len(results)
@@ -18278,35 +18271,13 @@ class ServerAddonUpdateScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                # Clear folders beforehand
-                constants.safe_delete(constants.tmpsvr)
-                constants.safe_delete(constants.tempDir)
-                constants.safe_delete(constants.downDir)
-
-                # Generate server info for downloading proper add-on versions
-                constants.new_server_init()
-                constants.new_server_info = server_obj.properties_dict()
-                constants.init_update()
-                constants.new_server_info['addon_objects'] = server_obj.addon.installed_addons['enabled']
+                constants.pre_addon_update()
 
         def after_func(*args):
-            server_obj.addon.update_required = False
             self.steps.label_2.text = "Updates complete!" + f"   [font={icons}]å[/font]"
 
-            # Clear items from addon cache to re-cache
-            for addon in server_obj.addon.installed_addons['enabled']:
-                if addon.hash in constants.addon_cache:
-                    del constants.addon_cache[addon.hash]
-            constants.load_addon_cache(True)
+            constants.post_addon_update()
 
-
-            # Copy folder to server path and delete tmpsvr
-            new_path = os.path.join(constants.serverDir, constants.new_server_info['name'])
-            constants.copytree(constants.tmpsvr, new_path, dirs_exist_ok=True)
-            constants.safe_delete(constants.tempDir)
-            constants.safe_delete(constants.downDir)
-
-            constants.new_server_info = {}
             if server_obj.running:
                 Clock.schedule_once(
                     functools.partial(
@@ -18436,7 +18407,6 @@ class ServerAddonScreen(MenuBackground):
         page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
-        # gc.collect()
 
 
         # Animate scrolling
@@ -18777,7 +18747,6 @@ class ServerAddonSearchScreen(MenuBackground):
             page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
             self.scroll_layout.clear_widgets()
-            # gc.collect()
 
 
             # Generate header
@@ -19764,7 +19733,6 @@ class ServerAmscriptScreen(MenuBackground):
         page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
-        # gc.collect()
 
 
         # Animate scrolling
@@ -20085,7 +20053,6 @@ class ServerAmscriptSearchScreen(MenuBackground):
             page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
             self.scroll_layout.clear_widgets()
-            # gc.collect()
 
 
             # Generate header
