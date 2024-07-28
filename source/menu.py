@@ -21174,12 +21174,9 @@ class ServerPropertiesEditScreen(MenuBackground):
             else:
                 final_config[key] = value.strip()
 
-        constants.server_properties(server_obj.name, write_object=final_config)
+        server_obj.server_properties = final_config
+        server_obj.write_config()
         server_obj.reload_config()
-
-        # Reload config
-        with open(constants.server_path(server_obj.name, 'server.properties'), 'r') as f:
-            self.server_properties = f.read().strip().splitlines()
 
         self.set_banner_status(False)
 

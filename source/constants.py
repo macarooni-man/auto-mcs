@@ -898,8 +898,8 @@ telepath_download_whitelist = {
     'names': ['.ams', '.amb', 'server.properties']
 }
 def telepath_download(telepath_data: dict, path: str):
-    url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file"
-    data = requests.post(url, data={'file': path}, stream=True)
+    url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file?file={quote(path)}"
+    data = requests.post(url, stream=True)
 
     # Save if the request was successful
     if data.status_code == 200:
@@ -4163,8 +4163,12 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
 
 # Reconstruct API dict to a configparser object
 def reconstruct_config(remote_config: dict):
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+    config.optionxform = str
     for section, values in remote_config.items():
+        if section == 'DEFAULT':
+            continue
+
         config.add_section(section)
         for key, value in values.items():
             config.set(section, key, value)
