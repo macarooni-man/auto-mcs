@@ -20978,7 +20978,7 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Get 'server.properties' remotely if needed
         if server_obj._telepath_data:
-            properties = constants.telepath_download(os.path.join(server_obj.server_path, 'server.properties'))
+            properties = constants.telepath_download(server_obj._telepath_data, os.path.join(server_obj.server_path, 'server.properties'))
         else:
             properties = constants.server_path(server_obj.name, 'server.properties')
 
