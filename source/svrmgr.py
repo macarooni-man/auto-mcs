@@ -2007,21 +2007,12 @@ class ServerManager():
     def reload_telepath_updates(self, host_data=None):
         # Load remote update list
         if host_data:
-            self.telepath_updates[host_data['host']] = constants.api_manager.request(
-                endpoint='/main/get_remote_var',
-                host=host_data['host'],
-                port=host_data['port'],
-                args={'var': 'update_list'}
-            )
+            self.telepath_updates[host_data['host']] = constants.get_remote_var('update_list', host_data)
 
         else:
-            for name, instance in self.telepath_servers.items():
-                self.telepath_updates[name] = constants.api_manager.request(
-                    endpoint='/main/get_remote_var',
-                    host=name,
-                    port=instance['port'],
-                    args={'var': 'update_list'}
-                )
+            for host, instance in self.telepath_servers.items():
+                host_data = {'host': host, 'port': instance['port']}
+                self.telepath_updates[host] = constants.get_remote_var('update_list', host_data)
 
     # Returns and updates remote update list
     def get_telepath_update(self, host_data: dict, server_name: str):

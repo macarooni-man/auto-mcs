@@ -2354,7 +2354,7 @@ class CreateServerPortInput(BaseInput):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
+        self.change_timeout = None
         self.size_hint_max = (528, 54)
         self.title_text = "IPv4/port"
         self.hint_text = "enter IPv4 or port  (localhost:25565)"
@@ -2471,6 +2471,19 @@ class CreateServerPortInput(BaseInput):
         self.valid(not self.stinky_text)
 
 class ServerPortInput(CreateServerPortInput):
+    def update_config(self, *a):
+        def write(*a):
+            server_obj = constants.server_manager.current_server
+            server_obj.properties_hash = server_obj._get_properties_hash()
+            screen_manager.current_screen.check_changes(server_obj, force_banner=True)
+            server_obj.write_config()
+            server_obj.reload_config()
+            change_timeout = None
+
+        if self.change_timeout:
+            self.change_timeout.cancel()
+        self.change_timeout = Clock.schedule_once(write, 0.7)
+
     def process_text(self, text=''):
         server_obj = constants.server_manager.current_server
         new_ip = ''
@@ -2523,8 +2536,7 @@ class ServerPortInput(CreateServerPortInput):
             server_obj.server_properties['server-port'] = new_port
 
         if (new_ip or new_port) and not fail:
-            constants.server_properties(server_obj.name, write_object=server_obj.server_properties)
-            server_obj.reload_config()
+            self.update_config()
 
         process_ip_text(server_obj=server_obj)
         self.valid(not self.stinky_text)
@@ -2587,20 +2599,25 @@ class CreateServerMOTDInput(BaseInput):
 class ServerMOTDInput(BaseInput):
 
     def update_text(self, text):
-        print(text, self.server_obj.server_properties['motd'])
-        if text != self.server_obj.server_properties['motd'] and text:
-            self.server_obj.server_properties['motd'] = text
-            self.server_obj.properties_hash = self.server_obj._get_properties_hash()
-            screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
-            constants.server_properties(self.server_obj.name, write_object=self.server_obj.server_properties)
-            self.server_obj.reload_config()
+        def write(*a):
+            if text != self.server_obj.server_properties['motd'] and text:
+                self.server_obj.server_properties['motd'] = text
+                self.server_obj.properties_hash = self.server_obj._get_properties_hash()
+                screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
+                self.server_obj.write_config()
+                self.server_obj.reload_config()
+                self.change_timeout = None
+
+        if self.change_timeout:
+            self.change_timeout.cancel()
+        self.change_timeout = Clock.schedule_once(write, 0.7)
 
     def on_enter(self, value):
         self.update_text((self.text).strip() if self.text else "A Minecraft Server")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
+        self.change_timeout = None
         self.server_obj = constants.server_manager.current_server
         self.size_hint_max = (528, 54)
         self.title_text = "MOTD"
@@ -2950,13 +2967,18 @@ class NgrokAuthInput(BaseInput):
 class ServerFlagInput(BaseInput):
 
     def write_config(self, text):
-        self.server_obj.update_flags(text)
-        screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
+        def write(*a):
+            self.server_obj.update_flags(text)
+            screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
+
+        if self.change_timeout:
+            self.change_timeout.cancel()
+        self.change_timeout = Clock.schedule_once(write, 0.7)
 
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
+        self.change_timeout = None
         self.server_obj = constants.server_manager.current_server
         self.size_hint_max = (528, 54)
         self.title_text = "flags"
@@ -21866,7 +21888,10 @@ class ServerSettingsScreen(MenuBackground):
 
 
         # RAM allocation slider (Max limit = 75% of memory capacity)
-        max_limit = constants.max_memory
+        if server_obj._telepath_data:
+            max_limit = constants.get_remote_var('max_memory', server_obj._telepath_data)
+        else:
+            max_limit = constants.max_memory
         min_limit = 0
         start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
 

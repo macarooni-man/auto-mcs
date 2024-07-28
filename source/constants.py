@@ -4044,13 +4044,22 @@ def init_update(telepath=False):
 
 # ------------------------------------------------ Server Functions ----------------------------------------------------
 
-# Gets a variable from this module, remotely
-def get_remote_var(var: str):
-    try:
-        var = getattr(sys.modules[__name__], var)
-    except:
-        var = None
-    return var
+# Gets a variable from this module, remotely if telepath_data is specified
+def get_remote_var(var: str, telepath_data={}):
+    if telepath_data:
+        return api_manager.request(
+            endpoint='/main/get_remote_var',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'var': var}
+        )
+
+    else:
+        try:
+            var = getattr(sys.modules[__name__], var)
+        except:
+            var = None
+        return var
 
 
 # Toggles favorite status in Server Manager
