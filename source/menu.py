@@ -14500,8 +14500,7 @@ class MenuTaskbar(RelativeLayout):
             item = TaskbarItem(item, selected=selected)
             self.taskbar.add_widget(item)
             if animate:
-                delay = x / (13 if show_addons else 15)
-                Clock.schedule_once(item.icon.animate, delay)
+                Clock.schedule_once(item.icon.animate, x / 15)
 
             # Show notification if appropriate
             show = False
