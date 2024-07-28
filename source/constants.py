@@ -223,7 +223,6 @@ api_data = {
 # Prevent app from closing during critical operations
 ignore_close = False
 telepath_banner = None
-telepath_download_whitelist = [applicationFolder]
 def allow_close(allow: bool, banner=''):
     global ignore_close
     ignore_close = not allow
@@ -893,6 +892,11 @@ def telepath_upload(telepath_data: dict, path: str):
         return data.json()
 
 # Downloads a file to a telepath session --> destination path
+# Whitelist is for restricting downloadable content
+telepath_download_whitelist = {
+    'paths': [serverDir, scriptDir, backupFolder],
+    'names': ['.ams', '.amb', 'server.properties']
+}
 def telepath_download(telepath_data: dict, path: str):
     url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file"
     data = requests.post(url, data={'file': path}, stream=True).json()

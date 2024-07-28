@@ -816,8 +816,15 @@ async def upload_file(file: UploadFile = File(...), is_dir=False):
 async def download_file(file: str):
 
     # Prevent downloading files from outside permitted paths
-    for path in constants.telepath_download_whitelist:
+    for path in constants.telepath_download_whitelist['paths']:
         if file.startswith(path):
+            break
+    else:
+        raise HTTPException(status_code=403, detail=f"Access denied")
+
+    # Prevent downloading files without permitted names
+    for name in constants.telepath_download_whitelist['names']:
+        if file.endswith(path):
             break
     else:
         raise HTTPException(status_code=403, detail=f"Access denied")
