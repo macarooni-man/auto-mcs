@@ -824,7 +824,7 @@ async def download_file(file: str):
 
     # Prevent downloading files without permitted names
     for name in constants.telepath_download_whitelist['names']:
-        if file.endswith(path):
+        if file.endswith(name):
             break
     else:
         raise HTTPException(status_code=403, detail=f"Access denied")
