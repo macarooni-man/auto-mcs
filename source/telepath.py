@@ -814,20 +814,27 @@ async def upload_file(file: UploadFile = File(...), is_dir=False):
 # Download file endpoint
 @app.post("/main/download_file", tags=['main'])
 async def download_file(file: str):
+    denied = HTTPException(status_code=403, detail=f"Access denied")
+    blocked_symbols = ['*', '..']
 
-    # Prevent downloading files from outside permitted paths
+    # Block directory traversal
+    for symbol in blocked_symbols:
+        if symbol in file:
+            raise denied
+
+    # Prevent downloading files from outside permitted paths, and permitted names
     for path in constants.telepath_download_whitelist['paths']:
         if file.startswith(path):
             break
     else:
-        raise HTTPException(status_code=403, detail=f"Access denied")
+        raise denied
 
     # Prevent downloading files without permitted names
     for name in constants.telepath_download_whitelist['names']:
         if file.endswith(name):
             break
     else:
-        raise HTTPException(status_code=403, detail=f"Access denied")
+        raise denied
 
     # If the file resides in a permitted directory, check if it actually exists
     if not os.path.isfile(file):
