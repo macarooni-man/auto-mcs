@@ -419,7 +419,8 @@ class ServerObject():
                 "gamemode": self.gamemode,
 
                 # Checks if geyser and floodgate are installed
-                "geyser_support": self.geyser_enabled
+                "geyser_support": self.geyser_enabled,
+                "disable_chat_reporting": False
 
             },
 
