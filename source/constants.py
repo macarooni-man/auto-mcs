@@ -896,6 +896,9 @@ def telepath_upload(telepath_data: dict, path: str):
         )['path']
     else:
         return None
+def clear_uploads():
+    safe_delete(uploadDir)
+    return not os.path.exists(uploadDir)
 
 # Removes invalid characters from a filename
 def sanitize_name(value, addon=False):
@@ -1222,7 +1225,8 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
     except Exception as e:
         print(f"Something went wrong extracting '{archive_file}': {e}")
 
-    archive.close()
+    if archive:
+        archive.close()
 
 
 # Create an archive

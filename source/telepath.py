@@ -613,7 +613,9 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
         ]
 
     def import_script(self, script_path: str):
-        super().import_script(constants.telepath_upload(self._telepath_data, script_path))
+        data = super().import_script(constants.telepath_upload(self._telepath_data, script_path))
+        constants.api_manager.request(endpoint='/main/clear_uploads', host=self._telepath_data['host'], port=self._telepath_data['port'])
+        return data
 
 class RemoteAddonManager(create_remote_obj(AddonManager)):
     def __init__(self, telepath_data: dict):
@@ -643,7 +645,9 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         ]
 
     def import_addon(self, addon_path: str):
-        super().import_addon(constants.telepath_upload(self._telepath_data, addon_path))
+        data = super().import_addon(constants.telepath_upload(self._telepath_data, addon_path))
+        constants.api_manager.request(endpoint='/main/clear_uploads', host=self._telepath_data['host'], port=self._telepath_data['port'])
+        return data
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
     def __init__(self, telepath_data: dict):
@@ -770,6 +774,9 @@ app.openapi = create_schema
 # Upload file endpoint
 @app.post("/main/upload_file", tags=['main'])
 async def upload_file(file: UploadFile = File(...), is_dir=False):
+    if isinstance(is_dir, str):
+        is_dir = is_dir.lower() == 'true'
+
     try:
         file_name = file.filename
         content_type = file.content_type
@@ -806,3 +813,4 @@ create_endpoint(svrmgr.create_server_list, 'main')
 create_endpoint(constants.get_remote_var, 'main', True)
 create_endpoint(constants.java_check, 'main', True)
 create_endpoint(constants.allow_close, 'main', True)
+create_endpoint(constants.clear_uploads, 'main')
