@@ -434,7 +434,7 @@ class WebAPI():
         self.start()
 
     # Send a POST or GET request to an endpoint
-    def request(self, endpoint: str, host=None, port=None, args=None, file_data=None, timeout=5):
+    def request(self, endpoint: str, host=None, port=None, args=None, timeout=5):
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
         if endpoint.endswith('/'):
@@ -459,11 +459,7 @@ class WebAPI():
             print(f"[INFO] [telepath] Opened session to '{host}'")
 
         # Determine POST or GET based on params
-        if file_data:
-            print(file_data)
-            data = session.post(url, headers=headers, files={'file': file_data['file']}, json={'is_dir': file_data['is_dir']})
-        else:
-            data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
+        data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
 
         if not data:
             return None
@@ -614,9 +610,9 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
         ]
 
     def import_script(self, script_path: str):
-        data = super().import_script(constants.telepath_upload(self._telepath_data, script_path))
+        data = super().import_script(constants.telepath_upload(self._telepath_data, script_path)['path'])
         constants.api_manager.request(endpoint='/main/clear_uploads', host=self._telepath_data['host'], port=self._telepath_data['port'])
-        return data
+        return RemoteAmsFileObject(self._telepath_data, data)
 
 class RemoteAddonManager(create_remote_obj(AddonManager)):
     def __init__(self, telepath_data: dict):
@@ -646,9 +642,9 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         ]
 
     def import_addon(self, addon_path: str):
-        data = super().import_addon(constants.telepath_upload(self._telepath_data, addon_path))
+        data = super().import_addon(constants.telepath_upload(self._telepath_data, addon_path)['path'])
         constants.api_manager.request(endpoint='/main/clear_uploads', host=self._telepath_data['host'], port=self._telepath_data['port'])
-        return data
+        return RemoteAddonFileObject(self._telepath_data, data)
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
     def __init__(self, telepath_data: dict):

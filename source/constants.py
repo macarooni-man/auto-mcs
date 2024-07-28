@@ -877,7 +877,7 @@ def cs_download_url(url: str, file_name: str, destination_path: str):
         except Exception as e:
             raise e
 
-# Uploads a file or directory to a telepath session of auto-mcs, returns destination path
+# Uploads a file or directory to a telepath session of auto-mcs --> destination path
 def telepath_upload(telepath_data: dict, path: str):
     if os.path.exists(path):
         is_dir = False
@@ -887,16 +887,14 @@ def telepath_upload(telepath_data: dict, path: str):
             is_dir = True
             path = create_archive(path, tempDir, 'tar')
 
-        with open(path, 'rb') as file_data:
-            return api_manager.request(
-                endpoint='/main/upload_file',
-                host=telepath_data['host'],
-                port=telepath_data['port'],
-                args={},
-                file_data={'file': file_data, 'is_dir': is_dir}
-            )['path']
+        url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/upload_file?is_dir={is_dir}"
+        data = requests.post(url, files={'file': open(path, 'rb')})
+        return data.json()
+
     else:
         return None
+
+# Delete all files in telepath uploads remotely
 def clear_uploads():
     safe_delete(uploadDir)
     return not os.path.exists(uploadDir)
