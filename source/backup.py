@@ -79,6 +79,10 @@ class BackupManager():
             self.latest = None
         self._restore_file = None
 
+        # Add path to download whitelist
+        if self.directory not in constants.telepath_download_whitelist:
+            constants.telepath_download_whitelist.append(self.directory)
+
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
         return constants.sync_attr(self, name)
@@ -95,6 +99,10 @@ class BackupManager():
             self.latest = self.list[0]
         else:
             self.latest = None
+
+        # Add path to download whitelist
+        if self.directory not in constants.telepath_download_whitelist:
+            constants.telepath_download_whitelist.append(self.directory)
 
     # Retrieves data from local back-up file
     # name --> dict

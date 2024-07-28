@@ -814,8 +814,19 @@ async def upload_file(file: UploadFile = File(...), is_dir=False):
 # Download file endpoint
 @app.post("/main/download_file", tags=['main'])
 async def download_file(file: str):
+
+    # Prevent downloading files from outside permitted paths
+    for path in constants.telepath_download_whitelist:
+        if file.startswith(path):
+            break
+    else:
+        raise HTTPException(status_code=403, detail=f"Access denied")
+
+    # If the file resides in a permitted directory, check if it actually exists
     if not os.path.isfile(file):
         raise HTTPException(status_code=500, detail=f"File '{file}' does not exist")
+
+    # If it exists in a permitted directory, respond with the file
     return FileResponse(file, filename=os.path.basename(file))
 
 # Generate endpoints both statically & dynamically

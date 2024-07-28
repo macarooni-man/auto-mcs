@@ -223,6 +223,7 @@ api_data = {
 # Prevent app from closing during critical operations
 ignore_close = False
 telepath_banner = None
+telepath_download_whitelist = [applicationFolder]
 def allow_close(allow: bool, banner=''):
     global ignore_close
     ignore_close = not allow
