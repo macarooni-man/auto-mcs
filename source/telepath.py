@@ -817,31 +817,38 @@ async def download_file(file: str):
     denied = HTTPException(status_code=403, detail=f"Access denied")
     blocked_symbols = ['*', '..']
 
+    # First, normalize path to current OS
+    if constants.os_name == 'windows':
+        path = os.path.normpath(file).replace('/', '\\')
+    else:
+        path = os.path.normpath(file).replace('\\', '/')
+
+
     # Block directory traversal
-    for symbol in blocked_symbols:
-        if symbol in file:
+    for s in blocked_symbols:
+        if s in path:
             raise denied
 
     # Prevent downloading files from outside permitted paths, and permitted names
-    for path in constants.telepath_download_whitelist['paths']:
-        if file.startswith(path):
+    for p in constants.telepath_download_whitelist['paths']:
+        if path.startswith(p):
             break
     else:
         raise denied
 
     # Prevent downloading files without permitted names
-    for name in constants.telepath_download_whitelist['names']:
-        if file.endswith(name):
+    for n in constants.telepath_download_whitelist['names']:
+        if path.endswith(n):
             break
     else:
         raise denied
 
     # If the file resides in a permitted directory, check if it actually exists
-    if not os.path.isfile(file):
+    if not os.path.isfile(path):
         raise HTTPException(status_code=500, detail=f"File '{file}' does not exist")
 
     # If it exists in a permitted directory, respond with the file
-    return FileResponse(file, filename=os.path.basename(file))
+    return FileResponse(path, filename=os.path.basename(path))
 
 # Generate endpoints both statically & dynamically
 [generate_endpoints(app, create_remote_obj(r, False)()) for r in
