@@ -887,13 +887,14 @@ def telepath_upload(telepath_data: dict, path: str):
             is_dir = True
             path = create_archive(path, tempDir, 'tar')
 
-        return api_manager.request(
-            endpoint='/main/upload_file',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={},
-            file_data={'file': path, 'is_dir': is_dir}
-        )['path']
+        with open(path, 'rb') as file_data:
+            return api_manager.request(
+                endpoint='/main/upload_file',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={},
+                file_data={'file': file_data, 'is_dir': is_dir}
+            )['path']
     else:
         return None
 def clear_uploads():

@@ -460,6 +460,7 @@ class WebAPI():
 
         # Determine POST or GET based on params
         if file_data:
+            print(file_data)
             data = session.post(url, headers=headers, files={'file': file_data['file']}, json={'is_dir': file_data['is_dir']})
         else:
             data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
@@ -798,8 +799,7 @@ async def upload_file(file: UploadFile = File(...), is_dir=False):
         return JSONResponse(content={
             "name": file_name,
             "path": destination_path,
-            "content_type": content_type,
-            "size": len(file_content),
+            "content_type": content_type
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
