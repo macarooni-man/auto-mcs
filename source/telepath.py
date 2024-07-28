@@ -460,7 +460,7 @@ class WebAPI():
 
         # Determine POST or GET based on params
         if file_data:
-            data = session.post(url, headers=headers, files={'file': file_data['file']}, json={'is_dir': file_data['is_json']})
+            data = session.post(url, headers=headers, files={'file': file_data['file']}, json={'is_dir': file_data['is_dir']})
         else:
             data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
 
