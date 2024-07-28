@@ -562,6 +562,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
             }
         )
         self._clear_all_cache()
+        self.properties_hash = self._get_properties_hash()
         return data
 
     def launch(self, *args, **kwargs):

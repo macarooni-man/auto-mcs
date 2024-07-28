@@ -20978,12 +20978,25 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Get 'server.properties' remotely if needed
         if server_obj._telepath_data:
-            properties = constants.telepath_download(server_obj._telepath_data, os.path.join(server_obj.server_path, 'server.properties'))
+            server_obj._clear_attr_cache()
+            self.server_properties = []
+            for key, value in server_obj.server_properties.items():
+                if not (key or value):
+                    continue
+
+                if key.startswith("#"):
+                    line = "#" + key.strip('#').strip()
+                else:
+                    if isinstance(value, bool):
+                        value = str(value).lower()
+                    line = f"{key}={value}"
+
+                self.server_properties.append(line)
+
         else:
             properties = constants.server_path(server_obj.name, 'server.properties')
-
-        with open(properties, 'r') as f:
-            self.server_properties = f.read().strip().splitlines()
+            with open(properties, 'r') as f:
+                self.server_properties = f.read().strip().splitlines()
 
 
         # Scroll list
@@ -21178,6 +21191,20 @@ class ServerPropertiesEditScreen(MenuBackground):
         server_obj.write_config()
         server_obj.reload_config()
 
+        self.server_properties = []
+        for line in self.line_list:
+            key = line.key_label.original_text
+            value = line.value_label.text
+
+            if not (key or value):
+                continue
+
+            if key.startswith("# "):
+                line = "#" + key[1:].strip()
+            else:
+                line = f"{key}={value}"
+            self.server_properties.append(line)
+
         self.set_banner_status(False)
 
         # Show banner if server is running
@@ -21239,8 +21266,8 @@ class ServerPropertiesEditScreen(MenuBackground):
             if not (key or value):
                 continue
 
-            if key.startswith("# "):
-                line = "#" + key[1:].strip()
+            if key.startswith("#"):
+                line = "#" + key.strip("#").strip()
             else:
                 line = f"{key}={value}"
 
@@ -21373,12 +21400,12 @@ class ServerPropertiesEditScreen(MenuBackground):
 
 
         # Exiting search bar
-        elif keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
+        elif keycode[1] == 'escape' and screen_manager.current_screen._input_focused:
             return_to_input()
 
 
         # Quit and prompt to save if file was changed
-        if keycode[1] == 'q' and control in modifiers:
+        elif (keycode[1] == 'q' and control in modifiers) or keycode[1] == 'escape':
             if self.modified:
                 self.show_popup(
                     "query",
