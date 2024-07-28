@@ -897,7 +897,7 @@ telepath_download_whitelist = {
     'paths': [serverDir, scriptDir, backupFolder],
     'names': ['.ams', '.amb', 'server.properties']
 }
-def telepath_download(telepath_data: dict, path: str):
+def telepath_download(telepath_data: dict, path: str, destination=downDir):
     url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file?file={quote(path)}"
     data = requests.post(url, stream=True)
 
@@ -905,8 +905,8 @@ def telepath_download(telepath_data: dict, path: str):
     if data.status_code == 200:
 
         file_name = os.path.basename(path)
-        final_path = os.path.join(downDir, file_name)
-        folder_check(downDir)
+        final_path = os.path.join(destination, file_name)
+        folder_check(destination)
 
         with open(final_path, 'wb') as file:
             for chunk in data.iter_content(chunk_size=8192):
