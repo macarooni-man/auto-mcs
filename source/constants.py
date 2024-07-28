@@ -891,8 +891,24 @@ def telepath_upload(telepath_data: dict, path: str):
         data = requests.post(url, files={'file': open(path, 'rb')})
         return data.json()
 
-    else:
-        return None
+# Downloads a file to a telepath session --> destination path
+def telepath_download(telepath_data: dict, path: str):
+    url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file"
+    data = requests.post(url, data={'file': path}, stream=True).json()
+
+    # Save if the request was successful
+    if data.status_code == 200:
+
+        file_name = os.path.basename(path)
+        final_path = os.path.join(downDir, file_name)
+        folder_check(downDir)
+
+        with open(final_path, 'wb') as file:
+            for chunk in data.iter_content(chunk_size=8192):
+                file.write(chunk)
+
+        return final_path
+
 
 # Delete all files in telepath uploads remotely
 def clear_uploads():

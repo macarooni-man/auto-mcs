@@ -1,10 +1,10 @@
 # This file abstracts all the program managers to control a server remotely
 
 from fastapi import FastAPI, Body, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
 from typing import Callable, get_type_hints, Optional
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, create_model
-from fastapi.responses import JSONResponse
 from datetime import timedelta as td
 from datetime import datetime as dt
 from munch import Munch
@@ -372,10 +372,11 @@ class WebAPI():
         self.update_config(host=host, port=port)
 
         # Disable low importance uvicorn logging
-        logging.getLogger("uvicorn.error").handlers = []
-        logging.getLogger("uvicorn.error").propagate = False
-        logging.getLogger("uvicorn.access").handlers = []
-        logging.getLogger("uvicorn.access").propagate = False
+        if not constants.debug:
+            logging.getLogger("uvicorn.error").handlers = []
+            logging.getLogger("uvicorn.error").propagate = False
+            logging.getLogger("uvicorn.access").handlers = []
+            logging.getLogger("uvicorn.access").propagate = False
 
     def _run_uvicorn(self):
         self.server = uvicorn.Server(self.config)
@@ -810,6 +811,12 @@ async def upload_file(file: UploadFile = File(...), is_dir=False):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
 
+# Download file endpoint
+@app.post("/main/download_file", tags=['main'])
+async def download_file(file: str):
+    if not os.path.isfile(file):
+        raise HTTPException(status_code=500, detail=f"File '{file}' does not exist")
+    return FileResponse(file, filename=os.path.basename(file))
 
 # Generate endpoints both statically & dynamically
 [generate_endpoints(app, create_remote_obj(r, False)()) for r in
