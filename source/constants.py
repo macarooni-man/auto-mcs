@@ -2624,7 +2624,7 @@ def pre_addon_update(telepath=False):
     # Generate server info for downloading proper add-on versions
     new_server_init()
     new_server_info = server_obj.properties_dict()
-    init_update()
+    init_update(telepath=True)
     new_server_info['addon_objects'] = server_obj.addon.return_single_list()
 def post_addon_update(telepath=False):
     global new_server_info
@@ -3991,8 +3991,11 @@ eula=true"""
 
 
 # Generates new information for a server update
-def init_update():
-    server_obj = server_manager.current_server
+def init_update(telepath=False):
+    if telepath:
+        server_obj = server_manager.remote_server
+    else:
+        server_obj = server_manager.current_server
     new_server_info['name'] = server_obj.name
 
     # Check for Geyser and chat reporting, and prep addon objects
