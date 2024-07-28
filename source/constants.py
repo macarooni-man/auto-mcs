@@ -1865,12 +1865,7 @@ def get_checksum(file_path):
 
 # Grabs addon_cache if it exists
 def load_addon_cache(write=False, telepath=False):
-
-    # If telepath, clear addon_cache remotely
-    if telepath:
-        server_manager.current_server = server_manager.remote_server
-
-    elif server_manager.current_server:
+    if not telepath and server_manager.current_server:
         telepath_data = server_manager.current_server._telepath_data
         if telepath_data:
             response = api_manager.request(
@@ -2488,7 +2483,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
 
     # If telepath, update addons remotely
     if telepath:
-        server_manager.current_server = server_manager.remote_server
+        server_obj = server_manager.remote_server
 
     else:
         if server_manager.current_server:
@@ -2563,7 +2558,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
                     addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
                     downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
                     if not downloaded:
-                        disabled_folder = "plugins" if server_type(server_manager.current_server.type) == 'bukkit' else 'mods'
+                        disabled_folder = "plugins" if server_type(server_obj.type) == 'bukkit' else 'mods'
                         copy(addon_object.path, os.path.join(tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
 
                     return True
@@ -2606,8 +2601,7 @@ def pre_addon_update(telepath=False):
     server_obj = server_manager.current_server
 
     if telepath:
-        server_manager.current_server = server_manager.remote_server
-        server_obj = server_manager.current_server
+        server_obj = server_manager.remote_server
 
     # If remote, do this through telepath
     else:
@@ -2637,8 +2631,7 @@ def post_addon_update(telepath=False):
     server_obj = server_manager.current_server
 
     if telepath:
-        server_manager.current_server = server_manager.remote_server
-        server_obj = server_manager.current_server
+        server_obj = server_manager.remote_server
 
     # If remote, do this through telepath
     else:
