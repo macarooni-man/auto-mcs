@@ -1,11 +1,12 @@
 # This file abstracts all the program managers to control a server remotely
 
+from fastapi import FastAPI, Body, File, UploadFile, HTTPException
 from typing import Callable, get_type_hints, Optional
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, create_model
+from fastapi.responses import JSONResponse
 from datetime import timedelta as td
 from datetime import datetime as dt
-from fastapi import FastAPI, Body
 from munch import Munch
 import threading
 import requests
@@ -13,6 +14,7 @@ import inspect
 import uvicorn
 import logging
 import time
+import os
 
 # Local imports
 from amscript import AmsFileObject, ScriptManager
@@ -432,7 +434,7 @@ class WebAPI():
         self.start()
 
     # Send a POST or GET request to an endpoint
-    def request(self, endpoint: str, host=None, port=None, args=None, timeout=5):
+    def request(self, endpoint: str, host=None, port=None, args=None, file_data=None, timeout=5):
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
         if endpoint.endswith('/'):
@@ -457,7 +459,10 @@ class WebAPI():
             print(f"[INFO] [telepath] Opened session to '{host}'")
 
         # Determine POST or GET based on params
-        data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
+        if file_data:
+            data = session.post(url, headers=headers, files={'file': file_data['file']}, json={'is_dir': file_data['is_json']})
+        else:
+            data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
 
         if not data:
             return None
@@ -607,6 +612,9 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
             for data in super().get_script(script_name, online)
         ]
 
+    def import_script(self, script_path: str):
+        super().import_script(constants.telepath_upload(self._telepath_data, script_path))
+
 class RemoteAddonManager(create_remote_obj(AddonManager)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
@@ -633,6 +641,9 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
             RemoteAddonFileObject(self._telepath_data, data)
             for data in super().get_addon(addon_name, online)
         ]
+
+    def import_addon(self, addon_path: str):
+        super().import_addon(constants.telepath_upload(self._telepath_data, addon_path))
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
     def __init__(self, telepath_data: dict):
@@ -754,6 +765,37 @@ def get_docs_url(type: str):
         return "/docs" if "docs" in type else "/redoc"
 app = FastAPI(docs_url=get_docs_url("docs"), redoc_url=get_docs_url("redoc"))
 app.openapi = create_schema
+
+
+# Upload file endpoint
+@app.post("/main/upload_file/")
+async def upload_file(file: UploadFile = File(...), is_dir=False):
+    try:
+        file_name = file.filename
+        content_type = file.content_type
+        file_content = await file.read()
+        destination_path = os.path.join(constants.uploadDir, file_name)
+
+        # Ensure directory exists
+        os.makedirs(constants.uploadDir, exist_ok=True)
+
+        with open(destination_path, "wb") as f:
+            f.write(file_content)
+
+        if is_dir:
+            dir_name = file_name if '.' not in file_name else file_name.rsplit('.', 1)[0]
+            constants.extract_archive(destination_path, constants.uploadDir)
+            os.remove(destination_path)
+            destination_path = os.path.join(constants.uploadDir, dir_name)
+
+        return JSONResponse(content={
+            "name": file_name,
+            "path": destination_path,
+            "content_type": content_type,
+            "size": len(file_content),
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
 
 
 # Generate endpoints both statically & dynamically

@@ -161,6 +161,7 @@ applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' els
 
 saveFolder = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' else f"{home}/Library/Application Support/minecraft/saves"
 downDir = os.path.join(applicationFolder, 'Downloads')
+uploadDir = os.path.join(applicationFolder, 'Uploads')
 backupFolder = os.path.join(applicationFolder, 'Backups')
 userDownloads = os.path.join(home, 'Downloads')
 serverDir = os.path.join(applicationFolder, 'Servers')
@@ -876,6 +877,26 @@ def cs_download_url(url: str, file_name: str, destination_path: str):
         except Exception as e:
             raise e
 
+# Uploads a file or directory to a telepath session of auto-mcs, returns destination path
+def telepath_upload(telepath_data: dict, path: str):
+    if os.path.exists(path):
+        is_dir = False
+
+        # If path is a directory, compress to tmp and use the archive instead
+        if os.path.isdir(path):
+            is_dir = True
+            path = create_archive(path, tempDir, 'tar')
+
+        return api_manager.request(
+            endpoint='/main/upload_file',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={},
+            file_data={'file': path, 'is_dir': is_dir}
+        )['path']
+    else:
+        return None
+
 # Removes invalid characters from a filename
 def sanitize_name(value, addon=False):
 
@@ -1201,6 +1222,59 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
     except Exception as e:
         print(f"Something went wrong extracting '{archive_file}': {e}")
 
+    archive.close()
+
+
+# Create an archive
+def create_archive(file_path: str, export_path: str, archive_type='tar'):
+    file_name = os.path.basename(file_path)
+    archive_name = f'{file_name}.{archive_type}'
+    final_path = os.path.join(export_path, archive_name)
+
+    if debug:
+        print(f"Compressing '{file_path}' to '{export_path}'...")
+
+    # Create a .tar archive
+    if archive_type == 'tar':
+        try:
+            rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL)
+            use_tar = rc == 0
+
+        except Exception as e:
+            if debug:
+                print(e)
+            use_tar = False
+
+        # Use tar command if available
+        if use_tar:
+            run_proc(f'tar -cvf \"{final_path}\" \"{file_path}\"')
+
+        # Oherwise, use the Python implementation
+        else:
+            with tarfile.open(final_path, "w", compresslevel=6) as tar_file:
+                # Use glob for when an asterisk is used
+                for file in glob(file_path):
+                    tar_file.add(file, os.path.basename(file))
+
+    # Create a .zip archive
+    elif archive_type == 'zip':
+        with zipfile.ZipFile(final_path, "w", compresslevel=6) as zip_file:
+            # Use glob for when an asterisk is used
+            for file in glob(file_path):
+                zip_file.write(file, os.path.basename(file))
+
+    # Return file path if it exists
+    if os.path.exists(final_path):
+
+        if debug:
+            print(f"Compressed '{file_path}' to '{export_path}'")
+
+        return final_path
+
+    else:
+        print(f"Something went wrong compressing '{file_path}'")
+
+
 
 # Check if root is a folder instead of files, and move sub-folders to destination
 def move_files_root(source, destination=None):
@@ -1244,7 +1318,7 @@ def safe_delete(directory: str):
         print(f"Could not delete '{directory}'")
 
 
-# Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads'
+# Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads' and '.auto-mcs\Uploads'
 def cleanup_old_files():
     os_temp_folder = os.path.normpath(executable_folder + os.sep + os.pardir)
     for item in glob(os.path.join(os_temp_folder, "*")):
@@ -1257,8 +1331,9 @@ def cleanup_old_files():
                     pass
     safe_delete(os.path.join(os_temp, '.kivy'))
 
-    # Delete downloads folder
+    # Delete temporary files
     safe_delete(downDir)
+    safe_delete(uploadDir)
     safe_delete(tempDir)
 
 
