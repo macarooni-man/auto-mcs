@@ -4140,6 +4140,15 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
     return config
 
 
+# Reconstruct API dict to a configparser object
+def reconstruct_config(remote_config: dict):
+    config = configparser.ConfigParser()
+    for section, values in remote_config.items():
+        config.add_section(section)
+        for key, value in values.items():
+            config.set(section, key, value)
+    return config
+
 # server.properties function
 # write_object is the dict object returned from this function
 def server_properties(server_name: str, write_object=None):

@@ -18277,6 +18277,8 @@ class ServerAddonUpdateScreen(ProgressScreen):
             self.steps.label_2.text = "Updates complete!" + f"   [font={icons}]å[/font]"
 
             constants.post_addon_update()
+            if self.telepath:
+                server_obj._clear_all_cache()
 
             if server_obj.running:
                 Clock.schedule_once(
@@ -18313,8 +18315,12 @@ class ServerAddonUpdateScreen(ProgressScreen):
             if final < 0:
                 final = original
 
-            count = round(len(constants.new_server_info['addon_objects']) * (final * 0.01))
-            self.steps.label_2.text = "Updating Add-ons" + f"   ({count}/{len(constants.new_server_info['addon_objects'])})"
+            if self.telepath:
+                completed_count = addon_count = len(server_obj.addon.return_single_list())
+            else:
+                addon_count = len(constants.new_server_info['addon_objects'])
+                completed_count = round(len(constants.new_server_info['addon_objects']) * (final * 0.01))
+            self.steps.label_2.text = "Updating Add-ons" + f"   ({completed_count}/{addon_count})"
 
             self.progress_bar.update_progress(final)
 

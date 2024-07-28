@@ -437,7 +437,11 @@ class ServerObject():
         return properties
 
     # Writes changes to 'server.properties' and 'auto-mcs.ini'
-    def write_config(self):
+    def write_config(self, remote_data={}):
+        if remote_data:
+            self.config_file = constants.reconstruct_config(remote_data['config_file'])
+            self.server_properties = remote_data['server_properties']
+
         constants.server_config(self.name, self.config_file)
         constants.server_properties(self.name, self.server_properties)
 

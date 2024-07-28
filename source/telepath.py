@@ -434,7 +434,7 @@ class WebAPI():
         self.start()
 
     # Send a POST or GET request to an endpoint
-    def request(self, endpoint: str, host=None, port=None, args=None, timeout=5):
+    def request(self, endpoint: str, host=None, port=None, args=None, timeout=120):
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
         if endpoint.endswith('/'):
@@ -552,6 +552,16 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     def reload_config(self, *args, **kwargs):
         self._clear_all_cache()
         return super().reload_config(*args, **kwargs)
+
+    def write_config(self):
+        data = super().write_config(
+            remote_data={
+                'config_file': self.config_file,
+                'server_properties': self.server_properties
+            }
+        )
+        self._clear_all_cache()
+        return data
 
     def launch(self, *args, **kwargs):
         self._clear_all_cache()
