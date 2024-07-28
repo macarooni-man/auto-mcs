@@ -11760,7 +11760,7 @@ class CreateServerAddonScreen(MenuBackground):
 
             # Clear and add all addons
             for x, addon_object in enumerate(page_list, 1):
-
+                
                 # Function to remove addon
                 def remove_addon(index):
                     selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
@@ -18069,7 +18069,7 @@ class AddonListButton(HoverButton):
                 addon_manager = constants.server_manager.current_server.addon
                 addon_manager.delete_addon(self.properties)
                 addon_screen = screen_manager.current_screen
-                new_list = [addon for addon in addon_manager.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
+                new_list = [addon for addon in addon_manager.return_single_list() if not addons.is_geyser_addon(addon)]
                 addon_screen.gen_search_results(new_list, fade_in=True)
 
                 # Show banner if server is running
@@ -18451,7 +18451,7 @@ class ServerAddonScreen(MenuBackground):
 
         # Generate header
         addon_count = len(results)
-        enabled_count = len([addon for addon in addon_manager.installed_addons['enabled'] if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))])
+        enabled_count = len([addon for addon in addon_manager.installed_addons['enabled'] if not addons.is_geyser_addon(addon)])
         disabled_count = len(addon_manager.installed_addons['disabled'])
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {constants.translate("items")}')
@@ -18480,11 +18480,10 @@ class ServerAddonScreen(MenuBackground):
         else:
             constants.hide_widget(self.blank_label, True)
 
-            # Create list of addon names
-            installed_addon_names = [addon.name for addon in self.server.addon.return_single_list()]
-
             # Clear and add all addons
             for x, addon_object in enumerate(page_list, 1):
+                if addons.is_geyser_addon(addon_object):
+                    continue
 
                 # Activated when addon is clicked
                 def toggle_addon(index, *args):
@@ -18510,7 +18509,7 @@ class ServerAddonScreen(MenuBackground):
                             ), 0
                         )
                         return False
-                    addon_list = [addon for addon in addon_manager.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
+                    addon_list = [addon for addon in addon_manager.return_single_list() if not addons.is_geyser_addon(addon)]
                     self.gen_search_results(addon_list, fade_in=False, highlight=addon.hash, animate_scroll=True)
 
 
@@ -18698,11 +18697,13 @@ class ServerAddonScreen(MenuBackground):
 
 
         # Automatically generate results (installed add-ons) on page load
-        addon_list = [addon for addon in self.server.addon.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
+        addon_manager = constants.server_manager.current_server.addon
+        addon_list = [addon for addon in addon_manager.return_single_list() if not addons.is_geyser_addon(addon)]
+
         self.gen_search_results(addon_list)
 
         # Show banner if server is running
-        if constants.server_manager.current_server.addon._hash_changed():
+        if addon_manager._hash_changed():
             Clock.schedule_once(
                 functools.partial(
                     self.show_banner,
@@ -21977,7 +21978,7 @@ class ServerSettingsScreen(MenuBackground):
                     with ThreadPoolExecutor(max_workers=3) as pool:
                         pool.map(addon_manager.download_addon, addons.geyser_addons(server_obj.properties_dict()))
                 else:
-                    for a in [a for a in addon_manager.return_single_list() if (a.author == 'GeyserMC' and (a.name.startswith('Geyser') or a.name == 'floodgate'))]:
+                    for a in [a for a in addon_manager.return_single_list() if not addons.is_geyser_addon(a)]:
                         addon_manager.delete_addon(a)
 
                 # Actually make changes

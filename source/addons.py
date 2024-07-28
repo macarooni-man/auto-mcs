@@ -1304,6 +1304,20 @@ def get_modpack_url(modpack: ModpackWebObject, *a):
 
 
 
+# Return if addon is a Geyser addon
+def is_geyser_addon(addon):
+    if addon.author == 'GeyserMC':
+        return True
+
+    if addon.name.startswith('floodgate'):
+        return True
+
+    if addon.name.startswith('Geyser'):
+        return True
+
+    return False
+
+
 # ---------------------------------------------- Usage Examples --------------------------------------------------------
 
 # properties = {"name": "Booger Squad", "type": "spigot", "version": "1.19"}
