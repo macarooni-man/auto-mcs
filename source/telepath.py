@@ -448,7 +448,7 @@ class WebAPI():
         url = f"http://{host}:{port}/{endpoint}"
         headers = {
             "Authorization": f"Token {get_token()}",
-            "Content-Type": "application/json",
+            "Content-Type": "application/json"
         }
 
         # Check if session exists

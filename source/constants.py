@@ -899,7 +899,7 @@ telepath_download_whitelist = {
 }
 def telepath_download(telepath_data: dict, path: str):
     url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file"
-    data = requests.post(url, data={'file': path}, stream=True).json()
+    data = requests.post(url, data={'file': path}, stream=True)
 
     # Save if the request was successful
     if data.status_code == 200:
