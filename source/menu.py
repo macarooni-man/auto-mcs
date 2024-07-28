@@ -14268,6 +14268,7 @@ class MenuTaskbar(RelativeLayout):
         server_obj.taskbar = self
         self.pos_hint = {"center_x": 0.5}
 
+
         # Layout for icon object
         class TaskbarItem(RelativeLayout):
 
@@ -14499,12 +14500,24 @@ class MenuTaskbar(RelativeLayout):
             item = TaskbarItem(item, selected=selected)
             self.taskbar.add_widget(item)
             if animate:
-                Clock.schedule_once(item.icon.animate, x / 15)
+                delay = x / (13 if show_addons else 15)
+                Clock.schedule_once(item.icon.animate, delay)
 
             # Show notification if appropriate
-            if name in server_obj.viewed_notifs:
+            show = False
+
+            if name == 'settings' and server_obj.update_string:
+                if 'settings' not in server_obj.viewed_notifs:
+                    show = True
+                elif server_obj.update_string != server_obj.viewed_notifs['settings']:
+                    show = True
+
+            elif name in server_obj.viewed_notifs:
                 if not server_obj.viewed_notifs[name]:
-                    item.show_notification(True, animate)
+                    show = True
+
+            if show:
+                item.show_notification(True, animate)
 
         self.add_widget(self.taskbar)
 
@@ -16891,12 +16904,15 @@ class ServerViewScreen(MenuBackground):
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
+
     def generate_menu(self, **kwargs):
 
         # If a new server is selected, animate the taskbar
         animate_taskbar = False
         try:
-            if self.server.name != constants.server_manager.current_server.name:
+            if not self.server:
+                animate_taskbar = True
+            elif self.server.name != constants.server_manager.current_server.name:
                 animate_taskbar = True
         except AttributeError:
             pass
@@ -21889,7 +21905,7 @@ class ServerSettingsScreen(MenuBackground):
 
         # RAM allocation slider (Max limit = 75% of memory capacity)
         if server_obj._telepath_data:
-            max_limit = constants.get_remote_var('max_memory', server_obj._telepath_data)
+            max_limit = constants.get_remote_var('max_memory')
         else:
             max_limit = constants.max_memory
         min_limit = 0

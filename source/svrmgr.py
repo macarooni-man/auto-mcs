@@ -1781,13 +1781,13 @@ class ServerObject():
         if name and add:
             show_notif = name not in self.viewed_notifs
             if name in self.viewed_notifs:
-                show_notif = viewed != self.viewed_notifs[name] and viewed
+                show_notif = viewed != self.viewed_notifs[name]
 
             if self.taskbar and show_notif:
                 self.taskbar.show_notification(name)
 
             if name in self.viewed_notifs:
-                if not self.viewed_notifs[name]:
+                if viewed:
                     self.viewed_notifs[name] = viewed
             else:
                 self.viewed_notifs[name] = viewed
@@ -1884,6 +1884,7 @@ class RemoteViewObject():
         self._view_name = f"{self._telepath_data['display-name']}/{server_data['name']}"
 
         self.favorite = self._is_favorite()
+
 
 # Houses all server information
 class ServerManager():

@@ -584,6 +584,27 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         else:
             return {}
 
+    # Shows taskbar notifications
+    def _view_notif(self, name, add=True, viewed=''):
+        if name and add:
+            show_notif = name not in self.viewed_notifs
+            if name in self.viewed_notifs:
+                show_notif = viewed != self.viewed_notifs[name]
+
+            if self.taskbar and show_notif:
+                self.taskbar.show_notification(name)
+
+            if name in self.viewed_notifs:
+                if viewed:
+                    self.viewed_notifs[name] = viewed
+            else:
+                self.viewed_notifs[name] = viewed
+
+        elif (not add) and (name in self.viewed_notifs):
+            del self.viewed_notifs[name]
+
+        super()._view_notif(name, add, viewed)
+
     # Check if remote instance is not currently being blocked by a synchronous activity (update, create, restore, etc.)
     # Returns True if available
     def progress_available(self):
@@ -593,6 +614,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
             port=self._telepath_data['port'],
             args={'var': 'ignore_close'}
         )
+
 
 class RemoteScriptManager(create_remote_obj(ScriptManager)):
     def __init__(self, telepath_data: dict):
