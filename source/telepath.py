@@ -144,7 +144,10 @@ def create_remote_obj(obj: object, request=True):
     # Override values to store in cache
     def _override_attr(self, k, v):
         class_name = self.__class__.__name__
-        if class_name == 'RemoteAclManager':
+        if class_name == 'RemoteServerObject':
+            if k == 'config_file':
+                return constants.reconstruct_config(v)
+        elif class_name == 'RemoteAclManager':
             if k in ['list_items', 'displayed_rule']:
                 return self._reconstruct_list(v)
         elif class_name == 'RemoteAddonManager':
@@ -583,6 +586,11 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
             return self.run_data['performance']
         else:
             return {}
+
+    def enable_auto_update(self, *args, **kwargs):
+        data = super().enable_auto_update(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
 
     # Shows taskbar notifications
     def _view_notif(self, name, add=True, viewed=''):

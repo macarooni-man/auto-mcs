@@ -1784,7 +1784,10 @@ class ServerObject():
                 show_notif = viewed != self.viewed_notifs[name]
 
             if self.taskbar and show_notif:
-                self.taskbar.show_notification(name)
+                try:
+                    self.taskbar.show_notification(name)
+                except AttributeError:
+                    pass
 
             if name in self.viewed_notifs:
                 if viewed:

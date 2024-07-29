@@ -21903,10 +21903,7 @@ class ServerSettingsScreen(MenuBackground):
 
 
         # RAM allocation slider (Max limit = 75% of memory capacity)
-        if server_obj._telepath_data:
-            max_limit = constants.get_remote_var('max_memory')
-        else:
-            max_limit = constants.max_memory
+        max_limit = constants.get_remote_var('max_memory', server_obj._telepath_data)
         min_limit = 0
         start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
 
