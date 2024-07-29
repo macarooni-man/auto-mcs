@@ -914,11 +914,28 @@ def telepath_download(telepath_data: dict, path: str, destination=downDir):
 
         return final_path
 
-
 # Delete all files in telepath uploads remotely
 def clear_uploads():
     safe_delete(uploadDir)
     return not os.path.exists(uploadDir)
+
+# Gets a variable from this module, remotely if telepath_data is specified
+def get_remote_var(var: str, telepath_data={}):
+    if telepath_data:
+        return api_manager.request(
+            endpoint='/main/get_remote_var',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'var': var}
+        )
+
+    else:
+        try:
+            var = getattr(sys.modules[__name__], var)
+        except:
+            var = None
+        return var
+
 
 # Removes invalid characters from a filename
 def sanitize_name(value, addon=False):
@@ -1277,14 +1294,14 @@ def create_archive(file_path: str, export_path: str, archive_type='tar'):
 
         # Oherwise, use the Python implementation
         else:
-            with tarfile.open(final_path, "w", compresslevel=6) as tar_file:
+            with tarfile.open(final_path, "w") as tar_file:
                 # Use glob for when an asterisk is used
                 for file in glob(file_path):
                     tar_file.add(file, os.path.basename(file))
 
     # Create a .zip archive
     elif archive_type == 'zip':
-        with zipfile.ZipFile(final_path, "w", compresslevel=6) as zip_file:
+        with zipfile.ZipFile(final_path, "w") as zip_file:
             # Use glob for when an asterisk is used
             for file in glob(file_path):
                 zip_file.write(file, os.path.basename(file))
@@ -4010,7 +4027,6 @@ eula=true"""
             return True
 
 
-
 # Generates new information for a server update
 def init_update(telepath=False):
     if telepath:
@@ -4041,25 +4057,48 @@ def init_update(telepath=False):
     new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled
 
 
+# Updates a world in a server
+def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
+    if telepath_data:
+        server_obj = server_manager.remote_server
+    else:
+        server_obj = server_manager.current_server
+
+    # First, save backup
+    server_obj.backup.save()
+
+    # Delete current world
+    world_path = server_path(server_obj.name, server_obj.world)
+    if world_path:
+        def delete_world(w: str):
+            if os.path.exists(w):
+                safe_delete(w)
+
+        delete_world(world_path)
+        delete_world(world_path + "_nether")
+        delete_world(world_path + "_the_end")
+
+    # Copy world to server if one is selected
+    world_name = 'world'
+    if path.strip().lower() != "world":
+        world_name = os.path.basename(path)
+        copytree(path, os.path.join(server_obj.server_path, world_name))
+
+    # Fix level-type
+    if version_check(server_obj.version, '>=', '1.19') and new_type == 'default':
+        new_type = 'normal'
+
+    # Change level-name in 'server.properties' and server_obj.world
+    server_obj.server_properties['level-name'] = world_name
+    server_obj.server_properties['level-type'] = new_type
+    server_obj.server_properties['level-seed'] = new_seed
+
+    server_obj.write_config()
+    server_obj.reload_config()
+
+
 
 # ------------------------------------------------ Server Functions ----------------------------------------------------
-
-# Gets a variable from this module, remotely if telepath_data is specified
-def get_remote_var(var: str, telepath_data={}):
-    if telepath_data:
-        return api_manager.request(
-            endpoint='/main/get_remote_var',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'var': var}
-        )
-
-    else:
-        try:
-            var = getattr(sys.modules[__name__], var)
-        except:
-            var = None
-        return var
 
 
 # Toggles favorite status in Server Manager

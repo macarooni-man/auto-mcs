@@ -21651,36 +21651,22 @@ class ServerWorldScreen(MenuBackground):
                         pass
                 Clock.schedule_once(update_button, 0)
 
-                # First, save backup
-                server_obj.backup.save()
-
-                # Delete current world
-                world_path = constants.server_path(server_obj.name, server_obj.world)
-                if world_path:
-                    def delete_world(path):
-                        if os.path.exists(path):
-                            constants.safe_delete(path)
-                    delete_world(world_path)
-                    delete_world(world_path + "_nether")
-                    delete_world(world_path + "_the_end")
-
-                # Copy world to server if one is selected
-                world_name = 'world'
-                if self.new_world.strip().lower() != "world":
-                    world_name = os.path.basename(self.new_world)
-                    constants.copytree(self.new_world, os.path.join(server_obj.server_path, world_name))
-
-                # Fix level-type
-                if constants.version_check(server_obj.version, '>=', '1.19') and self.new_type == 'default':
-                    self.new_type = 'normal'
-
-                # Change level-name in 'server.properties' and server_obj.world
-                server_obj.server_properties['level-name'] = world_name
-                server_obj.server_properties['level-type'] = self.new_type
-                server_obj.server_properties['level-seed'] = self.new_seed
-
-                server_obj.write_config()
-                server_obj.reload_config()
+                # If telepath, upload world here and return path
+                if server_obj._telepath_data:
+                    telepath_data = server_obj._telepath_data
+                    constants.api_manager.request(
+                        endpoint='/main/update_world',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={
+                            'path': constants.telepath_upload(telepath_data, self.new_world),
+                            'new_type': self.new_type,
+                            'new_seed': self.new_seed,
+                            'telepath_data': telepath_data
+                        }
+                    )
+                else:
+                    constants.update_world(self.new_world, self.new_type, self.new_seed)
 
                 def update_ui(*a):
                     try:
