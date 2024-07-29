@@ -1180,10 +1180,10 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
 
     try:
         if archive_file.endswith("tar.gz"):
-            archive = tarfile.open(archive_file, "r:gz", compresslevel=6)
+            archive = tarfile.open(archive_file, "r:gz")
             archive_type = "tar"
         elif archive_file.endswith("tar"):
-            archive = tarfile.open(archive_file, "r:", compresslevel=6)
+            archive = tarfile.open(archive_file, "r:")
             archive_type = "tar"
         elif archive_file.endswith("zip") or archive_file.endswith("mrpack"):
             archive = zipfile.ZipFile(archive_file, 'r')
@@ -1294,14 +1294,14 @@ def create_archive(file_path: str, export_path: str, archive_type='tar'):
 
         # Oherwise, use the Python implementation
         else:
-            with tarfile.open(final_path, "w") as tar_file:
+            with tarfile.open(final_path, "w", compresslevel=6) as tar_file:
                 # Use glob for when an asterisk is used
                 for file in glob(file_path):
                     tar_file.add(file, os.path.basename(file))
 
     # Create a .zip archive
     elif archive_type == 'zip':
-        with zipfile.ZipFile(final_path, "w") as zip_file:
+        with zipfile.ZipFile(final_path, "w", compresslevel=6) as zip_file:
             # Use glob for when an asterisk is used
             for file in glob(file_path):
                 zip_file.write(file, os.path.basename(file))
