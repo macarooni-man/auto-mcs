@@ -136,7 +136,7 @@ class AddonManager():
                 pool.map(self.download_addon, geyser_addons(self._server))
         else:
             for addon in self.return_single_list():
-                if is_geyser_addon(addon):
+                if is_geyser_addon(addon) or addon.name.lower() == 'ViaVersion':
                     self.delete_addon(addon)
 
     # Imports addon directly from file path
