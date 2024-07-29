@@ -22016,7 +22016,7 @@ class ServerSettingsScreen(MenuBackground):
 
                 # Actually make changes
                 server_obj.config_file.set("general", "enableGeyser", str(boolean).lower())
-                constants.server_config(server_obj.name, server_obj.config_file)
+                server_obj.write_config()
                 server_obj.geyser_enabled = boolean
 
                 # Show banner if server is running
