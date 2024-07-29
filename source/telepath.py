@@ -623,7 +623,6 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
             args={'var': 'ignore_close'}
         )
 
-
 class RemoteScriptManager(create_remote_obj(ScriptManager)):
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
@@ -698,6 +697,11 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
 
     def return_backup_list(self):
         return [RemoteBackupObject(self._telepath_data, data) for data in super().return_backup_list()]
+
+    def save(self, *args, **kwargs):
+        data = super().save(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
 
 class RemoteAclManager(create_remote_obj(AclManager)):
     def __init__(self, telepath_data: dict):

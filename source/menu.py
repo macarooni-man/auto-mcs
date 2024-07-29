@@ -7608,6 +7608,9 @@ def button_action(button_name, button, specific_screen=''):
         elif "ServerBackupScreen" in str(screen_manager.current_screen) and "restore" in button_name.lower():
             screen_manager.current = "ServerBackupRestoreScreen"
 
+        elif "ServerBackupScreen" in str(screen_manager.current_screen) and "download" in button_name.lower():
+            screen_manager.current = "ServerBackupDownloadScreen"
+
 
         elif "CreateServerReview" in str(screen_manager.current_screen) and "create server" in button_name.lower():
             screen_manager.current = "CreateServerProgressScreen"
@@ -13987,7 +13990,7 @@ class ServerButton(HoverButton):
                 else:
                     u = self.properties.update_string
                 self.context_options = [
-                    {'name': 'Launch', 'icon': 'start-server.png', 'action': launch},
+                    {'name': 'Launch', 'icon': 'start-server.png', 'action': launch} if screen_manager.current_screen.name != "ServerViewScreen" else None,
                     {'name': f'Update {"build" if u.startswith("b-") else f"{u}"}', 'icon': 'arrow-up.png', 'action': update} if u else None,
                     {'name': 'Rename', 'icon': 'rename.png', 'action': rename},
                     {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings},
@@ -17019,6 +17022,12 @@ class ServerBackupScreen(MenuBackground):
             print(server_obj.backup._backup_stats['backup-list'])
             if k == 'restore' and not server_obj.backup._backup_stats['backup-list']:
                 v.disable(True)
+                if self.download_button:
+                    self.download_button.disable(True)
+                continue
+
+            if k == 'migrate' and server_obj._telepath_data:
+                v.disable(True)
                 continue
 
             if k == button_name:
@@ -17164,16 +17173,30 @@ class ServerBackupScreen(MenuBackground):
         scroll_layout.add_widget(sub_layout)
 
 
-        # Open back-up directory
-        def open_backup_dir(*args):
-            backup_stats = server_obj.backup._backup_stats
-            constants.open_folder(backup_stats['backup-path'])
-            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+        if server_obj._telepath_data:
 
-        sub_layout = ScrollItem()
-        self.open_path_button = WaitButton('Open Back-up Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_backup_dir)
-        sub_layout.add_widget(self.open_path_button)
-        scroll_layout.add_widget(sub_layout)
+            # Download a back-up
+            def download_backup(*args):
+                Clock.schedule_once(self.download_button.button.on_leave, 0.5)
+
+            sub_layout = ScrollItem()
+            self.download_button = WaitButton('Download a Back-up', (0.5, 0.5), 'cloud-download-sharp.png', click_func=download_backup)
+            sub_layout.add_widget(self.download_button)
+            scroll_layout.add_widget(sub_layout)
+
+
+        else:
+
+            # Open back-up directory
+            def open_backup_dir(*args):
+                backup_stats = server_obj.backup._backup_stats
+                constants.open_folder(backup_stats['backup-path'])
+                Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+            sub_layout = ScrollItem()
+            self.open_path_button = WaitButton('Open Back-up Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_backup_dir)
+            sub_layout.add_widget(self.open_path_button)
+            scroll_layout.add_widget(sub_layout)
 
 
         # Migrate back-up directory
@@ -17254,7 +17277,6 @@ class ServerBackupScreen(MenuBackground):
         # Add ManuTaskbar
         self.menu_taskbar = MenuTaskbar(selected_item='back-ups')
         self.add_widget(self.menu_taskbar)
-
 
 class BackupButton(HoverButton):
 
@@ -17625,6 +17647,213 @@ class ServerBackupRestoreScreen(MenuBackground):
 
         # Generate buttons on page load
         header_content = "Select a back-up to restore"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.page_switcher)
+
+        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups"))
+
+        self.add_widget(float_layout)
+
+        # Automatically generate results on page load
+        constants.server_manager.refresh_list()
+        self.gen_search_results(backup_list)
+
+class ServerBackupDownloadScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, fade_in=True, animate_scroll=True, *args):
+
+        # Set to proper page on favorite/unfavorite
+        default_scroll = 1
+
+
+        # Update page counter
+        self.last_results = results
+        self.max_pages = (len(results) / self.page_size).__ceil__()
+        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+        self.scroll_layout.clear_widgets()
+
+
+        # Generate header
+        backup_count = len(results)
+        header_content = "Select a back-up to download"
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                break
+
+
+        # Show back-ups if they exist
+        if backup_count != 0:
+
+            # Clear and add all ServerButtons
+            for x, backup_object in enumerate(page_list, 1):
+
+                # Activated when addon is clicked
+                def download_backup(backup_obj, index, *args):
+                    server_obj = constants.server_manager.current_server
+                    if not server_obj._telepath_data:
+                        return
+
+                    screen_manager.current = 'ServerBackupScreen'
+                    def download_thread():
+                        if screen_manager.current_screen.name == 'ServerBackupScreen':
+                            download_button = screen_manager.current_screen.download_button
+                            if download_button:
+                                Clock.schedule_once(functools.partial(download_button.loading, True), 0)
+
+                        location = constants.telepath_download(server_obj._telepath_data, backup_obj.path, constants.userDownloads)
+                        if os.path.exists(location):
+                            constants.open_folder(location)
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (0.553, 0.902, 0.675, 1),
+                                    f'Downloaded back-up successfully',
+                                    "cloud-download-sharp.png",
+                                    3,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 1
+                            )
+
+                        if screen_manager.current_screen.name == 'ServerBackupScreen':
+                            download_button = screen_manager.current_screen.download_button
+                            if download_button:
+                                Clock.schedule_once(functools.partial(download_button.loading, False), 0)
+
+                    threading.Timer(0, download_thread).start()
+
+
+                # Add-on button click function
+                self.scroll_layout.add_widget(
+                    ScrollItem(
+                        widget = BackupButton(
+                            backup_object = backup_object,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            index = x + ((self.current_page - 1) * self.page_size),
+                            click_function = functools.partial(
+                                download_backup,
+                                backup_object,
+                                x
+                            )
+                        )
+                    )
+                )
+
+            self.resize_bind()
+
+        # Animate scrolling
+        def set_scroll(*args):
+            Animation.stop_all(self.scroll_layout.parent.parent)
+            if animate_scroll:
+                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+            else:
+                self.scroll_layout.parent.parent.scroll_y = default_scroll
+        Clock.schedule_once(set_scroll, 0)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.page_switcher = None
+
+        self.last_results = []
+        self.page_size = 10
+        self.current_page = 0
+        self.max_pages = 0
+        self.anim_speed = 10
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+        backup_list = server_obj.backup.return_backup_list()
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.82
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        header_content = "Select a back-up to download"
         self.header = HeaderText(header_content, '', (0, 0.89))
 
         buttons = []
@@ -21894,15 +22123,52 @@ class ServerSettingsScreen(MenuBackground):
         general_layout.add_widget(sub_layout)
 
 
-        # Open server directory
-        def open_server_dir(*args):
-            constants.open_folder(server_obj.server_path)
-            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+        if server_obj._telepath_data:
+            def download_server(*a):
+                def download_thread():
+                    if screen_manager.current_screen.name == 'ServerSettingsScreen':
+                        download_button = screen_manager.current_screen.download_button
+                        if download_button:
+                            Clock.schedule_once(functools.partial(download_button.loading, True), 0)
 
-        sub_layout = ScrollItem()
-        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
-        sub_layout.add_widget(self.open_path_button)
-        general_layout.add_widget(sub_layout)
+                    path = os.path.join(server_obj.backup.directory, server_obj.backup.save()[0])
+                    location = constants.telepath_download(server_obj._telepath_data, path, constants.userDownloads)
+                    if os.path.exists(location):
+                        constants.open_folder(location)
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.553, 0.902, 0.675, 1),
+                                f"Downloaded $'{server_obj._view_name}'$ successfully",
+                                "cloud-download-sharp.png",
+                                3,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 1
+                        )
+
+                    if screen_manager.current_screen.name == 'ServerSettingsScreen':
+                        download_button = screen_manager.current_screen.download_button
+                        if download_button:
+                            Clock.schedule_once(functools.partial(download_button.loading, False), 0)
+
+                threading.Timer(0, download_thread).start()
+
+            sub_layout = ScrollItem()
+            self.download_button = WaitButton('Download Server', (0.5, 0.5), 'cloud-download-sharp.png', click_func=download_server)
+            sub_layout.add_widget(self.download_button)
+            general_layout.add_widget(sub_layout)
+
+        else:
+
+            # Open server directory
+            def open_server_dir(*args):
+                constants.open_folder(server_obj.server_path)
+                Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+            sub_layout = ScrollItem()
+            self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
+            sub_layout.add_widget(self.open_path_button)
+            general_layout.add_widget(sub_layout)
 
 
         # RAM allocation slider (Max limit = 75% of memory capacity)

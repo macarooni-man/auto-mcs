@@ -1145,15 +1145,30 @@ def folder_check(directory: str):
             print(f'"{directory}" already exists')
 
 
-# Open folder in default file browser
+# Open folder in default file browser, and highlight if file is passed
 def open_folder(directory: str):
     try:
-        if os_name == 'linux':
-            subprocess.Popen(['xdg-open', directory])
-        elif os_name == 'macos':
-            subprocess.Popen(['open', directory])
-        elif os_name == 'windows':
-            subprocess.Popen(['explorer', directory])
+
+        # Open directory, and highlight a file
+        if os.path.isfile(directory):
+            if os_name == 'linux':
+                subprocess.Popen([
+                    'dbus-send', '--session', '--print-reply', '--dest=org.freedesktop.FileManager1', '--type=method_call',
+                    f'/org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"file://{directory}"', 'string:""'
+                ])
+            elif os_name == 'macos':
+                subprocess.Popen(['open', '-R', directory])
+            elif os_name == 'windows':
+                subprocess.Popen(['explorer', '/select,', directory])
+
+        # Otherwise, just open a directory
+        else:
+                if os_name == 'linux':
+                    subprocess.Popen(['xdg-open', directory])
+                elif os_name == 'macos':
+                    subprocess.Popen(['open', directory])
+                elif os_name == 'windows':
+                    subprocess.Popen(['explorer', directory])
 
     except Exception as e:
         if debug:
