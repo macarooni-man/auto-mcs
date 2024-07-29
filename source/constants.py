@@ -4935,7 +4935,7 @@ def get_server_icon(server_name: str, telepath_data: dict):
         return None
 
     try:
-        name = telepath_data['display-name'].replace('/', '+')
+        name = f"{telepath_data['host'].replace('/', '+')}+{server_name}"
         icon_cache = os.path.join(cacheDir, 'icons')
         final_path = os.path.join(icon_cache, name)
 
