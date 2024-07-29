@@ -3297,7 +3297,9 @@ def footer_label(path, color, progress_screen=False):
             shrink_value -= (len("".join(path_list[2:])))
 
         for item in path_list:
-            if x == 2 and len(item) > shrink_value and len(path_list) > 2:
+            item_no_tag = item.strip('[color=#353565]').replace('[/color]','')
+            if x == 2 and len(item_no_tag) > shrink_value and len(path_list) > 2:
+                item = item_no_tag
                 item = item[:shrink_value - 4] + f"...{item[-1]}" if (item.endswith("'") or item.endswith("\"")) else item[:shrink_value - 5] + "..."
 
             text += f'[color={"555599" if x < len(path_list) else color}]' + item + '[/color]'
