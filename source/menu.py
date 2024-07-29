@@ -13747,7 +13747,7 @@ class ServerButton(HoverButton):
         # Check for custom server icon
         if self.telepath_data:
             self.telepath_data['icon-path'] = server_object.server_icon
-            server_icon = constants.get_server_icon(self.name, self.telepath_data)
+            server_icon = constants.get_server_icon(server_object.name, self.telepath_data)
         else:
             server_icon = server_object.server_icon
 
