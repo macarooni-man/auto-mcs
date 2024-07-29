@@ -22013,37 +22013,38 @@ class ServerSettingsScreen(MenuBackground):
 
         # Enable Geyser toggle switch
         def toggle_geyser(boolean, install=True):
-            server_obj.addon._install_geyser(install)
-            
-            # Actually make changes
-            server_obj.config_file.set("general", "enableGeyser", str(boolean).lower())
-            server_obj.write_config()
-            server_obj.geyser_enabled = boolean
+            if install:
+                server_obj.addon._install_geyser(boolean)
 
-            # Show banner if server is running
-            if screen_manager.current_screen.check_changes(server_obj):
-                Clock.schedule_once(
-                    functools.partial(
-                        screen_manager.current_screen.show_banner,
-                        (0.937, 0.831, 0.62, 1),
-                        f"A server restart is required to apply changes",
-                        "sync.png",
-                        3,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ), 0
-                )
+                # Actually make changes
+                server_obj.config_file.set("general", "enableGeyser", str(boolean).lower())
+                server_obj.write_config()
+                server_obj.geyser_enabled = boolean
 
-            else:
-                Clock.schedule_once(
-                    functools.partial(
-                        screen_manager.current_screen.show_banner,
-                        (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
-                        f"Bedrock support {'en' if boolean else 'dis'}abled",
-                        "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
-                        2.5,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ), 0
-                )
+                # Show banner if server is running
+                if screen_manager.current_screen.check_changes(server_obj):
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.937, 0.831, 0.62, 1),
+                            f"A server restart is required to apply changes",
+                            "sync.png",
+                            3,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
+
+                else:
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
+                            f"Bedrock support {'en' if boolean else 'dis'}abled",
+                            "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
 
         # Geyser switch for bedrock support
         sub_layout = ScrollItem()
