@@ -4926,7 +4926,13 @@ def get_player_head(user: str):
 
 # Generates content for all global searches
 class SearchManager():
-    
+
+    def get_server_list(self):
+        if server_manager.server_list:
+            return {s._view_name: s._telepath_data for s in server_manager.server_list}
+        else:
+            return {s: None for s in generate_server_list()}
+
     def __init__(self):
 
         # Used to contain attributes of pages
@@ -4943,7 +4949,7 @@ class SearchManager():
 
             'MainMenu': [
                 ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen'}, ['addonpack', 'modpack', 'import modpack']),
-                ScreenObject('Server Manager', 'ServerManagerScreen', generate_server_list),
+                ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
             ],
 
             'CreateServer': [
@@ -5136,8 +5142,13 @@ class SearchManager():
         for screen in screen_list:
             if screen.id == 'ServerManagerScreen':
                 final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, screen.helper_keywords))
-                for server in screen.options():
-                    final_list.append(ServerResult(server, 'Installed server', None))
+                for server, telepath in screen.options().items():
+                    if telepath:
+                        telepath['name'] = server.rsplit('/', 1)[-1]
+                        keywords = [telepath['host'], telepath['nickname'], 'telepath', 'remote', telepath['name']]
+                        final_list.append(ServerResult(server, 'Telepath server', None, keywords, telepath=telepath))
+                    else:
+                        final_list.append(ServerResult(server, 'Installed server', None))
 
             elif (screen.id.startswith('Server') and 'Import' not in screen.id) and server_manager.current_server:
                 keywords = list(screen.options.keys())
@@ -5306,17 +5317,18 @@ class SearchManager():
 
                         # Finally, increase score by pre-existing keyword matches
                         for keyword in obj.keywords:
-                            if keyword in query:
-                                obj.score += 5
+                            if clean_str(keyword) in query:
+                                obj.score += 20
 
                         # Modify values based on object type
-                        if obj.type == 'server' and current_screen == 'ServerManagerScreen':
+                        if obj.type in ['server'] and current_screen == 'ServerManagerScreen':
                             obj.score *= 2
-                        elif obj.type == 'server' and (current_screen.startswith('Server') or current_screen.startswith('CreateServer')):
+                        elif obj.type in ['server'] and (current_screen.startswith('Server') or current_screen.startswith('CreateServer')):
                             obj.score /= 1.5
 
-                    if obj not in match_list[obj.type]:
-                        match_list[obj.type].append(obj)
+                    list_type = obj.type
+                    if obj not in match_list[list_type]:
+                        match_list[list_type].append(obj)
 
 
         # Search through every guide to return relevant information from a query
@@ -5434,8 +5446,9 @@ class GuideResult(SearchObject):
 
 # Search result that matches an installed server
 class ServerResult(SearchObject):
-    def __init__(self, title, subtitle, target, keywords=[], score=0):
+    def __init__(self, title, subtitle, target, keywords=[], score=0, telepath=None):
         super().__init__()
+        self._telepath_data = telepath
         self.type = 'server'
         self.icon = os.path.join(gui_assets, 'icons', 'sm', 'terminal.png')
         self.color = (1, 0.598, 0.9, 1)

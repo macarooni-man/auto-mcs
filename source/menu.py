@@ -6876,7 +6876,10 @@ class PopupSearch(RelativeLayout):
 
                 # Open server
                 elif self.search_obj.type == 'server':
-                    open_server(self.search_obj.title)
+                    if self.search_obj._telepath_data:
+                        open_remote_server(self.search_obj._telepath_data, self.search_obj._telepath_data['name'])
+                    else:
+                        open_server(self.search_obj.title)
 
                 # Otherwise, launch web URL or go to screen
                 elif self.search_obj.target:

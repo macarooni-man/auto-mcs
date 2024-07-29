@@ -460,7 +460,7 @@ class WebAPI():
         else:
             session = requests.Session()
             self.sessions[host] = session
-            print(f"[INFO] [telepath] Opened session to '{host}'")
+            print(f"[INFO] [telepath] Opening session to '{host}'")
 
         # Determine POST or GET based on params
         data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
