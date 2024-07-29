@@ -130,6 +130,15 @@ class AddonManager():
         self.geyser_support = self.check_geyser()
         self._addon_hash = self._set_hash()
 
+    def _install_geyser(self, install=True):
+        if install:
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                pool.map(self.download_addon, geyser_addons(self._server))
+        else:
+            for addon in self.return_single_list():
+                if is_geyser_addon(addon):
+                    self.delete_addon(addon)
+
     # Imports addon directly from file path
     def import_addon(self, addon_path: str):
         if not self._addons_supported:

@@ -4218,16 +4218,23 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
 
 
 # Reconstruct API dict to a configparser object
-def reconstruct_config(remote_config: dict):
-    config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
-    config.optionxform = str
-    for section, values in remote_config.items():
-        if section == 'DEFAULT':
-            continue
+def reconstruct_config(remote_config: dict or configparser.ConfigParser, to_dict=False):
+    if to_dict:
+        if isinstance(remote_config, dict):
+            return remote_config
+        else:
+            return {section: dict(remote_config.items(section)) for section in remote_config.sections()}
 
-        config.add_section(section)
-        for key, value in values.items():
-            config.set(section, key, value)
+    else:
+        config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+        config.optionxform = str
+        for section, values in remote_config.items():
+            if section == 'DEFAULT':
+                continue
+
+            config.add_section(section)
+            for key, value in values.items():
+                config.set(section, key, value)
     return config
 
 # server.properties function

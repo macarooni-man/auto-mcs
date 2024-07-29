@@ -560,7 +560,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     def write_config(self):
         data = super().write_config(
             remote_data={
-                'config_file': self.config_file,
+                'config_file': constants.reconstruct_config(self.config_file, to_dict=True),
                 'server_properties': self.server_properties
             }
         )
