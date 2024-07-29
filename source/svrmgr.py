@@ -43,6 +43,7 @@ class ServerObject():
         self.name = server_name
         self.server_path = constants.server_path(server_name)
         self.last_modified = os.path.getmtime(self.server_path)
+        self.server_icon = constants.server_path(self.name, 'server-icon.png')
         self.running = False
         self.restart_flag = False
         self.custom_flags = ''
@@ -279,6 +280,7 @@ class ServerObject():
     def reload_config(self, reload_objects=False):
 
         # Server files
+        self.server_icon = constants.server_path(self.name, 'server-icon.png')
         self.config_file = constants.server_config(self.name)
         self.server_properties = constants.server_properties(self.name)
         self.properties_hash = self._get_properties_hash()
@@ -1812,6 +1814,7 @@ class ViewObject():
         self.name = server_name
         self._view_name = server_name
         self.running = self.name in constants.server_manager.running_servers.keys()
+        self.server_icon = constants.server_path(self.name, 'server-icon.png')
 
         if self.running:
             self.run_data = {'network': constants.server_manager.running_servers[self.name].run_data['network']}

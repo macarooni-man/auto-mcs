@@ -895,16 +895,16 @@ def telepath_upload(telepath_data: dict, path: str):
 # Whitelist is for restricting downloadable content
 telepath_download_whitelist = {
     'paths': [serverDir, scriptDir, backupFolder],
-    'names': ['.ams', '.amb', 'server.properties']
+    'names': ['.ams', '.amb', 'server.properties', 'server-icon.png']
 }
-def telepath_download(telepath_data: dict, path: str, destination=downDir):
+def telepath_download(telepath_data: dict, path: str, destination=downDir, rename=''):
     url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file?file={quote(path)}"
     data = requests.post(url, stream=True)
 
     # Save if the request was successful
     if data.status_code == 200:
 
-        file_name = os.path.basename(path)
+        file_name = rename if rename else os.path.basename(path)
         final_path = os.path.join(destination, file_name)
         folder_check(destination)
 
@@ -4919,6 +4919,40 @@ def get_player_head(user: str):
         if debug:
             print(f"Error retrieving head for '{user}': {e}")
         return default_image
+
+
+# Compatibility to cache server icon with telepath
+def get_server_icon(server_name: str, telepath_data: dict):
+    if not (app_online and server_name):
+        return None
+
+    try:
+        name = telepath_data['display-name'].replace('/', '+')
+        icon_cache = os.path.join(cacheDir, 'icons')
+        final_path = os.path.join(icon_cache, name)
+
+        if os.path.exists(final_path):
+            age = abs(datetime.datetime.today().day - datetime.datetime.fromtimestamp(os.stat(final_path).st_mtime).day)
+            if age < 3:
+                return final_path
+            else:
+                os.remove(final_path)
+
+        elif not check_free_space():
+            return None
+
+        folder_check(icon_cache)
+        telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
+
+        if os.path.exists(final_path):
+            return final_path
+        else:
+            return None
+
+    except Exception as e:
+        if debug:
+            print(f"Error retrieving icon for '{server_name}': {e}")
+        return None
 
 
 
