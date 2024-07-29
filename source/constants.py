@@ -1290,7 +1290,7 @@ def create_archive(file_path: str, export_path: str, archive_type='tar'):
 
         # Use tar command if available
         if use_tar:
-            run_proc(f'tar -cvf \"{final_path}\" \"{file_path}\"')
+            run_proc(f'tar -C \"{os.path.dirname(file_path)}\" -cvf \"{final_path}\" \"{file_name}\"')
 
         # Oherwise, use the Python implementation
         else:
