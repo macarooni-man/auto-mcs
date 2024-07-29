@@ -6724,6 +6724,7 @@ class PopupSearch(RelativeLayout):
             self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
             self.title.font_size = sp(30)
             self.title.pos_hint = {'center_x': 0.5, 'center_y': 0.75}
+            self.title.markup = True
             self.add_widget(self.title)
 
             self.subtitle = Label()

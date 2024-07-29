@@ -5184,8 +5184,9 @@ class SearchManager():
         for screen in screen_list:
             if screen.id == 'ServerManagerScreen':
                 final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, screen.helper_keywords))
-                for server, telepath in screen.options().items():
-                    if telepath:
+                for server, telepath_data in screen.options().items():
+                    if telepath_data:
+                        telepath = deepcopy(telepath_data)
                         telepath['name'] = server.rsplit('/', 1)[-1]
                         keywords = [telepath['host'], telepath['nickname'], 'telepath', 'remote', telepath['name']]
                         final_list.append(ServerResult(server, 'Telepath server', None, keywords, telepath=telepath))
@@ -5494,7 +5495,11 @@ class ServerResult(SearchObject):
         self.type = 'server'
         self.icon = os.path.join(gui_assets, 'icons', 'sm', 'terminal.png')
         self.color = (1, 0.598, 0.9, 1)
-        self.title = title
+
+        if self._telepath_data:
+            self.title = f'[color=#9383A2]{self._telepath_data["display-name"]}/[/color]{self._telepath_data["name"]}'
+        else:
+            self.title = title
         self.subtitle = subtitle
         self.target = target
         self.keywords = keywords
