@@ -4988,11 +4988,12 @@ class DropButton(FloatLayout):
 
         self.add_widget(self.icon)
 
-    def change_text(self, text):
+    def change_text(self, text, translate=True):
+        self.text.__translate__ = translate
         self.text.text = text.upper() + (" " * self.text_padding)
 
     # Create button in drop-down list
-    def list_button(self, sub_name, sub_id):
+    def list_button(self, sub_name, sub_id, translate=True):
 
         sub_final = AnchorLayout()
         sub_final.id = sub_name
@@ -5008,6 +5009,7 @@ class DropButton(FloatLayout):
         sub_button.background_down = os.path.join(constants.gui_assets, f'{sub_id}_click.png')
 
         sub_text = Label()
+        sub_text.__translate__ = translate
         sub_text.id = 'text'
         sub_text.text = sub_name
         sub_text.font_size = sp(19)
@@ -5038,6 +5040,161 @@ class DropButton(FloatLayout):
             else:
                 end_btn = self.list_button(item, sub_id='list_end_button')
                 self.dropdown.add_widget(end_btn)
+
+# Figure out where self.change_text is called, and add telepath icon to label
+class TelepathDropButton(DropButton):
+    def __init__(self, telepath_data, type, position, x_offset=0, facing='center', *args, **kwargs):
+        FloatLayout.__init__(self, *args, **kwargs)
+
+        if type == 'create':
+            name = 'create a server on'
+        else:
+            name = 'import server to'
+
+        # Side label
+        self.label_layout = RelativeLayout(pos_hint={"center_x": 0.5, "center_y": position[1]})
+        self.label_layout.size_hint_max = (400, 40)
+        self.label_layout.id = 'relative_layout'
+        self.label = AlignLabel()
+        self.label.halign = 'right'
+        self.label.valign = 'center'
+        self.label.id = 'label'
+        self.label.size_hint_max = (300, 50)
+        self.label.text = name
+        self.label.x -= 210
+        self.label.y += 2
+        self.label.font_size = sp(25)
+        self.label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.label.color = (0.6, 0.6, 1, 1)
+        self.label_layout.add_widget(self.label)
+
+        self.icon = Image(source=icon_path('telepath.png'))
+        self.icon.size_hint_max = (35, 35)
+        self.icon.allow_stretch = True
+        self.icon.keep_ratio = False
+        self.icon.pos = (self.label.x + 20, self.label.y + 3)
+        self.icon.color = (0.65, 0.65, 1, 1)
+        self.label_layout.add_widget(self.icon)
+        self.add_widget(self.label_layout)
+
+        self.text_padding = 5
+        self.facing = facing
+
+        self.options_list = {'this machine': None}
+        self.options_list.update(constants.deepcopy(telepath_data))
+
+        self.x += 152 + x_offset
+
+        self.button = HoverButton()
+        self.id = self.button.id = 'drop_button' if facing == 'center' else f'drop_button_{self.facing}'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+        self.button.size_hint_max = (200, 65)
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
+        self.button.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+
+        # Change background when expanded - A
+        def toggle_background(boolean, *args):
+
+            self.button.ignore_hover = boolean
+
+            for child in self.button.parent.children:
+                if child.id == 'icon':
+                    Animation(height=-abs(child.init_height) if boolean else abs(child.init_height), duration=0.15).start(child)
+
+            if boolean:
+                Animation(opacity=1, duration=0.13).start(self.dropdown)
+                self.button.background_normal = os.path.join(constants.gui_assets, f'{self.id}_expand.png')
+            else:
+                self.button.on_mouse_pos(None, Window.mouse_pos)
+                if self.button.hovered:
+                    self.button.on_enter()
+                else:
+                    self.button.on_leave()
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.text.text = 'THIS MACHINE' + (" " * self.text_padding)
+        self.text.font_size = sp(17)
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 1)
+
+        # Dropdown list
+        class FadeDrop(DropDown):
+            def dismiss(self, *largs):
+                Animation(opacity=0, duration=0.13).start(self)
+                super().dismiss(self, *largs)
+                Clock.schedule_once(functools.partial(self.deselect_buttons), 0.15)
+
+            def deselect_buttons(self, *args):
+                for child in self.children:
+                    for child_item in child.children:
+                        for child_button in child_item.children:
+                            if "button" in child_button.id:
+                                child_button.on_leave()
+
+        self.dropdown = FadeDrop()
+        self.dropdown.id = 'dropdown'
+        self.dropdown.opacity = 0
+        self.dropdown.min_state_time = 0.13
+
+        for item, telepath_data in self.options_list.items():
+            original_item = item
+
+            # Set display name
+            if telepath_data:
+                telepath_data['host'] = item
+                if telepath_data['nickname']:
+                    item = telepath_data['nickname']
+
+            # Middle of the list
+            if original_item != list(self.options_list.keys())[-1]:
+                mid_btn = self.list_button(item, sub_id='list_mid_button', translate=(original_item=='this machine'))
+                self.dropdown.add_widget(mid_btn)
+
+            # Last button
+            else:
+                end_btn = self.list_button(item, sub_id='list_end_button')
+                self.dropdown.add_widget(end_btn)
+
+        # Button click behavior
+        def set_var(result):
+            for k, v in self.options_list.items():
+                if (k == 'this machine' == result) or (v and (('.' in result and result == k) or (result == v['nickname']))):
+                    constants.new_server_info['_telepath_data'] = v
+                    if type == 'import':
+                        constants.import_data['_telepath_data'] = v
+                    break
+
+        self.button.on_release = functools.partial(lambda: self.dropdown.open(self.button))
+        self.dropdown.bind(on_select=lambda instance, x: self.change_text(x, translate=(x=='this machine')))
+        self.dropdown.bind(on_select=lambda instance, x: set_var(x))
+
+        # Change background when expanded - B
+        self.button.bind(on_release=functools.partial(toggle_background, True))
+        self.dropdown.bind(on_dismiss=functools.partial(toggle_background, False))
+
+        self.add_widget(self.button)
+        self.add_widget(self.text)
+
+        # dropdown arrow
+        self.icon = Image()
+        self.icon.id = 'icon'
+        self.icon.source = os.path.join(constants.gui_assets, 'drop_arrow.png')
+        self.icon.init_height = 14
+        self.icon.size = (14, self.icon.init_height)
+        self.icon.allow_stretch = True
+        self.icon.keep_ratio = True
+        self.icon.size_hint_y = None
+        self.icon.color = (0.6, 0.6, 1, 1)
+        self.icon.pos_hint = {"center_y": position[1]}
+        self.icon.pos = (225 + x_offset, 200)
+
+        self.add_widget(self.icon)
 
 
 # Similar to DropButton, but for a right-click context menu
@@ -9236,6 +9393,13 @@ class CreateServerNameScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
+
+        # Add telepath button if servers are connected
+        telepath_data = constants.server_manager.check_telepath_servers()
+        if telepath_data:
+            float_layout.add_widget(TelepathDropButton(telepath_data, 'create', (0.5, 0.4)))
+
+
         float_layout.add_widget(generate_title('Create New Server'))
         float_layout.add_widget(generate_footer('Create new server'))
 
@@ -12747,19 +12911,27 @@ class ServerImportScreen(MenuBackground):
         self.layout.remove_widget(self.page_counter)
 
         # Change the input based on input_type
-        self.page_counter = page_counter(2, 2, (0, 0.768))
+        self.page_counter = page_counter(2, 2, (0, 0.818))
         self.button_layout.opacity = 0
         self.add_widget(self.page_counter)
 
 
+        # Add telepath button if servers are connected
+        offset = 0
+        telepath_data = constants.server_manager.check_telepath_servers()
+        if telepath_data:
+            offset = 0.05
+            self.add_widget(TelepathDropButton(telepath_data, 'import', (0.5, 0.45)))
+
+
         if input_type == "external":
-            self.button_layout.add_widget(ServerImportPathInput(pos_hint={"center_x": 0.5, "center_y": 0.47}))
-            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.47), ('dir', constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home), input_name='ServerImportPathInput', title='Select a Server Folder'))
+            self.button_layout.add_widget(ServerImportPathInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset}))
+            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('dir', constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home), input_name='ServerImportPathInput', title='Select a Server Folder'))
 
         elif input_type == "backup":
-            self.button_layout.add_widget(ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.47}))
+            self.button_layout.add_widget(ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset}))
             start_path = constants.backupFolder if os.path.isdir(constants.backupFolder) else constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
-            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.47), ('file', start_path), input_name='ServerImportBackupInput', title='Select an auto-mcs back-up file', ext_list=['*.amb', '*.tgz']))
+            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('file', start_path), input_name='ServerImportBackupInput', title='Select an auto-mcs back-up file', ext_list=['*.amb', '*.tgz']))
 
 
         # Auto-launch popup
@@ -12926,17 +13098,24 @@ class ServerImportModpackScreen(MenuBackground):
         self.layout = FloatLayout()
         self.layout.id = 'content'
 
+        # Add telepath button if servers are connected
+        offset = 0
+        telepath_data = constants.server_manager.check_telepath_servers()
+        if telepath_data:
+            offset = 0.05
+            self.add_widget(TelepathDropButton(telepath_data, 'import', (0.5, 0.37)))
+
 
         # Regular menus
         self.layout.add_widget(HeaderText("Which modpack do you wish to import?", '', (0, 0.81)))
         def download_modpack(*a):
             screen_manager.current = 'ServerImportModpackSearchScreen'
-        buttons.append(MainButton('Download a Modpack', (0.5, 0.576), 'download-outline.png', width=528, click_func=download_modpack))
+        buttons.append(MainButton('Download a Modpack', (0.5, 0.576 + offset), 'download-outline.png', width=528, click_func=download_modpack))
 
         start_path = constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
-        buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505}))
-        buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44}))
-        buttons.append(input_button('Browse...', (0.5, 0.44), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
+        buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505 + offset}))
+        buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44 + offset}))
+        buttons.append(input_button('Browse...', (0.5, 0.44 + offset), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
 
         self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
         def remove_page(*a):

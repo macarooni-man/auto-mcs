@@ -1908,6 +1908,9 @@ class ServerManager():
         if constants.api_data['enabled']:
             telepath.create_endpoint(self.open_remote_server, 'main', True)
 
+        # Load telepath servers
+        self.load_telepath_servers()
+
         print("[INFO] [auto-mcs] Server Manager initialized")
 
     def _init_telepathy(self, telepath_data: dict):
@@ -1993,8 +1996,16 @@ class ServerManager():
         # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
         if os.path.exists(constants.telepathFile):
             with open(constants.telepathFile, 'r') as f:
-                self.telepath_servers = json.loads(f.read())
+                try:
+                    self.telepath_servers = json.loads(f.read())
+                except json.decoder.JSONDecodeError:
+                    pass
 
+        return self.telepath_servers
+
+    # Checks which servers are alive
+    def check_telepath_servers(self):
+        # Add a discovery endpoint at some point here, and only return active servers
         return self.telepath_servers
 
     def write_telepath_servers(self, instance=None):

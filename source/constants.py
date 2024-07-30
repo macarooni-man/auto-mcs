@@ -257,7 +257,7 @@ check_ngrok()
 # Bigboi server manager
 server_manager = None
 search_manager = None
-import_data = {'name': None, 'path': None}
+import_data = {'_telepath_data': None, 'name': None, 'path': None}
 backup_lock = {}
 
 
