@@ -2235,6 +2235,7 @@ def new_server_init():
     global new_server_info
     new_server_info = {
         "_hash": gen_rstring(8),
+        '_telepath_data': None,
 
         "name": "",
         "type": "vanilla",
@@ -2277,6 +2278,11 @@ def new_server_init():
 
     }
 
+# Override remote new server configuration
+def push_new_server(server_info: dict):
+    global new_server_info
+    server_info['_telepath'] = None
+    new_server_info = server_info
 
 # Generate new server name
 def new_server_name(existing_server=None):
@@ -2301,18 +2307,26 @@ legacy_pct = 0
 def java_check(progress_func=None):
 
     # If telepath, check if Java is installed remotely
+    telepath_data = None
     if server_manager.current_server:
         telepath_data = server_manager.current_server._telepath_data
-        if telepath_data:
-            response = api_manager.request(
-                endpoint='/main/java_check',
-                host=telepath_data['host'],
-                port=telepath_data['port'],
-                args={}
-            )
-            if progress_func and response:
-                progress_func(100)
-            return response
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/main/java_check',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
 
 
     global java_executable, modern_pct, lts_pct, legacy_pct
@@ -2487,6 +2501,29 @@ def java_check(progress_func=None):
 
 # Downloads jar file from new_server_info, and generates link if it doesn't exist
 def download_jar(progress_func=None, imported=False):
+
+    # If telepath, check if Java is installed remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/download_jar',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'imported': imported}
+        )
+        if progress_func:
+            progress_func(100)
+        return response
+
 
     def hook(a, b, c):
         if progress_func:
@@ -2730,6 +2767,30 @@ def post_addon_update(telepath=False):
 # If Fabric or Forge, install server
 def install_server(progress_func=None, imported=False):
 
+    # If telepath, check if Java is installed remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/install_server',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'imported': imported}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
+
     # Change directory to tmpsvr
     cwd = get_cwd()
     os.chdir(tmpsvr)
@@ -2945,6 +3006,30 @@ max-world-size=29999984"""
 
 # Configures server via server info in a variety of ways (for updates)
 def update_server_files(progress_func=None):
+
+    # If telepath, check if Java is installed remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/update_server_files',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     print(glob(os.path.join(tmpsvr, '*')))
     new_config_path = os.path.join(tmpsvr, server_ini)
 
@@ -2990,11 +3075,98 @@ def update_server_files(progress_func=None):
             run_proc(f"attrib +H \"{os.path.join(new_path, server_ini)}\"")
 
         return True
+def pre_server_update(telepath=False):
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    if telepath:
+        server_obj = server_manager.remote_server
+
+    # If remote, do this through telepath
+    else:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/create/pre_server_update',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'telepath': True}
+            )
+            return response
+
+
+    # First, clean out any existing server in temp folder
+    safe_delete(tmpsvr)
+
+    # Copy over existing server and remove the files which will be replaced
+    copytree(server_obj.server_path, tmpsvr)
+    for jar in glob(os.path.join(tmpsvr, '*.jar')):
+        os.remove(jar)
+
+    safe_delete(os.path.join(tmpsvr, 'addons'))
+    safe_delete(os.path.join(tmpsvr, 'disabled-addons'))
+    safe_delete(os.path.join(tmpsvr, 'mods'))
+    safe_delete(os.path.join(tmpsvr, 'disabled-mods'))
+
+    # Delete EULA.txt
+    def delete_eula(eula_path):
+        if os.path.exists(eula_path):
+            os.remove(eula_path)
+
+    delete_eula(os.path.join(tmpsvr, 'eula.txt'))
+    delete_eula(os.path.join(tmpsvr, 'EULA.txt'))
+    delete_eula(os.path.join(tmpsvr, 'EULA.TXT'))
+def post_server_update(telepath=False):
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    if telepath:
+        server_obj = server_manager.remote_server
+
+    # If remote, do this through telepath
+    else:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/create/post_server_update',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'telepath': True}
+            )
+            return response
+
+    make_update_list()
+    server_obj._view_notif('add-ons', False)
+    server_obj._view_notif('settings', viewed=new_server_info['version'])
+
+    new_server_info = {}
 
 
 # Create initial backup of new server
 # For existing servers, use server_manager.current_server.backup.save()
 def create_backup(import_server=False, *args):
+
+    # If telepath, check if Java is installed remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/create_backup',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'import_server': import_server}
+        )
+        return response
+
+
     backup.BackupManager(new_server_info['name'] if not import_server else import_data['name']).save()
     return True
 

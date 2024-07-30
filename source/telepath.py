@@ -205,7 +205,7 @@ def create_remote_obj(obj: object, request=True):
         name = str(method)
         if name in endpoint_blacklist:
             continue
-            
+
 
         # If 'i' is a method, but not __magic__
         if callable(type(method)):
@@ -895,14 +895,26 @@ async def download_file(file: str):
 [generate_endpoints(app, create_remote_obj(r, False)()) for r in
  (ServerObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)]
 
+# General auto-mcs endpoints
 create_endpoint(svrmgr.create_server_list, 'main')
+create_endpoint(constants.make_update_list, 'main')
 create_endpoint(constants.get_remote_var, 'main', True)
 create_endpoint(constants.java_check, 'main', True)
 create_endpoint(constants.allow_close, 'main', True)
 create_endpoint(constants.clear_uploads, 'main')
 create_endpoint(constants.update_world, 'main', True)
 
+# Add-on based functionality outside the add-on manager
 create_endpoint(constants.load_addon_cache, 'addon', True)
-create_endpoint(constants.pre_addon_update, 'addon', True)
 create_endpoint(constants.iter_addons, 'addon', True)
+create_endpoint(constants.pre_addon_update, 'addon', True)
 create_endpoint(constants.post_addon_update, 'addon', True)
+
+# Endpoints for updating, server creation, and importing
+create_endpoint(constants.push_new_server, 'create', True)
+create_endpoint(constants.download_jar, 'create', True)
+create_endpoint(constants.install_server, 'create', True)
+create_endpoint(constants.update_server_files, 'create', True)
+create_endpoint(constants.create_backup, 'create', True)
+create_endpoint(constants.pre_server_update, 'create', True)
+create_endpoint(constants.post_server_update, 'create', True)

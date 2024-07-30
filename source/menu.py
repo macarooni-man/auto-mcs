@@ -22850,9 +22850,6 @@ class MigrateServerProgressScreen(ProgressScreen):
 
         def before_func(*args):
 
-            # First, clean out any existing server in temp folder
-            constants.safe_delete(constants.tmpsvr)
-
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
@@ -22860,29 +22857,19 @@ class MigrateServerProgressScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                # Copy over existing server and remove the files which will be replaced
-                constants.copytree(server_obj.server_path, constants.tmpsvr)
-                for jar in glob(os.path.join(constants.tmpsvr, '*.jar')):
-                    os.remove(jar)
-
-                constants.safe_delete(os.path.join(constants.tmpsvr, 'addons'))
-                constants.safe_delete(os.path.join(constants.tmpsvr, 'disabled-addons'))
-                constants.safe_delete(os.path.join(constants.tmpsvr, 'mods'))
-                constants.safe_delete(os.path.join(constants.tmpsvr, 'disabled-mods'))
-
-                # Delete EULA.txt
-                def delete_eula(eula_path):
-                    if os.path.exists(eula_path):
-                        os.remove(eula_path)
-                delete_eula(os.path.join(constants.tmpsvr, 'eula.txt'))
-                delete_eula(os.path.join(constants.tmpsvr, 'EULA.txt'))
-                delete_eula(os.path.join(constants.tmpsvr, 'EULA.TXT'))
+                telepath_data = server_obj._telepath_data
+                if telepath_data:
+                    response = constants.api_manager.request(
+                        endpoint='/create/push_new_server',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={'server_info': constants.new_server_info}
+                    )
+                constants.pre_server_update()
 
 
         def after_func(*args):
-            constants.make_update_list()
-            server_obj._view_notif('add-ons', False)
-            server_obj._view_notif('settings', viewed=constants.new_server_info['version'])
+            constants.post_server_update()
             self.open_server(server_obj.name, True, f"{final_text} '${server_obj.name}$' successfully", launch=self.page_contents['launch'])
 
 
