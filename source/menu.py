@@ -8304,8 +8304,8 @@ class ProgressScreen(MenuBackground):
         server_obj = constants.server_manager.current_server
 
         try:
-            if constants.ignore_close and server_obj.remote_server:
-                self.execute_error('A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later.', reset_close=False)
+            if constants.telepath_busy():
+                self.execute_error('A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later', reset_close=False)
                 return True
 
             elif server_obj._telepath_data:
@@ -8313,7 +8313,7 @@ class ProgressScreen(MenuBackground):
                 self.telepath['server-name'] = server_obj.name
                 host = self.telepath['nickname'] if self.telepath['nickname'] else self.telepath['host']
                 if not server_obj.progress_available():
-                    self.execute_error(f"A critical operation is currently running locally on '${host}$'.\n\nPlease try again later.", reset_close=False)
+                    self.execute_error(f"A critical operation is currently running locally on '${host}$'.\n\nPlease try again later", reset_close=False)
                     return True
 
         except AttributeError:
@@ -9207,8 +9207,10 @@ class CreateServerNameScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
 
-        # Return if no free space
+        # Return if no free space or telepath is busy
         if disk_popup():
+            return
+        if telepath_popup():
             return
 
         # Generate buttons on page load
@@ -12786,8 +12788,10 @@ class ServerImportScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
 
-        # Return if no free space
+        # Return if no free space or telepath is busy
         if disk_popup():
+            return
+        if telepath_popup():
             return
 
         # Reset import path
@@ -13448,6 +13452,25 @@ def disk_popup(go_to='back'):
                 go_back
             )
         Clock.schedule_once(disk_error, 0)
+        return True
+def telepath_popup(go_to='back'):
+    if constants.telepath_busy():
+        def go_back(*a):
+            constants.back_clicked = True
+            if go_to == 'back':
+                previous_screen()
+            else:
+                screen_manager.current = go_to
+            constants.back_clicked = False
+
+        def telepath_error(*_):
+            screen_manager.current_screen.show_popup(
+                "warning",
+                "Telepath Error",
+                "A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later",
+                go_back
+            )
+        Clock.schedule_once(telepath_error, 0)
         return True
 
 def refresh_ips(server_name):
@@ -22645,8 +22668,10 @@ class MigrateServerTypeScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
 
-        # Return if no free space
+        # Return if no free space or telepath is busy
         if disk_popup('ServerSettingsScreen'):
+            return
+        if telepath_popup('ServerSettingsScreen'):
             return
 
         server_obj = constants.server_manager.current_server

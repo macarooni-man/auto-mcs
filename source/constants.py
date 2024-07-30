@@ -489,6 +489,9 @@ def check_free_space():
     free_space = round(disk_usage('/').free / 1048576)
     return free_space > 500
 
+def telepath_busy():
+    return ignore_close and server_manager.remote_server
+
 
 # Retrieves the refresh rate of the display to calculate consistent animation speed
 def get_refresh_rate():

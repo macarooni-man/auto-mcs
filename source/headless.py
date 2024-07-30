@@ -432,12 +432,48 @@ loop = urwid.MainLoop(frame, unhandled_input=handle_input)
 
 def run_application():
 
+    # Give an error if elevated
+    if constants.is_admin():
+        print(f"\n> Error:  Running auto-mcs as {'administrator' if constants.os_name == 'windows' else 'root'} can expose your system to security vulnerabilities.\n\nPlease restart with standard user privileges to continue")
+        return False
+
+
+    # Launch servers if requested with the flag
+    for server in constants.boot_launches:
+        print(f"\n> Launching '{server}', please wait...")
+        constants.server_manager.open_server(server)
+        threading.Timer(0, constants.server_manager.current_server.launch).start()
+
+        if len(constants.boot_launches) > 1:
+            while server not in constants.server_manager.running_servers:
+                time.sleep(0.5)
+            time.sleep(2)
+        print('+ Done!')
+
+
     try:
         if constants.os_name == 'windows':
+            old_std_err = sys.stderr
             sys.stderr = NullWriter()
         else:
+            old_std_out = sys.stdout
             sys.stdout = NullWriter()
+
         loop.run()
+
+        if constants.os_name == 'windows':
+            sys.stderr = old_std_err
+        else:
+            sys.stdout = old_std_out
+
+        # Stop all running servers
+        for server in [s for s in constants.server_manager.running_servers.values()]:
+            if server.running:
+                print(f"\n> Stopping '{server.name}', please wait...")
+                server.stop()
+                while server.running:
+                    time.sleep(0.5)
+                print('+ Done!')
 
     # Close gracefully on CTRL-C
     except KeyboardInterrupt:
