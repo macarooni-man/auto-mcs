@@ -504,10 +504,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.favorite = self._is_favorite()
 
         self.run_data = {}
-        self.backup = RemoteBackupManager(telepath_data)
-        self.addon = RemoteAddonManager(telepath_data)
-        self.acl = RemoteAclManager(telepath_data)
-        self.script_manager = RemoteScriptManager(telepath_data)
+        self.backup = RemoteBackupManager(self)
+        self.addon = RemoteAddonManager(self)
+        self.acl = RemoteAclManager(self)
+        self.script_manager = RemoteScriptManager(self)
         self._clear_all_cache()
 
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
@@ -630,8 +630,9 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         )
 
 class RemoteScriptManager(create_remote_obj(ScriptManager)):
-    def __init__(self, telepath_data: dict):
-        self._telepath_data = telepath_data
+    def __init__(self, server_obj: RemoteServerObject):
+        self._telepath_data = server_obj._telepath_data
+        self.parent = server_obj
 
     def _reconstruct_list(self, script_list: dict):
         return {
@@ -644,7 +645,10 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
         return super()._enumerate_scripts()
 
     def return_single_list(self):
-        return [RemoteAmsFileObject(self._telepath_data, data) for data in super().return_single_list()]
+        try:
+            return [RemoteAmsFileObject(self._telepath_data, data) for data in super().return_single_list()]
+        except AttributeError:
+            return []
 
     def search_scripts(self, query: str):
         return [RemoteAmsWebObject(self._telepath_data, data) for data in super().search_scripts(query)]
@@ -662,8 +666,9 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
         return RemoteAmsFileObject(self._telepath_data, data)
 
 class RemoteAddonManager(create_remote_obj(AddonManager)):
-    def __init__(self, telepath_data: dict):
-        self._telepath_data = telepath_data
+    def __init__(self, server_obj: RemoteServerObject):
+        self._telepath_data = server_obj._telepath_data
+        self.parent = server_obj
 
     def _reconstruct_list(self, addon_list: dict):
         return {
@@ -676,7 +681,10 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         return super()._refresh_addons()
 
     def return_single_list(self):
-        return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
+        try:
+            return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
+        except AttributeError:
+            return []
 
     def search_addons(self, query: str):
         return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query)]
@@ -694,8 +702,9 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         return RemoteAddonFileObject(self._telepath_data, data)
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
-    def __init__(self, telepath_data: dict):
-        self._telepath_data = telepath_data
+    def __init__(self, server_obj: RemoteServerObject):
+        self._telepath_data = server_obj._telepath_data
+        self.parent = server_obj
 
     def _update_data(self):
         self._clear_attr_cache()
@@ -709,9 +718,11 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
         self._clear_attr_cache()
         return data
 
+
 class RemoteAclManager(create_remote_obj(AclManager)):
-    def __init__(self, telepath_data: dict):
-        self._telepath_data = telepath_data
+    def __init__(self, server_obj: RemoteServerObject):
+        self._telepath_data = server_obj._telepath_data
+        self.parent = server_obj
 
     # Reconstruct AclRule objects from a dictionary representing a rule, or rule list(s)
     def _reconstruct_list(self, rule_list: dict):

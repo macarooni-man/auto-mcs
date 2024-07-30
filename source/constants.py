@@ -212,7 +212,7 @@ api_manager = None
 headless = False
 api_data = {
     "enabled": True,
-    "version": "0.5.0",
+    "version": "0.6.0",
     "show-banners": True,
     "default-host": "0.0.0.0",
     "default-port": 7001,
@@ -906,7 +906,13 @@ def telepath_download(telepath_data: dict, path: str, destination=downDir, renam
     # Save if the request was successful
     if data.status_code == 200:
 
-        file_name = rename if rename else os.path.basename(path)
+        # File name input validation
+        file_name = os.path.basename(rename if rename else path)
+        if '/' in file_name:
+            file_name = file_name.rsplit('/', 1)[-1]
+        elif '\\' in file_name:
+            file_name = file_name.rsplit('\\', 1)[-1]
+
         final_path = os.path.join(destination, file_name)
         folder_check(destination)
 

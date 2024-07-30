@@ -2023,9 +2023,9 @@ class ServerManager():
 
     # Returns and updates remote update list
     def get_telepath_update(self, host_data: dict, server_name: str):
-        if host_data['host'] not in constants.server_manager.telepath_updates:
+        self.reload_telepath_updates(host_data)
+        if host_data['host'] not in self.telepath_updates:
             self.telepath_updates[host_data['host']] = {}
-            self.reload_telepath_updates(host_data)
         if server_name in self.telepath_updates[host_data['host']]:
             return self.telepath_updates[host_data['host']][server_name]
         return {}

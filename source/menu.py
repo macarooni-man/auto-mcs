@@ -13390,6 +13390,9 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
             while constants.server_manager.current_server.name != server_name:
                 time.sleep(0.005)
 
+        elif constants.server_manager.current_server:
+            constants.server_manager.current_server.reload_config()
+
         if screen_manager.current == 'ServerViewScreen' and different_server:
             screen_manager.current = 'ServerManagerScreen'
 
@@ -22779,7 +22782,6 @@ class MigrateServerVersionScreen(MenuBackground):
                 def check_version(*args, **kwargs):
                     self.final_button.loading(True)
                     version_data = constants.search_version(constants.new_server_info)
-                    print(version_data)
                     constants.new_server_info['version'] = version_data[1]['version']
                     constants.new_server_info['build'] = version_data[1]['build']
                     constants.new_server_info['jar_link'] = version_data[3]
