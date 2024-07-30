@@ -96,6 +96,9 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
 def create_remote_obj(obj: object, request=True):
     global app
 
+    # Restrict methods from being remotely accessible
+    endpoint_blacklist = ['set_directory']
+
     # Replace methods
     def __getattr__(self, name):
 
@@ -200,6 +203,9 @@ def create_remote_obj(obj: object, request=True):
 
     for method in dir(obj):
         name = str(method)
+        if name in endpoint_blacklist:
+            continue
+            
 
         # If 'i' is a method, but not __magic__
         if callable(type(method)):
