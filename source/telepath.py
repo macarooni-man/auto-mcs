@@ -301,7 +301,7 @@ def get_function_params(method: Callable):
             get_default_value(param),
         )
         for param in parameters.values()
-        if param.name != "self"
+        if param.name not in ["self", "args"]
     }
 
 
