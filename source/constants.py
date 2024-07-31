@@ -34,7 +34,6 @@ import sys
 import os
 import re
 
-import acl
 import addons
 import backup
 import amscript
@@ -2294,7 +2293,8 @@ def push_new_server(server_info: dict):
     new_server_info = server_info
 
     # Reconstruct ACL manager
-    acl_mgr = acl.AclManager(server_info['name'])
+    from acl import AclManager
+    acl_mgr = AclManager(server_info['name'])
     if server_info['acl_object']:
         for list_type, rules in server_info['acl_object']['rules'].items():
             [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
