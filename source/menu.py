@@ -863,12 +863,24 @@ def search_input(return_function=None, pos_hint={"center_x": 0.5, "center_y": 0.
 
 class ServerNameInput(BaseInput):
 
+    def get_server_list(self):
+        try:
+            telepath_data = constants.new_server_info['_telepath_data']
+            if telepath_data:
+                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                return True
+        except:
+            pass
+        self.server_list = constants.server_list_lower
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
         self.title_text = "name"
         self.hint_text = "enter a name..."
         self.bind(on_text_validate=self.on_enter)
+        self.server_list = []
+        self.get_server_list()
 
 
     def on_enter(self, value):
@@ -879,7 +891,7 @@ class ServerNameInput(BaseInput):
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
 
-        elif self.text.lower().strip() in constants.server_list_lower:
+        elif self.text.lower().strip() in self.server_list:
             self.valid(False)
 
     # Valid input
@@ -930,7 +942,7 @@ class ServerNameInput(BaseInput):
             # Add name to current config
             constants.new_server_info['name'] = (self.text).strip()
 
-            self.valid((self.text).lower().strip() not in constants.server_list_lower)
+            self.valid((self.text).lower().strip() not in self.server_list)
 
         def check_validity(*a):
             if not self.text or str.isspace(self.text):
@@ -949,7 +961,7 @@ class ServerNameInput(BaseInput):
                 substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
-            self.valid((self.text + s).lower().strip() not in constants.server_list_lower, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            self.valid((self.text + s).lower().strip() not in self.server_list, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             # Add name to current config
             def get_text(*a):
@@ -960,6 +972,16 @@ class ServerNameInput(BaseInput):
 
 
 class ServerRenameInput(BaseInput):
+
+    def get_server_list(self):
+        try:
+            telepath_data = constants.server_manager.current_server._telepath_data
+            if telepath_data:
+                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                return True
+        except:
+            pass
+        self.server_list = constants.server_list_lower
 
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value)
@@ -976,6 +998,8 @@ class ServerRenameInput(BaseInput):
         self.bind(on_text_validate=self.on_enter)
         self.is_valid = False
         self.starting_text = self.text
+        self.server_list = []
+        self.get_server_list()
 
 
     def on_enter(self, value):
@@ -984,7 +1008,7 @@ class ServerRenameInput(BaseInput):
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
 
-        elif (self.text.lower().strip() in constants.server_list_lower) and (self.text.lower().strip() != self.starting_text.lower().strip()):
+        elif (self.text.lower().strip() in self.server_list) and (self.text.lower().strip() != self.starting_text.lower().strip()):
             self.valid(False)
 
         if self.is_valid and self.text.strip() and (self.text.lower().strip() != self.starting_text.lower().strip()):
@@ -1021,7 +1045,7 @@ class ServerRenameInput(BaseInput):
 
         if keycode[1] == "backspace" and len(self.text) >= 1:
             text_check = (self.text.lower().strip())
-            self.valid((text_check not in constants.server_list_lower) or (text_check == self.starting_text.lower().strip()))
+            self.valid((text_check not in self.server_list) or (text_check == self.starting_text.lower().strip()))
 
         def check_validity(*a):
             if not self.text or str.isspace(self.text):
@@ -1041,7 +1065,7 @@ class ServerRenameInput(BaseInput):
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
             text_check = (self.text + s).lower().strip()
-            self.valid((text_check not in constants.server_list_lower) or (text_check == self.starting_text.lower().strip()), ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            self.valid((text_check not in self.server_list) or (text_check == self.starting_text.lower().strip()), ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             return super().insert_text(s, from_undo=from_undo)
 
@@ -5174,6 +5198,13 @@ class TelepathDropButton(DropButton):
                     # Change icon color
                     Animation.stop_all(parent.label_icon)
                     Animation(color=parent.color_id[0 if result == 'this machine' else 1], duration=0.2).start(parent.label_icon)
+
+                    # Update name list if creating a server
+                    try:
+                        screen_manager.current_screen.name_input.get_server_list()
+                    except:
+                        pass
+
                     break
 
         self.button.on_release = functools.partial(lambda: self.dropdown.open(self.button))
@@ -5201,6 +5232,15 @@ class TelepathDropButton(DropButton):
         self.icon.pos = (225 + x_offset, 200)
 
         self.add_widget(self.icon)
+
+
+        if '_telepath_data' in constants.new_server_info and constants.new_server_info['_telepath_data']:
+            self.label_icon.color = self.color_id[1]
+            if constants.new_server_info['_telepath_data']['nickname']:
+                name = constants.new_server_info['_telepath_data']['nickname']
+            else:
+                name = constants.new_server_info['_telepath_data']['host']
+            self.text.text = name.upper() + (" " * self.text_padding)
 
 
 # Similar to DropButton, but for a right-click context menu
@@ -9441,6 +9481,7 @@ class CreateServerNameScreen(MenuBackground):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
         self.menu = 'init'
+        self.name_input = None
 
     def generate_menu(self, **kwargs):
 
@@ -9464,8 +9505,8 @@ class CreateServerNameScreen(MenuBackground):
         else:
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
             float_layout.add_widget(HeaderText("What would you like to name your server?", '', (0, 0.76)))
-            name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['name'])
-            float_layout.add_widget(name_input)
+            self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['name'])
+            float_layout.add_widget(self.name_input)
             buttons.append(next_button('Next', (0.5, 0.24), not constants.new_server_info['name'], next_screen='CreateServerTypeScreen'))
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
             float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
@@ -9487,7 +9528,7 @@ class CreateServerNameScreen(MenuBackground):
 
 
         if constants.app_online:
-            name_input.grab_focus()
+            self.name_input.grab_focus()
 
 
 
@@ -12530,10 +12571,17 @@ class ServerDemoInput(BaseInput):
         self.type_image.image.x = self.width+self.x-self.type_image.image.width-self.padding_x[0]+10
         self.type_image.image.y = self.y+(self.padding_y[0]/2.7)
 
-        self.type_image.type_label.x = self.width+self.x-(self.padding_x[0]*offset)
+        self.title_t.pos = (self.x + 185, self.y - 7)
+
+        # Telepath icon
+        if self.type_image.tp_shadow:
+            self.type_image.tp_shadow.pos = (self.type_image.image.x - 2, self.type_image.image.y)
+            self.type_image.tp_icon.pos = (self.type_image.image.x - 2, self.type_image.image.y)
+
+        self.type_image.type_label.x = (self.width+self.x-(self.padding_x[0]*offset)) - 3
         self.type_image.type_label.y = self.y+(self.padding_y[0]/6.9)
 
-        self.type_image.version_label.x = self.width+self.x-(self.padding_x[0]*offset)
+        self.type_image.version_label.x = (self.width+self.x-(self.padding_x[0]*offset)) - 3
         self.type_image.version_label.y = self.y-(self.padding_y[0]*0.85)
 
     def __init__(self, **kwargs):
@@ -12549,6 +12597,8 @@ class ServerDemoInput(BaseInput):
         self.background_normal = os.path.join(constants.gui_assets, 'server_preview.png')
         self.title_text = ""
         self.hint_text = ""
+        self.markup = True
+
 
         # Type icon and info
         with self.canvas.after:
@@ -12573,8 +12623,18 @@ class ServerDemoInput(BaseInput):
             self.type_image.version_label.color = (0.6, 0.6, 1, 0.6)
             self.type_image.type_label = TemplateLabel()
             self.type_image.type_label.font_size = sp(22)
+            self.type_image.tp_shadow = None
 
             self.bind(pos=self.resize_self)
+
+            self.title_t = AlignLabel(halign='left', valign='center')
+            self.title_t.font_size = sp(25)
+            self.title_t.size_hint_max = (400, 25)
+            self.title_t.text_size = self.title_t.size_hint_max
+            self.title_t.color = (0.65, 0.65, 1, 1)
+            self.title_t.markup = True
+            self.title_t.font_name = self.font_name
+            self.add_widget(self.title_t)
 
     # Make the text box non-interactive
     def on_enter(self, value):
@@ -12593,12 +12653,35 @@ def server_demo_input(pos_hint, properties):
     demo_input.properties = properties
     demo_input.pos_hint = pos_hint
     demo_input.__translate__ = False
-    demo_input.hint_text = properties['name']
+    demo_input.title_t.text = properties['name']
     demo_input.type_image.version_label.__translate__ = False
     demo_input.type_image.version_label.text = properties['version']
     demo_input.type_image.type_label.__translate__ = False
     demo_input.type_image.type_label.text = properties['type'].lower().replace("craft", "")
     demo_input.type_image.image.source = os.path.join(constants.gui_assets, 'icons', 'big', f'{properties["type"].lower()}_small.png')
+
+    print(properties)
+    if properties['_telepath_data']:
+        if properties['_telepath_data']['nickname']:
+            head = properties['_telepath_data']['nickname']
+        else:
+            properties['_telepath_data']['host']
+
+        demo_input.title_t.text = f"[color=#7373A2]{head}/[/color]{properties['name']}"
+
+        with demo_input.canvas.after:
+            demo_input.type_image.tp_shadow = Image(source=icon_path('shadow.png'))
+            demo_input.type_image.tp_shadow.allow_stretch = True
+            demo_input.type_image.tp_shadow.size_hint_max = (33, 33)
+            demo_input.type_image.tp_shadow.color = constants.background_color
+            demo_input.type_image.add_widget(demo_input.type_image.tp_shadow)
+
+            demo_input.type_image.tp_icon = Image(source=icon_path('telepath.png'))
+            demo_input.type_image.tp_icon.allow_stretch = True
+            demo_input.type_image.tp_icon.size_hint_max = (33, 33)
+            demo_input.type_image.tp_icon.color = demo_input.type_image.image.color
+            demo_input.type_image.add_widget(demo_input.type_image.tp_icon)
+    
     return demo_input
 
 class CreateServerReviewScreen(MenuBackground):
@@ -23469,7 +23552,6 @@ class MainApp(App):
             #         no_color = (0.6, 0.6, 0.88, 1)
             #         screen_manager.current_screen.performance_panel.player_widget.update_data(
             #             [{'text': 'KChicken', 'color': op_color},
-            #              {'text': 'LeopardGecko22', 'color': op_color},
             #              {'text': 'bgmombo', 'color': no_color},
             #              {'text': 'Test1234', 'color': no_color},
             #              {'text': 'Im_a_USERNAME', 'color': no_color},
@@ -23480,6 +23562,16 @@ class MainApp(App):
             #     #     screen_manager.current = "ServerAddonScreen"
             #     # Clock.schedule_once(open_ams, 1)
             # Clock.schedule_once(open_menu, 0.5)
+        if not constants.app_compiled:
+            constants.new_server_init()
+            constants.new_server_info['_telepath_data'] = {"host": "192.168.1.210", "port": 7001, "nickname": "dev-test", "added-servers": {}, "display-name": "dev-test"}
+            constants.new_server_info['type'] = 'vanilla'
+            constants.new_server_info['version'] = '1.21'
+            constants.new_server_info['name'] = 'auto-creating'
+            constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
+            def test(*a):
+                screen_manager.current = "CreateServerReviewScreen"
+            Clock.schedule_once(test, 1)
 
 
         # Process --launch flag
