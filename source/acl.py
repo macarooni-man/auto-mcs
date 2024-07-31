@@ -70,8 +70,8 @@ class AclManager():
     def _to_json(self):
         final_data = {k: getattr(self, k) for k in dir(self) if not (k.endswith('__') or callable(getattr(self, k)))}
         final_data['list_items'] = {}
+        final_data['displayed_rule'] = None
         final_data['rules'] = {k: [i._to_json() for i in v] for k, v in final_data['rules'].items()}
-        print(final_data)
         return final_data
 
     def __init__(self, server_name: str):

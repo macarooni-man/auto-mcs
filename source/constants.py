@@ -3074,6 +3074,11 @@ def pre_server_create(telepath=False):
                 a['path'] = telepath_upload(new_server_info['_telepath_data'], a['path'])['path']
             new_info['addon_objects'].append(a)
 
+        # Upload world if specified
+        if new_server_info['server_settings']['world'] != 'world':
+            new_path = telepath_upload(telepath_data, new_server_info['server_settings']['world'])['path']
+            new_info['server_settings']['world'] = new_path
+
         api_manager.request(
             endpoint='/create/push_new_server',
             host=telepath_data['host'],

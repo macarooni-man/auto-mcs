@@ -771,7 +771,7 @@ class SearchInput(BaseInput):
         self.cursor_color = (0.55, 0.55, 1, 1)
         self.selection_color = (0.5, 0.5, 1, 0.4)
 
-def search_input(return_function=None, pos_hint={"center_x": 0.5, "center_y": 0.5}):
+def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}):
     class SearchLayout(FloatLayout):
 
         def __init__(self, **kwargs):
@@ -788,7 +788,7 @@ def search_input(return_function=None, pos_hint={"center_x": 0.5, "center_y": 0.
                 results = False
 
                 try:
-                    results = return_function(query)
+                    results = return_function(query) if not server_info else return_function(query, server_info)
 
                 except ConnectionRefusedError:
                     pass
@@ -12527,7 +12527,7 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
 
         search_function = addons.search_addons
-        self.search_bar = search_input(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, server_info=constants.new_server_info, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -12968,6 +12968,7 @@ class CreateServerProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
+        open_after = functools.partial(self.open_server, constants.new_server_info['name'], True, f"'${constants.new_server_info['name']}$' was created successfully")
 
         def before_func(*args):
 
@@ -12979,6 +12980,10 @@ class CreateServerProgressScreen(ProgressScreen):
 
             else:
                 constants.pre_server_create()
+
+        def after_func(*args):
+            constants.post_server_create()
+            open_after()
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -13010,7 +13015,7 @@ class CreateServerProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(self.open_server, constants.new_server_info['name'], True, f"'${constants.new_server_info['name']}$' was created successfully"),
+            'after_function': after_func,
 
             # Screen to go to after complete
             'next_screen': None
@@ -19646,7 +19651,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
         server_obj = constants.server_manager.current_server
         search_function = server_obj.addon.search_addons
-        self.search_bar = search_input(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, server_info=server_obj.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
