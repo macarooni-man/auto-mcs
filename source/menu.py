@@ -12966,9 +12966,6 @@ class CreateServerProgressScreen(ProgressScreen):
 
         def before_func(*args):
 
-            # First, clean out any existing server in temp folder
-            constants.safe_delete(constants.tmpsvr)
-
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
@@ -12976,7 +12973,7 @@ class CreateServerProgressScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.folder_check(constants.tmpsvr)
+                constants.pre_server_create()
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -13008,7 +13005,7 @@ class CreateServerProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(open_server, constants.new_server_info['name'], True, f"'${constants.new_server_info['name']}$' was created successfully"),
+            'after_function': functools.partial(self.open_server, constants.new_server_info['name'], True, f"'${constants.new_server_info['name']}$' was created successfully"),
 
             # Screen to go to after complete
             'next_screen': None

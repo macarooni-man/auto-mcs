@@ -2869,6 +2869,29 @@ def install_server(progress_func=None, imported=False):
 # Configures server via server info in a variety of ways
 def generate_server_files(progress_func=None):
 
+    # If telepath, do all of this remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/generate_server_files',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
     world_name = 'world'
 
@@ -3007,12 +3030,63 @@ max-world-size=29999984"""
 
         make_update_list()
         return True
+def pre_server_create(telepath=False):
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data and not telepath:
+        api_manager.request(
+            endpoint='/create/push_new_server',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'server_info': new_server_info}
+        )
+        response = api_manager.request(
+            endpoint='/create/pre_server_create',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'telepath': True}
+        )
+        return response
+
+    server_manager.current_server = None
+
+    # First, clean out any existing server in temp folder
+    safe_delete(tmpsvr)
+    folder_check(tmpsvr)
+def post_server_create(telepath=False):
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data and not telepath:
+        new_server_init()
+        api_manager.request(
+            endpoint='/create/push_new_server',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'server_info': new_server_info}
+        )
+        response = api_manager.request(
+            endpoint='/create/post_server_create',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'telepath': True}
+        )
+        return response
 
 
 # Configures server via server info in a variety of ways (for updates)
 def update_server_files(progress_func=None):
 
-    # If telepath, check if Java is installed remotely
+    # If telepath, do all of this remotely
     telepath_data = None
     if server_manager.current_server:
         telepath_data = server_manager.current_server._telepath_data
