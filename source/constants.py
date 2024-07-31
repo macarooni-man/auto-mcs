@@ -2304,7 +2304,7 @@ def push_new_server(server_info: dict):
     addon_dict = deepcopy(server_info['addon_objects'])
     new_server_info['addon_objects'] = []
     for addon in addon_dict:
-        new_server_info['addon_objects'].append(addons.AddonWebObject(addon) if addon['__reconstruct__'] == 'AddonWebObject' else addons.AddonFileObject(addon))
+        new_server_info['addon_objects'].append(addons.AddonWebObject(addon) if addon['__reconstruct__'] == 'AddonWebObject' else addons.get_addon_file(addon['path'], new_server_info))
 
 
 # Generate new server name
