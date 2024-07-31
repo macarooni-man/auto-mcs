@@ -2006,7 +2006,7 @@ class ServerManager():
     # Checks which servers are alive
     def check_telepath_servers(self):
         new_server_list = {}
-        for host, data in constants.deepcopy(self.telepath_servers.items()):
+        for host, data in constants.deepcopy(self.telepath_servers).items():
             url = f'http://{host}:{data["port"]}/main/check_status'
             try:
                 if requests.get(url, timeout=0.5).json():
