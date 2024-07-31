@@ -3094,6 +3094,8 @@ def pre_server_create(telepath=False):
     safe_delete(tmpsvr)
     folder_check(tmpsvr)
 def post_server_create(telepath=False):
+    global new_server_info
+
     telepath_data = None
     try:
         if new_server_info['_telepath_data']:
@@ -3116,6 +3118,9 @@ def post_server_create(telepath=False):
             args={'telepath': True}
         )
         return response
+
+    clear_uploads()
+    new_server_info = {}
 
 
 # Configures server via server info in a variety of ways (for updates)
@@ -3253,6 +3258,7 @@ def post_server_update(telepath=False):
     server_obj._view_notif('add-ons', False)
     server_obj._view_notif('settings', viewed=new_server_info['version'])
 
+    clear_uploads()
     new_server_info = {}
 
 
