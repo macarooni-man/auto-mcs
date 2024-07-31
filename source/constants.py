@@ -3071,7 +3071,7 @@ def pre_server_create(telepath=False):
         for addon in new_server_info['addon_objects']:
             a = addon._to_json()
             if 'AddonFileObject' == a['__reconstruct__']:
-                a['path'] = telepath_upload(new_server_info['_telepath_data'], a['path'])
+                a['path'] = telepath_upload(new_server_info['_telepath_data'], a['path'])['path']
             new_info['addon_objects'].append(a)
 
         api_manager.request(
