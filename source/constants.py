@@ -2298,6 +2298,7 @@ def push_new_server(server_info: dict):
     if server_info['acl_object']:
         for list_type, rules in server_info['acl_object']['rules'].items():
             [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
+        new_server_info['acl_object'] = acl_mgr
 
     # Reconstruct add-ons
     new_server_info['addon_objects'] = []
