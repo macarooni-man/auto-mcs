@@ -2287,7 +2287,7 @@ def new_server_init():
 # Override remote new server configuration
 def push_new_server(server_info: dict):
     global new_server_info
-    server_info['_telepath'] = None
+    server_info['_telepath_data'] = None
     new_server_info = server_info
 
 # Generate new server name
