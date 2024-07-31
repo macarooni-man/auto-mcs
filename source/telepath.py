@@ -902,6 +902,12 @@ async def download_file(file: str):
     # If it exists in a permitted directory, respond with the file
     return FileResponse(path, filename=os.path.basename(path))
 
+# Keep-alive endpoint, unauthenticated
+@app.get('/main/check_status', tags=['main'])
+async def check_status():
+    return True
+
+
 # Generate endpoints both statically & dynamically
 [generate_endpoints(app, create_remote_obj(r, False)()) for r in
  (ServerObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)]

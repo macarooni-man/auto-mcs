@@ -2005,8 +2005,17 @@ class ServerManager():
 
     # Checks which servers are alive
     def check_telepath_servers(self):
+        new_server_list = {}
+        for host, data in constants.deepcopy(self.telepath_servers.items()):
+            url = f'http://{host}:{data["port"]}/main/check_status'
+            try:
+                if requests.get(url, timeout=0.5).json():
+                    new_server_list[host] = data
+            except:
+                pass
+
         # Add a discovery endpoint at some point here, and only return active servers
-        return self.telepath_servers
+        return new_server_list
 
     def write_telepath_servers(self, instance=None):
         self.telepath_servers = self.load_telepath_servers()
