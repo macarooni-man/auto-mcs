@@ -5069,13 +5069,14 @@ class TelepathDropButton(DropButton):
         self.label.color = (0.6, 0.6, 1, 1)
         self.label_layout.add_widget(self.label)
 
-        self.icon = Image(source=icon_path('telepath.png'))
-        self.icon.size_hint_max = (35, 35)
-        self.icon.allow_stretch = True
-        self.icon.keep_ratio = False
-        self.icon.pos = (self.label.x + 20, self.label.y + 3)
-        self.icon.color = (0.65, 0.65, 1, 1)
-        self.label_layout.add_widget(self.icon)
+        self.label_icon = Image(source=icon_path('telepath.png'))
+        self.label_icon.size_hint_max = (35, 35)
+        self.label_icon.allow_stretch = True
+        self.label_icon.keep_ratio = False
+        self.label_icon.pos = (self.label.x + 20, self.label.y + 3)
+        self.color_id = [(0.2, 0.2, 0.4, 1), (0.65, 0.65, 1, 1)]
+        self.label_icon.color = self.color_id[0]
+        self.label_layout.add_widget(self.label_icon)
         self.add_widget(self.label_layout)
 
         self.text_padding = 5
@@ -5163,17 +5164,21 @@ class TelepathDropButton(DropButton):
                 self.dropdown.add_widget(end_btn)
 
         # Button click behavior
-        def set_var(result):
+        def set_var(parent, result):
             for k, v in self.options_list.items():
                 if (k == 'this machine' == result) or (v and (('.' in result and result == k) or (result == v['nickname']))):
                     constants.new_server_info['_telepath_data'] = v
                     if type == 'import':
                         constants.import_data['_telepath_data'] = v
+
+                    # Change icon color
+                    Animation.stop_all(parent.label_icon)
+                    Animation(color=parent.color_id[0 if result == 'this machine' else 1], duration=0.2).start(parent.label_icon)
                     break
 
         self.button.on_release = functools.partial(lambda: self.dropdown.open(self.button))
         self.dropdown.bind(on_select=lambda instance, x: self.change_text(x, translate=(x=='this machine')))
-        self.dropdown.bind(on_select=lambda instance, x: set_var(x))
+        self.dropdown.bind(on_select=lambda instance, x: set_var(self, x))
 
         # Change background when expanded - B
         self.button.bind(on_release=functools.partial(toggle_background, True))
@@ -13026,7 +13031,7 @@ class ServerImportScreen(MenuBackground):
         #             constants.import_data['path'] = item.selected_server
 
 
-        self.button_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.56}))
+        self.button_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58 + offset}))
         self.next_button = next_button('Next', (0.5, 0.24), True, next_screen='ServerImportProgressScreen')
         # self.next_button.children[2].bind(on_press=set_import_path)
         self.button_layout.add_widget(self.next_button)
@@ -20846,7 +20851,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
         float_layout.add_widget(self.blank_label)
 
         search_function = script_manager.search_scripts
-        self.search_bar = search_input(return_function=search_function, server_info=server_obj.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
