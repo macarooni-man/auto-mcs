@@ -8561,11 +8561,11 @@ class ProgressScreen(MenuBackground):
                 self.execute_error('A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later', reset_close=False)
                 return True
 
-            elif server_obj._telepath_data:
+            elif server_obj and server_obj._telepath_data:
                 self.telepath = server_obj._telepath_data
 
             elif '_telepath_data' in constants.new_server_info and constants.new_server_info['_telepath_data']:
-                self.telepath = constants.new_server_info['_telepath_data']
+                self.telepath = constants.deepcopy(constants.new_server_info['_telepath_data'])
 
             if self.telepath:
                 self.telepath['server-name'] = server_obj.name
