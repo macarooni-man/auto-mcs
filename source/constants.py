@@ -2607,7 +2607,6 @@ def iter_addons(progress_func=None, update=False, telepath=False):
                 return response
 
 
-
     all_addons = deepcopy(new_server_info['addon_objects'])
 
     # Add additional addons based on server config

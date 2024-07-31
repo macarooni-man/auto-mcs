@@ -26,6 +26,7 @@ import re
 import amseditor
 import logviewer
 import constants
+import crashmgr
 import amscript
 import telepath
 import addons
@@ -218,7 +219,7 @@ def view_file(path: str, title=None):
         'translate': constants.translate
     }
 
-    if not title:
+    if not title and constants.server_manager.current_server:
         title = constants.server_manager.current_server.name
 
     Clock.schedule_once(
@@ -6038,6 +6039,54 @@ class PopupWarningQuery(PopupWindow):
         for widget in self.window.children:
             widget.opacity = 0
 
+# View/Back
+class PopupErrorLog(PopupWindow):
+    def __init__(self, **kwargs):
+        self.window_color = (1, 0.56, 0.6, 1)
+        self.window_text_color = (0.2, 0.1, 0.1, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'question-circle.png')
+        super().__init__(**kwargs)
+
+        # Modal specific settings
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+        self.ok_button = None
+        with self.canvas.after:
+            self.no_button = Button()
+            self.no_button.id = "no_button"
+            self.no_button.size_hint = (None, None)
+            self.no_button.size = (229.5, 65)
+            self.no_button.border = (0, 0, 0, 0)
+            self.no_button.background_color = self.window_color
+            self.no_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.no_button.pos = (0.5, -0.3)
+            self.no_button.text = "BACK"
+            self.no_button.color = self.window_text_color
+            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_size = sp(22)
+
+
+            self.yes_button = Button()
+            self.yes_button.id = "yes_button"
+            self.yes_button.size_hint = (None, None)
+            self.yes_button.size = (-229.5, 65)
+            self.yes_button.border = (0, 0, 0, 0)
+            self.yes_button.background_color = self.window_color
+            self.yes_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.yes_button.pos = (self.window_background.size[0] - 0.5, -0.3)
+            self.yes_button.text = "VIEW LOG"
+            self.yes_button.color = self.window_text_color
+            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_size = sp(22)
+            self.bind(on_touch_down=self.click_event)
+
+
+        self.window.add_widget(self.no_button)
+        self.window.add_widget(self.yes_button)
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
 
 
 # Big popup widgets
@@ -7895,7 +7944,7 @@ class MenuBackground(Screen):
 
     # Show popup; popup_type can be "info", "warning", "query"
     def show_popup(self, popup_type, title, content, callback=None, *args):
-        popup_types = ("info", "warning", "query", "warning_query", "controls", "addon", "script", "file")
+        popup_types = ("info", "warning", "query", "warning_query", "controls", "addon", "script", "file", "error_log")
 
         if self.context_menu:
             self.context_menu.hide()
@@ -7957,6 +8006,8 @@ class MenuBackground(Screen):
                 elif popup_type == "file":
                     self.popup_widget = PopupFile()
                     Clock.schedule_once(functools.partial(self.popup_widget.set_text, content), 0)
+                elif popup_type == "error_log":
+                    self.popup_widget = PopupErrorLog()
 
             self.popup_widget.generate_blur_background()
 
@@ -8529,17 +8580,27 @@ class ProgressScreen(MenuBackground):
 
             # Execute function and check for completion
             self.last_progress = self.progress_bar.value
+            exception = None
+            crash_log = None
             try:
                 test = step[1]()
+
+            # On error, log it and prompt user to open it
             except Exception as e:
-                print(f"ProgressScreen error on Step {x + 1}:")
-                traceback.print_exc()
+                exception = e
+                error_info = f"'{screen_manager.current_screen.name}' failed on step {x+1}: {step[0]}"
+
+                crash_log = crashmgr.generate_log(traceback.format_exc(), error_info=error_info)
                 test = False
+
+                print(error_info)
+                traceback.print_exc()
+
             time.sleep(0.2)
 
             # If it failed, execute default error
             if not test:
-                self.execute_error(self.page_contents['default_error'])
+                self.execute_error(self.page_contents['default_error'], exception=exception, log_data=crash_log)
                 return
 
             self.progress_bar.update_progress(self.progress_bar.value + step[2])
@@ -8567,10 +8628,13 @@ class ProgressScreen(MenuBackground):
             Clock.schedule_once(next_screen, 0.8)
 
 
-    def execute_error(self, msg, reset_close=True, *args):
+    def execute_error(self, msg, reset_close=True, exception=None, log_data=None, *args):
         if reset_close:
             self.allow_close(True)
         self.error = True
+
+        if exception:
+            msg = f'{msg}\n\n{exception}'
 
         def close(*args):
             Clock.schedule_once(previous_screen, 0.25)
@@ -8579,7 +8643,18 @@ class ProgressScreen(MenuBackground):
 
         def function(*args):
             self.timer.cancel()
-            self.show_popup('warning', 'Error', msg, (close))
+
+            if log_data:
+                print(log_data)
+                title = f'Error: {log_data[0]}'
+                log_path = log_data[1]
+                def open_log():
+                    view_file(log_path, title)
+                    close()
+                self.show_popup('error_log', 'Error', msg, (close, open_log))
+
+            else:
+                self.show_popup('warning', 'Error', msg, (close))
 
         Clock.schedule_once(function, 0)
 
