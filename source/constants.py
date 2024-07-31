@@ -3039,11 +3039,14 @@ def pre_server_create(telepath=False):
         pass
 
     if telepath_data and not telepath:
+        new_info = deepcopy(new_server_info)
+        new_info['acl_object'] = new_server_info['acl_object']._to_json()
+
         api_manager.request(
             endpoint='/create/push_new_server',
             host=telepath_data['host'],
             port=telepath_data['port'],
-            args={'server_info': new_server_info}
+            args={'server_info': new_info}
         )
         response = api_manager.request(
             endpoint='/create/pre_server_create',

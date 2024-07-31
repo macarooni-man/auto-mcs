@@ -718,7 +718,6 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
         self._clear_attr_cache()
         return data
 
-
 class RemoteAclManager(create_remote_obj(AclManager)):
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data

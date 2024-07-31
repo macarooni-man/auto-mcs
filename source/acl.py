@@ -26,6 +26,8 @@ global_acl_file = os.path.join(constants.configDir, "global-acl.json")
 
 # Used to house an ACL rule, stored in AclManager lists
 class AclRule():
+    def _to_json(self):
+        return {k: getattr(self, k) for k in dir(self) if not (k.endswith('__') or callable(getattr(self, k)))}
 
     def set_scope(self, is_global=False):
         self.rule_scope = 'global' if is_global else 'local'
@@ -65,6 +67,12 @@ class AclRule():
 # Server ACL object to house AclRules with manipulative functions
 # self._new_server denotes cached ACL to be written when the server is created with self.write_rules()
 class AclManager():
+    def _to_json(self):
+        final_data = {k: getattr(self, k) for k in dir(self) if not (k.endswith('__') or callable(getattr(self, k)))}
+        final_data['list_items'] = {}
+        final_data['rules'] = {k: [i._to_json() for i in v] for k, v in final_data['rules'].items()}
+        print(final_data)
+        return final_data
 
     def __init__(self, server_name: str):
 

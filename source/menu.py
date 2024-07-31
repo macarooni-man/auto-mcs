@@ -12629,7 +12629,7 @@ class ServerDemoInput(BaseInput):
 
             self.title_t = AlignLabel(halign='left', valign='center')
             self.title_t.font_size = sp(25)
-            self.title_t.size_hint_max = (400, 25)
+            self.title_t.size_hint_max = (400, 80)
             self.title_t.text_size = self.title_t.size_hint_max
             self.title_t.color = (0.65, 0.65, 1, 1)
             self.title_t.markup = True
