@@ -8563,6 +8563,11 @@ class ProgressScreen(MenuBackground):
 
             elif server_obj._telepath_data:
                 self.telepath = server_obj._telepath_data
+
+            elif '_telepath_data' in constants.new_server_info and constants.new_server_info['_telepath_data']:
+                self.telepath = constants.new_server_info['_telepath_data']
+
+            if self.telepath:
                 self.telepath['server-name'] = server_obj.name
                 host = self.telepath['nickname'] if self.telepath['nickname'] else self.telepath['host']
                 if not server_obj.progress_available():
