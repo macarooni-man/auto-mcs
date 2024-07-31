@@ -16,6 +16,10 @@ import re
 
 # Base AddonObject for others
 class AddonObject():
+    def _to_json(self):
+        final_data = {k: getattr(self, k) for k in dir(self) if not (k.endswith('__') or callable(getattr(self, k)))}
+        final_data['__reconstruct__'] = self.__class__.__name__
+        return final_data
     def __init__(self):
         self.addon_object_type = None
         self.name = None
@@ -28,42 +32,51 @@ class AddonObject():
 
 # AddonObject for housing downloadable addons
 class AddonWebObject(AddonObject):
-    def __init__(self, addon_name, addon_type, addon_author, addon_subtitle, addon_url, addon_id, addon_version):
+    def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_url='', addon_id='', addon_version=''):
         super().__init__()
-        self.addon_object_type = "web"
-        self.name = addon_name
-        self.type = addon_type
-        self.author = addon_author
-        self.subtitle = addon_subtitle
-        self.url = addon_url
-        self.id = addon_id
-        self.addon_version = addon_version
 
-        # To be updated in get_addon_info()
-        self.supported = "unknown"
-        self.versions = []
-        self.description = None
-        self.download_url = None
-        self.download_version = None
+        if isinstance(addon_name, dict):
+            [setattr(self, k, v) for k, v in addon_name.items()]
+
+        else:
+            self.addon_object_type = "web"
+            self.name = addon_name
+            self.type = addon_type
+            self.author = addon_author
+            self.subtitle = addon_subtitle
+            self.url = addon_url
+            self.id = addon_id
+            self.addon_version = addon_version
+
+            # To be updated in get_addon_info()
+            self.supported = "unknown"
+            self.versions = []
+            self.description = None
+            self.download_url = None
+            self.download_version = None
 
 # AddonObject for housing imported addons
 class AddonFileObject(AddonObject):
-    def __init__(self, addon_name, addon_type, addon_author, addon_subtitle, addon_path, addon_id, addon_version):
+    def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_path='', addon_id='', addon_version=''):
         super().__init__()
 
-        self.addon_object_type = "file"
-        self.name = addon_name
-        self.type = addon_type
-        self.author = addon_author
-        self.subtitle = addon_subtitle
-        self.id = addon_id
-        self.path = addon_path
-        self.addon_version = addon_version
-        self.enabled = True
+        if isinstance(addon_name, dict):
+            [setattr(self, k, v) for k, v in addon_name.items()]
 
-        # Generate Hash
-        hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
-        self.hash = str(hash_data)[:8]
+        else:
+            self.addon_object_type = "file"
+            self.name = addon_name
+            self.type = addon_type
+            self.author = addon_author
+            self.subtitle = addon_subtitle
+            self.id = addon_id
+            self.path = addon_path
+            self.addon_version = addon_version
+            self.enabled = True
+
+            # Generate Hash
+            hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
+            self.hash = str(hash_data)[:8]
 
 # AddonObject for housing downloadable modpacks
 class ModpackWebObject(AddonWebObject):

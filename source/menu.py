@@ -23562,10 +23562,19 @@ class MainApp(App):
         if not constants.app_compiled:
             constants.new_server_init()
             constants.new_server_info['_telepath_data'] = {"host": "192.168.1.210", "port": 7001, "nickname": "dev-test", "added-servers": {}, "display-name": "dev-test"}
-            constants.new_server_info['type'] = 'vanilla'
+            constants.new_server_info['type'] = 'fabric'
             constants.new_server_info['version'] = '1.21'
             constants.new_server_info['name'] = 'auto-creating'
             constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
+            constants.new_server_info['addon_objects'] = [addons.get_addon_file(a, constants.new_server_info) for a in glob(r'C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\testsrv\plugins\*.jar')]
+            constants.new_server_info['addon_objects'].extend([addons.get_addon_url(addons.get_addon_info(a, constants.new_server_info), constants.new_server_info, compat_mode=True) for a in addons.search_addons("worldedit", constants.new_server_info)])
+
+            #     addon_search = search_addons("worldedit", properties)
+            #     addon_search[0] = get_addon_info(addon_search[0], properties)
+            #     addon_search[0] = get_addon_url(addon_search[0], properties, compat_mode=True)
+
+
+
             def test(*a):
                 screen_manager.current = "CreateServerReviewScreen"
             Clock.schedule_once(test, 1)

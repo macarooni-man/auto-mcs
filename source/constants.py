@@ -34,6 +34,7 @@ import sys
 import os
 import re
 
+import acl
 import addons
 import backup
 import amscript
@@ -2287,8 +2288,22 @@ def new_server_init():
 # Override remote new server configuration
 def push_new_server(server_info: dict):
     global new_server_info
+    new_server_init()
+
     server_info['_telepath_data'] = None
     new_server_info = server_info
+
+    # Reconstruct ACL manager
+    acl_mgr = acl.AclManager(server_info['name'])
+    if server_info['acl_object']:
+        for list_type, rules in server_info['acl_object']['rules'].items():
+            [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
+
+    # Reconstruct add-ons
+    new_server_info['addon_objects'] = []
+    for addon in server_info['addon_objects']:
+        new_server_info['addon_objects'].append(addons.AddonWebObject(addon) if addon['__reconstruct__'] == 'AddonWebObject' else addons.AddonFileObject(addon))
+
 
 # Generate new server name
 def new_server_name(existing_server=None):
@@ -3039,8 +3054,18 @@ def pre_server_create(telepath=False):
         pass
 
     if telepath_data and not telepath:
+
+        # Convert ACL object for remote
         new_info = deepcopy(new_server_info)
         new_info['acl_object'] = new_server_info['acl_object']._to_json()
+        new_info['addon_objects'] = []
+
+        # Convert add-ons to remote
+        for addon in new_server_info['addon_objects']:
+            a = addon._to_json()
+            if 'AddonFileObject' == a['__reconstruct__']:
+                a['path'] = telepath_upload(new_server_info['_telepath_data'], a['path'])
+            new_info['addon_objects'].append(a)
 
         api_manager.request(
             endpoint='/create/push_new_server',
