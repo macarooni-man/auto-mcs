@@ -2604,22 +2604,27 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     global hook_lock
 
     # If telepath, update addons remotely
-    if telepath:
-        server_obj = server_manager.remote_server
-
-    else:
+    if not telepath:
+        telepath_data = None
         if server_manager.current_server:
             telepath_data = server_manager.current_server._telepath_data
-            if telepath_data:
-                response = api_manager.request(
-                    endpoint='/addon/iter_addons',
-                    host=telepath_data['host'],
-                    port=telepath_data['port'],
-                    args={'update': update, 'telepath': True}
-                )
-                if progress_func and response:
-                    progress_func(100)
-                return response
+
+        try:
+            if not telepath_data and new_server_info['_telepath_data']:
+                telepath_data = new_server_info['_telepath_data']
+        except KeyError:
+            pass
+
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/addon/iter_addons',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'update': update, 'telepath': True}
+            )
+            if progress_func and response:
+                progress_func(100)
+            return response
 
 
     all_addons = deepcopy(new_server_info['addon_objects'])
@@ -2679,7 +2684,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
                     addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
                     downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
                     if not downloaded:
-                        disabled_folder = "plugins" if server_type(server_obj.type) == 'bukkit' else 'mods'
+                        disabled_folder = "plugins" if server_type(new_server_info['type']) == 'bukkit' else 'mods'
                         copy(addon_object.path, os.path.join(tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
 
                     return True
