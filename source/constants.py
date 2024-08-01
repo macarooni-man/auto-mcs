@@ -3053,6 +3053,8 @@ max-world-size=29999984"""
         make_update_list()
         return True
 def pre_server_create(telepath=False):
+    global new_server_info, import_data
+
     telepath_data = None
     try:
         if new_server_info['_telepath_data']:
@@ -3078,6 +3080,10 @@ def pre_server_create(telepath=False):
         if new_server_info['server_settings']['world'] != 'world':
             new_path = telepath_upload(telepath_data, new_server_info['server_settings']['world'])['path']
             new_info['server_settings']['world'] = new_path
+
+        # Copy import remotely if available
+        if import_data['path']:
+            import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
 
         api_manager.request(
             endpoint='/create/push_new_server',
@@ -3759,6 +3765,25 @@ eula=true"""
 # Moves tmpsvr to actual server and checks for ACL and other file validity
 def finalize_import(progress_func=None, *args):
     global import_data
+
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/finalize_import',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
 
     if import_data['name']:
 

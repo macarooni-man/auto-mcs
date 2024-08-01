@@ -939,3 +939,4 @@ create_endpoint(constants.pre_server_create, 'create', True)
 create_endpoint(constants.post_server_create, 'create', True)
 
 create_endpoint(constants.scan_import, 'create', True)
+create_endpoint(constants.finalize_import, 'create', True)
