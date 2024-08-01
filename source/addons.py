@@ -545,7 +545,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
         return False
 
     addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
-    destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else constants.server_path(server_properties['name'], addon_folder)
+    destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(constants.server_path(server_properties['name']), addon_folder)
 
     # Make sure the addon_path and destination_path are not the same
     if addon_path != destination_path and jar_name.endswith(".jar"):
@@ -558,6 +558,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
 
         # Copy addon to proper folder if it exists
         if addon:
+            constants.folder_check(destination_path)
             return constants.copy_to(addon.path, destination_path, str(constants.sanitize_name(addon.name, True) + ".jar"), overwrite=True)
 
     return False
