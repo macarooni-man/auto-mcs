@@ -257,7 +257,7 @@ check_ngrok()
 # Bigboi server manager
 server_manager = None
 search_manager = None
-import_data = {'_telepath_data': None, 'name': None, 'path': None}
+import_data = {'name': None, 'path': None}
 backup_lock = {}
 
 
@@ -2285,27 +2285,30 @@ def new_server_init():
     }
 
 # Override remote new server configuration
-def push_new_server(server_info: dict, import_info: dict):
+def push_new_server(server_info: dict, import_info={}):
     global new_server_info, import_data
     new_server_init()
-    import_data = import_info
+    if import_info:
+        import_data = import_info
 
-    server_info['_telepath_data'] = None
-    new_server_info = server_info
+    if server_info:
+        server_info['_telepath_data'] = None
+        new_server_info = server_info
+    
+        # Reconstruct ACL manager
+        if 'name' in server_info:
+            from acl import AclManager
+            acl_mgr = AclManager(server_info['name'])
+            if server_info['acl_object']:
+                for list_type, rules in server_info['acl_object']['rules'].items():
+                    [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
+                new_server_info['acl_object'] = acl_mgr
 
-    # Reconstruct ACL manager
-    from acl import AclManager
-    acl_mgr = AclManager(server_info['name'])
-    if server_info['acl_object']:
-        for list_type, rules in server_info['acl_object']['rules'].items():
-            [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
-        new_server_info['acl_object'] = acl_mgr
-
-    # Reconstruct add-ons
-    addon_dict = deepcopy(server_info['addon_objects'])
-    new_server_info['addon_objects'] = []
-    for addon in addon_dict:
-        new_server_info['addon_objects'].append(addons.AddonWebObject(addon) if addon['__reconstruct__'] == 'AddonWebObject' else addons.get_addon_file(addon['path'], new_server_info))
+            # Reconstruct add-ons
+            addon_dict = deepcopy(server_info['addon_objects'])
+            new_server_info['addon_objects'] = []
+            for addon in addon_dict:
+                new_server_info['addon_objects'].append(addons.AddonWebObject(addon) if addon['__reconstruct__'] == 'AddonWebObject' else addons.get_addon_file(addon['path'], new_server_info))
 
 
 # Generate new server name
