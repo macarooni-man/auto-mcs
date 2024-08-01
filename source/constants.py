@@ -2294,7 +2294,7 @@ def push_new_server(server_info: dict, import_info={}):
     if server_info:
         server_info['_telepath_data'] = None
         new_server_info = server_info
-    
+
         # Reconstruct ACL manager
         if 'name' in server_info:
             from acl import AclManager
@@ -3094,7 +3094,7 @@ def pre_server_create(telepath=False):
             endpoint='/create/push_new_server',
             host=telepath_data['host'],
             port=telepath_data['port'],
-            args={'server_info': new_info, 'import_data': import_data}
+            args={'server_info': new_info, 'import_info': import_data}
         )
         response = api_manager.request(
             endpoint='/create/pre_server_create',
@@ -3125,7 +3125,7 @@ def post_server_create(telepath=False):
             endpoint='/create/push_new_server',
             host=telepath_data['host'],
             port=telepath_data['port'],
-            args={'server_info': new_server_info}
+            args={'server_info': new_server_info, 'import_info': {'name': None, 'path': None}}
         )
         response = api_manager.request(
             endpoint='/create/post_server_create',
