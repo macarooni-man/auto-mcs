@@ -2794,7 +2794,7 @@ def post_addon_update(telepath=False):
 # If Fabric or Forge, install server
 def install_server(progress_func=None, imported=False):
 
-    # If telepath, check if Java is installed remotely
+    # If telepath, do this remotely
     telepath_data = None
     if server_manager.current_server:
         telepath_data = server_manager.current_server._telepath_data
@@ -3099,7 +3099,7 @@ def pre_server_create(telepath=False):
     safe_delete(tmpsvr)
     folder_check(tmpsvr)
 def post_server_create(telepath=False):
-    global new_server_info
+    global new_server_info, import_data
 
     telepath_data = None
     try:
@@ -3126,6 +3126,7 @@ def post_server_create(telepath=False):
 
     clear_uploads()
     new_server_info = {}
+    import_data = {}
 
 
 # Configures server via server info in a variety of ways (for updates)
@@ -3350,6 +3351,25 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 # Figures out type and version of server. Returns information to import_data dict
 # There will be issues importing 1.17.0 bukkit derivatives due to Java 16 requirement
 def scan_import(bkup_file=False, progress_func=None, *args):
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/scan_import',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'bkup_file': bkup_file}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     name = import_data['name']
     path = import_data['path']
 

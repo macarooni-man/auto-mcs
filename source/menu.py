@@ -13178,11 +13178,10 @@ class ServerImportProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
+        import_name = constants.import_data['name']
+        open_after = functools.partial(open_server, import_name, True, f"'${import_name}$' was imported successfully")
 
         def before_func(*args):
-
-            # First, clean out any existing server in temp folder
-            constants.safe_delete(constants.tempDir)
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
@@ -13191,7 +13190,12 @@ class ServerImportProgressScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.folder_check(constants.tmpsvr)
+                constants.pre_server_create()
+
+        def after_func(*args):
+            constants.post_server_create()
+            open_after()
+
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -13203,7 +13207,6 @@ class ServerImportProgressScreen(ProgressScreen):
                 final = original
             self.progress_bar.update_progress(final)
 
-        import_name = constants.import_data['name']
         self.page_contents = {
 
             # Page name
@@ -13223,7 +13226,7 @@ class ServerImportProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(open_server, import_name, True, f"'${import_name}$' was imported successfully"),
+            'after_function': after_func,
 
             # Screen to go to after complete
             'next_screen': None
