@@ -13213,7 +13213,7 @@ class ServerImportProgressScreen(ProgressScreen):
     # Set fail message in child functions to trigger an error
     def contents(self):
         import_name = constants.import_data['name']
-        open_after = functools.partial(open_server, import_name, True, f"'${import_name}$' was imported successfully")
+        open_after = functools.partial(self.open_server, import_name, True, f"'${import_name}$' was imported successfully")
 
         def before_func(*args):
 
@@ -13350,6 +13350,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
     # Set fail message in child functions to trigger an error
     def contents(self):
         import_name = constants.import_data['name']
+        after_func = functools.partial(self.open_server, import_name, True, f"'${import_name}$' was imported successfully", show_readme=constants.post_server_create(modpack=True))
 
         def before_func(*args):
             if not constants.app_online:
@@ -13360,10 +13361,6 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
             else:
                 constants.pre_server_create()
-
-        def after_func(*args):
-            read_me = constants.post_server_create(modpack=True)
-            self.open_server(import_name, True, f"'${import_name}$' was imported successfully", show_readme=read_me)
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -13379,7 +13376,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Importing Modpack",
+            'title': "Importing Modpack",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
