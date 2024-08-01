@@ -13350,7 +13350,6 @@ class ServerImportModpackProgressScreen(ProgressScreen):
     # Set fail message in child functions to trigger an error
     def contents(self):
         import_name = constants.import_data['name']
-        after_func = functools.partial(self.open_server, import_name, True, f"'${import_name}$' was imported successfully", show_readme=constants.post_server_create(modpack=True))
 
         def before_func(*args):
             if not constants.app_online:
@@ -13361,6 +13360,17 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
             else:
                 constants.pre_server_create()
+
+        def after_func(*args):
+            import_data = constants.post_server_create(modpack=True)
+            if self.telepath and import_data['readme']:
+                import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
+            self.open_server(
+                import_data['name'],
+                True,
+                f"'${import_data['name']}$' was imported successfully",
+                show_readme=import_data['readme']
+            )
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -13376,7 +13386,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': "Importing Modpack",
+            'title': f"Importing Modpack",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -13760,6 +13770,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
         Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
 
 def open_remote_server(instance, server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args):
+
     def next_screen(*args):
         different_server = constants.server_manager.current_server.name != server_name
         if different_server:

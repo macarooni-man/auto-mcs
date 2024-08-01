@@ -2296,7 +2296,7 @@ def push_new_server(server_info: dict, import_info={}):
         new_server_info = server_info
 
         # Reconstruct ACL manager
-        if 'name' in server_info:
+        if not import_info:
             from acl import AclManager
             acl_mgr = AclManager(server_info['name'])
             if server_info['acl_object']:
@@ -3120,8 +3120,7 @@ def pre_server_create(telepath=False):
     folder_check(tmpsvr)
 def post_server_create(telepath=False, modpack=False):
     global new_server_info, import_data
-    return_data = None
-
+    return_data = {'name': import_data['name'], 'path': import_data['path'], 'readme': None}
     telepath_data = None
     try:
         if new_server_info['_telepath_data']:
@@ -3142,7 +3141,7 @@ def post_server_create(telepath=False, modpack=False):
         server_path = os.path.join(serverDir, import_data['name'])
         read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
         if read_me:
-            return_data = read_me[0]
+            return_data['readme'] = read_me[0]
 
     clear_uploads()
     new_server_info = {}
