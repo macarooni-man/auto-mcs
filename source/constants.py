@@ -3086,6 +3086,7 @@ def pre_server_create(telepath=False):
         if import_data['path']:
             import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
 
+
         api_manager.request(
             endpoint='/create/push_new_server',
             host=telepath_data['host'],
@@ -3364,6 +3365,8 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             telepath_data = new_server_info['_telepath_data']
     except KeyError:
         pass
+
+    print(telepath_data, import_data)
 
     if telepath_data:
         response = api_manager.request(
