@@ -29,7 +29,7 @@ if __name__ == '__main__':
     # Import constants and set variables
     import constants
     import telepath
-    
+
     # Open devnull to stdout on Windows
     if constants.os_name == 'windows' and constants.app_compiled:
         sys.stdout = open(os.devnull, 'w')

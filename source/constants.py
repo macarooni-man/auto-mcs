@@ -2296,7 +2296,7 @@ def push_new_server(server_info: dict, import_info={}):
         new_server_info = server_info
 
         # Reconstruct ACL manager
-        if not import_info:
+        if 'acl_object' in server_info and server_info['acl_object']:
             from acl import AclManager
             acl_mgr = AclManager(server_info['name'])
             if server_info['acl_object']:
@@ -2305,6 +2305,7 @@ def push_new_server(server_info: dict, import_info={}):
                 new_server_info['acl_object'] = acl_mgr
 
             # Reconstruct add-ons
+        if 'addon_objects' in server_info and server_info['addon_objects']:
             addon_dict = deepcopy(server_info['addon_objects'])
             new_server_info['addon_objects'] = []
             for addon in addon_dict:
