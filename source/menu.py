@@ -2123,6 +2123,16 @@ class ServerImportPathInput(DirectoryInput):
 
 class ServerImportBackupInput(DirectoryInput):
 
+    def get_server_list(self):
+        try:
+            telepath_data = constants.new_server_info['_telepath_data']
+            if telepath_data:
+                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                return True
+        except:
+            pass
+        self.server_list = constants.server_list_lower
+
     # Hide input_button on focus
     def _on_focus(self, *args):
         super()._on_focus(*args)
@@ -2175,6 +2185,9 @@ class ServerImportBackupInput(DirectoryInput):
         self.server_verified = False
         self.update_server(hide_popup=True)
 
+        self.server_list = []
+        self.get_server_list()
+
     def on_enter(self, value):
         self.selected_server = self.text.replace("~", constants.home)
         self.update_server()
@@ -2213,6 +2226,7 @@ class ServerImportBackupInput(DirectoryInput):
         self.scroll_x = 0
 
         if self.selected_server:
+            self.get_server_list()
             self.selected_server = os.path.abspath(self.selected_server)
 
             # Extract auto-mcs.ini and server.properties
@@ -2258,7 +2272,7 @@ class ServerImportBackupInput(DirectoryInput):
 
 
             # Don't allow import of already imported servers
-            elif constants.server_path(server_name):
+            elif server_name not in self.server_list:
                 self.valid_text(False, "This server already exists!")
                 disable_next(True)
 
@@ -13120,7 +13134,7 @@ class ServerImportScreen(MenuBackground):
         # Auto-launch popup
         try:
             for item in self.button_layout.children[0].children:
-                if item.id == "input_button":
+                if item.id == "input_button" and not telepath_data:
                     Clock.schedule_once(item.force_click, 0)
                     Clock.schedule_once(item.on_leave, 0.01)
                     break

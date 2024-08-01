@@ -2080,7 +2080,7 @@ def create_server_list(remote_data=None):
                     endpoint='/main/create_server_list',
                     host=instance['host'],
                     port=instance['port'],
-                    timeout=0.1
+                    timeout=0.5
                 )
 
                 def process_remote_props(server_data):
