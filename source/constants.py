@@ -3087,8 +3087,11 @@ def pre_server_create(telepath=False):
             new_info['server_settings']['world'] = new_path
 
         # Copy import remotely if available
-        if import_data['path']:
-            import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
+        try:
+            if import_data['path']:
+                import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
+        except KeyError:
+            pass
 
         api_manager.request(
             endpoint='/create/push_new_server',
@@ -3120,7 +3123,7 @@ def pre_server_create(telepath=False):
     folder_check(tmpsvr)
 def post_server_create(telepath=False, modpack=False):
     global new_server_info, import_data
-    return_data = {'name': import_data['name'], 'path': import_data['path'], 'readme': None}
+    return_data = {'name': import_data['name'], 'readme': None}
     telepath_data = None
     try:
         if new_server_info['_telepath_data']:

@@ -13363,8 +13363,10 @@ class ServerImportModpackProgressScreen(ProgressScreen):
 
         def after_func(*args):
             import_data = constants.post_server_create(modpack=True)
+
             if self.telepath and import_data['readme']:
                 import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
+
             self.open_server(
                 import_data['name'],
                 True,
