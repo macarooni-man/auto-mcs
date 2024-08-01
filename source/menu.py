@@ -2272,7 +2272,7 @@ class ServerImportBackupInput(DirectoryInput):
 
 
             # Don't allow import of already imported servers
-            elif server_name not in self.server_list:
+            elif server_name.lower() in self.server_list:
                 self.valid_text(False, "This server already exists!")
                 disable_next(True)
 
@@ -5229,6 +5229,10 @@ class TelepathDropButton(DropButton):
                     # Update name list if creating a server
                     try:
                         screen_manager.current_screen.name_input.get_server_list()
+                    except:
+                        pass
+                    try:
+                        screen_manager.current_screen.name_input.update_server()
                     except:
                         pass
 
@@ -13099,6 +13103,7 @@ class ServerImportScreen(MenuBackground):
         self.input_type = None
         self.input = None
         self.next_button = None
+        self.name_input = None
 
 
     def load_input(self, input_type, *args):
@@ -13122,11 +13127,13 @@ class ServerImportScreen(MenuBackground):
 
 
         if input_type == "external":
-            self.button_layout.add_widget(ServerImportPathInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset}))
+            self.name_input = ServerImportPathInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
+            self.button_layout.add_widget(self.name_input)
             self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('dir', constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home), input_name='ServerImportPathInput', title='Select a Server Folder'))
 
         elif input_type == "backup":
-            self.button_layout.add_widget(ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset}))
+            self.name_input = ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
+            self.button_layout.add_widget(self.name_input)
             start_path = constants.backupFolder if os.path.isdir(constants.backupFolder) else constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
             self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('file', start_path), input_name='ServerImportBackupInput', title='Select an auto-mcs back-up file', ext_list=['*.amb', '*.tgz']))
 
