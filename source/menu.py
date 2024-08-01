@@ -13342,12 +13342,9 @@ class ServerImportModpackProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
+        import_name = constants.import_data['name']
 
         def before_func(*args):
-
-            # First, clean out any existing server in temp folder
-            constants.safe_delete(constants.tempDir)
-
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
@@ -13355,15 +13352,11 @@ class ServerImportModpackProgressScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.folder_check(constants.tmpsvr)
+                constants.pre_server_create()
 
         def after_func(*args):
-            import_name = constants.import_data['name']
-            server_path = os.path.join(constants.serverDir, constants.import_data['name'])
-            read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
-            if read_me:
-                read_me = read_me[0]
-            self.open_server(constants.import_data['name'], True, f"'${import_name}$' was imported successfully", show_readme=read_me)
+            read_me = constants.post_server_create(modpack=True)
+            self.open_server(import_name, True, f"'${import_name}$' was imported successfully", show_readme=read_me)
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):

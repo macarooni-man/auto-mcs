@@ -3109,8 +3109,9 @@ def pre_server_create(telepath=False):
     # First, clean out any existing server in temp folder
     safe_delete(tmpsvr)
     folder_check(tmpsvr)
-def post_server_create(telepath=False):
+def post_server_create(telepath=False, modpack=False):
     global new_server_info, import_data
+    return_data = None
 
     telepath_data = None
     try:
@@ -3120,13 +3121,6 @@ def post_server_create(telepath=False):
         pass
 
     if telepath_data and not telepath:
-        new_server_init()
-        api_manager.request(
-            endpoint='/create/push_new_server',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'server_info': new_server_info, 'import_info': {'name': None, 'path': None}}
-        )
         response = api_manager.request(
             endpoint='/create/post_server_create',
             host=telepath_data['host'],
@@ -3135,10 +3129,16 @@ def post_server_create(telepath=False):
         )
         return response
 
+    if modpack:
+        server_path = os.path.join(serverDir, import_data['name'])
+        read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
+        if read_me:
+            return_data = read_me[0]
+
     clear_uploads()
     new_server_info = {}
     import_data = {}
-
+    return return_data
 
 # Configures server via server info in a variety of ways (for updates)
 def update_server_files(progress_func=None):
@@ -3876,6 +3876,27 @@ eula=true"""
 def scan_modpack(update=False, progress_func=None):
     global import_data
 
+    telepath_data = None
+    if server_manager.current_server and update:
+        telepath_data = server_manager.current_server._telepath_data
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/scan_modpack',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'update': update}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     # First, download modpack if it's a URL
     try:
         url = import_data['url']
@@ -4254,6 +4275,28 @@ def scan_modpack(update=False, progress_func=None):
 # Moves tmpsvr to actual server and checks for ACL and other file validity
 def finalize_modpack(update=False, progress_func=None, *args):
     global import_data
+
+    telepath_data = None
+    if server_manager.current_server and update:
+        telepath_data = server_manager.current_server._telepath_data
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/finalize_modpack',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'update': update}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
 
     test_server = os.path.join(tempDir, 'importtest')
 
