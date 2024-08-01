@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_submodules
 from kivy_deps import sdl2, glew
 from time import sleep
 from re import findall
@@ -8,7 +9,8 @@ from glob import glob
 
 
 block_cipher = None
-
+hiddenimports = ['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern']
+hiddenimports.extend(collect_submodules('uvicorn'))
 
 a = Analysis(['wrapper.py'],
              pathex=[],
@@ -19,7 +21,7 @@ a = Analysis(['wrapper.py'],
                         ('.\\locales.json', '.'),
                         ('.\\gui-assets\\icons\\sm\\*', '.\\gui-assets\\icons\\sm')
                     ],
-             hiddenimports=['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern'],
+             hiddenimports=hiddenimports,
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],
