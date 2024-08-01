@@ -2286,7 +2286,7 @@ def new_server_init():
 
 # Override remote new server configuration
 def push_new_server(server_info: dict, import_info={}):
-    global new_server_info, import_data
+    global new_server_info, import_data, server_list_lower
     new_server_init()
     if import_info:
         import_data = import_info
@@ -2312,10 +2312,10 @@ def push_new_server(server_info: dict, import_info={}):
 
 
 # Generate new server name
-def new_server_name(existing_server=None):
+def new_server_name(existing_server=None, s_list=server_list_lower):
     def iter_name(new_name):
         x = 1
-        while new_name.lower() in server_list_lower:
+        while new_name.lower() in s_list:
             new_name = f'{new_name} ({x})'
             x += 1
         return new_name
@@ -3103,6 +3103,15 @@ def pre_server_create(telepath=False):
             args={'telepath': True}
         )
         return response
+
+
+    # Input validate name to prevent overwriting
+    if import_data['name']:
+        if import_data['name'].lower() in server_list_lower:
+            import_data['name'] = new_server_name(import_data['name'])
+    elif new_server_info['name']:
+        if new_server_info['name'].lower() in server_list_lower:
+            new_server_info['name'] = new_server_name(new_server_info['name'])
 
     server_manager.current_server = None
 
