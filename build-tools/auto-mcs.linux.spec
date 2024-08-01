@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_submodules
 from time import sleep
 from re import findall
 from os.path import basename
@@ -8,6 +9,8 @@ from glob import glob
 
 
 block_cipher = None
+hiddenimports = ['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern', 'uvicorn.logging']
+hiddenimports.extend(collect_submodules('uvicorn'))
 
 
 a = Analysis(['wrapper.py'],
@@ -21,7 +24,7 @@ a = Analysis(['wrapper.py'],
                         ('/usr/lib64/libcrypt.so.2', '.'),
                         ('./gui-assets/icons/sm/*', './gui-assets/icons/sm')
                     ],
-             hiddenimports=['plyer.platforms.linux.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern'],
+             hiddenimports=hiddenimports,
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],

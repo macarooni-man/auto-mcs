@@ -9,8 +9,9 @@ from glob import glob
 
 
 block_cipher = None
-hiddenimports = ['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern']
+hiddenimports = ['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern', 'uvicorn.logging']
 hiddenimports.extend(collect_submodules('uvicorn'))
+
 
 a = Analysis(['wrapper.py'],
              pathex=[],
