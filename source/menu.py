@@ -789,7 +789,6 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
 
                 try:
                     results = return_function(query) if not server_info else return_function(query, server_info)
-
                 except ConnectionRefusedError:
                     pass
 

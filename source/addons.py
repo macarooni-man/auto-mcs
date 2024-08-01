@@ -163,7 +163,7 @@ class AddonManager():
         return addon
 
     # Searches for downloadable addons, returns a list of AddonWebObjects
-    def search_addons(self, query: str):
+    def search_addons(self, query: str, *args):
         if not self._addons_supported:
             return []
 
@@ -568,7 +568,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
 
 # Returns list of addon objects according to search
 # Query --> AddonWebObject
-def search_addons(query: str, server_properties):
+def search_addons(query: str, server_properties, *args):
 
     # Manually weighted search results
     prioritized = ("worldedit for bukkit", "vault", "essentials", "essentialsx", "worldguard", "anticheat", "zombie_striker_dev", "sleakes", "sk89q", "permissionsex", "multiverse-core", "shopkeepers")

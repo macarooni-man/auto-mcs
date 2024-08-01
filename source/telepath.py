@@ -686,7 +686,7 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         except AttributeError:
             return []
 
-    def search_addons(self, query: str):
+    def search_addons(self, query: str, *args):
         return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query)]
 
     def get_addon(self, addon_name: str, online=False):
