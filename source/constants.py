@@ -3066,8 +3066,9 @@ def pre_server_create(telepath=False):
 
         # Convert ACL object for remote
         new_info = deepcopy(new_server_info)
-        new_info['acl_object'] = new_server_info['acl_object']._to_json()
-        new_info['addon_objects'] = []
+        if new_info['acl_object']:
+            new_info['acl_object'] = new_server_info['acl_object']._to_json()
+            new_info['addon_objects'] = []
 
         # Convert add-ons to remote
         for addon in new_server_info['addon_objects']:

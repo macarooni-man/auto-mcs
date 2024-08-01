@@ -1989,6 +1989,16 @@ class ServerSeedInput(BaseInput):
 
 class ServerImportPathInput(DirectoryInput):
 
+    def get_server_list(self):
+        try:
+            telepath_data = constants.new_server_info['_telepath_data']
+            if telepath_data:
+                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                return True
+        except:
+            pass
+        self.server_list = constants.server_list_lower
+
     # Hide input_button on focus
     def _on_focus(self, *args):
         super()._on_focus(*args)
@@ -2040,6 +2050,8 @@ class ServerImportPathInput(DirectoryInput):
         self.selected_server = None if server == '' else server
         self.server_verified = False
         self.update_server(hide_popup=True)
+        self.server_list = []
+        self.get_server_list()
 
     def on_enter(self, value):
         self.selected_server = self.text.replace("~", constants.home)
@@ -2079,6 +2091,8 @@ class ServerImportPathInput(DirectoryInput):
         self.scroll_x = 0
 
         if self.selected_server:
+            self.get_server_list()
+
             self.selected_server = os.path.abspath(self.selected_server)
 
             # Check if the selected server is invalid
@@ -2094,7 +2108,7 @@ class ServerImportPathInput(DirectoryInput):
 
 
             # Don't allow import of already imported servers
-            elif os.path.join(constants.applicationFolder, 'Servers') in self.selected_server or constants.server_path(os.path.basename(self.selected_server)):
+            elif os.path.join(constants.applicationFolder, 'Servers') in self.selected_server and os.path.basename(self.selected_server).lower() in self.server_list:
                 self.valid_text(False, "This server already exists!")
                 disable_next(True)
 
