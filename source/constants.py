@@ -2285,9 +2285,10 @@ def new_server_init():
     }
 
 # Override remote new server configuration
-def push_new_server(server_info: dict):
-    global new_server_info
+def push_new_server(server_info: dict, import_info: dict):
+    global new_server_info, import_data
     new_server_init()
+    import_data = import_info
 
     server_info['_telepath_data'] = None
     new_server_info = server_info
@@ -3086,12 +3087,11 @@ def pre_server_create(telepath=False):
         if import_data['path']:
             import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
 
-
         api_manager.request(
             endpoint='/create/push_new_server',
             host=telepath_data['host'],
             port=telepath_data['port'],
-            args={'server_info': new_info}
+            args={'server_info': new_info, 'import_data': import_data}
         )
         response = api_manager.request(
             endpoint='/create/pre_server_create',
