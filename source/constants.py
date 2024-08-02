@@ -178,7 +178,7 @@ username = ''
 
 server_ini = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'
 command_tmp = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'
-script_obj = amscript.ScriptObject()
+script_obj = None
 
 
 # App/Assets folder

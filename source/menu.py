@@ -19729,6 +19729,7 @@ class ServerAddonSearchScreen(MenuBackground):
 
 # amscript Manager ------------------------------------------------------------------------------------------------
 
+constants.script_obj = amscript.ScriptObject()
 def edit_script(edit_button, server_obj, script_path):
     "amscript-icon.png"
 
