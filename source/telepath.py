@@ -491,8 +491,11 @@ class WebAPI():
 
         # Expire code automatically
         def _clear_pair_code(*a):
-            if self.pair_data:
-                self.pair_data = {}
+            try:
+                if self.pair_data['code'] == code:
+                    self.pair_data = {}
+            except:
+                pass
         threading.Timer((PAIR_CODE_EXPIRE_MINUTES * 60), _clear_pair_code).start()
 
     def update_config(self, host: str, port: int):

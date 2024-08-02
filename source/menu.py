@@ -8541,6 +8541,10 @@ class TelepathPair():
             color = (0.937, 0.831, 0.62, 1)
             sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
 
+        # Reset token if cancelled
+        if constants.api_manager.pair_data:
+            constants.api_manager.pair_data = {}
+
         Clock.schedule_once(
             functools.partial(
                 screen_manager.current_screen.show_banner,
