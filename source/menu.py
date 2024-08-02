@@ -6164,6 +6164,67 @@ class PopupErrorLog(PopupWindow):
         for widget in self.window.children:
             widget.opacity = 0
 
+# Telepath pop-up window
+class PopupTelepathPair(PopupWindow):
+    def __init__(self, prompt=False, **kwargs):
+        self.window_color = (0.3, 1, 0.6, 1)
+        self.window_text_color = (0.07, 0.2, 0.12, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'telepath.png')
+        super().__init__(**kwargs)
+
+        # Check if pair succeeded with an API call from constants.telepath_pair
+        if prompt:
+            window_sound = 'popup_telepath_request.wav'
+            title = '$Telepath$ Pair Request'
+            button_text = 'CANCEL'
+            data = constants.telepath_pair.pair_data
+
+            # Override to show pair code
+            self.window_content.markup = True
+            code = data['code']
+            user_string = f'{data["host"]["host"]}/{data["host"]["user"]}'
+            very_bold = os.path.join(constants.gui_assets, 'fonts', constants.fonts["mono-bold"])
+            self.window_content.text = f"Pair '${user_string}$' with:[font={very_bold}.otf][size={round(sp(70))}]{code}[/size][/font]"
+
+        else:
+            success = True # API call here
+            if success:
+                window_sound = 'popup_telepath_success.wav'
+                title = 'Pair Success'
+                button_text = 'OKAY'
+            else:
+                window_sound = 'popup_warning.wav'
+                title = 'Pair Failure'
+                button_text = 'OKAY'
+
+        # Modal specific settings
+        self.window_title.text = title
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', window_sound))
+        self.no_button = None
+        self.yes_button = None
+        with self.canvas.after:
+            self.ok_button = Button()
+            self.ok_button.id = "ok_button"
+            self.ok_button.size_hint = (None, None)
+            self.ok_button.size = (459, 65)
+            self.ok_button.border = (0, 0, 0, 0)
+            self.ok_button.background_color = self.window_color
+            self.ok_button.background_normal = os.path.join(constants.gui_assets, "popup_full_button.png")
+            self.ok_button.pos_hint = {"center_x": 0.5}
+            self.ok_button.text = button_text
+            self.ok_button.color = self.window_text_color
+            self.ok_button.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["very-bold"]}.ttf')
+            self.ok_button.font_size = sp(22)
+            self.bind(on_touch_down=self.click_event)
+
+        self.window.add_widget(self.ok_button)
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+
+
 
 # Big popup widgets
 class BigPopupWindow(RelativeLayout):
@@ -8020,12 +8081,15 @@ class MenuBackground(Screen):
 
     # Show popup; popup_type can be "info", "warning", "query"
     def show_popup(self, popup_type, title, content, callback=None, *args):
-        popup_types = ("info", "warning", "query", "warning_query", "controls", "addon", "script", "file", "error_log")
-
+        popup_types = (
+            "info", "warning", "query", "warning_query", "controls", "addon",
+            "script", "file", "error_log"
+        )
+        telepath_types = ("pair_request", "pair_result")
         if self.context_menu:
             self.context_menu.hide()
 
-        if ((popup_type == "update") or (title and content and popup_type in popup_types)) and (self == screen_manager.current_screen):
+        if ((popup_type == "update") or (title and content and (popup_type in popup_types or popup_type in telepath_types))) and (self == screen_manager.current_screen):
 
             # self.show_popup("info", "Title", "This is an info popup!", functools.partial(callback_func))
             # self.show_popup("warning", "Title", "This is a warning popup!", functools.partial(callback_func))
@@ -8085,13 +8149,20 @@ class MenuBackground(Screen):
                 elif popup_type == "error_log":
                     self.popup_widget = PopupErrorLog()
 
+                # Telepath pop-ups
+                elif popup_type == "pair_request":
+                    self.popup_widget = PopupTelepathPair(prompt=True)
+                elif popup_type == "pair_result":
+                    self.popup_widget = PopupTelepathPair()
+
             self.popup_widget.generate_blur_background()
 
-            if title.strip():
-                self.popup_widget.window_title.text = title
+            if popup_type not in telepath_types:
+                if title.strip():
+                    self.popup_widget.window_title.text = title
 
-            if content.strip():
-                self.popup_widget.window_content.text = content
+                if content.strip():
+                    self.popup_widget.window_content.text = content
 
             self.popup_widget.callback = callback
 
@@ -8397,7 +8468,48 @@ class MenuBackground(Screen):
         self.popup_bind = None
 
 
-# Telepath notifications
+# Telepath notifications and pairing
+class TelepathPair():
+    def __init__(self):
+        self.is_open = False
+
+    def close(self):
+        self.is_open = False
+        self.pair_data = {}
+
+    def pair_result(self):
+        # Show another pop-up if it's successful
+        self.show_popup(
+            "pair_result",
+            " ",
+            self.pair_data,
+            self.close
+        )
+        pass
+    def open(self, data: dict):
+        if self.is_open:
+            return
+
+        self.pair_data = data
+
+        # If the application is blocked, wait until it's not to show the pop-up
+        def wait_thread(*a):
+            self.is_open = True
+            while constants.ignore_close or screen_manager.current_screen.popup_widget:
+                time.sleep(1)
+
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_popup,
+                    "pair_request",
+                    " ",
+                    self.pair_data,
+                    self.close
+                ), 0
+            )
+
+        threading.Timer(0, wait_thread).start()
+constants.telepath_pair = TelepathPair()
 def telepath_banner(message: str, finished: bool):
     Clock.schedule_once(
         functools.partial(
