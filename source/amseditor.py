@@ -325,7 +325,7 @@ def save_window_pos(*args):
 
 
 # Saves script to disk
-def save_script(script_path, *a):
+def save_script(data, script_path, *a):
     global open_frames, currently_open
     script_name = os.path.basename(script_path)
     if script_path in currently_open:
@@ -336,12 +336,14 @@ def save_script(script_path, *a):
             script_contents = script_contents[:-dead_zone]
 
         # print(script_contents)
-
         try:
             with open(script_path, 'w+', encoding='utf-8', errors='ignore') as f:
                 f.write(script_contents)
         except Exception as e:
             print(e)
+
+        # Upload data to remote if telepath
+        # create an endpoint to sync script data with host
 
 
 # Changes font size in editor
@@ -578,7 +580,7 @@ proc ::tabdrag::move {win x y} {
                 global currently_open, open_frames
 
                 script_path = self.nametowidget(self.tabs()[tab]).path
-                save_script(script_path)
+                save_script(data, script_path)
 
                 currently_open.remove(script_path)
                 del open_frames[os.path.basename(script_path)]
@@ -789,7 +791,7 @@ def launch_window(path: str, data: dict, *a):
 
         root = Frame(padx=0, pady=0, bg=background_color)
         root.path = path
-        root.save = functools.partial(save_script, root.path)
+        root.save = functools.partial(save_script, data, root.path)
 
         def save_current(*a):
             current_tab_index = window.root.index(window.root.select())

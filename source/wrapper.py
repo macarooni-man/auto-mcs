@@ -280,8 +280,8 @@ if __name__ == '__main__':
 
     # Launch API before UI
     # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
+    constants.api_manager = telepath.WebAPI(constants.api_data['default-host'], constants.api_data['default-port'])
     if constants.api_data['enabled'] or constants.headless:
-        constants.api_manager = telepath.WebAPI(constants.api_data['default-host'], constants.api_data['default-port'])
         constants.api_manager.start()
 
 
