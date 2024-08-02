@@ -35,6 +35,7 @@ import svrmgr
 SECRET_KEY = os.urandom(64)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+PAIR_CODE_EXPIRE_MINUTES = 1.5
 
 class Token(BaseModel):
     access_token: str
@@ -425,12 +426,17 @@ class WebAPI():
         self.host = host
         self.port = port
         self.sessions = {}
-        self.pair_data = {}
         self.jwt_token = None
         self.update_config(host=host, port=port)
+
+
+        # Server side data
+        self.current_user = None
+        self.pair_data = {}
         create_endpoint(self.initiate_pair, 'telepath', True, auth_required=False)
         create_endpoint(self.confirm_pair, 'telepath', True, auth_required=False)
         create_endpoint(self.login, 'telepath', True, auth_required=False)
+        create_endpoint(self.logout, 'telepath', True, auth_required=True)
 
         # Load authenticated users from saved data
         # [{'host1': str, 'user': str, 'id': str}, {'host2': str, 'user': str, 'id': str}]
@@ -469,6 +475,25 @@ class WebAPI():
         session = constants.deepcopy(session)
         del session['id']
         return create_access_token(session)
+
+    def _create_pair_code(self, host: dict, id: str):
+        characters = string.ascii_letters + string.digits
+        code = str(''.join(random.choice(characters) for _ in range(6)).upper()).replace('O','0')
+
+        # {'host': IP address, 'username': pass in constants.username}
+        self.pair_data = {
+            "host": host,
+            "id": self._encrypt_id(id),
+            "code": code,
+            "attempt": 0,
+            "expire": (dt.now() + td(minutes=PAIR_CODE_EXPIRE_MINUTES)),
+        }
+
+        # Expire code automatically
+        def _clear_pair_code(*a):
+            if self.pair_data:
+                self.pair_data = {}
+        threading.Timer((PAIR_CODE_EXPIRE_MINUTES * 60), _clear_pair_code).start()
 
     def update_config(self, host: str, port: int):
         self.host = host
@@ -562,7 +587,7 @@ class WebAPI():
             print(f"[INFO] [telepath] Closed session to '{host}'")
 
     # Returns data for pairing a remote session
-    # host = {'host': str, 'user': str}
+    # host = {'host': str, 'user': str, 'ip': str}
     def initiate_pair(self, host: dict, id: str) -> dict or None:
         error_code = status.HTTP_418_IM_A_TEAPOT if random.randrange(10) == 1 else status.HTTP_409_CONFLICT
         if constants.ignore_close:
@@ -570,33 +595,33 @@ class WebAPI():
             print(f'[INFO] [telepath] {message}')
             raise HTTPException(status_code=error_code, detail=message)
 
+        # Ignore request if there's currently a valid pairing code
         if self.pair_data:
             message = "Please wait for the current code to expire"
             print(f'[INFO] [telepath] {message}')
             raise HTTPException(status_code=error_code, detail=message)
 
+        # Ignore an improperly formatted request
+        try:
+            test = host['ip']
+            test = host['host']
+            test = host['user']
+        except:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid request')
+
         # If there is no pair code, and the service is running
         if self.running:
-            characters = string.ascii_letters + string.digits
-            code = ''.join(random.choice(characters) for _ in range(6)).upper()
-
-            # {'host': IP address, 'username': pass in constants.username}
-            self.pair_data = {
-                "host": host,
-                "id": self._encrypt_id(id),
-                "code": code,
-                "expire": (dt.now() + td(minutes=3)),
-            }
-
+            self._create_pair_code(host, id)
 
             # Show pop-up if the UI is open
             if constants.telepath_pair:
                 constants.telepath_pair.open(self.pair_data)
 
-            print(f"[INFO] [telepath] Generated pairing code: {code} for host: {host}")
-            return self.pair_data
+            print(f"[INFO] [telepath] Generated pairing code: {self.pair_data['code']} for host: {host}")
+            return True
         else:
             print(f'[INFO] [telepath] Telepath API is not running')
+            return False
 
     def confirm_pair(self, host: dict, id: str, code: str):
         if self.running:
@@ -606,7 +631,7 @@ class WebAPI():
             if dt.now() < self.pair_data['expire']:
 
                 # First, make sure that the user, id, and code match
-                if host['host'] == self.pair_data['host']['host'] and host['user'] == self.pair_data['host']['user']:
+                if host['host'] == self.pair_data['host']['host'] and host['user'] == self.pair_data['host']['user'] and host['ip'] == self.pair_data['host']['ip']:
                     if self._verify_id(id, self.pair_data['id']) and code == self.pair_data['code']:
                         
                         # Successfully authenticated
@@ -615,26 +640,46 @@ class WebAPI():
                         session = {'host': host['host'], 'user': host['user'], 'id': self.pair_data['id']}
                         self.pair_data = {}
                         self.authenticated_sessions.append(session)
+                        self.current_user = session
                         return self._return_token(session)
 
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Invalid host')
+                # Expire after 3 failed attempts
+                self.pair_data['attempt'] += 1
+                if self.pair_data['attempt'] >= 3:
+                    self.pair_data = {}
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Invalid host or pair code')
 
             else:
                 self.pair_data = {}
                 return False
 
-
     def login(self, host: dict, id: str):
         if self.running:
             for session in self.authenticated_sessions:
                 if self._verify_id(id, session['id']):
+
+                    # This can change later, but currently, there can only be one telepath user globally
+                    if self.current_user:
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="Logged in from another session",
+                            headers={"WWW-Authenticate": "Bearer"},
+                        )
+
                     session['host'] = host['host']
                     session['user'] = host['user']
+                    session['ip'] = host['ip']
+                    self.active_user = session
                     return self._return_token(session)
 
-            else:
-                self.initiate_pair(host, id)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
+    def logout(self, host: dict, id: str):
+        pass
 
 
 

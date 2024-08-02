@@ -6166,6 +6166,36 @@ class PopupErrorLog(PopupWindow):
 
 # Telepath pop-up window
 class PopupTelepathPair(PopupWindow):
+
+    def close_pair(self, *a):
+        self.self_destruct(True)
+        constants.telepath_pair.close()
+
+    def update_expiry_bar(self):
+        pair_data = constants.api_manager.pair_data
+        Animation(size_hint_max_x=0, duration=(pair_data['expire'] - dt.now()).seconds).start(self.pair_bar)
+
+        def later(*a):
+            pair_data = constants.api_manager.pair_data
+            if pair_data:
+                Clock.schedule_once(later, 0.2)
+
+                # Resize bar based on time remaining
+                remaining = (pair_data['expire'] - dt.now()).seconds / (telepath.PAIR_CODE_EXPIRE_MINUTES * 60)
+                if remaining <= 1:
+
+                    # Change color if the code is about to expire
+                    if remaining < 0.2:
+                        self.pair_bar.color = (1, 0.56, 0.6, 1)
+                        self.pair_rail.color = (0.2, 0.1, 0.1, 0.3)
+
+                    self.resize_window()
+
+            else:
+                self.close_pair()
+
+        later()
+
     def __init__(self, prompt=False, **kwargs):
         self.window_color = (0.3, 1, 0.6, 1)
         self.window_text_color = (0.07, 0.2, 0.12, 1)
@@ -6177,14 +6207,37 @@ class PopupTelepathPair(PopupWindow):
             window_sound = 'popup_telepath_request.wav'
             title = '$Telepath$ Pair Request'
             button_text = 'CANCEL'
-            data = constants.telepath_pair.pair_data
+            self.data = constants.deepcopy(constants.telepath_pair.pair_data)
 
             # Override to show pair code
             self.window_content.markup = True
-            code = data['code']
-            user_string = f'{data["host"]["host"]}/{data["host"]["user"]}'
+            code = self.data['code']
+            user_string = f'{self.data["host"]["host"]}/{self.data["host"]["user"]}'
             very_bold = os.path.join(constants.gui_assets, 'fonts', constants.fonts["mono-bold"])
-            self.window_content.text = f"Pair '${user_string}$' with:[font={very_bold}.otf][size={round(sp(70))}]{code}[/size][/font]"
+            self.window_content.text = f"Pair '${user_string}$' with[font={very_bold}.otf][size={round(sp(70))}]{code}[/size][/font]\n\n"
+
+            # Pair texture
+            self.bar_width = 250
+            with self.canvas.after:
+                self.pair_rail = Image()
+                self.pair_rail.id = "pair_bar"
+                self.pair_rail.allow_stretch = True
+                self.pair_rail.keep_ratio = False
+                self.pair_rail.color = (*self.window_text_color[:-1], 0.3)
+                self.pair_rail.size_hint_max = (self.bar_width, 10)
+                self.pair_rail.pos_hint = {"center_x": 0.5, "center_y": 0.35}
+
+                self.pair_bar = Image()
+                self.pair_bar.id = "pair_bar"
+                self.pair_bar.allow_stretch = True
+                self.pair_bar.keep_ratio = False
+                self.pair_bar.color = self.window_color
+                self.pair_bar.size_hint_max = (self.bar_width, 10)
+                self.pair_bar.pos_hint = {"center_x": 0.5, "center_y": 0.35}
+            self.window.add_widget(self.pair_rail)
+            self.window.add_widget(self.pair_bar)
+            self.update_expiry_bar()
+
 
         else:
             success = True # API call here
@@ -8472,20 +8525,41 @@ class MenuBackground(Screen):
 class TelepathPair():
     def __init__(self):
         self.is_open = False
+        self.pair_data = {}
 
     def close(self):
+        if not self.is_open:
+            return
+
+        current_user = constants.api_manager.current_user
+        if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
+            message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
+            color = (0.553, 0.902, 0.675, 1)
+            sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_telepath_success.wav'))
+        else:
+            message = f'$Telepath$ pair request expired'
+            color = (0.937, 0.831, 0.62, 1)
+            sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_banner,
+                color,
+                message,
+                "telepath.png",
+                2.5,
+                {"center_x": 0.5, "center_y": 0.965}
+            ), 0.1
+        )
+
+        try:
+            sound.play()
+        except:
+            pass
+
         self.is_open = False
         self.pair_data = {}
 
-    def pair_result(self):
-        # Show another pop-up if it's successful
-        self.show_popup(
-            "pair_result",
-            " ",
-            self.pair_data,
-            self.close
-        )
-        pass
     def open(self, data: dict):
         if self.is_open:
             return

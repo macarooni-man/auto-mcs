@@ -20,8 +20,8 @@ Pygments==2.16.1
 pyinstaller==5.10
 pyinstaller-hooks-contrib>=2024.7
 pyparsing==3.0.9
-requests==2.32.0
-requests-toolbelt==0.10.1
+requests>=2.32.0
+requests-toolbelt>=0.10.1
 simpleaudio==1.0.4
 six==1.16.0
 soupsieve==2.3.2.post1
@@ -36,3 +36,4 @@ pydantic_core>=2.14.3
 urwid==2.6.15
 PyJWT>=2.9.0
 bcrypt>=4.2.0
+python-multipart>=0.0.9

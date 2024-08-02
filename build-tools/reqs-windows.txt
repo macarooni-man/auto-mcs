@@ -27,8 +27,8 @@ pyparsing==3.0.9
 pypiwin32==223
 pywin32==304
 pywin32-ctypes==0.2.2
-requests==2.32.0
-requests-toolbelt==0.10.0
+requests>=2.32.0
+requests-toolbelt>=0.10.0
 simpleaudio==1.0.4
 six==1.16.0
 soupsieve==2.3.2.post1
@@ -43,3 +43,4 @@ pydantic_core>=2.14.3
 urwid==2.6.15
 PyJWT>=2.9.0
 bcrypt>=4.2.0
+python-multipart>=0.0.9
