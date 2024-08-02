@@ -164,13 +164,15 @@ uploadDir = os.path.join(applicationFolder, 'Uploads')
 backupFolder = os.path.join(applicationFolder, 'Backups')
 userDownloads = os.path.join(home, 'Downloads')
 serverDir = os.path.join(applicationFolder, 'Servers')
+scriptDir = os.path.join(applicationFolder, 'Tools', 'amscript')
+
 telepathFile = os.path.join(serverDir, 'telepath-servers.json')
+telepathScriptDir = os.path.join(scriptDir, 'telepath-temp')
 
 tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
 cacheDir = os.path.join(applicationFolder, 'Cache')
 configDir = os.path.join(applicationFolder, 'Config')
-scriptDir = os.path.join(applicationFolder, 'Tools', 'amscript')
 javaDir = os.path.join(applicationFolder, 'Tools', 'java')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 global_conf = os.path.join(configDir, 'app-config.json')
@@ -1417,6 +1419,7 @@ def cleanup_old_files():
     safe_delete(downDir)
     safe_delete(uploadDir)
     safe_delete(tempDir)
+    safe_delete(telepathScriptDir)
 
 
 # Glob to find hidden folders as well

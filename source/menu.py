@@ -19735,7 +19735,7 @@ def edit_script(edit_button, server_obj, script_path):
 
     # Override to download locally
     if server_obj._telepath_data:
-        script_path = constants.telepath_download(server_obj._telepath_data, script_path)
+        script_path = constants.telepath_download(server_obj._telepath_data, script_path, constants.telepathScriptDir)
 
     data_dict = {
         '_telepath_data': server_obj._telepath_data,

@@ -1,19 +1,25 @@
 # This file abstracts all the program managers to control a server remotely
 
-from fastapi import FastAPI, Body, File, UploadFile, HTTPException
+from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Depends, status
 from fastapi.responses import JSONResponse, FileResponse
 from typing import Callable, get_type_hints, Optional
 from fastapi.openapi.utils import get_openapi
+from fastapi.security import OAuth2PasswordBearer
+from passlib.context import CryptContext
 from pydantic import BaseModel, create_model
 from datetime import timedelta as td
 from datetime import datetime as dt
+from datetime import timezone as tz
 from munch import Munch
 import threading
 import requests
 import inspect
 import uvicorn
 import logging
+import random
+import string
 import time
+import jwt
 import os
 
 # Local imports
@@ -25,11 +31,46 @@ from svrmgr import ServerObject
 import constants
 import svrmgr
 
+SECRET_KEY = os.urandom(64)
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: str
+    host_ip: str
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+auth_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Placeholder for authentication
 def get_token():
     return 'token'
+
+def create_access_token(data: dict, expires_delta: td):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = dt.now(tz.utc) + expires_delta
+    else:
+        expire = dt.now(tz.utc) + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(token: str = Depends(auth_scheme)):
+    # TODO: Implement the logic to identify the auto-mcs client against the API
+    if token == '1':
+        return 'auto-mcs'
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 # This will communicate with the endpoints
@@ -241,13 +282,19 @@ def create_remote_obj(obj: object, request=True):
 
 
 # Creates an endpoint from a method, tagged, and optionally if it contains parameters
-def create_endpoint(method: Callable, tag: str, params=False):
+def create_endpoint(method: Callable, tag: str, params=False, auth_required=True):
+    kwargs = {
+        'methods': ["POST" if params else "GET"],
+        'name': method.__name__,
+        'tags': [tag],
+    }
+    if auth_required:
+        kwargs['dependencies'] = [Depends(get_current_user)]
+
     app.add_api_route(
         f"/{tag}/{method.__name__}",
         return_endpoint(method, create_pydantic_model(method) if params else None),
-        methods=["POST" if params else "GET"],
-        name=method.__name__,
-        tags=[tag]
+        **kwargs
     )
 
 
@@ -346,7 +393,8 @@ def generate_endpoints(app: FastAPI, instance):
                 methods=["POST" if input_model else "GET"],
                 response_model=response_model,
                 name=name,
-                tags=[instance._obj_name]
+                tags=[instance._obj_name],
+                dependencies=[Depends(get_current_user)]
             )
 
 
@@ -378,7 +426,16 @@ class WebAPI():
         self.host = host
         self.port = port
         self.sessions = {}
+        self.pair_data = {}
         self.update_config(host=host, port=port)
+        create_endpoint(self.initiate_pair, 'telepath', True, auth_required=False)
+        create_endpoint(self.confirm_pair, 'telepath', True, auth_required=False)
+        create_endpoint(self.login, 'telepath', True, auth_required=False)
+
+        # Load authenticated users from saved data
+        # [{'host1': str, 'user': str, 'id': str}, {'host2': str, 'user': str, 'id': str}]
+        self.authenticated_sessions = {}
+        # .....
 
         # Disable low importance uvicorn logging
         if not constants.debug:
@@ -393,6 +450,12 @@ class WebAPI():
 
     def _kill_uvicorn(self):
         self.server.should_exit = True
+
+    def _encrypt_id(self, id: str):
+        return pwd_context.hash(id)
+
+    def _return_token(self, session: dict):
+        return create_access_token(session)
 
     def update_config(self, host: str, port: int):
         self.host = host
@@ -486,9 +549,71 @@ class WebAPI():
             print(f"[INFO] [telepath] Closed session to '{host}'")
 
     # Returns data for pairing a remote session
-    def pair(self):
-        pass
+    # host = {'host': str, 'user': str}
+    def initiate_pair(self, host: dict, id: str) -> dict | None:
 
+        if self.pair_data:
+            message = "Please wait for the current code to expire"
+            print(f'[INFO] [telepath] {message}')
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
+
+        # If there is no pair code, and the service is running
+        if self.running:
+            characters = string.ascii_letters + string.digits
+            code = ''.join(random.choice(characters) for _ in range(6)).upper()
+
+            self.pair_data = {
+                # {'host': IP address, 'username': pass in constants.username}
+                "host": host,
+                "id": self._encrypt_id(id),
+                "code": code,
+                "expire": (dt.now() + td(minutes=3)),
+            }
+
+            print(f"[INFO] [telepath] Generated pairing code: {code} for host: {host}")
+            return self.pair_data
+        else:
+            print(f'[INFO] [telepath] Telepath API is not running')
+
+    def confirm_pair(self, host: dict, id: str, code: int):
+        if self.running:
+            if dt.now() < self.pair_data['expire']:
+
+                # First, make sure that the user, id, and code match
+                if host['host'] == self.pair_data['host'] and host['user'] == self.pair_data['user']:
+                    if pwd_context.verify(id, self.pair_data['id']) and int(code) == self.pair_data['code']:
+                        
+                        # Successfully authenticated
+
+                        # Call function to write this data to a file
+                        
+                        self.pair_data = {}
+                        session = {'host': host['host'], 'user': host['user'], 'id': self.pair_data['id']}
+                        self.authenticated_sessions.append(session)
+                        return self._return_token(session)
+
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Invalid host')
+
+            else:
+                self.pair_data = {}
+                return False
+
+
+    def login(self, host: dict, id: str):
+        if self.running:
+            for session in self.authenticated_sessions:
+                if pwd_context.verify(id, session['id']):
+                    session['host'] = host['host']
+                    session['user'] = host['user']
+                    return self._return_token(session)
+
+            else:
+                self.initiate_pair(host, id)
+
+
+
+
+            
 # Create objects to import for the rest of the app to request data
 class RemoteServerObject(create_remote_obj(ServerObject)):
 
