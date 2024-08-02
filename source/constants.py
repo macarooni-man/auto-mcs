@@ -42,7 +42,9 @@ import amscript
 
 app_version = "2.2"
 ams_version = "1.2.1"
+telepath_version = "0.7.0"
 app_title = "auto-mcs"
+
 dev_version = False
 window_size = (850, 850)
 refresh_rate = 60
@@ -177,6 +179,7 @@ javaDir = os.path.join(applicationFolder, 'Tools', 'java')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 global_conf = os.path.join(configDir, 'app-config.json')
 username = ''
+hostname = ''
 
 server_ini = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'
 command_tmp = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'
@@ -215,7 +218,7 @@ api_manager = None
 headless = False
 api_data = {
     "enabled": True,
-    "version": "0.6.0",
+    "version": telepath_version,
     "show-banners": True,
     "default-host": "0.0.0.0",
     "default-port": 7001,

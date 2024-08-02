@@ -433,6 +433,7 @@ class WebAPI():
         # Server side data
         self.current_user = None
         self.pair_data = {}
+        self.pair_listen = True
         create_endpoint(self.initiate_pair, 'telepath', True, auth_required=False)
         create_endpoint(self.confirm_pair, 'telepath', True, auth_required=False)
         create_endpoint(self.login, 'telepath', True, auth_required=False)
@@ -474,7 +475,13 @@ class WebAPI():
     def _return_token(self, session: dict):
         session = constants.deepcopy(session)
         del session['id']
-        return create_access_token(session)
+        return {
+            'access-token': create_access_token(session),
+            'hostname': constants.hostname,
+            'os': constants.os_name,
+            'app-version': constants.app_version,
+            'telepath-version': constants.api_data['version']
+        }
 
     def _create_pair_code(self, host: dict, id: str):
         characters = string.ascii_letters + string.digits
@@ -592,6 +599,9 @@ class WebAPI():
     # Returns data for pairing a remote session
     # host = {'host': str, 'user': str, 'ip': str}
     def initiate_pair(self, host: dict, id: str) -> dict or None:
+        if not self.pair_listen:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
+
         error_code = status.HTTP_418_IM_A_TEAPOT if random.randrange(10) == 1 else status.HTTP_409_CONFLICT
         if constants.ignore_close:
             message = "Server is busy, please try again later"
@@ -628,6 +638,10 @@ class WebAPI():
 
     def confirm_pair(self, host: dict, id: str, code: str):
         if self.running:
+
+            if not self.pair_listen:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
+
             if not self.pair_data:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A pair code hasn't been generated")
 
@@ -682,7 +696,8 @@ class WebAPI():
             )
 
     def logout(self, host: dict, id: str):
-        pass
+        self.current_user = {}
+        return True
 
 
 

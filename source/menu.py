@@ -8287,7 +8287,7 @@ class MenuBackground(Screen):
 
     # Show banner; pass in color, text, icon name, and duration
     @staticmethod
-    def show_banner(color, text, icon, duration=5, pos_hint={"center_x": 0.5, "center_y": 0.895}, *args):
+    def show_banner(color, text, icon, duration=5, pos_hint={"center_x": 0.5, "center_y": 0.895}, play_sound=None, *args):
 
         # Base banner layout
         banner_layout = BannerLayout()
@@ -8361,6 +8361,12 @@ class MenuBackground(Screen):
         Clock.schedule_once(functools.partial(banner_object.show_animation, False), duration)
         Clock.schedule_once(functools.partial(hide_widgets, banner_shadow, banner_progress_bar), duration)
         Clock.schedule_once(functools.partial(hide_banner, banner_layout), duration + 0.32)
+
+        if play_sound:
+            try:
+                sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', play_sound)).play()
+            except:
+                pass
 
 
     # Keyboard listeners
@@ -8535,11 +8541,11 @@ class TelepathPair():
         if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
             message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
             color = (0.553, 0.902, 0.675, 1)
-            sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_telepath_success.wav'))
+            sound = 'popup_telepath_success.wav'
         else:
             message = f'$Telepath$ pair request expired'
             color = (0.937, 0.831, 0.62, 1)
-            sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+            sound = 'popup_warning.wav'
 
         # Reset token if cancelled
         if constants.api_manager.pair_data:
@@ -8552,14 +8558,10 @@ class TelepathPair():
                 message,
                 "telepath.png",
                 2.5,
-                {"center_x": 0.5, "center_y": 0.965}
+                {"center_x": 0.5, "center_y": 0.965},
+                sound
             ), 0.1
         )
-
-        try:
-            sound.play()
-        except:
-            pass
 
         self.is_open = False
         self.pair_data = {}

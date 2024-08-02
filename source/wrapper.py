@@ -39,6 +39,10 @@ if __name__ == '__main__':
         constants.username = constants.run_proc('whoami', True).split('\\')[-1].strip()
     except:
         pass
+    try:
+        constants.hostname = constants.run_proc('hostname', True).strip()
+    except:
+        pass
 
     if constants.app_compiled:
         os.environ["KIVY_NO_CONSOLELOG"] = "1"
