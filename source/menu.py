@@ -19729,20 +19729,25 @@ class ServerAddonSearchScreen(MenuBackground):
 
 # amscript Manager ------------------------------------------------------------------------------------------------
 
-script_obj = amscript.ScriptObject()
 def edit_script(edit_button, server_obj, script_path):
     "amscript-icon.png"
+
+    # Override to download locally
+    if server_obj._telepath_data:
+        script_path = constants.telepath_download(server_obj._telepath_data, script_path)
+
     data_dict = {
+        '_telepath_data': server_obj._telepath_data,
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
         'global_conf': constants.global_conf,
         'script_obj': {
-            'syntax_func': script_obj.is_valid,
-            'protected': script_obj.protected_variables,
-            'events': script_obj.valid_events
+            'syntax_func': constants.script_obj.is_valid,
+            'protected': constants.script_obj.protected_variables,
+            'events': constants.script_obj.valid_events
         },
-        'suggestions': server_obj.retrieve_suggestions(script_obj),
+        'suggestions': server_obj.retrieve_suggestions(),
         'os_name': constants.os_name,
         'translate': constants.translate
     }

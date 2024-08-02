@@ -1745,7 +1745,8 @@ class ServerObject():
                     return ""
 
     # Retrieves IDE suggestions from internal objects
-    def retrieve_suggestions(self, script_obj):
+    def retrieve_suggestions(self):
+        script_obj = constants.script_obj
 
         # Gets list of functions and attributes
         def iter_attr(obj, a_start=''):
