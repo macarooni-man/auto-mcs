@@ -483,10 +483,6 @@ class WebAPI():
         self.current_user = None
         self.pair_data = {}
         self.pair_listen = True
-        create_endpoint(self._initiate_pair, 'telepath', True, auth_required=False)
-        create_endpoint(self._confirm_pair, 'telepath', True, auth_required=False)
-        create_endpoint(self._login, 'telepath', True, auth_required=False)
-        create_endpoint(self._logout, 'telepath', True, auth_required=True)
 
         # Load authenticated users from saved data
         # [{'host1': str, 'user': str, 'id': str}, {'host2': str, 'user': str, 'id': str}]
@@ -659,7 +655,8 @@ class WebAPI():
 
     # Returns data for pairing a remote session
     # host = {'host': str, 'user': str}
-    def _initiate_pair(self, host: dict, id: str) -> dict or None:
+    @app.post("/telepath/request_pair", tags=['telepath'])
+    async def _request_pair(self, host: dict, id: str) -> dict or None:
         if not self.pair_listen:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
 
@@ -697,7 +694,8 @@ class WebAPI():
             print(f'[INFO] [telepath] Telepath API is not running')
             return False
 
-    def _confirm_pair(self, host: dict, id: str, code: str, request: Request):
+    @app.post("/telepath/submit_pair", tags=['telepath'])
+    async def _submit_pair(self, host: dict, id: str, code: str, request: Request):
         if self.running:
             ip = request.client.host
 
@@ -732,7 +730,8 @@ class WebAPI():
                 self.pair_data = {}
                 return False
 
-    def _login(self, host: dict, id: str, request: Request):
+    @app.post("/telepath/login", tags=['telepath'])
+    async def _login(self, host: dict, id: str, request: Request):
         if self.running:
             for session in self.authenticated_sessions:
                 if self._verify_id(id, session['id']):
@@ -757,21 +756,64 @@ class WebAPI():
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-    def _logout(self, host: dict, id: str):
+    @app.post("/telepath/logout", tags=['telepath'])
+    async def _logout(self, host: dict, id: str):
         self.current_user = {}
         return True
 
 
     # --------- Client-side functions to call the endpoints from a remote device -------- #
-    def login(self, ip, port):
-        data = self.request(
-            '/telepath/_login',
-            ip,
-            port,
-            {'host': {'host': constants.hostname, 'user': constants.username}, 'id': HARDWARE_ID}
-        )
-        print(data)
+    def login(self, ip: str, port: int):
 
+        # Eventually add a retry algorithm
+
+        try:
+            data = self.request(
+                '/telepath/login',
+                ip,
+                port,
+                {'host': {'host': constants.hostname, 'user': constants.username}, 'id': HARDWARE_ID}
+            )
+            if data:
+                return data
+        except:
+            pass
+        return None
+
+    def request_pair(self, ip: str, port: int):
+
+        # Eventually add a retry algorithm
+
+        try:
+            data = self.request(
+                '/telepath/request_pair',
+                ip,
+                port,
+                {'host': {'host': constants.hostname, 'user': constants.username}, 'id': HARDWARE_ID}
+            )
+            if data:
+                return data
+        except:
+            pass
+        return None
+
+    def submit_pair(self, ip: str, port: int, code: str):
+        try:
+            data = self.request(
+                '/telepath/submit_pair',
+                ip,
+                port,
+                {
+                    'host': {'host': constants.hostname, 'user': constants.username},
+                    'id': HARDWARE_ID,
+                    'code': code
+                }
+            )
+            if data:
+                return data
+        except:
+            pass
+        return None
 
             
 # Create objects to import for the rest of the app to request data
