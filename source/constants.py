@@ -905,7 +905,7 @@ def telepath_upload(telepath_data: dict, path: str):
             path = create_archive(path, tempDir, 'tar')
 
         url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/upload_file?is_dir={is_dir}"
-        data = requests.post(url, headers=api_manager.get_headers(telepath_data['host']), files={'file': open(path, 'rb')})
+        data = requests.post(url, headers=api_manager._get_headers(telepath_data['host']), files={'file': open(path, 'rb')})
         return data.json()
 
 # Downloads a file to a telepath session --> destination path
@@ -919,7 +919,7 @@ def telepath_download(telepath_data: dict, path: str, destination=downDir, renam
         return False
 
     url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file?file={quote(path)}"
-    data = requests.post(url, headers=api_manager.get_headers(telepath_data['host']), stream=True)
+    data = requests.post(url, headers=api_manager._get_headers(telepath_data['host']), stream=True)
 
     # Save if the request was successful
     if data.status_code == 200:

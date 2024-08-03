@@ -1,7 +1,9 @@
 # This file abstracts all the program managers to control a server remotely
 from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Request, Depends, status
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from fastapi.responses import JSONResponse, FileResponse
 from typing import Callable, get_type_hints, Optional
+from cryptography.hazmat.primitives import hashes
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, create_model
@@ -47,6 +49,7 @@ PAIR_CODE_EXPIRE_MINUTES = 1.5
 
 # Handles reading and writing from telepath-secrets
 class SecretHandler():
+
     def __init__(self):
         self.file = constants.telepathSecrets
 
@@ -83,6 +86,59 @@ class SecretHandler():
 
         with open(self.file, 'wb') as f:
             f.write(encrypted)
+
+class AuthHandler():
+    def __init__(self):
+        self.key_pairs = {}
+        self.sha256 = hashes.SHA256()
+
+    # Server side functionality
+    def _create_key_pair(self, ip: str, size=2048):
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=size)
+        self.key_pairs[ip] = private_key
+        return private_key.public_key()
+
+    def _get_public_key(self, ip: str):
+        if ip not in self.key_pairs:
+            return self._create_key_pair(ip)
+
+        # Only allow retrieving the public key once
+        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail="Can't retrieve the public key at this time")
+
+    def _decrypt(self, content: bytes, ip: str):
+        if ip in self.key_pairs:
+            decrypted_content = self.key_pairs[ip].decrypt(
+                content,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=self.sha256),
+                    algorithm=self.sha256,
+                    label=None
+                )
+            ).decode('utf-8')
+
+            # Delete the key pair after so that it can't be reused
+            del self.key_pairs[ip]
+            return decrypted_content
+
+        return False
+
+
+    # Use this to retrieve a public key from the server, and encrypt & return the content
+    def public_encrypt(self, ip: str, port: int, content: str or int):
+        content = str(content)
+
+        # Make a web request to the server here instead
+        public_key = requests.get(f"http://{ip}:{port}/telepath/get_public_key").json()
+
+        # Return content encrypted with the public key
+        return public_key.encrypt(
+            content.encode('utf-8'),
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=self.sha256),
+                algorithm=self.sha256,
+                label=None
+            )
+        )
 
 class Token(BaseModel):
     access_token: str
@@ -474,6 +530,7 @@ class WebAPI():
         self.port = port
         self.sessions = {}
         self.jwt_tokens = {}
+        self.auth = AuthHandler()
         self.secret_file = SecretHandler()
         self.update_config(host=host, port=port)
 
@@ -609,7 +666,7 @@ class WebAPI():
         self.start()
 
     # Send a POST or GET request to an endpoint
-    def get_headers(self, host: str):
+    def _get_headers(self, host: str):
         headers = {"Content-Type": "application/json"}
         if host in self.jwt_tokens:
             headers['Authorization'] = f'Bearer {self.jwt_tokens[host]}'
@@ -627,7 +684,7 @@ class WebAPI():
 
         # Retrieve token for auth and set headers
         url = f"http://{host}:{port}/{endpoint}"
-        headers = self.get_headers(host)
+        headers = self._get_headers(host)
 
         # Check if session exists
         if host in self.sessions:
@@ -659,7 +716,7 @@ class WebAPI():
 
     # Returns data for pairing a remote session
     # host = {'host': str, 'user': str}
-    def _request_pair(self, host: dict, id: str, request: Request) -> dict or None:
+    def _request_pair(self, host: dict, id_hash: bytes, request: Request) -> dict or None:
         if not self.pair_listen:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
 
@@ -683,8 +740,11 @@ class WebAPI():
         except:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid request')
 
+
         # If there is no pair code, and the service is running
         if self.running:
+            ip = request.client.host
+            id = self.auth._decrypt(id_hash, ip)
             self._create_pair_code(host, id)
 
             # Show pop-up if the UI is open
@@ -697,9 +757,10 @@ class WebAPI():
             print(f'[INFO] [telepath] Telepath API is not running')
             return False
 
-    def _submit_pair(self, host: dict, id: str, code: str, request: Request):
+    def _submit_pair(self, host: dict, id_hash: bytes, code: str, request: Request):
         if self.running:
             ip = request.client.host
+            id = self.auth._decrypt(id_hash, ip)
 
             if not self.pair_listen:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
@@ -732,8 +793,11 @@ class WebAPI():
                 self.pair_data = {}
                 return False
 
-    def _login(self, host: dict, id: str, request: Request):
+    def _login(self, host: dict, id_hash: bytes, request: Request):
         if self.running:
+            ip = request.client.host
+            id = self.auth._decrypt(id_hash, ip)
+
             for session in self.authenticated_sessions:
                 if self._verify_id(id, session['id']):
 
@@ -757,20 +821,29 @@ class WebAPI():
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-    def _logout(self, host: dict, id: str):
-        self.current_user = {}
-        return True
+    def _logout(self, host: dict, request: Request):
+        ip = request.client.host
+
+        if self.current_user:
+            if ip == self.current_user['ip']:
+                self.current_user = {}
+                return True
+
+        return False
 
 
     # --------- Client-side functions to call the endpoints from a remote device -------- #
     def login(self, ip: str, port: int):
 
+        # Get the server's public key and create an encrypted token
+        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
+        url = f"http://{ip}:{port}/telepath/login?id={token}"
+        host_data = {'host': constants.hostname, 'user': constants.username}
+
         # Eventually add a retry algorithm
+
         try:
-            data = requests.post(
-                f"http://{ip}:{port}/telepath/login?id={HARDWARE_ID}",
-                json={'host': constants.hostname, 'user': constants.username}
-            ).json()
+            data = requests.post(url, json=host_data).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
                 return_data = constants.deepcopy(data)
@@ -788,25 +861,31 @@ class WebAPI():
 
     def request_pair(self, ip: str, port: int):
 
+        # Get the server's public key and create an encrypted token
+        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
+        url = f"http://{ip}:{port}/telepath/request_pair?id={token}"
+        host_data = {'host': constants.hostname, 'user': constants.username}
+
         # Eventually add a retry algorithm
 
         try:
-            data = requests.post(
-                f"http://{ip}:{port}/telepath/request_pair?id={HARDWARE_ID}",
-                json={'host': constants.hostname, 'user': constants.username}
-            )
-            if data:
-                return data.json()
+            data = requests.post(url, json=host_data).json()
+            return data
         except:
             pass
         return None
 
     def submit_pair(self, ip: str, port: int, code: str):
+
+        # Get the server's public key and create an encrypted token
+        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
+        url = f"http://{ip}:{port}/telepath/submit_pair?id={token}&code={code}"
+        host_data = {'host': constants.hostname, 'user': constants.username}
+
+        # Eventually add a retry algorithm
+
         try:
-            data = requests.post(
-                f"http://{ip}:{port}/telepath/submit_pair?id={HARDWARE_ID}&code={code}",
-                json={'host': constants.hostname, 'user': constants.username}
-            ).json()
+            data = requests.post(url, json=host_data).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
                 return_data = constants.deepcopy(data)
@@ -1154,6 +1233,7 @@ class RemoteAmsFileObject(RemoteObject):
 class RemoteAmsWebObject(RemoteObject):
     pass
 
+
 # Instantiate the API if main
 def get_docs_url(type: str):
     if not constants.app_compiled:
@@ -1161,6 +1241,54 @@ def get_docs_url(type: str):
 app = FastAPI(docs_url=get_docs_url("docs"), redoc_url=get_docs_url("redoc"))
 app.openapi = create_schema
 
+
+
+# API endpoints for authentication
+# Keep-alive, unauthenticated
+@app.get('/telepath/check_status', tags=['telepath'])
+async def check_status():
+    return True
+
+# Retrieve the server's public key to encrypt and send the token
+@app.get('/telepath/get_public_key', tags=['telepath'])
+async def get_public_key(request: Request):
+    if constants.api_manager:
+        return constants.api_manager.auth._get_public_key(request.client.host)
+    else:
+        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+
+# Pair and authentication
+@app.post("/telepath/request_pair", tags=['telepath'])
+async def request_pair(host: dict, id: str, request: Request):
+    if constants.api_manager:
+        return constants.api_manager._request_pair(host, id, request)
+    else:
+        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+
+@app.post("/telepath/submit_pair", tags=['telepath'])
+async def submit_pair(host: dict, id: str, code: str, request: Request):
+    if constants.api_manager:
+        return constants.api_manager._submit_pair(host, id, code, request)
+    else:
+        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+
+@app.post("/telepath/login", tags=['telepath'])
+async def login(host: dict, id: str, request: Request):
+    if constants.api_manager:
+        return constants.api_manager._login(host, id, request)
+    else:
+        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+
+@app.post("/telepath/logout", tags=['telepath'], dependencies=[Depends(authenticate)])
+async def logout(host: dict, id: str):
+    if constants.api_manager:
+        return constants.api_manager._logout(host, id)
+    else:
+        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+
+
+
+# Authenticated and functional endpoints
 
 # Upload file endpoint
 @app.post("/main/upload_file", tags=['main'], dependencies=[Depends(authenticate)])
@@ -1232,40 +1360,6 @@ async def download_file(file: str):
 
     # If it exists in a permitted directory, respond with the file
     return FileResponse(path, filename=os.path.basename(path))
-
-
-# API endpoints for authentication
-# Keep-alive, unauthenticated
-@app.get('/telepath/check_status', tags=['telepath'])
-async def check_status():
-    return True
-
-@app.post("/telepath/request_pair", tags=['telepath'])
-async def request_pair(host: dict, id: str, request: Request):
-    if constants.api_manager:
-        return constants.api_manager._request_pair(host, id, request)
-    else:
-        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
-@app.post("/telepath/submit_pair", tags=['telepath'])
-async def submit_pair(host: dict, id: str, code: str, request: Request):
-    if constants.api_manager:
-        return constants.api_manager._submit_pair(host, id, code, request)
-    else:
-        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
-@app.post("/telepath/login", tags=['telepath'])
-async def login(host: dict, id: str, request: Request):
-    if constants.api_manager:
-        return constants.api_manager._login(host, id, request)
-    else:
-        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
-@app.post("/telepath/logout", tags=['telepath'], dependencies=[Depends(authenticate)])
-async def logout(host: dict, id: str):
-    if constants.api_manager:
-        return constants.api_manager._logout(host, id)
-    else:
-        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
-
-
 
 # Generate endpoints both statically & dynamically
 [generate_endpoints(app, create_remote_obj(r, False)()) for r in
