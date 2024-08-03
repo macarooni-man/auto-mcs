@@ -734,7 +734,7 @@ class WebAPI():
                 if self._verify_id(id, session['id']):
 
                     # This can change later, but currently, there can only be one telepath user globally
-                    if not (self.current_user['id'] == session['id'] and self.current_user['ip'] == request.client.host):
+                    if self.current_user and not (self.current_user['id'] == session['id'] and self.current_user['ip'] == request.client.host):
                         raise HTTPException(
                             status_code=status.HTTP_409_CONFLICT,
                             detail="Logged in from another session",
