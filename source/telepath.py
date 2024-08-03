@@ -734,7 +734,7 @@ class WebAPI():
                 if self._verify_id(id, session['id']):
 
                     # This can change later, but currently, there can only be one telepath user globally
-                    if self.current_user:
+                    if not (self.current_user['id'] == session['id'] and self.current_user['ip'] == request.client.host):
                         raise HTTPException(
                             status_code=status.HTTP_409_CONFLICT,
                             detail="Logged in from another session",
@@ -762,17 +762,25 @@ class WebAPI():
     def login(self, ip: str, port: int):
 
         # Eventually add a retry algorithm
-
         try:
             data = requests.post(
                 f"http://{ip}:{port}/telepath/login?id={HARDWARE_ID}",
                 json={'host': constants.hostname, 'user': constants.username}
-            )
-            if data:
-                return data.json()
+            ).json()
+            if 'access-token' in data:
+                self.jwt_token = data['access-token']
+                return_data = constants.deepcopy(data)
+                del return_data['access-token']
+                return_data['host'] = ip
+                return_data['port'] = port
+                return_data['added-servers'] = {}
+                return_data['nickname'] = ''
+                return return_data
+            else:
+                return {}
         except:
             pass
-        return None
+        return {}
 
     def request_pair(self, ip: str, port: int):
 
@@ -794,9 +802,16 @@ class WebAPI():
             data = requests.post(
                 f"http://{ip}:{port}/telepath/submit_pair?id={HARDWARE_ID}&code={code}",
                 json={'host': constants.hostname, 'user': constants.username}
-            )
-            if data:
-                return data.json()
+            ).json()
+            if 'access-token' in data:
+                self.jwt_token = data['access-token']
+                return_data = constants.deepcopy(data)
+                del return_data['access-token']
+                return_data['host'] = ip
+                return_data['port'] = port
+                return_data['added-servers'] = {}
+                return_data['nickname'] = ''
+                return return_data
         except:
             pass
         return None
