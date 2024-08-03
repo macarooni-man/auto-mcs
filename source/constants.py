@@ -893,6 +893,9 @@ def cs_download_url(url: str, file_name: str, destination_path: str):
 
 # Uploads a file or directory to a telepath session of auto-mcs --> destination path
 def telepath_upload(telepath_data: dict, path: str):
+    if not api_manager:
+        return False
+
     if os.path.exists(path):
         is_dir = False
 
@@ -902,7 +905,7 @@ def telepath_upload(telepath_data: dict, path: str):
             path = create_archive(path, tempDir, 'tar')
 
         url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/upload_file?is_dir={is_dir}"
-        data = requests.post(url, files={'file': open(path, 'rb')})
+        data = requests.post(url, headers=api_manager.get_headers(telepath_data['host']), files={'file': open(path, 'rb')})
         return data.json()
 
 # Downloads a file to a telepath session --> destination path
@@ -912,8 +915,11 @@ telepath_download_whitelist = {
     'names': ['.ams', '.amb', 'server.properties', 'server-icon.png']
 }
 def telepath_download(telepath_data: dict, path: str, destination=downDir, rename=''):
+    if not api_manager:
+        return False
+
     url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file?file={quote(path)}"
-    data = requests.post(url, stream=True)
+    data = requests.post(url, headers=api_manager.get_headers(telepath_data['host']), stream=True)
 
     # Save if the request was successful
     if data.status_code == 200:

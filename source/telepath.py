@@ -609,6 +609,11 @@ class WebAPI():
         self.start()
 
     # Send a POST or GET request to an endpoint
+    def get_headers(self, host: str):
+        headers = {"Content-Type": "application/json"}
+        if host in self.jwt_tokens:
+            headers['Authorization'] = f'Bearer {self.jwt_tokens[host]}'
+        return headers
     def request(self, endpoint: str, host=None, port=None, args=None, timeout=120):
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
@@ -622,13 +627,7 @@ class WebAPI():
 
         # Retrieve token for auth and set headers
         url = f"http://{host}:{port}/{endpoint}"
-        token = None
-        if host in self.jwt_tokens:
-            token = self.jwt_tokens[host]
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
+        headers = self.get_headers(host)
 
         # Check if session exists
         if host in self.sessions:
