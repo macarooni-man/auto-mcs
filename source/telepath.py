@@ -2,6 +2,8 @@
 from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Request, Depends, status
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from fastapi.responses import JSONResponse, FileResponse
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
 from typing import Callable, get_type_hints, Optional
 from cryptography.hazmat.primitives import hashes
 from fastapi.security import OAuth2PasswordBearer
@@ -100,7 +102,14 @@ class AuthHandler():
 
     def _get_public_key(self, ip: str):
         if ip not in self.key_pairs:
-            return self._create_key_pair(ip)
+            public_key = self._create_key_pair(ip)
+
+            # Convert public key to PEM for web serialization
+            pem = public_key.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+            return pem
 
         # Only allow retrieving the public key once
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail="Can't retrieve the public key at this time")
@@ -127,8 +136,12 @@ class AuthHandler():
     def public_encrypt(self, ip: str, port: int, content: str or int):
         content = str(content)
 
-        # Make a web request to the server here instead
-        public_key = requests.get(f"http://{ip}:{port}/telepath/get_public_key").json()
+        # Retrieve public key PEM and convert it back to Python object
+        pem = requests.get(f"http://{ip}:{port}/telepath/get_public_key").json()
+        pubic_key = serialization.load_pem_public_key(
+            pem,
+            backend=default_backend()
+        )
 
         # Return content encrypted with the public key
         return public_key.encrypt(
