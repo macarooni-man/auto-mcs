@@ -1,11 +1,11 @@
 # This file abstracts all the program managers to control a server remotely
-
-from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Depends, status
+from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Request, Depends, status
 from fastapi.responses import JSONResponse, FileResponse
 from typing import Callable, get_type_hints, Optional
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, create_model
+from cryptography.fernet import Fernet
 from datetime import timedelta as td
 from datetime import datetime as dt
 from datetime import timezone as tz
@@ -19,7 +19,10 @@ import logging
 import random
 import bcrypt
 import string
+import base64
+import json
 import time
+import uuid
 import jwt
 import os
 
@@ -32,10 +35,50 @@ from svrmgr import ServerObject
 import constants
 import svrmgr
 
+
 SECRET_KEY = os.urandom(64)
+HARDWARE_ID = uuid.getnode()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 PAIR_CODE_EXPIRE_MINUTES = 1.5
+
+
+
+# Handles writing and reading from telepath-secrets
+class SecretHandler():
+    def __init__(self):
+        self.hwid = HARDWARE_ID
+        self.file = constants.telepathSecrets
+        self.fernet = Fernet(str(self.hwid))
+
+    def _encrypt(self, data: str):
+        return self.fernet.encrypt(data.encode('utf-8'))
+
+    def _decrypt(self, data: bytes):
+        return self.fernet.decrypt(data)
+
+    def read(self):
+        if os.path.exists(self.file):
+            with open(self.file, 'rb') as f:
+                content = f.read()
+                decrypted = self._decrypt(content)
+                try:
+                    return json.loads(decrypted)
+                except:
+                    pass
+        return {}
+
+    def write(self, data: list):
+        if not os.path.exists(self.file):
+            constants.folder_check(constants.telepathDir)
+
+        if data:
+            encrypted = self._encrypt(json.dumps(data))
+        else:
+            encrypted = self._encrypt('{}')
+
+        with open(self.file, 'wb') as f:
+            f.write(encrypted)
 
 class Token(BaseModel):
     access_token: str
@@ -427,7 +470,9 @@ class WebAPI():
         self.port = port
         self.sessions = {}
         self.jwt_token = None
+        self.secret_file = SecretHandler()
         self.update_config(host=host, port=port)
+        self._read_session()
 
 
         # Server side data
@@ -482,6 +527,15 @@ class WebAPI():
             'app-version': constants.app_version,
             'telepath-version': constants.api_data['version']
         }
+
+    def _save_session(self, session: dict):
+        self.authenticated_sessions.append(session)
+        self.secret_file.write(self.authenticated_sessions)
+
+        # Eventually add code here to save and reload this from a file
+
+    def _read_session(self):
+        self.authenticated_sessions = self.secret_file.read()
 
     def _create_pair_code(self, host: dict, id: str):
         characters = string.ascii_letters + string.digits
@@ -596,9 +650,12 @@ class WebAPI():
             session.close()
             print(f"[INFO] [telepath] Closed session to '{host}'")
 
+
+    # -------- Internal endpoints to authenticate with telepath -------- #
+
     # Returns data for pairing a remote session
-    # host = {'host': str, 'user': str, 'ip': str}
-    def initiate_pair(self, host: dict, id: str) -> dict or None:
+    # host = {'host': str, 'user': str}
+    def _initiate_pair(self, host: dict, id: str) -> dict or None:
         if not self.pair_listen:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
 
@@ -636,8 +693,9 @@ class WebAPI():
             print(f'[INFO] [telepath] Telepath API is not running')
             return False
 
-    def confirm_pair(self, host: dict, id: str, code: str):
+    def _confirm_pair(self, host: dict, id: str, code: str, request: Request):
         if self.running:
+            ip = request.client.host
 
             if not self.pair_listen:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
@@ -648,15 +706,15 @@ class WebAPI():
             if dt.now() < self.pair_data['expire']:
 
                 # First, make sure that the user, id, and code match
-                if host['host'] == self.pair_data['host']['host'] and host['user'] == self.pair_data['host']['user'] and host['ip'] == self.pair_data['host']['ip']:
+                if host['host'] == self.pair_data['host']['host'] and host['user'] == self.pair_data['host']['user'] and ip == self.pair_data['host']['ip']:
                     if self._verify_id(id, self.pair_data['id']) and code == self.pair_data['code']:
                         
                         # Successfully authenticated
 
                         # Call function to write this data to a file
-                        session = {'host': host['host'], 'user': host['user'], 'id': self.pair_data['id']}
+                        session = {'host': host['host'], 'user': host['user'], 'id': self.pair_data['id'], 'ip': ip}
                         self.pair_data = {}
-                        self.authenticated_sessions.append(session)
+                        self._save_session(session)
                         self.current_user = session
                         return self._return_token(session)
 
@@ -670,7 +728,7 @@ class WebAPI():
                 self.pair_data = {}
                 return False
 
-    def login(self, host: dict, id: str):
+    def _login(self, host: dict, id: str, request: Request):
         if self.running:
             for session in self.authenticated_sessions:
                 if self._verify_id(id, session['id']):
@@ -685,7 +743,7 @@ class WebAPI():
 
                     session['host'] = host['host']
                     session['user'] = host['user']
-                    session['ip'] = host['ip']
+                    session['ip'] = request.client.host
                     self.active_user = session
                     return self._return_token(session)
 
@@ -695,10 +753,20 @@ class WebAPI():
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-    def logout(self, host: dict, id: str):
+    def _logout(self, host: dict, id: str):
         self.current_user = {}
         return True
 
+
+    # --------- Client-side functions to call the endpoints from a remote device -------- #
+    def login(self, ip, port):
+        data = self.request(
+            '/telepath/_login',
+            ip,
+            port,
+            {'host': {'host': constants.hostname, 'user': constants.username}, 'id': HARDWARE_ID}
+        )
+        print(data)
 
 
             

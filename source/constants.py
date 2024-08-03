@@ -166,18 +166,23 @@ uploadDir = os.path.join(applicationFolder, 'Uploads')
 backupFolder = os.path.join(applicationFolder, 'Backups')
 userDownloads = os.path.join(home, 'Downloads')
 serverDir = os.path.join(applicationFolder, 'Servers')
-scriptDir = os.path.join(applicationFolder, 'Tools', 'amscript')
-
-telepathFile = os.path.join(serverDir, 'telepath-servers.json')
-telepathScriptDir = os.path.join(scriptDir, 'telepath-temp')
+toolDir = os.path.join(applicationFolder, 'Tools')
+scriptDir = os.path.join(toolDir, 'amscript')
 
 tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
 cacheDir = os.path.join(applicationFolder, 'Cache')
 configDir = os.path.join(applicationFolder, 'Config')
-javaDir = os.path.join(applicationFolder, 'Tools', 'java')
+javaDir = os.path.join(toolDir, 'java')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 global_conf = os.path.join(configDir, 'app-config.json')
+
+telepathDir = os.path.join(toolDir, 'Telepath')
+telepathFile = os.path.join(telepathDir, 'telepath-servers.json')
+telepathSecrets = os.path.join(telepathDir, 'telepath-secrets')
+telepathScriptDir = os.path.join(scriptDir, 'telepath-temp')
+
+
 username = ''
 hostname = ''
 
@@ -1862,7 +1867,7 @@ def generate_splash(crash=False):
             "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
             "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
             "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
-            "You can't run away from all your problems…\n            Not when they have ender pearls."]
+            "You can't run away from all your problems…\n            Not when they have ender pearls.", "[!] bite hazard [!]"]
 
     if crash:
         exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
