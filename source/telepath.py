@@ -476,7 +476,6 @@ class WebAPI():
         self.jwt_token = None
         self.secret_file = SecretHandler()
         self.update_config(host=host, port=port)
-        self._read_session()
 
 
         # Server side data
@@ -485,8 +484,9 @@ class WebAPI():
         self.pair_listen = True
 
         # Load authenticated users from saved data
-        # [{'host1': str, 'user': str, 'id': str}, {'host2': str, 'user': str, 'id': str}]
         self.authenticated_sessions = []
+        self._read_session()
+        # [{'host1': str, 'user': str, 'id': str}, {'host2': str, 'user': str, 'id': str}]
         # .....
 
         # Disable low importance uvicorn logging
