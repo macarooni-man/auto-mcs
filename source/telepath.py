@@ -16,6 +16,7 @@ import requests
 import inspect
 import uvicorn
 import logging
+import hashlib
 import random
 import bcrypt
 import string
@@ -47,9 +48,12 @@ PAIR_CODE_EXPIRE_MINUTES = 1.5
 # Handles writing and reading from telepath-secrets
 class SecretHandler():
     def __init__(self):
-        self.hwid = HARDWARE_ID
         self.file = constants.telepathSecrets
-        self.fernet = Fernet(str(self.hwid))
+
+        # Create a fernet key from the hardware ID
+        data = HARDWARE_ID.to_bytes(6, byteorder='big')
+        key = hashlib.sha256(data).digest()
+        self.fernet = Fernet(base64.urlsafe_b64encode(key).decode('utf-8'))
 
     def _encrypt(self, data: str):
         return self.fernet.encrypt(data.encode('utf-8'))
@@ -479,10 +483,10 @@ class WebAPI():
         self.current_user = None
         self.pair_data = {}
         self.pair_listen = True
-        create_endpoint(self.initiate_pair, 'telepath', True, auth_required=False)
-        create_endpoint(self.confirm_pair, 'telepath', True, auth_required=False)
-        create_endpoint(self.login, 'telepath', True, auth_required=False)
-        create_endpoint(self.logout, 'telepath', True, auth_required=True)
+        create_endpoint(self._initiate_pair, 'telepath', True, auth_required=False)
+        create_endpoint(self._confirm_pair, 'telepath', True, auth_required=False)
+        create_endpoint(self._login, 'telepath', True, auth_required=False)
+        create_endpoint(self._logout, 'telepath', True, auth_required=True)
 
         # Load authenticated users from saved data
         # [{'host1': str, 'user': str, 'id': str}, {'host2': str, 'user': str, 'id': str}]

@@ -37,3 +37,4 @@ urwid==2.6.15
 PyJWT>=2.9.0
 bcrypt>=4.2.0
 python-multipart>=0.0.9
+cryptography>=43.0.0
