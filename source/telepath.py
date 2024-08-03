@@ -45,7 +45,7 @@ PAIR_CODE_EXPIRE_MINUTES = 1.5
 
 
 
-# Handles writing and reading from telepath-secrets
+# Handles reading and writing from telepath-secrets
 class SecretHandler():
     def __init__(self):
         self.file = constants.telepathSecrets
@@ -104,7 +104,7 @@ def create_access_token(data: dict, expires_delta: td = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(token: str = Depends(auth_scheme)):
+async def authenticate(token: str = Depends(auth_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get('host'):
@@ -336,7 +336,7 @@ def create_endpoint(method: Callable, tag: str, params=False, auth_required=True
         'tags': [tag],
     }
     if auth_required:
-        kwargs['dependencies'] = [Depends(get_current_user)]
+        kwargs['dependencies'] = [Depends(authenticate)]
 
     app.add_api_route(
         f"/{tag}/{method.__name__}",
@@ -441,7 +441,7 @@ def generate_endpoints(app: FastAPI, instance):
                 response_model=response_model,
                 name=name,
                 tags=[instance._obj_name],
-                dependencies=[Depends(get_current_user)]
+                dependencies=[Depends(authenticate)]
             )
 
 
@@ -1164,7 +1164,7 @@ app.openapi = create_schema
 
 
 # Upload file endpoint
-@app.post("/main/upload_file", tags=['main'])
+@app.post("/main/upload_file", tags=['main'], dependencies=[Depends(authenticate)])
 async def upload_file(file: UploadFile = File(...), is_dir=False):
     if isinstance(is_dir, str):
         is_dir = is_dir.lower() == 'true'
@@ -1196,7 +1196,7 @@ async def upload_file(file: UploadFile = File(...), is_dir=False):
         raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
 
 # Download file endpoint
-@app.post("/main/download_file", tags=['main'])
+@app.post("/main/download_file", tags=['main'], dependencies=[Depends(authenticate)])
 async def download_file(file: str):
     denied = HTTPException(status_code=403, detail=f"Access denied")
     blocked_symbols = ['*', '..']
@@ -1259,7 +1259,7 @@ async def login(host: dict, id: str, request: Request):
         return constants.api_manager._login(host, id, request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
-@app.post("/telepath/logout", tags=['telepath'])
+@app.post("/telepath/logout", tags=['telepath'], dependencies=[Depends(authenticate)])
 async def logout(host: dict, id: str):
     if constants.api_manager:
         return constants.api_manager._logout(host, id)
