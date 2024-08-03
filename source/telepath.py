@@ -655,8 +655,7 @@ class WebAPI():
 
     # Returns data for pairing a remote session
     # host = {'host': str, 'user': str}
-    @app.post("/telepath/request_pair", tags=['telepath'])
-    async def _request_pair(self, host: dict, id: str) -> dict or None:
+    def _request_pair(self, host: dict, id: str, request: Request) -> dict or None:
         if not self.pair_listen:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
 
@@ -674,7 +673,7 @@ class WebAPI():
 
         # Ignore an improperly formatted request
         try:
-            test = host['ip']
+            host['ip'] = request.client.host
             test = host['host']
             test = host['user']
         except:
@@ -694,8 +693,7 @@ class WebAPI():
             print(f'[INFO] [telepath] Telepath API is not running')
             return False
 
-    @app.post("/telepath/submit_pair", tags=['telepath'])
-    async def _submit_pair(self, host: dict, id: str, code: str, request: Request):
+    def _submit_pair(self, host: dict, id: str, code: str, request: Request):
         if self.running:
             ip = request.client.host
 
@@ -730,8 +728,7 @@ class WebAPI():
                 self.pair_data = {}
                 return False
 
-    @app.post("/telepath/login", tags=['telepath'])
-    async def _login(self, host: dict, id: str, request: Request):
+    def _login(self, host: dict, id: str, request: Request):
         if self.running:
             for session in self.authenticated_sessions:
                 if self._verify_id(id, session['id']):
@@ -756,8 +753,7 @@ class WebAPI():
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-    @app.post("/telepath/logout", tags=['telepath'])
-    async def _logout(self, host: dict, id: str):
+    def _logout(self, host: dict, id: str):
         self.current_user = {}
         return True
 
@@ -1228,10 +1224,38 @@ async def download_file(file: str):
     # If it exists in a permitted directory, respond with the file
     return FileResponse(path, filename=os.path.basename(path))
 
-# Keep-alive endpoint, unauthenticated
-@app.get('/main/check_status', tags=['main'])
+
+# API endpoints for authentication
+# Keep-alive, unauthenticated
+@app.get('/telepath/check_status', tags=['telepath'])
 async def check_status():
     return True
+
+@app.post("/telepath/request_pair", tags=['telepath'])
+async def request_pair(host: dict, id: str, request: Request):
+    if constants.api_manager:
+        return constants.api_manager._request_pair(host, id, request)
+    else:
+        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+@app.post("/telepath/submit_pair", tags=['telepath'])
+async def submit_pair(host: dict, id: str, code: str, request: Request):
+    if constants.api_manager:
+        return constants.api_manager._submit_pair(host, id, code, request)
+    else:
+        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+@app.post("/telepath/login", tags=['telepath'])
+async def login(host: dict, id: str, request: Request):
+    if constants.api_manager:
+        return constants.api_manager._submit_pair(host, id, request)
+    else:
+        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+@app.post("/telepath/logout", tags=['telepath'])
+async def logout(host: dict, id: str):
+    if constants.api_manager:
+        return constants.api_manager._submit_pair(host, id)
+    else:
+        raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
+
 
 
 # Generate endpoints both statically & dynamically
