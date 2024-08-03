@@ -473,7 +473,7 @@ class WebAPI():
         self.host = host
         self.port = port
         self.sessions = {}
-        self.jwt_token = None
+        self.jwt_tokens = {}
         self.secret_file = SecretHandler()
         self.update_config(host=host, port=port)
 
@@ -619,9 +619,14 @@ class WebAPI():
         if not port:
             port = self.port
 
+
+        # Retrieve token for auth and set headers
         url = f"http://{host}:{port}/{endpoint}"
+        token = None
+        if host in self.jwt_tokens:
+            token = self.jwt_tokens[host]
         headers = {
-            "Authorization": f"Bearer {self.jwt_token}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
 
@@ -768,7 +773,7 @@ class WebAPI():
                 json={'host': constants.hostname, 'user': constants.username}
             ).json()
             if 'access-token' in data:
-                self.jwt_token = data['access-token']
+                self.jwt_tokens[ip] = data['access-token']
                 return_data = constants.deepcopy(data)
                 del return_data['access-token']
                 return_data['host'] = ip
@@ -804,7 +809,7 @@ class WebAPI():
                 json={'host': constants.hostname, 'user': constants.username}
             ).json()
             if 'access-token' in data:
-                self.jwt_token = data['access-token']
+                self.jwt_tokens[ip] = data['access-token']
                 return_data = constants.deepcopy(data)
                 del return_data['access-token']
                 return_data['host'] = ip
