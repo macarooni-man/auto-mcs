@@ -2091,10 +2091,13 @@ def create_server_list(remote_data=None):
                     else:
                         normal_list.append(remote_object)
 
-                for s in remote_servers:
-                    process_remote_props(s)
-                # with ThreadPoolExecutor(max_workers=10) as pool:
-                #     pool.map(process_remote_props, remote_servers)
+                try:
+                    # for s in remote_servers:
+                    #     process_remote_props(s)
+                    with ThreadPoolExecutor(max_workers=10) as pool:
+                        pool.map(process_remote_props, remote_servers)
+                except TypeError:
+                    continue
 
             # Don't load server if it can't be found
             except requests.exceptions.ConnectionError:

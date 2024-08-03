@@ -70,7 +70,7 @@ class SecretHandler():
                     return json.loads(decrypted)
                 except:
                     pass
-        return {}
+        return []
 
     def write(self, data: list):
         if not os.path.exists(self.file):
