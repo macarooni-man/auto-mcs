@@ -177,7 +177,7 @@ javaDir = os.path.join(toolDir, 'java')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
 global_conf = os.path.join(configDir, 'app-config.json')
 
-telepathDir = os.path.join(toolDir, 'Telepath')
+telepathDir = os.path.join(toolDir, 'telepath')
 telepathFile = os.path.join(telepathDir, 'telepath-servers.json')
 telepathSecrets = os.path.join(telepathDir, 'telepath-secrets')
 telepathScriptDir = os.path.join(scriptDir, 'telepath-temp')

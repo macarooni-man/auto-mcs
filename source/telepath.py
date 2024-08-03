@@ -765,7 +765,7 @@ class WebAPI():
 
         try:
             data = requests.post(
-            f"http://{ip}:{port}/telepath/login?id={HARDWARE_ID}",
+                f"http://{ip}:{port}/telepath/login?id={HARDWARE_ID}",
                 json={'host': constants.hostname, 'user': constants.username}
             )
             if data:
@@ -780,7 +780,7 @@ class WebAPI():
 
         try:
             data = requests.post(
-            f"http://{ip}:{port}/telepath/request_pair?id={HARDWARE_ID}",
+                f"http://{ip}:{port}/telepath/request_pair?id={HARDWARE_ID}",
                 json={'host': constants.hostname, 'user': constants.username}
             )
             if data:
@@ -792,7 +792,7 @@ class WebAPI():
     def submit_pair(self, ip: str, port: int, code: str):
         try:
             data = requests.post(
-            f"http://{ip}:{port}/telepath/submit_pair?id={HARDWARE_ID}&code={code}",
+                f"http://{ip}:{port}/telepath/submit_pair?id={HARDWARE_ID}&code={code}",
                 json={'host': constants.hostname, 'user': constants.username}
             )
             if data:
