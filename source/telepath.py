@@ -764,14 +764,12 @@ class WebAPI():
         # Eventually add a retry algorithm
 
         try:
-            data = self.request(
-                '/telepath/login',
-                ip,
-                port,
-                {'host': {'host': constants.hostname, 'user': constants.username}, 'id': HARDWARE_ID}
+            data = requests.post(
+            f"http://{ip}:{port}/telepath/login?id={HARDWARE_ID}",
+                json={'host': constants.hostname, 'user': constants.username}
             )
             if data:
-                return data
+                return data.json()
         except:
             pass
         return None
@@ -781,32 +779,24 @@ class WebAPI():
         # Eventually add a retry algorithm
 
         try:
-            data = self.request(
-                '/telepath/request_pair',
-                ip,
-                port,
-                {'host': {'host': constants.hostname, 'user': constants.username}, 'id': HARDWARE_ID}
+            data = requests.post(
+            f"http://{ip}:{port}/telepath/request_pair?id={HARDWARE_ID}",
+                json={'host': constants.hostname, 'user': constants.username}
             )
             if data:
-                return data
+                return data.json()
         except:
             pass
         return None
 
     def submit_pair(self, ip: str, port: int, code: str):
         try:
-            data = self.request(
-                '/telepath/submit_pair',
-                ip,
-                port,
-                {
-                    'host': {'host': constants.hostname, 'user': constants.username},
-                    'id': HARDWARE_ID,
-                    'code': code
-                }
+            data = requests.post(
+            f"http://{ip}:{port}/telepath/submit_pair?id={HARDWARE_ID}&code={code}",
+                json={'host': constants.hostname, 'user': constants.username}
             )
             if data:
-                return data
+                return data.json()
         except:
             pass
         return None
@@ -1246,13 +1236,13 @@ async def submit_pair(host: dict, id: str, code: str, request: Request):
 @app.post("/telepath/login", tags=['telepath'])
 async def login(host: dict, id: str, request: Request):
     if constants.api_manager:
-        return constants.api_manager._submit_pair(host, id, request)
+        return constants.api_manager._login(host, id, request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 @app.post("/telepath/logout", tags=['telepath'])
 async def logout(host: dict, id: str):
     if constants.api_manager:
-        return constants.api_manager._submit_pair(host, id)
+        return constants.api_manager._logout(host, id)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
