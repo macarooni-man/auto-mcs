@@ -96,7 +96,7 @@ class AuthHandler():
 
     # Server side functionality
     def _create_key_pair(self, ip: str):
-        private_key = rsa.generate_private_key(public_exponent=65537, key_size=1024)
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         self.key_pairs[ip] = private_key
         return private_key.public_key()
 
@@ -120,10 +120,10 @@ class AuthHandler():
         # Throw error if key has expired
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail="Can't retrieve the public key at this time")
 
-    def _decrypt(self, content: bytes, ip: str):
+    def _decrypt(self, cipher_text: bytes, ip: str) -> str or False:
         if ip in self.key_pairs:
             decrypted_content = self.key_pairs[ip].decrypt(
-                content,
+                cipher_text,
                 padding.OAEP(
                     mgf=padding.MGF1(algorithm=self.sha256),
                     algorithm=self.sha256,
@@ -139,7 +139,7 @@ class AuthHandler():
 
 
     # Use this to retrieve a public key from the server, and encrypt & return the content
-    def public_encrypt(self, ip: str, port: int, content: str or int):
+    def public_encrypt(self, ip: str, port: int, content: str or int) -> dict:
         content = str(content)
 
         # Retrieve public key PEM and convert it back to Python object
@@ -150,7 +150,7 @@ class AuthHandler():
         )
 
         # Return content encrypted with the public key
-        return public_key.encrypt(
+        cipher_text = public_key.encrypt(
             content.encode('utf-8'),
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=self.sha256),
@@ -158,6 +158,9 @@ class AuthHandler():
                 label=None
             )
         )
+        # print('decoded: ', cipher_text)
+        # print('base64', base64.urlsafe_b64encode(cipher_text))
+        return {'cipher_text': cipher_text}
 
 class Token(BaseModel):
     access_token: str
@@ -856,8 +859,11 @@ class WebAPI():
 
         # Get the server's public key and create an encrypted token
         token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
-        url = f"http://{ip}:{port}/telepath/login?id={token}"
-        host_data = {'host': constants.hostname, 'user': constants.username}
+        url = f"http://{ip}:{port}/telepath/login"
+        host_data = {
+            'host': {'host': constants.hostname, 'user': constants.username},
+            'id_hash': token
+        }
 
         # Eventually add a retry algorithm
 
@@ -882,8 +888,11 @@ class WebAPI():
 
         # Get the server's public key and create an encrypted token
         token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
-        url = f"http://{ip}:{port}/telepath/request_pair?id={token}"
-        host_data = {'host': constants.hostname, 'user': constants.username}
+        url = f"http://{ip}:{port}/telepath/request_pair"
+        host_data = {
+            'host': {'host': constants.hostname, 'user': constants.username},
+            'id_hash': token
+        }
 
         # Eventually add a retry algorithm
 
@@ -898,8 +907,11 @@ class WebAPI():
 
         # Get the server's public key and create an encrypted token
         token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
-        url = f"http://{ip}:{port}/telepath/submit_pair?id={token}&code={code}"
-        host_data = {'host': constants.hostname, 'user': constants.username}
+        url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
+        host_data = {
+            'host': {'host': constants.hostname, 'user': constants.username},
+            'id_hash': token
+        }
 
         # Eventually add a retry algorithm
 
@@ -1278,23 +1290,23 @@ async def get_public_key(request: Request):
 
 # Pair and authentication
 @app.post("/telepath/request_pair", tags=['telepath'])
-async def request_pair(host: dict, id: str, request: Request):
+async def request_pair(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
-        return constants.api_manager._request_pair(host, id, request)
+        return constants.api_manager._request_pair(host, id_hash['cipher_text'], request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/submit_pair", tags=['telepath'])
-async def submit_pair(host: dict, id: str, code: str, request: Request):
+async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
     if constants.api_manager:
-        return constants.api_manager._submit_pair(host, id, code, request)
+        return constants.api_manager._submit_pair(host, id_hash['cipher_text'], code, request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/login", tags=['telepath'])
-async def login(host: dict, id: str, request: Request):
+async def login(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
-        return constants.api_manager._login(host, id, request)
+        return constants.api_manager._login(host, id_hash['cipher_text'], request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
