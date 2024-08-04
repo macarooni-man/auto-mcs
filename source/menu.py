@@ -6214,10 +6214,12 @@ class PopupTelepathPair(PopupWindow):
             code = self.data['code']
             user_string = f'{self.data["host"]["host"]}/{self.data["host"]["user"]}'
             very_bold = os.path.join(constants.gui_assets, 'fonts', constants.fonts["mono-bold"])
-            self.window_content.text = f"Pair '${user_string}$' with[font={very_bold}.otf][size={round(sp(70))}]{code}[/size][/font]\n\n"
+            self.window_content.text = f"Pair '${user_string}$' with[size={round(sp(13))}]\n\n[/size][font={very_bold}.otf][size={round(sp(70))}]{code}[/size][/font]\n\n"
+            self.window_content.pos_hint = {'center_y': 0.47, 'center_x': 0.5}
 
             # Pair texture
             self.bar_width = 250
+            self.bar_offset = 0.32 if len(user_string) > 25 else 0.35
             with self.canvas.after:
                 self.pair_rail = Image()
                 self.pair_rail.id = "pair_bar"
@@ -6225,7 +6227,7 @@ class PopupTelepathPair(PopupWindow):
                 self.pair_rail.keep_ratio = False
                 self.pair_rail.color = (*self.window_text_color[:-1], 0.3)
                 self.pair_rail.size_hint_max = (self.bar_width, 10)
-                self.pair_rail.pos_hint = {"center_x": 0.5, "center_y": 0.35}
+                self.pair_rail.pos_hint = {"center_x": 0.5, "center_y": self.bar_offset}
 
                 self.pair_bar = Image()
                 self.pair_bar.id = "pair_bar"
@@ -6233,7 +6235,7 @@ class PopupTelepathPair(PopupWindow):
                 self.pair_bar.keep_ratio = False
                 self.pair_bar.color = self.window_color
                 self.pair_bar.size_hint_max = (self.bar_width, 10)
-                self.pair_bar.pos_hint = {"center_x": 0.5, "center_y": 0.35}
+                self.pair_bar.pos_hint = {"center_x": 0.5, "center_y": self.bar_offset}
             self.window.add_widget(self.pair_rail)
             self.window.add_widget(self.pair_bar)
             self.update_expiry_bar()
