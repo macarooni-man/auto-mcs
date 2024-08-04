@@ -14007,10 +14007,10 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
 
 
     remote_obj = constants.api_manager.request(
-        endpoint='/main/open_remote_server',
+        endpoint=f'/main/open_remote_server?name={constants.quote(server_name)}',
         host=instance['host'],
         port=instance['port'],
-        args={'name': server_name}
+        args={'none': None}
     )
     telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
     constants.server_manager._init_telepathy(telepath_data)
