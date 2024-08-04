@@ -22989,10 +22989,19 @@ class ServerSettingsScreen(MenuBackground):
         # Updates server
         def update_server(*a):
             if server_obj.is_modpack == 'mrpack':
-                if constants.update_list[server_obj.name]['updateUrl']:
+                update_url = ''
+                if server_obj._telepath_data:
+                    try:
+                        update_url = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['updateUrl']
+                    except KeyError:
+                        pass
+                else:
+                    update_url = constants.update_list[server_obj.name]['updateUrl']
+                print(update_url)
+                if update_url:
                     constants.import_data = {
                         'name': server_obj.name,
-                        'url': constants.update_list[server_obj.name]['updateUrl']
+                        'url': update_url
                     }
                     constants.safe_delete(constants.tempDir)
                     screen_manager.current = 'UpdateModpackProgressScreen'
@@ -23561,17 +23570,28 @@ class UpdateModpackProgressScreen(ProgressScreen):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.folder_check(constants.tmpsvr)
+                telepath_data = server_obj._telepath_data
+                if telepath_data:
+                    response = constants.api_manager.request(
+                        endpoint='/create/push_new_server',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={'server_info': constants.new_server_info, 'import_info': constants.import_data}
+                    )
+                constants.pre_server_update()
 
         def after_func(*args):
-            constants.make_update_list()
-            server_obj._view_notif('add-ons', True)
-            server_obj._view_notif('settings', viewed=server_obj.update_string)
-            server_path = server_obj.server_path
-            read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
-            if read_me:
-                read_me = read_me[0]
-            self.open_server(server_obj.name, True, f"Updated '${server_obj.name}$' successfully", show_readme=read_me)
+            import_data = constants.post_server_create(modpack=True)
+
+            if self.telepath and import_data['readme']:
+                import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
+
+            self.open_server(
+                import_data['name'],
+                True,
+                f"'Updated ${import_data['name']}$' successfully",
+                show_readme=import_data['readme']
+            )
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
