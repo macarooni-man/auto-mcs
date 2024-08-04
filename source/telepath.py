@@ -49,46 +49,7 @@ PAIR_CODE_EXPIRE_MINUTES = 1.5
 
 
 
-# Handles reading and writing from telepath-secrets
-class SecretHandler():
-
-    def __init__(self):
-        self.file = constants.telepathSecrets
-
-        # Create a fernet key from the hardware ID
-        data = HARDWARE_ID.to_bytes(6, byteorder='big')
-        key = hashlib.sha256(data).digest()
-        self.fernet = Fernet(base64.urlsafe_b64encode(key).decode('utf-8'))
-
-    def _encrypt(self, data: str):
-        return self.fernet.encrypt(data.encode('utf-8'))
-
-    def _decrypt(self, data: bytes):
-        return self.fernet.decrypt(data)
-
-    def read(self):
-        if os.path.exists(self.file):
-            with open(self.file, 'rb') as f:
-                content = f.read()
-                decrypted = self._decrypt(content)
-                try:
-                    return json.loads(decrypted)
-                except:
-                    pass
-        return []
-
-    def write(self, data: list):
-        if not os.path.exists(self.file):
-            constants.folder_check(constants.telepathDir)
-
-        if data:
-            encrypted = self._encrypt(json.dumps(data))
-        else:
-            encrypted = self._encrypt('{}')
-
-        with open(self.file, 'wb') as f:
-            f.write(encrypted)
-
+# Houses PKI for authentication
 class AuthHandler():
     def __init__(self):
         self.key_pairs = {}
@@ -161,6 +122,46 @@ class AuthHandler():
             )
         )
         return {'token': base64.b64encode(cipher_text).decode()}
+
+# Handles reading and writing from telepath-secrets
+class SecretHandler():
+
+    def __init__(self):
+        self.file = constants.telepathSecrets
+
+        # Create a fernet key from the hardware ID
+        data = HARDWARE_ID.to_bytes(6, byteorder='big')
+        key = hashlib.sha256(data).digest()
+        self.fernet = Fernet(base64.urlsafe_b64encode(key).decode('utf-8'))
+
+    def _encrypt(self, data: str):
+        return self.fernet.encrypt(data.encode('utf-8'))
+
+    def _decrypt(self, data: bytes):
+        return self.fernet.decrypt(data)
+
+    def read(self):
+        if os.path.exists(self.file):
+            with open(self.file, 'rb') as f:
+                content = f.read()
+                decrypted = self._decrypt(content)
+                try:
+                    return json.loads(decrypted)
+                except:
+                    pass
+        return []
+
+    def write(self, data: list):
+        if not os.path.exists(self.file):
+            constants.folder_check(constants.telepathDir)
+
+        if data:
+            encrypted = self._encrypt(json.dumps(data))
+        else:
+            encrypted = self._encrypt('{}')
+
+        with open(self.file, 'wb') as f:
+            f.write(encrypted)
 
 class Token(BaseModel):
     access_token: str
@@ -552,10 +553,11 @@ class WebAPI():
         self.port = port
         self.sessions = {}
         self.jwt_tokens = {}
-        self.auth = AuthHandler()
-        self.secret_file = SecretHandler()
         self.update_config(host=host, port=port)
 
+        # Helper classes for encryption
+        self.auth = AuthHandler()
+        self.secret_file = SecretHandler()
 
         # Server side data
         self.current_user = None
@@ -688,8 +690,10 @@ class WebAPI():
         self.start()
 
     # Send a POST or GET request to an endpoint
-    def _get_headers(self, host: str):
-        headers = {"Content-Type": "application/json"}
+    def _get_headers(self, host: str, only_token=False):
+        headers = {}
+        if not only_token:
+            headers = {"Content-Type": "application/json"}
         if host in self.jwt_tokens:
             headers['Authorization'] = f'Bearer {self.jwt_tokens[host]}'
         return headers
@@ -1107,6 +1111,10 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
         constants.api_manager.request(endpoint='/main/clear_uploads', host=self._telepath_data['host'], port=self._telepath_data['port'])
         return RemoteAmsFileObject(self._telepath_data, data)
 
+    def script_state(self, *args, **kwargs):
+        self._clear_attr_cache()
+        super().script_state(*args, **kwargs)
+
 class RemoteAddonManager(create_remote_obj(AddonManager)):
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
@@ -1142,6 +1150,10 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         data = super().import_addon(constants.telepath_upload(self._telepath_data, addon_path)['path'])
         constants.api_manager.request(endpoint='/main/clear_uploads', host=self._telepath_data['host'], port=self._telepath_data['port'])
         return RemoteAddonFileObject(self._telepath_data, data)
+
+    def addon_state(self, *args, **kwargs):
+        self._clear_attr_cache()
+        super().addon_state(*args, **kwargs)
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
     def __init__(self, server_obj: RemoteServerObject):

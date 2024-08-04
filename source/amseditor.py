@@ -18,6 +18,7 @@ import pygments.lexer
 import webbrowser
 import functools
 import pygments
+import requests
 import time
 import json
 import os
@@ -341,6 +342,16 @@ def save_script(data, script_path, *a):
                 f.write(script_contents)
         except Exception as e:
             print(e)
+
+        # If telepath data, upload and import remotely
+        if data['_telepath_data'] and script_path.startswith(data['telepath_script_dir']):
+            telepath_data = data['_telepath_data']
+            url = f"http://{telepath_data['host']}:{telepath_data['port']}"
+            data = requests.post(f'{url}/main/upload_file?is_dir=False', headers=telepath_data['headers'], files={'file': open(script_path, 'rb')}).json()
+
+            # If the file was uploaded, import the script
+            if 'path' in data:
+                requests.post(f'{url}/ScriptManager/import_script', headers=telepath_data['headers'], json={'script': data['path']})
 
         # Upload data to remote if telepath
         # create an endpoint to sync script data with host

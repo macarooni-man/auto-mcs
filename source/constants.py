@@ -182,7 +182,6 @@ telepathFile = os.path.join(telepathDir, 'telepath-servers.json')
 telepathSecrets = os.path.join(telepathDir, 'telepath-secrets')
 telepathScriptDir = os.path.join(scriptDir, 'telepath-temp')
 
-
 username = ''
 hostname = ''
 
@@ -905,7 +904,7 @@ def telepath_upload(telepath_data: dict, path: str):
             path = create_archive(path, tempDir, 'tar')
 
         url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/upload_file?is_dir={is_dir}"
-        data = requests.post(url, headers=api_manager._get_headers(telepath_data['host']), files={'file': open(path, 'rb')})
+        data = requests.post(url, headers=api_manager._get_headers(telepath_data['host'], True), files={'file': open(path, 'rb')})
         return data.json()
 
 # Downloads a file to a telepath session --> destination path

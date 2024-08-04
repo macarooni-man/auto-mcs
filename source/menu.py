@@ -6240,9 +6240,8 @@ class PopupTelepathPair(PopupWindow):
             self.window.add_widget(self.pair_bar)
             self.update_expiry_bar()
 
-
         else:
-            success = True # API call here
+            success = True
             if success:
                 window_sound = 'popup_telepath_success.wav'
                 title = 'Pair Success'
@@ -14514,8 +14513,9 @@ class ServerButton(HoverButton):
             self.title.text = self.generate_name('#2D2D4E')
 
             if self.telepath_data:
-                Animation(color=constants.brighten_color(self.color_id[1], -0.2), duration=0.1).start(self.type_image.tp_shadow)
-                Animation(color=self.color_id[0], duration=0.1).start(self.type_image.tp_icon)
+                new_color = constants.convert_color('#E865D4' if self.favorite else '#6769D9')['rgb']
+                Animation(color=new_color, duration=0.1).start(self.type_image.tp_shadow)
+                Animation(color=constants.brighten_color(self.color_id[0], -0.1), duration=0.1).start(self.type_image.tp_icon)
 
     def on_leave(self, *args):
         if not self.ignore_hover:
@@ -19924,15 +19924,19 @@ class ServerAddonSearchScreen(MenuBackground):
 # amscript Manager ------------------------------------------------------------------------------------------------
 
 constants.script_obj = amscript.ScriptObject()
-def edit_script(edit_button, server_obj, script_path):
+def edit_script(edit_button, server_obj, script_path, download=True):
     "amscript-icon.png"
 
     # Override to download locally
+    telepath_data = None
     if server_obj._telepath_data:
-        script_path = constants.telepath_download(server_obj._telepath_data, script_path, constants.telepathScriptDir)
+        telepath_data = constants.deepcopy(server_obj._telepath_data)
+        telepath_data['headers'] = constants.api_manager._get_headers(telepath_data['host'], True)
+        if download:
+            script_path = constants.telepath_download(server_obj._telepath_data, script_path, constants.telepathScriptDir)
 
     data_dict = {
-        '_telepath_data': server_obj._telepath_data,
+        '_telepath_data': telepath_data,
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
@@ -19944,7 +19948,8 @@ def edit_script(edit_button, server_obj, script_path):
         },
         'suggestions': server_obj.retrieve_suggestions(),
         'os_name': constants.os_name,
-        'translate': constants.translate
+        'translate': constants.translate,
+        'telepath_script_dir': constants.telepathScriptDir
     }
     Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict), 0.1)
     if edit_button:
@@ -20486,8 +20491,14 @@ class CreateAmscriptScreen(MenuBackground):
 
         def on_click(*a):
             script_name = self.name_input.convert_name(self.name_input.text)
-            script_path = os.path.join(constants.scriptDir, script_name)
             script_title = self.name_input.text.strip()
+
+            if server_obj._telepath_data:
+                script_path = os.path.join(constants.telepathScriptDir, script_name)
+                constants.folder_check(constants.telepathScriptDir)
+            else:
+                script_path = os.path.join(constants.scriptDir, script_name)
+                constants.folder_check(constants.scriptDir)
 
             contents = f"""#!
 # title: {script_title}
@@ -20506,9 +20517,12 @@ class CreateAmscriptScreen(MenuBackground):
         player.log(f"{constants.translate('Welcome to')} {{server}} {{player}}!")
 """
 
-            constants.folder_check(constants.scriptDir)
             with open(script_path, 'w+', encoding='utf-8', errors='ignore') as f:
                 f.write(contents)
+
+            # Upload and import if it's remote
+            if server_obj._telepath_data:
+                server_obj.script_manager.import_script(script_path)
 
             for s in server_obj.script_manager.return_single_list():
                 if s.file_name == script_name:
@@ -20516,7 +20530,7 @@ class CreateAmscriptScreen(MenuBackground):
                     break
 
             def later(*_):
-                edit_script(None, server_obj, script_path)
+                edit_script(None, server_obj, script_path, download=False)
             threading.Timer(1, later).start()
 
             previous_screen()
