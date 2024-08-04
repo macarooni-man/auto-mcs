@@ -120,7 +120,9 @@ class AuthHandler():
         # Throw error if key has expired
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail="Can't retrieve the public key at this time")
 
-    def _decrypt(self, cipher_text: bytes, ip: str) -> str or False:
+    def _decrypt(self, token: bytes, ip: str) -> str or False:
+        cipher_text = base64.b64decode(token)
+
         if ip in self.key_pairs:
             decrypted_content = self.key_pairs[ip].decrypt(
                 cipher_text,
@@ -158,9 +160,8 @@ class AuthHandler():
                 label=None
             )
         )
-        # print('decoded: ', cipher_text)
-        # print('base64', base64.urlsafe_b64encode(cipher_text))
-        return {'cipher_text': cipher_text}
+        print(cipher_text)
+        return {'token': base64.b64encode(cipher_text)}
 
 class Token(BaseModel):
     access_token: str
@@ -847,7 +848,7 @@ class WebAPI():
         ip = request.client.host
 
         if self.current_user:
-            if ip == self.current_user['ip']:
+            if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == self.current_user['user']:
                 self.current_user = {}
                 return True
 
@@ -1292,28 +1293,28 @@ async def get_public_key(request: Request):
 @app.post("/telepath/request_pair", tags=['telepath'])
 async def request_pair(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
-        return constants.api_manager._request_pair(host, id_hash['cipher_text'], request)
+        return constants.api_manager._request_pair(host, id_hash['token'], request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/submit_pair", tags=['telepath'])
 async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
     if constants.api_manager:
-        return constants.api_manager._submit_pair(host, id_hash['cipher_text'], code, request)
+        return constants.api_manager._submit_pair(host, id_hash['token'], code, request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/login", tags=['telepath'])
 async def login(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
-        return constants.api_manager._login(host, id_hash['cipher_text'], request)
+        return constants.api_manager._login(host, id_hash['token'], request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/logout", tags=['telepath'], dependencies=[Depends(authenticate)])
-async def logout(host: dict, id: str):
+async def logout(host: dict):
     if constants.api_manager:
-        return constants.api_manager._logout(host, id)
+        return constants.api_manager._logout(host)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
