@@ -622,6 +622,126 @@ async def authenticate(token: str = Depends(auth_scheme)):
 
 
 
+# ---------------------------------------------- Utility Functions -----------------------------------------------------
+
+# Creates an endpoint from a method, tagged, and optionally if it contains parameters, or requires a JWT token
+def create_endpoint(method: Callable, tag: str, params=False, auth_required=True):
+    kwargs = {
+        'methods': ["POST" if params else "GET"],
+        'name': method.__name__,
+        'tags': [tag],
+    }
+    if auth_required:
+        kwargs['dependencies'] = [Depends(authenticate)]
+
+    app.add_api_route(
+        f"/{tag}/{method.__name__}",
+        return_endpoint(method, create_pydantic_model(method) if params else None),
+        **kwargs
+    )
+
+
+# Reconstructs a serialized object to "__reconstruct__"
+def reconstruct_object(data: dict):
+    final_data = data
+    if isinstance(data, dict):
+        if '__reconstruct__' in data:
+            if data['__reconstruct__'] == 'RemoteBackupObject':
+                final_data = RemoteBackupObject(data['_telepath_data'], data)
+
+            if data['__reconstruct__'] == 'RemoteAddonFileObject':
+                final_data = RemoteAddonFileObject(data['_telepath_data'], data)
+
+            if data['__reconstruct__'] == 'RemoteAddonWebObject':
+                final_data = RemoteAddonWebObject(data['_telepath_data'], data)
+
+            if data['__reconstruct__'] == 'RemoteAmsFileObject':
+                final_data = RemoteAmsFileObject(data['_telepath_data'], data)
+
+            if data['__reconstruct__'] == 'RemoteAmsWebObject':
+                final_data = RemoteAmsWebObject(data['_telepath_data'], data)
+
+    return final_data
+
+
+# Returns {param: (type, Ellipsis or default value)} from the parameters of any function
+def get_function_params(method: Callable):
+    parameters = inspect.signature(method).parameters
+
+    if not parameters or ("self" in parameters and len(parameters) == 1):
+        return None
+
+    def get_default_value(param):
+        return ... if param.default is inspect._empty else param.default
+
+    def get_param_type(param):
+        final_type = str
+        if 'Object' in param.annotation.__name__:
+            final_type = object
+        elif param.annotation != inspect._empty:
+            final_type = param.annotation
+        if final_type == str:
+            if param.default != inspect._empty:
+                final_type = type(param.default)
+        return final_type
+
+    return {
+        param.name.strip('_'): (
+            get_param_type(param),
+            get_default_value(param),
+        )
+        for param in parameters.values()
+        if param.name not in ["self", "args"]
+    }
+
+
+# noinspection PyTypeChecker
+def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
+    fields = get_function_params(method)
+    if not fields:
+        return None
+
+    model = create_model(
+        f"{method.__name__}Input",
+        __config__=type("Config", (), {"arbitrary_types_allowed": True}),
+        **fields,
+    )
+    return model
+
+
+# Create an endpoint from a function
+def return_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
+    async def endpoint(input: input_model = Body(...) if input_model else None):
+        if input_model:
+            result = func(**input.dict())
+        else:
+            result = func()
+        return result
+
+    return endpoint
+
+
+# Generate endpoints from all instance methods
+def generate_endpoints(app: FastAPI, instance):
+
+    # Loop over instance to create endpoints from each method
+    for name, method in inspect.getmembers(instance, predicate=inspect.ismethod):
+        if not name.endswith("__"):
+            input_model = create_pydantic_model(instance._arg_map[name])
+            endpoint = return_endpoint(method, input_model)
+            response_model = get_type_hints(method).get("return", None)
+            app.add_api_route(
+                f"/{instance._obj_name}/{name}",
+                endpoint,
+                methods=["POST" if input_model else "GET"],
+                response_model=response_model,
+                name=name,
+                tags=[instance._obj_name],
+                dependencies=[Depends(authenticate)]
+            )
+
+
+
 # -------------------------------------------- Remote Server Wrapper ---------------------------------------------------
 
 # This will communicate with the endpoints
@@ -1171,126 +1291,6 @@ class RemoteAmsFileObject(RemoteObject):
     pass
 class RemoteAmsWebObject(RemoteObject):
     pass
-
-
-
-# ---------------------------------------------- Utility Functions -----------------------------------------------------
-
-# Creates an endpoint from a method, tagged, and optionally if it contains parameters, or requires a JWT token
-def create_endpoint(method: Callable, tag: str, params=False, auth_required=True):
-    kwargs = {
-        'methods': ["POST" if params else "GET"],
-        'name': method.__name__,
-        'tags': [tag],
-    }
-    if auth_required:
-        kwargs['dependencies'] = [Depends(authenticate)]
-
-    app.add_api_route(
-        f"/{tag}/{method.__name__}",
-        return_endpoint(method, create_pydantic_model(method) if params else None),
-        **kwargs
-    )
-
-
-# Reconstructs a serialized object to "__reconstruct__"
-def reconstruct_object(data: dict):
-    final_data = data
-    if isinstance(data, dict):
-        if '__reconstruct__' in data:
-            if data['__reconstruct__'] == 'RemoteBackupObject':
-                final_data = RemoteBackupObject(data['_telepath_data'], data)
-
-            if data['__reconstruct__'] == 'RemoteAddonFileObject':
-                final_data = RemoteAddonFileObject(data['_telepath_data'], data)
-
-            if data['__reconstruct__'] == 'RemoteAddonWebObject':
-                final_data = RemoteAddonWebObject(data['_telepath_data'], data)
-
-            if data['__reconstruct__'] == 'RemoteAmsFileObject':
-                final_data = RemoteAmsFileObject(data['_telepath_data'], data)
-
-            if data['__reconstruct__'] == 'RemoteAmsWebObject':
-                final_data = RemoteAmsWebObject(data['_telepath_data'], data)
-
-    return final_data
-
-
-# Returns {param: (type, Ellipsis or default value)} from the parameters of any function
-def get_function_params(method: Callable):
-    parameters = inspect.signature(method).parameters
-
-    if not parameters or ("self" in parameters and len(parameters) == 1):
-        return None
-
-    def get_default_value(param):
-        return ... if param.default is inspect._empty else param.default
-
-    def get_param_type(param):
-        final_type = str
-        if 'Object' in param.annotation.__name__:
-            final_type = object
-        elif param.annotation != inspect._empty:
-            final_type = param.annotation
-        if final_type == str:
-            if param.default != inspect._empty:
-                final_type = type(param.default)
-        return final_type
-
-    return {
-        param.name.strip('_'): (
-            get_param_type(param),
-            get_default_value(param),
-        )
-        for param in parameters.values()
-        if param.name not in ["self", "args"]
-    }
-
-
-# noinspection PyTypeChecker
-def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
-    fields = get_function_params(method)
-    if not fields:
-        return None
-
-    model = create_model(
-        f"{method.__name__}Input",
-        __config__=type("Config", (), {"arbitrary_types_allowed": True}),
-        **fields,
-    )
-    return model
-
-
-# Create an endpoint from a function
-def return_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
-    async def endpoint(input: input_model = Body(...) if input_model else None):
-        if input_model:
-            result = func(**input.dict())
-        else:
-            result = func()
-        return result
-
-    return endpoint
-
-
-# Generate endpoints from all instance methods
-def generate_endpoints(app: FastAPI, instance):
-
-    # Loop over instance to create endpoints from each method
-    for name, method in inspect.getmembers(instance, predicate=inspect.ismethod):
-        if not name.endswith("__"):
-            input_model = create_pydantic_model(instance._arg_map[name])
-            endpoint = return_endpoint(method, input_model)
-            response_model = get_type_hints(method).get("return", None)
-            app.add_api_route(
-                f"/{instance._obj_name}/{name}",
-                endpoint,
-                methods=["POST" if input_model else "GET"],
-                response_model=response_model,
-                name=name,
-                tags=[instance._obj_name],
-                dependencies=[Depends(authenticate)]
-            )
 
 
 
