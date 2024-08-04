@@ -233,7 +233,14 @@ class TelepathManager():
         if host in self.jwt_tokens:
             headers['Authorization'] = f'Bearer {self.jwt_tokens[host]}'
         return headers
-
+    def _get_session(self, host: str, port: int):
+        if host in self.sessions:
+            session = self.sessions[host]['session']
+        else:
+            session = requests.Session()
+            self.sessions[host] = {'port': port, 'session': session}
+            print(f"[INFO] [telepath] Opening session to '{host}'")
+        return session
     def request(self, endpoint: str, host=None, port=None, args=None, timeout=120):
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
@@ -249,12 +256,7 @@ class TelepathManager():
         headers = self._get_headers(host)
 
         # Check if session exists
-        if host in self.sessions:
-            session = self.sessions[host]
-        else:
-            session = requests.Session()
-            self.sessions[host] = session
-            print(f"[INFO] [telepath] Opening session to '{host}'")
+        session = self._get_session(host, port)
 
         # Determine POST or GET based on params
         data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
@@ -268,10 +270,16 @@ class TelepathManager():
 
         return json_data
 
-    def close_sessions(self):  # Add logout function before closing session
-        for host, session in self.sessions.items():
-            session.close()
-            print(f"[INFO] [telepath] Closed session to '{host}'")
+    def close_sessions(self):
+        for host, data in self.sessions.items():
+
+            # Log out if authenticated to host
+            if host in self.jwt_tokens:
+                self.logout(host, data['port'])
+
+            # Close the requests session
+            data['session'].close()
+            print(f"[INFO] [telepath] Closed session to '{host}:{data['port']}'")
 
 
     # -------- Internal endpoints to authenticate with telepath -------- #
@@ -385,8 +393,7 @@ class TelepathManager():
         ip = request.client.host
 
         if self.current_user:
-            if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == \
-                    self.current_user['user']:
+            if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == self.current_user['user']:
                 self.current_user = {}
                 return True
 
@@ -406,7 +413,8 @@ class TelepathManager():
         # Eventually add a retry algorithm
 
         try:
-            data = requests.post(url, json=host_data).json()
+            session = self._get_session(ip, port)
+            data = session.post(url, json=host_data).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
                 return_data = constants.deepcopy(data)
@@ -421,6 +429,20 @@ class TelepathManager():
         except:
             pass
         return {}
+
+    def logout(self, ip: str, port: int):
+        url = f"http://{ip}:{port}/telepath/logout"
+        host_data = {'host': {'host': constants.hostname, 'user': constants.username}}
+
+        # Eventually add a retry algorithm
+        try:
+            session = self._get_session(ip, port)
+            data = session.post(url, json=host_data, headers=self._get_headers(ip)).json()
+            print(f"[INFO] [telepath] Logged out from '{ip}:{port}'")
+            return data
+        except:
+            pass
+        return False
 
     def request_pair(self, ip: str, port: int):
 
@@ -467,7 +489,6 @@ class TelepathManager():
         except:
             pass
         return None
-
 
 
 # ------------------------------------------ Authentication & Encryption -----------------------------------------------
@@ -1339,9 +1360,9 @@ async def login(host: dict, id_hash: dict, request: Request):
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/logout", tags=['telepath'], dependencies=[Depends(authenticate)])
-async def logout(host: dict):
+async def logout(host: dict, request: Request):
     if constants.api_manager:
-        return constants.api_manager._logout(host)
+        return constants.api_manager._logout(host, request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 

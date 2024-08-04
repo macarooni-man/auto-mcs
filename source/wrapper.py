@@ -221,8 +221,6 @@ if __name__ == '__main__':
 
             # Exit this thread if the main thread closes, or crashes
             if exitApp or crash:
-                constants.api_manager.stop()
-                constants.api_manager.close_sessions()
                 break
             else:
 
@@ -269,8 +267,8 @@ if __name__ == '__main__':
                 raise e
 
         # Destroy init window if macOS
-        if constants.os_name == 'macos':
-            raise SystemExit()
+        # if constants.os_name == 'macos':
+        #     raise SystemExit()
 
 
     # Launch API before UI
@@ -283,6 +281,7 @@ if __name__ == '__main__':
     # ip = '192.168.1.102'
     # port = 7001
     # login_data = constants.api_manager.login(ip, port)
+    # print(login_data)
     # if not login_data:
     #     print(constants.api_manager.request_pair(ip, port))
     #     code = input('Enter pair code:  ').upper()
@@ -298,6 +297,11 @@ if __name__ == '__main__':
     b.start()
     foreground()
     b.join()
+
+
+    # After threads close
+    constants.api_manager.stop()
+    constants.api_manager.close_sessions()
 
 
     # Delete live images/temp files on close
