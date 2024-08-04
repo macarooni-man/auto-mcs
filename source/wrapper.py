@@ -175,6 +175,19 @@ if __name__ == '__main__':
 
 
     # Functions
+    def cleanup_on_close():
+        constants.api_manager.stop()
+        constants.api_manager.close_sessions()
+
+        # Delete live images/temp files on close
+        for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
+            try:
+                os.remove(img)
+            except OSError:
+                pass
+        if not update_log or not os.path.exists(update_log):
+            constants.safe_delete(constants.tempDir)
+
     def app_crash(exception):
         import crashmgr
         log = crashmgr.generate_log(exception)
@@ -236,7 +249,6 @@ if __name__ == '__main__':
 
                 time.sleep(1)
 
-
     def foreground():
         global exitApp, crash
 
@@ -254,21 +266,20 @@ if __name__ == '__main__':
             exitApp = True
 
             # Use crash handler when app is compiled
+            cleanup_on_close()
             if crash and constants.app_compiled:
-
-                # Destroy init window if macOS
-                if constants.os_name == 'macos':
-                    init_window.destroy()
-
                 app_crash(crash)
 
             # Normal Python behavior when testing
             if not constants.app_compiled:
+                cleanup_on_close()
                 raise e
 
         # Destroy init window if macOS
-        # if constants.os_name == 'macos':
-        #     raise SystemExit()
+        cleanup_on_close()
+        if constants.os_name == 'macos':
+            init_window.destroy()
+            raise SystemExit()
 
 
     # Launch API before UI
@@ -297,18 +308,3 @@ if __name__ == '__main__':
     b.start()
     foreground()
     b.join()
-
-
-    # After threads close
-    constants.api_manager.stop()
-    constants.api_manager.close_sessions()
-
-
-    # Delete live images/temp files on close
-    for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
-        try:
-            os.remove(img)
-        except OSError:
-            pass
-    if not update_log or not os.path.exists(update_log):
-        constants.safe_delete(constants.tempDir)
