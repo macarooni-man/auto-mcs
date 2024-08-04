@@ -391,15 +391,13 @@ class TelepathManager():
 
     def _logout(self, host: dict, request: Request):
         ip = request.client.host
-
-        print(self.current_user)
-        print(host, ip)
         if self.current_user:
             if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == self.current_user['user']:
                 self.current_user = {}
                 return True
 
         return False
+
 
     # --------- Client-side functions to call the endpoints from a remote device -------- #
     def login(self, ip: str, port: int):
@@ -629,12 +627,18 @@ def create_access_token(data: dict, expires_delta: td = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def authenticate(token: str = Depends(auth_scheme)):
+async def authenticate(token: str = Depends(auth_scheme), request: Request = None):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get('host'):
+        ip = request.client.host
+        current_user = constants.api_manager.current_user
+
+        # Only allow if machine name matches current user, and the IP is from the same location
+        if payload.get('host') == current_user['host'] and ip == current_user['ip']:
             return True
     except InvalidTokenError:
+        pass
+    except KeyError:
         pass
 
     raise HTTPException(
