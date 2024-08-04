@@ -95,23 +95,29 @@ class AuthHandler():
         self.sha256 = hashes.SHA256()
 
     # Server side functionality
-    def _create_key_pair(self, ip: str, size=2048):
-        private_key = rsa.generate_private_key(public_exponent=65537, key_size=size)
+    def _create_key_pair(self, ip: str):
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=1024)
         self.key_pairs[ip] = private_key
         return private_key.public_key()
 
-    def _get_public_key(self, ip: str):
+    def _get_public_key(self, ip: str, expire_immediately=False):
+        public_key = None
         if ip not in self.key_pairs:
             public_key = self._create_key_pair(ip)
 
-            # Convert public key to PEM for web serialization
+        elif not expire_immediately:
+            public_key = self.key_pairs[ip].public_key()
+
+
+        # Convert public key to PEM for web serialization
+        if public_key:
             pem = public_key.public_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             )
             return pem
 
-        # Only allow retrieving the public key once
+        # Throw error if key has expired
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail="Can't retrieve the public key at this time")
 
     def _decrypt(self, content: bytes, ip: str):
@@ -138,8 +144,8 @@ class AuthHandler():
 
         # Retrieve public key PEM and convert it back to Python object
         pem = requests.get(f"http://{ip}:{port}/telepath/get_public_key").json()
-        pubic_key = serialization.load_pem_public_key(
-            pem,
+        public_key = serialization.load_pem_public_key(
+            pem.encode('utf-8'),
             backend=default_backend()
         )
 
