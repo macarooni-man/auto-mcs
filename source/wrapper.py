@@ -268,6 +268,10 @@ if __name__ == '__main__':
             if not constants.app_compiled:
                 raise e
 
+        # Destroy init window if macOS
+        if constants.os_name == 'macos':
+            raise SystemExit()
+
 
     # Launch API before UI
     # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True

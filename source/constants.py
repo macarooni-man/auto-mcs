@@ -5408,7 +5408,8 @@ class ConfigManager():
         self._data = Munch({})
 
         # Initialize default values
-        self.load_config()
+        if os.path.exists(applicationFolder):
+            self.load_config()
 
     # Specify default values
     @staticmethod
@@ -5461,6 +5462,7 @@ class ConfigManager():
             self.save_config()
 
     def save_config(self):
+        folder_check(os.path.dirname(self._path))
         with open(self._path, 'w') as file:
             json.dump(self._data, file, indent=2)
 
