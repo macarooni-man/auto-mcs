@@ -152,10 +152,13 @@ if __name__ == '__main__':
             system_locale = system_locale.split('_')[0]
         for v in constants.available_locales.values():
             if system_locale.startswith(v['code']):
-                constants.locale = v['code']
+                if not constants.app_config.locale:
+                    constants.app_config.locale = v['code']
                 break
     except Exception as e:
         print(f'Failed to determine locale: {e}')
+    if not constants.app_config.locale:
+        constants.app_config.locale = 'en'
 
 
     import main
@@ -166,25 +169,9 @@ if __name__ == '__main__':
     crash = None
 
 
-    # Get global configuration
-    if os.path.exists(constants.global_conf):
-
-        # Delete configuration if flag is set
-        if reset_config:
-            if os.path.exists(constants.global_conf):
-                os.remove(constants.global_conf)
-                print('[INFO] [auto-mcs] successfully reset global configuration')
-
-        else:
-            try:
-                with open(constants.global_conf, 'r') as f:
-                    file_contents = constants.json.loads(f.read())
-                    constants.geometry = file_contents['geometry']
-                    constants.fullscreen = file_contents['fullscreen']
-                    constants.locale = file_contents['locale']
-                    constants.auto_update = file_contents['auto-update']
-            except:
-                pass
+    # Delete configuration if flag is set
+    if reset_config:
+        constants.app_config.reset()
 
 
     # Functions
@@ -284,8 +271,8 @@ if __name__ == '__main__':
 
     # Launch API before UI
     # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
-    constants.api_manager = telepath.WebAPI(constants.api_data['default-host'], constants.api_data['default-port'])
-    if constants.api_data['enabled'] or constants.headless:
+    constants.api_manager = telepath.TelepathManager()
+    if constants.app_config.telepath_settings['enable-api'] or constants.headless:
         constants.api_manager.start()
 
         # Test data

@@ -1,4 +1,3 @@
-# This file abstracts all the program managers to control a server remotely
 from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Request, Depends, status
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from fastapi.responses import JSONResponse, FileResponse
@@ -41,6 +40,10 @@ import constants
 import svrmgr
 
 
+# Auto-MCS Telepath API
+# This library abstracts auto-mcs functionality to control servers remotely
+# ----------------------------------------------- Global Variables -----------------------------------------------------
+
 SECRET_KEY = os.urandom(64)
 HARDWARE_ID = uuid.getnode()
 ALGORITHM = "HS256"
@@ -48,6 +51,426 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 PAIR_CODE_EXPIRE_MINUTES = 1.5
 
 
+# Instantiate the API if main
+def create_schema():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title="auto-mcs - Telepath API",
+        version=TelepathManager.version,
+        summary="Welcome to the auto-mcs Telepath API! You can use this utility for seamless remote management.",
+        routes=app.routes,
+    )
+    openapi_schema["info"]["x-logo"] = {"url": TelepathManager.doc_logo}
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+def get_docs_url(type: str):
+    if not constants.app_compiled:
+        return "/docs" if "docs" in type else "/redoc"
+app = FastAPI(docs_url=get_docs_url("docs"), redoc_url=get_docs_url("redoc"))
+app.openapi = create_schema
+
+
+# Internal wrapper for API functionality
+class TelepathManager():
+    version = constants.telepath_version
+    doc_logo = "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
+    default_host = "0.0.0.0"
+    default_port = 7001
+
+    def __init__(self):
+        global app
+        self.app = app
+        self.config = None
+        self.server = None
+        self.running = False
+        self.host = self.default_host
+        self.port = self.default_port
+        self.sessions = {}
+        self.jwt_tokens = {}
+        self.update_config(host=self.host, port=self.port)
+
+        # Helper classes for encryption
+        self.auth = AuthHandler()
+        self.secret_file = SecretHandler()
+
+        # Server side data
+        self.current_user = None
+        self.pair_data = {}
+        self.pair_listen = True
+
+        # Load authenticated users from saved data
+        self.authenticated_sessions = []
+        self._read_session()
+        # [{'host1': str, 'user': str, 'id': str}, {'host2': str, 'user': str, 'id': str}]
+        # .....
+
+        # Disable low importance uvicorn logging
+        if not constants.debug:
+            logging.getLogger("uvicorn.error").handlers = []
+            logging.getLogger("uvicorn.error").propagate = False
+            logging.getLogger("uvicorn.access").handlers = []
+            logging.getLogger("uvicorn.access").propagate = False
+
+    def _run_uvicorn(self):
+        self.server = uvicorn.Server(self.config)
+        self.server.run()
+
+    def _kill_uvicorn(self):
+        self.server.should_exit = True
+
+    def _encrypt_id(self, id: str):
+        pwd_bytes = id.encode("utf-8")
+        salt = bcrypt.gensalt()
+        hashed_password = bcrypt.hashpw(password=pwd_bytes, salt=salt)
+        hashed_password = hashed_password.decode("utf-8")
+        return hashed_password
+
+    def _verify_id(self, raw_id: str, hashed_id: str):
+        password_byte_enc = raw_id.encode("utf-8")
+        hashed_password_enc = hashed_id.encode("utf-8")
+        return bcrypt.checkpw(
+            password=password_byte_enc, hashed_password=hashed_password_enc
+        )
+
+    def _return_token(self, session: dict):
+        session = constants.deepcopy(session)
+        del session['id']
+        return {
+            'access-token': create_access_token(session),
+            'hostname': constants.hostname,
+            'os': constants.os_name,
+            'app-version': constants.app_version,
+            'telepath-version': self.version
+        }
+
+    def _save_session(self, session: dict):
+        self.authenticated_sessions.append(session)
+        self.secret_file.write(self.authenticated_sessions)
+
+        # Eventually add code here to save and reload this from a file
+
+    def _read_session(self):
+        self.authenticated_sessions = self.secret_file.read()
+
+    def _create_pair_code(self, host: dict, id: str):
+        characters = string.ascii_letters + string.digits
+        code = str(''.join(random.choice(characters) for _ in range(6)).upper()).replace('O', '0')
+
+        # {'host': IP address, 'username': pass in constants.username}
+        self.pair_data = {
+            "host": host,
+            "id": self._encrypt_id(id),
+            "code": code,
+            "attempt": 0,
+            "expire": (dt.now() + td(minutes=PAIR_CODE_EXPIRE_MINUTES)),
+        }
+
+        # Expire code automatically
+        def _clear_pair_code(*a):
+            try:
+                if self.pair_data['code'] == code:
+                    self.pair_data = {}
+            except:
+                pass
+
+        threading.Timer((PAIR_CODE_EXPIRE_MINUTES * 60), _clear_pair_code).start()
+
+    def update_config(self, host: str, port: int):
+        self.host = host
+        self.port = port
+        self.config = uvicorn.Config(
+            app=app,
+            host=host,
+            port=port,
+            # workers=1,
+            # limit_concurrency=1,
+            # limit_max_requests=1
+        )
+
+        # Restart if running
+        if self.running:
+            self.restart()
+
+    def start(self):
+        if not self.running:
+            self.running = True
+            threading.Timer(0, self._run_uvicorn).start()
+
+            message = f'initialized API on "{self.host}:{self.port}"'
+            if not constants.headless:
+                print(f'[INFO] [telepath] {message}')
+            else:
+                return message
+        elif constants.headless:
+            return 'Telepath API is already running'
+
+    def stop(self):
+        # This still doesn't work for whatever reason?
+        if self.running:
+            self._kill_uvicorn()
+            self.server = None
+            self.running = False
+
+            message = f'disabled API on "{self.host}:{self.port}"'
+            if not constants.headless:
+                print(f'[INFO] [telepath] {message}')
+            else:
+                return message
+        elif constants.headless:
+            return 'Telepath API is not running'
+
+    def restart(self):
+        self.stop()
+        time.sleep(1)
+        self.start()
+
+    # Send a POST or GET request to an endpoint
+    def _get_headers(self, host: str, only_token=False):
+        headers = {}
+        if not only_token:
+            headers = {"Content-Type": "application/json"}
+        if host in self.jwt_tokens:
+            headers['Authorization'] = f'Bearer {self.jwt_tokens[host]}'
+        return headers
+
+    def request(self, endpoint: str, host=None, port=None, args=None, timeout=120):
+        if endpoint.startswith('/'):
+            endpoint = endpoint[1:]
+        if endpoint.endswith('/'):
+            endpoint = endpoint[:-1]
+        if not host:
+            host = self.host
+        if not port:
+            port = self.port
+
+        # Retrieve token for auth and set headers
+        url = f"http://{host}:{port}/{endpoint}"
+        headers = self._get_headers(host)
+
+        # Check if session exists
+        if host in self.sessions:
+            session = self.sessions[host]
+        else:
+            session = requests.Session()
+            self.sessions[host] = session
+            print(f"[INFO] [telepath] Opening session to '{host}'")
+
+        # Determine POST or GET based on params
+        data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
+
+        if not data:
+            return None
+
+        json_data = data.json()
+        if isinstance(json_data, dict) and "__reconstruct__" in json_data:
+            return reconstruct_object(json_data)
+
+        return json_data
+
+    def close_sessions(self):  # Add logout function before closing session
+        for host, session in self.sessions.items():
+            session.close()
+            print(f"[INFO] [telepath] Closed session to '{host}'")
+
+
+    # -------- Internal endpoints to authenticate with telepath -------- #
+
+    # Returns data for pairing a remote session
+    # host = {'host': str, 'user': str}
+    def _request_pair(self, host: dict, id_hash: bytes, request: Request) -> dict or None:
+        if not self.pair_listen:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
+
+        error_code = status.HTTP_418_IM_A_TEAPOT if random.randrange(10) == 1 else status.HTTP_409_CONFLICT
+        if constants.ignore_close:
+            message = "Server is busy, please try again later"
+            print(f'[INFO] [telepath] {message}')
+            raise HTTPException(status_code=error_code, detail=message)
+
+        # Ignore request if there's currently a valid pairing code
+        if self.pair_data:
+            message = "Please wait for the current code to expire"
+            print(f'[INFO] [telepath] {message}')
+            raise HTTPException(status_code=error_code, detail=message)
+
+        # Ignore an improperly formatted request
+        try:
+            host['ip'] = request.client.host
+            test = host['host']
+            test = host['user']
+        except:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid request')
+
+        # If there is no pair code, and the service is running
+        if self.running:
+            ip = request.client.host
+            id = self.auth._decrypt(id_hash, ip)
+            self._create_pair_code(host, id)
+
+            # Show pop-up if the UI is open
+            if constants.telepath_pair:
+                constants.telepath_pair.open(self.pair_data)
+
+            print(f"[INFO] [telepath] Generated pairing code: {self.pair_data['code']} for host: {host}")
+            return True
+        else:
+            print(f'[INFO] [telepath] Telepath API is not running')
+            return False
+
+    def _submit_pair(self, host: dict, id_hash: bytes, code: str, request: Request):
+        if self.running:
+            ip = request.client.host
+            id = self.auth._decrypt(id_hash, ip)
+
+            if not self.pair_listen:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
+
+            if not self.pair_data:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A pair code hasn't been generated")
+
+            if dt.now() < self.pair_data['expire']:
+
+                # First, make sure that the user, id, and code match
+                if host['host'] == self.pair_data['host']['host'] and host['user'] == self.pair_data['host']['user'] and ip == self.pair_data['host']['ip']:
+                    if self._verify_id(id, self.pair_data['id']) and code == self.pair_data['code']:
+                        # Successfully authenticated
+
+                        # Call function to write this data to a file
+                        session = {'host': host['host'], 'user': host['user'], 'id': self.pair_data['id'], 'ip': ip}
+                        self.pair_data = {}
+                        self._save_session(session)
+                        self.current_user = session
+                        return self._return_token(session)
+
+                # Expire after 3 failed attempts
+                self.pair_data['attempt'] += 1
+                if self.pair_data['attempt'] >= 3:
+                    self.pair_data = {}
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Invalid host or pair code')
+
+            else:
+                self.pair_data = {}
+                return False
+
+    def _login(self, host: dict, id_hash: bytes, request: Request):
+        if self.running:
+            ip = request.client.host
+            id = self.auth._decrypt(id_hash, ip)
+
+            for session in self.authenticated_sessions:
+                if self._verify_id(id, session['id']):
+
+                    # This can change later, but currently, there can only be one telepath user globally
+                    if self.current_user and not (self.current_user['id'] == session['id'] and self.current_user['ip'] == request.client.host):
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="Logged in from another session",
+                            headers={"WWW-Authenticate": "Bearer"},
+                        )
+
+                    session['host'] = host['host']
+                    session['user'] = host['user']
+                    session['ip'] = request.client.host
+                    self.active_user = session
+                    return self._return_token(session)
+
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    def _logout(self, host: dict, request: Request):
+        ip = request.client.host
+
+        if self.current_user:
+            if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == \
+                    self.current_user['user']:
+                self.current_user = {}
+                return True
+
+        return False
+
+    # --------- Client-side functions to call the endpoints from a remote device -------- #
+    def login(self, ip: str, port: int):
+
+        # Get the server's public key and create an encrypted token
+        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
+        url = f"http://{ip}:{port}/telepath/login"
+        host_data = {
+            'host': {'host': constants.hostname, 'user': constants.username},
+            'id_hash': token
+        }
+
+        # Eventually add a retry algorithm
+
+        try:
+            data = requests.post(url, json=host_data).json()
+            if 'access-token' in data:
+                self.jwt_tokens[ip] = data['access-token']
+                return_data = constants.deepcopy(data)
+                del return_data['access-token']
+                return_data['host'] = ip
+                return_data['port'] = port
+                return_data['added-servers'] = {}
+                return_data['nickname'] = ''
+                return return_data
+            else:
+                return {}
+        except:
+            pass
+        return {}
+
+    def request_pair(self, ip: str, port: int):
+
+        # Get the server's public key and create an encrypted token
+        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
+        url = f"http://{ip}:{port}/telepath/request_pair"
+        host_data = {
+            'host': {'host': constants.hostname, 'user': constants.username},
+            'id_hash': token
+        }
+
+        # Eventually add a retry algorithm
+
+        try:
+            data = requests.post(url, json=host_data).json()
+            return data
+        except:
+            pass
+        return None
+
+    def submit_pair(self, ip: str, port: int, code: str):
+
+        # Get the server's public key and create an encrypted token
+        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
+        url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
+        host_data = {
+            'host': {'host': constants.hostname, 'user': constants.username},
+            'id_hash': token
+        }
+
+        # Eventually add a retry algorithm
+
+        try:
+            data = requests.post(url, json=host_data).json()
+            if 'access-token' in data:
+                self.jwt_tokens[ip] = data['access-token']
+                return_data = constants.deepcopy(data)
+                del return_data['access-token']
+                return_data['host'] = ip
+                return_data['port'] = port
+                return_data['added-servers'] = {}
+                return_data['nickname'] = ''
+                return return_data
+        except:
+            pass
+        return None
+
+
+
+# ------------------------------------------ Authentication & Encryption -----------------------------------------------
 
 # Houses PKI for authentication
 class AuthHandler():
@@ -198,6 +621,8 @@ async def authenticate(token: str = Depends(auth_scheme)):
     )
 
 
+
+# -------------------------------------------- Remote Server Wrapper ---------------------------------------------------
 
 # This will communicate with the endpoints
 # "request" parameter is in context to this particular session, or subjectively, "am I requesting data?"
@@ -407,534 +832,6 @@ def create_remote_obj(obj: object, request=True):
     )
 
 
-# Creates an endpoint from a method, tagged, and optionally if it contains parameters
-def create_endpoint(method: Callable, tag: str, params=False, auth_required=True):
-    kwargs = {
-        'methods': ["POST" if params else "GET"],
-        'name': method.__name__,
-        'tags': [tag],
-    }
-    if auth_required:
-        kwargs['dependencies'] = [Depends(authenticate)]
-
-    app.add_api_route(
-        f"/{tag}/{method.__name__}",
-        return_endpoint(method, create_pydantic_model(method) if params else None),
-        **kwargs
-    )
-
-
-# Reconstructs a serialized object to "__reconstruct__"
-def reconstruct_object(data: dict):
-    final_data = data
-    if isinstance(data, dict):
-        if '__reconstruct__' in data:
-            if data['__reconstruct__'] == 'RemoteBackupObject':
-                final_data = RemoteBackupObject(data['_telepath_data'], data)
-
-            if data['__reconstruct__'] == 'RemoteAddonFileObject':
-                final_data = RemoteAddonFileObject(data['_telepath_data'], data)
-
-            if data['__reconstruct__'] == 'RemoteAddonWebObject':
-                final_data = RemoteAddonWebObject(data['_telepath_data'], data)
-
-            if data['__reconstruct__'] == 'RemoteAmsFileObject':
-                final_data = RemoteAmsFileObject(data['_telepath_data'], data)
-
-            if data['__reconstruct__'] == 'RemoteAmsWebObject':
-                final_data = RemoteAmsWebObject(data['_telepath_data'], data)
-
-    return final_data
-
-
-# Returns {param: (type, Ellipsis or default value)} from the parameters of any function
-def get_function_params(method: Callable):
-    parameters = inspect.signature(method).parameters
-
-    if not parameters or ("self" in parameters and len(parameters) == 1):
-        return None
-
-    def get_default_value(param):
-        return ... if param.default is inspect._empty else param.default
-
-    def get_param_type(param):
-        final_type = str
-        if 'Object' in param.annotation.__name__:
-            final_type = object
-        elif param.annotation != inspect._empty:
-            final_type = param.annotation
-        if final_type == str:
-            if param.default != inspect._empty:
-                final_type = type(param.default)
-        return final_type
-
-    return {
-        param.name.strip('_'): (
-            get_param_type(param),
-            get_default_value(param),
-        )
-        for param in parameters.values()
-        if param.name not in ["self", "args"]
-    }
-
-
-# noinspection PyTypeChecker
-def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
-    fields = get_function_params(method)
-    if not fields:
-        return None
-
-    model = create_model(
-        f"{method.__name__}Input",
-        __config__=type("Config", (), {"arbitrary_types_allowed": True}),
-        **fields,
-    )
-    return model
-
-
-# Create an endpoint from a function
-def return_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
-    async def endpoint(input: input_model = Body(...) if input_model else None):
-        if input_model:
-            result = func(**input.dict())
-        else:
-            result = func()
-        return result
-
-    return endpoint
-
-
-# Generate endpoints from all instance methods
-def generate_endpoints(app: FastAPI, instance):
-
-    # Loop over instance to create endpoints from each method
-    for name, method in inspect.getmembers(instance, predicate=inspect.ismethod):
-        if not name.endswith("__"):
-            input_model = create_pydantic_model(instance._arg_map[name])
-            endpoint = return_endpoint(method, input_model)
-            response_model = get_type_hints(method).get("return", None)
-            app.add_api_route(
-                f"/{instance._obj_name}/{name}",
-                endpoint,
-                methods=["POST" if input_model else "GET"],
-                response_model=response_model,
-                name=name,
-                tags=[instance._obj_name],
-                dependencies=[Depends(authenticate)]
-            )
-
-
-# Generate OpenAPI schema
-def create_schema():
-    if app.openapi_schema:
-        return app.openapi_schema
-    openapi_schema = get_openapi(
-        title="auto-mcs - Telepath API",
-        version=constants.api_data['version'],
-        summary="Welcome to the auto-mcs Telepath API! You can use this utility for seamless remote management.",
-        routes=app.routes,
-    )
-    openapi_schema["info"]["x-logo"] = {
-        "url": constants.api_data['logo']
-    }
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
-
-
-# Internal wrapper for API functionality
-class WebAPI():
-    def __init__(self, host: str, port: int):
-        global app
-        self.app = app
-        self.config = None
-        self.server = None
-        self.running = False
-        self.host = host
-        self.port = port
-        self.sessions = {}
-        self.jwt_tokens = {}
-        self.update_config(host=host, port=port)
-
-        # Helper classes for encryption
-        self.auth = AuthHandler()
-        self.secret_file = SecretHandler()
-
-        # Server side data
-        self.current_user = None
-        self.pair_data = {}
-        self.pair_listen = True
-
-        # Load authenticated users from saved data
-        self.authenticated_sessions = []
-        self._read_session()
-        # [{'host1': str, 'user': str, 'id': str}, {'host2': str, 'user': str, 'id': str}]
-        # .....
-
-        # Disable low importance uvicorn logging
-        if not constants.debug:
-            logging.getLogger("uvicorn.error").handlers = []
-            logging.getLogger("uvicorn.error").propagate = False
-            logging.getLogger("uvicorn.access").handlers = []
-            logging.getLogger("uvicorn.access").propagate = False
-
-    def _run_uvicorn(self):
-        self.server = uvicorn.Server(self.config)
-        self.server.run()
-
-    def _kill_uvicorn(self):
-        self.server.should_exit = True
-
-    def _encrypt_id(self, id: str):
-        pwd_bytes = id.encode("utf-8")
-        salt = bcrypt.gensalt()
-        hashed_password = bcrypt.hashpw(password=pwd_bytes, salt=salt)
-        hashed_password = hashed_password.decode("utf-8")
-        return hashed_password
-
-    def _verify_id(self, raw_id: str, hashed_id: str):
-        password_byte_enc = raw_id.encode("utf-8")
-        hashed_password_enc = hashed_id.encode("utf-8")
-        return bcrypt.checkpw(
-            password=password_byte_enc, hashed_password=hashed_password_enc
-        )
-
-    def _return_token(self, session: dict):
-        session = constants.deepcopy(session)
-        del session['id']
-        return {
-            'access-token': create_access_token(session),
-            'hostname': constants.hostname,
-            'os': constants.os_name,
-            'app-version': constants.app_version,
-            'telepath-version': constants.api_data['version']
-        }
-
-    def _save_session(self, session: dict):
-        self.authenticated_sessions.append(session)
-        self.secret_file.write(self.authenticated_sessions)
-
-        # Eventually add code here to save and reload this from a file
-
-    def _read_session(self):
-        self.authenticated_sessions = self.secret_file.read()
-
-    def _create_pair_code(self, host: dict, id: str):
-        characters = string.ascii_letters + string.digits
-        code = str(''.join(random.choice(characters) for _ in range(6)).upper()).replace('O','0')
-
-        # {'host': IP address, 'username': pass in constants.username}
-        self.pair_data = {
-            "host": host,
-            "id": self._encrypt_id(id),
-            "code": code,
-            "attempt": 0,
-            "expire": (dt.now() + td(minutes=PAIR_CODE_EXPIRE_MINUTES)),
-        }
-
-        # Expire code automatically
-        def _clear_pair_code(*a):
-            try:
-                if self.pair_data['code'] == code:
-                    self.pair_data = {}
-            except:
-                pass
-        threading.Timer((PAIR_CODE_EXPIRE_MINUTES * 60), _clear_pair_code).start()
-
-    def update_config(self, host: str, port: int):
-        self.host = host
-        self.port = port
-        self.config = uvicorn.Config(
-            app=app,
-            host=host,
-            port=port,
-            # workers=1,
-            # limit_concurrency=1,
-            # limit_max_requests=1
-        )
-
-        # Restart if running
-        if self.running:
-            self.restart()
-
-    def start(self):
-        if not self.running:
-            self.running = True
-            threading.Timer(0, self._run_uvicorn).start()
-
-            message = f'initialized API on "{self.host}:{self.port}"'
-            if not constants.headless:
-                print(f'[INFO] [telepath] {message}')
-            else:
-                return message
-        elif constants.headless:
-            return 'Telepath API is already running'
-
-    def stop(self):
-        # This still doesn't work for whatever reason?
-        if self.running:
-            self._kill_uvicorn()
-            self.server = None
-            self.running = False
-
-            message = f'disabled API on "{self.host}:{self.port}"'
-            if not constants.headless:
-                print(f'[INFO] [telepath] {message}')
-            else:
-                return message
-        elif constants.headless:
-            return 'Telepath API is not running'
-
-    def restart(self):
-        self.stop()
-        time.sleep(1)
-        self.start()
-
-    # Send a POST or GET request to an endpoint
-    def _get_headers(self, host: str, only_token=False):
-        headers = {}
-        if not only_token:
-            headers = {"Content-Type": "application/json"}
-        if host in self.jwt_tokens:
-            headers['Authorization'] = f'Bearer {self.jwt_tokens[host]}'
-        return headers
-    def request(self, endpoint: str, host=None, port=None, args=None, timeout=120):
-        if endpoint.startswith('/'):
-            endpoint = endpoint[1:]
-        if endpoint.endswith('/'):
-            endpoint = endpoint[:-1]
-        if not host:
-            host = self.host
-        if not port:
-            port = self.port
-
-
-        # Retrieve token for auth and set headers
-        url = f"http://{host}:{port}/{endpoint}"
-        headers = self._get_headers(host)
-
-        # Check if session exists
-        if host in self.sessions:
-            session = self.sessions[host]
-        else:
-            session = requests.Session()
-            self.sessions[host] = session
-            print(f"[INFO] [telepath] Opening session to '{host}'")
-
-        # Determine POST or GET based on params
-        data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
-
-        if not data:
-            return None
-
-        json_data = data.json()
-        if isinstance(json_data, dict) and "__reconstruct__" in json_data:
-            return reconstruct_object(json_data)
-
-        return json_data
-
-    def close_sessions(self):
-        for host, session in self.sessions.items():
-            session.close()
-            print(f"[INFO] [telepath] Closed session to '{host}'")
-
-
-    # -------- Internal endpoints to authenticate with telepath -------- #
-
-    # Returns data for pairing a remote session
-    # host = {'host': str, 'user': str}
-    def _request_pair(self, host: dict, id_hash: bytes, request: Request) -> dict or None:
-        if not self.pair_listen:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
-
-        error_code = status.HTTP_418_IM_A_TEAPOT if random.randrange(10) == 1 else status.HTTP_409_CONFLICT
-        if constants.ignore_close:
-            message = "Server is busy, please try again later"
-            print(f'[INFO] [telepath] {message}')
-            raise HTTPException(status_code=error_code, detail=message)
-
-        # Ignore request if there's currently a valid pairing code
-        if self.pair_data:
-            message = "Please wait for the current code to expire"
-            print(f'[INFO] [telepath] {message}')
-            raise HTTPException(status_code=error_code, detail=message)
-
-        # Ignore an improperly formatted request
-        try:
-            host['ip'] = request.client.host
-            test = host['host']
-            test = host['user']
-        except:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid request')
-
-
-        # If there is no pair code, and the service is running
-        if self.running:
-            ip = request.client.host
-            id = self.auth._decrypt(id_hash, ip)
-            self._create_pair_code(host, id)
-
-            # Show pop-up if the UI is open
-            if constants.telepath_pair:
-                constants.telepath_pair.open(self.pair_data)
-
-            print(f"[INFO] [telepath] Generated pairing code: {self.pair_data['code']} for host: {host}")
-            return True
-        else:
-            print(f'[INFO] [telepath] Telepath API is not running')
-            return False
-
-    def _submit_pair(self, host: dict, id_hash: bytes, code: str, request: Request):
-        if self.running:
-            ip = request.client.host
-            id = self.auth._decrypt(id_hash, ip)
-
-            if not self.pair_listen:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
-
-            if not self.pair_data:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A pair code hasn't been generated")
-
-            if dt.now() < self.pair_data['expire']:
-
-                # First, make sure that the user, id, and code match
-                if host['host'] == self.pair_data['host']['host'] and host['user'] == self.pair_data['host']['user'] and ip == self.pair_data['host']['ip']:
-                    if self._verify_id(id, self.pair_data['id']) and code == self.pair_data['code']:
-                        
-                        # Successfully authenticated
-
-                        # Call function to write this data to a file
-                        session = {'host': host['host'], 'user': host['user'], 'id': self.pair_data['id'], 'ip': ip}
-                        self.pair_data = {}
-                        self._save_session(session)
-                        self.current_user = session
-                        return self._return_token(session)
-
-                # Expire after 3 failed attempts
-                self.pair_data['attempt'] += 1
-                if self.pair_data['attempt'] >= 3:
-                    self.pair_data = {}
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Invalid host or pair code')
-
-            else:
-                self.pair_data = {}
-                return False
-
-    def _login(self, host: dict, id_hash: bytes, request: Request):
-        if self.running:
-            ip = request.client.host
-            id = self.auth._decrypt(id_hash, ip)
-
-            for session in self.authenticated_sessions:
-                if self._verify_id(id, session['id']):
-
-                    # This can change later, but currently, there can only be one telepath user globally
-                    if self.current_user and not (self.current_user['id'] == session['id'] and self.current_user['ip'] == request.client.host):
-                        raise HTTPException(
-                            status_code=status.HTTP_409_CONFLICT,
-                            detail="Logged in from another session",
-                            headers={"WWW-Authenticate": "Bearer"},
-                        )
-
-                    session['host'] = host['host']
-                    session['user'] = host['user']
-                    session['ip'] = request.client.host
-                    self.active_user = session
-                    return self._return_token(session)
-
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Could not validate credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-    def _logout(self, host: dict, request: Request):
-        ip = request.client.host
-
-        if self.current_user:
-            if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == self.current_user['user']:
-                self.current_user = {}
-                return True
-
-        return False
-
-
-    # --------- Client-side functions to call the endpoints from a remote device -------- #
-    def login(self, ip: str, port: int):
-
-        # Get the server's public key and create an encrypted token
-        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
-        url = f"http://{ip}:{port}/telepath/login"
-        host_data = {
-            'host': {'host': constants.hostname, 'user': constants.username},
-            'id_hash': token
-        }
-
-        # Eventually add a retry algorithm
-
-        try:
-            data = requests.post(url, json=host_data).json()
-            if 'access-token' in data:
-                self.jwt_tokens[ip] = data['access-token']
-                return_data = constants.deepcopy(data)
-                del return_data['access-token']
-                return_data['host'] = ip
-                return_data['port'] = port
-                return_data['added-servers'] = {}
-                return_data['nickname'] = ''
-                return return_data
-            else:
-                return {}
-        except:
-            pass
-        return {}
-
-    def request_pair(self, ip: str, port: int):
-
-        # Get the server's public key and create an encrypted token
-        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
-        url = f"http://{ip}:{port}/telepath/request_pair"
-        host_data = {
-            'host': {'host': constants.hostname, 'user': constants.username},
-            'id_hash': token
-        }
-
-        # Eventually add a retry algorithm
-
-        try:
-            data = requests.post(url, json=host_data).json()
-            return data
-        except:
-            pass
-        return None
-
-    def submit_pair(self, ip: str, port: int, code: str):
-
-        # Get the server's public key and create an encrypted token
-        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
-        url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
-        host_data = {
-            'host': {'host': constants.hostname, 'user': constants.username},
-            'id_hash': token
-        }
-
-        # Eventually add a retry algorithm
-
-        try:
-            data = requests.post(url, json=host_data).json()
-            if 'access-token' in data:
-                self.jwt_tokens[ip] = data['access-token']
-                return_data = constants.deepcopy(data)
-                del return_data['access-token']
-                return_data['host'] = ip
-                return_data['port'] = port
-                return_data['added-servers'] = {}
-                return_data['nickname'] = ''
-                return return_data
-        except:
-            pass
-        return None
-
-            
 # Create objects to import for the rest of the app to request data
 class RemoteServerObject(create_remote_obj(ServerObject)):
 
@@ -1255,7 +1152,6 @@ class RemoteAclManager(create_remote_obj(AclManager)):
         self._clear_attr_cache()
         return self._reconstruct_list(super().add_global_rule(*args, **kwargs))
 
-
 class RemoteObject(Munch):
     def __init__(self, telepath_data, data: dict):
         self._telepath_data = data
@@ -1277,14 +1173,128 @@ class RemoteAmsWebObject(RemoteObject):
     pass
 
 
-# Instantiate the API if main
-def get_docs_url(type: str):
-    if not constants.app_compiled:
-        return "/docs" if "docs" in type else "/redoc"
-app = FastAPI(docs_url=get_docs_url("docs"), redoc_url=get_docs_url("redoc"))
-app.openapi = create_schema
+
+# ---------------------------------------------- Utility Functions -----------------------------------------------------
+
+# Creates an endpoint from a method, tagged, and optionally if it contains parameters, or requires a JWT token
+def create_endpoint(method: Callable, tag: str, params=False, auth_required=True):
+    kwargs = {
+        'methods': ["POST" if params else "GET"],
+        'name': method.__name__,
+        'tags': [tag],
+    }
+    if auth_required:
+        kwargs['dependencies'] = [Depends(authenticate)]
+
+    app.add_api_route(
+        f"/{tag}/{method.__name__}",
+        return_endpoint(method, create_pydantic_model(method) if params else None),
+        **kwargs
+    )
 
 
+# Reconstructs a serialized object to "__reconstruct__"
+def reconstruct_object(data: dict):
+    final_data = data
+    if isinstance(data, dict):
+        if '__reconstruct__' in data:
+            if data['__reconstruct__'] == 'RemoteBackupObject':
+                final_data = RemoteBackupObject(data['_telepath_data'], data)
+
+            if data['__reconstruct__'] == 'RemoteAddonFileObject':
+                final_data = RemoteAddonFileObject(data['_telepath_data'], data)
+
+            if data['__reconstruct__'] == 'RemoteAddonWebObject':
+                final_data = RemoteAddonWebObject(data['_telepath_data'], data)
+
+            if data['__reconstruct__'] == 'RemoteAmsFileObject':
+                final_data = RemoteAmsFileObject(data['_telepath_data'], data)
+
+            if data['__reconstruct__'] == 'RemoteAmsWebObject':
+                final_data = RemoteAmsWebObject(data['_telepath_data'], data)
+
+    return final_data
+
+
+# Returns {param: (type, Ellipsis or default value)} from the parameters of any function
+def get_function_params(method: Callable):
+    parameters = inspect.signature(method).parameters
+
+    if not parameters or ("self" in parameters and len(parameters) == 1):
+        return None
+
+    def get_default_value(param):
+        return ... if param.default is inspect._empty else param.default
+
+    def get_param_type(param):
+        final_type = str
+        if 'Object' in param.annotation.__name__:
+            final_type = object
+        elif param.annotation != inspect._empty:
+            final_type = param.annotation
+        if final_type == str:
+            if param.default != inspect._empty:
+                final_type = type(param.default)
+        return final_type
+
+    return {
+        param.name.strip('_'): (
+            get_param_type(param),
+            get_default_value(param),
+        )
+        for param in parameters.values()
+        if param.name not in ["self", "args"]
+    }
+
+
+# noinspection PyTypeChecker
+def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
+    fields = get_function_params(method)
+    if not fields:
+        return None
+
+    model = create_model(
+        f"{method.__name__}Input",
+        __config__=type("Config", (), {"arbitrary_types_allowed": True}),
+        **fields,
+    )
+    return model
+
+
+# Create an endpoint from a function
+def return_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
+    async def endpoint(input: input_model = Body(...) if input_model else None):
+        if input_model:
+            result = func(**input.dict())
+        else:
+            result = func()
+        return result
+
+    return endpoint
+
+
+# Generate endpoints from all instance methods
+def generate_endpoints(app: FastAPI, instance):
+
+    # Loop over instance to create endpoints from each method
+    for name, method in inspect.getmembers(instance, predicate=inspect.ismethod):
+        if not name.endswith("__"):
+            input_model = create_pydantic_model(instance._arg_map[name])
+            endpoint = return_endpoint(method, input_model)
+            response_model = get_type_hints(method).get("return", None)
+            app.add_api_route(
+                f"/{instance._obj_name}/{name}",
+                endpoint,
+                methods=["POST" if input_model else "GET"],
+                response_model=response_model,
+                name=name,
+                tags=[instance._obj_name],
+                dependencies=[Depends(authenticate)]
+            )
+
+
+
+# ----------------------------------------------- API Endpoints --------------------------------------------------------
 
 # API endpoints for authentication
 # Keep-alive, unauthenticated
@@ -1304,21 +1314,27 @@ async def get_public_key(request: Request):
 @app.post("/telepath/request_pair", tags=['telepath'])
 async def request_pair(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
-        return constants.api_manager._request_pair(host, id_hash['token'], request)
+        if 'token' in id_hash:
+            id_hash = id_hash['token']
+        return constants.api_manager._request_pair(host, id_hash, request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/submit_pair", tags=['telepath'])
 async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
     if constants.api_manager:
-        return constants.api_manager._submit_pair(host, id_hash['token'], code, request)
+        if 'token' in id_hash:
+            id_hash = id_hash['token']
+        return constants.api_manager._submit_pair(host, id_hash, code, request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/login", tags=['telepath'])
 async def login(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
-        return constants.api_manager._login(host, id_hash['token'], request)
+        if 'token' in id_hash:
+            id_hash = id_hash['token']
+        return constants.api_manager._login(host, id_hash, request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
@@ -1332,6 +1348,11 @@ async def logout(host: dict):
 
 
 # Authenticated and functional endpoints
+@app.post("/main/open_remote_server", tags=['main'], dependencies=[Depends(authenticate)])
+async def open_remote_server(name: str):
+    if constants.app_config.telepath_settings['enable-api'] and constants.server_manager:
+        return constants.server_manager.open_remote_server(name)
+    return False
 
 # Upload file endpoint
 @app.post("/main/upload_file", tags=['main'], dependencies=[Depends(authenticate)])

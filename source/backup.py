@@ -170,7 +170,7 @@ def convert_date(m_time: int or float):
         fmt = constants.fmt_date("%a %#I:%M %p %#m/%#d/%y")
 
     # Translate day
-    if constants.locale != 'en':
+    if constants.app_config.locale != 'en':
         date = dt_obj.strftime(fmt)
         for day in ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']:
             if day.startswith(date[:3]):

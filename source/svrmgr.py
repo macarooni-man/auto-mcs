@@ -1907,10 +1907,6 @@ class ServerManager():
         self.remote_server = None
         self.running_servers = {}
 
-        # Enable endpoint
-        if constants.api_data['enabled']:
-            telepath.create_endpoint(self.open_remote_server, 'main', True)
-
         # Load telepath servers
         self.load_telepath_servers()
 

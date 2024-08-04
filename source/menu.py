@@ -162,14 +162,14 @@ class Label(Label):
         super().__init__(*args, **kwargs)
 
     def __setattr__(self, key, value):
-        if constants.locale != 'en':
+        if constants.app_config.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
             if key in ['text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ['text']:
+        elif constants.app_config.locale == 'en' and key in ['text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 class Button(Button):
@@ -179,14 +179,14 @@ class Button(Button):
         super().__init__(*args, **kwargs)
 
     def __setattr__(self, key, value):
-        if constants.locale != 'en':
+        if constants.app_config.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
             if key in ['text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ['text']:
+        elif constants.app_config.locale == 'en' and key in ['text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 class TextInput(TextInput):
@@ -196,14 +196,14 @@ class TextInput(TextInput):
         super().__init__(*args, **kwargs)
 
     def __setattr__(self, key, value):
-        if constants.locale != 'en':
+        if constants.app_config.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
             if key in ['hint_text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ['hint_text']:
+        elif constants.app_config.locale == 'en' and key in ['hint_text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 
@@ -3036,7 +3036,7 @@ class ServerFlagInput(BaseInput):
         self.title_text = "flags"
         self.halign = "left"
         self.padding_x = 25
-        self.hint_text = "enter custom launch flags..." if constants.locale == 'en' else 'launch flags...'
+        self.hint_text = "enter custom launch flags..." if constants.app_config.locale == 'en' else 'launch flags...'
 
         if self.server_obj.custom_flags:
             self.text = self.server_obj.custom_flags
@@ -6646,7 +6646,7 @@ class PopupFile(BigPopupWindow):
             self.body_button = Button()
             self.body_button.id = "body_button"
             self.body_button.size_hint = (None, None)
-            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
+            self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
             self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
@@ -6751,7 +6751,7 @@ class PopupAddon(BigPopupWindow):
             self.body_button = Button()
             self.body_button.id = "body_button"
             self.body_button.size_hint = (None, None)
-            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
+            self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
             self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
@@ -6915,7 +6915,7 @@ class PopupScript(BigPopupWindow):
             self.body_button = Button()
             self.body_button.id = "body_button"
             self.body_button.size_hint = (None, None)
-            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
+            self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
             self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
@@ -7037,7 +7037,7 @@ class PopupUpdate(BigPopupWindow):
             self.body_button = Button()
             self.body_button.id = "body_button"
             self.body_button.size_hint = (None, None)
-            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
+            self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
             self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
@@ -9624,7 +9624,7 @@ class ChangeLocaleScreen(MenuBackground):
         class LocaleButton(MainButton):
 
             def on_press(self, *a):
-                constants.locale = self.code
+                constants.app_config.locale = self.code
                 size_list()
                 constants.back_clicked = True
                 previous_screen()
@@ -9648,7 +9648,7 @@ class ChangeLocaleScreen(MenuBackground):
             def __init__(self, name, code='en', **args):
 
                 self.code = code
-                in_use = self.code == constants.locale
+                in_use = self.code == constants.app_config.locale
 
                 icon = 'checkmark-sharp.png' if in_use else 'arrow-forward.png'
 
@@ -10820,7 +10820,7 @@ class AclRulePanel(RelativeLayout):
             # Whitelist data
             if screen_manager.current_screen.acl_object._server['whitelist']:
                 self.player_layout.access_line_3.opacity = 1
-                if constants.locale == 'en':
+                if constants.app_config.locale == 'en':
                     final_text += ("\n[color=" + (f"{self.color_dict['green']}]Whitelisted" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]Not whitelisted") + "[/color]")
                 else:
                     final_text += ("\n[color=" + (f"{self.color_dict['green']}]{constants.translate('Allowed')}" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]{constants.translate('Denied')}") + "[/color]")
@@ -12938,7 +12938,7 @@ class CreateServerReviewScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget()
         scroll_anchor = AnchorLayout()
-        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=(1050 if constants.locale == 'en' else 1130), size_hint_y=None, padding=[0, -10, 0, 60])
+        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=(1050 if constants.app_config.locale == 'en' else 1130), size_hint_y=None, padding=[0, -10, 0, 60])
 
 
         # Bind / cleanup height on resize
@@ -12992,7 +12992,7 @@ class CreateServerReviewScreen(MenuBackground):
 
 
             # Format spacing appropriately for content
-            if constants.locale == 'en':
+            if constants.app_config.locale == 'en':
                 paragraph_width = 485
                 for line in text.splitlines():
                     if '||' in line:
@@ -19940,12 +19940,13 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         if download:
             script_path = constants.telepath_download(server_obj._telepath_data, script_path, constants.telepathScriptDir)
 
+    constants.app_config.load_config()
     data_dict = {
         '_telepath_data': telepath_data,
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
-        'global_conf': constants.global_conf,
+        'app_config': constants.app_config,
         'script_obj': {
             'syntax_func': constants.script_obj.is_valid,
             'protected': constants.script_obj.protected_variables,
@@ -23715,10 +23716,11 @@ class MainApp(App):
 
     # Check if window pos is set in config
     preconfigured = False
-    if constants.geometry:
-        pos = constants.geometry['pos']
-        size = constants.geometry['size']
-        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1]):
+    if constants.app_config.geometry:
+        constants.last_window = constants.app_config.geometry
+        pos = constants.app_config.geometry['pos']
+        size = constants.app_config.geometry['size']
+        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50):
             Window.size = size
             Window.left = pos[0]
             Window.top = pos[1]
@@ -23746,26 +23748,9 @@ class MainApp(App):
     def exit_check(self, force_close=False, *args):
 
         # Write window size to global config
-        global_conf = {}
-        try:
-            constants.folder_check(constants.configDir)
-            if os.path.exists(constants.global_conf):
-                try:
-                    with open(constants.global_conf, 'r') as f:
-                        conf = constants.json.loads(f.read())
-                        if conf:
-                            global_conf = conf
-                except:
-                    pass
-            with open(constants.global_conf, 'w+') as f:
-                save_window_pos()
-                global_conf['fullscreen'] = (Window.width > (constants.window_size[0] + 400))
-                global_conf['geometry'] = constants.last_window
-                global_conf['locale'] = constants.locale
-                # print(global_conf)
-                f.write(constants.json.dumps(global_conf, indent=2))
-        except Exception as e:
-            print(e)
+        save_window_pos()
+        constants.app_config.fullscreen = (Window.width > (constants.window_size[0] + 400))
+        constants.app_config.geometry = constants.last_window
 
         if force_close:
             Window.close()
@@ -23810,7 +23795,7 @@ class MainApp(App):
             import pyi_splash
             pyi_splash.close()
 
-        if constants.fullscreen or constants.is_docker:
+        if constants.app_config.fullscreen or constants.is_docker:
             Window.maximize()
         Window.show()
 

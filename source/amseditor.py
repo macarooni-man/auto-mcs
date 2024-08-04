@@ -20,7 +20,6 @@ import functools
 import pygments
 import requests
 import time
-import json
 import os
 import re
 
@@ -476,17 +475,9 @@ proc ::tabdrag::move {win x y} {
 }"""
 
         # Get window size
-        fullscreen = False
-        geometry = None
-        if os.path.exists(data['global_conf']):
-            try:
-                with open(data['global_conf'], 'r', encoding='utf-8', errors='ignore') as f:
-                    file_contents = json.loads(f.read())
-                    fullscreen = file_contents['ide-settings']['fullscreen']
-                    font_size = file_contents['ide-settings']['font-size']
-                    geometry = file_contents['ide-settings']['geometry']
-            except:
-                pass
+        fullscreen = data['app_config'].ide_settings['fullscreen']
+        font_size = data['app_config'].ide_settings['font-size']
+        geometry = data['app_config'].ide_settings['geometry']
 
         file_icon = os.path.join(data['gui_assets'], "amscript-icon.png")
 
@@ -539,29 +530,12 @@ proc ::tabdrag::move {win x y} {
             autosave()
 
             # Write window size to global config
-            global_conf = {}
-            try:
-                configDir = os.path.dirname(data['global_conf'])
-                if not os.path.exists(configDir):
-                    os.makedirs(configDir)
-                if os.path.exists(data['global_conf']):
-                    with open(data['global_conf'], 'r') as f:
-                        try:
-                            conf = json.loads(f.read())
-                            if conf:
-                                global_conf = conf
-                        except:
-                            pass
-                with open(data['global_conf'], 'w+') as f:
-                    save_window_pos()
-                    global_conf['ide-settings'] = {
-                        'fullscreen': int(window.geometry().split('x')[0]) > (min_size[0] + 400),
-                        'geometry': last_window,
-                        'font-size': font_size
-                    }
-                    f.write(json.dumps(global_conf, indent=2))
-            except:
-                pass
+            save_window_pos()
+            data['app_config'].ide_settings = {
+                'fullscreen': int(window.geometry().split('x')[0]) > (min_size[0] + 400),
+                'geometry': last_window,
+                'font-size': font_size
+            }
             window.destroy()
 
         window.protocol("WM_DELETE_WINDOW", on_closing)
@@ -3716,7 +3690,7 @@ if os.name == 'nt':
 #         'app_title': constants.app_title,
 #         'gui_assets': constants.gui_assets,
 #         'background_color': constants.background_color,
-#         'global_conf': constants.global_conf,
+#         'app_config': constants.app_config,
 #         'script_obj': {
 #             'syntax_func': script_obj.is_valid,
 #             'protected': script_obj.protected_variables,

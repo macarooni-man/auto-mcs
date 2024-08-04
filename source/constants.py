@@ -8,6 +8,7 @@ from platform import system
 from threading import Timer
 from copy import deepcopy
 from pathlib import Path
+from munch import Munch
 from glob import glob
 from PIL import Image
 from nbt import nbt
@@ -22,7 +23,6 @@ import datetime
 import tarfile
 import zipfile
 import hashlib
-import urllib
 import string
 import psutil
 import socket
@@ -46,12 +46,10 @@ telepath_version = "0.7.0"
 app_title = "auto-mcs"
 
 dev_version = False
-window_size = (850, 850)
 refresh_rate = 60
 anim_speed = 1
-fullscreen = False
 last_window = {}
-geometry = {}
+window_size = (850, 850)
 project_link = "https://github.com/macarooni-man/auto-mcs"
 website = "https://auto-mcs.com"
 update_data = {
@@ -62,7 +60,6 @@ update_data = {
     "reboot-msg": [],
     "auto-show": True
 }
-auto_update = True
 app_online = False
 app_latest = True
 app_loaded = False
@@ -175,7 +172,6 @@ cacheDir = os.path.join(applicationFolder, 'Cache')
 configDir = os.path.join(applicationFolder, 'Config')
 javaDir = os.path.join(toolDir, 'java')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
-global_conf = os.path.join(configDir, 'app-config.json')
 
 telepathDir = os.path.join(toolDir, 'telepath')
 telepathFile = os.path.join(telepathDir, 'telepath-servers.json')
@@ -220,14 +216,6 @@ def sync_attr(self, name):
         return {a: getattr(self, a) for a in dir(self) if allow(a)}
 api_manager = None
 headless = False
-api_data = {
-    "enabled": True,
-    "version": telepath_version,
-    "show-banners": True,
-    "default-host": "0.0.0.0",
-    "default-port": 7001,
-    "logo": "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
-}
 
 # Prevent app from closing during critical operations
 ignore_close = False
@@ -237,7 +225,7 @@ def allow_close(allow: bool, banner=''):
     global ignore_close
     ignore_close = not allow
 
-    if banner and telepath_banner and api_data['show-banners']:
+    if banner and telepath_banner and app_config.telepath_settings['show-banners']:
         telepath_banner(banner, allow)
 
 
@@ -352,7 +340,6 @@ def get_repo_scripts():
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
 # Functions and data for translation
-locale = 'en'
 locale_file = os.path.join(executable_folder, 'locales.json')
 locale_data = {}
 if os.path.isfile(locale_file):
@@ -382,14 +369,14 @@ available_locales = {
 }
 def get_locale_string(english=False, *a):
     for k, v in available_locales.items():
-        if locale in v.values():
+        if app_config.locale in v.values():
             return f'{k if english else v["name"]} ({v["code"]})'
 
 def translate(text: str):
-    global locale_data, locale
+    global locale_data, app_config
 
     # Ignore if text is blank, or locale is set to english
-    if not text.strip() or locale.startswith('en'):
+    if not text.strip() or app_config.locale.startswith('en'):
         return text
 
     # Create translator object
@@ -401,7 +388,7 @@ def translate(text: str):
     # Searches locale_data for string
     def search_data(s, *a):
         try:
-            return locale_data[s.strip().lower()][locale]
+            return locale_data[s.strip().lower()][app_config.locale]
         except KeyError:
             pass
 
@@ -421,7 +408,7 @@ def translate(text: str):
     if not new_text:
         def match_data(s, *a):
             try:
-                return locale_data[s.group(0).strip().lower()][locale]
+                return locale_data[s.group(0).strip().lower()][app_config.locale]
             except KeyError:
                 pass
             return s.group(0)
@@ -447,13 +434,13 @@ def translate(text: str):
 
 
         # Manual overrides
-        if locale == 'es':
+        if app_config.locale == 'es':
             new_text = re.sub('servidor\.properties', 'server.properties', new_text, re.IGNORECASE)
             new_text = re.sub('servidor\.jar', 'server.jar', new_text, re.IGNORECASE)
             new_text = re.sub('control S', 'Administrar', new_text, re.IGNORECASE)
-        if locale == 'it':
+        if app_config.locale == 'it':
             new_text = re.sub(r'ESENTATO', 'ESCI', new_text, re.IGNORECASE)
-        if locale == 'fr':
+        if app_config.locale == 'fr':
             new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, re.IGNORECASE)
 
 
@@ -5409,6 +5396,82 @@ def get_server_icon(server_name: str, telepath_data: dict):
             print(f"Error retrieving icon for '{server_name}': {e}")
         return None
 
+
+
+# ---------------------------------------------- Global Config Function ------------------------------------------------
+
+# Handles all operations when writing/reading from global config. Adding attributes changes the config file
+class ConfigManager():
+    def __init__(self):
+        self._path = os.path.join(configDir, 'app-config.json')
+        self._defaults = self._init_defaults()
+        self._data = Munch({})
+
+        # Initialize default values
+        self.load_config()
+
+    # Specify default values
+    @staticmethod
+    def _init_defaults():
+        defaults = Munch({})
+        defaults.fullscreen = False
+        defaults.geometry = {}
+        defaults.auto_update = True
+        defaults.locale = None
+        defaults.telepath_settings = {
+            'enable-api': False,
+            'show-banners': True
+        }
+        defaults.ide_settings = {
+            'fullscreen': False,
+            'font-size': 15,
+            'geometry': {}
+        }
+        return defaults
+
+    def __setattr__(self, key, value):
+        if key.startswith('_'):
+            super().__setattr__(key, value)
+        elif key not in self._defaults:
+            raise AttributeError(f"'{self.__class__.__name__}' does not support '{key}'")
+        else:
+            self._data[key] = value
+            self.save_config()
+
+    def __getattr__(self, key):
+        if key == '__setstate__':
+            self._data = Munch({})
+            self._path = os.path.join(configDir, 'app-config.json')
+            self._defaults = self._init_defaults()
+            self.load_config()
+
+        if key in self._data:
+            return self._data[key]
+        elif key in self._defaults:
+            return self._defaults[key]
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
+
+
+    def load_config(self):
+        if os.path.exists(self._path):
+            with open(self._path, 'r') as file:
+                self._data = json.loads(file.read().replace('ide-settings', 'ide_settings'))
+        else:
+            self._data = self._defaults.copy()
+            self.save_config()
+
+    def save_config(self):
+        with open(self._path, 'w') as file:
+            json.dump(self._data, file, indent=2)
+
+    def reset(self):
+        if os.path.exists(self._path):
+            os.remove(self._path)
+        self._data = self._defaults.copy()
+        self.save_config()
+
+# Global config manager
+app_config = ConfigManager()
 
 
 # ---------------------------------------------- Global Search Function ------------------------------------------------
