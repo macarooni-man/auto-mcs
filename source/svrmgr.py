@@ -883,6 +883,7 @@ class ServerObject():
                 time.sleep(1)
 
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
+            self.run_data['deadlocked'] = False
 
             # Run data hashes to check for configuration changes post launch
             self.run_data['properties-hash'] = self._get_properties_hash()
@@ -1329,6 +1330,7 @@ class ServerObject():
                     if self.run_data['performance']['cpu'] > 0.5:
                         time.sleep(15)
                     message = f"'{self.name}' is deadlocked, please kill it above to continue..."
+                    self.run_data['deadlocked'] = True
                     if message != self.run_data['log'][-1]['text'][2]:
                         self.send_log(message, 'warning')
                     self.run_data['console-panel'].toggle_deadlock(True)

@@ -105,7 +105,7 @@ class AuthHandler():
     def public_encrypt(self, ip: str, port: int, content: str or int) -> dict:
         content = str(content)
 
-        # Retrieve public key PEM and convert it back to Python object
+        # Retrieve public key PEM and convert it back to a Python object
         pem = requests.get(f"http://{ip}:{port}/telepath/get_public_key").json()
         public_key = serialization.load_pem_public_key(
             pem.encode('utf-8'),

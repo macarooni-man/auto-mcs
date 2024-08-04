@@ -15238,6 +15238,8 @@ class PerformancePanel(RelativeLayout):
                         console_panel.update_text(server_obj.run_data['log'], animate_last=(run_len > data_len))
                 except KeyError:
                     pass
+                if server_obj.run_data['deadlocked']:
+                    console_panel.toggle_deadlock(True)
 
                 # Close the console if remotely launched, and no logs exist
                 if not server_obj.running or not server_obj.run_data:
@@ -16222,6 +16224,9 @@ class ConsolePanel(FloatLayout):
     def stop_server(self, *args):
         if self.run_data:
             screen_manager.current_screen.server.stop()
+
+        # Show deadlocked icon after stopping
+        Clock.schedule_once(self.toggle_deadlock, 1)
 
 
     # Kills running process forcefully
