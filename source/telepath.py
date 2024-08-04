@@ -120,7 +120,7 @@ class AuthHandler():
         # Throw error if key has expired
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail="Can't retrieve the public key at this time")
 
-    def _decrypt(self, token: bytes, ip: str) -> str or False:
+    def _decrypt(self, token: str, ip: str) -> str or False:
         cipher_text = base64.b64decode(token)
 
         if ip in self.key_pairs:
@@ -160,8 +160,7 @@ class AuthHandler():
                 label=None
             )
         )
-        print(cipher_text)
-        return {'token': base64.b64encode(cipher_text)}
+        return {'token': base64.b64encode(cipher_text).decode()}
 
 class Token(BaseModel):
     access_token: str

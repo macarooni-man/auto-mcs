@@ -288,6 +288,18 @@ if __name__ == '__main__':
     if constants.api_data['enabled'] or constants.headless:
         constants.api_manager.start()
 
+        # Test data
+        ip = '192.168.1.102'
+        port = 7001
+        login_data = constants.api_manager.login(ip, port)
+        print(login_data)
+        sys.exit(-1)
+        # if not login_data:
+        #     print(constants.api_manager.request_pair(ip, port))
+        #     code = input('Enter pair code:  ').upper()
+        #     login_data = constants.api_manager.submit_pair(ip, port, code)
+        # print(login_data)
+        # print(constants.get_remote_var('update_list', login_data))
 
 
     # Launch/threading logic
