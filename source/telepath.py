@@ -380,7 +380,7 @@ class TelepathManager():
                     session['host'] = host['host']
                     session['user'] = host['user']
                     session['ip'] = request.client.host
-                    self.active_user = session
+                    self.current_user = session
                     return self._return_token(session)
 
             raise HTTPException(
@@ -392,6 +392,8 @@ class TelepathManager():
     def _logout(self, host: dict, request: Request):
         ip = request.client.host
 
+        print(self.current_user)
+        print(host, ip)
         if self.current_user:
             if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == self.current_user['user']:
                 self.current_user = {}
@@ -432,7 +434,7 @@ class TelepathManager():
 
     def logout(self, ip: str, port: int):
         url = f"http://{ip}:{port}/telepath/logout"
-        host_data = {'host': {'host': constants.hostname, 'user': constants.username}}
+        host_data = {'host': constants.hostname, 'user': constants.username}
 
         # Eventually add a retry algorithm
         try:
