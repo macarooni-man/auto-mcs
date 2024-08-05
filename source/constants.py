@@ -5421,7 +5421,8 @@ class ConfigManager():
         defaults.locale = None
         defaults.telepath_settings = {
             'enable-api': False,
-            'show-banners': True
+            'show-banners': True,
+            'id_hash': None
         }
         defaults.ide_settings = {
             'fullscreen': False,
@@ -5456,10 +5457,14 @@ class ConfigManager():
     def load_config(self):
         if os.path.exists(self._path):
             with open(self._path, 'r') as file:
-                self._data = json.loads(file.read().replace('ide-settings', 'ide_settings'))
-        else:
-            self._data = self._defaults.copy()
-            self.save_config()
+                try:
+                    self._data = json.loads(file.read().replace('ide-settings', 'ide_settings'))
+                    return True
+                except json.decoder.JSONDecodeError:
+                    pass
+
+        print('[INFO] [auto-mcs] Failed to read global configuration, resetting...')
+        self.reset()
 
     def save_config(self):
         folder_check(os.path.dirname(self._path))

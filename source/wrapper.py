@@ -289,10 +289,10 @@ if __name__ == '__main__':
         constants.api_manager.start()
 
     # Test data
-    # ip = '192.168.1.102'
-    # port = 7001
-    # login_data = constants.api_manager.login(ip, port)
-    # print(login_data)
+    ip = '192.168.1.102'
+    port = 7001
+    login_data = constants.api_manager.login(ip, port)
+    print(login_data)
     # if not login_data:
     #     print(constants.api_manager.request_pair(ip, port))
     #     code = input('Enter pair code:  ').upper()

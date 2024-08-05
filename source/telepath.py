@@ -21,13 +21,13 @@ import inspect
 import uvicorn
 import logging
 import hashlib
+import codecs
 import random
 import bcrypt
 import string
 import base64
 import json
 import time
-import uuid
 import jwt
 import os
 
@@ -45,8 +45,16 @@ import svrmgr
 # This library abstracts auto-mcs functionality to control servers remotely
 # ----------------------------------------------- Global Variables -----------------------------------------------------
 
+# Create ID_HASH to use for authentication so the token can be reset
+telepath_settings = constants.app_config.telepath_settings
+if 'id_hash' not in telepath_settings or not telepath_settings['id_hash']:
+    ID_HASH = codecs.encode(os.urandom(32), 'hex').decode()
+    telepath_settings['id_hash'] = ID_HASH
+else:
+    ID_HASH = telepath_settings['id_hash']
+
 SECRET_KEY = os.urandom(64)
-HARDWARE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}')
+UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
 ALGORITHM = "HS256"
 AUTH_KEYPAIR_EXPIRE_SECONDS = 5
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -405,7 +413,7 @@ class TelepathManager():
     def login(self, ip: str, port: int):
 
         # Get the server's public key and create an encrypted token
-        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
+        token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
         url = f"http://{ip}:{port}/telepath/login"
         host_data = {
             'host': {'host': constants.hostname, 'user': constants.username},
@@ -449,7 +457,7 @@ class TelepathManager():
     def request_pair(self, ip: str, port: int):
 
         # Get the server's public key and create an encrypted token
-        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
+        token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
         url = f"http://{ip}:{port}/telepath/request_pair"
         host_data = {
             'host': {'host': constants.hostname, 'user': constants.username},
@@ -468,7 +476,7 @@ class TelepathManager():
     def submit_pair(self, ip: str, port: int, code: str):
 
         # Get the server's public key and create an encrypted token
-        token = self.auth.public_encrypt(ip, port, HARDWARE_ID)
+        token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
         url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
         host_data = {
             'host': {'host': constants.hostname, 'user': constants.username},
@@ -589,7 +597,7 @@ class SecretHandler():
         self.file = constants.telepathSecrets
 
         # Create a fernet key from the hardware ID
-        key = hashlib.sha256(HARDWARE_ID.encode()).digest()
+        key = hashlib.sha256(UNIQUE_ID.encode()).digest()
         self.fernet = Fernet(base64.urlsafe_b64encode(key).decode('utf-8'))
 
     def _encrypt(self, data: str):
