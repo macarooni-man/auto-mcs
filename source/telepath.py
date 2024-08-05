@@ -49,7 +49,7 @@ import svrmgr
 
 # Create ID_HASH to use for authentication so the token can be reset
 telepath_settings = constants.app_config.telepath_settings
-if 'id_hash' not in telepath_settings or not telepath_settings['id_hash'] or len(telepath_settings['id_hash']) < 64:
+if 'id_hash' not in telepath_settings or not telepath_settings['id_hash'] or len(telepath_settings['id_hash']) != 64:
     ID_HASH = codecs.encode(os.urandom(32), 'hex').decode()
     telepath_settings['id_hash'] = ID_HASH
 else:
@@ -505,7 +505,7 @@ class TelepathManager():
 
                 # If success, add to telepath-servers.json
                 if return_data and constants.server_manager:
-                    constants.server_manager.add_telepath_server(data)
+                    constants.server_manager.add_telepath_server(return_data)
 
                 return return_data
         except:
@@ -717,9 +717,9 @@ class AuditLogger():
 
         # Format sessions
         if (event.endswith('login') or event.endswith('submit_pair')) and 'success' in extra_data.lower():
-            formatted_message = f'<< Session Start - {formatted_host} >>\n\n{formatted_message}'
+            formatted_message = f'\n<< Session Start - {formatted_host} >>\n\n{formatted_message}'
         elif event.endswith('logout'):
-            formatted_message = f'{formatted_message}\n\n<< Session End - {formatted_host} >>\n\n\n'
+            formatted_message = f'{formatted_message}\n\n<< Session End - {formatted_host} >>\n\n'
         formatted_message = formatted_message.replace(' > cript M', ' > Script M')
 
         self.log(formatted_message)
