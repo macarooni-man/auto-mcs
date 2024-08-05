@@ -14,6 +14,7 @@ from datetime import datetime as dt
 from datetime import timezone as tz
 from jwt import InvalidTokenError
 from munch import Munch
+import machineid
 import threading
 import requests
 import inspect
@@ -45,7 +46,7 @@ import svrmgr
 # ----------------------------------------------- Global Variables -----------------------------------------------------
 
 SECRET_KEY = os.urandom(64)
-HARDWARE_ID = uuid.getnode()
+HARDWARE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}')
 ALGORITHM = "HS256"
 AUTH_KEYPAIR_EXPIRE_SECONDS = 5
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -549,6 +550,11 @@ class AuthHandler():
 
             # Delete the key pair after so that it can't be reused
             del self.key_pairs[ip]
+
+            # Check if received data is valid
+            if len(decrypted_content) != 64:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token length'))
+
             return decrypted_content
 
         return False
@@ -583,15 +589,18 @@ class SecretHandler():
         self.file = constants.telepathSecrets
 
         # Create a fernet key from the hardware ID
-        data = HARDWARE_ID.to_bytes(6, byteorder='big')
-        key = hashlib.sha256(data).digest()
+        key = hashlib.sha256(HARDWARE_ID.encode()).digest()
         self.fernet = Fernet(base64.urlsafe_b64encode(key).decode('utf-8'))
 
     def _encrypt(self, data: str):
         return self.fernet.encrypt(data.encode('utf-8'))
 
     def _decrypt(self, data: bytes):
-        return self.fernet.decrypt(data)
+        try:
+            return self.fernet.decrypt(data)
+        except:
+            print("[INFO] [telepath] Failed to load telepath-secrets, resetting...")
+            return []
 
     def read(self):
         if os.path.exists(self.file):
