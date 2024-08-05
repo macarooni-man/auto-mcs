@@ -47,6 +47,7 @@ import svrmgr
 SECRET_KEY = os.urandom(64)
 HARDWARE_ID = uuid.getnode()
 ALGORITHM = "HS256"
+AUTH_KEYPAIR_EXPIRE_SECONDS = 5
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 PAIR_CODE_EXPIRE_MINUTES = 1.5
 
@@ -503,9 +504,17 @@ class AuthHandler():
     def _create_key_pair(self, ip: str):
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         self.key_pairs[ip] = private_key
+
+        # Expire this keypair after a delay
+        def expire_keypair(*a):
+            if self.key_pairs[ip]:
+                if private_key == self.key_pairs[ip]:
+                    del self.key_pairs[ip]
+        threading.Timer(AUTH_KEYPAIR_EXPIRE_SECONDS, expire_keypair).start()
+
         return private_key.public_key()
 
-    def _get_public_key(self, ip: str, expire_immediately=False):
+    def _get_public_key(self, ip: str, expire_immediately=True):
         public_key = None
         if ip not in self.key_pairs:
             public_key = self._create_key_pair(ip)
