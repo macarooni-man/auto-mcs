@@ -561,7 +561,7 @@ class AuthHandler():
 
             # Check if received data is valid
             if len(decrypted_content) != 64:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token length'))
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token format'))
 
             return decrypted_content
 
@@ -1369,6 +1369,11 @@ async def request_pair(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
         if 'token' in id_hash:
             id_hash = id_hash['token']
+
+        # Check token length
+        if len(id_hash) != 344:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token format'))
+
         return constants.api_manager._request_pair(host, id_hash, request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
@@ -1378,6 +1383,11 @@ async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
     if constants.api_manager:
         if 'token' in id_hash:
             id_hash = id_hash['token']
+
+        # Check token length
+        if len(id_hash) != 344:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token format'))
+
         return constants.api_manager._submit_pair(host, id_hash, code, request)
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
@@ -1387,7 +1397,13 @@ async def login(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
         if 'token' in id_hash:
             id_hash = id_hash['token']
+
+        # Check token length
+        if len(id_hash) != 344:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token format'))
+
         return constants.api_manager._login(host, id_hash, request)
+
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
