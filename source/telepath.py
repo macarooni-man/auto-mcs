@@ -205,6 +205,7 @@ class TelepathManager():
             app=app,
             host=host,
             port=port,
+            headers=[("server", constants.app_title)]
             # workers=1,
             # limit_concurrency=1,
             # limit_max_requests=1
@@ -415,11 +416,14 @@ class TelepathManager():
         ip = request.client.host
         if self.current_user:
             if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == self.current_user['user']:
-                self.current_user = {}
-                return True
+                return self._force_logout()
 
         return False
 
+    # Resets current user
+    def _force_logout(self):
+        self.current_user = {}
+        return True
 
     # --------- Client-side functions to call the endpoints from a remote device -------- #
     def login(self, ip: str, port: int):
@@ -729,7 +733,7 @@ class AuditLogger():
 
         # Format sessions
         if (event.endswith('login') or event.endswith('submit_pair')) and 'success' in extra_data.lower():
-            formatted_message = f'<< Session Start - {formatted_host} \n{formatted_message}'
+            formatted_message = f'<< Session Start - {formatted_host} \n{formatted_message} >>'
         elif event.endswith('logout') and not threat:
             formatted_message = f'{formatted_message}\n-- Session End - {formatted_host} --'
         formatted_message = formatted_message.replace(' > cript M', ' > Script M')
@@ -783,15 +787,16 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
     # Before doing anything, check if the token is blacklisted
     bad_token = token in blacklisted_tokens
     bad_credentials = False
+    likely_reconnecting = False
 
     if not bad_token:
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            decoded_token = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             ip = request.client.host
             current_user = constants.api_manager.current_user
 
             # Only allow if machine name matches current user, and the IP is from the same location
-            if payload.get('host') == current_user['host'] and ip == current_user['ip']:
+            if decoded_token.get('host') == current_user['host'] and ip == current_user['ip']:
 
                 # If user is logging out, add their token to the blacklist
                 if request.url.path == '/telepath/logout':
@@ -799,15 +804,40 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
                         blacklisted_tokens.append(token)
                         threading.Timer(ACCESS_TOKEN_EXPIRE_MINUTES * 60, functools.partial(blacklisted_tokens.remove, token)).start()
 
+                # Successfully authenticated
                 return True
+
         except InvalidTokenError:
             bad_credentials = False
         except KeyError:
             bad_credentials = True
 
 
-    # Report violation to telepath logger
     if constants.api_manager:
+        endpoint = request.url.path.strip('/').replace('/', '.')
+        # Check current user to see if the IP is the same and start a timer to clear the current user after 10 seconds
+        # This is to give some leeway for a reconnection before alarm in case the legitimate session expired
+
+        # Check if the user failed to log in because the token just expired
+        current_user = constants.api_manager.current_user
+        if current_user and current_user['ip'] == request.client.host:
+
+            # Log to telepath logger
+            extra_data = "Connection blocked: session has expired"
+            constants.api_manager.logger._report(endpoint, host=current_user, extra_data=extra_data)
+
+            if 'pending_removal' not in current_user:
+                current_user['pending_removal'] = True
+                threading.Timer(10, constants.api_manager._force_logout).start()
+
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session expired, please log in again",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+
+        # If it wasn't the last user, report violation to telepath logger
         user = {'host': 'N', 'user': 'A', 'ip': request.client.host}
         if bad_token:
             extra_data = "Potential threat blocked: attempted to use an expired token"
@@ -815,7 +845,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
             extra_data = "Potential threat blocked: attempted to use a valid token from another session"
         else:
             extra_data = "Potential threat blocked: attempted to authenticate with invalid credentials"
-        constants.api_manager.logger._report(request.url.path.strip('/').replace('/','.'), host=user, extra_data=extra_data)
+        constants.api_manager.logger._report(endpoint, host=user, extra_data=extra_data)
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
