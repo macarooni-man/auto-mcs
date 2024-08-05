@@ -671,8 +671,14 @@ class AuditLogger():
         return os.path.abspath(os.path.join(self.path, f"audit_{time_stamp}.log"))
 
     # Used for reporting internal events to self.log() and tagging them
-    def _report(self, event: str, user: str = '', extra_data: str = ''):
+    def _report(self, event: str, host: str = '', extra_data: str = ''):
+        if not host and self.current_user:
+            host = self.current_user
+            # Format host tag here
+
         date_label = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
+
+        # Get tag level from tag list
         event_tag = 'info'
         for t, events in self.tags.items():
             for e in events:
@@ -683,7 +689,7 @@ class AuditLogger():
                         event_tag = e
                         break
 
-        print(event_tag, date_label, user, event, extra_data)
+        print(event_tag, date_label, host, event, extra_data)
 
 
     # Format list of dictionaries for UI
@@ -924,7 +930,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         # Report event to logger
         formatted_args = ''
         if kwargs:
-            formatted_args = ', '.join([f'{k}: {v}' for k, v in kwargs.items()])
+            formatted_args = 'Parameters: ' + ', '.join([f'{k}: {v}' for k, v in kwargs.items()])
         constants.api_manager.logger._report(f'{short_name}.{method_name}', extra_data=formatted_args)
 
         return exec_memory['locals']['returned'](**kwargs)
