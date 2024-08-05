@@ -1,3 +1,5 @@
+import functools
+
 from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Request, Depends, status
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from fastapi.responses import JSONResponse, FileResponse
@@ -61,6 +63,9 @@ ALGORITHM = "HS256"
 AUTH_KEYPAIR_EXPIRE_SECONDS = 5
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 PAIR_CODE_EXPIRE_MINUTES = 1.5
+
+# "Force" expire JWT tokens when a user logs out
+blacklisted_tokens = []
 
 
 # Instantiate the API if main
@@ -679,9 +684,14 @@ class AuditLogger():
 
     # Used for reporting internal events to self.log() and tagging them
     def _report(self, event: str, host: str = '', extra_data: str = '', server_name: str = ''):
+        event_tag = 'info'
+
+        # Prioritize threats
+        if extra_data.lower().strip().startswith('potential threat blocked:'):
+            event_tag = 'high'
 
         # Ignore hidden events
-        if '._' in event and event not in ['acl._process_query']:
+        elif '._' in event and event not in ['acl._process_query']:
             return
 
         # Format host
@@ -700,15 +710,15 @@ class AuditLogger():
             formatted_event = f'Server: "{server_name}" > {formatted_event.lstrip("Server > ")}'
 
         # Get tag level from tag list
-        event_tag = 'info'
-        for t, events in self.tags.items():
-            for e in events:
-                if event.endswith(e.lower()):
-                    if t == 'ignore':
-                        return
-                    else:
-                        event_tag = t
-                        break
+        if event_tag == 'info':
+            for t, events in self.tags.items():
+                for e in events:
+                    if event.endswith(e.lower()):
+                        if t == 'ignore':
+                            return
+                        else:
+                            event_tag = t
+                            break
 
         formatted_message = f'[{event_tag.upper()}] [{date_label}] [user: {formatted_host}] {formatted_event}'
         if extra_data:
@@ -717,9 +727,9 @@ class AuditLogger():
 
         # Format sessions
         if (event.endswith('login') or event.endswith('submit_pair')) and 'success' in extra_data.lower():
-            formatted_message = f'\n<< Session Start - {formatted_host} >>\n\n{formatted_message}'
+            formatted_message = f'<< Session Start - {formatted_host} \n{formatted_message}'
         elif event.endswith('logout'):
-            formatted_message = f'{formatted_message}\n\n<< Session End - {formatted_host} >>\n\n'
+            formatted_message = f'{formatted_message}\n-- Session End - {formatted_host} --'
         formatted_message = formatted_message.replace(' > cript M', ' > Script M')
 
         self.log(formatted_message)
@@ -766,18 +776,44 @@ def create_access_token(data: dict, expires_delta: td = None):
     return encoded_jwt
 
 async def authenticate(token: str = Depends(auth_scheme), request: Request = None):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        ip = request.client.host
-        current_user = constants.api_manager.current_user
+    global blacklisted_tokens
 
-        # Only allow if machine name matches current user, and the IP is from the same location
-        if payload.get('host') == current_user['host'] and ip == current_user['ip']:
-            return True
-    except InvalidTokenError:
-        pass
-    except KeyError:
-        pass
+    # Before doing anything, check if the token is blacklisted
+    bad_token = token in blacklisted_tokens
+    bad_credentials = False
+
+    if not bad_token:
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            ip = request.client.host
+            current_user = constants.api_manager.current_user
+
+            # Only allow if machine name matches current user, and the IP is from the same location
+            if payload.get('host') == current_user['host'] and ip == current_user['ip']:
+
+                # If user is logging out, add their token to the blacklist
+                if request.url.path == '/telepath/logout':
+                    if token not in blacklisted_tokens:
+                        blacklisted_tokens.append(token)
+                        threading.Timer(ACCESS_TOKEN_EXPIRE_MINUTES * 60, functools.partial(blacklisted_tokens.remove, token)).start()
+
+                return True
+        except InvalidTokenError:
+            bad_credentials = False
+        except KeyError:
+            bad_credentials = True
+
+
+    # Report violation to telepath logger
+    if constants.api_manager:
+        user = {'host': 'N', 'user': 'A', 'ip': request.client.host}
+        if bad_token:
+            extra_data = "Potential threat blocked: attempted to use an expired token"
+        elif bad_credentials:
+            extra_data = "Potential threat blocked: attempted to use a valid token from another session"
+        else:
+            extra_data = "Potential threat blocked: attempted to authenticate with invalid credentials"
+        constants.api_manager.logger._report(request.url.path.strip('/').replace('/','.'), host=user, extra_data=extra_data)
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
