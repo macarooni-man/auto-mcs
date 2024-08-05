@@ -709,6 +709,14 @@ class AuditLogger():
         if extra_data:
             formatted_message += f' > {extra_data}'
 
+
+        # Format sessions
+        if event.endswith('login'):
+            formatted_message = f'<< Session Start - {formatted_host} >>\n\n{formatted_message}'
+        elif event.endswith('logout'):
+            formatted_message = f'{formatted_message}\n\n<< Session End - {formatted_host} >>\n\n\n'
+        formatted_message = formatted_message.replace(' > cript M', ' > Script M')
+
         self.log(formatted_message)
 
 
