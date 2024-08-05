@@ -684,10 +684,12 @@ class AuditLogger():
 
     # Used for reporting internal events to self.log() and tagging them
     def _report(self, event: str, host: str = '', extra_data: str = '', server_name: str = ''):
+        threat = False
         event_tag = 'info'
 
         # Prioritize threats
         if extra_data.lower().strip().startswith('potential threat blocked:'):
+            threat = True
             event_tag = 'high'
 
         # Ignore hidden events
@@ -710,7 +712,7 @@ class AuditLogger():
             formatted_event = f'Server: "{server_name}" > {formatted_event.lstrip("Server > ")}'
 
         # Get tag level from tag list
-        if event_tag == 'info':
+        if not threat:
             for t, events in self.tags.items():
                 for e in events:
                     if event.endswith(e.lower()):
@@ -728,7 +730,7 @@ class AuditLogger():
         # Format sessions
         if (event.endswith('login') or event.endswith('submit_pair')) and 'success' in extra_data.lower():
             formatted_message = f'<< Session Start - {formatted_host} \n{formatted_message}'
-        elif event.endswith('logout'):
+        elif event.endswith('logout') and not threat:
             formatted_message = f'{formatted_message}\n-- Session End - {formatted_host} --'
         formatted_message = formatted_message.replace(' > cript M', ' > Script M')
 
