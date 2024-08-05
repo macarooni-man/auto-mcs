@@ -155,15 +155,15 @@ def generate_log(exception, error_info=None):
     # Remove old logs
     keep = 50
 
-    fileData = {}
+    file_data = {}
     for file in glob(os.path.join(log_dir, "ame-*.log")):
-        fileData[file] = os.stat(file).st_mtime
+        file_data[file] = os.stat(file).st_mtime
 
-    sortedFiles = sorted(fileData.items(), key=itemgetter(1))
+    sorted_files = sorted(file_data.items(), key=itemgetter(1))
 
-    delete = len(sortedFiles) - keep
+    delete = len(sorted_files) - keep
     for x in range(0, delete):
-        os.remove(sortedFiles[x][0])
+        os.remove(sorted_files[x][0])
 
 
     return ame, file_name

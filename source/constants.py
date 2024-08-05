@@ -3127,6 +3127,13 @@ def pre_server_create(telepath=False):
     # First, clean out any existing server in temp folder
     safe_delete(tmpsvr)
     folder_check(tmpsvr)
+
+    # Report to telepath logger
+    if telepath:
+        prefix = 'Importing: ' if bool('name' in import_data and import_data['name']) else 'Creating: '
+        data = new_server_info if new_server_info['name'] else import_data
+        api_manager.logger._report(f'create.pre_server_create', extra_data=f'{prefix}{data}')
+
 def post_server_create(telepath=False, modpack=False):
     global new_server_info, import_data
     return_data = {'name': import_data['name'], 'readme': None}
@@ -3269,6 +3276,12 @@ def pre_server_update(telepath=False):
     delete_eula(os.path.join(tmpsvr, 'eula.txt'))
     delete_eula(os.path.join(tmpsvr, 'EULA.txt'))
     delete_eula(os.path.join(tmpsvr, 'EULA.TXT'))
+
+    # Report to telepath logger
+    if telepath:
+        data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
+        api_manager.logger._report(f'create.pre_server_update', extra_data=data)
+
 def post_server_update(telepath=False):
     global new_server_info
     server_obj = server_manager.current_server
@@ -4496,6 +4509,10 @@ def init_update(telepath=False):
 def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
     if telepath_data:
         server_obj = server_manager.remote_server
+
+        # Report to telepath logger
+        api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}')
+
     else:
         server_obj = server_manager.current_server
 

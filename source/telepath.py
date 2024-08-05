@@ -13,7 +13,9 @@ from datetime import timedelta as td
 from datetime import datetime as dt
 from datetime import timezone as tz
 from jwt import InvalidTokenError
+from operator import itemgetter
 from munch import Munch
+from glob import glob
 import machineid
 import threading
 import requests
@@ -100,9 +102,10 @@ class TelepathManager():
         self.jwt_tokens = {}
         self.update_config(host=self.host, port=self.port)
 
-        # Helper classes for encryption
+        # Helper classes for security
         self.auth = AuthHandler()
         self.secret_file = SecretHandler()
+        self.logger = AuditLogger()
 
         # Server side data
         self.current_user = None
@@ -185,6 +188,10 @@ class TelepathManager():
                 pass
 
         threading.Timer((PAIR_CODE_EXPIRE_MINUTES * 60), _clear_pair_code).start()
+
+    def _update_user(self, session=None):
+        self.current_user = session
+        self.logger.current_user = self.current_user
 
     def update_config(self, host: str, port: int):
         self.host = host
@@ -358,7 +365,7 @@ class TelepathManager():
                         session = {'host': host['host'], 'user': host['user'], 'id': self.pair_data['id'], 'ip': ip}
                         self.pair_data = {}
                         self._save_session(session)
-                        self.current_user = session
+                        self._update_user(session)
                         return self._return_token(session)
 
                 # Expire after 3 failed attempts
@@ -390,7 +397,7 @@ class TelepathManager():
                     session['host'] = host['host']
                     session['user'] = host['user']
                     session['ip'] = request.client.host
-                    self.current_user = session
+                    self._update_user(session)
                     return self._return_token(session)
 
             raise HTTPException(
@@ -499,6 +506,7 @@ class TelepathManager():
         except:
             pass
         return None
+
 
 
 # ------------------------------------------ Authentication & Encryption -----------------------------------------------
@@ -632,6 +640,64 @@ class SecretHandler():
 
         with open(self.file, 'wb') as f:
             f.write(encrypted)
+
+class AuditLogger():
+    def __init__(self):
+        self.path = os.path.join(constants.telepathDir, 'Logs')
+        self.current_user = None
+        self.max_logs = 50
+        self.tags = {
+            'ignore': ['_sync_attr'],
+            'auth': ['login', 'logout', 'get_public_key', 'request_pair', 'confirm_pair'],
+            'warn': ['save', 'restore'],
+            'high': ['delete', 'import_script', 'script_state']
+        }
+
+    # Purge old logs
+    def _purge_logs(self):
+        file_data = {}
+        for file in glob(os.path.join(self.path, "audit-*.log")):
+            file_data[file] = os.stat(file).st_mtime
+
+        sorted_files = sorted(file_data.items(), key=itemgetter(1))
+
+        delete = len(sorted_files) - self.max_logs
+        for x in range(0, delete):
+            os.remove(sorted_files[x][0])
+
+    # Returns formatted name of file, with the date
+    def _get_file_name(self):
+        time_stamp = dt.now().strftime(constants.fmt_date("%#m-%#d-%y"))
+        return os.path.abspath(os.path.join(self.path, f"audit_{time_stamp}.log"))
+
+    # Used for reporting internal events to self.log() and tagging them
+    def _report(self, event: str, user: str = '', extra_data: str = ''):
+        date_label = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
+        event_tag = 'info'
+        for t, events in self.tags.items():
+            for e in events:
+                if event.endswith(e.lower()):
+                    if t == 'ignore':
+                        return
+                    else:
+                        event_tag = e
+                        break
+
+        print(event_tag, date_label, user, event, extra_data)
+
+
+    # Format list of dictionaries for UI
+    def read(self):
+        log_data = []
+        file_name = self._get_file_name()
+        if os.path.exists(file_name):
+            with open(file_name, 'r') as f:
+                log_data = f.readlines()
+        return log_data
+
+    # tag = ["info", "auth", "warn", "high"]
+    def log(self, message: str, tag='info'):
+        file_name = self._get_file_name()
 
 class Token(BaseModel):
     access_token: str
@@ -845,13 +911,21 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         # Manipulate strings to execute a function call to the actual server manager
         lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
         command = 'returned = server_manager.remote_server.'
+        short_name = ''
         if obj_name in lookup:
-            command += f'{lookup[obj_name]}.'
+            identifier = lookup[obj_name]
+            command += f'{short_name}.'
         command += f'{method_name}'
 
         # Format locals() to include a new "returned" variable which will store the data to be returned
         exec_memory = {'locals': {'returned': None}, 'globals': {'server_manager': constants.server_manager}}
         exec(command, exec_memory['globals'], exec_memory['locals'])
+
+        # Report event to logger
+        formatted_args = ''
+        if kwargs:
+            formatted_args = ', '.join([f'{k}: {v}' for k, v in kwargs.items()])
+        constants.api_manager.logger._report(f'{short_name}.{method_name}', extra_data=formatted_args)
 
         return exec_memory['locals']['returned'](**kwargs)
 
@@ -1360,6 +1434,7 @@ async def check_status():
 async def get_public_key(request: Request):
     if constants.api_manager:
         return constants.api_manager.auth._get_public_key(request.client.host)
+
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
@@ -1374,7 +1449,13 @@ async def request_pair(host: dict, id_hash: dict, request: Request):
         if len(id_hash) != 344:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token format'))
 
+        # Report event to logger
+        extra_data = 'Requested to pair'
+        host['ip'] = request.client.host
+        constants.api_manager.logger._report('telepath.request_pair', host=host, extra_data=extra_data)
+
         return constants.api_manager._request_pair(host, id_hash, request)
+
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
@@ -1388,7 +1469,15 @@ async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
         if len(id_hash) != 344:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token format'))
 
-        return constants.api_manager._submit_pair(host, id_hash, code, request)
+        data = constants.api_manager._submit_pair(host, id_hash, code, request)
+
+        # Report event to logger
+        host['ip'] = request.client.host
+        extra_data = "Successfully authenticated" if data else "Failed to authenticate"
+        constants.api_manager.logger._report('telepath.submit_pair', host=host, extra_data=extra_data)
+
+        return data
+
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
@@ -1402,7 +1491,14 @@ async def login(host: dict, id_hash: dict, request: Request):
         if len(id_hash) != 344:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token format'))
 
-        return constants.api_manager._login(host, id_hash, request)
+        data = constants.api_manager._login(host, id_hash, request)
+
+        # Report event to logger
+        host['ip'] = request.client.host
+        extra_data = "Successfully authenticated" if data else "Failed to authenticate"
+        constants.api_manager.logger._report('telepath.login', host=host, extra_data=extra_data)
+
+        return data
 
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
@@ -1410,7 +1506,12 @@ async def login(host: dict, id_hash: dict, request: Request):
 @app.post("/telepath/logout", tags=['telepath'], dependencies=[Depends(authenticate)])
 async def logout(host: dict, request: Request):
     if constants.api_manager:
+
+        # Report event to logger
+        constants.api_manager.logger._report('telepath.logout')
+
         return constants.api_manager._logout(host, request)
+
     else:
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
@@ -1421,6 +1522,10 @@ async def logout(host: dict, request: Request):
 async def open_remote_server(name: str):
     if constants.app_config.telepath_settings['enable-api'] and constants.server_manager:
         return constants.server_manager.open_remote_server(name)
+
+    # Report event to logger
+    constants.api_manager.logger._report('main.open_remote_server', extra_data=f'Opened: "{name}"')
+
     return False
 
 # Upload file endpoint
@@ -1446,6 +1551,9 @@ async def upload_file(file: UploadFile = File(...), is_dir=False):
             constants.extract_archive(destination_path, constants.uploadDir)
             os.remove(destination_path)
             destination_path = os.path.join(constants.uploadDir, dir_name)
+
+        # Report event to logger
+        constants.api_manager.logger._report('main.upload_file', extra_data=f'Uploaded: "{destination_path}"')
 
         return JSONResponse(content={
             "name": file_name,
@@ -1490,6 +1598,9 @@ async def download_file(file: str):
     # If the file resides in a permitted directory, check if it actually exists
     if not os.path.isfile(path):
         raise HTTPException(status_code=500, detail=f"File '{file}' does not exist")
+
+    # Report event to logger
+    constants.api_manager.logger._report('main.download_file', extra_data=f'Downloaded: "{path}"')
 
     # If it exists in a permitted directory, respond with the file
     return FileResponse(path, filename=os.path.basename(path))
