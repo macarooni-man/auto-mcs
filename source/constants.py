@@ -960,6 +960,20 @@ def sanitize_name(value, addon=False):
     value = re.sub(r'[^\'\w\s-]', '', value)
     return re.sub(r'[-\s]+', '-', value).strip('-_')
 
+# Removes invalid characters for a telepath nickname
+def format_nickname(nickname):
+    formatted = re.sub('[^a-zA-Z0-9 _().-]', '', nickname.lower())
+    formatted = re.sub(r'[\s-]+', '-', formatted)
+
+    # Remove leading and trailing hyphens
+    formatted = formatted.strip('-')
+
+    # If the length of the string is greater than 20 characters
+    if len(formatted) > 20 and '-' in formatted:
+        formatted = formatted.split('-', 1)[0]
+
+    return formatted
+
 # Comparison tool for Minecraft version strings
 def version_check(version_a: str, comparator: str, version_b: str): # Comparator can be '>', '>=', '<', '<=', '=='
     try:

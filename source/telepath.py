@@ -49,7 +49,7 @@ import svrmgr
 
 # Create ID_HASH to use for authentication so the token can be reset
 telepath_settings = constants.app_config.telepath_settings
-if 'id_hash' not in telepath_settings or not telepath_settings['id_hash']:
+if 'id_hash' not in telepath_settings or not telepath_settings['id_hash'] or len(telepath_settings['id_hash']) < 64:
     ID_HASH = codecs.encode(os.urandom(32), 'hex').decode()
     telepath_settings['id_hash'] = ID_HASH
 else:
@@ -502,6 +502,11 @@ class TelepathManager():
                 return_data['port'] = port
                 return_data['added-servers'] = {}
                 return_data['nickname'] = ''
+
+                # If success, add to telepath-servers.json
+                if return_data and constants.server_manager:
+                    constants.server_manager.add_telepath_server(data)
+
                 return return_data
         except:
             pass
@@ -711,7 +716,7 @@ class AuditLogger():
 
 
         # Format sessions
-        if event.endswith('login'):
+        if (event.endswith('login') or event.endswith('submit_pair')) and 'success' in extra_data.lower():
             formatted_message = f'<< Session Start - {formatted_host} >>\n\n{formatted_message}'
         elif event.endswith('logout'):
             formatted_message = f'{formatted_message}\n\n<< Session End - {formatted_host} >>\n\n\n'
@@ -1514,7 +1519,7 @@ async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
 
         # Report event to logger
         host['ip'] = request.client.host
-        extra_data = "Successfully authenticated" if data else "Failed to authenticate"
+        extra_data = "Successfully authenticated" if 'detail' not in data else "Failed to authenticate"
         constants.api_manager.logger._report('telepath.submit_pair', host=host, extra_data=extra_data)
 
         return data

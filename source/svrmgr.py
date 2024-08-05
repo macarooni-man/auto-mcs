@@ -2005,11 +2005,20 @@ class ServerManager():
     # Checks which servers are alive
     def check_telepath_servers(self):
         new_server_list = {}
-        for host, data in constants.deepcopy(self.telepath_servers).items():
+        for host, data in self.telepath_servers.items():
             url = f'http://{host}:{data["port"]}/telepath/check_status'
             try:
-                if requests.get(url, timeout=0.5).json():
-                    new_server_list[host] = data
+                # Check if remote server is online
+                if requests.get(url, timeout=1).json():
+
+                    # Attempt to log in
+                    login_data = constants.api_manager.login(host, data["port"])
+                    if login_data:
+                        for k, v in login_data.items():
+                            if v:
+                                data[host][k] = v
+
+                        new_server_list[host] = constants.deepcopy(data)
             except:
                 pass
 
@@ -2025,8 +2034,11 @@ class ServerManager():
             f.write(json.dumps(self.telepath_servers))
         return self.telepath_servers
 
-    def add_telepath_server(self, host: str, port: int, nickname: str):
-        self.telepath_servers[host] = {"port": port, "nickname": nickname, "added-servers": {}}
+    def add_telepath_server(self, instance: dict):
+        if not instance['nickname']:
+            instance['nickname'] = constants.format_nickname(instance['hostname'])
+
+        self.telepath_servers[instance['host']] = instance
         self.write_telepath_servers()
 
     # Retrieves remote update list
