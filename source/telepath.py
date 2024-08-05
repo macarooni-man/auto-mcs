@@ -643,11 +643,13 @@ class SecretHandler():
 
 class AuditLogger():
     def __init__(self):
-        self.path = os.path.join(constants.telepathDir, 'Logs')
+        self.path = os.path.join(constants.telepathDir, 'audit-logs')
         self.current_user = None
         self.max_logs = 50
         self.tags = {
-            'ignore': ['_sync_attr'],
+            'ignore': ['_sync_attr', '_sync_telepath_stop', '_telepath_run_data', 'return_single_list', 'hash_changed',
+                       '_view_notif', 'reload_config', 'retrieve_suggestions', 'get_rule', 'properties_dict'
+            ],
             'auth': ['login', 'logout', 'get_public_key', 'request_pair', 'confirm_pair'],
             'warn': ['save', 'restore'],
             'high': ['delete', 'import_script', 'script_state']
@@ -656,7 +658,7 @@ class AuditLogger():
     # Purge old logs
     def _purge_logs(self):
         file_data = {}
-        for file in glob(os.path.join(self.path, "audit-*.log")):
+        for file in glob(os.path.join(self.path, "user-audit_*.log")):
             file_data[file] = os.stat(file).st_mtime
 
         sorted_files = sorted(file_data.items(), key=itemgetter(1))
@@ -668,15 +670,29 @@ class AuditLogger():
     # Returns formatted name of file, with the date
     def _get_file_name(self):
         time_stamp = dt.now().strftime(constants.fmt_date("%#m-%#d-%y"))
-        return os.path.abspath(os.path.join(self.path, f"audit_{time_stamp}.log"))
+        return os.path.abspath(os.path.join(self.path, f"user-audit_{time_stamp}.log"))
 
     # Used for reporting internal events to self.log() and tagging them
-    def _report(self, event: str, host: str = '', extra_data: str = ''):
+    def _report(self, event: str, host: str = '', extra_data: str = '', server_name: str = ''):
+
+        # Ignore hidden events
+        if '._' in event and event not in ['acl._process_query']:
+            return
+
+        # Format host
         if not host and self.current_user:
             host = self.current_user
-            # Format host tag here
 
+        if host:
+            formatted_host = f"{host['host']}/{host['user']} | {host['ip']}"
+        else:
+            formatted_host = 'Unknown host'
+
+        # Format date and event
         date_label = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
+        formatted_event = event.replace('.', ' > ').replace('_', ' ').replace('  ', ' ').title()
+        if server_name:
+            formatted_event = f'Server: "{server_name}" > {formatted_event.lstrip("Server > ")}'
 
         # Get tag level from tag list
         event_tag = 'info'
@@ -686,10 +702,14 @@ class AuditLogger():
                     if t == 'ignore':
                         return
                     else:
-                        event_tag = e
+                        event_tag = t
                         break
 
-        print(event_tag, date_label, host, event, extra_data)
+        formatted_message = f'[{event_tag.upper()}] [{date_label}] [user: {formatted_host}] {formatted_event}'
+        if extra_data:
+            formatted_message += f' > {extra_data}'
+
+        self.log(formatted_message)
 
 
     # Format list of dictionaries for UI
@@ -701,9 +721,16 @@ class AuditLogger():
                 log_data = f.readlines()
         return log_data
 
-    # tag = ["info", "auth", "warn", "high"]
-    def log(self, message: str, tag='info'):
+    def log(self, message: str):
         file_name = self._get_file_name()
+
+        mode = 'a+'
+        if not os.path.exists(file_name):
+            constants.folder_check(os.path.dirname(file_name))
+            mode = 'w+'
+
+        with open(file_name, mode, errors='ignore') as f:
+            f.write(f'{message}\n')
 
 class Token(BaseModel):
     access_token: str
@@ -891,10 +918,10 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
                 formatted[key] = data_type(value)
 
         return formatted
-    operation = 'Requesting' if request else 'Responding to'
 
-    if not constants.headless:
-        print(f"[INFO] [telepath] {operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
+    # operation = 'Requesting' if request else 'Responding to'
+    # if not constants.headless:
+    #     print(f"[INFO] [telepath] {operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
 
 
     # If this session is requesting data from a remote session
@@ -917,9 +944,9 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         # Manipulate strings to execute a function call to the actual server manager
         lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
         command = 'returned = server_manager.remote_server.'
-        short_name = ''
+        short_name = 'server'
         if obj_name in lookup:
-            identifier = lookup[obj_name]
+            short_name = lookup[obj_name]
             command += f'{short_name}.'
         command += f'{method_name}'
 
@@ -930,8 +957,8 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         # Report event to logger
         formatted_args = ''
         if kwargs:
-            formatted_args = 'Parameters: ' + ', '.join([f'{k}: {v}' for k, v in kwargs.items()])
-        constants.api_manager.logger._report(f'{short_name}.{method_name}', extra_data=formatted_args)
+            formatted_args = ', '.join([f'{k}={v}' for k, v in kwargs.items()])
+        constants.api_manager.logger._report(f'{short_name}.{method_name}', extra_data=formatted_args, server_name=constants.server_manager.remote_server.name)
 
         return exec_memory['locals']['returned'](**kwargs)
 
@@ -1527,10 +1554,11 @@ async def logout(host: dict, request: Request):
 @app.post("/main/open_remote_server", tags=['main'], dependencies=[Depends(authenticate)])
 async def open_remote_server(name: str):
     if constants.app_config.telepath_settings['enable-api'] and constants.server_manager:
-        return constants.server_manager.open_remote_server(name)
 
-    # Report event to logger
-    constants.api_manager.logger._report('main.open_remote_server', extra_data=f'Opened: "{name}"')
+        # Report event to logger
+        constants.api_manager.logger._report('main.open_remote_server', extra_data=f'Opened: "{name}"')
+
+        return constants.server_manager.open_remote_server(name)
 
     return False
 

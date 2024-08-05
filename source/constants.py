@@ -3280,7 +3280,7 @@ def pre_server_update(telepath=False):
     # Report to telepath logger
     if telepath:
         data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
-        api_manager.logger._report(f'create.pre_server_update', extra_data=data)
+        api_manager.logger._report(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
 
 def post_server_update(telepath=False):
     global new_server_info
@@ -4511,7 +4511,7 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
         server_obj = server_manager.remote_server
 
         # Report to telepath logger
-        api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}')
+        api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
 
     else:
         server_obj = server_manager.current_server
