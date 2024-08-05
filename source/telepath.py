@@ -507,7 +507,7 @@ class AuthHandler():
 
         # Expire this keypair after a delay
         def expire_keypair(*a):
-            if self.key_pairs[ip]:
+            if ip in self.key_pairs:
                 if private_key == self.key_pairs[ip]:
                     del self.key_pairs[ip]
         threading.Timer(AUTH_KEYPAIR_EXPIRE_SECONDS, expire_keypair).start()
