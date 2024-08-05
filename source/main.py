@@ -29,6 +29,21 @@ def mainLoop():
     constants.server_manager = ServerManager()
 
 
+
+    # Test data for telepath login
+    # ip = '192.168.1.102'
+    # port = 7001
+    # login_data = constants.api_manager.login(ip, port)
+    # print(login_data)
+    # if not login_data:
+    #     print(constants.api_manager.request_pair(ip, port))
+    #     code = input('Enter pair code:  ').upper()
+    #     login_data = constants.api_manager.submit_pair(ip, port, code)
+    # print(login_data)
+    # print(constants.get_remote_var('update_list', login_data))
+
+
+
     # Only start the GUI if not headless
     if not constants.headless:
         from menu import run_application

@@ -504,7 +504,7 @@ class TelepathManager():
                 return_data['nickname'] = ''
 
                 # If success, add to telepath-servers.json
-                if return_data and constants.server_manager:
+                if constants.server_manager:
                     constants.server_manager.add_telepath_server(return_data)
 
                 return return_data

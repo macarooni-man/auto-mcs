@@ -2032,6 +2032,7 @@ class ServerManager():
             del instance['host']
         with open(constants.telepathFile, 'w+') as f:
             f.write(json.dumps(self.telepath_servers))
+        print(self.telepath_servers)
         return self.telepath_servers
 
     def add_telepath_server(self, instance: dict):
