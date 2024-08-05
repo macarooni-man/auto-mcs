@@ -658,7 +658,7 @@ class AuditLogger():
     # Purge old logs
     def _purge_logs(self):
         file_data = {}
-        for file in glob(os.path.join(self.path, "user-audit_*.log")):
+        for file in glob(os.path.join(self.path, "session-audit_*.log")):
             file_data[file] = os.stat(file).st_mtime
 
         sorted_files = sorted(file_data.items(), key=itemgetter(1))
@@ -670,7 +670,7 @@ class AuditLogger():
     # Returns formatted name of file, with the date
     def _get_file_name(self):
         time_stamp = dt.now().strftime(constants.fmt_date("%#m-%#d-%y"))
-        return os.path.abspath(os.path.join(self.path, f"user-audit_{time_stamp}.log"))
+        return os.path.abspath(os.path.join(self.path, f"session-audit_{time_stamp}.log"))
 
     # Used for reporting internal events to self.log() and tagging them
     def _report(self, event: str, host: str = '', extra_data: str = '', server_name: str = ''):
