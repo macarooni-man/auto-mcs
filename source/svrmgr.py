@@ -2035,7 +2035,6 @@ class ServerManager():
                 pass
 
         # Add a discovery endpoint at some point here, and only return active servers
-        print(new_server_list)
         return new_server_list
 
     def write_telepath_servers(self, instance=None):

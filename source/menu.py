@@ -5624,10 +5624,6 @@ class NumberSlider(FloatLayout):
         self.min_icon = min_icon
 
         # Main slider widget
-        if not default_value:
-            default_value = 0
-        if not limits[0] or limits[1]:
-            limits = (0, 1)
         self.slider = Slider(value=default_value, value_track=True, range=limits)
         self.slider.background_width = 12
         self.slider.border_horizontal = [6, 6, 6, 6]
