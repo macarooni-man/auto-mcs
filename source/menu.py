@@ -5624,6 +5624,10 @@ class NumberSlider(FloatLayout):
         self.min_icon = min_icon
 
         # Main slider widget
+        if not default_value:
+            default_value = 0
+        if not limits[0] or limits[1]:
+            limits = (0, 1)
         self.slider = Slider(value=default_value, value_track=True, range=limits)
         self.slider.background_width = 12
         self.slider.border_horizontal = [6, 6, 6, 6]
@@ -8036,6 +8040,12 @@ class MenuBackground(Screen):
 
     # Reset page on screen load
     def on_pre_enter(self, *args):
+
+        # Ignore loading anything if server is remote and unavailable
+        if check_telepath_disconnect():
+            return True
+
+
         if self.reload_page and constants.app_loaded:
             self.reload_menu()
 
@@ -8527,83 +8537,6 @@ class MenuBackground(Screen):
         self.resize_bind = None
         self.popup_bind = None
 
-
-# Telepath notifications and pairing
-class TelepathPair():
-    def __init__(self):
-        self.is_open = False
-        self.pair_data = {}
-
-    def close(self):
-        if not self.is_open:
-            return
-
-        current_user = constants.api_manager.current_user
-        if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
-            message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
-            color = (0.553, 0.902, 0.675, 1)
-            sound = 'popup_telepath_success.wav'
-        else:
-            message = f'$Telepath$ pair request expired'
-            color = (0.937, 0.831, 0.62, 1)
-            sound = 'popup_warning.wav'
-
-        # Reset token if cancelled
-        if constants.api_manager.pair_data:
-            constants.api_manager.pair_data = {}
-
-        Clock.schedule_once(
-            functools.partial(
-                screen_manager.current_screen.show_banner,
-                color,
-                message,
-                "telepath.png",
-                2.5,
-                {"center_x": 0.5, "center_y": 0.965},
-                sound
-            ), 0.1
-        )
-
-        self.is_open = False
-        self.pair_data = {}
-
-    def open(self, data: dict):
-        if self.is_open:
-            return
-
-        self.pair_data = data
-
-        # If the application is blocked, wait until it's not to show the pop-up
-        def wait_thread(*a):
-            self.is_open = True
-            while constants.ignore_close or screen_manager.current_screen.popup_widget:
-                time.sleep(1)
-
-            Clock.schedule_once(
-                functools.partial(
-                    screen_manager.current_screen.show_popup,
-                    "pair_request",
-                    " ",
-                    self.pair_data,
-                    self.close
-                ), 0
-            )
-
-        threading.Timer(0, wait_thread).start()
-constants.telepath_pair = TelepathPair()
-def telepath_banner(message: str, finished: bool):
-    Clock.schedule_once(
-        functools.partial(
-            screen_manager.current_screen.show_banner,
-            (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
-            message,
-            "checkmark-circle-sharp.png" if finished else "telepath.png",
-            3,
-            {"center_x": 0.5, "center_y": 0.965}
-        ), 0.1
-    )
-constants.telepath_banner = telepath_banner
-telepath.create_endpoint(constants.telepath_banner, 'main', True)
 
 # Template for loading/busy screens
 class ProgressWidget(RelativeLayout):
@@ -23648,6 +23581,126 @@ class UpdateModpackProgressScreen(ProgressScreen):
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
+
+
+
+# </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+# ============================================= Telepath Utilities =====================================================
+# <editor-fold desc="Telepath Utilities">
+
+# Telepath notifications and pairing
+class TelepathPair():
+    def __init__(self):
+        self.is_open = False
+        self.pair_data = {}
+
+    def close(self):
+        if not self.is_open:
+            return
+
+        current_user = constants.api_manager.current_user
+        if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
+            message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
+            color = (0.553, 0.902, 0.675, 1)
+            sound = 'popup_telepath_success.wav'
+        else:
+            message = f'$Telepath$ pair request expired'
+            color = (0.937, 0.831, 0.62, 1)
+            sound = 'popup_warning.wav'
+
+        # Reset token if cancelled
+        if constants.api_manager.pair_data:
+            constants.api_manager.pair_data = {}
+
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_banner,
+                color,
+                message,
+                "telepath.png",
+                2.5,
+                {"center_x": 0.5, "center_y": 0.965},
+                sound
+            ), 0.1
+        )
+
+        self.is_open = False
+        self.pair_data = {}
+
+    def open(self, data: dict):
+        if self.is_open:
+            return
+
+        self.pair_data = data
+
+        # If the application is blocked, wait until it's not to show the pop-up
+        def wait_thread(*a):
+            self.is_open = True
+            while constants.ignore_close or screen_manager.current_screen.popup_widget:
+                time.sleep(1)
+
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_popup,
+                    "pair_request",
+                    " ",
+                    self.pair_data,
+                    self.close
+                ), 0
+            )
+
+        threading.Timer(0, wait_thread).start()
+constants.telepath_pair = TelepathPair()
+
+# Telepath banner endpoint for sending remote notifications
+def telepath_banner(message: str, finished: bool):
+    Clock.schedule_once(
+        functools.partial(
+            screen_manager.current_screen.show_banner,
+            (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
+            message,
+            "checkmark-circle-sharp.png" if finished else "telepath.png",
+            3,
+            {"center_x": 0.5, "center_y": 0.965}
+        ), 0.1
+    )
+constants.telepath_banner = telepath_banner
+telepath.create_endpoint(constants.telepath_banner, 'main', True)
+
+# Handle UI logic when telepath session gets disconnected
+def telepath_disconnect():
+    try:
+        # This is handled in MenuBackground.on_pre_enter()
+        if constants.server_manager.current_server:
+            constants.server_manager.current_server._disconnected = True
+    except AttributeError:
+        pass
+constants.telepath_disconnect = telepath_disconnect
+
+def check_telepath_disconnect():
+    sm = constants.server_manager
+    server_obj = sm.current_server
+
+    if server_obj:
+        constants.get_remote_var('app_version', server_obj._telepath_data)
+        if server_obj._disconnected:
+            telepath_data = server_obj._telepath_data
+            sm.current_server = None
+
+            if telepath_data and screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
+                screen_manager.current = 'ServerManagerScreen'
+                constants.screen_tree = ['MainMenuScreen']
+
+            server_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
+            telepath_banner(f"Lost connection to $'{server_name}'$", False)
+            return True
+
+    return False
+
 
 
 

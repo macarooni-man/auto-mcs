@@ -35,6 +35,7 @@ class ServerObject():
         self._view_name = server_name
         self._loop_clock = 0
         self._last_telepath_log = {}
+        self._disconnected = False
 
         self.gamemode_dict = ['survival', 'creative', 'adventure', 'spectator']
         self.difficulty_dict = ['peaceful', 'easy', 'normal', 'hard', 'hardcore']
@@ -275,6 +276,10 @@ class ServerObject():
         # Don't run on telepath
         if not self._telepath_data:
             threading.Timer(0, loop).start()
+
+    # Check status of loaded objects
+    def _check_object_init(self):
+        return {'addon': bool(self.addon), 'backup': bool(self.backup), 'acl': bool(self.backup), 'script_manager': bool(self.script_manager)}
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):

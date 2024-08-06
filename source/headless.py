@@ -451,7 +451,43 @@ def run_application():
         print('+ Done!')
 
 
+    # Initialize telepath menu overrides
+    class TelepathPair():
+        def __init__(self):
+            self.is_open = False
+            self.pair_data = {}
+
+        # Close "popup"
+        def close(self):
+            if not self.is_open:
+                return
+
+            current_user = constants.api_manager.current_user
+            if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
+                message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
+            else:
+                message = f'$Telepath$ pair request expired'
+
+            # Reset token if cancelled
+            if constants.api_manager.pair_data:
+                constants.api_manager.pair_data = {}
+
+            self.is_open = False
+            self.pair_data = {}
+
+        # Displays "popup"
+        def open(self, data: dict):
+            if self.is_open:
+                return
+
+            self.pair_data = data
+    constants.telepath_pair = TelepathPair()
+    constants.telepath_banner = lambda *_: None
+    constants.telepath_disconnect = lambda *_: None
+
+
     try:
+        # Disable STDOUT
         if constants.os_name == 'windows':
             old_std_err = sys.stderr
             sys.stderr = NullWriter()
@@ -459,8 +495,12 @@ def run_application():
             old_std_out = sys.stdout
             sys.stdout = NullWriter()
 
+
+        # Run UI
         loop.run()
 
+
+        # Enable STDOUT
         if constants.os_name == 'windows':
             sys.stderr = old_std_err
         else:

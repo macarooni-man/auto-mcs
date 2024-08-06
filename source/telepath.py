@@ -1,5 +1,3 @@
-import functools
-
 from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Request, Depends, status
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from fastapi.responses import JSONResponse, FileResponse
@@ -16,6 +14,8 @@ from datetime import datetime as dt
 from datetime import timezone as tz
 from jwt import InvalidTokenError
 from operator import itemgetter
+from functools import partial
+from copy import deepcopy
 from munch import Munch
 from glob import glob
 import machineid
@@ -154,7 +154,7 @@ class TelepathManager():
         )
 
     def _return_token(self, session: dict):
-        session = constants.deepcopy(session)
+        session = deepcopy(session)
         del session['id']
         return {
             'access-token': create_access_token(session),
@@ -474,7 +474,7 @@ class TelepathManager():
             data = session.post(url, json=host_data).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
-                return_data = constants.deepcopy(data)
+                return_data = deepcopy(data)
                 del return_data['access-token']
                 return_data['host'] = ip
                 return_data['port'] = port
@@ -536,7 +536,7 @@ class TelepathManager():
             data = requests.post(url, json=host_data).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
-                return_data = constants.deepcopy(data)
+                return_data = deepcopy(data)
                 del return_data['access-token']
                 return_data['host'] = ip
                 return_data['port'] = port
@@ -765,7 +765,7 @@ class AuditLogger():
 
         # Format sessions
         if (event.endswith('login') or event.endswith('submit_pair')) and 'success' in extra_data.lower():
-            formatted_message = f'<< Session Start - {formatted_host} \n{formatted_message} >>'
+            formatted_message = f'<< Session Start - {formatted_host} >>\n{formatted_message}'
         elif event.endswith('logout') and not threat:
             formatted_message = f'{formatted_message}\n-- Session End - {formatted_host} --'
 
@@ -832,7 +832,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
                 if request.url.path == '/telepath/logout':
                     if token not in blacklisted_tokens:
                         blacklisted_tokens.append(token)
-                        threading.Timer(ACCESS_TOKEN_EXPIRE_MINUTES * 60, functools.partial(blacklisted_tokens.remove, token)).start()
+                        threading.Timer(ACCESS_TOKEN_EXPIRE_MINUTES * 60, partial(blacklisted_tokens.remove, token)).start()
 
                 # Successfully authenticated
                 return True
@@ -849,7 +849,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
         # This is to give some leeway for a reconnection before alarm in case the legitimate session expired
 
         # Check if the user failed to log in because the token just expired
-        current_user = constants.deepcopy(constants.api_manager.current_user)
+        current_user = deepcopy(constants.api_manager.current_user)
         if current_user and current_user['ip'] == request.client.host:
 
             # Log to telepath logger
@@ -1105,6 +1105,8 @@ def create_remote_obj(obj: object, request=True):
                 for k, v in self._request_attr('__all__').items():
                     v = self._override_attr(k, v)
                     self._attr_cache[k] = {'value': v, 'expire': self._reset_expiry()}
+                self._defaults = deepcopy(self._attr_cache)
+                print(self._defaults)
                 return self._attr_cache[name]['value']
 
             # If cache exists and is not expired, use that
@@ -1120,7 +1122,10 @@ def create_remote_obj(obj: object, request=True):
         except Exception as e:
             if constants.debug:
                 print(f'Error (telepath): failed to fetch attribute, {e}')
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+        # If the attribute can't be retrieved, return the default. Error handling in constants.telepath_disconnect()
+        return self._defaults[name]['value']
+        # raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
     def __setattr__(self, attribute, value):
         blacklist = ['_telepath_data', 'addon', 'acl', 'backup', 'script_manager']
         if self._attr_cache and attribute not in blacklist and not attribute.endswith('__'):
@@ -1171,7 +1176,8 @@ def create_remote_obj(obj: object, request=True):
             '_obj_name': obj.__name__,
             '_arg_map': {},
             '_func_list': [],
-            '_attr_cache': {}
+            '_attr_cache': {},
+            '_defaults': {}
         },
         'methods': {
             '__getattr__': __getattr__,
@@ -1228,6 +1234,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
+        self._disconnected = False
 
         # Set display name
         if self._telepath_data['nickname']:
@@ -1238,11 +1245,19 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.favorite = self._is_favorite()
 
         self.run_data = {}
-        self.backup = RemoteBackupManager(self)
-        self.addon = RemoteAddonManager(self)
-        self.acl = RemoteAclManager(self)
-        self.script_manager = RemoteScriptManager(self)
+        def load_objects():
+            while not all(list(self._check_object_init().values())):
+                time.sleep(0.5)
+            self.backup = RemoteBackupManager(self)
+            self.addon = RemoteAddonManager(self)
+            self.acl = RemoteAclManager(self)
+            self.script_manager = RemoteScriptManager(self)
+        self.backup = None
+        self.addon = None
+        self.acl = None
+        self.script_manager = None
         self._clear_all_cache()
+        threading.Timer(0, load_objects).start()
 
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
 
@@ -1260,10 +1275,14 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
     def _clear_all_cache(self):
         self._clear_attr_cache()
-        self.backup._clear_attr_cache()
-        self.addon._clear_attr_cache()
-        self.acl._clear_attr_cache()
-        self.script_manager._clear_attr_cache()
+        if self.backup:
+            self.backup._clear_attr_cache()
+        if self.addon:
+            self.addon._clear_attr_cache()
+        if self.acl:
+            self.acl._clear_attr_cache()
+        if self.script_manager:
+            self.script_manager._clear_attr_cache()
 
     # Gather remote run_data from a running server
     def _telepath_run_data(self):
@@ -1367,6 +1386,7 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
+        getattr(self, '_server_name')
 
     def _reconstruct_list(self, script_list: dict):
         return {
@@ -1407,6 +1427,7 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
+        getattr(self, '_server')
 
     def _reconstruct_list(self, addon_list: dict):
         return {
@@ -1447,6 +1468,7 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
+        getattr(self, '_server')
 
     def _update_data(self):
         self._clear_attr_cache()
@@ -1464,6 +1486,7 @@ class RemoteAclManager(create_remote_obj(AclManager)):
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
+        getattr(self, '_server')
 
     # Reconstruct AclRule objects from a dictionary representing a rule, or rule list(s)
     def _reconstruct_list(self, rule_list: dict):
