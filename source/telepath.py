@@ -456,7 +456,7 @@ class TelepathManager():
             if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == self.current_user['user']:
 
                 # Show banner on logout
-                constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged out", True)
+                constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged out", False)
 
                 return self._force_logout(self.current_user['login-hash'])
 
