@@ -23686,18 +23686,19 @@ def check_telepath_disconnect():
     server_obj = sm.current_server
 
     if server_obj:
-        constants.get_remote_var('app_version', server_obj._telepath_data)
-        if server_obj._disconnected:
-            telepath_data = server_obj._telepath_data
-            sm.current_server = None
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            constants.get_remote_var('app_version', server_obj._telepath_data)
+            if server_obj._disconnected:
+                sm.current_server = None
 
-            if telepath_data and screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
-                screen_manager.current = 'ServerManagerScreen'
-                constants.screen_tree = ['MainMenuScreen']
+                if telepath_data and screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
+                    screen_manager.current = 'ServerManagerScreen'
+                    constants.screen_tree = ['MainMenuScreen']
 
-            server_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
-            telepath_banner(f"Lost connection to $'{server_name}'$", False)
-            return True
+                server_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
+                telepath_banner(f"Lost connection to $'{server_name}'$", False)
+                return True
 
     return False
 

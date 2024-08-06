@@ -1106,7 +1106,6 @@ def create_remote_obj(obj: object, request=True):
                     v = self._override_attr(k, v)
                     self._attr_cache[k] = {'value': v, 'expire': self._reset_expiry()}
                 self._defaults = deepcopy(self._attr_cache)
-                print(self._defaults)
                 return self._attr_cache[name]['value']
 
             # If cache exists and is not expired, use that
