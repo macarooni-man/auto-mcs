@@ -14461,16 +14461,32 @@ class ServerButton(HoverButton):
                 Animation(color=self.color_id[1], duration=0.1).start(self.type_image.tp_icon)
 
     def update_context_options(self):
+        def _open_server(name):
+            if self.telepath_data:
+                constants.api_manager.request(
+                    endpoint=f'/main/open_remote_server?name={constants.quote(name)}',
+                    host=self.telepath_data['host'],
+                    port=self.telepath_data['port'],
+                    args={'none': None}
+                )
+                new_data = constants.deepcopy(self.telepath_data)
+                new_data['name'] = name
+                return constants.server_manager._init_telepathy(new_data)
+            else:
+                return constants.server_manager.open_server(name)
 
         # Functions for context menu
         def launch(*a):
-            open_server(self.properties.name, launch=True)
+            if self.telepath_data:
+                open_remote_server(self.telepath_data, self.properties.name, launch=True)
+            else:
+                open_server(self.properties.name, launch=True)
         def restart(*a):
-            constants.server_manager.open_server(self.properties.name).restart()
+            _open_server(self.properties.name).restart()
         def stop(*a):
-            constants.server_manager.open_server(self.properties.name).stop()
+            _open_server(self.properties.name).stop()
         def settings(*a):
-            constants.server_manager.open_server(self.properties.name)
+            _open_server(self.properties.name)
             screen_manager.current = 'ServerSettingsScreen'
         def update(*a):
             settings()
@@ -23661,16 +23677,17 @@ constants.telepath_pair = TelepathPair()
 
 # Telepath banner endpoint for sending remote notifications
 def telepath_banner(message: str, finished: bool):
-    Clock.schedule_once(
-        functools.partial(
-            screen_manager.current_screen.show_banner,
-            (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
-            message,
-            "checkmark-circle-sharp.png" if finished else "telepath.png",
-            3,
-            {"center_x": 0.5, "center_y": 0.965}
-        ), 0.1
-    )
+    if screen_manager.current_screen.show_banner:
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_banner,
+                (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
+                message,
+                "checkmark-circle-sharp.png" if finished else "telepath.png",
+                3,
+                {"center_x": 0.5, "center_y": 0.965}
+            ), 0.1
+        )
 constants.telepath_banner = telepath_banner
 telepath.create_endpoint(constants.telepath_banner, 'main', True)
 

@@ -1919,6 +1919,7 @@ class ServerManager():
 
     def _init_telepathy(self, telepath_data: dict):
         self.current_server = telepath.RemoteServerObject(telepath_data)
+        return self.current_server
 
     # Refreshes self.server_list with current info
     def refresh_list(self):
@@ -2019,15 +2020,22 @@ class ServerManager():
                     # Attempt to log in
                     login_data = constants.api_manager.login(host, data["port"])
                     if login_data:
-                        for k, v in login_data.items():
-                            if v:
-                                data[host][k] = v
+
+                        # Update values if host exists
+                        if host in data:
+                            for k, v in login_data.items():
+                                if host in data and v:
+                                    data[host][k] = v
+
+                        # Otherwise, set the whole thing
+                        data[host] = login_data
 
                         new_server_list[host] = constants.deepcopy(data)
             except:
                 pass
 
         # Add a discovery endpoint at some point here, and only return active servers
+        print(new_server_list)
         return new_server_list
 
     def write_telepath_servers(self, instance=None):
