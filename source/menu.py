@@ -15155,7 +15155,7 @@ class PerformancePanel(RelativeLayout):
 
         # Get performance stats if running locally
         server_obj = constants.server_manager.current_server
-        if not server_obj._telepath_data:
+        if server_obj and not server_obj._telepath_data:
             threading.Timer(0, functools.partial(server_obj.performance_stats, interval, (self.player_clock == 3))).start()
 
         # If the server is running remotely, update the console text as needed
@@ -15191,7 +15191,9 @@ class PerformancePanel(RelativeLayout):
         def update_data(*args):
             try:
                 perf_data = constants.server_manager.current_server.run_data['performance']
-            except KeyError or AttributeError:
+            except KeyError:
+                return
+            except AttributeError:
                 return
 
             # Update meter
@@ -15243,7 +15245,8 @@ class PerformancePanel(RelativeLayout):
             self.overview_widget.uptime_label.text = formatted_color[:-1]
             Animation(color=(0.92, 0.92, 0.92, 1), duration=0.4, transition='in_out_sine').start(self.overview_widget.uptime_label.label)
 
-        Clock.schedule_once(update_data, (interval + 0.05))
+        if server_obj:
+            Clock.schedule_once(update_data, (interval + 0.05))
 
     # Sets panel back to the default state
     def reset_panel(self):
@@ -23688,7 +23691,9 @@ def check_telepath_disconnect():
     if server_obj:
         telepath_data = server_obj._telepath_data
         if telepath_data:
-            constants.get_remote_var('app_version', server_obj._telepath_data)
+
+            # Make a better health check at some point, this is really expensive with latency
+            server_obj._check_object_init()
             if server_obj._disconnected:
                 sm.current_server = None
 
