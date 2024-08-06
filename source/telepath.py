@@ -204,6 +204,7 @@ class TelepathManager():
     # Resets current user
     def _force_logout(self, login_hash: str):
         if login_hash == self.current_user['login-hash']:
+            del self.current_user
             self.current_user = {}
             return True
 
@@ -743,7 +744,8 @@ class AuditLogger():
         date_label = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
         formatted_event = event.replace('.', ' > ').replace('_', ' ').replace('  ', ' ').title()
         if server_name:
-            formatted_event = f'Server: "{server_name}" > {formatted_event.lstrip("Server > ")}'
+            formatted_event = f'Server: "{server_name}" > {formatted_event.replace("Server > ", "", 1)}'
+            formatted_event = formatted_event.replace('object', ' Object', 1)
 
         # Get tag level from tag list
         if not threat:
@@ -766,7 +768,6 @@ class AuditLogger():
             formatted_message = f'<< Session Start - {formatted_host} \n{formatted_message} >>'
         elif event.endswith('logout') and not threat:
             formatted_message = f'{formatted_message}\n-- Session End - {formatted_host} --'
-        formatted_message = formatted_message.replace(' > cript M', ' > Script M')
 
         self.log(formatted_message)
 
@@ -844,11 +845,11 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
 
     if constants.api_manager:
         endpoint = request.url.path.strip('/').replace('/', '.')
-        # Check current user to see if the IP is the same and start a timer to clear the current user after 10 seconds
+        # Check current user to see if the IP is the same and clear the current user
         # This is to give some leeway for a reconnection before alarm in case the legitimate session expired
 
         # Check if the user failed to log in because the token just expired
-        current_user = constants.api_manager.current_user
+        current_user = constants.deepcopy(constants.api_manager.current_user)
         if current_user and current_user['ip'] == request.client.host:
 
             # Log to telepath logger
@@ -857,7 +858,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
 
             if 'pending-removal' not in current_user:
                 current_user['pending-removal'] = True
-                threading.Timer(10, functools.partial(constants.api_manager._force_logout, current_user['login-hash'])).start()
+                constants.api_manager._force_logout(current_user['login-hash'])
 
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
