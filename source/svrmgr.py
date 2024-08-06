@@ -240,19 +240,23 @@ class ServerObject():
     # Checks if server was initialized remotely
     def _is_telepath_session(self):
         try:
-            return constants.server_manager.remote_server.name == self.name
+            return constants.server_manager.remote_server == self
         except AttributeError:
+            pass
+        except RecursionError:
             pass
         return False
 
     # Returns last log and crash info
     def _sync_telepath_stop(self):
-        crash_log = ''
-        if self.crash_log:
-            with open(self.crash_log, 'r') as f:
-                crash_log = f.read()
+        if not self.running:
+            crash_log = ''
+            if self.crash_log:
+                with open(self.crash_log, 'r') as f:
+                    crash_log = f.read()
 
-        return {'log': self._last_telepath_log, 'crash': crash_log}
+            return {'log': self._last_telepath_log, 'crash': crash_log}
+        return {'log': None, 'crash': None}
 
     # Updates performance data on a clock until server stops
     def _start_performance_clock(self):
@@ -861,6 +865,7 @@ class ServerObject():
         if not self.running:
 
             self.running = True
+            self.crash_log = None
             constants.java_check()
 
             # Attempt to update first
@@ -1290,7 +1295,10 @@ class ServerObject():
     def kill(self):
 
         # Iterate over self and children to find Java process
-        parent = psutil.Process(self.run_data['process'].pid)
+        try:
+            parent = psutil.Process(self.run_data['process'].pid)
+        except KeyError:
+            return False
         sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
 
         # Windows
