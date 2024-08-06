@@ -435,6 +435,9 @@ class TelepathManager():
                             headers={"WWW-Authenticate": "Bearer"},
                         )
 
+                    # Show banner on login
+                    constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
+
                     session['host'] = host['host']
                     session['user'] = host['user']
                     session['ip'] = request.client.host
@@ -451,6 +454,10 @@ class TelepathManager():
         ip = request.client.host
         if self.current_user:
             if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == self.current_user['user']:
+
+                # Show banner on logout
+                constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged out", True)
+
                 return self._force_logout(self.current_user['login-hash'])
 
         return False
