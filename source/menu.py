@@ -2652,17 +2652,18 @@ class ServerMOTDInput(BaseInput):
 
     def update_text(self, text):
         def write(*a):
-            if text != self.server_obj.server_properties['motd'] and text:
-                self.server_obj.server_properties['motd'] = text
-                self.server_obj.properties_hash = self.server_obj._get_properties_hash()
-                screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
-                self.server_obj.write_config()
-                self.server_obj.reload_config()
-                self.change_timeout = None
+            if self.screen_name == screen_manager.current_screen.name:
+                if text != self.server_obj.server_properties['motd'] and text:
+                    self.server_obj.server_properties['motd'] = text
+                    self.server_obj.properties_hash = self.server_obj._get_properties_hash()
+                    screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
+                    self.server_obj.write_config()
+                    self.server_obj.reload_config()
+                    self.change_timeout = None
 
         if self.change_timeout:
             self.change_timeout.cancel()
-        self.change_timeout = Clock.schedule_once(write, 0.7)
+        self.change_timeout = Clock.schedule_once(write, 0.5)
 
     def on_enter(self, value):
         self.update_text((self.text).strip() if self.text else "A Minecraft Server")
@@ -2670,6 +2671,7 @@ class ServerMOTDInput(BaseInput):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.change_timeout = None
+        self.screen_name = screen_manager.current_screen.name
         self.server_obj = constants.server_manager.current_server
         self.size_hint_max = (528, 54)
         self.title_text = "MOTD"
@@ -3021,16 +3023,18 @@ class ServerFlagInput(BaseInput):
     def write_config(self, text):
         def write(*a):
             self.server_obj.update_flags(text)
-            screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
+            if self.screen_name == screen_manager.current_screen.name:
+                screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
 
         if self.change_timeout:
             self.change_timeout.cancel()
-        self.change_timeout = Clock.schedule_once(write, 0.7)
+        self.change_timeout = Clock.schedule_once(write, 0.5)
 
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.change_timeout = None
+        self.screen_name = screen_manager.current_screen.name
         self.server_obj = constants.server_manager.current_server
         self.size_hint_max = (528, 54)
         self.title_text = "flags"
@@ -8038,8 +8042,10 @@ class MenuBackground(Screen):
     def on_pre_enter(self, *args):
 
         # Ignore loading anything if server is remote and unavailable
-        if check_telepath_disconnect():
-            return True
+        screen_name = self.__class__.__name__
+        if screen_name.startswith('Server') and screen_name not in ['ServerManagerScreen']:
+            if check_telepath_disconnect():
+                return True
 
 
         if self.reload_page and constants.app_loaded:
@@ -15175,16 +15181,25 @@ class PerformancePanel(RelativeLayout):
         elif screen_manager.current_screen.name == 'ServerViewScreen' and server_obj._telepath_data:
             console_panel = screen_manager.current_screen.console_panel
             if server_obj.running and server_obj.run_data:
-                server_obj._telepath_run_data()
-                data_len = len(console_panel.scroll_layout.data)
-                run_len = len(server_obj.run_data['log'])
+                server_obj.run_data = server_obj._telepath_run_data()
+
+                # Check if remote server has disconnected when updating panel
+                if not server_obj.run_data:
+                    if check_telepath_disconnect():
+                        return True
+
                 try:
+                    data_len = len(console_panel.scroll_layout.data)
+                    run_len = len(server_obj.run_data['log'])
                     if data_len <= run_len:
                         console_panel.update_text(server_obj.run_data['log'], animate_last=(run_len > data_len))
+
+                    if server_obj.run_data['deadlocked']:
+                        console_panel.toggle_deadlock(True)
+
+                # If log was removed from run_data
                 except KeyError:
                     pass
-                if server_obj.run_data['deadlocked']:
-                    console_panel.toggle_deadlock(True)
 
                 # Close the console if remotely launched, and no logs exist
                 if not server_obj.running or not server_obj.run_data:
@@ -15926,7 +15941,28 @@ class ConsolePanel(FloatLayout):
 
     # Update process to communicate with
     def update_process(self, run_data, *args):
+
         self.run_data = run_data
+
+        # Close panel if telepath server closed immediately
+        server_obj = constants.server_manager.current_server
+
+        if server_obj._telepath_data:
+            def check_for_crash(*a):
+                data = server_obj._sync_telepath_stop(reset=False)
+                if data['crash']:
+                    server_obj.crash_log = data['crash']
+                    self.update_text(data['log'])
+                    self.reset_panel(data['crash'])
+
+                    # Before closing, save contents to temp for view screen
+                    constants.folder_check(constants.tempDir)
+                    file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
+                    with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
+                        f.write(constants.json.dumps(data['log']))
+            Clock.schedule_once(check_for_crash, 1)
+
+
         try:
             if self.update_text not in self.run_data['process-hooks']:
                 self.run_data['process-hooks'].append(self.update_text)
@@ -15984,7 +16020,7 @@ class ConsolePanel(FloatLayout):
                     if label.original_text == self.scroll_layout.data[-1]['text']:
                         label.main_label.opacity = 0
                         label.anim_cover.opacity = 1
-                        Animation(opacity=1, duration = 0.3).start(label.main_label)
+                        Animation(opacity=1, duration=0.3).start(label.main_label)
                         Animation(opacity=0, duration=0.3).start(label.anim_cover)
                 except:
                     pass
@@ -17542,7 +17578,7 @@ class ServerViewScreen(MenuBackground):
 
 
         # Add ConsolePanel
-        if self.server.run_data and 'console-panel' in self.server.run_data and self.server.run_data['console-panel']:
+        if self.server.run_data and 'console-panel' in self.server.run_data and 'log' in self.server.run_data and self.server.run_data['console-panel']:
             self.console_panel = self.server.run_data['console-panel']
             self.console_panel.scroll_layout.data = []
             Clock.schedule_once(functools.partial(self.console_panel.update_text, self.server.run_data['log'], True, False), 0)
@@ -22613,7 +22649,7 @@ class ServerSettingsScreen(MenuBackground):
     def check_changes(self, server_obj, force_banner=False):
         if server_obj.running:
             # print(server_obj.run_data['advanced-hash'], server_obj._get_advanced_hash(), sep="\n")
-            if server_obj.run_data['advanced-hash'] != server_obj._get_advanced_hash():
+            if server_obj.run_data and server_obj.run_data['advanced-hash'] != server_obj._get_advanced_hash():
                 if "[font=" not in self.header.text.text:
                     icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
                     self.header.text.text = f"[color=#EFD49E][font={icons}]y[/font] " + self.header.text.text + "[/color]"

@@ -1312,8 +1312,8 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
             self._clear_all_cache()
             return {}
 
-    def _sync_telepath_stop(self):
-        if self.run_data:
+    def _sync_telepath_stop(self, reset=True):
+        if self.run_data and reset:
             self.run_data = {}
             self._clear_all_cache()
         return super()._sync_telepath_stop()
@@ -1334,7 +1334,15 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         return data
 
     def launch(self, *args, **kwargs):
+
+        # Remove stale crash log
+        constants.folder_check(constants.tempDir)
+        file_name = f"{self._telepath_data['display-name']}, {self.name}-latest.log"
+        if os.path.exists(os.path.join(constants.tempDir, file_name)):
+            os.remove(os.path.join(constants.tempDir, file_name))
+
         self._clear_all_cache()
+
         super().launch(return_telepath=True, *args, **kwargs)
         return self._telepath_run_data()
 
