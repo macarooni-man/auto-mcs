@@ -60,6 +60,8 @@ else:
 SECRET_KEY = os.urandom(64)
 UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
 ALGORITHM = "HS256"
+
+REQUEST_MAX_RETRIES = 3
 AUTH_KEYPAIR_EXPIRE_SECONDS = 5
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 PAIR_CODE_EXPIRE_MINUTES = 1.5
@@ -272,6 +274,7 @@ class TelepathManager():
             print(f"[INFO] [telepath] Opening session to '{host}'")
         return session
     def request(self, endpoint: str, host=None, port=None, args=None, timeout=120):
+        # Format endpoint
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
         if endpoint.endswith('/'):
@@ -281,30 +284,42 @@ class TelepathManager():
         if not port:
             port = self.port
 
-        # Retrieve token for auth and set headers
-        url = f"http://{host}:{port}/{endpoint}"
-        headers = self._get_headers(host)
+
 
         # Check if session exists
+        url = f"http://{host}:{port}/{endpoint}"
         session = self._get_session(host, port)
-        authenticated = False
+
 
         # Determine POST or GET based on params
-        send_request = lambda *_: session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
-        data = send_request()
-        if data.status_code == 401:
-            for retry in range(3):
-                self.login(host, port)
-                data = send_request()
-                print(retry)
-                if data.status_code == 200:
-                    break
-                else:
+        send_request = lambda *_: session.post(url, headers=self._get_headers(host), json=args, timeout=timeout) if args is not None else session.get(url, headers=self._get_headers(host), timeout=timeout)
+
+        # On auth failure, try to log in again and resend
+        try:
+            data = send_request()
+
+            if data.status_code == 401:
+                for retry in range(REQUEST_MAX_RETRIES):
+                    self.login(host, port)
+
+                    # Headers are cleared & token reset, so try again
+                    data = send_request()
+
+                    if data.status_code == 200:
+                        break
                     time.sleep(0.1)
 
-        if data.status_code != 200:
-            print('throw a connection error')
+        except requests.exceptions.ConnectionError:
+            data = None
+        except requests.exceptions.ReadTimeout:
+            data = None
+
+
+        # Failure to connect to server for whatever reason
+        if not data or data.status_code != 200:
+            constants.telepath_disconnect()
             return None
+
 
         json_data = data.json()
         if isinstance(json_data, dict) and "__reconstruct__" in json_data:

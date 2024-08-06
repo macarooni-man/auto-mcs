@@ -221,6 +221,7 @@ headless = False
 ignore_close = False
 telepath_banner = None
 telepath_pair = None
+telepath_disconnect = None
 def allow_close(allow: bool, banner=''):
     global ignore_close
     ignore_close = not allow

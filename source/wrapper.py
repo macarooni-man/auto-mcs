@@ -204,9 +204,10 @@ if __name__ == '__main__':
         constants.search_manager = constants.SearchManager()
 
         # Try to log into telepath servers automatically
-        while not constants.server_manager:
-            time.sleep(0.1)
-        constants.server_manager.check_telepath_servers()
+        if os.path.exists(constants.telepathFile):
+            while not constants.server_manager:
+                time.sleep(0.1)
+            constants.server_manager.check_telepath_servers()
 
         def background_launch(func, *a):
             global exitApp, crash
