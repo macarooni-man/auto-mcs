@@ -196,7 +196,14 @@ class TelepathManager():
 
     def _update_user(self, session=None):
         self.current_user = session
+        self.current_user['login-hash'] = codecs.encode(os.urandom(8), 'hex').decode()
         self.logger.current_user = self.current_user
+
+    # Resets current user
+    def _force_logout(self, login_hash: str):
+        if login_hash == self.current_user['login-hash']:
+            self.current_user = {}
+            return True
 
     def update_config(self, host: str, port: int):
         self.host = host
@@ -280,11 +287,23 @@ class TelepathManager():
 
         # Check if session exists
         session = self._get_session(host, port)
+        authenticated = False
 
         # Determine POST or GET based on params
-        data = session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
+        send_request = lambda *_: session.post(url, headers=headers, json=args, timeout=timeout) if args is not None else session.get(url, headers=headers, timeout=timeout)
+        data = send_request()
+        if data.status_code == 401:
+            for retry in range(3):
+                self.login(host, port)
+                data = send_request()
+                print(retry)
+                if data.status_code == 200:
+                    break
+                else:
+                    time.sleep(0.1)
 
-        if not data:
+        if data.status_code != 200:
+            print('throw a connection error')
             return None
 
         json_data = data.json()
@@ -416,14 +435,10 @@ class TelepathManager():
         ip = request.client.host
         if self.current_user:
             if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == self.current_user['user']:
-                return self._force_logout()
+                return self._force_logout(self.current_user['login-hash'])
 
         return False
 
-    # Resets current user
-    def _force_logout(self):
-        self.current_user = {}
-        return True
 
     # --------- Client-side functions to call the endpoints from a remote device -------- #
     def login(self, ip: str, port: int):
@@ -787,7 +802,6 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
     # Before doing anything, check if the token is blacklisted
     bad_token = token in blacklisted_tokens
     bad_credentials = False
-    likely_reconnecting = False
 
     if not bad_token:
         try:
@@ -826,9 +840,9 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
             extra_data = "Connection blocked: session has expired"
             constants.api_manager.logger._report(endpoint, host=current_user, extra_data=extra_data)
 
-            if 'pending_removal' not in current_user:
-                current_user['pending_removal'] = True
-                threading.Timer(10, constants.api_manager._force_logout).start()
+            if 'pending-removal' not in current_user:
+                current_user['pending-removal'] = True
+                threading.Timer(10, functools.partial(constants.api_manager._force_logout, current_user['login-hash'])).start()
 
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
