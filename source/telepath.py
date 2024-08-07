@@ -64,7 +64,10 @@ ALGORITHM = "HS256"
 REQUEST_MAX_RETRIES = 3
 AUTH_KEYPAIR_EXPIRE_SECONDS = 5
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-PAIR_CODE_EXPIRE_MINUTES = 1.5
+PAIR_CODE_EXPIRE_MINUTES = 1
+
+# Ignore sending/responding to these addresses
+localhost = ['127.0.0.1', 'localhost', constants.get_private_ip()]
 
 # "Force" expire JWT tokens when a user logs out
 blacklisted_tokens = []
@@ -274,7 +277,7 @@ class TelepathManager():
             self.sessions[host] = {'port': port, 'session': session}
             print(f"[INFO] [telepath] Opening session to '{host}'")
         return session
-    def request(self, endpoint: str, host=None, port=None, args=None, timeout=120):
+    def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True):
         # Format endpoint
         if endpoint.startswith('/'):
             endpoint = endpoint[1:]
@@ -299,7 +302,7 @@ class TelepathManager():
         try:
             data = send_request()
 
-            if data.status_code == 401:
+            if data.status_code == 401 and retry:
                 for retry in range(REQUEST_MAX_RETRIES):
                     self.login(host, port)
 
@@ -373,7 +376,7 @@ class TelepathManager():
             ip = request.client.host
             id = self.auth._decrypt(id_hash, ip)
 
-            if id == UNIQUE_ID:
+            if id == UNIQUE_ID or ip in localhost:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't pair with localhost")
 
             self._create_pair_code(host, id)
@@ -396,7 +399,7 @@ class TelepathManager():
             if not self.pair_listen:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
 
-            if id == UNIQUE_ID:
+            if id == UNIQUE_ID or ip in localhost:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't pair with localhost")
 
             if not self.pair_data:
@@ -431,7 +434,7 @@ class TelepathManager():
             ip = request.client.host
             id = self.auth._decrypt(id_hash, ip)
 
-            if id == UNIQUE_ID:
+            if id == UNIQUE_ID or ip in localhost:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't connect to localhost")
 
             for session in self.authenticated_sessions:
@@ -475,6 +478,8 @@ class TelepathManager():
 
     # --------- Client-side functions to call the endpoints from a remote device -------- #
     def login(self, ip: str, port: int):
+        if ip in localhost:
+            return {}
 
         # Get the server's public key and create an encrypted token
         token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
@@ -488,7 +493,7 @@ class TelepathManager():
 
         try:
             session = self._get_session(ip, port)
-            data = session.post(url, json=host_data).json()
+            data = session.post(url, json=host_data, timeout=5).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
                 return_data = deepcopy(data)
@@ -519,6 +524,8 @@ class TelepathManager():
         return False
 
     def request_pair(self, ip: str, port: int):
+        if ip in localhost:
+            return None
 
         # Get the server's public key and create an encrypted token
         token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
@@ -538,6 +545,8 @@ class TelepathManager():
         return None
 
     def submit_pair(self, ip: str, port: int, code: str):
+        if ip in localhost:
+            return None
 
         # Get the server's public key and create an encrypted token
         token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
@@ -1591,14 +1600,14 @@ class RemoteAclManager(create_remote_obj(AclManager)):
         return self._reconstruct_list(super().add_global_rule(*args, **kwargs))
 
 class RemoteObject(Munch):
-    def __init__(self, telepath_data, data: dict):
+    def __init__(self, telepath_data, data: dict, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._telepath_data = data
         self.__reconstruct__ = self.__class__.__name__
 
         for key, value in data.items():
             if not key.endswith('__'):
                 setattr(self, key, value)
-
 class RemoteBackupObject(RemoteObject):
     pass
 class RemoteAddonFileObject(RemoteObject):

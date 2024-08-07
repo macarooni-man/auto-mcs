@@ -5117,9 +5117,9 @@ def get_ngrok_ip(server_name: str):
 
 
 # Check if port is open on host
-def check_port(ip: str, port: int):
+def check_port(ip: str, port: int, timeout=120):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(120)
+    sock.settimeout(timeout)
     result = sock.connect_ex((ip, port))
     return result == 0
 
@@ -5453,6 +5453,8 @@ class ConfigManager():
         defaults.locale = None
         defaults.telepath_settings = {
             'enable-api': False,
+            'api-host': "0.0.0.0",
+            'api-port': 7001,
             'show-banners': True,
             'id_hash': None
         }
@@ -5480,7 +5482,16 @@ class ConfigManager():
             self.load_config()
 
         if key in self._data:
+
+            # First, fix empty dictionaries
+            if isinstance(self._data[key], dict):
+                for k, v in self._defaults[key].items():
+                    if k not in self._data[key]:
+                        self._data[key][k] = v
+
+            # Then return the value
             return self._data[key]
+
         elif key in self._defaults:
             return self._defaults[key]
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
@@ -5539,7 +5550,7 @@ class SearchManager():
         self.options_tree = {
 
             'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen'}, ['addonpack', 'modpack', 'import modpack']),
+                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['addonpack', 'modpack', 'import modpack']),
                 ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
             ],
 

@@ -208,7 +208,7 @@ def manage_server(name: str, action: str):
 # Refreshes telepath display data at the top
 def refresh_telepath_host(data=None):
     api = constants.api_manager
-    header = f'Telepath API (v{constants.api_data["version"]})\n'
+    header = f'Telepath API (v{constants.api_manager.version})\n'
 
     if api.running:
         host = api.host
@@ -220,6 +220,19 @@ def refresh_telepath_host(data=None):
         text = ' < not running >'
     telepath_content.set_text(header + text)
     return data
+
+
+def telepath_pair(data=None):
+    # This prompt will display for 1 minute and refresh
+    update_console('Listening to pair requests for 5 minutes. Enter the IP above into another instance of auto-mcs to continue.')
+
+    while not constants.api_manager.pair_data:
+        time.sleep(1)
+
+    data = constants.api_manager.pair_data
+    update_console(f'< {data["host"]}/{data["user"]} >\nCode (expires 1m):  {data["code"]}')
+
+    return f' {data}'
 
 
 class Command:
@@ -379,8 +392,8 @@ command_data = {
                 'exec': (constants.api_manager.stop, refresh_telepath_host)
             },
             'pair': {
-                'help': 'displays pairing data to connect remotely',
-                'exec': constants.api_manager.pair
+                'help': 'listens for and displays pairing data to connect remotely',
+                'exec': telepath_pair
             }
         }
     }
