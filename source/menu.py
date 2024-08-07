@@ -23769,6 +23769,7 @@ class ParticleMesh(Widget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.direction = []
+        self._generated = False
 
         self.point_number = 50
         self.point_radius = 3
@@ -23781,19 +23782,21 @@ class ParticleMesh(Widget):
 
         # Generate points and fade in
         self.opacity = 0
-        Clock.schedule_once(lambda dt: self.plot_points(), 1)
-        Clock.schedule_once(lambda dt: self.show(), 1)
+        self.bind(size=self.plot_points)
+        Clock.schedule_once(lambda dt: self.show(), 2)
 
     def show(self, *a):
         Animation(opacity=1, duration=3, transition='out_sine').start(self)
 
-    def plot_points(self):
-        for _ in range(self.point_number):
-            x = random.randint(0, self.width)
-            y = random.randint(0, self.height)
-            self.points.extend([x, y])
-            self.direction.append(random.randint(0, 300))
-        Clock.schedule_interval(self.update_positions, self.speed)
+    def plot_points(self, *a):
+        if self.height > 200 and not self._generated:
+            self._generated = True
+            for _ in range(self.point_number):
+                x = random.randint(0, self.width)
+                y = random.randint(0, self.height)
+                self.points.extend([x, y])
+                self.direction.append(random.randint(0, 300))
+            Clock.schedule_interval(self.update_positions, self.speed)
 
     def draw_lines(self):
         self.canvas.after.clear()
