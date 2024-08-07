@@ -608,7 +608,7 @@ class BaseInput(TextInput):
         self.selection_color = (0.5, 0.5, 1, 0.4)
 
         with self.canvas.after:
-            self.rect = Image(size=(100, 15), color=constants.background_color, opacity=0, allow_stretch=True, keep_ratio=False)
+            self.rect = Image(size=(100, 15), color=screen_manager.current_screen.background_color, opacity=0, allow_stretch=True, keep_ratio=False)
             self.title = AlignLabel(halign="center", text=self.title_text, color=self.foreground_color, opacity=0, font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
             self.bind(pos=self.update_rect)
             self.bind(size=self.update_rect)
@@ -3274,7 +3274,6 @@ class FooterBackground(Widget):
 
     def __init__(self, no_background=False, **kwargs):
         super().__init__(**kwargs)
-
 
         if no_background:
             source = os.path.join(constants.gui_assets, 'no_background_footer.png')
@@ -23651,7 +23650,118 @@ class UpdateModpackProgressScreen(ProgressScreen):
 # ============================================= Telepath Utilities =====================================================
 # <editor-fold desc="Telepath Utilities">
 
-# Create Server Step 1:  Server Name -----------------------------------------------------------------------------------
+class TelepathHostInput(CreateServerPortInput):
+    def __init__(self, **kwargs):
+        self.ip = ''
+        self.port = ''
+        super().__init__(**kwargs)
+
+    def update_config(self, *a):
+        def write(*a):
+            print(self.ip, self.port)
+
+            def background(*a):
+                data = constants.api_manager.request_pair(self.ip, self.port)
+                if data:
+                    print(data)
+            threading.Timer(0, background).start()
+            change_timeout = None
+
+        if self.change_timeout:
+            self.change_timeout.cancel()
+        self.change_timeout = Clock.schedule_once(write, 2)
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 30:
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-z0-9-:.]', '', substring)
+
+            if ":" in self.text and ":" in s:
+                s = ''
+            if ("." in s and ((self.cursor_col > self.text.find(":")) and (self.text.find(":") > -1))) or ("." in s and self.text.count(".") >= 3):
+                s = ''
+
+            # Add name to current config
+            def process(*a):
+                self.process_text(text=(self.text))
+            Clock.schedule_once(process, 0)
+
+            return BaseInput.insert_text(self, s, from_undo=from_undo)
+
+    def process_text(self, text=''):
+        new_ip = ''
+        default_port = "7001"
+        new_port = default_port
+
+        typed_info = text if text else self.text
+
+        # interpret typed information
+        if ":" in typed_info:
+            new_ip, new_port = typed_info.split(":")
+        else:
+            if "." in typed_info or not new_port:
+                new_ip = typed_info.replace(":", "")
+                new_port = default_port
+            else:
+                new_port = typed_info.replace(":", "")
+
+        if not str(self.port) or not new_port:
+            new_port = default_port
+
+        if not new_port.isnumeric():
+            new_port = default_port
+
+        # Input validation
+        try:
+            port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        except:
+            port_check = True
+        ip_check = (constants.check_ip(new_ip) and '.' in typed_info) or new_ip.replace('-','').replace('.','').isalpha()
+        self.stinky_text = ''
+        fail = False
+
+        if typed_info:
+
+            if new_ip in constants.server_manager.telepath_servers:
+                self.stinky_text = ' Host is already added'
+                fail = True
+
+            elif '.' not in typed_info and typed_info.isnumeric():
+                self.stinky_text = ' Enter an IPv4 address'
+                fail = True
+
+            elif not ip_check and ("." in typed_info or ":" in typed_info):
+                self.stinky_text = 'Invalid IPv4 address' if not port_check else 'Invalid IPv4 and port'
+                fail = True
+
+            elif port_check:
+                self.stinky_text = ' Invalid port  (use 1024-65535)'
+                fail = True
+
+        else:
+            new_ip = ''
+            new_port = '7001'
+
+        if not fail:
+            self.ip = new_ip
+
+        if new_port and not fail:
+            self.port = int(new_port)
+
+        if fail:
+            self.ip = ''
+            self.port = default_port
+
+        if (new_ip and new_port) and not fail:
+            self.update_config()
+
+        self.valid(not self.stinky_text)
 
 class ParticleMesh(Widget):
     points = ListProperty()
@@ -23693,8 +23803,8 @@ class ParticleMesh(Widget):
                     d = self.distance_between_points(self.points[i], self.points[i + 1], self.points[j], self.points[j + 1])
                     if d > self.max_line_length:
                         continue
-                    opacity = d / self.max_line_length
-                    Color(rgba=[*self.line_color, (opacity / 3)])
+                    opacity = 1 - (d / self.max_line_length)
+                    Color(rgba=[*self.line_color, opacity])
                     Line(points=[self.points[i], self.points[i + 1], self.points[j], self.points[j + 1]], width=self.line_width)
                     Color(rgba=[*self.point_color, opacity])
                 Ellipse(pos=(self.points[i] - self.point_radius, self.points[i + 1] - self.point_radius), size=(self.point_radius * 2, self.point_radius * 2))
@@ -23724,7 +23834,11 @@ class TelepathManagerScreen(MenuBackground):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
         self.menu = 'init'
-        self.background_color = constants.brighten_color(constants.background_color, -0.07)
+        self.background_color = constants.brighten_color(constants.background_color, -0.09)
+        self.help_button = None
+        self.pair_button = None
+        self.api_input = None
+        self.host_input = None
 
         with self.canvas.before:
             self.canvas.clear()
@@ -23735,13 +23849,36 @@ class TelepathManagerScreen(MenuBackground):
 
         # Layouts
         self.main_layout = None
+        self.pair_layout = None
 
-    def switch_to_layout(self, layout: FloatLayout):
-        # Make current layout invisible, and load specified one
-        pass
+    def on_pre_enter(self, *args):
+        constants.api_manager.pair_listen = True
+        return super().on_pre_enter(*args)
+
+    def on_pre_leave(self, *args):
+        constants.api_manager.pair_listen = False
+        return super().on_pre_leave(*args)
+
+    def show_pair_input(self, show=True):
+        self.pair_button.disabled = True
+        if show:
+            self.pair_layout = FloatLayout()
+            self.pair_layout.opacity = 0
+            self.pair_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.6}))
+            self.pair_layout.add_widget(HeaderText("Enter the IPv4/port you wish to connect", 'make sure "share this instance" is enabled on the server', (0, 0.8)))
+            self.host_input = TelepathHostInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text='')
+            self.pair_layout.add_widget(self.host_input)
+            def after(*a):
+                self.main_layout.opacity = 0
+                self.remove_widget(self.main_layout)
+                self.add_widget(self.pair_layout)
+                Animation(opacity=1, duration=0.3).start(self.pair_layout)
+            Animation(opacity=0, duration=0.3).start(self.main_layout)
+            Clock.schedule_once(after, 0.35)
 
     def generate_menu(self, **kwargs):
         self.main_layout = FloatLayout()
+        self.main_layout.opacity = 0
 
         # Add particle background and gradient on top
         particles = ParticleMesh()
@@ -23755,14 +23892,76 @@ class TelepathManagerScreen(MenuBackground):
         gradient.color = constants.brighten_color(self.background_color, 0.03)
         self.add_widget(gradient)
 
+        # Help button
+        def show_help():
+            help_text = """$Telepath$ is an $auto-mcs$ protocol to control remote sessions seamlessly. For example, $Telepath$ can connect a local computer to an instance of $auto-mcs$ running on a different computer, or a VPS in the cloud.
+            
+To connect via $Telepath$, enable “share this instance” on the server you intend to connect. Then click “Pair a Server” on the client and follow the prompts.
+
+Once paired, remote servers will appear in the Server Manager and can be interacted with like normal. You can also import or create a server on a $Telepath$ instance."""
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_popup,
+                    "controls",
+                    "About $Telepath$",
+                    help_text,
+                    (None)
+                ),
+                0
+            )
+        self.help_button = IconButton('help', {}, (70, 60), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_help)
+        self.add_widget(self.help_button)
+
+
+
         # Add telepath logo
         logo = Image(source=os.path.join(constants.gui_assets, 'telepath_logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(400), pos_hint={"center_x": 0.5, "center_y": 0.77})
         logo.color = (0.8, 0.8, 1, 0.9)
         self.main_layout.add_widget(logo)
 
 
-        add_button = color_button("PAIR SERVER", position=(0.5, 0.45), icon_name='telepath.png', click_func=lambda *_: None, color=(0.8, 0.8, 1, 1))
-        self.add_widget(add_button)
+        self.pair_button = color_button("PAIR A SERVER", position=(0.5, 0.5), icon_name='telepath.png', click_func=self.show_pair_input, color=(0.8, 0.8, 1, 1))
+        self.main_layout.add_widget(self.pair_button)
+
+
+        # Enable API toggle button
+        def toggle_api(state, only_input=False, *a):
+            if not only_input:
+                constants.app_config.telepath_settings['enable-api'] = state
+                constants.app_config.save_config()
+                text = 'enabled' if state else 'disabled'
+                constants.telepath_banner(f'$Telepath$ API is now {text}', state)
+
+            # Update hint text
+            if state:
+                port = constants.api_manager.port
+                ip = constants.get_private_ip()
+                if constants.public_ip:
+                    if constants.check_port(constants.public_ip, port):
+                        ip = constants.public_ip
+                new_text = f">   {ip}:{port}"
+                self.api_input.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                self.api_input.hint_text_color = (0.6, 0.9, 1, 1)
+                constants.api_manager.start()
+
+            else:
+                new_text = 'share this instance'
+                self.api_input.hint_text_color = (0.6, 0.6, 1, 0.8)
+                self.api_input.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+                constants.api_manager.stop()
+
+            self.api_input.hint_text = new_text
+        sub_layout = RelativeLayout()
+        self.api_input = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.35}, hint_text="share this instance")
+        sub_layout.add_widget(self.api_input)
+        sub_layout.add_widget(toggle_button('api', (0.5, 0.35), default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api))
+        self.main_layout.add_widget(sub_layout)
+        if constants.app_config.telepath_settings['enable-api']:
+            toggle_api(True, True)
+
+        self.main_layout.add_widget(ExitButton('Back', (0.5, 0.17), cycle=True))
+
 
 
 
@@ -23782,6 +23981,9 @@ class TelepathManagerScreen(MenuBackground):
 
         self.add_widget(generate_footer('$Telepath$', no_background=True))
         self.add_widget(self.main_layout)
+        Animation(opacity=1, duration=1).start(self.main_layout)
+
+        # self.show_pair_input(True)
 
 
 

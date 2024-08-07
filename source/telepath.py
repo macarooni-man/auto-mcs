@@ -117,7 +117,7 @@ class TelepathManager():
         # Server side data
         self.current_user = None
         self.pair_data = {}
-        self.pair_listen = True
+        self.pair_listen = False
 
         # Load authenticated users from saved data
         self.authenticated_sessions = []
@@ -372,6 +372,10 @@ class TelepathManager():
         if self.running:
             ip = request.client.host
             id = self.auth._decrypt(id_hash, ip)
+
+            if id == UNIQUE_ID:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't pair with localhost")
+
             self._create_pair_code(host, id)
 
             # Show pop-up if the UI is open
@@ -391,6 +395,9 @@ class TelepathManager():
 
             if not self.pair_listen:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
+
+            if id == UNIQUE_ID:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't pair with localhost")
 
             if not self.pair_data:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A pair code hasn't been generated")
@@ -423,6 +430,9 @@ class TelepathManager():
         if self.running:
             ip = request.client.host
             id = self.auth._decrypt(id_hash, ip)
+
+            if id == UNIQUE_ID:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't connect to localhost")
 
             for session in self.authenticated_sessions:
                 if self._verify_id(id, session['id']):
