@@ -683,7 +683,99 @@ class BaseInput(TextInput):
         else:
             super().keyboard_on_key_down(window, keycode, text, modifiers)
 
+class BigBaseInput(BaseInput):
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.title_text = "InputTitle"
+        self.is_valid = True
+
+        self.multiline = False
+        self.size_hint_max = (400, 100)
+        self.border = (-15, -15, -15, -15)
+        self.background_normal = os.path.join(constants.gui_assets, f'big_input.png')
+        self.background_active = os.path.join(constants.gui_assets, f'big_input_selected.png')
+        self.background_disabled_normal = self.background_normal
+
+        self.halign = "center"
+        self.hint_text_color = (0.6, 0.6, 1, 0.4)
+        self.foreground_color = (0.6, 0.6, 1, 1)
+        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.font_size = sp(22)
+        self.padding_y = (12, 12)
+        self.cursor_color = (0.55, 0.55, 1, 1)
+        self.cursor_width = dp(3)
+        self.selection_color = (0.5, 0.5, 1, 0.4)
+
+        with self.canvas.after:
+            self.rect = Image(size=(100, 15), color=screen_manager.current_screen.background_color, opacity=0, allow_stretch=True, keep_ratio=False)
+            self.title = AlignLabel(halign="center", text=self.title_text, color=self.foreground_color, opacity=0, font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
+            self.bind(pos=self.update_rect)
+            self.bind(size=self.update_rect)
+            self.bind(text=self.update_rect)
+            self.bind(foreground_color=self.update_rect)
+            self.bind(focused=self.update_rect)
+
+        if self.disabled:
+            c = self.foreground_color
+            self.disabled_foreground_color = (c[0], c[1], c[2], 0.4)
+            self.background_color = (1, 1, 1, 0.4)
+
+        self.bind(cursor_pos=self.fix_overscroll)
+
+
+    def update_rect(self, *args):
+        self.rect.source = os.path.join(constants.gui_assets, f'text_input_cover{"" if self.focused else "_fade"}.png')
+
+        self.title.text = self.title_text
+        self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
+        if self.width > 500:
+            self.rect.width += (self.width - 500)
+        self.rect.pos = self.pos[0] + (self.size[0] / 2) - (self.rect.size[0] / 2) - 1, self.pos[1] + 43 + 50
+        self.title.pos = self.pos[0] + (self.size[0] / 2) - (self.title.size[0] / 2), self.pos[1] + 2 + 50
+        Animation(opacity=(0.85 if self.text and self.title_text else 0), color=self.foreground_color, duration=0.06).start(self.title)
+        Animation(opacity=(1 if self.text and self.title_text else 0), duration=0.08).start(self.rect)
+
+        if self.disabled:
+            Animation.stop_all(self.title)
+            c = self.foreground_color
+            self.title.opacity = 0.85
+            self.title.color = (c[0], c[1], c[2], 0.4)
+
+        # Auto position cursor at end if typing
+        if self.cursor_index() == len(self.text) - 1:
+            self.do_cursor_movement('cursor_end', True)
+            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+
+    #               if error       visible text
+    def valid(self, boolean_value, text=True):
+
+        if boolean_value:
+
+            # Hide text
+            self.valid_text(boolean_value, text)
+            self.is_valid = True
+
+            self.background_normal = os.path.join(constants.gui_assets, f'big_input.png')
+            self.background_active = os.path.join(constants.gui_assets, f'big_input_selected.png')
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.foreground_color = (0.6, 0.6, 1, 1)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
+
+        else:
+
+            # Show error
+            self.valid_text(boolean_value, text)
+            self.is_valid = False
+
+            self.background_normal = os.path.join(constants.gui_assets, f'big_input_invalid.png')
+            self.background_active = os.path.join(constants.gui_assets, f'big_input_invalid_selected.png')
+            self.hint_text_color = (1, 0.6, 0.6, 0.4)
+            self.foreground_color = (1, 0.56, 0.6, 1)
+            self.cursor_color = (1, 0.52, 0.55, 1)
+            self.selection_color = (1, 0.5, 0.5, 0.4)
 
 
 class SearchButton(HoverButton):
@@ -6222,7 +6314,7 @@ class PopupTelepathPair(PopupWindow):
 
             # Override to show pair code
             self.window_content.markup = True
-            code = self.data['code']
+            code = f"{self.data['code'][0:3]}-{self.data['code'][3:]}"
             user_string = f'{self.data["host"]["host"]}/{self.data["host"]["user"]}'
             very_bold = os.path.join(constants.gui_assets, 'fonts', constants.fonts["mono-bold"])
             self.window_content.text = f"Pair '${user_string}$' with[size={round(sp(13))}]\n\n[/size][font={very_bold}.otf][size={round(sp(70))}]{code}[/size][/font]\n\n"
@@ -23662,9 +23754,21 @@ class TelepathHostInput(CreateServerPortInput):
             print(self.ip, self.port)
 
             def background(*a):
-                data = constants.api_manager.request_pair(self.ip, self.port)
-                if data:
-                    print(data)
+                try:
+                    data = constants.api_manager.request_pair(self.ip, self.port)
+                except:
+                    data = {'detail': 'Failed to connect'}
+
+                try:
+                    if 'detail' in data:
+                        self.stinky_text = ' Unable to connect'
+                        self.valid(False)
+                except:
+                    pass
+
+                if data and screen_manager.current_screen.name == 'TelepathManagerScreen':
+                    Clock.schedule_once(functools.partial(screen_manager.current_screen.confirm_pair_input, self.ip, self.port), 0)
+
             threading.Timer(0, background).start()
             change_timeout = None
 
@@ -23759,10 +23863,42 @@ class TelepathHostInput(CreateServerPortInput):
             self.ip = ''
             self.port = default_port
 
-        if (new_ip and new_port) and not fail:
+        if (self.ip and self.port) and not fail:
             self.update_config()
 
         self.valid(not self.stinky_text)
+
+class TelepathCodeInput(BigBaseInput):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.title_text = "pair code"
+        self.is_valid = True
+
+        self.valign = "center"
+        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+        self.font_size = sp(69)
+        self.padding_y = (12, 9)
+        self.cursor_width = dp(4)
+
+    # Ignore popup text
+    def insert_text(self, substring, from_undo=False):
+        substring = substring.upper()
+        if len(substring) > 1:
+            substring = ''
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 7:
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-zA-Z0-9]', '', substring).upper().replace('O', '0')
+
+            super().insert_text(s, from_undo)
+            if len(self.text) == 3:
+                super().insert_text('-')
+
 
 class ParticleMesh(Widget):
     points = ListProperty()
@@ -23784,13 +23920,13 @@ class ParticleMesh(Widget):
         # Generate points and fade in
         self.opacity = 0
         self.bind(size=self.plot_points)
-        Clock.schedule_once(lambda dt: self.show(), 2)
 
     def show(self, *a):
         Animation(opacity=1, duration=3, transition='out_sine').start(self)
 
     def plot_points(self, *a):
         if self.height > 200 and not self._generated:
+            Clock.schedule_once(self.show, 0)
             self._generated = True
             for _ in range(self.point_number):
                 x = random.randint(0, self.width)
@@ -23843,6 +23979,7 @@ class TelepathManagerScreen(MenuBackground):
         self.pair_button = None
         self.api_input = None
         self.host_input = None
+        self.confirm_input = None
 
         with self.canvas.before:
             self.canvas.clear()
@@ -23854,6 +23991,7 @@ class TelepathManagerScreen(MenuBackground):
         # Layouts
         self.main_layout = None
         self.pair_layout = None
+        self.confirm_layout = None
 
     def on_pre_enter(self, *args):
         constants.api_manager.pair_listen = True
@@ -23868,9 +24006,9 @@ class TelepathManagerScreen(MenuBackground):
         if show:
             self.pair_layout = FloatLayout()
             self.pair_layout.opacity = 0
-            self.pair_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.6}))
-            self.pair_layout.add_widget(HeaderText("Enter the IPv4/port you wish to connect", 'make sure "share this instance" is enabled on the server', (0, 0.8)))
-            self.host_input = TelepathHostInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text='')
+            self.pair_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.55}))
+            self.pair_layout.add_widget(HeaderText("Enter the IPv4/port you wish to connect", 'make sure "share this instance" is enabled on the server', (0, 0.75)))
+            self.host_input = TelepathHostInput(pos_hint={"center_x": 0.5, "center_y": 0.45}, text='')
             self.pair_layout.add_widget(self.host_input)
             def after(*a):
                 self.main_layout.opacity = 0
@@ -23880,6 +24018,24 @@ class TelepathManagerScreen(MenuBackground):
             Animation(opacity=0, duration=0.3).start(self.main_layout)
             Clock.schedule_once(after, 0.35)
 
+    def confirm_pair_input(self, ip: str, port: int, show=True):
+        self.pair_button.disabled = True
+        if show:
+            self.confirm_layout = FloatLayout()
+            self.confirm_layout.opacity = 0
+            self.confirm_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.55}))
+            self.confirm_layout.add_widget(HeaderText(f"Enter the pair code from '${ip}$'", 'make sure "share this instance" is enabled on the server', (0, 0.75)))
+            self.confirm_input = TelepathCodeInput(pos_hint={"center_x": 0.5, "center_y": 0.45}, text='')
+            self.confirm_layout.add_widget(self.confirm_input)
+            def after(*a):
+                self.pair_layout.opacity = 0
+                self.remove_widget(self.pair_layout)
+                self.add_widget(self.confirm_layout)
+                Animation(opacity=1, duration=0.3).start(self.confirm_layout)
+            Animation(opacity=0, duration=0.3).start(self.pair_layout)
+            Clock.schedule_once(after, 0.35)
+
+
     def generate_menu(self, **kwargs):
         self.main_layout = FloatLayout()
         self.main_layout.opacity = 0
@@ -23888,6 +24044,16 @@ class TelepathManagerScreen(MenuBackground):
         particles = ParticleMesh()
         self.add_widget(particles)
 
+        # Menu shadow
+        shadow = Image(source=os.path.join(constants.gui_assets, 'menu_shadow.png'))
+        shadow.color = self.background_color
+        shadow.opacity = 0.8
+        shadow.size_hint_max = (600, 600)
+        shadow.allow_stretch = True
+        shadow.keep_ratio = False
+        shadow.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+        self.add_widget(shadow)
+
         gradient = Image(source=os.path.join(constants.gui_assets, 'telepath_gradient.png'))
         gradient.size_hint_max = (None, None)
         gradient.allow_stretch = True
@@ -23895,6 +24061,7 @@ class TelepathManagerScreen(MenuBackground):
         gradient.opacity = 0.6
         gradient.color = constants.brighten_color(self.background_color, 0.03)
         self.add_widget(gradient)
+
 
         # Help button
         def show_help():
@@ -23964,9 +24131,6 @@ Once paired, remote servers will appear in the Server Manager and can be interac
         if constants.app_config.telepath_settings['enable-api']:
             toggle_api(True, True)
 
-        self.main_layout.add_widget(ExitButton('Back', (0.5, 0.17), cycle=True))
-
-
 
 
 
@@ -23986,8 +24150,10 @@ Once paired, remote servers will appear in the Server Manager and can be interac
         self.add_widget(generate_footer('$Telepath$', no_background=True))
         self.add_widget(self.main_layout)
         Animation(opacity=1, duration=1).start(self.main_layout)
+        self.add_widget(ExitButton('Back', (0.5, 0.17), cycle=True))
 
-        # self.show_pair_input(True)
+        #self.show_pair_input(True)
+        #Clock.schedule_once(functools.partial(self.confirm_pair_input, 'test', '424'), 1)
 
 
 

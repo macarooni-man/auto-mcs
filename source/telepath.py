@@ -531,7 +531,7 @@ class TelepathManager():
         # Eventually add a retry algorithm
 
         try:
-            data = requests.post(url, json=host_data).json()
+            data = requests.post(url, json=host_data, timeout=5).json()
             return data
         except:
             pass
