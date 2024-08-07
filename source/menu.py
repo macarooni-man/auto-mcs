@@ -8529,6 +8529,7 @@ class MenuBackground(Screen):
         self._input_focused = False
         self._keyboard = None
         self._shift_pressed = False
+        self.background_color = constants.background_color
 
         # Add keys to override in child windows
         self._ignore_keys = []
