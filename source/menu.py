@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
 from PIL.ImageFilter import GaussianBlur
 from datetime import datetime as dt
 from PIL import Image as PILImage
@@ -14,6 +13,7 @@ import traceback
 import functools
 import threading
 import inspect
+import random
 import time
 import math
 import sys
@@ -77,9 +77,9 @@ from kivy.uix.recycleview import RecycleView
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.relativelayout import RelativeLayout
-from kivy.graphics import Color, Rectangle, Ellipse
 from kivy.input.providers.mouse import MouseMotionEvent
 from kivy.uix.recyclegridlayout import RecycleGridLayout
+from kivy.graphics import Color, Rectangle, Ellipse, Line
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition, FadeTransition
 
 
@@ -94,7 +94,7 @@ from kivy.uix.dropdown import DropDown
 from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
-from kivy.properties import BooleanProperty, ObjectProperty
+from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
 
 
 
@@ -3272,12 +3272,20 @@ class FooterBackground(Widget):
         self.rect.size = self.size[0], self.y_offset
         self.rect.pos = self.pos
 
-    def __init__(self, **kwargs):
+    def __init__(self, no_background=False, **kwargs):
         super().__init__(**kwargs)
 
+
+        if no_background:
+            source = os.path.join(constants.gui_assets, 'no_background_footer.png')
+            color = screen_manager.current_screen.background_color
+        else:
+            source = os.path.join(constants.gui_assets, 'footer_background.png')
+            color = self.background_color = constants.brighten_color(constants.background_color, -0.02)
+
         with self.canvas.before:
-            self.rect = Image(pos=self.pos, size=self.size, allow_stretch=True, keep_ratio=False, source=os.path.join(constants.gui_assets, 'footer_background.png'))
-            self.rect.color = (constants.background_color[0] - 0.02, constants.background_color[1] - 0.02, constants.background_color[2] - 0.02, 1)
+            self.rect = Image(pos=self.pos, size=self.size, allow_stretch=True, keep_ratio=False, source=source)
+            self.rect.color = color
 
         with self.canvas.after:
             self.canvas.clear()
@@ -3405,7 +3413,7 @@ def footer_label(path, color, progress_screen=False):
 
 
 
-def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=False):
+def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=False, no_background=False):
 
     # Sanitize footer path for crash logs to remove server name
     if ", Launch" in menu_path or ", Access Control" in menu_path or ", Back-ups" in menu_path or ", Add-ons" in menu_path or ", amscript" in menu_path or ", Settings" in menu_path:
@@ -3459,7 +3467,7 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
         footer.add_widget(locale_button)
 
     else:
-        footer.add_widget(FooterBackground())
+        footer.add_widget(FooterBackground(no_background=no_background))
         footer.add_widget(footer_label(path=menu_path, color=color, progress_screen=progress_screen)) # menu_path
         if not progress_screen:
             footer.add_widget(IconButton('main menu', {}, (-5, 0), (None, None), 'home-sharp.png', clickable=True))
@@ -23642,6 +23650,143 @@ class UpdateModpackProgressScreen(ProgressScreen):
 
 # ============================================= Telepath Utilities =====================================================
 # <editor-fold desc="Telepath Utilities">
+
+# Create Server Step 1:  Server Name -----------------------------------------------------------------------------------
+
+class ParticleMesh(Widget):
+    points = ListProperty()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.direction = []
+
+        self.point_number = 50
+        self.point_radius = 3
+        self.line_width = 1
+        self.speed = 0.05
+        self.max_line_length = 200
+
+        self.line_color = (0.6, 0.6, 0.8)
+        self.point_color = (0.8, 0.8, 1)
+
+        # Generate points and fade in
+        self.opacity = 0
+        Clock.schedule_once(lambda dt: self.plot_points(), 1)
+        Clock.schedule_once(lambda dt: self.show(), 1)
+
+    def show(self, *a):
+        Animation(opacity=1, duration=3, transition='out_sine').start(self)
+
+    def plot_points(self):
+        for _ in range(self.point_number):
+            x = random.randint(0, self.width)
+            y = random.randint(0, self.height)
+            self.points.extend([x, y])
+            self.direction.append(random.randint(0, 300))
+        Clock.schedule_interval(self.update_positions, self.speed)
+
+    def draw_lines(self):
+        self.canvas.after.clear()
+        with self.canvas.after:
+            for i in range(0, len(self.points), 2):
+                for j in range(i + 2, len(self.points), 2):
+                    d = self.distance_between_points(self.points[i], self.points[i + 1], self.points[j], self.points[j + 1])
+                    if d > self.max_line_length:
+                        continue
+                    opacity = d / self.max_line_length
+                    Color(rgba=[*self.line_color, (opacity / 3)])
+                    Line(points=[self.points[i], self.points[i + 1], self.points[j], self.points[j + 1]], width=self.line_width)
+                    Color(rgba=[*self.point_color, opacity])
+                Ellipse(pos=(self.points[i] - self.point_radius, self.points[i + 1] - self.point_radius), size=(self.point_radius * 2, self.point_radius * 2))
+
+    def update_positions(self, *args):
+        step = 1
+        for i, j in zip(range(0, len(self.points), 2), range(len(self.direction))):
+            theta = self.direction[j]
+            self.points[i] += step * math.cos(theta)
+            self.points[i + 1] += step * math.sin(theta)
+
+            if self.off_screen(self.points[i], self.points[i + 1]):
+                self.direction[j] = 90 + self.direction[j]
+
+        self.draw_lines()
+
+    @staticmethod
+    def distance_between_points(x1, y1, x2, y2):
+        return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
+
+    def off_screen(self, x, y):
+        return x < -5 or x > self.width + 5 or y < -5 or y > self.height + 5
+
+class TelepathManagerScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.background_color = constants.brighten_color(constants.background_color, -0.07)
+
+        with self.canvas.before:
+            self.canvas.clear()
+
+        with self.canvas.before:
+            self.color = Color(*self.background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+        # Layouts
+        self.main_layout = None
+
+    def switch_to_layout(self, layout: FloatLayout):
+        # Make current layout invisible, and load specified one
+        pass
+
+    def generate_menu(self, **kwargs):
+        self.main_layout = FloatLayout()
+
+        # Add particle background and gradient on top
+        particles = ParticleMesh()
+        self.add_widget(particles)
+
+        gradient = Image(source=os.path.join(constants.gui_assets, 'telepath_gradient.png'))
+        gradient.size_hint_max = (None, None)
+        gradient.allow_stretch = True
+        gradient.keep_ratio = False
+        gradient.opacity = 0.6
+        gradient.color = constants.brighten_color(self.background_color, 0.03)
+        self.add_widget(gradient)
+
+        # Add telepath logo
+        logo = Image(source=os.path.join(constants.gui_assets, 'telepath_logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(400), pos_hint={"center_x": 0.5, "center_y": 0.77})
+        logo.color = (0.8, 0.8, 1, 0.9)
+        self.main_layout.add_widget(logo)
+
+
+        add_button = color_button("PAIR SERVER", position=(0.5, 0.45), icon_name='telepath.png', click_func=lambda *_: None, color=(0.8, 0.8, 1, 1))
+        self.add_widget(add_button)
+
+
+
+
+        # # Generate buttons on page load
+        # buttons = []
+        # float_layout = FloatLayout()
+        # float_layout.id = 'content'
+        #
+        # # Regular menus
+        # float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
+        # float_layout.add_widget(HeaderText("What would you like to name your server?", '', (0, 0.76)))
+        # buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
+        # float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
+        #
+
+
+        self.add_widget(generate_footer('$Telepath$', no_background=True))
+        self.add_widget(self.main_layout)
+
+
+
+
+
 
 # Telepath notifications and pairing
 class TelepathPair():
