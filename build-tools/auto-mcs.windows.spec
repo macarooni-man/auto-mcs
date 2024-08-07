@@ -38,7 +38,7 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 # Import assets, and only use icons that are needed
 png_list = []
 
-with open(".\\menu.py", 'r') as f:
+with open(".\\menu.py", 'r', errors='ignore') as f:
     script_contents = f.read()
     [png_list.append(x) for x in findall(r"'(.*?)'", script_contents) if '.png' in x and '{' not in x]
     [png_list.append(x) for x in findall(r'"(.*?)"', script_contents) if '.png' in x and '{' not in x]
