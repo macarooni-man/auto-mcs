@@ -23873,13 +23873,14 @@ class TelepathCodeInput(BigBaseInput):
         super().__init__(**kwargs)
 
         self.title_text = "pair code"
+        self.hint_text = '000-000'
         self.is_valid = True
 
         self.valign = "center"
         self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
         self.font_size = sp(69)
         self.padding_y = (12, 9)
-        self.cursor_width = dp(4)
+        self.cursor_width = dp(5)
 
     # Ignore popup text
     def insert_text(self, substring, from_undo=False):
@@ -23914,7 +23915,7 @@ class ParticleMesh(Widget):
         self.speed = 0.05
         self.max_line_length = 200
 
-        self.line_color = (0.6, 0.6, 0.8)
+        self.line_color = (0.55, 0.55, 0.8)
         self.point_color = (0.8, 0.8, 1)
 
         # Generate points and fade in
@@ -24024,7 +24025,7 @@ class TelepathManagerScreen(MenuBackground):
             self.confirm_layout = FloatLayout()
             self.confirm_layout.opacity = 0
             self.confirm_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.55}))
-            self.confirm_layout.add_widget(HeaderText(f"Enter the pair code from '${ip}$'", 'make sure "share this instance" is enabled on the server', (0, 0.75)))
+            self.confirm_layout.add_widget(HeaderText(f"Enter the pair code from:   $[color=#AAAAEE]{ip}[/color]$", 'if headless, use the "$telepath pair$" command', (0, 0.75)))
             self.confirm_input = TelepathCodeInput(pos_hint={"center_x": 0.5, "center_y": 0.45}, text='')
             self.confirm_layout.add_widget(self.confirm_input)
             def after(*a):
@@ -24033,6 +24034,7 @@ class TelepathManagerScreen(MenuBackground):
                 self.add_widget(self.confirm_layout)
                 Animation(opacity=1, duration=0.3).start(self.confirm_layout)
             Animation(opacity=0, duration=0.3).start(self.pair_layout)
+            self.confirm_input.grab_focus()
             Clock.schedule_once(after, 0.35)
 
 
@@ -24153,7 +24155,7 @@ Once paired, remote servers will appear in the Server Manager and can be interac
         self.add_widget(ExitButton('Back', (0.5, 0.17), cycle=True))
 
         #self.show_pair_input(True)
-        #Clock.schedule_once(functools.partial(self.confirm_pair_input, 'test', '424'), 1)
+        #Clock.schedule_once(functools.partial(self.confirm_pair_input, '192.168.1.6', '424'), 1)
 
 
 
