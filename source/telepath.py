@@ -1638,7 +1638,7 @@ async def request_pair(host: dict, id_hash: dict, request: Request):
 
         # Check token length
         if len(id_hash) != 344:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token format'))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid token format')
 
         # Report event to logger
         extra_data = 'Requested to pair'
@@ -1658,7 +1658,7 @@ async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
 
         # Check token length
         if len(id_hash) != 344:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token format'))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid token format')
 
         data = constants.api_manager._submit_pair(host, id_hash, code, request)
 
@@ -1680,7 +1680,7 @@ async def login(host: dict, id_hash: dict, request: Request):
 
         # Check token length
         if len(id_hash) != 344:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST('Invalid token format'))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid token format')
 
         data = constants.api_manager._login(host, id_hash, request)
 
