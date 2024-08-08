@@ -274,6 +274,11 @@ if __name__ == '__main__':
             # Use crash handler when app is compiled
             cleanup_on_close()
             if crash and constants.app_compiled:
+
+                # Destroy init window if macOS
+                if constants.os_name == 'macos':
+                    init_window.destroy()
+
                 app_crash(crash)
 
             # Normal Python behavior when testing

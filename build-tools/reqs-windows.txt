@@ -19,7 +19,7 @@ NBT==1.5.1
 pefile==2022.5.30
 Pillow==10.3.0
 plyer>=2.1.0
-psutil==5.9.2
+psutil>=6.0.0
 Pygments==2.16.1
 pyinstaller==6.1.0
 pyinstaller-hooks-contrib>=2024.7

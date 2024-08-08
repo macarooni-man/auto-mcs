@@ -208,8 +208,7 @@ def launch_window(exc_code, log_path):
     root.minsize(width=min_size[0], height=min_size[1])
     root.title(f'{constants.app_title} - Crash')
     img = PhotoImage(file=file_icon)
-    if constants.os_name != 'macos':
-        root.tk.call('wm', 'iconphoto', root._w, img)
+    root.tk.call('wm', 'iconphoto', root._w, img)
     root.configure(bg=background_color)
     root.resizable(False, False)
     root.attributes('-topmost', 1)
