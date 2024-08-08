@@ -236,7 +236,8 @@ def telepath_pair(data=None):
             return final_text
 
     data = constants.api_manager.pair_data
-    update_console(f'< {data["host"]["host"]}/{data["host"]["user"]} >\nCode (expires 1m):  {data["code"]}')
+    code = f'{data["code"][:3]}-{data["code"][3:]}'
+    update_console(f'< {data["host"]["host"]}/{data["host"]["user"]} >\nCode (expires 1m):  {code}')
 
     timeout = 0
     while constants.api_manager.pair_data:

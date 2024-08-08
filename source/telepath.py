@@ -51,9 +51,11 @@ import svrmgr
 
 # Create ID_HASH to use for authentication so the token can be reset
 telepath_settings = constants.app_config.telepath_settings
-if 'id_hash' not in telepath_settings or not telepath_settings['id_hash'] or len(telepath_settings['id_hash']) != 64:
+if not telepath_settings['id_hash'] or len(telepath_settings['id_hash']) != 64:
     ID_HASH = codecs.encode(os.urandom(32), 'hex').decode()
-    telepath_settings['id_hash'] = ID_HASH
+    new_data = deepcopy(constants.app_config._defaults['telepath_settings'])
+    new_data['id_hash'] = ID_HASH
+    constants.app_config.telepath_settings = new_data
 else:
     ID_HASH = telepath_settings['id_hash']
 
@@ -577,24 +579,22 @@ class TelepathManager():
 
         # Eventually add a retry algorithm
 
-        try:
-            data = requests.post(url, json=host_data).json()
-            if 'access-token' in data:
-                self.jwt_tokens[ip] = data['access-token']
-                return_data = deepcopy(data)
-                del return_data['access-token']
-                return_data['host'] = ip
-                return_data['port'] = port
-                return_data['added-servers'] = {}
-                return_data['nickname'] = ''
+        data = requests.post(url, json=host_data).json()
+        print(data)
+        if 'access-token' in data:
+            self.jwt_tokens[ip] = data['access-token']
+            return_data = deepcopy(data)
+            del return_data['access-token']
+            return_data['host'] = ip
+            return_data['port'] = port
+            return_data['added-servers'] = {}
+            return_data['nickname'] = ''
 
-                # If success, add to telepath-servers.json
-                if constants.server_manager:
-                    constants.server_manager.add_telepath_server(return_data)
+            # If success, add to telepath-servers.json
+            if constants.server_manager:
+                constants.server_manager.add_telepath_server(return_data)
 
-                return return_data
-        except:
-            pass
+            return return_data
         return None
 
 

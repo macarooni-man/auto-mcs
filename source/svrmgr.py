@@ -2052,6 +2052,7 @@ class ServerManager():
         if instance:
             self.telepath_servers[instance['host']] = instance
             del instance['host']
+        constants.folder_check(constants.telepathDir)
         with open(constants.telepathFile, 'w+') as f:
             f.write(json.dumps(self.telepath_servers))
         return self.telepath_servers
