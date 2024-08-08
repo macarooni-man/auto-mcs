@@ -923,7 +923,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
 
             if 'pending-removal' not in current_user:
                 current_user['pending-removal'] = True
-                constants.api_manager._force_logout(current_user['login-hash'])
+                constants.api_manager._force_logout(current_user['session_id'])
 
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
