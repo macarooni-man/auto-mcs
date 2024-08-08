@@ -527,9 +527,13 @@ def run_application():
                 return
 
             self.pair_data = data
+    def telepath_banner(message: str, finished: bool, play_sound=None):
+        return None
+    def telepath_disconnect():
+        return None
     constants.telepath_pair = TelepathPair()
-    constants.telepath_banner = lambda *_: None
-    constants.telepath_disconnect = lambda *_: None
+    constants.telepath_banner = telepath_banner
+    constants.telepath_disconnect = telepath_disconnect
     telepath.create_endpoint(constants.telepath_banner, 'main', True)
 
 
