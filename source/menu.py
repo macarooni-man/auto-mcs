@@ -9534,6 +9534,11 @@ class MainMenuScreen(MenuBackground):
             return
 
 
+        # Force a crash for debugging
+        if 'c' in keycode[1] and 'ctrl' in modifiers and 'shift' in modifiers and constants.debug:
+            raise Exception('Forced a crash for testing (CTRL-SHIFT-C)')
+
+
         # Trigger for showing search bar
         elif self._shift_pressed and 'shift' in keycode[1]:
             self.show_search()
@@ -24008,7 +24013,7 @@ class TelepathCodeInput(BigBaseInput):
 
             if data and screen_manager.current_screen.name == 'TelepathManagerScreen':
                 def back_to_menu(*a):
-                    if not constants.server_manager.check_telepath_servers():
+                    if not constants.server_list and not constants.server_manager.check_telepath_servers():
                         screen_manager.current = 'MainMenuScreen'
                         constants.screen_tree = []
                     else:
@@ -24507,7 +24512,7 @@ def check_telepath_disconnect():
                 sm.current_server = None
 
                 if telepath_data and screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
-                    if not constants.server_manager.check_telepath_servers():
+                    if not constants.server_list and not constants.server_manager.check_telepath_servers():
                         screen_manager.current = 'MainMenuScreen'
                         constants.screen_tree = []
                     else:

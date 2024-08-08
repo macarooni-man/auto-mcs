@@ -190,6 +190,11 @@ class TelepathManager():
     def _read_session(self):
         self.authenticated_sessions = self.secret_file.read()
 
+    def _reset_session(self):
+        self.secret_file.write([])
+        self.authenticated_sessions = []
+        return []
+
     def _create_pair_code(self, host: dict, id: str):
         characters = string.ascii_letters + string.digits
         code = str(''.join(random.choice(characters) for _ in range(6)).upper()).replace('O', '0')
@@ -1293,8 +1298,16 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
         self.run_data = {}
         def load_objects():
+            fail_count = 0
             while not all(list(self._check_object_init().values())):
                 time.sleep(0.5)
+
+                # Break and kill creation of obj
+                fail_count += 1
+                if fail_count > 15:
+                    constants.telepath_disconnect()
+                    return
+
             self.backup = RemoteBackupManager(self)
             self.addon = RemoteAddonManager(self)
             self.acl = RemoteAclManager(self)

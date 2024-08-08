@@ -283,7 +283,7 @@ if __name__ == '__main__':
 
         # Destroy init window if macOS
         cleanup_on_close()
-        if constants.os_name == 'macos' and not constants.headless:
+        if constants.os_name == 'macos' and not constants.headless and not crash:
             init_window.destroy()
             raise SystemExit()
 

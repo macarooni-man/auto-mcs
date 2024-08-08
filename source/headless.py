@@ -222,6 +222,14 @@ def refresh_telepath_host(data=None):
     return data
 
 
+# Reset telepath to default configuration
+def reset_telepath(data=None):
+    api = constants.api_manager
+    api.stop()
+    api._reset_session()
+    return f'Telepath data has {"not " if bool(api.authenticated_sessions) else ""}been cleared'
+
+
 # Handles telepath pair requests
 def telepath_pair(data=None):
     final_text = f'Failed to pair, please run \'telepath pair\' again.'
@@ -414,6 +422,10 @@ command_data = {
             'pair': {
                 'help': 'listens for and displays pairing data to connect remotely',
                 'exec': telepath_pair
+            },
+            'reset': {
+                'help': 'listens for and displays pairing data to connect remotely',
+                'exec': reset_telepath
             }
         }
     }
