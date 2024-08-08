@@ -42,7 +42,7 @@ import amscript
 
 app_version = "2.2"
 ams_version = "1.2.1"
-telepath_version = "0.8.1"
+telepath_version = "0.8.3"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -1850,7 +1850,7 @@ def check_data_cache():
 
 # Random splash message
 def generate_splash(crash=False):
-    global session_splash
+    global session_splash, headless
 
     splashes = ["Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
             "Did you know: you were born on your birthday.", "Okay, I'm here. What are your other two wishes?",
@@ -1880,7 +1880,10 @@ def generate_splash(crash=False):
         exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
         return f'"{exp}"'
 
-    session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
+    if headless:
+        session_splash = f"“{splashes[randrange(len(splashes))]}”"
+    else:
+        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
 
 
 # Downloads the latest version of auto-mcs if available

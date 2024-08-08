@@ -222,6 +222,7 @@ def refresh_telepath_host(data=None):
     return data
 
 
+# Handles telepath pair requests
 def telepath_pair(data=None):
     final_text = f'Failed to pair, please run \'telepath pair\' again.'
 

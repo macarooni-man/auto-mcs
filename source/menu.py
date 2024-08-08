@@ -3456,7 +3456,6 @@ class SettingsButton(RelativeLayout):
 
     def show(self, *a):
         self.shown = True
-        print(True)
         Animation(opacity=1, duration=0.3).start(self.locale_button)
         Animation(opacity=1, duration=0.15).start(self.telepath_button)
         self.remove_widget(self.settings_button)
@@ -9403,7 +9402,7 @@ class MainMenuScreen(MenuBackground):
 
         float_layout.add_widget(splash)
 
-        if not constants.server_list:
+        if not constants.server_list and not constants.server_manager.online_telepath_servers:
             top_button = MainButton('Import a server', (0.5, 0.42), 'download-outline.png')
         else:
             top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.38 if constants.is_docker else 0.42), 'settings-outline.png')
@@ -24009,8 +24008,12 @@ class TelepathCodeInput(BigBaseInput):
 
             if data and screen_manager.current_screen.name == 'TelepathManagerScreen':
                 def back_to_menu(*a):
-                    screen_manager.current = 'ServerManagerScreen'
-                    constants.screen_tree = ['MainMenuScreen']
+                    if not constants.server_manager.check_telepath_servers():
+                        screen_manager.current = 'MainMenuScreen'
+                        constants.screen_tree = []
+                    else:
+                        screen_manager.current = 'ServerManagerScreen'
+                        constants.screen_tree = ['MainMenuScreen']
                     server_name = data['nickname'] if data['nickname'] else data['host']
                     telepath_banner(f"Successfully paired $'{server_name}'$", True, play_sound='popup_telepath_success.wav')
                 Clock.schedule_once(back_to_menu, 0)
@@ -24504,8 +24507,12 @@ def check_telepath_disconnect():
                 sm.current_server = None
 
                 if telepath_data and screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
-                    screen_manager.current = 'ServerManagerScreen'
-                    constants.screen_tree = ['MainMenuScreen']
+                    if not constants.server_manager.check_telepath_servers():
+                        screen_manager.current = 'MainMenuScreen'
+                        constants.screen_tree = []
+                    else:
+                        screen_manager.current = 'ServerManagerScreen'
+                        constants.screen_tree = ['MainMenuScreen']
 
                 server_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
                 telepath_banner(f"Lost connection to $'{server_name}'$", False)

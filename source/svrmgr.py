@@ -1914,6 +1914,7 @@ class ServerManager():
     def __init__(self):
         self.telepath_servers = {}
         self.telepath_updates = {}
+        self.online_telepath_servers = []
 
         self.server_list = create_server_list()
         self.current_server = None
@@ -2043,6 +2044,7 @@ class ServerManager():
                 pass
 
         # Add a discovery endpoint at some point here, and only return active servers
+        self.online_telepath_servers = new_server_list
         return new_server_list
 
     def write_telepath_servers(self, instance=None):
