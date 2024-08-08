@@ -487,7 +487,7 @@ class TelepathManager():
                     constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
 
                     # Update session with the ID
-                    session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip}
+                    session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': session['id'], 'ip': ip}
                     self._update_user(session)
 
                     # Return data without the ID
