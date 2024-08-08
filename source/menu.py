@@ -5333,6 +5333,8 @@ class TelepathDropButton(DropButton):
         self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
         self.text.text = 'THIS MACHINE' + (" " * self.text_padding)
         self.text.font_size = sp(17)
+        self.text.shorten = True
+        self.text.shorten_from = 'right'
         self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
         self.text.color = (0.6, 0.6, 1, 1)
 

@@ -518,7 +518,7 @@ class TelepathManager():
 
         try:
             session = self._get_session(ip, port)
-            data = session.post(url, json=host_data, timeout=5).json()
+            data = session.post(url, json=host_data, timeout=10).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
                 return_data = deepcopy(data)
@@ -1297,27 +1297,13 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.favorite = self._is_favorite()
 
         self.run_data = {}
-        def load_objects():
-            fail_count = 0
-            while not all(list(self._check_object_init().values())):
-                time.sleep(0.5)
 
-                # Break and kill creation of obj
-                fail_count += 1
-                if fail_count > 15:
-                    constants.telepath_disconnect()
-                    return
+        self.backup = RemoteBackupManager(self)
+        self.addon = RemoteAddonManager(self)
+        self.acl = RemoteAclManager(self)
+        self.script_manager = RemoteScriptManager(self)
 
-            self.backup = RemoteBackupManager(self)
-            self.addon = RemoteAddonManager(self)
-            self.acl = RemoteAclManager(self)
-            self.script_manager = RemoteScriptManager(self)
-        self.backup = None
-        self.addon = None
-        self.acl = None
-        self.script_manager = None
         self._clear_all_cache()
-        threading.Timer(0, load_objects).start()
 
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
 
@@ -1335,14 +1321,10 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
     def _clear_all_cache(self):
         self._clear_attr_cache()
-        if self.backup:
-            self.backup._clear_attr_cache()
-        if self.addon:
-            self.addon._clear_attr_cache()
-        if self.acl:
-            self.acl._clear_attr_cache()
-        if self.script_manager:
-            self.script_manager._clear_attr_cache()
+        self.backup._clear_attr_cache()
+        self.addon._clear_attr_cache()
+        self.acl._clear_attr_cache()
+        self.script_manager._clear_attr_cache()
 
     # Gather remote run_data from a running server
     def _telepath_run_data(self):
@@ -1454,7 +1436,6 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
-        getattr(self, '_server_name')
 
     def _reconstruct_list(self, script_list: dict):
         return {
@@ -1489,13 +1470,12 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
 
     def script_state(self, *args, **kwargs):
         self._clear_attr_cache()
-        super().script_state(*args, **kwargs)
+        return super().script_state(*args, **kwargs)
 
 class RemoteAddonManager(create_remote_obj(AddonManager)):
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
-        getattr(self, '_server')
 
     def _reconstruct_list(self, addon_list: dict):
         return {
@@ -1530,13 +1510,12 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
 
     def addon_state(self, *args, **kwargs):
         self._clear_attr_cache()
-        super().addon_state(*args, **kwargs)
+        return super().addon_state(*args, **kwargs)
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
-        getattr(self, '_server')
 
     def _update_data(self):
         self._clear_attr_cache()
@@ -1554,7 +1533,6 @@ class RemoteAclManager(create_remote_obj(AclManager)):
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
-        getattr(self, '_server')
 
     # Reconstruct AclRule objects from a dictionary representing a rule, or rule list(s)
     def _reconstruct_list(self, rule_list: dict):
