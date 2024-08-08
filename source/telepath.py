@@ -61,6 +61,7 @@ else:
 
 SECRET_KEY = os.urandom(64)
 UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
+SESSION_ID = codecs.encode(os.urandom(8), 'hex').decode()
 ALGORITHM = "HS256"
 
 REQUEST_MAX_RETRIES = 3
@@ -104,6 +105,8 @@ class TelepathManager():
 
     def __init__(self):
         global app
+
+        # Client-side data
         self.app = app
         self.config = None
         self.server = None
@@ -112,6 +115,7 @@ class TelepathManager():
         self.port = self.default_port
         self.sessions = {}
         self.jwt_tokens = {}
+        self.client_data = {'host': constants.hostname, 'user': constants.username, 'session_id': SESSION_ID}
         self.update_config(host=self.host, port=self.port)
 
         # Helper classes for security
@@ -171,8 +175,12 @@ class TelepathManager():
         )
 
     def _return_token(self, session: dict):
-        session = deepcopy(session)
-        del session['id']
+
+        # Remove the ID, so it's not exposed over the network
+        if 'id' in session:
+            session = deepcopy(session)
+            del session['id']
+
         return {
             'access-token': create_access_token(session),
             'hostname': constants.hostname,
@@ -220,12 +228,11 @@ class TelepathManager():
 
     def _update_user(self, session=None):
         self.current_user = session
-        self.current_user['login-hash'] = codecs.encode(os.urandom(8), 'hex').decode()
         self.logger.current_user = self.current_user
 
     # Resets current user
-    def _force_logout(self, login_hash: str):
-        if login_hash == self.current_user['login-hash']:
+    def _force_logout(self, session_id: str):
+        if session_id == self.current_user['session_id']:
             del self.current_user
             self.current_user = {}
             return True
@@ -438,11 +445,14 @@ class TelepathManager():
                         # Successfully authenticated
 
                         # Call function to write this data to a file
-                        session = {'host': host['host'], 'user': host['user'], 'id': self.pair_data['id'], 'ip': ip}
-                        self.pair_data = {}
+                        session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip}
                         self._save_session(session)
                         self._update_user(session)
-                        return self._return_token(session)
+                        self.pair_data = {}
+
+                        # Return data without the ID
+                        returned_session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'ip': ip}
+                        return self._return_token(returned_session)
 
                 # Expire after 3 failed attempts
                 self.pair_data['attempt'] += 1
@@ -476,11 +486,13 @@ class TelepathManager():
                     # Show banner on login
                     constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
 
-                    session['host'] = host['host']
-                    session['user'] = host['user']
-                    session['ip'] = request.client.host
+                    # Update session with the ID
+                    session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip}
                     self._update_user(session)
-                    return self._return_token(session)
+
+                    # Return data without the ID
+                    returned_session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'ip': ip}
+                    return self._return_token(returned_session)
 
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -496,7 +508,7 @@ class TelepathManager():
                 # Show banner on logout
                 constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged out", False)
 
-                return self._force_logout(self.current_user['login-hash'])
+                return self._force_logout(self.current_user['session_id'])
 
         return False
 
@@ -510,7 +522,7 @@ class TelepathManager():
         token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
         url = f"http://{ip}:{port}/telepath/login"
         host_data = {
-            'host': {'host': constants.hostname, 'user': constants.username},
+            'host': self.client_data,
             'id_hash': token
         }
 
@@ -536,7 +548,7 @@ class TelepathManager():
 
     def logout(self, ip: str, port: int):
         url = f"http://{ip}:{port}/telepath/logout"
-        host_data = {'host': constants.hostname, 'user': constants.username}
+        host_data = self.client_data
 
         # Eventually add a retry algorithm
         try:
@@ -557,7 +569,7 @@ class TelepathManager():
         token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
         url = f"http://{ip}:{port}/telepath/request_pair"
         host_data = {
-            'host': {'host': constants.hostname, 'user': constants.username},
+            'host': self.client_data,
             'id_hash': token
         }
 
@@ -578,7 +590,7 @@ class TelepathManager():
         token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
         url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
         host_data = {
-            'host': {'host': constants.hostname, 'user': constants.username},
+            'host': self.client_data,
             'id_hash': token
         }
 

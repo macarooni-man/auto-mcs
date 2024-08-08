@@ -1972,9 +1972,12 @@ class ServerManager():
         try:
             if self.current_server.name == name:
                 self.remote_server = self.current_server
+
                 if constants.debug:
                     print(vars(self.remote_server))
+
                 return None
+
         except AttributeError:
             pass
 
