@@ -223,16 +223,34 @@ def refresh_telepath_host(data=None):
 
 
 def telepath_pair(data=None):
-    # This prompt will display for 1 minute and refresh
-    update_console('Listening to pair requests for 5 minutes. Enter the IP above into another instance of auto-mcs to continue.')
+    final_text = f'Failed to pair, please run \'telepath pair\' again.'
 
-    while not constants.api_manager.pair_data:
+    update_console('Listening to pair requests for 3 minutes. Enter the IP above into another instance of auto-mcs to continue.')
+    constants.api_manager.pair_listen = True
+    timeout = 0
+    while 'code' not in constants.api_manager.pair_data:
         time.sleep(1)
+        timeout += 1
+        if timeout >= 180:
+            return final_text
 
     data = constants.api_manager.pair_data
-    update_console(f'< {data["host"]}/{data["user"]} >\nCode (expires 1m):  {data["code"]}')
+    update_console(f'< {data["host"]["host"]}/{data["host"]["user"]} >\nCode (expires 1m):  {data["code"]}')
 
-    return f' {data}'
+    timeout = 0
+    while constants.api_manager.pair_data:
+        time.sleep(1)
+        timeout += 1
+        if timeout >= 60:
+            return final_text
+
+    if constants.api_manager.current_user:
+        user = constants.api_manager.current_user
+        final_text = f'Successfully paired with "{user["host"]}/{user["user"]}:{user["ip"]}"'
+
+    constants.api_manager.pair_listen = False
+
+    return final_text
 
 
 class Command:

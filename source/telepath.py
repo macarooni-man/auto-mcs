@@ -130,10 +130,22 @@ class TelepathManager():
 
         # Disable low importance uvicorn logging
         if not constants.debug:
+            logging.getLogger("uvicorn").handlers = []
+            logging.getLogger("uvicorn").propagate = False
+            logging.getLogger("uvicorn").setLevel(logging.WARNING)
             logging.getLogger("uvicorn.error").handlers = []
             logging.getLogger("uvicorn.error").propagate = False
+            logging.getLogger('uvicorn.error').setLevel(logging.WARNING)
             logging.getLogger("uvicorn.access").handlers = []
             logging.getLogger("uvicorn.access").propagate = False
+            logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
+            logging.getLogger("uvicorn.asgi").handlers = []
+            logging.getLogger("uvicorn.asgi").propagate = False
+            logging.getLogger('uvicorn.asgi').setLevel(logging.WARNING)
+
+        if constants.headless:
+            logging.disable(logging.CRITICAL)
+
 
     def _run_uvicorn(self):
         self.server = uvicorn.Server(self.config)
@@ -275,7 +287,8 @@ class TelepathManager():
         else:
             session = requests.Session()
             self.sessions[host] = {'port': port, 'session': session}
-            print(f"[INFO] [telepath] Opening session to '{host}'")
+            if not constants.headless:
+                print(f"[INFO] [telepath] Opening session to '{host}'")
         return session
     def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True):
         # Format endpoint
@@ -340,7 +353,8 @@ class TelepathManager():
 
             # Close the requests session
             data['session'].close()
-            print(f"[INFO] [telepath] Closed session to '{host}:{data['port']}'")
+            if not constants.headless:
+                print(f"[INFO] [telepath] Closed session to '{host}:{data['port']}'")
 
 
     # -------- Internal endpoints to authenticate with telepath -------- #
@@ -354,13 +368,15 @@ class TelepathManager():
         error_code = status.HTTP_418_IM_A_TEAPOT if random.randrange(10) == 1 else status.HTTP_409_CONFLICT
         if constants.ignore_close:
             message = "Server is busy, please try again later"
-            print(f'[INFO] [telepath] {message}')
+            if not constants.headless:
+                print(f'[INFO] [telepath] {message}')
             raise HTTPException(status_code=error_code, detail=message)
 
         # Ignore request if there's currently a valid pairing code
         if self.pair_data:
             message = "Please wait for the current code to expire"
-            print(f'[INFO] [telepath] {message}')
+            if not constants.headless:
+                print(f'[INFO] [telepath] {message}')
             raise HTTPException(status_code=error_code, detail=message)
 
         # Ignore an improperly formatted request
@@ -385,10 +401,12 @@ class TelepathManager():
             if constants.telepath_pair:
                 constants.telepath_pair.open(self.pair_data)
 
-            print(f"[INFO] [telepath] Generated pairing code: {self.pair_data['code']} for host: {host}")
+            if not constants.headless:
+                print(f"[INFO] [telepath] Generated pairing code: {self.pair_data['code']} for host: {host}")
             return True
         else:
-            print(f'[INFO] [telepath] Telepath API is not running')
+            if not constants.headless:
+                print(f'[INFO] [telepath] Telepath API is not running')
             return False
 
     def _submit_pair(self, host: dict, id_hash: bytes, code: str, request: Request):
@@ -517,7 +535,8 @@ class TelepathManager():
         try:
             session = self._get_session(ip, port)
             data = session.post(url, json=host_data, headers=self._get_headers(ip)).json()
-            print(f"[INFO] [telepath] Logged out from '{ip}:{port}'")
+            if not constants.headless:
+                print(f"[INFO] [telepath] Logged out from '{ip}:{port}'")
             return data
         except:
             pass
@@ -686,7 +705,8 @@ class SecretHandler():
         try:
             return self.fernet.decrypt(data)
         except:
-            print("[INFO] [telepath] Failed to load telepath-secrets, resetting...")
+            if not constants.headless:
+                print("[INFO] [telepath] Failed to load telepath-secrets, resetting...")
             return []
 
     def read(self):
