@@ -580,21 +580,23 @@ class TelepathManager():
         # Eventually add a retry algorithm
 
         data = requests.post(url, json=host_data).json()
-        print(data)
-        if 'access-token' in data:
-            self.jwt_tokens[ip] = data['access-token']
-            return_data = deepcopy(data)
-            del return_data['access-token']
-            return_data['host'] = ip
-            return_data['port'] = port
-            return_data['added-servers'] = {}
-            return_data['nickname'] = ''
+        try:
+            if 'access-token' in data:
+                self.jwt_tokens[ip] = data['access-token']
+                return_data = deepcopy(data)
+                del return_data['access-token']
+                return_data['host'] = ip
+                return_data['port'] = port
+                return_data['added-servers'] = {}
+                return_data['nickname'] = ''
 
-            # If success, add to telepath-servers.json
-            if constants.server_manager:
-                constants.server_manager.add_telepath_server(return_data)
+                # If success, add to telepath-servers.json
+                if constants.server_manager:
+                    constants.server_manager.add_telepath_server(return_data)
 
-            return return_data
+                return return_data
+        except:
+            pass
         return None
 
 
