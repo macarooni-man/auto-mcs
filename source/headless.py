@@ -5,6 +5,7 @@ import sys
 import re
 
 import constants
+import telepath
 import acl
 
 
@@ -529,6 +530,7 @@ def run_application():
     constants.telepath_pair = TelepathPair()
     constants.telepath_banner = lambda *_: None
     constants.telepath_disconnect = lambda *_: None
+    telepath.create_endpoint(constants.telepath_banner, 'main', True)
 
 
     try:
