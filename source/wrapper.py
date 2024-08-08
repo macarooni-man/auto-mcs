@@ -76,7 +76,7 @@ if __name__ == '__main__':
         reset_config = args.reset
 
         # Force headless if display is not set
-        if constants.os_name == 'linux' and not os.environ['DISPLAY']:
+        if constants.os_name == 'linux' and 'DISPLAY' not in os.environ:
             constants.headless = True
 
         # Close splash if headless & compiled
