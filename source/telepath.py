@@ -228,6 +228,7 @@ class TelepathManager():
 
     def _update_user(self, session=None):
         self.current_user = session
+        self.current_user['last_active'] = dt.now()
         self.logger.current_user = self.current_user
 
     # Resets current user
@@ -474,6 +475,10 @@ class TelepathManager():
 
             for session in self.authenticated_sessions:
                 if self._verify_id(id, session['id']):
+
+                    # Check if current user can be removed due to token expiry
+                    if self.current_user and (self.current_user['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) > dt.now()):
+                        self._force_logout(self.current_user['session_id'])
 
                     # This can change later, but currently, there can only be one telepath user globally
                     if self.current_user and not (self.current_user['id'] == session['id'] and self.current_user['ip'] == request.client.host):
@@ -900,6 +905,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
                         threading.Timer(ACCESS_TOKEN_EXPIRE_MINUTES * 60, partial(blacklisted_tokens.remove, token)).start()
 
                 # Successfully authenticated
+                current_user['last_active'] = dt.now()
                 return True
 
         except InvalidTokenError:
