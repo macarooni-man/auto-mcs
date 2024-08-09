@@ -22469,11 +22469,7 @@ class ServerPropertiesEditScreen(MenuBackground):
 
 def toggle_proxy(boolean, *args):
     server_obj = constants.server_manager.current_server
-
-    # Actually make changes
-    server_obj.config_file.set("general", "enableProxy", str(boolean).lower())
-    constants.server_config(server_obj.name, server_obj.config_file)
-    server_obj.proxy_enabled = boolean
+    server_obj.enable_proxy(boolean)
 
     # Show banner if server is running
     def default_message(*a):

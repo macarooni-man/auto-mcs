@@ -291,6 +291,11 @@ class ServerObject():
         return constants.playit._check_agent()
     def install_proxy(self):
         return constants.playit._install_agent()
+    def enable_proxy(self, enabled: bool):
+        self.config_file.set("general", "enableProxy", str(enabled).lower())
+        self.write_config()
+        self.proxy_enabled = enabled
+
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
