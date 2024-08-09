@@ -143,6 +143,10 @@ class ScriptManager():
         self._script_hash = None
         self._enumerate_scripts()
 
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return constants.sync_attr(self, name)
+
     # Sets script hash to determine changes
     def _set_hash(self):
         script_hash = ""
@@ -244,7 +248,7 @@ class ScriptManager():
         return final_list
 
     # Downloads script and enables it
-    def download_script(self, script: str or AmsWebObject):
+    def download_script(self, script: AmsWebObject or str):
 
         # If string was provided
         if isinstance(script, str):

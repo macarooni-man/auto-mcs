@@ -16,6 +16,10 @@ import re
 
 # Base AddonObject for others
 class AddonObject():
+    def _to_json(self):
+        final_data = {k: getattr(self, k) for k in dir(self) if not (k.endswith('__') or callable(getattr(self, k)))}
+        final_data['__reconstruct__'] = self.__class__.__name__
+        return final_data
     def __init__(self):
         self.addon_object_type = None
         self.name = None
@@ -28,41 +32,51 @@ class AddonObject():
 
 # AddonObject for housing downloadable addons
 class AddonWebObject(AddonObject):
-    def __init__(self, addon_name, addon_type, addon_author, addon_subtitle, addon_url, addon_id, addon_version):
+    def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_url='', addon_id='', addon_version=''):
         super().__init__()
-        self.addon_object_type = "web"
-        self.name = addon_name
-        self.type = addon_type
-        self.author = addon_author
-        self.subtitle = addon_subtitle
-        self.url = addon_url
-        self.id = addon_id
-        self.addon_version = addon_version
 
-        # To be updated in get_addon_info()
-        self.supported = "unknown"
-        self.versions = []
-        self.description = None
-        self.download_url = None
-        self.download_version = None
+        if isinstance(addon_name, dict):
+            [setattr(self, k, v) for k, v in addon_name.items()]
+
+        else:
+            self.addon_object_type = "web"
+            self.name = addon_name
+            self.type = addon_type
+            self.author = addon_author
+            self.subtitle = addon_subtitle
+            self.url = addon_url
+            self.id = addon_id
+            self.addon_version = addon_version
+
+            # To be updated in get_addon_info()
+            self.supported = "unknown"
+            self.versions = []
+            self.description = None
+            self.download_url = None
+            self.download_version = None
 
 # AddonObject for housing imported addons
 class AddonFileObject(AddonObject):
-    def __init__(self, addon_name, addon_type, addon_author, addon_subtitle, addon_path, addon_id, addon_version):
+    def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_path='', addon_id='', addon_version=''):
         super().__init__()
-        self.addon_object_type = "file"
-        self.name = addon_name
-        self.type = addon_type
-        self.author = addon_author
-        self.subtitle = addon_subtitle
-        self.id = addon_id
-        self.path = addon_path
-        self.addon_version = addon_version
-        self.enabled = True
 
-        # Generate Hash
-        hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
-        self.hash = str(hash_data)[:8]
+        if isinstance(addon_name, dict):
+            [setattr(self, k, v) for k, v in addon_name.items()]
+
+        else:
+            self.addon_object_type = "file"
+            self.name = addon_name
+            self.type = addon_type
+            self.author = addon_author
+            self.subtitle = addon_subtitle
+            self.id = addon_id
+            self.path = addon_path
+            self.addon_version = addon_version
+            self.enabled = True
+
+            # Generate Hash
+            hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
+            self.hash = str(hash_data)[:8]
 
 # AddonObject for housing downloadable modpacks
 class ModpackWebObject(AddonWebObject):
@@ -96,6 +110,10 @@ class AddonManager():
         # Write addons to cache
         constants.load_addon_cache(True)
 
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return constants.sync_attr(self, name)
+
     # Sets addon hash to determine changes
     def _set_hash(self):
         addon_hash = ""
@@ -125,6 +143,15 @@ class AddonManager():
         self.geyser_support = self.check_geyser()
         self._addon_hash = self._set_hash()
 
+    def _install_geyser(self, install=True):
+        if install:
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                pool.map(self.download_addon, geyser_addons(self._server))
+        else:
+            for addon in self.return_single_list():
+                if is_geyser_addon(addon) or addon.name.lower() == 'viaversion':
+                    self.delete_addon(addon)
+
     # Imports addon directly from file path
     def import_addon(self, addon_path: str):
         if not self._addons_supported:
@@ -136,7 +163,7 @@ class AddonManager():
         return addon
 
     # Searches for downloadable addons, returns a list of AddonWebObjects
-    def search_addons(self, query: str):
+    def search_addons(self, query: str, *args):
         if not self._addons_supported:
             return []
 
@@ -147,12 +174,12 @@ class AddonManager():
             return []
 
     # Downloads addon directly from the closest match of name, or from AddonWebObject
-    def download_addon(self, addon: str or AddonWebObject):
+    def download_addon(self, addon: AddonWebObject or str):
         if not self._addons_supported:
             return None
 
         # If AddonWebObject was provided
-        if isinstance(addon, AddonWebObject):
+        if not isinstance(addon, str):
             if not addon.download_url:
                 addon = get_addon_url(addon, self._server)
             if addon:
@@ -518,7 +545,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
         return False
 
     addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
-    destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else constants.server_path(server_properties['name'], addon_folder)
+    destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(constants.server_path(server_properties['name']), addon_folder)
 
     # Make sure the addon_path and destination_path are not the same
     if addon_path != destination_path and jar_name.endswith(".jar"):
@@ -531,6 +558,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
 
         # Copy addon to proper folder if it exists
         if addon:
+            constants.folder_check(destination_path)
             return constants.copy_to(addon.path, destination_path, str(constants.sanitize_name(addon.name, True) + ".jar"), overwrite=True)
 
     return False
@@ -541,7 +569,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
 
 # Returns list of addon objects according to search
 # Query --> AddonWebObject
-def search_addons(query: str, server_properties):
+def search_addons(query: str, server_properties, *args):
 
     # Manually weighted search results
     prioritized = ("worldedit for bukkit", "vault", "essentials", "essentialsx", "worldguard", "anticheat", "zombie_striker_dev", "sleakes", "sk89q", "permissionsex", "multiverse-core", "shopkeepers")
@@ -1297,6 +1325,20 @@ def get_modpack_url(modpack: ModpackWebObject, *a):
         except:
             continue
 
+
+
+# Return if addon is a Geyser addon
+def is_geyser_addon(addon):
+    if addon.author == 'GeyserMC':
+        return True
+
+    if addon.name.startswith('floodgate'):
+        return True
+
+    if addon.name.startswith('Geyser'):
+        return True
+
+    return False
 
 
 # ---------------------------------------------- Usage Examples --------------------------------------------------------

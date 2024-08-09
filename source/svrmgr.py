@@ -6,6 +6,7 @@ from copy import deepcopy
 from glob import glob
 import functools
 import threading
+import requests
 import psutil
 import ctypes
 import time
@@ -17,6 +18,7 @@ from acl import AclManager, get_uuid
 from backup import BackupManager
 from addons import AddonManager
 import constants
+import telepath
 import amscript
 import backup
 
@@ -29,6 +31,11 @@ import backup
 class ServerObject():
 
     def __init__(self, server_name: str):
+        self._telepath_data = None
+        self._view_name = server_name
+        self._loop_clock = 0
+        self._last_telepath_log = {}
+        self._disconnected = False
 
         self.gamemode_dict = ['survival', 'creative', 'adventure', 'spectator']
         self.difficulty_dict = ['peaceful', 'easy', 'normal', 'hard', 'hardcore']
@@ -37,6 +44,7 @@ class ServerObject():
         self.name = server_name
         self.server_path = constants.server_path(server_name)
         self.last_modified = os.path.getmtime(self.server_path)
+        self.server_icon = constants.server_path(self.name, 'server-icon.png')
         self.running = False
         self.restart_flag = False
         self.custom_flags = ''
@@ -64,7 +72,7 @@ class ServerObject():
             self.server_properties = constants.server_properties(server_name)
 
         self.config_file = constants.server_config(server_name)
-        self.properties_hash = self.__get_properties_hash__()
+        self.properties_hash = self._get_properties_hash()
 
 
         # Server properties
@@ -197,15 +205,94 @@ class ServerObject():
             self.script_manager = amscript.ScriptManager(self.name)
         Timer(0, load_scriptmgr).start()
 
-        print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
+        if not constants.headless:
+            print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
+
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        if name == 'run_data':
+            return self._telepath_run_data()
+
+        data = constants.sync_attr(self, name)
+
+        if name == '__all__':
+            data['run_data'] = self._telepath_run_data()
+
+        return data
+
+    # Returns serialized version of self.run_data for telepath sessions
+    def _telepath_run_data(self):
+        blacklist = [
+                    'console-panel',
+                    'performance-panel',
+                    'close-hooks',
+                    'process-hooks',
+                    'thread',
+                    'process',
+                    'send-command'
+        ]
+        new_data = {}
+        for k, v in self.run_data.items():
+            if k not in blacklist:
+                new_data[k] = deepcopy(v)
+        return new_data
+
+    # Checks if server was initialized remotely
+    def _is_telepath_session(self):
+        try:
+            return constants.server_manager.remote_server == self
+        except AttributeError:
+            pass
+        except RecursionError:
+            pass
+        return False
+
+    # Returns last log and crash info
+    def _sync_telepath_stop(self):
+        if not self.running:
+            crash_log = ''
+            if self.crash_log:
+                with open(self.crash_log, 'r') as f:
+                    crash_log = f.read()
+
+            return {'log': self._last_telepath_log, 'crash': crash_log}
+        return {'log': None, 'crash': None}
+
+    # Updates performance data on a clock until server stops
+    def _start_performance_clock(self):
+        self._loop_clock = 0
+        def loop(*a):
+            if self.running:
+                if self._is_telepath_session():
+                    self.performance_stats(1, (self._loop_clock == 3))
+                    self._loop_clock += 1
+                    if self._loop_clock > 6:
+                        self._loop_clock = 1
+                else:
+                    time.sleep(0.5)
+
+                loop()
+
+            # Reset on close
+            else:
+                self._loop_clock = 0
+
+        # Don't run on telepath
+        if not self._telepath_data:
+            threading.Timer(0, loop).start()
+
+    # Check status of loaded objects
+    def _check_object_init(self):
+        return {'addon': bool(self.addon), 'backup': bool(self.backup), 'acl': bool(self.backup), 'script_manager': bool(self.script_manager)}
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
 
         # Server files
+        self.server_icon = constants.server_path(self.name, 'server-icon.png')
         self.config_file = constants.server_config(self.name)
         self.server_properties = constants.server_properties(self.name)
-        self.properties_hash = self.__get_properties_hash__()
+        self.properties_hash = self._get_properties_hash()
 
         # Server properties
         self.favorite = self.config_file.get("general", "isFavorite").lower() == 'true'
@@ -343,7 +430,8 @@ class ServerObject():
                 "gamemode": self.gamemode,
 
                 # Checks if geyser and floodgate are installed
-                "geyser_support": self.geyser_enabled
+                "geyser_support": self.geyser_enabled,
+                "disable_chat_reporting": False
 
             },
 
@@ -360,7 +448,11 @@ class ServerObject():
         return properties
 
     # Writes changes to 'server.properties' and 'auto-mcs.ini'
-    def write_config(self):
+    def write_config(self, remote_data={}):
+        if remote_data:
+            self.config_file = constants.reconstruct_config(remote_data['config_file'])
+            self.server_properties = remote_data['server_properties']
+
         constants.server_config(self.name, self.config_file)
         constants.server_properties(self.name, self.server_properties)
 
@@ -768,11 +860,12 @@ class ServerObject():
                             print("Error: Command sent after process shutdown")
 
     # Launch server, or reconnect to background server
-    def launch(self):
+    def launch(self, return_telepath=False):
 
         if not self.running:
 
             self.running = True
+            self.crash_log = None
             constants.java_check()
 
             # Attempt to update first
@@ -800,10 +893,11 @@ class ServerObject():
                 time.sleep(1)
 
             self.run_data['performance'] = {'ram': 0, 'cpu': 0, 'uptime': '00:00:00:00', 'current-players': []}
+            self.run_data['deadlocked'] = False
 
             # Run data hashes to check for configuration changes post launch
-            self.run_data['properties-hash'] = self.__get_properties_hash__()
-            self.run_data['advanced-hash'] = self.__get_advanced_hash__()
+            self.run_data['properties-hash'] = self._get_properties_hash()
+            self.run_data['advanced-hash'] = self._get_advanced_hash()
             self.run_data['addon-hash'] = None
             if self.addon:
                 self.run_data['addon-hash'] = deepcopy(self.addon._addon_hash)
@@ -1061,6 +1155,7 @@ class ServerObject():
             self.run_data['launch-time'] = dt.now()
 
             constants.server_manager.running_servers[self.name] = self
+            self._start_performance_clock()
 
 
             # Add and delete temp file to update last modified time of server directory
@@ -1095,6 +1190,13 @@ class ServerObject():
                 pass
 
             self.restart_flag = False
+
+        # Return stripped data if telepath session
+        try:
+            if self._is_telepath_session() and return_telepath:
+                return self._sync_attr('run_data')
+        except AttributeError:
+            pass
         return self.run_data
 
     # Kill server and delete running configuration
@@ -1144,6 +1246,11 @@ class ServerObject():
 
 
         if not self.restart_flag:
+
+            # First, copy log for telepath stop data if remote
+            if self._is_telepath_session():
+                self._last_telepath_log = deepcopy(self.run_data['log'])
+
             # Delete log from memory (hopefully)
             for item in self.run_data['log']:
                 self.run_data['log'].remove(item)
@@ -1160,7 +1267,6 @@ class ServerObject():
             except KeyError:
                 pass
 
-            # Delete run data
             self.run_data.clear()
             self.running = False
             del constants.server_manager.running_servers[self.name]
@@ -1189,7 +1295,10 @@ class ServerObject():
     def kill(self):
 
         # Iterate over self and children to find Java process
-        parent = psutil.Process(self.run_data['process'].pid)
+        try:
+            parent = psutil.Process(self.run_data['process'].pid)
+        except KeyError:
+            return False
         sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
 
         # Windows
@@ -1234,6 +1343,7 @@ class ServerObject():
                     if self.run_data['performance']['cpu'] > 0.5:
                         time.sleep(15)
                     message = f"'{self.name}' is deadlocked, please kill it above to continue..."
+                    self.run_data['deadlocked'] = True
                     if message != self.run_data['log'][-1]['text'][2]:
                         self.send_log(message, 'warning')
                     self.run_data['console-panel'].toggle_deadlock(True)
@@ -1410,12 +1520,12 @@ class ServerObject():
             del self
 
     # Checks for modified 'server.properties'
-    def __get_properties_hash__(self):
+    def _get_properties_hash(self):
         # return hash(frozenset(self.server_properties.items()))
         return ''.join(sorted([str(a).strip() for a in self.server_properties.values()]))
 
     # Checks modified advanced settings to check for a restart
-    def __get_advanced_hash__(self):
+    def _get_advanced_hash(self):
         return str(str(self.custom_flags) + str(self.properties_hash) + str(self.ngrok_enabled).lower()[0] + str(self.geyser_enabled).lower()[0] + str(self.dedicated_ram)).strip()
 
 
@@ -1650,7 +1760,8 @@ class ServerObject():
                     return ""
 
     # Retrieves IDE suggestions from internal objects
-    def retrieve_suggestions(self, script_obj):
+    def retrieve_suggestions(self):
+        script_obj = constants.script_obj
 
         # Gets list of functions and attributes
         def iter_attr(obj, a_start=''):
@@ -1688,13 +1799,16 @@ class ServerObject():
         if name and add:
             show_notif = name not in self.viewed_notifs
             if name in self.viewed_notifs:
-                show_notif = viewed != self.viewed_notifs[name] and viewed
+                show_notif = viewed != self.viewed_notifs[name]
 
             if self.taskbar and show_notif:
-                self.taskbar.show_notification(name)
+                try:
+                    self.taskbar.show_notification(name)
+                except AttributeError:
+                    pass
 
             if name in self.viewed_notifs:
-                if not self.viewed_notifs[name]:
+                if viewed:
                     self.viewed_notifs[name] = viewed
             else:
                 self.viewed_notifs[name] = viewed
@@ -1712,8 +1826,11 @@ class ViewObject():
 
     def __init__(self, server_name: str):
 
+        self._telepath_data = None
         self.name = server_name
+        self._view_name = server_name
         self.running = self.name in constants.server_manager.running_servers.keys()
+        self.server_icon = constants.server_path(self.name, 'server-icon.png')
 
         if self.running:
             self.run_data = {'network': constants.server_manager.running_servers[self.name].run_data['network']}
@@ -1758,21 +1875,77 @@ class ViewObject():
         self.last_modified = os.path.getmtime(self.server_path)
 
 
+# Loads remote server data locally for a ViewClass in the Server Manager screen
+class RemoteViewObject():
+    def _is_favorite(self):
+        try:
+            if self.name in self._telepath_data['added-servers']:
+                return self._telepath_data['added-servers'][self.name]['favorite']
+        except KeyError:
+            pass
+        return False
+
+    def toggle_favorite(self):
+        if self.name not in self._telepath_data['added-servers']:
+            self._telepath_data['added-servers'][self.name] = {}
+        self._telepath_data['added-servers'][self.name]['favorite'] = not self.favorite
+        self.favorite = not self.favorite
+        constants.server_manager.write_telepath_servers(self._telepath_data)
+
+    def __init__(self, instance_data: dict, server_data: dict):
+        for k, v in server_data.items():
+            setattr(self, k, v)
+
+        self._telepath_data = instance_data
+
+        # Set display name
+        if self._telepath_data['nickname']:
+            self._telepath_data['display-name'] = self._telepath_data['nickname']
+        else:
+            self._telepath_data['display-name'] = self._telepath_data['host']
+        self._view_name = f"{self._telepath_data['display-name']}/{server_data['name']}"
+
+        self.favorite = self._is_favorite()
+
+
 # Houses all server information
 class ServerManager():
 
     def __init__(self):
+        self.telepath_servers = {}
+        self.telepath_updates = {}
+        self.online_telepath_servers = []
+
         self.server_list = create_server_list()
         self.current_server = None
+        self.remote_server = None
         self.running_servers = {}
+
+        # Load telepath servers
+        self.load_telepath_servers()
+
         print("[INFO] [auto-mcs] Server Manager initialized")
+
+    def _init_telepathy(self, telepath_data: dict):
+        self.current_server = telepath.RemoteServerObject(telepath_data)
+        return self.current_server
 
     # Refreshes self.server_list with current info
     def refresh_list(self):
-        self.server_list = create_server_list()
+        self.server_list = create_server_list(self.load_telepath_servers())
 
     # Sets self.current_server to selected ServerObject
     def open_server(self, name):
+        try:
+            if self.remote_server.name == name:
+                self.current_server = self.remote_server
+                if constants.debug:
+                    print(vars(self.current_server))
+                return self.current_server
+        except AttributeError:
+            pass
+
+
         if self.current_server:
             crash_info = (self.current_server.name, self.current_server.crash_log)
         else:
@@ -1794,15 +1967,130 @@ class ServerManager():
 
         return self.current_server
 
+    # Sets self.remote_server to selected ServerObject
+    def open_remote_server(self, name):
+        try:
+            if self.current_server.name == name:
+                self.remote_server = self.current_server
+
+                if constants.debug:
+                    print(vars(self.remote_server))
+
+                return None
+
+        except AttributeError:
+            pass
+
+
+        if self.remote_server:
+            crash_info = (self.remote_server.name, self.remote_server.crash_log)
+        else:
+            crash_info = (None, None)
+
+        del self.remote_server
+        self.remote_server = None
+
+        # Check if server is running
+        if name in self.running_servers.keys():
+            self.remote_server = self.running_servers[name]
+        else:
+            self.remote_server = ServerObject(name)
+            if crash_info[0] == name:
+                self.remote_server.crash_log = crash_info[1]
+
+        if constants.debug:
+            print(vars(self.remote_server))
+
+        return bool(self.remote_server)
+
     # Reloads self.current_server
     def reload_server(self):
         if self.current_server:
             return self.open_server(self.current_server.name)
 
+    # Loads servers from "telepath.json" in Servers directory
+    def load_telepath_servers(self):
+        # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
+        if os.path.exists(constants.telepathFile):
+            with open(constants.telepathFile, 'r') as f:
+                try:
+                    self.telepath_servers = json.loads(f.read())
+                except json.decoder.JSONDecodeError:
+                    pass
+
+        return self.telepath_servers
+
+    # Checks which servers are alive
+    def check_telepath_servers(self):
+        new_server_list = {}
+        for host, data in self.telepath_servers.items():
+            url = f'http://{host}:{data["port"]}/telepath/check_status'
+            try:
+                # Check if remote server is online
+                if requests.get(url, timeout=1).json():
+
+                    # Attempt to log in
+                    login_data = constants.api_manager.login(host, data["port"])
+                    if login_data:
+
+                        # Update values if host exists
+                        if host in data:
+                            for k, v in login_data.items():
+                                if host in data and v:
+                                    data[host][k] = v
+
+                        # Otherwise, set the whole thing
+                        data[host] = login_data
+
+                        new_server_list[host] = constants.deepcopy(data)
+            except:
+                pass
+
+        # Add a discovery endpoint at some point here, and only return active servers
+        self.online_telepath_servers = new_server_list
+        return new_server_list
+
+    def write_telepath_servers(self, instance=None):
+        self.telepath_servers = self.load_telepath_servers()
+        if instance:
+            self.telepath_servers[instance['host']] = instance
+            del instance['host']
+        constants.folder_check(constants.telepathDir)
+        with open(constants.telepathFile, 'w+') as f:
+            f.write(json.dumps(self.telepath_servers))
+        return self.telepath_servers
+
+    def add_telepath_server(self, instance: dict):
+        if not instance['nickname']:
+            instance['nickname'] = constants.format_nickname(instance['hostname'])
+
+        self.telepath_servers[instance['host']] = instance
+        self.write_telepath_servers()
+
+    # Retrieves remote update list
+    def reload_telepath_updates(self, host_data=None):
+        # Load remote update list
+        if host_data:
+            self.telepath_updates[host_data['host']] = constants.get_remote_var('update_list', host_data)
+
+        else:
+            for host, instance in self.telepath_servers.items():
+                host_data = {'host': host, 'port': instance['port']}
+                self.telepath_updates[host] = constants.get_remote_var('update_list', host_data)
+
+    # Returns and updates remote update list
+    def get_telepath_update(self, host_data: dict, server_name: str):
+        self.reload_telepath_updates(host_data)
+        if host_data['host'] not in self.telepath_updates:
+            self.telepath_updates[host_data['host']] = {}
+        if server_name in self.telepath_updates[host_data['host']]:
+            return self.telepath_updates[host_data['host']][server_name]
+        return {}
+
 # --------------------------------------------- General Functions ------------------------------------------------------
 
 # Generates sorted dict of server information for menu
-def create_server_list():
+def create_server_list(remote_data=None):
 
     final_list = []
     normal_list = []
@@ -1818,6 +2106,40 @@ def create_server_list():
 
     with ThreadPoolExecutor(max_workers=10) as pool:
         pool.map(grab_terse_props, constants.generate_server_list())
+
+
+    # If remote servers are specified, grab them all with an API request
+    if remote_data:
+        for host, instance in remote_data.items():
+            instance['host'] = host
+            try:
+                remote_servers = constants.api_manager.request(
+                    endpoint='/main/create_server_list',
+                    host=instance['host'],
+                    port=instance['port'],
+                    timeout=0.5
+                )
+
+                def process_remote_props(server_data):
+                    remote_object = RemoteViewObject(instance, server_data)
+                    if remote_object.favorite:
+                        favorite_list.append(remote_object)
+                    else:
+                        normal_list.append(remote_object)
+
+                try:
+                    # for s in remote_servers:
+                    #     process_remote_props(s)
+                    with ThreadPoolExecutor(max_workers=10) as pool:
+                        pool.map(process_remote_props, remote_servers)
+                except TypeError:
+                    continue
+
+            # Don't load server if it can't be found
+            except requests.exceptions.ConnectionError:
+                pass
+            except requests.exceptions.ReadTimeout:
+                pass
 
 
     normal_list = sorted(normal_list, key=lambda x: x.last_modified, reverse=True)

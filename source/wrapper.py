@@ -28,18 +28,19 @@ if __name__ == '__main__':
 
     # Import constants and set variables
     import constants
+    import telepath
 
-
-    # Initialize Tk before Kivy due to a bug with SDL2
-    if constants.os_name == 'macos':
-        import tkinter as tk
-        init_window = tk.Tk()
-        init_window.withdraw()
-
+    # Open devnull to stdout on Windows
+    if constants.os_name == 'windows' and constants.app_compiled:
+        sys.stdout = open(os.devnull, 'w')
 
     constants.launch_path = sys.executable if constants.app_compiled else __file__
     try:
         constants.username = constants.run_proc('whoami', True).split('\\')[-1].strip()
+    except:
+        pass
+    try:
+        constants.hostname = constants.run_proc('hostname', True).strip()
     except:
         pass
 
@@ -60,14 +61,29 @@ if __name__ == '__main__':
 
 
     # Check for additional arguments
+    reset_config = False
     try:
         parser = argparse.ArgumentParser(description='CLI options for auto-mcs')
-        parser.add_argument('-d', '--debug', default='',help='execute auto-mcs with verbose console logging', action='store_true')
+        parser.add_argument('-d', '--debug', default='', help='execute auto-mcs with verbose console logging', action='store_true')
         parser.add_argument('-l', '--launch', type=str, default='', help='specify a server name (or list of server names) to launch automatically', metavar='"Server 1, Server 2"')
+        parser.add_argument('-s', '--headless', default='', help='launch without initializing the UI and enable the Telepath API', action='store_true')
+        parser.add_argument('-r', '--reset', default='', help='reset global configuration file before launch', action='store_true')
         args = parser.parse_args()
 
         # Check for debug mode
         constants.debug = args.debug
+        constants.headless = args.headless
+        reset_config = args.reset
+
+        # Force headless if display is not set
+        if constants.os_name == 'linux' and 'DISPLAY' not in os.environ:
+            constants.headless = True
+
+        # Close splash if headless & compiled
+        if constants.app_compiled and constants.headless and constants.os_name == 'windows':
+            import pyi_splash
+            pyi_splash.close()
+
 
         # Check for auto-start
         if args.launch:
@@ -84,7 +100,6 @@ if __name__ == '__main__':
     except AttributeError:
         if constants.debug:
             print("argparse error: failed to process commandline arguments")
-
 
 
     # Check if application is already open (Unless running in Docker)
@@ -117,6 +132,15 @@ if __name__ == '__main__':
                 sys.exit(10)
 
 
+
+    # Initialize Tk before Kivy due to a bug with SDL2
+    if constants.os_name == 'macos' and not constants.headless:
+        import tkinter as tk
+        init_window = tk.Tk()
+        init_window.withdraw()
+
+
+
     # Get default system language
     try:
         if constants.os_name == 'macos':
@@ -128,10 +152,13 @@ if __name__ == '__main__':
             system_locale = system_locale.split('_')[0]
         for v in constants.available_locales.values():
             if system_locale.startswith(v['code']):
-                constants.locale = v['code']
+                if not constants.app_config.locale:
+                    constants.app_config.locale = v['code']
                 break
     except Exception as e:
         print(f'Failed to determine locale: {e}')
+    if not constants.app_config.locale:
+        constants.app_config.locale = 'en'
 
 
     import main
@@ -142,24 +169,30 @@ if __name__ == '__main__':
     crash = None
 
 
-    # Get global configuration
-    if os.path.exists(constants.global_conf):
-        try:
-            with open(constants.global_conf, 'r') as f:
-                file_contents = constants.json.loads(f.read())
-                constants.geometry = file_contents['geometry']
-                constants.fullscreen = file_contents['fullscreen']
-                constants.locale = file_contents['locale']
-                constants.auto_update = file_contents['auto-update']
-        except:
-            pass
+    # Delete configuration if flag is set
+    if reset_config:
+        constants.app_config.reset()
 
 
     # Functions
+    def cleanup_on_close():
+        constants.api_manager.stop()
+        constants.api_manager.close_sessions()
+
+        # Delete live images/temp files on close
+        for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
+            try:
+                os.remove(img)
+            except OSError:
+                pass
+        if not update_log or not os.path.exists(update_log):
+            constants.safe_delete(constants.tempDir)
+
     def app_crash(exception):
         import crashmgr
         log = crashmgr.generate_log(exception)
-        crashmgr.launch_window(*log)
+        if not constants.headless:
+            crashmgr.launch_window(*log)
 
 
     # Main wrapper
@@ -169,6 +202,12 @@ if __name__ == '__main__':
         # Check for updates
         constants.check_app_updates()
         constants.search_manager = constants.SearchManager()
+
+        # Try to log into telepath servers automatically
+        if os.path.exists(constants.telepathFile):
+            while not constants.server_manager:
+                time.sleep(0.1)
+            constants.server_manager.check_telepath_servers()
 
         def background_launch(func, *a):
             global exitApp, crash
@@ -194,6 +233,7 @@ if __name__ == '__main__':
         background_launch(constants.check_data_cache)
         background_launch(constants.search_manager.cache_pages)
 
+
         # Update variables in the background
         connect_counter = 0
         while True:
@@ -215,7 +255,6 @@ if __name__ == '__main__':
 
                 time.sleep(1)
 
-
     def foreground():
         global exitApp, crash
 
@@ -233,6 +272,7 @@ if __name__ == '__main__':
             exitApp = True
 
             # Use crash handler when app is compiled
+            cleanup_on_close()
             if crash and constants.app_compiled:
 
                 # Destroy init window if macOS
@@ -243,7 +283,23 @@ if __name__ == '__main__':
 
             # Normal Python behavior when testing
             if not constants.app_compiled:
+                cleanup_on_close()
                 raise e
+
+        # Destroy init window if macOS
+        cleanup_on_close()
+        if constants.os_name == 'macos' and not constants.headless and not crash:
+            init_window.destroy()
+            raise SystemExit()
+
+
+    # Launch API before UI
+    # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
+    constants.api_manager = telepath.TelepathManager()
+    config = constants.app_config
+    if config.telepath_settings['enable-api'] or constants.headless:
+        constants.api_manager.update_config(config.telepath_settings['api-host'], config.telepath_settings['api-port'])
+        constants.api_manager.start()
 
 
     # Launch/threading logic
@@ -253,13 +309,3 @@ if __name__ == '__main__':
     b.start()
     foreground()
     b.join()
-
-
-    # Delete live images/temp files on close
-    for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
-        try:
-            os.remove(img)
-        except OSError:
-            pass
-    if not update_log or not os.path.exists(update_log):
-        constants.safe_delete(constants.tempDir)

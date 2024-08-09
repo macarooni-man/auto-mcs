@@ -2,13 +2,13 @@ from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
 from random import randrange, choices
 from difflib import SequenceMatcher
-from urllib.request import Request
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 from platform import system
 from threading import Timer
 from copy import deepcopy
 from pathlib import Path
+from munch import Munch
 from glob import glob
 from PIL import Image
 from nbt import nbt
@@ -23,7 +23,6 @@ import datetime
 import tarfile
 import zipfile
 import hashlib
-import urllib
 import string
 import psutil
 import socket
@@ -41,16 +40,16 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.1.2"
+app_version = "2.2"
 ams_version = "1.2.1"
+telepath_version = "0.8.6"
 app_title = "auto-mcs"
+
 dev_version = False
-window_size = (850, 850)
 refresh_rate = 60
 anim_speed = 1
-fullscreen = False
 last_window = {}
-geometry = {}
+window_size = (850, 850)
 project_link = "https://github.com/macarooni-man/auto-mcs"
 website = "https://auto-mcs.com"
 update_data = {
@@ -61,7 +60,6 @@ update_data = {
     "reboot-msg": [],
     "auto-show": True
 }
-auto_update = True
 app_online = False
 app_latest = True
 app_loaded = False
@@ -69,8 +67,8 @@ version_loading = False
 screen_tree = []
 back_clicked = False
 session_splash = ''
-ignore_close = False
 boot_launches = []
+
 
 # Global debug mode and app_compiled, set debug to false before release
 debug = False
@@ -161,22 +159,31 @@ applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' els
 
 saveFolder = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' else f"{home}/Library/Application Support/minecraft/saves"
 downDir = os.path.join(applicationFolder, 'Downloads')
+uploadDir = os.path.join(applicationFolder, 'Uploads')
 backupFolder = os.path.join(applicationFolder, 'Backups')
 userDownloads = os.path.join(home, 'Downloads')
 serverDir = os.path.join(applicationFolder, 'Servers')
+toolDir = os.path.join(applicationFolder, 'Tools')
+scriptDir = os.path.join(toolDir, 'amscript')
 
 tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
 cacheDir = os.path.join(applicationFolder, 'Cache')
 configDir = os.path.join(applicationFolder, 'Config')
-scriptDir = os.path.join(applicationFolder, 'Tools', 'amscript')
-javaDir = os.path.join(applicationFolder, 'Tools', 'java')
+javaDir = os.path.join(toolDir, 'java')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
-global_conf = os.path.join(configDir, 'app-config.json')
+
+telepathDir = os.path.join(toolDir, 'telepath')
+telepathFile = os.path.join(telepathDir, 'telepath-servers.json')
+telepathSecrets = os.path.join(telepathDir, 'telepath-secrets')
+telepathScriptDir = os.path.join(scriptDir, 'telepath-temp')
+
 username = ''
+hostname = ''
 
 server_ini = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'
 command_tmp = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'
+script_obj = None
 
 
 # App/Assets folder
@@ -187,6 +194,42 @@ if hasattr(sys, '_MEIPASS'):
 else:
     executable_folder = os.path.abspath(".")
     gui_assets = os.path.join(executable_folder, 'gui-assets')
+
+
+# API stuff
+def get_private_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0)
+    try:
+        # doesn't even have to be reachable
+        s.connect(('10.254.254.254', 1))
+        return s.getsockname()[0]
+    finally:
+        s.close()
+def sync_attr(self, name):
+    if name != '__all__':
+        return getattr(self, name)
+    else:
+        blacklist = ['addon', 'backup', 'acl', 'script_manager', 'script_object', 'run_data', 'taskbar']
+        def allow(x):
+            return ((not callable(getattr(self, x))) and (str(x) not in blacklist) and (not str(x).endswith('__')))
+        return {a: getattr(self, a) for a in dir(self) if allow(a)}
+api_manager = None
+headless = False
+
+# Prevent app from closing during critical operations
+ignore_close = False
+telepath_banner = None
+telepath_pair = None
+telepath_disconnect = None
+def allow_close(allow: bool, banner=''):
+    global ignore_close
+    ignore_close = not allow
+
+    if banner and telepath_banner and app_config.telepath_settings['show-banners']:
+        telepath_banner(banner, allow)
+
+
 
 
 # SSL crap
@@ -225,12 +268,13 @@ max_memory = int(round(total_ram - (total_ram / 4)))
 # Replacement for os.system to prevent CMD flashing
 def run_proc(cmd, return_text=False):
     if return_text:
-        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
+        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         if debug:
             print(f'{cmd}: returned exit code {result.returncode}')
         return result.stdout.decode('utf-8', errors='ignore')
     else:
-        return_code = subprocess.call(cmd, shell=True)
+        kwargs = {'stdout': subprocess.DEVNULL, 'stderr': subprocess.DEVNULL} if headless else {}
+        return_code = subprocess.call(cmd, shell=True, **kwargs)
         if debug:
             print(f'{cmd}: returned exit code {return_code}')
         return return_code
@@ -297,7 +341,6 @@ def get_repo_scripts():
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
 # Functions and data for translation
-locale = 'en'
 locale_file = os.path.join(executable_folder, 'locales.json')
 locale_data = {}
 if os.path.isfile(locale_file):
@@ -327,14 +370,14 @@ available_locales = {
 }
 def get_locale_string(english=False, *a):
     for k, v in available_locales.items():
-        if locale in v.values():
+        if app_config.locale in v.values():
             return f'{k if english else v["name"]} ({v["code"]})'
 
 def translate(text: str):
-    global locale_data, locale
+    global locale_data, app_config
 
     # Ignore if text is blank, or locale is set to english
-    if not text.strip() or locale.startswith('en'):
+    if not text.strip() or app_config.locale.startswith('en'):
         return text
 
     # Create translator object
@@ -346,7 +389,7 @@ def translate(text: str):
     # Searches locale_data for string
     def search_data(s, *a):
         try:
-            return locale_data[s.strip().lower()][locale]
+            return locale_data[s.strip().lower()][app_config.locale]
         except KeyError:
             pass
 
@@ -366,7 +409,7 @@ def translate(text: str):
     if not new_text:
         def match_data(s, *a):
             try:
-                return locale_data[s.group(0).strip().lower()][locale]
+                return locale_data[s.group(0).strip().lower()][app_config.locale]
             except KeyError:
                 pass
             return s.group(0)
@@ -392,13 +435,13 @@ def translate(text: str):
 
 
         # Manual overrides
-        if locale == 'es':
+        if app_config.locale == 'es':
             new_text = re.sub('servidor\.properties', 'server.properties', new_text, re.IGNORECASE)
             new_text = re.sub('servidor\.jar', 'server.jar', new_text, re.IGNORECASE)
             new_text = re.sub('control S', 'Administrar', new_text, re.IGNORECASE)
-        if locale == 'it':
+        if app_config.locale == 'it':
             new_text = re.sub(r'ESENTATO', 'ESCI', new_text, re.IGNORECASE)
-        if locale == 'fr':
+        if app_config.locale == 'fr':
             new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, re.IGNORECASE)
 
 
@@ -444,6 +487,9 @@ def translate(text: str):
 def check_free_space():
     free_space = round(disk_usage('/').free / 1048576)
     return free_space > 500
+
+def telepath_busy():
+    return ignore_close and server_manager.remote_server
 
 
 # Retrieves the refresh rate of the display to calculate consistent animation speed
@@ -832,6 +878,78 @@ def cs_download_url(url: str, file_name: str, destination_path: str):
         except Exception as e:
             raise e
 
+# Uploads a file or directory to a telepath session of auto-mcs --> destination path
+def telepath_upload(telepath_data: dict, path: str):
+    if not api_manager:
+        return False
+
+    if os.path.exists(path):
+        is_dir = False
+
+        # If path is a directory, compress to tmp and use the archive instead
+        if os.path.isdir(path):
+            is_dir = True
+            path = create_archive(path, tempDir, 'tar')
+
+        url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/upload_file?is_dir={is_dir}"
+        data = requests.post(url, headers=api_manager._get_headers(telepath_data['host'], True), files={'file': open(path, 'rb')})
+        return data.json()
+
+# Downloads a file to a telepath session --> destination path
+# Whitelist is for restricting downloadable content
+telepath_download_whitelist = {
+    'paths': [serverDir, scriptDir, backupFolder],
+    'names': ['.ams', '.amb', 'server.properties', 'server-icon.png']
+}
+def telepath_download(telepath_data: dict, path: str, destination=downDir, rename=''):
+    if not api_manager:
+        return False
+
+    url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file?file={quote(path)}"
+    data = requests.post(url, headers=api_manager._get_headers(telepath_data['host']), stream=True)
+
+    # Save if the request was successful
+    if data.status_code == 200:
+
+        # File name input validation
+        file_name = os.path.basename(rename if rename else path)
+        if '/' in file_name:
+            file_name = file_name.rsplit('/', 1)[-1]
+        elif '\\' in file_name:
+            file_name = file_name.rsplit('\\', 1)[-1]
+
+        final_path = os.path.join(destination, file_name)
+        folder_check(destination)
+
+        with open(final_path, 'wb') as file:
+            for chunk in data.iter_content(chunk_size=8192):
+                file.write(chunk)
+
+        return final_path
+
+# Delete all files in telepath uploads remotely
+def clear_uploads():
+    safe_delete(uploadDir)
+    return not os.path.exists(uploadDir)
+
+# Gets a variable from this module, remotely if telepath_data is specified
+def get_remote_var(var: str, telepath_data={}):
+    if telepath_data:
+        return api_manager.request(
+            endpoint='/main/get_remote_var',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'var': var}
+        )
+
+    else:
+        try:
+            var = getattr(sys.modules[__name__], var)
+        except:
+            var = None
+        return var
+
+
 # Removes invalid characters from a filename
 def sanitize_name(value, addon=False):
 
@@ -842,6 +960,20 @@ def sanitize_name(value, addon=False):
     value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
     value = re.sub(r'[^\'\w\s-]', '', value)
     return re.sub(r'[-\s]+', '-', value).strip('-_')
+
+# Removes invalid characters for a telepath nickname
+def format_nickname(nickname):
+    formatted = re.sub('[^a-zA-Z0-9 _().-]', '', nickname.lower())
+    formatted = re.sub(r'[\s-]+', '-', formatted)
+
+    # Remove leading and trailing hyphens
+    formatted = formatted.strip('-')
+
+    # If the length of the string is greater than 20 characters
+    if len(formatted) > 20 and '-' in formatted:
+        formatted = formatted.split('-', 1)[0]
+
+    return formatted
 
 # Comparison tool for Minecraft version strings
 def version_check(version_a: str, comparator: str, version_b: str): # Comparator can be '>', '>=', '<', '<=', '=='
@@ -1041,15 +1173,30 @@ def folder_check(directory: str):
             print(f'"{directory}" already exists')
 
 
-# Open folder in default file browser
+# Open folder in default file browser, and highlight if file is passed
 def open_folder(directory: str):
     try:
-        if os_name == 'linux':
-            subprocess.Popen(['xdg-open', directory])
-        elif os_name == 'macos':
-            subprocess.Popen(['open', directory])
-        elif os_name == 'windows':
-            subprocess.Popen(['explorer', directory])
+
+        # Open directory, and highlight a file
+        if os.path.isfile(directory):
+            if os_name == 'linux':
+                subprocess.Popen([
+                    'dbus-send', '--session', '--print-reply', '--dest=org.freedesktop.FileManager1', '--type=method_call',
+                    f'/org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"file://{directory}"', 'string:""'
+                ])
+            elif os_name == 'macos':
+                subprocess.Popen(['open', '-R', directory])
+            elif os_name == 'windows':
+                subprocess.Popen(['explorer', '/select,', directory])
+
+        # Otherwise, just open a directory
+        else:
+                if os_name == 'linux':
+                    subprocess.Popen(['xdg-open', directory])
+                elif os_name == 'macos':
+                    subprocess.Popen(['open', directory])
+                elif os_name == 'windows':
+                    subprocess.Popen(['explorer', directory])
 
     except Exception as e:
         if debug:
@@ -1075,10 +1222,10 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
 
     try:
         if archive_file.endswith("tar.gz"):
-            archive = tarfile.open(archive_file, "r:gz", compresslevel=6)
+            archive = tarfile.open(archive_file, "r:gz")
             archive_type = "tar"
         elif archive_file.endswith("tar"):
-            archive = tarfile.open(archive_file, "r:", compresslevel=6)
+            archive = tarfile.open(archive_file, "r:")
             archive_type = "tar"
         elif archive_file.endswith("zip") or archive_file.endswith("mrpack"):
             archive = zipfile.ZipFile(archive_file, 'r')
@@ -1157,6 +1304,62 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
     except Exception as e:
         print(f"Something went wrong extracting '{archive_file}': {e}")
 
+    if archive:
+        archive.close()
+
+
+# Create an archive
+def create_archive(file_path: str, export_path: str, archive_type='tar'):
+    file_name = os.path.basename(file_path)
+    archive_name = f'{file_name}.{archive_type}'
+    final_path = os.path.join(export_path, archive_name)
+
+    if debug:
+        print(f"Compressing '{file_path}' to '{export_path}'...")
+
+    folder_check(export_path)
+
+    # Create a .tar archive
+    if archive_type == 'tar':
+        try:
+            rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL)
+            use_tar = rc == 0
+
+        except Exception as e:
+            if debug:
+                print(e)
+            use_tar = False
+
+        # Use tar command if available
+        if use_tar:
+            run_proc(f'tar -C \"{os.path.dirname(file_path)}\" -cvf \"{final_path}\" \"{file_name}\"')
+
+        # Oherwise, use the Python implementation
+        else:
+            with tarfile.open(final_path, "w", compresslevel=6) as tar_file:
+                # Use glob for when an asterisk is used
+                for file in glob(file_path):
+                    tar_file.add(file, os.path.basename(file))
+
+    # Create a .zip archive
+    elif archive_type == 'zip':
+        with zipfile.ZipFile(final_path, "w", compresslevel=6) as zip_file:
+            # Use glob for when an asterisk is used
+            for file in glob(file_path):
+                zip_file.write(file, os.path.basename(file))
+
+    # Return file path if it exists
+    if os.path.exists(final_path):
+
+        if debug:
+            print(f"Compressed '{file_path}' to '{export_path}'")
+
+        return final_path
+
+    else:
+        print(f"Something went wrong compressing '{file_path}'")
+
+
 
 # Check if root is a folder instead of files, and move sub-folders to destination
 def move_files_root(source, destination=None):
@@ -1178,12 +1381,27 @@ def move_files_root(source, destination=None):
 
 # Download file from URL to directory
 def download_url(url: str, file_name: str, output_path: str, progress_func=None):
-    opener = urllib.request.build_opener()
-    opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-    urllib.request.install_opener(opener)
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(url, headers=headers, stream=True)
+    response.raise_for_status()
+
     file_path = os.path.join(output_path, file_name)
     folder_check(output_path)
-    urllib.request.urlretrieve(url, filename=file_path, reporthook=progress_func)
+
+    with open(file_path, 'wb') as file:
+        total_length = response.headers.get('content-length')
+        if total_length is None:  # no content length header
+            file.write(response.content)
+            if progress_func:
+                progress_func(1, 1, 1)
+        else:
+            total_length = int(total_length)
+            chunk_size = 8192
+            for chunk, data in enumerate(response.iter_content(chunk_size=chunk_size), 0):
+                file.write(data)
+                if progress_func:
+                    progress_func(chunk, chunk_size, total_length)
+
     if os.path.isfile(file_path):
         return file_path
 
@@ -1200,7 +1418,7 @@ def safe_delete(directory: str):
         print(f"Could not delete '{directory}'")
 
 
-# Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads'
+# Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads' and '.auto-mcs\Uploads'
 def cleanup_old_files():
     os_temp_folder = os.path.normpath(executable_folder + os.sep + os.pardir)
     for item in glob(os.path.join(os_temp_folder, "*")):
@@ -1213,9 +1431,11 @@ def cleanup_old_files():
                     pass
     safe_delete(os.path.join(os_temp, '.kivy'))
 
-    # Delete downloads folder
+    # Delete temporary files
     safe_delete(downDir)
+    safe_delete(uploadDir)
     safe_delete(tempDir)
+    safe_delete(telepathScriptDir)
 
 
 # Glob to find hidden folders as well
@@ -1630,7 +1850,7 @@ def check_data_cache():
 
 # Random splash message
 def generate_splash(crash=False):
-    global session_splash
+    global session_splash, headless
 
     splashes = ["Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
             "Did you know: you were born on your birthday.", "Okay, I'm here. What are your other two wishes?",
@@ -1654,13 +1874,16 @@ def generate_splash(crash=False):
             "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
             "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
             "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
-            "You can't run away from all your problems…\n            Not when they have ender pearls."]
+            "You can't run away from all your problems…\n            Not when they have ender pearls.", "[!] bite hazard [!]"]
 
     if crash:
         exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
         return f'"{exp}"'
 
-    session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
+    if headless:
+        session_splash = f"“{splashes[randrange(len(splashes))]}”"
+    else:
+        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
 
 
 # Downloads the latest version of auto-mcs if available
@@ -1740,7 +1963,19 @@ def get_checksum(file_path):
 
 
 # Grabs addon_cache if it exists
-def load_addon_cache(write=False):
+def load_addon_cache(write=False, telepath=False):
+    if not telepath and server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/addon/load_addon_cache',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'write': write, 'telepath': True}
+            )
+            return response
+
+
     global addon_cache
     file_name = "addon-db.json"
     file_path = os.path.join(cacheDir, file_name)
@@ -1947,12 +2182,7 @@ def validate_version(server_info: dict):
 
 
             try:
-                req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                urlTest = urllib.request.urlopen(req).getcode()
-
-                if urlTest == 200:
-                    urlValid = True
-
+                if get_url(url, return_code=True) == 200:
                     serverLink = url
 
                     # Upon valid URL
@@ -1965,8 +2195,7 @@ def validate_version(server_info: dict):
                             serverLink = f"https://archive.org/download/minecraft-beta-server-jars/Minecraft%20Beta%20Server%20Jars.zip/Minecraft%20Beta%20Server%20Jars%2FOffical%20Server%20Jars%2F{mcVer}.jar"
 
                         else:
-                            reqs = requests.get(url)
-                            soup = BeautifulSoup(reqs.text, 'html.parser')
+                            soup = get_url(url)
                             urls = []
 
                             for link in soup.find_all('a'):
@@ -2035,6 +2264,7 @@ def new_server_init():
     global new_server_info
     new_server_info = {
         "_hash": gen_rstring(8),
+        '_telepath_data': None,
 
         "name": "",
         "type": "vanilla",
@@ -2077,12 +2307,39 @@ def new_server_init():
 
     }
 
+# Override remote new server configuration
+def push_new_server(server_info: dict, import_info={}):
+    global new_server_info, import_data, server_list_lower
+    new_server_init()
+    if import_info:
+        import_data = import_info
+
+    if server_info:
+        server_info['_telepath_data'] = None
+        new_server_info = server_info
+
+        # Reconstruct ACL manager
+        if 'acl_object' in server_info and server_info['acl_object']:
+            from acl import AclManager
+            acl_mgr = AclManager(server_info['name'])
+            if server_info['acl_object']:
+                for list_type, rules in server_info['acl_object']['rules'].items():
+                    [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
+                new_server_info['acl_object'] = acl_mgr
+
+            # Reconstruct add-ons
+        if 'addon_objects' in server_info and server_info['addon_objects']:
+            addon_dict = deepcopy(server_info['addon_objects'])
+            new_server_info['addon_objects'] = []
+            for addon in addon_dict:
+                new_server_info['addon_objects'].append(addons.AddonWebObject(addon) if addon['__reconstruct__'] == 'AddonWebObject' else addons.get_addon_file(addon['path'], new_server_info))
+
 
 # Generate new server name
-def new_server_name(existing_server=None):
+def new_server_name(existing_server=None, s_list=server_list_lower):
     def iter_name(new_name):
         x = 1
-        while new_name.lower() in server_list_lower:
+        while new_name.lower() in s_list:
             new_name = f'{new_name} ({x})'
             x += 1
         return new_name
@@ -2099,6 +2356,30 @@ modern_pct = 0
 lts_pct = 0
 legacy_pct = 0
 def java_check(progress_func=None):
+
+    # If telepath, check if Java is installed remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/main/java_check',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     global java_executable, modern_pct, lts_pct, legacy_pct
     max_retries = 3
     retries = 0
@@ -2272,6 +2553,29 @@ def java_check(progress_func=None):
 # Downloads jar file from new_server_info, and generates link if it doesn't exist
 def download_jar(progress_func=None, imported=False):
 
+    # If telepath, check if Java is installed remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/download_jar',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'imported': imported}
+        )
+        if progress_func:
+            progress_func(100)
+        return response
+
+
     def hook(a, b, c):
         if progress_func:
             progress_func(round(100 * a * b / c))
@@ -2326,8 +2630,32 @@ def download_jar(progress_func=None, imported=False):
 
 # Iterates through new server addon objects and downloads/installs them to tmpsvr
 hook_lock = False
-def iter_addons(progress_func=None, update=False):
+def iter_addons(progress_func=None, update=False, telepath=False):
     global hook_lock
+
+    # If telepath, update addons remotely
+    if not telepath:
+        telepath_data = None
+        if server_manager.current_server:
+            telepath_data = server_manager.current_server._telepath_data
+
+        try:
+            if not telepath_data and new_server_info['_telepath_data']:
+                telepath_data = new_server_info['_telepath_data']
+        except KeyError:
+            pass
+
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/addon/iter_addons',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'update': update, 'telepath': True}
+            )
+            if progress_func and response:
+                progress_func(100)
+            return response
+
 
     all_addons = deepcopy(new_server_info['addon_objects'])
 
@@ -2380,13 +2708,13 @@ def iter_addons(progress_func=None, update=False):
                 if update:
 
                     # Ignore updates for Geyser and Floodgate because they are already added
-                    if addon_object.author.lower() == 'geysermc':
+                    if addons.is_geyser_addon(addon_object):
                         return True
 
                     addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
                     downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
                     if not downloaded:
-                        disabled_folder = "plugins" if server_type(server_manager.current_server.type) == 'bukkit' else 'mods'
+                        disabled_folder = "plugins" if server_type(new_server_info['type']) == 'bukkit' else 'mods'
                         copy(addon_object.path, os.path.join(tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
 
                     return True
@@ -2424,10 +2752,99 @@ def iter_addons(progress_func=None, update=False):
         progress_func(100)
 
     return True
+def pre_addon_update(telepath=False):
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    if telepath:
+        server_obj = server_manager.remote_server
+
+    # If remote, do this through telepath
+    else:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/addon/pre_addon_update',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'telepath': True}
+            )
+            return response
+
+
+    # Clear folders beforehand
+    safe_delete(tmpsvr)
+    safe_delete(tempDir)
+    safe_delete(downDir)
+
+    # Generate server info for downloading proper add-on versions
+    new_server_init()
+    new_server_info = server_obj.properties_dict()
+    init_update(telepath=True)
+    new_server_info['addon_objects'] = server_obj.addon.return_single_list()
+def post_addon_update(telepath=False):
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    if telepath:
+        server_obj = server_manager.remote_server
+
+    # If remote, do this through telepath
+    else:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/addon/post_addon_update',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'telepath': True}
+            )
+            return response
+
+
+    server_obj.addon.update_required = False
+
+    # Clear items from addon cache to re-cache
+    for addon in server_obj.addon.installed_addons['enabled']:
+        if addon.hash in addon_cache:
+            del addon_cache[addon.hash]
+    load_addon_cache(True)
+
+    # Copy folder to server path and delete tmpsvr
+    new_path = os.path.join(serverDir, new_server_info['name'])
+    copytree(tmpsvr, new_path, dirs_exist_ok=True)
+    safe_delete(tempDir)
+    safe_delete(downDir)
+
+    new_server_info = {}
 
 
 # If Fabric or Forge, install server
 def install_server(progress_func=None, imported=False):
+
+    # If telepath, do this remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/install_server',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'imported': imported}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
 
     # Change directory to tmpsvr
     cwd = get_cwd()
@@ -2501,6 +2918,29 @@ def install_server(progress_func=None, imported=False):
 
 # Configures server via server info in a variety of ways
 def generate_server_files(progress_func=None):
+
+    # If telepath, do all of this remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/generate_server_files',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
 
     time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
     world_name = 'world'
@@ -2640,10 +3080,134 @@ max-world-size=29999984"""
 
         make_update_list()
         return True
+def pre_server_create(telepath=False):
+    global new_server_info, import_data
 
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data and not telepath:
+
+        # Convert ACL object for remote
+        new_info = deepcopy(new_server_info)
+        if new_info['acl_object']:
+            new_info['acl_object'] = new_server_info['acl_object']._to_json()
+            new_info['addon_objects'] = []
+
+        # Convert add-ons to remote
+        for addon in new_server_info['addon_objects']:
+            a = addon._to_json()
+            if 'AddonFileObject' == a['__reconstruct__']:
+                a['path'] = telepath_upload(new_server_info['_telepath_data'], a['path'])['path']
+            new_info['addon_objects'].append(a)
+
+        # Upload world if specified
+        if new_server_info['server_settings']['world'] != 'world':
+            new_path = telepath_upload(telepath_data, new_server_info['server_settings']['world'])['path']
+            new_info['server_settings']['world'] = new_path
+
+        # Copy import remotely if available
+        try:
+            if import_data['path']:
+                import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
+        except KeyError:
+            pass
+
+        api_manager.request(
+            endpoint='/create/push_new_server',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'server_info': new_info, 'import_info': import_data}
+        )
+        response = api_manager.request(
+            endpoint='/create/pre_server_create',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'telepath': True}
+        )
+        return response
+
+
+    # Input validate name to prevent overwriting
+    if import_data['name']:
+        if import_data['name'].lower() in server_list_lower:
+            import_data['name'] = new_server_name(import_data['name'])
+    elif new_server_info['name']:
+        if new_server_info['name'].lower() in server_list_lower:
+            new_server_info['name'] = new_server_name(new_server_info['name'])
+
+    server_manager.current_server = None
+
+    # First, clean out any existing server in temp folder
+    safe_delete(tmpsvr)
+    folder_check(tmpsvr)
+
+    # Report to telepath logger
+    if telepath:
+        prefix = 'Importing: ' if bool('name' in import_data and import_data['name']) else 'Creating: '
+        data = new_server_info if new_server_info['name'] else import_data
+        api_manager.logger._report(f'create.pre_server_create', extra_data=f'{prefix}{data}')
+
+def post_server_create(telepath=False, modpack=False):
+    global new_server_info, import_data
+    return_data = {'name': import_data['name'], 'readme': None}
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data and not telepath:
+        response = api_manager.request(
+            endpoint='/create/post_server_create',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'telepath': True}
+        )
+        return response
+
+    if modpack:
+        server_path = os.path.join(serverDir, import_data['name'])
+        read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
+        if read_me:
+            return_data['readme'] = read_me[0]
+
+    clear_uploads()
+    new_server_info = {}
+    import_data = {}
+    return return_data
 
 # Configures server via server info in a variety of ways (for updates)
 def update_server_files(progress_func=None):
+
+    # If telepath, do all of this remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/update_server_files',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     print(glob(os.path.join(tmpsvr, '*')))
     new_config_path = os.path.join(tmpsvr, server_ini)
 
@@ -2689,17 +3253,119 @@ def update_server_files(progress_func=None):
             run_proc(f"attrib +H \"{os.path.join(new_path, server_ini)}\"")
 
         return True
+def pre_server_update(telepath=False):
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    if telepath:
+        server_obj = server_manager.remote_server
+
+    # If remote, do this through telepath
+    else:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/create/pre_server_update',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'telepath': True}
+            )
+            return response
+
+
+    # First, clean out any existing server in temp folder
+    safe_delete(tmpsvr)
+
+    # Copy over existing server and remove the files which will be replaced
+    copytree(server_obj.server_path, tmpsvr)
+    for jar in glob(os.path.join(tmpsvr, '*.jar')):
+        os.remove(jar)
+
+    safe_delete(os.path.join(tmpsvr, 'addons'))
+    safe_delete(os.path.join(tmpsvr, 'disabled-addons'))
+    safe_delete(os.path.join(tmpsvr, 'mods'))
+    safe_delete(os.path.join(tmpsvr, 'disabled-mods'))
+
+    # Delete EULA.txt
+    def delete_eula(eula_path):
+        if os.path.exists(eula_path):
+            os.remove(eula_path)
+
+    delete_eula(os.path.join(tmpsvr, 'eula.txt'))
+    delete_eula(os.path.join(tmpsvr, 'EULA.txt'))
+    delete_eula(os.path.join(tmpsvr, 'EULA.TXT'))
+
+    # Report to telepath logger
+    if telepath:
+        data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
+        api_manager.logger._report(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
+
+def post_server_update(telepath=False):
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    if telepath:
+        server_obj = server_manager.remote_server
+
+    # If remote, do this through telepath
+    else:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/create/post_server_update',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'telepath': True}
+            )
+            return response
+
+    make_update_list()
+    server_obj._view_notif('add-ons', False)
+    server_obj._view_notif('settings', viewed=new_server_info['version'])
+
+    clear_uploads()
+    new_server_info = {}
 
 
 # Create initial backup of new server
 # For existing servers, use server_manager.current_server.backup.save()
 def create_backup(import_server=False, *args):
+
+    # If telepath, check if Java is installed remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/create_backup',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'import_server': import_server}
+        )
+        return response
+
+
     backup.BackupManager(new_server_info['name'] if not import_server else import_data['name']).save()
     return True
 
 
 # Restore backup and track progress for ServerBackupRestoreProgressScreen
 def restore_server(backup_obj: backup.BackupObject, progress_func=None):
+
+    # Restore a remote backup
+    if 'RemoteBackupObject' in backup_obj.__class__.__name__:
+        success = server_manager.current_server.backup.restore(backup_obj)
+        if progress_func:
+            progress_func(100)
+        return success
+
 
     # Get file count of backup
     total_files = 0
@@ -2744,6 +3410,27 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 # Figures out type and version of server. Returns information to import_data dict
 # There will be issues importing 1.17.0 bukkit derivatives due to Java 16 requirement
 def scan_import(bkup_file=False, progress_func=None, *args):
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    print(telepath_data, import_data)
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/scan_import',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'bkup_file': bkup_file}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     name = import_data['name']
     path = import_data['path']
 
@@ -3134,6 +3821,25 @@ eula=true"""
 def finalize_import(progress_func=None, *args):
     global import_data
 
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/finalize_import',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     if import_data['name']:
 
         # Copy folder to server path and delete tmpsvr
@@ -3217,6 +3923,27 @@ eula=true"""
 # Imports a modpack from a .zip file
 def scan_modpack(update=False, progress_func=None):
     global import_data
+
+    telepath_data = None
+    if server_manager.current_server and update:
+        telepath_data = server_manager.current_server._telepath_data
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/scan_modpack',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'update': update}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
 
     # First, download modpack if it's a URL
     try:
@@ -3597,6 +4324,28 @@ def scan_modpack(update=False, progress_func=None):
 def finalize_modpack(update=False, progress_func=None, *args):
     global import_data
 
+    telepath_data = None
+    if server_manager.current_server and update:
+        telepath_data = server_manager.current_server._telepath_data
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/finalize_modpack',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'update': update}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
+
     test_server = os.path.join(tempDir, 'importtest')
 
     if import_data['name'] and os.path.exists(test_server):
@@ -3744,10 +4493,12 @@ eula=true"""
             return True
 
 
-
 # Generates new information for a server update
-def init_update():
-    server_obj = server_manager.current_server
+def init_update(telepath=False):
+    if telepath:
+        server_obj = server_manager.remote_server
+    else:
+        server_obj = server_manager.current_server
     new_server_info['name'] = server_obj.name
 
     # Check for Geyser and chat reporting, and prep addon objects
@@ -3772,8 +4523,62 @@ def init_update():
     new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled
 
 
+# Updates a world in a server
+def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
+    if telepath_data:
+        server_obj = server_manager.remote_server
+
+        # Report to telepath logger
+        api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
+
+    else:
+        server_obj = server_manager.current_server
+
+    # First, save backup
+    server_obj.backup.save()
+
+    # Delete current world
+    world_path = server_path(server_obj.name, server_obj.world)
+    if world_path:
+        def delete_world(w: str):
+            if os.path.exists(w):
+                safe_delete(w)
+
+        delete_world(world_path)
+        delete_world(world_path + "_nether")
+        delete_world(world_path + "_the_end")
+
+    # Copy world to server if one is selected
+    world_name = 'world'
+    if path.strip().lower() != "world":
+        world_name = os.path.basename(path)
+        copytree(path, os.path.join(server_obj.server_path, world_name))
+
+    # Fix level-type
+    if version_check(server_obj.version, '>=', '1.19') and new_type == 'default':
+        new_type = 'normal'
+
+    # Change level-name in 'server.properties' and server_obj.world
+    server_obj.server_properties['level-name'] = world_name
+    server_obj.server_properties['level-type'] = new_type
+    server_obj.server_properties['level-seed'] = new_seed
+
+    server_obj.write_config()
+    server_obj.reload_config()
+
+
 
 # ------------------------------------------------ Server Functions ----------------------------------------------------
+
+
+# Toggles favorite status in Server Manager
+def toggle_favorite(server_name: str):
+    config_file = server_config(server_name)
+    config_file.set('general', 'isFavorite', ('false' if config_file.get('general', 'isFavorite') == 'true' else 'true'))
+    server_config(server_name, config_file)
+
+    return bool(config_file.get('general', 'isFavorite') == 'true')
+
 
 # Returns general server type from specific type
 def server_type(specific_type: str):
@@ -3873,6 +4678,26 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
 
     return config
 
+
+# Reconstruct API dict to a configparser object
+def reconstruct_config(remote_config: dict or configparser.ConfigParser, to_dict=False):
+    if to_dict:
+        if isinstance(remote_config, dict):
+            return remote_config
+        else:
+            return {section: dict(remote_config.items(section)) for section in remote_config.sections()}
+
+    else:
+        config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+        config.optionxform = str
+        for section, values in remote_config.items():
+            if section == 'DEFAULT':
+                continue
+
+            config.add_section(section)
+            for key, value in values.items():
+                config.set(section, key, value)
+    return config
 
 # server.properties function
 # write_object is the dict object returned from this function
@@ -4122,6 +4947,7 @@ def get_modrinth_data(name: str):
 
     return index_data
 
+
 # Return list of every valid server update property in 'applicationFolder'
 def make_update_list():
     global update_list
@@ -4294,9 +5120,9 @@ def get_ngrok_ip(server_name: str):
 
 
 # Check if port is open on host
-def check_port(ip: str, port: int):
+def check_port(ip: str, port: int, timeout=120):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(120)
+    sock.settimeout(timeout)
     result = sock.connect_ex((ip, port))
     return result == 0
 
@@ -4356,14 +5182,7 @@ def get_current_ip(name: str, get_ngrok=False):
 
         # More ip info
         if not private_ip:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(0)
-            try:
-                # doesn't even have to be reachable
-                s.connect(('10.254.254.254', 1))
-                private_ip = s.getsockname()[0]
-            finally:
-                s.close()
+            private_ip = get_private_ip()
 
 
         if not get_ngrok:
@@ -4579,12 +5398,146 @@ def get_player_head(user: str):
         return default_image
 
 
+# Compatibility to cache server icon with telepath
+def get_server_icon(server_name: str, telepath_data: dict):
+    if not (app_online and server_name):
+        return None
+
+    try:
+        name = f"{telepath_data['host'].replace('/', '+')}+{server_name}"
+        icon_cache = os.path.join(cacheDir, 'icons')
+        final_path = os.path.join(icon_cache, name)
+
+        if os.path.exists(final_path):
+            age = abs(datetime.datetime.today().day - datetime.datetime.fromtimestamp(os.stat(final_path).st_mtime).day)
+            if age < 3:
+                return final_path
+            else:
+                os.remove(final_path)
+
+        elif not check_free_space():
+            return None
+
+        folder_check(icon_cache)
+        telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
+
+        if os.path.exists(final_path):
+            return final_path
+        else:
+            return None
+
+    except Exception as e:
+        if debug:
+            print(f"Error retrieving icon for '{server_name}': {e}")
+        return None
+
+
+
+# ---------------------------------------------- Global Config Function ------------------------------------------------
+
+# Handles all operations when writing/reading from global config. Adding attributes changes the config file
+class ConfigManager():
+    def __init__(self):
+        self._path = os.path.join(configDir, 'app-config.json')
+        self._defaults = self._init_defaults()
+        self._data = Munch({})
+
+        # Initialize default values
+        if os.path.exists(applicationFolder):
+            self.load_config()
+
+    # Specify default values
+    @staticmethod
+    def _init_defaults():
+        defaults = Munch({})
+        defaults.fullscreen = False
+        defaults.geometry = {}
+        defaults.auto_update = True
+        defaults.locale = None
+        defaults.telepath_settings = {
+            'enable-api': False,
+            'api-host': "0.0.0.0",
+            'api-port': 7001,
+            'show-banners': True,
+            'id_hash': None
+        }
+        defaults.ide_settings = {
+            'fullscreen': False,
+            'font-size': 15,
+            'geometry': {}
+        }
+        return defaults
+
+    def __setattr__(self, key, value):
+        if key.startswith('_'):
+            super().__setattr__(key, value)
+        elif key not in self._defaults:
+            raise AttributeError(f"'{self.__class__.__name__}' does not support '{key}'")
+        else:
+            self._data[key] = value
+            self.save_config()
+
+    def __getattr__(self, key):
+        if key == '__setstate__':
+            self._data = Munch({})
+            self._path = os.path.join(configDir, 'app-config.json')
+            self._defaults = self._init_defaults()
+            self.load_config()
+
+        if key in self._data:
+
+            # First, fix empty dictionaries
+            if isinstance(self._data[key], dict):
+                for k, v in self._defaults[key].items():
+                    if k not in self._data[key]:
+                        self._data[key][k] = v
+
+            # Then return the value
+            return self._data[key]
+
+        elif key in self._defaults:
+            return self._defaults[key]
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
+
+
+    def load_config(self):
+        if os.path.exists(self._path):
+            with open(self._path, 'r') as file:
+                try:
+                    self._data = json.loads(file.read().replace('ide-settings', 'ide_settings'))
+                    return True
+                except json.decoder.JSONDecodeError:
+                    pass
+
+        print('[INFO] [auto-mcs] Failed to read global configuration, resetting...')
+        self.reset()
+
+    def save_config(self):
+        folder_check(os.path.dirname(self._path))
+        with open(self._path, 'w') as file:
+            json.dump(self._data, file, indent=2)
+
+    def reset(self):
+        if os.path.exists(self._path):
+            os.remove(self._path)
+        self._data = self._defaults.copy()
+        self.save_config()
+
+# Global config manager
+app_config = ConfigManager()
+
 
 # ---------------------------------------------- Global Search Function ------------------------------------------------
 
 # Generates content for all global searches
 class SearchManager():
-    
+
+    def get_server_list(self):
+        if server_manager.server_list:
+            return {s._view_name: s._telepath_data for s in server_manager.server_list}
+        else:
+            return {s: None for s in generate_server_list()}
+
     def __init__(self):
 
         # Used to contain attributes of pages
@@ -4600,8 +5553,8 @@ class SearchManager():
         self.options_tree = {
 
             'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen'}, ['addonpack', 'modpack', 'import modpack']),
-                ScreenObject('Server Manager', 'ServerManagerScreen', generate_server_list),
+                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['addonpack', 'modpack', 'import modpack']),
+                ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
             ],
 
             'CreateServer': [
@@ -4794,8 +5747,14 @@ class SearchManager():
         for screen in screen_list:
             if screen.id == 'ServerManagerScreen':
                 final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, screen.helper_keywords))
-                for server in screen.options():
-                    final_list.append(ServerResult(server, 'Installed server', None))
+                for server, telepath_data in screen.options().items():
+                    if telepath_data:
+                        telepath = deepcopy(telepath_data)
+                        telepath['name'] = server.rsplit('/', 1)[-1]
+                        keywords = [telepath['host'], telepath['nickname'], 'telepath', 'remote', telepath['name']]
+                        final_list.append(ServerResult(server, 'Telepath server', None, keywords, telepath=telepath))
+                    else:
+                        final_list.append(ServerResult(server, 'Installed server', None))
 
             elif (screen.id.startswith('Server') and 'Import' not in screen.id) and server_manager.current_server:
                 keywords = list(screen.options.keys())
@@ -4964,17 +5923,18 @@ class SearchManager():
 
                         # Finally, increase score by pre-existing keyword matches
                         for keyword in obj.keywords:
-                            if keyword in query:
-                                obj.score += 5
+                            if clean_str(keyword) in query:
+                                obj.score += 20
 
                         # Modify values based on object type
-                        if obj.type == 'server' and current_screen == 'ServerManagerScreen':
+                        if obj.type in ['server'] and current_screen == 'ServerManagerScreen':
                             obj.score *= 2
-                        elif obj.type == 'server' and (current_screen.startswith('Server') or current_screen.startswith('CreateServer')):
+                        elif obj.type in ['server'] and (current_screen.startswith('Server') or current_screen.startswith('CreateServer')):
                             obj.score /= 1.5
 
-                    if obj not in match_list[obj.type]:
-                        match_list[obj.type].append(obj)
+                    list_type = obj.type
+                    if obj not in match_list[list_type]:
+                        match_list[list_type].append(obj)
 
 
         # Search through every guide to return relevant information from a query
@@ -5092,12 +6052,17 @@ class GuideResult(SearchObject):
 
 # Search result that matches an installed server
 class ServerResult(SearchObject):
-    def __init__(self, title, subtitle, target, keywords=[], score=0):
+    def __init__(self, title, subtitle, target, keywords=[], score=0, telepath=None):
         super().__init__()
+        self._telepath_data = telepath
         self.type = 'server'
         self.icon = os.path.join(gui_assets, 'icons', 'sm', 'terminal.png')
         self.color = (1, 0.598, 0.9, 1)
-        self.title = title
+
+        if self._telepath_data:
+            self.title = f'[color=#9383A2]{self._telepath_data["display-name"]}/[/color]{self._telepath_data["name"]}'
+        else:
+            self.title = title
         self.subtitle = subtitle
         self.target = target
         self.keywords = keywords

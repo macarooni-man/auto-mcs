@@ -26,6 +26,8 @@ global_acl_file = os.path.join(constants.configDir, "global-acl.json")
 
 # Used to house an ACL rule, stored in AclManager lists
 class AclRule():
+    def _to_json(self):
+        return {k: getattr(self, k) for k in dir(self) if not (k.endswith('__') or callable(getattr(self, k)))}
 
     def set_scope(self, is_global=False):
         self.rule_scope = 'global' if is_global else 'local'
@@ -65,6 +67,12 @@ class AclRule():
 # Server ACL object to house AclRules with manipulative functions
 # self._new_server denotes cached ACL to be written when the server is created with self.write_rules()
 class AclManager():
+    def _to_json(self):
+        final_data = {k: getattr(self, k) for k in dir(self) if not (k.endswith('__') or callable(getattr(self, k)))}
+        final_data['list_items'] = {}
+        final_data['displayed_rule'] = None
+        final_data['rules'] = {k: [i._to_json() for i in v] for k, v in final_data['rules'].items()}
+        return final_data
 
     def __init__(self, server_name: str):
 
@@ -79,6 +87,9 @@ class AclManager():
         self.whitelist_enabled = self._server['whitelist']
         self.displayed_rule = None
 
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return constants.sync_attr(self, name)
 
     # Scrape the server's joined users
     def _get_playerdata(self):
@@ -436,7 +447,7 @@ class AclManager():
     # "Name1, !g Name2, 192.168.1.0/24, !w 10.1.1.2"
     # !g denotes global rule, !w denotes whitelisted IP
     # This function is to be passed from a search bar as it can't remove rules
-    def _process_query(self, search_list: str or list, list_type=None):
+    def _process_query(self, search_list: str or list, list_type=""):
 
         final_list = {'global': [], 'local': []}
         cache_lookup = None
@@ -831,6 +842,8 @@ class AclManager():
         if server_obj.running:
             for player in rule_list:
                 server_obj.silent_command(f'kick {player}{reason}')
+            return True
+        return False
 
     # op_player("BlUe_KAZoo, kchicken, test")
     # "Rule1, Rule2" --> [AclObject1, AclObject2]

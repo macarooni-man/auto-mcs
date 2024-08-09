@@ -28,7 +28,21 @@ else:
 
 
 # Generates crash report
-def generate_log(exception):
+def generate_log(exception, error_info=None):
+
+    # No error info can be provided with a hard crash
+    if error_info:
+        crash_type = 'error'
+        error_info = f'''
+        Error information:
+        
+            {error_info}
+            
+'''
+    else:
+        crash_type = 'fatal'
+        error_info = ''
+
 
     # Remove file paths from exception
     trimmed_exception = []
@@ -94,7 +108,9 @@ def generate_log(exception):
 
 
     General Info:
-
+        
+        Severity:          {crash_type.title()}
+        
         Version:           {constants.app_version} - {formatted_os_name} ({"Docker, " if constants.is_docker else ""}{platform()})
         Online:            {constants.app_online}
         UI Language:       {constants.get_locale_string(True)}
@@ -125,29 +141,29 @@ def generate_log(exception):
     
 
     AME traceback:
-    
+        {'' if not error_info else error_info}
         Exception Summary:
     {textwrap.indent(exception_summary, "        ")}
 
 {textwrap.indent(trimmed_exception, "        ")}"""
 
 
-    file_name = os.path.abspath(os.path.join(log_dir, f"ame-fatal_{time_stamp}.log"))
+    file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
     with open(file_name, "w") as log_file:
         log_file.write(log)
 
     # Remove old logs
     keep = 50
 
-    fileData = {}
-    for file in glob(os.path.join(log_dir, "ame-fatal*.log")):
-        fileData[file] = os.stat(file).st_mtime
+    file_data = {}
+    for file in glob(os.path.join(log_dir, "ame-*.log")):
+        file_data[file] = os.stat(file).st_mtime
 
-    sortedFiles = sorted(fileData.items(), key=itemgetter(1))
+    sorted_files = sorted(file_data.items(), key=itemgetter(1))
 
-    delete = len(sortedFiles) - keep
+    delete = len(sorted_files) - keep
     for x in range(0, delete):
-        os.remove(sortedFiles[x][0])
+        os.remove(sorted_files[x][0])
 
 
     return ame, file_name

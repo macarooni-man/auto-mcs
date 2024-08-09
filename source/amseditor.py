@@ -18,8 +18,8 @@ import pygments.lexer
 import webbrowser
 import functools
 import pygments
+import requests
 import time
-import json
 import os
 import re
 
@@ -325,7 +325,7 @@ def save_window_pos(*args):
 
 
 # Saves script to disk
-def save_script(script_path, *a):
+def save_script(data, script_path, *a):
     global open_frames, currently_open
     script_name = os.path.basename(script_path)
     if script_path in currently_open:
@@ -336,12 +336,24 @@ def save_script(script_path, *a):
             script_contents = script_contents[:-dead_zone]
 
         # print(script_contents)
-
         try:
             with open(script_path, 'w+', encoding='utf-8', errors='ignore') as f:
                 f.write(script_contents)
         except Exception as e:
             print(e)
+
+        # If telepath data, upload and import remotely
+        if data['_telepath_data'] and script_path.startswith(data['telepath_script_dir']):
+            telepath_data = data['_telepath_data']
+            url = f"http://{telepath_data['host']}:{telepath_data['port']}"
+            data = requests.post(f'{url}/main/upload_file?is_dir=False', headers=telepath_data['headers'], files={'file': open(script_path, 'rb')}).json()
+
+            # If the file was uploaded, import the script
+            if 'path' in data:
+                requests.post(f'{url}/ScriptManager/import_script', headers=telepath_data['headers'], json={'script': data['path']})
+
+        # Upload data to remote if telepath
+        # create an endpoint to sync script data with host
 
 
 # Changes font size in editor
@@ -463,17 +475,9 @@ proc ::tabdrag::move {win x y} {
 }"""
 
         # Get window size
-        fullscreen = False
-        geometry = None
-        if os.path.exists(data['global_conf']):
-            try:
-                with open(data['global_conf'], 'r', encoding='utf-8', errors='ignore') as f:
-                    file_contents = json.loads(f.read())
-                    fullscreen = file_contents['ide-settings']['fullscreen']
-                    font_size = file_contents['ide-settings']['font-size']
-                    geometry = file_contents['ide-settings']['geometry']
-            except:
-                pass
+        fullscreen = data['app_config'].ide_settings['fullscreen']
+        font_size = data['app_config'].ide_settings['font-size']
+        geometry = data['app_config'].ide_settings['geometry']
 
         file_icon = os.path.join(data['gui_assets'], "amscript-icon.png")
 
@@ -526,29 +530,12 @@ proc ::tabdrag::move {win x y} {
             autosave()
 
             # Write window size to global config
-            global_conf = {}
-            try:
-                configDir = os.path.dirname(data['global_conf'])
-                if not os.path.exists(configDir):
-                    os.makedirs(configDir)
-                if os.path.exists(data['global_conf']):
-                    with open(data['global_conf'], 'r') as f:
-                        try:
-                            conf = json.loads(f.read())
-                            if conf:
-                                global_conf = conf
-                        except:
-                            pass
-                with open(data['global_conf'], 'w+') as f:
-                    save_window_pos()
-                    global_conf['ide-settings'] = {
-                        'fullscreen': int(window.geometry().split('x')[0]) > (min_size[0] + 400),
-                        'geometry': last_window,
-                        'font-size': font_size
-                    }
-                    f.write(json.dumps(global_conf, indent=2))
-            except:
-                pass
+            save_window_pos()
+            data['app_config'].ide_settings = {
+                'fullscreen': int(window.geometry().split('x')[0]) > (min_size[0] + 400),
+                'geometry': last_window,
+                'font-size': font_size
+            }
             window.destroy()
 
         window.protocol("WM_DELETE_WINDOW", on_closing)
@@ -578,7 +565,7 @@ proc ::tabdrag::move {win x y} {
                 global currently_open, open_frames
 
                 script_path = self.nametowidget(self.tabs()[tab]).path
-                save_script(script_path)
+                save_script(data, script_path)
 
                 currently_open.remove(script_path)
                 del open_frames[os.path.basename(script_path)]
@@ -789,7 +776,7 @@ def launch_window(path: str, data: dict, *a):
 
         root = Frame(padx=0, pady=0, bg=background_color)
         root.path = path
-        root.save = functools.partial(save_script, root.path)
+        root.save = functools.partial(save_script, data, root.path)
 
         def save_current(*a):
             current_tab_index = window.root.index(window.root.select())
@@ -3703,7 +3690,7 @@ if os.name == 'nt':
 #         'app_title': constants.app_title,
 #         'gui_assets': constants.gui_assets,
 #         'background_color': constants.background_color,
-#         'global_conf': constants.global_conf,
+#         'app_config': constants.app_config,
 #         'script_obj': {
 #             'syntax_func': script_obj.is_valid,
 #             'protected': script_obj.protected_variables,

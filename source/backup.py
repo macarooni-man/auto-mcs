@@ -13,7 +13,7 @@ import os
 # server_name, file_path --> BackupObject
 class BackupObject():
 
-    def grab_config(self):
+    def _grab_config(self):
         cwd = constants.get_cwd()
         extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
         constants.folder_check(extract_folder)
@@ -59,7 +59,7 @@ class BackupObject():
         self.build = None
 
         if not no_fetch:
-            self.grab_config()
+            self._grab_config()
 
 
 # Instantiate class with "server_name" (case-sensitive)
@@ -79,6 +79,14 @@ class BackupManager():
             self.latest = None
         self._restore_file = None
 
+        # Add path to download whitelist
+        if self.directory not in constants.telepath_download_whitelist['paths']:
+            constants.telepath_download_whitelist['paths'].append(self.directory)
+
+    # Returns the value of the requested attribute (for remote)
+    def _sync_attr(self, name):
+        return constants.sync_attr(self, name)
+
     # Refreshes self._backup_stats
     def _update_data(self):
         self._server, self._backup_stats = dump_config(self._server['name'])
@@ -91,6 +99,22 @@ class BackupManager():
             self.latest = self.list[0]
         else:
             self.latest = None
+
+        # Add path to download whitelist
+        if self.directory not in constants.telepath_download_whitelist['paths']:
+            constants.telepath_download_whitelist['paths'].append(self.directory)
+
+    # Retrieves data from local back-up file
+    # name --> dict
+    def _retrieve_telepath_backup(self, file_path: str):
+        for backup in self.list:
+            if file_path == backup.path:
+                return backup
+
+    # Retrieves deep scan of all back-up files
+    def return_backup_list(self):
+        self.list = [BackupObject(self._server['name'], file) for file in self._backup_stats['backup-list']]
+        return self.list
 
 
     # Backup functions
@@ -146,7 +170,7 @@ def convert_date(m_time: int or float):
         fmt = constants.fmt_date("%a %#I:%M %p %#m/%#d/%y")
 
     # Translate day
-    if constants.locale != 'en':
+    if constants.app_config.locale != 'en':
         date = dt_obj.strftime(fmt)
         for day in ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']:
             if day.startswith(date[:3]):
@@ -251,6 +275,7 @@ def dump_config(server_name: str, new_server=False):
 
 
 # ---------------------------------------------- Backup Functions ------------------------------------------------------
+
 
 # name --> backup to directory
 def backup_server(name: str, backup_stats=None, ignore_running=False):
@@ -531,6 +556,13 @@ def rename_backups(name: str, new_name: str):
 # Sets maximum backup limit
 # amount: <int> or 'unlimited'
 def set_backup_amount(name: str, amount: int or str):
+
+    # Try to convert to an integer if possible
+    try:
+        amount = int(amount)
+    except:
+        pass
+
     if str(amount) == "unlimited" or isinstance(amount, int):
         config_file = constants.server_config(name)
         config_file.set("bkup", "bkupMax", str(amount))
