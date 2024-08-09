@@ -104,10 +104,10 @@ class ServerObject():
         except:
             self.is_modpack = ''
         try:
-            if self.config_file.get("general", "enableNgrok"):
-                self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
+            if self.config_file.get("general", "enableProxy"):
+                self.proxy_enabled = self.config_file.get("general", "enableProxy").lower() == 'true'
         except:
-            self.ngrok_enabled = False
+            self.proxy_enabled = False
         try:
             if self.config_file.get("general", "enableGeyser"):
                 self.geyser_enabled = self.config_file.get("general", "enableGeyser").lower() == 'true'
@@ -223,13 +223,14 @@ class ServerObject():
     # Returns serialized version of self.run_data for telepath sessions
     def _telepath_run_data(self):
         blacklist = [
-                    'console-panel',
-                    'performance-panel',
-                    'close-hooks',
-                    'process-hooks',
-                    'thread',
-                    'process',
-                    'send-command'
+            'console-panel',
+            'performance-panel',
+            'close-hooks',
+            'process-hooks',
+            'thread',
+            'process',
+            'send-command',
+            'playit-tunnel'
         ]
         new_data = {}
         for k, v in self.run_data.items():
@@ -285,6 +286,12 @@ class ServerObject():
     def _check_object_init(self):
         return {'addon': bool(self.addon), 'backup': bool(self.backup), 'acl': bool(self.backup), 'script_manager': bool(self.script_manager)}
 
+    # Telepath-compatible methods for interacting with the proxy
+    def proxy_installed(self):
+        return constants.playit._check_agent()
+    def install_proxy(self):
+        return constants.playit._install_agent()
+
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
 
@@ -323,10 +330,10 @@ class ServerObject():
         except:
             self.is_modpack = ''
         try:
-            if self.config_file.get("general", "enableNgrok"):
-                self.ngrok_enabled = self.config_file.get("general", "enableNgrok").lower() == 'true'
+            if self.config_file.get("general", "enableProxy"):
+                self.proxy_enabled = self.config_file.get("general", "enableProxy").lower() == 'true'
         except:
-            self.ngrok_enabled = False
+            self.proxy_enabled = False
         try:
             if self.config_file.get("general", "enableGeyser"):
                 self.geyser_enabled = self.config_file.get("general", "enableGeyser").lower() == 'true'
@@ -884,6 +891,7 @@ class ServerObject():
                 self.run_data['console-panel'] = None
                 self.run_data['performance-panel'] = None
                 self.run_data['command-history'] = []
+                self.run_data['playit-tunnel'] = None
             else:
                 self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
 
@@ -903,6 +911,9 @@ class ServerObject():
                 self.run_data['addon-hash'] = deepcopy(self.addon._addon_hash)
             self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
+            # Write Geyser config if it doesn't exist
+            if self.geyser_enabled:
+                constants.write_geyser_config(self)
 
             # Open server script and attempt to launch
             with open(script_path, 'r') as f:
@@ -922,11 +933,20 @@ class ServerObject():
                                 firewall_block = True
 
                 # Check for networking conflicts and current IP
-                if self.ngrok_enabled and constants.app_online:
-                    if not constants.ngrok_ip['ip']:
-                        self.run_data['ngrok'] = Popen(f'"{os.path.join(constants.applicationFolder, "Tools", constants.ngrok_exec)}" tcp {self.port}', shell=True)
+                self.run_data['network'] = constants.get_current_ip(self.name, proxy=self.proxy_enabled)
 
-                self.run_data['network'] = constants.get_current_ip(self.name, get_ngrok=(self.ngrok_enabled and constants.app_online))
+                # Launch playit if proxy is enabled
+                if self.proxy_enabled and constants.app_online and self.proxy_installed():
+                    self.run_data['playit-tunnel'] = constants.playit.start_tunnel(self)
+                    try:
+                        hostname = self.run_data['playit-tunnel'].hostname
+                        self.run_data['network']['address']['ip'] = hostname
+                        self.run_data['network']['public_ip'] = hostname
+                        self.send_log(f"Initialized playit connection '{hostname}'", 'success')
+                    except KeyError:
+                        pass
+
+                # If port was changed, use that instead
                 if self.run_data['network']['original_port']:
                     self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.659, 0.42, 1))})
 
@@ -1256,14 +1276,10 @@ class ServerObject():
                 self.run_data['log'].remove(item)
                 del item
 
-            # Close ngrok if running
+            # Close proxy if running
             try:
-                if self.run_data['ngrok']:
-                    if self.run_data['network']['address']['ip'] == constants.ngrok_ip['ip']:
-                        constants.ngrok_ip = {'name': None, 'ip': None}
-                    self.run_data['ngrok'].kill()
-                    if constants.os_name == 'windows':
-                        Popen("taskkill /f /im \"ngrok-v3.exe\"", shell=False, stdout=False, stderr=False)
+                if self.run_data['playit-tunnel']:
+                    constants.playit.stop_tunnel(self)
             except KeyError:
                 pass
 
@@ -1526,7 +1542,7 @@ class ServerObject():
 
     # Checks modified advanced settings to check for a restart
     def _get_advanced_hash(self):
-        return str(str(self.custom_flags) + str(self.properties_hash) + str(self.ngrok_enabled).lower()[0] + str(self.geyser_enabled).lower()[0] + str(self.dedicated_ram)).strip()
+        return str(str(self.custom_flags) + str(self.properties_hash) + str(self.proxy_enabled).lower()[0] + str(self.geyser_enabled).lower()[0] + str(self.dedicated_ram)).strip()
 
 
     # Attempts to automatically update the server
@@ -1833,9 +1849,11 @@ class ViewObject():
         self.server_icon = constants.server_path(self.name, 'server-icon.png')
 
         if self.running:
-            self.run_data = {'network': constants.server_manager.running_servers[self.name].run_data['network']}
+            server_obj = constants.server_manager.running_servers[self.name]
+            self.run_data = {'network': server_obj.run_data['network']}
+            self.run_data['playit-tunnel'] = server_obj.run_data['playit-tunnel']
         else:
-            self.run_data = []
+            self.run_data = {}
 
 
         # Server files

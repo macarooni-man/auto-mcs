@@ -75,7 +75,6 @@ debug = False
 app_compiled = getattr(sys, 'frozen', False)
 
 public_ip = ""
-ngrok_ip = {'name': None, 'ip': None}
 footer_path = ""
 last_widget = None
 
@@ -231,7 +230,6 @@ def allow_close(allow: bool, banner=''):
 
 
 
-
 # SSL crap
 if os_name == 'linux':
     os.environ['SSL_CERT_DIR'] = executable_folder
@@ -241,17 +239,6 @@ elif os_name == 'macos':
     os.environ['SSL_CERT_DIR'] = os.path.join(executable_folder, 'certifi')
     os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'certifi', 'cacert.pem')
 
-
-# Ngrok info
-ngrok_installed = False
-ngrok_exec = 'ngrok-v3.exe' if os_name == 'windows' else 'ngrok-v3'
-
-# Checks if ngrok is installed (returns bool)
-def check_ngrok():
-    global ngrok_installed
-    ngrok_installed = os.path.exists(os.path.join(applicationFolder, 'Tools', ngrok_exec))
-    return ngrok_installed
-check_ngrok()
 
 
 # Bigboi server manager
@@ -282,17 +269,16 @@ def run_proc(cmd, return_text=False):
 
 
 # Check if running in Docker
-def check_docker():
+def check_docker() -> bool:
     cgroup = Path('/proc/self/cgroup')
     return Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
 is_docker = check_docker()
 
 # Check if OS is ARM
-def check_arm():
-    if os_name != 'windows':
-        return run_proc('uname -m', True).strip() == 'aarch64'
-    else:
-        return run_proc('echo %PROCESSOR_ARCHITECTURE%', True).strip() == 'ARM64'
+def check_arm() -> bool:
+    command = 'echo %PROCESSOR_ARCHITECTURE%' if os_name == 'windows' else 'uname -m'
+    arch = run_proc(command, True).strip()
+    return arch in ['aarch64', 'arm64']
 is_arm = check_arm()
 
 
@@ -420,7 +406,7 @@ def translate(text: str):
     if new_text:
 
         # Escape proper nouns that ignore translation
-        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip')
+        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip', 'Telepath', 'telepath', 'ngrok', 'playit')
         for o in overrides:
             new_key = search_data(o)
             if not new_key:
@@ -3179,7 +3165,7 @@ def post_server_create(telepath=False, modpack=False):
 
     clear_uploads()
     new_server_info = {}
-    import_data = {}
+    import_data = {'name': None, 'path': None}
     return return_data
 
 # Configures server via server info in a variety of ways (for updates)
@@ -4596,7 +4582,7 @@ def server_path(server_name: str, *args):
 
 # auto-mcs.ini config file function
 # write_object is the configparser object returned from this function
-def server_config(server_name: str, write_object=None, config_path=None):
+def server_config(server_name: str, write_object: configparser.ConfigParser = None, config_path: str = None):
     if config_path:
         config_file = os.path.abspath(config_path)
     else:
@@ -4625,9 +4611,20 @@ def server_config(server_name: str, write_object=None, config_path=None):
         config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
         config.optionxform = str
         config.read(config_file)
+        def rename_option(old_name: str, new_name: str):
+            try:
+                if config.get("general", old_name):
+                    config.set("general", new_name, config.get("general", old_name))
+                    config.remove_option("general", old_name)
+            except:
+                pass
+
         if config:
             if config.get('general', 'serverType').lower() not in ['forge', 'paper']:
                 config.remove_option('general', 'serverBuild')
+
+            # Override legacy configuration options
+            rename_option('enableNgrok', 'enableProxy')
 
         return config
 
@@ -4653,7 +4650,7 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
         config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
     except:
         config.set('general', 'enableGeyser', 'false')
-    config.set('general', 'enableNgrok', 'false')
+    config.set('general', 'enableProxy', 'false')
     try:
         config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
     except:
@@ -4698,6 +4695,7 @@ def reconstruct_config(remote_config: dict or configparser.ConfigParser, to_dict
             for key, value in values.items():
                 config.set(section, key, value)
     return config
+
 
 # server.properties function
 # write_object is the dict object returned from this function
@@ -4766,6 +4764,77 @@ def server_properties(server_name: str, write_object=None):
             config = server_properties(server_name)
 
         return config
+
+
+# Creates a new Geyser config with auto-mcs data
+def write_geyser_config(server_obj: object, reset=False) -> bool:
+    config_name = 'config.yml'
+
+    if server_obj.type in ['vanilla', 'forge']:
+        return False
+    if server_obj.type == 'fabric':
+        config_path = os.path.join(server_obj.server_path, 'config', 'Geyser-Fabric')
+    else:
+        config_path = os.path.join(server_obj.server_path, 'plugins', 'Geyser-Spigot')
+    final_path = os.path.join(config_path, config_name)
+    config_data = f"""# Setup: https://wiki.geysermc.org/geyser/setup/
+bedrock:
+  port: 19132
+  clone-remote-port: true
+  motd1: "{server_obj.name}"
+  motd2: "{server_obj.server_properties['motd']}"
+  server-name: "{server_obj.name}"
+  compression-level: 6
+  enable-proxy-protocol: false
+remote:
+  address: auto
+  port: 25565
+  auth-type: online
+  allow-password-authentication: true
+  use-proxy-protocol: false
+  forward-hostname: true
+floodgate-key-file: key.pem
+pending-authentication-timeout: 120
+command-suggestions: true
+passthrough-motd: true
+passthrough-player-counts: true
+legacy-ping-passthrough: false
+ping-passthrough-interval: 3
+forward-player-ping: false
+max-players: 100
+debug-mode: false
+show-cooldown: title
+show-coordinates: true
+disable-bedrock-scaffolding: false
+emote-offhand-workaround: "disabled"
+cache-images: 0
+allow-custom-skulls: true
+max-visible-custom-skulls: 128
+custom-skull-render-distance: 32
+add-non-bedrock-items: true
+above-bedrock-nether-building: false
+force-resource-packs: true
+xbox-achievements-enabled: true
+log-player-ip-addresses: true
+notify-on-new-bedrock-update: true
+unusable-space-block: minecraft:barrier
+metrics:
+  enabled: false
+  uuid: 00000000-0000-0000-0000-000000000000
+scoreboard-packet-threshold: 20
+enable-proxy-connections: false
+mtu: 1400
+use-direct-connection: true
+disable-compression: true
+config-version: 4
+"""
+
+    if not os.path.exists(final_path) or reset:
+        folder_check(config_path)
+        with open(final_path, 'w+') as yml:
+            yml.write(config_data)
+
+    return os.path.exists(final_path)
 
 
 # Calculate system memory for server
@@ -5009,116 +5078,6 @@ def make_update_list():
     return update_list
 
 
-# Installs ngrok in tools directory
-def install_ngrok():
-
-    # Attempt to find download URL
-    ngrok_url = "https://dl.equinox.io/ngrok/ngrok-v3/stable"
-    final_url = None
-    file_name = None
-
-    soup = BeautifulSoup(requests.get(ngrok_url).content, features="html.parser")
-    for a in soup.find_all('a', "btn"):
-        try:
-            dl_url = a.get('href')
-            if os_name == "windows" and "stable-windows-amd64" in dl_url:
-                final_url = dl_url
-                file_name = "ngrok.zip"
-                break
-
-            if os_name == "macos" and "stable-darwin-amd64" in dl_url:
-                final_url = dl_url
-                file_name = "ngrok.zip"
-                break
-
-            if os_name == "linux" and is_arm and "stable-linux-arm64" in dl_url:
-                final_url = dl_url
-                file_name = "ngrok.tgz"
-                break
-
-            if os_name == "linux" and not is_arm and "stable-linux-amd64" in dl_url:
-                final_url = dl_url
-                file_name = "ngrok.tgz"
-                break
-
-        except AttributeError:
-            continue
-
-    # If URL not found, error out operation
-    if not final_url:
-        return False
-
-    try:
-        # If URL found, download ngrok archive
-        tool_path = os.path.join(applicationFolder, 'Tools')
-        folder_check(downDir)
-        download_url(final_url, file_name, downDir)
-
-        # Extract executable from archive
-        folder_check(tool_path)
-        cwd = get_cwd()
-        os.chdir(tool_path)
-        archive_file = ('ngrok.exe' if os_name == 'windows' else 'ngrok')
-        run_proc(f"tar -xf \"{os.path.join(downDir, file_name)}\" \"{archive_file}\"")
-        os.rename(archive_file, ngrok_exec)
-        os.chdir(cwd)
-        safe_delete(downDir)
-
-    except Exception as e:
-        print(e)
-        return False
-
-    return os.path.exists(os.path.join(tool_path, ngrok_exec))
-
-
-# Checks for a valid ngrok config file
-def check_ngrok_creds():
-    identifier = 'authtoken:'
-
-    if os_name == 'windows':
-        config_path = os.path.join(home, 'AppData', 'Local', 'ngrok', 'ngrok.yml')
-        old_path = os.path.join(home, '.ngrok2', 'ngrok.yml')
-    elif os_name == 'macos':
-        config_path = os.path.join(appdata, 'ngrok', 'ngrok.yml')
-        old_path = os.path.join(home, '.config', 'ngrok', 'ngrok.yml')
-    else:
-        config_path = os.path.join(home, '.config', 'ngrok', 'ngrok.yml')
-        old_path = os.path.join(home, '.ngrok2', 'ngrok.yml')
-
-    if os.path.isfile(old_path):
-        run_proc(f'"{os.path.join(applicationFolder, "Tools", ngrok_exec)}" config upgrade')
-        with open(config_path, 'r') as f:
-            for line in f.readlines():
-                if line.startswith(identifier) and line.strip() != identifier:
-                    return True
-
-    if os.path.isfile(config_path):
-        with open(config_path, 'r') as f:
-            for line in f.readlines():
-                if line.startswith(identifier) and line.strip() != identifier:
-                    return True
-
-    return False
-
-
-# Gets current ngrok IP
-def get_ngrok_ip(server_name: str):
-    global ngrok_ip
-    retries = 0
-
-    while retries < 10:
-        try:
-            url = "http://localhost:4040/api/tunnels"
-            reqs = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
-            json_obj = json.loads(reqs.text)
-            ip = json_obj["tunnels"][0]["public_url"]
-            ngrok_ip = {'name': server_name, 'ip': ip.split("tcp://")[1].strip()}
-            break
-        except:
-            time.sleep(1)
-            retries += 1
-
-
 # Check if port is open on host
 def check_port(ip: str, port: int, timeout=120):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -5131,8 +5090,8 @@ def check_port(ip: str, port: int, timeout=120):
 refresh_ips = None
 
 # Returns active IP address of 'name'
-def get_current_ip(name: str, get_ngrok=False):
-    global public_ip, ngrok_ip
+def get_current_ip(name: str, proxy=False):
+    global public_ip
 
     private_ip = ""
     original_port = "25565"
@@ -5184,8 +5143,7 @@ def get_current_ip(name: str, get_ngrok=False):
         if not private_ip:
             private_ip = get_private_ip()
 
-
-        if not get_ngrok:
+        if not proxy:
             if app_online:
                 def get_public_ip(server_name, *args):
                     global public_ip
@@ -5229,28 +5187,6 @@ def get_current_ip(name: str, get_ngrok=False):
 
 
     # Format network info
-    if get_ngrok:
-        def get_ngk_ip(server_name, *args):
-            global ngrok_ip
-            get_ngrok_ip(server_name)
-
-            if ngrok_ip['ip']:
-                # Assign ngrok IP to current running server
-                if server_manager.running_servers:
-                    try:
-                        server_obj = server_manager.running_servers[server_name]
-                        server_obj.run_data['network']['address']['ip'] = ngrok_ip['ip']
-                        server_obj.run_data['network']['public_ip'] = ngrok_ip['ip']
-                        server_obj.send_log(f"Initialized ngrok connection '{ngrok_ip['ip']}'", 'success')
-                    except KeyError:
-                        pass
-
-        ip_timer = Timer(0, functools.partial(get_ngk_ip, name))
-        ip_timer.daemon = True
-        ip_timer.start()
-
-    # if public_ip:
-    #     final_addr['ip'] = public_ip
     if private_ip:
         final_addr['ip'] = private_ip
     else:
@@ -5527,6 +5463,400 @@ class ConfigManager():
 app_config = ConfigManager()
 
 
+
+# ----------------------------------------------- playit.gg Integration ------------------------------------------------
+
+# Handles all methods and data relating to playit.gg integration
+class PlayitManager():
+
+    # Raised when a tunnel has an issue being modified
+    class TunnelException(BaseException):
+        pass
+
+    # Houses all tunnel data
+    class Tunnel():
+        def __init__(self, _parent: 'PlayitManager', tunnel_data: dict):
+            self._parent = _parent
+            self._data_id = tunnel_data['alloc']['data']['id']
+            self._cost = tunnel_data['port_count']
+
+            # Format networking data
+            self.region = tunnel_data['alloc']['data']['region']
+            self.type = tunnel_data['tunnel_type'] if tunnel_data['tunnel_type'] else 'both'
+            self.protocol = tunnel_data['port_type']
+            self.port = tunnel_data['origin']['data']['local_port']
+            self.host = tunnel_data['origin']['data']['local_ip']
+
+            # Format playit tunnel data
+            self.id = tunnel_data['id']
+            self.domain = tunnel_data['alloc']['data']['assigned_domain']
+            self.remote_port = tunnel_data['alloc']['data']['port_start']
+            self.hostname = f'{self.domain}:{self.remote_port}' if self.type == 'both' else self.domain
+
+
+            date_object = datetime.datetime.fromisoformat(tunnel_data['created_at'].replace("Z", "+00:00"))
+            timezone = datetime.datetime.now().astimezone().tzinfo
+            self.created = date_object.astimezone(timezone)
+
+            # If tunnel is assigned to a server object
+            self.in_use = False
+
+        def delete(self):
+            self._parent._delete_tunnel(self)
+
+    def __init__(self):
+        base_path = "https://github.com/playit-cloud/playit-agent/releases"
+        self._download_url = {
+            'windows': f'{base_path}/latest/download/playit-windows-x86_64-signed.exe',
+            'linux': f'{base_path}/latest/download/playit-linux-{"aarch" if is_arm else "amd"}64',
+            'macos': f'{base_path}/download/v0.15.13/playit-darwin-{"arm" if is_arm else "intel"}'
+        }[os_name]
+        self._filename = {
+            'windows': 'playit.exe',
+            'linux': 'playit',
+            'macos': 'playit'
+        }[os_name]
+
+
+        # General stuff
+        self.provider = 'playit'
+        self.directory = os.path.join(toolDir, 'playit')
+        self.exec_path = os.path.join(self.directory, self._filename)
+        self.toml_path = os.path.join(self.directory, 'playit.toml')
+        self.config = {}
+
+        self.initialized = False
+        self.session = requests.Session()
+        self.service = None
+
+
+        # Client info
+        self.agent_id = None
+        self.secret_key = None
+        self.max_tunnels = 4
+        self.tunnels = {'tcp': [], 'udp': [], 'both': []}
+
+
+
+    # ----- OS/filesystem handling -----
+    # Check if the agent is installed
+    def _check_agent(self) -> bool:
+        return os.path.exists(self.exec_path)
+
+    # Load playit.toml into an attribute
+    def _load_config(self) -> bool:
+        if os.path.exists(self.toml_path):
+            with open(self.toml_path, 'r') as toml:
+                strip_list = "'\" \n"
+                self.config = {
+                    k.strip(strip_list): v.strip(strip_list)
+                    for k, v in (line.split('=', 1) for line in toml.readlines())
+                }
+        return bool(self.config)
+
+    # Deletes config and starts over
+    def _reset_config(self) -> bool:
+        if os.path.exists(self.toml_path):
+            os.remove(self.toml_path)
+
+        self.config = {}
+        return not os.path.exists(self.toml_path)
+
+    # Download and install the agent
+    def _install_agent(self, progress_func: callable = None) -> bool:
+        if not app_online:
+            raise ConnectionError('Downloading playit requires an internet connection')
+        if self.service:
+            raise RuntimeError("Can't re-install while playit is running")
+
+        # If ngrok is present, delete it
+        ngrok = os.path.join(applicationFolder, 'Tools', ('ngrok-v3.exe' if os_name == 'windows' else 'ngrok-v3'))
+        if os.path.exists(ngrok):
+            os.remove(ngrok)
+
+        # Delete current version first
+        if self._check_agent():
+            os.remove(self.exec_path)
+
+        # Install the new version
+        folder_check(self.directory)
+        download_url(self._download_url, self._filename, self.directory, progress_func)
+
+        # chmod if UNIX-based
+        if os_name != 'windows':
+            run_proc(f'chmod +x "{self.exec_path}"')
+
+        return self._check_agent()
+
+    # Removes the agent from the filesystem
+    def _uninstall_agent(self) -> bool:
+        if self.service:
+            raise RuntimeError("Can't delete while playit is running")
+
+        if os.path.exists(self.directory):
+            safe_delete(self.directory)
+
+        return not self._check_agent()
+
+    # Starts the agent and returns status
+    def _start_agent(self) -> bool:
+        if not self.service:
+            self.service = subprocess.Popen(f'"{self.exec_path}" -s --secret_path "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
+        return bool(self.service.poll())
+
+    # Stops the agent and returns output
+    def _stop_agent(self) -> str:
+        if self.service and self.service.poll() is None:
+            self.service.kill()
+
+        return_code = self.service.poll() if self.service else 0
+        del self.service
+        self.service = None
+
+        return return_code
+
+
+
+    # ----- API auth handling -----
+    # Retrieves claim code from the console output
+    def _get_claim_code(self) -> str:
+        if self.service:
+
+            # Loop over output for claim code
+            url = 'https://playit.gg/claim/'
+            code = None
+
+            # Be careful with this, it could potentially wait for a new line forever
+            for line in iter(self.service.stdout.readline, ""):
+                if url in line.decode():
+                    code = line.decode().split(url)[-1].strip()
+                    break
+
+            return code
+
+    # Claim the agent as a guest user
+    def _claim_agent(self) -> bool:
+        self._start_agent()
+        claim_code = self._get_claim_code()
+
+        # First, retrieve guest auth cookie for agent
+        url_claim = f"https://playit.gg/login/create?redirect=/claim/{claim_code}?type=self-managed&_data=routes/login.create"
+        body = {'email': "", 'password': "", 'confirm-password': "", '_action': "guest"}
+        response = self.session.post(url_claim, data=body)
+        cookie = response.headers['set-cookie'].split(';')[0]
+        response.headers['Cookie'] = cookie
+
+        # Wait until agent is claimed
+        url_claim_code = f"https://playit.gg/claim/{claim_code}?type=self-managed&_data=routes%2Fclaim%2F%24claimCode"
+        while self.session.get(url_claim_code).json()['status'] == 'fail':
+            time.sleep(1)
+
+        # Accept claim and send to agent
+        url_accept = f"https://playit.gg/claim/{claim_code}/accept?type=self-managed&_data=routes/claim/$claimCode/accept"
+        self.session.post(
+            url_accept,
+            data={
+                "_action": "accept",
+                "source": "",
+                "agent_name": f"from-key-{claim_code[:4]}",
+                "agent_type": "self-managed",
+            },
+        )
+
+        # Retrieve secret key
+        data = self.session.post("https://api.playit.gg/claim/exchange", json={"code": claim_code}).json()
+        self.secret_key = data['data']['secret_key']
+
+        self._stop_agent()
+        return bool(self.secret_key)
+
+
+
+    # ----- API tunnel handling -----
+    # Creates two lists of all tunnels, sorted by protocol
+    def _retrieve_tunnels(self) -> dict:
+        self.tunnels = {'tcp': [], 'udp': [], 'both': []}
+
+        data = self.session.post("https://api.playit.gg/tunnels/list", json={"agent_id": self.agent_id}).json()
+        if data['status'] == 'success':
+
+            # Update maximum tunnels allowed by account (seems to be inaccurate)
+            # self.max_tunnels = data['data']['tcp_alloc']['allowed']
+
+            # Create tunnel objects from tunnels
+            for tunnel_data in data['data']['tunnels']:
+                tunnel = self.Tunnel(self, tunnel_data)
+                self.tunnels[tunnel.protocol].append(tunnel)
+
+        return self.tunnels
+
+    # Returns consolidated list of every tunnel
+    def _return_single_list(self) -> list:
+        single_list = self.tunnels['tcp']
+        single_list.extend(self.tunnels['udp'])
+        single_list.extend(self.tunnels['both'])
+        return single_list
+
+    # Returns True if any tunnels are in use
+    def _tunnels_in_use(self) -> bool:
+        return any([t.in_use for t in self._return_single_list()])
+
+    # Returns False if protocol type exceeds the max tunnel limit
+    # protocol: 'tcp', 'udp', or 'both'
+    def _check_tunnel_limit(self) -> bool:
+        tunnel_count = sum(t._cost for t in self.tunnels['both'])
+        tunnel_count += sum(t._cost for t in self.tunnels['tcp'])
+        tunnel_count += sum(t._cost for t in self.tunnels['udp'])
+        return not bool(tunnel_count >= self.max_tunnels)
+
+    # Create a tunnel with
+    # protocol: 'tcp', 'udp', or 'both'
+    def _create_tunnel(self, port: int = 25565, protocol: str = 'tcp') -> Tunnel:
+        if port not in range(1024, 65535):
+            port = 25565
+
+        # Can't exceed maximum tunnels specified
+        if not self._check_tunnel_limit():
+            raise self.TunnelException(f"Your account can't create more than {self.max_tunnels} tunnels")
+
+        tunnel_type = {
+            'tcp': 'minecraft-java',
+            'udp': 'minecraft-bedrock',
+            'both': None
+        }[protocol]
+        body = {
+            "type": "create-tunnel",
+            "tunnel_type": tunnel_type,
+            "port_type": protocol,
+            "port_count": 2 if protocol == 'both' else 1,
+            "local_ip": "0.0.0.0",
+            "local_port": port,
+            "agent_id": self.agent_id
+        }
+
+        try:
+            tunnel_id = self.session.post("https://api.playit.cloud/account", json=body).json()['id']
+            self._retrieve_tunnels()
+
+            # Lookup method to reverse search the actual ID
+            for tunnel in self.tunnels[protocol]:
+                if tunnel_id == tunnel._data_id:
+                    return tunnel
+
+        except KeyError:
+            pass
+
+    # Delete a tunnel with the object
+    def _delete_tunnel(self, tunnel: Tunnel) -> bool:
+        tunnel_status = self.session.post("https://api.playit.gg/tunnels/delete", json={'tunnel_id': tunnel.id}).json()
+        if tunnel_status['status'] == 'success':
+            self.tunnels[tunnel.protocol].remove(tunnel)
+            return tunnel not in self.tunnels[tunnel.protocol]
+        else:
+            return False
+
+    # Deletes all tunnels
+    def _clear_tunnels(self) -> dict:
+        [tunnel.delete() for tunnel in self.tunnels['tcp']]
+        [tunnel.delete() for tunnel in self.tunnels['udp']]
+        [tunnel.delete() for tunnel in self.tunnels['both']]
+        self.tunnels = {'tcp': [], 'udp': [], 'both': []}
+        return self.tunnels
+
+
+
+    # ----- General use -----
+    # Configures the playit session and retrieves the agent key
+    def initialize(self) -> bool:
+        if not self._check_agent():
+            return False
+
+        # If a .toml isn't generated, the guest is unclaimed
+        if not os.path.exists(self.toml_path):
+            self._claim_agent()
+
+        # Otherwise, get the secret key from .toml
+        else:
+            try:
+                self._load_config()
+                self.secret_key = self.config['secret_key']
+
+            # If the key couldn't be retrieved, delete .toml and try again
+            except KeyError:
+                self._reset_config()
+                self._initialize()
+
+        # Agent ID
+        self.session.headers['Authorization'] = f'agent-key {self.secret_key}'
+        data = self.session.post("https://api.playit.gg/agents/rundata").json()
+        self.agent_id = data['data']['agent_id']
+
+        # Get current tunnels
+        self._retrieve_tunnels()
+
+        self.initialized = True
+        return self.initialized
+
+    # Get a tunnel by port and (optionally type)
+    # Will recycle old tunnels if a new one needs to be made to not exceed the account limit
+    # protocol: 'tcp', 'udp', or 'both'
+    def get_tunnel(self, port: int, protocol: str = 'tcp', ensure: bool = False) -> Tunnel:
+        self._retrieve_tunnels()
+
+        for tunnel in self.tunnels[protocol]:
+            if int(tunnel.port) == int(port) and not tunnel.in_use:
+                return tunnel
+
+        # If ensure is True, create the tunnel if it doesn't exist
+        else:
+            if ensure:
+
+                # Remove the oldest tunnel before creating a new once if limit is exceeded
+                if not self._check_tunnel_limit():
+                    for tunnel in sorted(self._return_single_list(), key=lambda t: t.created):
+                        tunnel.delete()
+                        if self._check_tunnel_limit():
+                            break
+
+                return self._create_tunnel(port, protocol)
+
+    # Initializes tunnel of the server object
+    def start_tunnel(self, server_obj: object) -> Tunnel or False:
+        if not self.initialized:
+            if not self.initialize():
+                return False
+
+        port = server_obj.run_data['network']['address']['port']
+        protocol = 'both' if server_obj.geyser_enabled else 'tcp'
+
+        tunnel = self.get_tunnel(port, protocol, ensure=True)
+        if tunnel:
+            tunnel.in_use = True
+
+            # Add the tunnel to the server's run_data
+            server_obj.run_data['playit-tunnel'] = tunnel
+            # Ignore the tunnel with server_obj._telepath_run_data()
+            self._start_agent()
+        return tunnel
+
+    # Stops the current tunnel of the server object
+    def stop_tunnel(self, server_obj: object) -> False:
+        if not self.initialized:
+            return False
+
+        # Get tunnel from run_data
+        tunnel = server_obj.run_data['playit-tunnel']
+        tunnel.in_use = False
+
+        # Stop agent only if no tunnels are in use
+        if not self._tunnels_in_use() and self.service:
+            self._stop_agent()
+
+# Global playit.gg manager
+playit = PlayitManager()
+
+
+
 # ---------------------------------------------- Global Search Function ------------------------------------------------
 
 # Generates content for all global searches
@@ -5579,7 +5909,7 @@ class SearchManager():
                 ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
                 ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}, ['mod', 'plugin', 'addon', 'extension']),
                 ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}, ['amscript', 'script', 'ide', 'develop']),
-                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (ngrok)': None, 'Install proxy (ngrok)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'update', 'jvm', 'motd'])
+                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (playit)': None, 'Install proxy (playit)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'playit', 'update', 'jvm', 'motd'])
             ]
         }
 
@@ -5769,13 +6099,13 @@ class SearchManager():
                     elif not server_manager.current_server.running and setting.lower() in ('restart server', 'stop server'):
                         continue
 
-                    # Change results for ngrok installation
-                    if setting.lower() == 'enable proxy (ngrok)' and not ngrok_installed:
+                    # Change results for proxy installation
+                    if setting.lower() == 'enable proxy (playit)' and not playit._check_agent():
                         continue
-                    if setting.lower() == 'install proxy (ngrok)' and ngrok_installed:
+                    if setting.lower() == 'install proxy (playit)' and playit._check_agent():
                         continue
 
-                    # If server is up to date, hide update prompt
+                    # If server is up-to-date, hide update prompt
                     if setting.lower() == 'update this server' and not server_manager.current_server.update_string:
                         continue
 

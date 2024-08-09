@@ -3054,62 +3054,6 @@ class AclRuleInput(BaseInput):
 
 
 
-class NgrokAuthInput(BaseInput):
-
-    def check_next(self):
-        break_loop = False
-        for child in self.parent.children:
-            if break_loop:
-                break
-            for item in child.children:
-                try:
-                    if item.id == "next_button":
-                        item.disable(self.text == '')
-                        break
-                except AttributeError:
-                    pass
-
-    def on_enter(self, value):
-        break_loop = False
-        for child in self.parent.children:
-            if break_loop:
-                break
-            for item in child.children:
-                try:
-                    if item.id == "next_button":
-                        item.force_click()
-                        break
-                except AttributeError:
-                    pass
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.size_hint_max = (528, 54)
-        self.padding_x = 25
-        self.title_text = "authtoken"
-        self.hint_text = "paste your ngrok authtoken..."
-        self.padding_y = (14, 0)
-        self.text = ''
-        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
-        self.bind(on_text_validate=self.on_enter)
-
-    def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        super().keyboard_on_key_down(window, keycode, text, modifiers)
-
-        if keycode[1] == "backspace":
-            self.text = ''
-
-        self.check_next()
-
-    # Input validation
-    def insert_text(self, substring, from_undo=False):
-        if not self.text and len(substring) > 10 and '\n' not in substring:
-            self.text = substring
-        self.check_next()
-
-
-
 class ServerFlagInput(BaseInput):
 
     def write_config(self, text):
@@ -7425,12 +7369,12 @@ class PopupSearch(RelativeLayout):
                     screen_manager.current_screen.scroll_widget.scroll_to(delete_button, animate=False)
                     Clock.schedule_once(delete_button.button.trigger_action, 0.1)
 
-                # Install ngrok
-                elif self.search_obj.title.lower() == 'install proxy (ngrok)':
+                # Install proxy
+                elif self.search_obj.title.lower() == 'install proxy (playit)':
                     screen_manager.current = self.search_obj.target
-                    ngrok_button = screen_manager.current_screen.ngrok_button
-                    screen_manager.current_screen.scroll_widget.scroll_to(ngrok_button, animate=False)
-                    Clock.schedule_once(ngrok_button.button.trigger_action, 0.1)
+                    proxy_button = screen_manager.current_screen.proxy_button
+                    screen_manager.current_screen.scroll_widget.scroll_to(proxy_button, animate=False)
+                    Clock.schedule_once(proxy_button.button.trigger_action, 0.1)
 
 
                 # Below is standard functionality for the server actions
@@ -14270,7 +14214,7 @@ class ServerButton(HoverButton):
         # Title and description
         padding = 2.17
         self.title.pos = (self.x + (self.title.text_size[0] / padding) - (5.3 if self.favorite else 8.3) + 30, self.y + 31)
-        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1 + 30 - 100, self.y + 8)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78, self.y + 8)
 
 
         offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper", "purpur"]\
@@ -14337,11 +14281,11 @@ class ServerButton(HoverButton):
                 self.subtitle.color = self.run_color
                 self.subtitle.default_opacity = 0.8
                 self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-                if 'ngrok' in run_data['network']['address']['ip'].lower():
+                if 'playit-tunnel' in run_data and run_data['playit-tunnel']:
                     text = run_data['network']['address']['ip']
                 else:
                     text = ':'.join(run_data['network']['address'].values())
-                self.subtitle.text = f"{constants.translate('Running')}  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+                self.subtitle.text = f"[font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
             else:
                 reset()
 
@@ -14428,17 +14372,19 @@ class ServerButton(HoverButton):
         self.subtitle.markup = True
         self.subtitle.shorten_from = "right"
         self.subtitle.max_lines = 1
+        self.subtitle.text_size[0] = 350
 
         if self.running:
             self.subtitle.copyable = True
             self.subtitle.color = self.run_color
             self.subtitle.default_opacity = 0.8
             self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-            if 'ngrok' in server_object.run_data['network']['address']['ip'].lower():
+
+            if 'playit-tunnel' in server_object.run_data and server_object.run_data['playit-tunnel']:
                 text = server_object.run_data['network']['address']['ip']
             else:
                 text = ':'.join(server_object.run_data['network']['address'].values())
-            self.subtitle.text = f"{constants.translate('Running')}  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+            self.subtitle.text = f"[font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
         else:
             self.subtitle.copyable = False
             self.subtitle.color = self.color_id[1]
@@ -16321,12 +16267,14 @@ class ConsolePanel(FloatLayout):
             delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.stop_button, 0.06)
             Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine').start(self.controls.maximize_button)
 
+        # Update IP info at the top of the ServerViewScreen
         def update_launch_data(*args):
             if self.server_button:
                 self.server_button.update_subtitle(self.run_data)
         Clock.schedule_once(update_launch_data, 3 if wait_for_ip else 1)
         if wait_for_ip:
-            Clock.schedule_once(update_launch_data, 6)
+            for x in range(5):
+                Clock.schedule_once(update_launch_data, x*5)
 
         # Show telepath banner when server is started remotely
         server_obj = constants.server_manager.current_server
@@ -16349,8 +16297,12 @@ class ConsolePanel(FloatLayout):
             else:
                 boot_text = f"Launching '{server_obj.name}', please wait..."
 
+            text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7,0.7,0.7,1))}]
 
-            self.update_text(text=[{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7,0.7,0.7,1))}])
+            if server_obj.proxy_enabled and server_obj.proxy_installed() and not constants.playit.initialized:
+                text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6,0.6,1,1))})
+
+            self.update_text(text=text_list)
             while not server_obj.addon or not server_obj.backup or not server_obj.script_manager or not server_obj.acl:
                 time.sleep(0.05)
 
@@ -22515,19 +22467,13 @@ class ServerPropertiesEditScreen(MenuBackground):
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
-def toggle_ngrok(boolean, *args):
+def toggle_proxy(boolean, *args):
     server_obj = constants.server_manager.current_server
 
-    if boolean:
-        # Switch to screen to authenticate ngrok if toggled and authtoken is missing
-        if not constants.check_ngrok_creds():
-            screen_manager.current = "NgrokAuthScreen"
-            return
-
     # Actually make changes
-    server_obj.config_file.set("general", "enableNgrok", str(boolean).lower())
+    server_obj.config_file.set("general", "enableProxy", str(boolean).lower())
     constants.server_config(server_obj.name, server_obj.config_file)
-    server_obj.ngrok_enabled = boolean
+    server_obj.proxy_enabled = boolean
 
     # Show banner if server is running
     def default_message(*a):
@@ -22535,7 +22481,7 @@ def toggle_ngrok(boolean, *args):
             functools.partial(
                 screen_manager.current_screen.show_banner,
                 (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
-                f"ngrok proxy is {'en' if boolean else 'dis'}abled",
+                f"playit proxy is {'en' if boolean else 'dis'}abled",
                 "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
                 2.5,
                 {"center_x": 0.5, "center_y": 0.965}
@@ -22559,50 +22505,6 @@ def toggle_ngrok(boolean, *args):
 
     except AttributeError:
         default_message()
-
-class NgrokAuthScreen(MenuBackground):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.authtoken_input = None
-        self.menu = 'init'
-
-    def generate_menu(self, **kwargs):
-
-        # Generate buttons on page load
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-
-        def open_ngrok_site(*a):
-            url = 'https://dashboard.ngrok.com/get-started/your-authtoken'
-            webbrowser.open_new_tab(url)
-
-        def authorize_ngrok(*a):
-            constants.run_proc(f'"{os.path.join(constants.applicationFolder, "Tools", constants.ngrok_exec)}" config add-authtoken {self.authtoken_input.text}')
-            if constants.check_ngrok_creds():
-                toggle_ngrok(True)
-            previous_screen()
-            constants.screen_tree.pop(-1)
-
-
-
-        float_layout.add_widget(HeaderText("Login to ngrok and paste your authtoken below", '', (0, 0.8)))
-        float_layout.add_widget(WaitButton('Login to ngrok', (0.5, 0.555), 'ngrok.png', width=531, click_func=open_ngrok_site))
-        self.authtoken_input = NgrokAuthInput(pos_hint={"center_x": 0.5, "center_y": 0.45})
-        float_layout.add_widget(self.authtoken_input)
-        buttons.append(next_button('Next', (0.5, 0.24), True, next_screen='ServerSettingsScreen', click_func=authorize_ngrok))
-        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
-
-        for button in buttons:
-            float_layout.add_widget(button)
-
-        menu_name = f"Login to ngrok"
-        float_layout.add_widget(generate_title(menu_name))
-        float_layout.add_widget(generate_footer(menu_name))
-
-        self.add_widget(float_layout)
 
 class ServerWorldScreen(MenuBackground):
 
@@ -22805,7 +22707,7 @@ class ServerSettingsScreen(MenuBackground):
         self.open_path_button = None
         self.update_button = None
         self.update_label = None
-        self.ngrok_button = None
+        self.proxy_button = None
         self.rename_input = None
         self.delete_button = None
         self.world_button = None
@@ -22839,7 +22741,6 @@ class ServerSettingsScreen(MenuBackground):
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
         server_obj.reload_config()
-        constants.check_ngrok()
 
         # Scroll list
         scroll_widget = ScrollViewWidget()
@@ -23006,33 +22907,33 @@ class ServerSettingsScreen(MenuBackground):
         network_layout.add_widget(sub_layout)
 
 
-        # Ngrok toggle/install button
+        # Playit toggle/install button
         def add_switch(index=0, fade=False, *a):
             sub_layout = ScrollItem()
-            state = server_obj.ngrok_enabled
-            input_border = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (ngrok)', disabled=(not constants.app_online))
+            state = server_obj.proxy_enabled
+            input_border = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)', disabled=(not constants.app_online))
             sub_layout.add_widget(input_border)
-            sub_layout.add_widget(toggle_button('ngrok', (0.5, 0.5), custom_func=toggle_ngrok, default_state=server_obj.ngrok_enabled, disabled=(not constants.app_online)))
+            sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=server_obj.proxy_enabled, disabled=(not constants.app_online)))
             network_layout.add_widget(sub_layout, index)
             if fade:
                 input_border.opacity = 0
                 Animation(opacity=1, duration=0.5).start(input_border)
 
-        if not constants.ngrok_installed:
+        if not server_obj.proxy_installed():
             def prompt_install(*args):
                 def install_wrapper(*a):
-                    Clock.schedule_once(functools.partial(self.ngrok_button.loading, True), 0)
-                    boolean = constants.install_ngrok()
+                    Clock.schedule_once(functools.partial(self.proxy_button.loading, True), 0)
+                    boolean = server_obj.install_proxy()
 
                     def add_widgets(*b):
-                        self.ngrok_button.loading(False)
-                        network_layout.remove_widget(self.ngrok_button.parent)
+                        self.proxy_button.loading(False)
+                        network_layout.remove_widget(self.proxy_button.parent)
                         add_switch(1, True)
                         Clock.schedule_once(
                             functools.partial(
                                 screen_manager.current_screen.show_banner,
                                 (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
-                                f"ngrok was {'installed successfully' if boolean else 'not installed'}",
+                                f"playit was {'installed successfully' if boolean else 'not installed'}",
                                 "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
                                 2.5,
                                 {"center_x": 0.5, "center_y": 0.965}
@@ -23045,18 +22946,18 @@ class ServerSettingsScreen(MenuBackground):
                         functools.partial(
                             self.show_popup,
                             "query",
-                            "Install ngrok",
-                            "ngrok is a free proxy service that creates a tunnel to the internet. It can be used to bypass ISP port blocking or conflicts in which the client refuses to connect (e.g. strict NAT).\n\nWould you like to install ngrok?",
+                            "Install playit",
+                            "playit is a free proxy service that creates a tunnel to the internet. It can be used to bypass ISP port blocking or conflicts in which the client refuses to connect (e.g. strict NAT).\n\nWould you like to install playit?",
                             (None, threading.Timer(0, install_wrapper).start)
                         ),
                         0
                     )
                 else:
-                    self.show_popup('warning', 'Error', 'An internet connection is required to install ngrok\n\nPlease check your connection and try again', (None))
+                    self.show_popup('warning', 'Error', 'An internet connection is required to install playit\n\nPlease check your connection and try again', (None))
 
             sub_layout = ScrollItem()
-            self.ngrok_button = WaitButton('Install Ngrok', (0.5, 0.5), 'ngrok.png', click_func=prompt_install)
-            sub_layout.add_widget(self.ngrok_button)
+            self.proxy_button = WaitButton('Install playit', (0.5, 0.5), 'earth.png', click_func=prompt_install)
+            sub_layout.add_widget(self.proxy_button)
             network_layout.add_widget(sub_layout)
         else:
             add_switch()
