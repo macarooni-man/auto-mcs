@@ -24022,7 +24022,7 @@ class TelepathCodeInput(BigBaseInput):
                         screen_manager.current = 'ServerManagerScreen'
                         constants.screen_tree = ['MainMenuScreen']
                     server_name = data['nickname'] if data['nickname'] else data['host']
-                    telepath_banner(f"Successfully paired $'{server_name}'$", True, play_sound='popup_telepath_success.wav')
+                    telepath_banner(f"Successfully paired '${server_name}$'", True, play_sound='popup_telepath_success.wav')
                 Clock.schedule_once(back_to_menu, 0)
                 return
         if not self.checking:
