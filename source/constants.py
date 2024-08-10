@@ -1972,7 +1972,7 @@ def validate_version(server_info: dict):
                             for link in soup.find_all('a'):
                                 urls.append(link.get('href'))
 
-                            serverLink = urls[3]
+                            serverLink = urls[2]
 
 
                     final_info = [True, {'version': mcVer, 'build': buildNum}, "", serverLink]
