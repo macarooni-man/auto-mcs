@@ -331,7 +331,7 @@ locale_file = os.path.join(executable_folder, 'locales.json')
 locale_data = {}
 if os.path.isfile(locale_file):
     with open(locale_file, 'r') as f:
-        locale_data = json.loads(f.read())
+        locale_data = json.load(f)
 available_locales = {
     "English": {"name": 'English', "code": 'en'},
     "Spanish": {"name": 'Español', "code": 'es'},
