@@ -29,7 +29,7 @@ logo = ["                           _                                 ",
 # Handle keyboard inputs from console
 def handle_input(key):
     global history_index
-    command = command_edit.text.strip(command_header)
+    command = command_edit.get_edit_text().replace(command_header, '')
 
     # Submit/process command on ENTER
     if key == 'enter' and not disable_commands:
@@ -62,11 +62,13 @@ def handle_input(key):
 def process_command(cmd: str):
     global history_index, command_history
     history_index = 0
+    success = True
+
     if cmd not in command_history[:1]:
         command_history.insert(0, cmd)
 
     command_edit.set_edit_text('')
-    response = f"Type a command, or 'help'"
+    response = [('normal', "Type a command, ?, or "), ('command', 'help')]
     if cmd.strip():
         try:
             # Format raw data into command, and args
@@ -77,17 +79,18 @@ def process_command(cmd: str):
             # Process command and return output
             command = commands[cmd]
             output = command.exec(args)
+            if isinstance(output, tuple):
+                success = 'fail' != output[1]
+                output = output[0]
             response = output
 
         except KeyError:
-            response = f"Unknown command '{cmd}'.\n{response}"
+            response = [("info", "Unknown command "), ("fail", cmd), ("normal", '\n'), *response]
 
-    # Capitalize response
-    response = f'{response[0].upper()}{response[1:]}'
-    command_content.set_text(response)
+    command_content.set_text([('success' if success else 'fail', '❯ '), *response])
 
 
-def update_console(text: str):
+def update_console(text: str or tuple):
     command_content.set_text(text)
     loop.draw_screen()
 
@@ -116,7 +119,7 @@ def manage_server(name: str, action: str):
 
         # Ignore if offline
         if not constants.app_online:
-            return "Server creation requires an internet connection"
+            return [("info", "Server creation requires an internet connection")], 'fail'
 
         # Name input validation
         if len(name) < 25:
@@ -124,10 +127,10 @@ def manage_server(name: str, action: str):
                 name = name.splitlines()[0]
             name = re.sub('[^a-zA-Z0-9 _().-]', '', name)
         else:
-            return f"'{name}' is too long, shorten it and try again (25 max)"
+            return [("parameter", name), ("info", " is too long, shorten it and try again (25 max)")], 'fail'
 
         if name.lower() in constants.server_list_lower:
-            return f"'{name}' already exists"
+            return [("parameter", name), ("info", " already exists")], 'fail'
 
 
         # Create server here
@@ -154,7 +157,17 @@ def manage_server(name: str, action: str):
         constants.create_backup()
 
         constants.generate_server_list()
-        return f"Successfully created '{name}' (Vanilla {constants.latestMC['vanilla']})\nTo modify this server, run 'telepath pair' to connect from a remote instance of auto-mcs"
+
+        return [
+            ("normal", "Successfully created "),
+            ("parameter", name),
+            ("info", f"(Vanilla {constants.latestMC['vanilla']})\n"),
+            ("info", " - to modify this server, run "),
+            ("command", "telepath "),
+            ("sub_command", "pair "),
+            ("info", "to connect from a remote instance of auto-mcs")
+        ]
+
 
     # Manage existing servers
     elif name.lower() in constants.server_list_lower:
@@ -162,64 +175,89 @@ def manage_server(name: str, action: str):
 
         if action == 'start':
             func_wrapper(server_obj.launch)
-            return return_log(f"Launched '{name}'")
+            return return_log([("normal", "Launched "), ("parameter", name)])
 
         elif action == 'stop':
             func_wrapper(server_obj.stop)
-            return return_log(f"Stopped '{name}'")
+            return return_log([("normal", "Stopped "), ("parameter", name)])
 
         elif action == 'restart':
             if server_obj.running:
                 func_wrapper(server_obj.restart)
-                return return_log(f"Restarted '{name}'")
+                return return_log([("normal", "Restarted "), ("parameter", name)])
             else:
-                return return_log(f"'{name}' is not launched")
+                return [("parameter", name), ("info", " is not running")], 'fail'
 
         elif action == 'delete':
             if not server_obj.running:
                 func_wrapper([server_obj.delete, constants.generate_server_list])
-                return return_log(f"Deleted '{name}' and saved a back-up")
+                return [("normal", "Deleted "), ("parameter", name), ("normal", " and saved a back-up")]
+
             else:
-                return return_log(f"'{name}' is running, please run 'server stop {name}' first")
+                return [
+                    ("parameter", name),
+                    ("info", " is running. Please run "),
+                    ("command", "server "),
+                    ("sub_command", "stop "),
+                    ("parameter", name),
+                    ("info", " first")
+                ], 'fail'
 
         elif action == 'save':
-            update_console(f"Saving a back-up of '{name}'...")
+            update_console([("info", "Saving a back-up of "), ("parameter", name), ("info", "...")])
             if not server_obj.backup:
                 time.sleep(0.1)
             server_obj.backup.save()
             constants.server_manager.current_server.reload_config()
-            return return_log(f"Saved a back-up of '{name}'")
+            return [("normal", "Saved a back-up of "), ("parameter", name)]
 
         elif action == 'restore':
             if not server_obj.running:
                 if not server_obj.backup:
                     time.sleep(0.1)
-                update_console(f"Restoring latest back-up of '{name}'...")
+                update_console([("info", "Restoring the latest back-up of "), ("parameter", name), ("info", "...")])
                 server_obj.backup.restore(server_obj.backup.list[0])
                 constants.server_manager.current_server.reload_config()
-                return return_log(f"Restored '{name}' to the latest back-up")
+                return return_log([("normal", "Restored "), ("parameter", name), ("normal", " to the latest back-up")])
             else:
-                return return_log(f"'{name}' is running, please run 'server stop {name}' first")
+                return [
+                    ("parameter", name),
+                    ("info", " is running. Please run "),
+                    ("command", "server "),
+                    ("sub_command", "stop "),
+                    ("parameter", name),
+                    ("info", " first")
+                ], 'fail'
 
     # If server doesn't exist
     else:
-        return f"'{name}' does not exist"
+        return [('parameter', name), ('info',  ' does not exist')], 'fail'
+
+def show_servers():
+    if constants.server_list:
+        return_text = [('normal', f'Installed Servers'),  ('success', ' * - active'), ('info', f' ({len(constants.server_list)} total):\n\n')]
+        for server in constants.server_list:
+            running = server in constants.server_manager.running_servers
+            return_text.append(('success' if running else 'info', f'{"*" if running else ""}{server}    '))
+        return return_text
+    else:
+        return [('info', 'No servers were found')], 'fail'
 
 
 # Refreshes telepath display data at the top
 def refresh_telepath_host(data=None):
     api = constants.api_manager
-    header = f'Telepath API (v{constants.api_manager.version})\n'
+    header = ('telepath_header', f'Telepath API (v{constants.api_manager.version})\n')
 
     if api.running:
         host = api.host
         if host == '0.0.0.0':
             host = constants.get_private_ip()
-        text = f'> {host}:{api.port}'
+        text = ('telepath_enabled', f'> {host}:{api.port}')
 
     else:
-        text = ' < not running >'
-    telepath_content.set_text(header + text)
+        text = ('telepath_disabled', ' < not running >')
+    telepath_content.set_text([header, text])
     return data
 
 
@@ -235,18 +273,29 @@ def reset_telepath(data=None):
 def telepath_pair(data=None):
     final_text = f'Failed to pair, please run \'telepath pair\' again.'
 
-    update_console('Listening to pair requests for 3 minutes. Enter the IP above into another instance of auto-mcs to continue.')
+    update_console([('success', '❯ '), ('normal', 'Listening to pair requests for 3 minutes'), ('parameter', '\n\nEnter the IP above into another instance of auto-mcs to continue')])
     constants.api_manager.pair_listen = True
     timeout = 0
-    while 'code' not in constants.api_manager.pair_data:
-        time.sleep(1)
-        timeout += 1
-        if timeout >= 180:
-            return final_text
+
+    try:
+        while 'code' not in constants.api_manager.pair_data:
+            time.sleep(1)
+            timeout += 1
+            if timeout >= 180:
+                return final_text
+    except KeyboardInterrupt:
+        constants.api_manager.pair_listen = False
+        return [('info', 'Pairing was cancelled')], 'fail'
 
     data = constants.api_manager.pair_data
     code = f'{data["code"][:3]}-{data["code"][3:]}'
-    update_console(f'< {data["host"]["host"]}/{data["host"]["user"]} >\nCode (expires 1m):  {code}')
+    update_console([
+        ('normal', '< '),
+        ('telepath_host', f'{data["host"]["host"]}/{data["host"]["user"]}'),
+        ('normal', ' >\n\n'),
+        ('info', 'Code (expires 1m):   '),
+        ('command', code)
+    ])
 
     timeout = 0
     while constants.api_manager.pair_data:
@@ -257,11 +306,16 @@ def telepath_pair(data=None):
 
     if constants.api_manager.current_user:
         user = constants.api_manager.current_user
-        final_text = f'Successfully paired with "{user["host"]}/{user["user"]}:{user["ip"]}"'
+        final_text = [('normal', 'Successfully paired with '), ('telepath_host', f'{user["host"]}/{user["user"]}:{user["ip"]}')]
 
     constants.api_manager.pair_listen = False
 
     return final_text
+
+
+# Override print
+def print(*args, **kwargs):
+    telepath_content.set_text(" ".join([str(a) for a in args]))
 
 
 class Command:
@@ -275,7 +329,12 @@ class Command:
             if args[0] in self.sub_commands:
                 return self.sub_commands[args[0]].exec(args[1:])
             else:
-                return f"Sub-command '{args[0]}' not found\n{self.display_help()}"
+                return [
+                    ("info", f"Sub-command "),
+                    ("fail", args[0]),
+                    ("info", ' not found\n'), *self.display_help()
+                ], 'fail'
+
 
         # Execute with params here
         elif self.params and args:
@@ -307,16 +366,41 @@ class Command:
                 self.exec_func = data['exec']
 
     def display_help(self):
-        parent = '' if not self.parent else self.parent.name + ' '
 
-        display = f"{self.name} usage:\n - {self.help}\n>>  {parent}{self.name}"
+        command_color = 'command' if self.__class__.__name__ == 'Command' else 'sub_command'
+        display = [
+            (command_color, self.name),
+            ('normal', ' usage:\n'),
+            ('info', f' - {self.help}'),
+            ('normal', '\n\n'),
+            ('info', '>>  '),
+            ('command', '' if not self.parent else self.parent.name + ' '),
+            (command_color, self.name)
+        ]
+
         if self.sub_commands:
-            display += f' {"|".join(self.sub_commands)}'
+            sub_commands = [('normal', ' ')]
+            separator = ('info', '|')
+            for command in self.sub_commands:
+                sub_commands.append(('sub_command', command))
+                sub_commands.append(('info', '|'))
+            display.extend(sub_commands[:-1])
 
         elif self.params:
-            display += f' {" ".join(["<" + p + ">" for p in self.params])}'
+            display.append(('info', f' {" ".join(["<" + p + ">" for p in self.params])}'))
 
         return display
+
+    def get_hints(self, args=(), params=False):
+        if self.one_arg:
+            args = ' '.join(args).strip()
+
+        if self.sub_commands and args:
+            for sub_command in self.sub_commands.values():
+                if sub_command.name.startswith(args[0]):
+                    return sub_command.name
+            else:
+                return None
 
 
 class HelpCommand(Command):
@@ -329,7 +413,13 @@ class HelpCommand(Command):
         super().__init__('help', data)
 
     def display_help(self):
-        return f"Available commands:\n - Type 'help <command>' for syntax\n{', '.join(commands)}"
+        return [
+            ('normal', 'Available commands:\n'),
+            ('info', ' - Type '),
+            ('command', 'help'),
+            ('info', ' <command> for syntax\n\n'),
+            ('command', '   '.join(commands))
+        ]
 
     def show_command_help(self, cmd: list or tuple or str):
         if isinstance(cmd, list or tuple):
@@ -365,7 +455,7 @@ command_data = {
         'sub-commands': {
             'list': {
                 'help': 'lists installed server names (* - active)',
-                'exec': lambda *_: f'Installed Servers, * - active ({len(constants.server_list)} total):\n{", ".join("*"+s if s in constants.server_manager.running_servers else s for s in constants.server_list)}'
+                'exec': show_servers
             },
             'start': {
                 'help': 'launches a server by name',
@@ -383,7 +473,7 @@ command_data = {
                 'params': {'server name': lambda name: manage_server(name, 'restart')}
             },
             'create': {
-                'help': 'creates a new server',
+                'help': 'creates a Vanilla server on the latest version',
                 'one-arg': True,
                 'params': {'server name': lambda name: manage_server(name, 'create')}
             },
@@ -424,8 +514,12 @@ command_data = {
                 'help': 'listens for and displays pairing data to connect remotely',
                 'exec': telepath_pair
             },
+            'users': {
+                'help': 'lists all paired and connected users',
+                'exec': lambda *_: 'implement a function to return all users here'
+            },
             'reset': {
-                'help': 'listens for and displays pairing data to connect remotely',
+                'help': 'removes all paired sessions and users',
                 'exec': reset_telepath
             }
         }
@@ -436,10 +530,10 @@ commands['help'] = HelpCommand()
 
 
 # Display messages
-logo_widget = urwid.Text('\n'.join(logo), align='center')
-splash_widget = urwid.Text(f"{constants.session_splash}\n", align='center')
-telepath_content = urwid.Text('Initializing...')
-command_content = urwid.Text("Type a command, or 'help'")
+logo_widget = urwid.Text([('command', '\n'.join(logo))], align='center')
+splash_widget = urwid.Text([('info', f"{constants.session_splash}\n")], align='center')
+telepath_content = urwid.Text([('info', 'Initializing...')])
+command_content = urwid.Text([('info', '❯ '), ('normal', f"Type a command, ?, or "), ('command', 'help')])
 
 # Contains updating text in box
 console = urwid.Pile([
@@ -451,28 +545,267 @@ message_box = urwid.LineBox(console, title=f"auto-mcs v{constants.app_version} (
 refresh_telepath_host()
 
 # Create an Edit widget for command input
-command_header = '>>  '
+command_header = '   '
 disable_commands = False
 command_history = []
 history_index = 0
-command_edit = urwid.Edit(command_header)
+
+class CommandInput(urwid.Edit):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hint_text = ''
+        self.is_valid = False
+        self.hint_params = 0
+
+    def _valid(self, valid=True):
+        self.is_valid = valid
+        color = get_color('command') if valid else get_color('fail')
+        loop.screen.register_palette_entry('input', *color[1:])
+
+    def _get_hint_text(self, input_text):
+        if input_text:
+            command_name = input_text.split(' ')[0]
+            self.hint_text = ''
+
+            # Get root command object
+            for command in commands.values():
+                if command.name.startswith(command_name):
+                    self._valid(True)
+
+                    # Attempt to find sub-commands for a hint
+                    if input_text.startswith(command.name) and command.sub_commands and input_text not in commands:
+                        args = input_text.replace(command.name, '').strip().split(' ')
+                        sub_hint = command.get_hints(args)
+                        if not sub_hint:
+                            self._valid(False)
+                            return ""
+                        else:
+                            self.hint_text = f'{command.name} {sub_hint}'
+
+
+                    # Check if there are parameters for root command instead
+                    self.hint_params = 0
+                    if not self.hint_text and command.params:
+                        self.hint_params = 1
+                        self._valid(True)
+                        if input_text.strip().endswith(command.name):
+                            self.hint_text = f'{command.name} {" ".join(["<" + p + ">" for p in command.params])}'
+
+                    if input_text.startswith(command.name) and command.sub_commands:
+                        for sc in command.sub_commands.values():
+                            if sc.params:
+                                self.hint_params = 2
+                                self._valid(True)
+                                if input_text.strip().endswith(sc.name):
+                                    self.hint_text = f'{input_text.strip()} {" ".join(["<" + p + ">" for p in sc.params])}'
+
+                                # Override "server name" parameter to display server names
+                                elif sc.name in input_text and list(sc.params.items())[0][0] == 'server name':
+                                    command_start = ' '.join(input_text.split(' ', 2)[:2])
+                                    partial_name = input_text.split(' ', 2)[-1].strip()
+                                    for server in constants.server_list:
+                                        if server.lower().startswith(partial_name.lower()):
+                                            self.hint_text = f'{command_start} {server}'
+                                            break
+
+                    if not self.hint_text:
+                        self.hint_text = command.name
+
+
+                    # Return the rest of the command as the hint
+                    return self.hint_text[len(input_text):]
+
+        self._valid(False)
+        return ""
+
+    def get_text(self):
+        input_text = super().get_edit_text()
+        hint_text = self._get_hint_text(input_text)
+        if hint_text:
+            return self.hint_text, len(input_text)
+        return input_text, len(input_text)
+
+    def render(self, size, focus=False):
+        original_text = input_text = super().get_edit_text()
+        hint_text = self._get_hint_text(input_text)
+
+        # Combine input text with hint text
+        caption_space = ('caption_space', re.search(r'^\s+', self.caption)[0])
+        caption_marker = ('caption_marker', self.caption.lstrip())
+
+        if ' ' in input_text and self.is_valid:
+            command = f"{original_text.split(' ', 1)[0]} "
+
+            sub_command = ''
+            if self.hint_params != 1:
+                sub_command = original_text.split(' ')[1]
+                try:
+                    sub_command = sub_command + re.search(r'\s+', original_text[len(command + sub_command):])[0]
+                except:
+                    pass
+
+            param = ''
+            if 0 < self.hint_params <= original_text.strip().count(' '):
+                param = original_text.split(' ', self.hint_params)[-1].replace(sub_command.strip(), '')
+
+
+            # Add the text to a list
+            input_text = []
+            if command:
+                input_text.append(('command', command))
+            if sub_command:
+                input_text.append(('sub_command', sub_command))
+            if param:
+                input_text.append(('parameter', param))
+
+        else:
+            input_text = ('input', input_text)
+
+        combined_text = [caption_space, caption_marker, input_text, ('hint', hint_text)]
+
+        # Create the canvas using urwid.Text
+        text_widget = urwid.Text(combined_text)
+        canvas = text_widget.render(size)
+
+        # Ensure cursor shows at the correct position
+        if focus:
+            canvas = urwid.CompositeCanvas(canvas)
+            cursor_position = len(self.caption) + self.edit_pos
+            canvas.cursor = (cursor_position, 0)
+
+        return canvas
+
+    def cursor_x(self, size):
+        return self.get_cursor_coords(size)[0] - len(self.caption)
+
+    def keypress(self, size, key):
+        actual_text = self.edit_text
+        actual_index = self.get_cursor_coords(size)[0]
+
+        if (key == 'backspace') and (actual_index - len(self.caption) == len(actual_text)):
+            text, index = constants.control_backspace(actual_text, self.cursor_x(size))
+            new_index = actual_index - index
+            self.move_cursor_to_coords(size, new_index, 0)
+            self.set_edit_text(text.strip())
+
+            if text.endswith(' '):
+                self.keypress(size, ' ')
+
+            return None
+
+
+        # Ignore excess spaces
+        if key == ' ' and not self.text:
+            return
+        try:
+            if key == ' ' and self.text[self.cursor_x(size)] != ' ':
+                return
+        except IndexError:
+            pass
+
+
+        # Show help content with "?"
+        if key == '?':
+            help_content = commands['help'].show_command_help(self.get_edit_text().split(' '))
+            if help_content:
+                command_content.set_text([('info', '❯ '), *help_content])
+            return
+
+
+        # Auto-complete
+        if key in ('tab', 'right') and self.cursor_x(size) >= len(actual_text):
+            if self.hint_text:
+
+                # Add a space if there are sub-commands
+                if self.hint_text in commands.keys():
+                    if commands[self.hint_text].sub_commands:
+                        self.hint_text += ' '
+
+                # Format for params
+                if ' ' in self.hint_text.strip():
+                    command = self.hint_text.split(' ', 1)[0].strip()
+                    sub_command = self.hint_text.split(' ', 1)[-1].strip()
+                    if sub_command in commands[command].sub_commands.keys():
+                        if commands[command].sub_commands[sub_command].params:
+                            self.set_edit_text(self.text + ' ')
+                            self.set_edit_pos(len(self.get_edit_text()))
+                            return None
+
+                # Don't autofill params
+                if '<' in self.hint_text and '>' in self.hint_text and ' ' in self.edit_text:
+                    return None
+
+                # Don't auto-fill one command params
+                elif ('<' in self.hint_text and '>' in self.hint_text) or (self.hint_text in commands and commands[self.hint_text].params):
+                    self.set_edit_text(self.hint_text.split(' ', 1)[0] + ' ')
+                    self.set_edit_pos(len(self.get_edit_text()))
+                    return None
+
+
+                # Complete text with the hint
+                self.set_edit_text(self.hint_text)
+                self.set_edit_pos(len(self.get_edit_text()))
+                return None
+
+        # Handle other keys normally
+        result = super().keypress(size, key)
+
+        # Update cursor position after handling keypress
+        self.set_edit_pos(self.edit_pos)
+        loop.draw_screen()
+
+        return result
+
+    def get_cursor_coords(self, size):
+        return (len(self.caption) + self.edit_pos, 0)
+command_edit = CommandInput(caption=command_header)
+
 
 # Create a Pile for stacking widgets vertically
 pile = urwid.Pile([
     ('flow', logo_widget),
     ('flow', splash_widget),
-    ('weight', 0.5, message_box),
+    ('weight', 0.5, urwid.Padding(message_box, left=1, right=1)),
     ('flow', command_edit)
 ])
 
 # Wrap the pile in a padding widget to ensure it resizes with the terminal
-top_widget = urwid.Padding(pile, left=1, right=1)
+top_widget = urwid.Padding(pile)
 
 # Create a Frame to add a border around the top_widget
 frame = urwid.Frame(top_widget)
 
+# Define the color palette
+palette = [
+    ('caption_space', 'white', 'dark gray'),
+    ('caption_marker', 'dark gray', ''),
+    ('input', 'light green', '', '', '#05e665', ''),
+    ('hint', 'dark gray', ''),
+    ('telepath_enabled', 'light cyan', ''),
+    ('telepath_disabled', 'dark gray', ''),
+    ('telepath_host', 'dark cyan', ''),
+
+    # Command response formatting
+    ('success', 'light green', ''),
+    ('fail', 'light red', '', '', '#ff2020', ''),
+    ('warn', 'yellow', ''),
+    ('info', 'dark gray', ''),
+    ('normal', 'white', ''),
+    ('command', 'light green', '', '', '#05e665', ''),
+    ('sub_command', 'dark cyan', '', '', '#13e8cc', ''),
+    ('parameter', 'yellow', '', '', '#F3ED61', '')
+]
+def get_color(key):
+    for c in palette:
+        if key == c[0]:
+            return c
+
+
 # Create a Loop and run the UI
-loop = urwid.MainLoop(frame, unhandled_input=handle_input)
+screen = urwid.raw_display.Screen()
+screen.set_terminal_properties(colors=256)
+screen.register_palette(palette)
+loop = urwid.MainLoop(frame, unhandled_input=handle_input, screen=screen)
 
 
 
