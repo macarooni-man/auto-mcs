@@ -21,7 +21,7 @@ a = Analysis(['wrapper.py'],
                         # ('../build-tools/ca-bundle.crt', '.'),
                         ('./gui-assets/icons/sm/*', './gui-assets/icons/sm')
                     ],
-             hiddenimports=['plyer.platforms.macosx.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world'],
+             hiddenimports=['plyer.platforms.macosx.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern'],
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],
