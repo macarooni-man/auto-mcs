@@ -2,7 +2,6 @@ from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
 from random import randrange, choices
 from difflib import SequenceMatcher
-from urllib.request import Request
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 from platform import system
@@ -41,7 +40,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.1.2"
+app_version = "2.1.3"
 ams_version = "1.2.1"
 app_title = "auto-mcs"
 dev_version = False
@@ -1178,12 +1177,27 @@ def move_files_root(source, destination=None):
 
 # Download file from URL to directory
 def download_url(url: str, file_name: str, output_path: str, progress_func=None):
-    opener = urllib.request.build_opener()
-    opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-    urllib.request.install_opener(opener)
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(url, headers=headers, stream=True)
+    response.raise_for_status()
+
     file_path = os.path.join(output_path, file_name)
     folder_check(output_path)
-    urllib.request.urlretrieve(url, filename=file_path, reporthook=progress_func)
+
+    with open(file_path, 'wb') as file:
+        total_length = response.headers.get('content-length')
+        if total_length is None:  # no content length header
+            file.write(response.content)
+            if progress_func:
+                progress_func(1, 1, 1)
+        else:
+            total_length = int(total_length)
+            chunk_size = 8192
+            for chunk, data in enumerate(response.iter_content(chunk_size=chunk_size), 0):
+                file.write(data)
+                if progress_func:
+                    progress_func(chunk, chunk_size, total_length)
+
     if os.path.isfile(file_path):
         return file_path
 
@@ -1947,10 +1961,7 @@ def validate_version(server_info: dict):
 
 
             try:
-                req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                urlTest = urllib.request.urlopen(req).getcode()
-
-                if urlTest == 200:
+                if get_url(url, return_code=True) == 200:
                     urlValid = True
 
                     serverLink = url
@@ -1965,8 +1976,7 @@ def validate_version(server_info: dict):
                             serverLink = f"https://archive.org/download/minecraft-beta-server-jars/Minecraft%20Beta%20Server%20Jars.zip/Minecraft%20Beta%20Server%20Jars%2FOffical%20Server%20Jars%2F{mcVer}.jar"
 
                         else:
-                            reqs = requests.get(url)
-                            soup = BeautifulSoup(reqs.text, 'html.parser')
+                            soup = get_url(url)
                             urls = []
 
                             for link in soup.find_all('a'):
