@@ -174,10 +174,16 @@ def manage_server(name: str, action: str):
         server_obj = constants.server_manager.open_server(name)
 
         if action == 'start':
+            if server_obj.running:
+                return [('parameter', name), ('info', ' is already running')], 'fail'
+
             func_wrapper(server_obj.launch)
             return return_log([("normal", "Launched "), ("parameter", name)])
 
         elif action == 'stop':
+            if not server_obj.running:
+                return [('parameter', name), ('info', ' is not running')], 'fail'
+
             func_wrapper(server_obj.stop)
             return return_log([("normal", "Stopped "), ("parameter", name)])
 
@@ -588,8 +594,18 @@ class CommandInput(urwid.Edit):
                     if not self.hint_text and command.params:
                         self.hint_params = 1
                         self._valid(True)
-                        if input_text.strip().endswith(command.name):
+                        if input_text.strip().endswith(command.name) and ' ' not in input_text.strip():
                             self.hint_text = f'{command.name} {" ".join(["<" + p + ">" for p in command.params])}'
+
+                        # Override "command" parameter to display commands
+                        elif command.name in input_text and list(command.params.items())[0][0] == 'command':
+                            command_start = ' '.join(input_text.split(' ', 1)[:1])
+                            partial_name = input_text.split(' ', 1)[-1].strip()
+                            for c in commands:
+                                if c.lower().startswith(partial_name.lower()):
+                                    self.hint_text = f'{command_start} {c}'
+                                    break
+
 
                     if input_text.startswith(command.name) and command.sub_commands:
                         for sc in command.sub_commands.values():
