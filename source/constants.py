@@ -1510,7 +1510,7 @@ def gen_rstring(size: int):
 
 # Check if client has an internet connection
 def check_app_updates():
-    global project_link, app_version, dev_version, app_latest, app_online, update_data, auto_update
+    global project_link, app_version, dev_version, app_latest, app_online, update_data
 
     # Check if updates are available
     try:
@@ -1522,7 +1522,7 @@ def check_app_updates():
         release_data = req.json()
 
         # Don't automatically update if specified in config
-        if not auto_update:
+        if not app_config.auto_update:
             app_latest = True
             return None
 
