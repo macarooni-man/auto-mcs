@@ -684,13 +684,13 @@ class CommandInput(urwid.Edit):
 
         if (key == 'backspace') and (actual_index - len(self.caption) == len(actual_text)):
             text, index = constants.control_backspace(actual_text, self.cursor_x(size))
-            new_index = actual_index - index
-            self.move_cursor_to_coords(size, new_index, 0)
+            new_index = self.cursor_x(size) - index + len(self.caption)
             self.set_edit_text(text.strip())
 
             if text.endswith(' '):
                 self.keypress(size, ' ')
 
+            self.set_edit_pos(new_index)
             return None
 
 
