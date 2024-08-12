@@ -477,7 +477,7 @@ class TelepathManager():
                 if self._verify_id(id, session['id']):
 
                     # Check if current user can be removed due to token expiry
-                    if self.current_user and (self.current_user['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) > dt.now()):
+                    if self.current_user and (self.current_user['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
                         self._force_logout(self.current_user['session_id'])
 
                     # This can change later, but currently, there can only be one telepath user globally
@@ -535,7 +535,7 @@ class TelepathManager():
 
         try:
             session = self._get_session(ip, port)
-            data = session.post(url, json=host_data, timeout=10).json()
+            data = session.post(url, json=host_data, timeout=3).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
                 return_data = deepcopy(data)

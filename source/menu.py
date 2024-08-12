@@ -24275,7 +24275,7 @@ Once paired, remote servers will appear in the Server Manager and can be interac
                 port = constants.api_manager.port
                 ip = constants.get_private_ip()
                 if constants.public_ip:
-                    if constants.check_port(constants.public_ip, port):
+                    if constants.check_port(constants.public_ip, port, 0.05):
                         ip = constants.public_ip
                 new_text = f">   {ip}:{port}"
                 self.api_input.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')

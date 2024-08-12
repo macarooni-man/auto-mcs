@@ -203,7 +203,7 @@ def get_private_ip():
         # doesn't even have to be reachable
         s.connect(('10.254.254.254', 1))
         return s.getsockname()[0]
-    finally:
+    except OSError:
         s.close()
 def sync_attr(self, name):
     if name != '__all__':
@@ -5607,7 +5607,16 @@ class PlayitManager():
     # Stops the agent and returns output
     def _stop_agent(self) -> str:
         if self.service and self.service.poll() is None:
+            pid = self.service.pid
             self.service.kill()
+
+            # Windows
+            if os_name == 'windows':
+                run_proc(f"taskkill /f /pid {pid}")
+
+            # macOS & Linux
+            else:
+                run_proc(f"kill {pid}")
 
         return_code = self.service.poll() if self.service else 0
         del self.service
