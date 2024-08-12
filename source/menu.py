@@ -24273,7 +24273,9 @@ Once paired, remote servers will appear in the Server Manager and can be interac
             # Update hint text
             if state:
                 port = constants.api_manager.port
-                ip = constants.get_private_ip()
+                ip = constants.api_manager.host
+                if ip == '0.0.0.0':
+                    ip = constants.get_private_ip()
                 if constants.public_ip:
                     if constants.check_port(constants.public_ip, port, 0.05):
                         ip = constants.public_ip

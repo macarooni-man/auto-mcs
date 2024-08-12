@@ -279,10 +279,16 @@ def refresh_telepath_host(data=None):
     header = ('telepath_header', f'Telepath API (v{constants.api_manager.version})\n')
 
     if api.running:
-        host = api.host
-        if host == '0.0.0.0':
-            host = constants.get_private_ip()
-        text = ('telepath_enabled', f'> {host}:{api.port}')
+        ip = api.host
+        if ip == '0.0.0.0':
+            ip = constants.get_private_ip()
+        port = api.port
+        if constants.public_ip:
+            if constants.check_port(constants.public_ip, port, 0.05):
+                ip = constants.public_ip
+
+
+        text = ('telepath_enabled', f'> {ip}:{api.port}')
 
     else:
         text = ('telepath_disabled', ' < not running >')
