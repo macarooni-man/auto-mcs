@@ -161,7 +161,7 @@ def manage_server(name: str, action: str):
         return [
             ("normal", "Successfully created "),
             ("parameter", name),
-            ("info", f"(Vanilla {constants.latestMC['vanilla']})\n"),
+            ("info", f" (Vanilla {constants.latestMC['vanilla']})\n\n"),
             ("info", " - to modify this server, run "),
             ("command", "telepath "),
             ("sub_command", "pair "),
@@ -279,7 +279,7 @@ def reset_telepath(data=None):
 def telepath_pair(data=None):
     final_text = f'Failed to pair, please run \'telepath pair\' again.'
 
-    update_console([('success', '❯ '), ('normal', 'Listening to pair requests for 3 minutes'), ('parameter', '\n\nEnter the IP above into another instance of auto-mcs to continue')])
+    update_console([('success', '❯ '), ('normal', 'Listening to pair requests for 3 minutes'), ('info', ' (CTRL-C to cancel)'), ('parameter', '\n\nEnter the IP above into another instance of auto-mcs to continue')])
     constants.api_manager.pair_listen = True
     timeout = 0
 
