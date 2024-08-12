@@ -100,6 +100,10 @@ def generate_log(exception, error_info=None):
     splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)
 
     formatted_os_name = constants.os_name.title() if constants.os_name != 'macos' else 'macOS'
+    try:
+        is_telepath = bool(constants.server_manager.current_server._telepath_data)
+    except:
+        is_telepath = False
 
     log = f"""{'=' * (header_len * 3)}
 {"||" + (' ' * round((header_len * 1.5) - (len(header) / 2) - 1)) + header + (' ' * round((header_len * 1.5) - (len(header)) + 14)) + "||"}
@@ -115,7 +119,9 @@ def generate_log(exception, error_info=None):
         Online:            {constants.app_online}
         UI Language:       {constants.get_locale_string(True)}
         Sub-servers:       {', '.join([f"{x}: {y.type} {y.version}" for x, y in enumerate(constants.server_manager.running_servers.values(), 1)]) if constants.server_manager.running_servers else "None"}
-        ngrok:             {"Active" if constants.ngrok_ip['ip'] == "" else "Inactive"}
+        Proxy (playit):    {"Active" if constants.playit.session else "Inactive"}
+        Telepath client:   {"Active" if is_telepath else "Inactive"}
+        Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}
 
         Processor info:    {psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {round((psutil.cpu_freq().max) / 1000, 2)} GHz ({cpu_arch.replace('bit', '-bit')})
         Used memory:       {round(psutil.virtual_memory().used / 1073741824, 2)} / {round(psutil.virtual_memory().total / 1073741824)} GB

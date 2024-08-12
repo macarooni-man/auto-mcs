@@ -4377,7 +4377,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
 
         # Copy existing data from modpack if updating
-        new_path = os.path.join(serverDir, import_data['name'])
+        new_path = os.path.join(serverDir, str(import_data['name']))
         if update and os.path.isdir(new_path):
             valid_files = ['server.properties', 'eula.txt', 'auto-mcs.ini', '.auto-mcs.ini', 'start-cmd.tmp']
             for item in glob(os.path.join(new_path, '*')):
