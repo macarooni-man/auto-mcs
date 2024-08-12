@@ -362,7 +362,7 @@ def telepath_users(data=None):
         ], 'fail'
 
     else:
-        content = [('normal', f'Authenticated Telepath users ({len(constants.api_manager.authenticated_sessions)} total):\n\n')]
+        content = [('normal', f'Authenticated Telepath users'), ('info', f' ({len(constants.api_manager.authenticated_sessions)} total):\n\n')]
         for x, user in enumerate(constants.api_manager.authenticated_sessions):
             user_content = [('sub_command', f'ID #{x+1}   '), ('parameter', f'{user["host"]}/{user["user"]}')]
             if constants.api_manager.current_user and (user["user"] == constants.api_manager.current_user["user"]):
@@ -393,7 +393,7 @@ def telepath_revoke(user_id=None):
             ("info", "first to pair a client")
         ], 'fail'
 
-    elif user_id is None or user_id > len(constants.api_manager.authenticated_sessions) - 1:
+    elif user_id is None or user_id not in range(0, len(constants.api_manager.authenticated_sessions) - 1):
         return [
             ("info", "A valid user ID was not specified. Please run "),
             ("command", "telepath "),
