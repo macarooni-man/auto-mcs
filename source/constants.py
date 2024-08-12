@@ -563,7 +563,7 @@ def restart_app(*a):
         if app_compiled:  # Running as compiled
             batch_file.write(
 f"""taskkill /f /im \"{executable}\"
-start \"\" \"{launch_path}\"
+start \"\" \"{launch_path}\"{' --headless' if headless else ''}
 del \"{os.path.join(tempDir, script_name)}\""""
             )
 
@@ -583,7 +583,7 @@ del \"{os.path.join(tempDir, script_name)}\""""
             shell_file.write(
 f"""#!/bin/bash
 kill {os.getpid()}
-exec {escaped_path} &
+exec {escaped_path}{' --headless' if headless else ''} &
 rm \"{os.path.join(tempDir, script_name)}\""""
             )
 
@@ -632,7 +632,7 @@ if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
     echo banner-failure@{failure_str} > "{update_log}"
 )
 
-start \"\" \"{launch_path}\"
+start \"\" \"{launch_path}\"{' --headless' if headless else ''}
 del \"{os.path.join(tempDir, script_name)}\""""
             )
 
@@ -667,7 +667,7 @@ fi
 hdiutil unmount /Volumes/auto-mcs
 rm -rf "{dmg_path}"
 chmod +x "{launch_path}"
-exec {escaped_path} &
+exec {escaped_path}{' --headless' if headless else ''} &
 rm \"{os.path.join(tempDir, script_name)}\""""
             )
 
@@ -700,7 +700,7 @@ else
 fi
 
 chmod +x "{launch_path}"
-exec {escaped_path} &
+exec {escaped_path}{' --headless' if headless else ''} &
 rm \"{os.path.join(tempDir, script_name)}\""""
             )
 

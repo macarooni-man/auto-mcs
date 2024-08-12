@@ -306,17 +306,28 @@ def reset_telepath(data=None):
 
 # Handles telepath pair requests
 def telepath_pair(data=None):
-    final_text = f'Failed to pair, please run \'telepath pair\' again.'
+    final_text = [
+        ("info", "Failed to pair. Please run "),
+        ("command", "telepath "),
+        ("sub_command", "pair "),
+        ("info", "to try again")
+    ], 'fail'
 
-    update_console([('success', response_header), ('normal', 'Listening to pair requests for 3 minutes'), ('info', ' (CTRL-C to cancel)'), ('parameter', '\n\nEnter the IP above into another instance of auto-mcs to continue')])
     constants.api_manager.pair_listen = True
     timeout = 0
+    total = 180
 
     try:
         while 'code' not in constants.api_manager.pair_data:
+            update_console([
+                ('success', response_header),
+                ('normal', f'Listening to pair requests for {total - timeout}s'),
+                ('info', ' (CTRL-C to cancel)'),
+                ('parameter', '\n\nEnter the IP above into another instance of auto-mcs to continue')
+            ])
             time.sleep(1)
             timeout += 1
-            if timeout >= 180:
+            if timeout >= total:
                 return final_text
     except KeyboardInterrupt:
         constants.api_manager.pair_listen = False
@@ -416,6 +427,31 @@ def telepath_revoke(user_id=None):
 
         else:
             return [('info', 'Something went wrong, please try again')], 'fail'
+
+
+# Update app to the latest version
+def update_app(info=False):
+
+    # Display update info
+    if info:
+        return [
+            ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
+            ("info", constants.update_data['desc'].replace('\r','')),
+            ("success", response_header),
+            ("normal", "To update to this version, run "),
+            ("command", "update "),
+            ("sub_command", "install ")
+        ]
+
+    else:
+        update_console([("info", response_header), ('parameter', f'Downloading auto-mcs v{constants.update_data["version"].strip()}...')])
+        if constants.download_update():
+            update_console([("success", response_header), ('command', f'Successfully installed the update! Restarting...')])
+            time.sleep(3)
+            constants.restart_update_app()
+
+        else:
+            return [("info", "Something went wrong installing the update. Please try again later")], 'fail'
 
 
 # Override print
@@ -551,7 +587,9 @@ class SubCommand(Command):
         self.parent = parent
 
 
+# Define command behaviors and syntax trees
 command_data = {
+    'help': HelpCommand(),
     'exit': {
         'help': 'leaves the application',
         'exec': lambda: (_ for _ in ()).throw(urwid.ExitMainLoop())
@@ -639,11 +677,22 @@ command_data = {
                 'exec': reset_telepath
             }
         }
+    },
+    'update': {
+        'help': 'manage local servers',
+        'sub-commands': {
+            'info': {
+                'help': 'show the changelog of a pending update',
+                'exec': lambda *_: update_app(info=True)
+            },
+            'install': {
+                'help': 'install a pending update and restart',
+                'exec': lambda *_: update_app()
+            }
+        }
     }
 }
-commands = {n: Command(n, d) for n, d in command_data.items()}
-commands['help'] = HelpCommand()
-
+commands = {n: Command(n, d) if isinstance(d, dict) else d for n, d in command_data.items()}
 
 # Display messages
 command_header = '   ' if advanced_term else ' >>  '
@@ -651,7 +700,19 @@ response_header = '❯ ' if advanced_term else '> '
 logo_widget = urwid.Text([('command', '\n'.join(logo))], align='center')
 splash_widget = urwid.Text([('info', f"{constants.session_splash}\n")], align='center')
 telepath_content = urwid.Text([('info', 'Initializing...')])
-command_content = urwid.Text([('info', response_header), ('normal', f"Type a command, ?, or "), ('command', 'help')])
+
+# Home screen status
+content = []
+if not constants.app_latest:
+    content.extend([
+        ("parameter", response_header),
+        ("parameter", "(!) An update for auto-mcs is available. Run "),
+        ("command", "update "),
+        ("sub_command", "info "),
+        ("parameter", "to learn more\n\n")
+    ])
+content.extend([('info', response_header), ('normal', f"Type a command, ?, or "), ('command', 'help')])
+command_content = urwid.Text(content)
 
 # Contains updating text in box
 console = urwid.Pile([
@@ -659,7 +720,8 @@ console = urwid.Pile([
     urwid.Filler(command_content, valign='bottom')
 ])
 
-message_box = urwid.LineBox(console, title=f"auto-mcs v{constants.app_version} (headless)")
+title = f"auto-mcs v{constants.app_version} (headless)" if constants.app_latest else f"auto-mcs v{constants.app_version} (!)"
+message_box = urwid.LineBox(console, title=title, title_attr=('normal' if constants.app_latest else 'parameter'))
 refresh_telepath_host()
 
 # Create an Edit widget for command input
