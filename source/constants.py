@@ -5607,16 +5607,38 @@ class PlayitManager():
     # Stops the agent and returns output
     def _stop_agent(self) -> str:
         if self.service and self.service.poll() is None:
-            pid = self.service.pid
-            self.service.kill()
+
+            # Iterate over self and children to find playit process
+            try:
+                parent = psutil.Process(self.service.pid)
+            except KeyError:
+                parent = self.service
 
             # Windows
-            if os_name == 'windows':
-                run_proc(f"taskkill /f /pid {pid}")
+            if os_name == "windows":
+                children = parent.children(recursive=True)
+                for proc in children:
+                    if proc.name() == "playit.exe":
+                        run_proc(f"taskkill /f /pid {proc.pid}")
+                        break
 
-            # macOS & Linux
+            # macOS
+            elif os_name == "macos":
+                if parent.name() == "playit":
+                    run_proc(f"kill {parent.pid}")
+
+            # Linux
             else:
-                run_proc(f"kill {pid}")
+                if parent.name() == "playit":
+                    run_proc(f"kill {parent.pid}")
+                else:
+                    children = parent.children(recursive=True)
+                    for proc in children:
+                        if proc.name() == "playit":
+                            run_proc(f"kill {proc.pid}")
+                            break
+
+            self.service.kill()
 
         return_code = self.service.poll() if self.service else 0
         del self.service
