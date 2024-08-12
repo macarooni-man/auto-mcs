@@ -195,6 +195,14 @@ class TelepathManager():
 
         # Eventually add code here to save and reload this from a file
 
+    def _revoke_session(self, user_id: int):
+        for session in self.authenticated_sessions:
+            if user_id == session['id']:
+                self.authenticated_sessions.remove(session)
+                break
+
+        self.secret_file.write(self.authenticated_sessions)
+
     def _read_session(self):
         self.authenticated_sessions = self.secret_file.read()
 

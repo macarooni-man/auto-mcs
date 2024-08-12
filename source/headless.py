@@ -3,10 +3,20 @@ import urwid
 import time
 import sys
 import re
+import os
 
 import constants
 import telepath
 import acl
+
+
+# Check if advanced terminal features are supported
+advanced_term = False
+try:
+    if os.environ['TERM'] in ['xterm-256color']:
+        advanced_term = True
+except:
+    pass
 
 
 # Overwrite STDOUT to not interfere with the UI
@@ -87,7 +97,7 @@ def process_command(cmd: str):
         except KeyError:
             response = [("info", "Unknown command "), ("fail", cmd), ("normal", '\n'), *response]
 
-    command_content.set_text([('success' if success else 'fail', '❯ '), *response])
+    command_content.set_text([('success' if success else 'fail', response_header), *response])
 
 
 def update_console(text: str or tuple):
@@ -173,7 +183,14 @@ def manage_server(name: str, action: str):
     elif name.lower() in constants.server_list_lower:
         server_obj = constants.server_manager.open_server(name)
 
-        if action == 'start':
+        if action == 'info':
+            return return_log([
+                ("normal", "Server info - "), ("parameter", name),
+                ("info", "\n\nVersion:  "), ("normal", f'{server_obj.type.title()} {server_obj.version}' + (f' (b{server_obj.build})\n' if server_obj.build else '\n')),
+                ("success", "Running") if server_obj.running else ("info", "Not running")
+            ])
+
+        elif action == 'start':
             if server_obj.running:
                 return [('parameter', name), ('info', ' is already running')], 'fail'
 
@@ -239,12 +256,18 @@ def manage_server(name: str, action: str):
     else:
         return [('parameter', name), ('info',  ' does not exist')], 'fail'
 
-def show_servers():
+def list_servers():
     if constants.server_list:
         return_text = [('normal', f'Installed Servers'),  ('success', ' * - active'), ('info', f' ({len(constants.server_list)} total):\n\n')]
+        line = ''
         for server in constants.server_list:
             running = server in constants.server_manager.running_servers
-            return_text.append(('success' if running else 'info', f'{"*" if running else ""}{server}    '))
+            text = f'{"*" if running else ""}{server}    '
+            line += text
+            if len(line) > loop.screen_size[0] - 20:
+                return_text.append(('info', '\n\n'))
+                line = ''
+            return_text.append(('success' if running else 'info', text))
         return return_text
     else:
         return [('info', 'No servers were found')], 'fail'
@@ -279,7 +302,7 @@ def reset_telepath(data=None):
 def telepath_pair(data=None):
     final_text = f'Failed to pair, please run \'telepath pair\' again.'
 
-    update_console([('success', '❯ '), ('normal', 'Listening to pair requests for 3 minutes'), ('info', ' (CTRL-C to cancel)'), ('parameter', '\n\nEnter the IP above into another instance of auto-mcs to continue')])
+    update_console([('success', response_header), ('normal', 'Listening to pair requests for 3 minutes'), ('info', ' (CTRL-C to cancel)'), ('parameter', '\n\nEnter the IP above into another instance of auto-mcs to continue')])
     constants.api_manager.pair_listen = True
     timeout = 0
 
@@ -319,9 +342,80 @@ def telepath_pair(data=None):
     return final_text
 
 
+# Displays Telepath users
+def telepath_users(data=None):
+    if not constants.api_manager.running:
+        return 'Telepath API is not running', 'fail'
+
+    elif not constants.api_manager.authenticated_sessions:
+        return [
+            ("info", "There are no authenticated Telepath users. Please run "),
+            ("command", "telepath "),
+            ("sub_command", "pair "),
+            ("info", "first to pair a client")
+        ], 'fail'
+
+    else:
+        content = [('normal', f'Authenticated Telepath users ({len(constants.api_manager.authenticated_sessions)} total):\n\n')]
+        for x, user in enumerate(constants.api_manager.authenticated_sessions):
+            user_content = [('sub_command', f'ID #{x+1}   '), ('parameter', f'{user["host"]}/{user["user"]}')]
+            if constants.api_manager.current_user and (user["user"] == constants.api_manager.current_user["user"]):
+                user_content.append(('command', ' (logged in)'))
+            if x+1 < len(constants.api_manager.authenticated_sessions):
+                user_content.append(('info', '\n\n'))
+            content.extend(user_content)
+
+        return content
+def telepath_revoke(user_id=None):
+
+    # Input validate user ID
+    if user_id:
+        try:
+            user_id = int(user_id.strip('# ')) - 1
+        except:
+            user_id = None
+
+
+    if not constants.api_manager.running:
+        return 'Telepath API is not running', 'fail'
+
+    elif not constants.api_manager.authenticated_sessions:
+        return [
+            ("info", "There are no authenticated Telepath users. Please run "),
+            ("command", "telepath "),
+            ("sub_command", "pair "),
+            ("info", "first to pair a client")
+        ], 'fail'
+
+    elif user_id is None or user_id > len(constants.api_manager.authenticated_sessions) - 1:
+        return [
+            ("info", "A valid user ID was not specified. Please run "),
+            ("command", "telepath "),
+            ("sub_command", "users "),
+            ("info", "first to locate the ID")
+        ], 'fail'
+
+    else:
+        user = constants.api_manager.authenticated_sessions[user_id]
+
+        # Force logout if they are logged in
+        if constants.api_manager.current_user and (user["user"] == constants.api_manager.current_user["user"]):
+            constants.api_manager._force_logout(constants.api_manager.current_user['session_id'])
+
+        # Revoke from authenticated sessions
+        constants.api_manager._revoke_session(user['id'])
+
+        if user not in constants.api_manager.authenticated_sessions:
+            return [('normal', 'Revoked Telepath access from '), ('sub_command', f'ID #{user_id+1} '), ('parameter', f'{user["host"]}/{user["user"]}')]
+
+        else:
+            return [('info', 'Something went wrong, please try again')], 'fail'
+
+
 # Override print
-def print(*args, **kwargs):
-    telepath_content.set_text(" ".join([str(a) for a in args]))
+if not constants.is_admin():
+    def print(*args, **kwargs):
+        telepath_content.set_text(" ".join([str(a) for a in args]))
 
 
 class Command:
@@ -461,7 +555,12 @@ command_data = {
         'sub-commands': {
             'list': {
                 'help': 'lists installed server names (* - active)',
-                'exec': show_servers
+                'exec': list_servers
+            },
+            'info': {
+                'help': 'displays basic information about a server',
+                'one-arg': True,
+                'params': {'server name': lambda name: manage_server(name, 'info')}
             },
             'start': {
                 'help': 'launches a server by name',
@@ -522,7 +621,12 @@ command_data = {
             },
             'users': {
                 'help': 'lists all paired and connected users',
-                'exec': lambda *_: 'implement a function to return all users here'
+                'exec': telepath_users,
+            },
+            'revoke': {
+                'help': 'revoke access from a user by ID (they will need to re-pair)',
+                'one-arg': True,
+                'params': {'#ID': lambda user_id: telepath_revoke(user_id)}
             },
             'reset': {
                 'help': 'removes all paired sessions and users',
@@ -536,10 +640,12 @@ commands['help'] = HelpCommand()
 
 
 # Display messages
+command_header = '   ' if advanced_term else ' >>  '
+response_header = '❯ ' if advanced_term else '> '
 logo_widget = urwid.Text([('command', '\n'.join(logo))], align='center')
 splash_widget = urwid.Text([('info', f"{constants.session_splash}\n")], align='center')
 telepath_content = urwid.Text([('info', 'Initializing...')])
-command_content = urwid.Text([('info', '❯ '), ('normal', f"Type a command, ?, or "), ('command', 'help')])
+command_content = urwid.Text([('info', response_header), ('normal', f"Type a command, ?, or "), ('command', 'help')])
 
 # Contains updating text in box
 console = urwid.Pile([
@@ -551,7 +657,6 @@ message_box = urwid.LineBox(console, title=f"auto-mcs v{constants.app_version} (
 refresh_telepath_host()
 
 # Create an Edit widget for command input
-command_header = '   '
 disable_commands = False
 command_history = []
 history_index = 0
@@ -724,7 +829,7 @@ class CommandInput(urwid.Edit):
         if key == '?':
             help_content = commands['help'].show_command_help(self.get_edit_text().split(' '))
             if help_content:
-                command_content.set_text([('info', '❯ '), *help_content])
+                command_content.set_text([('info', response_header), *help_content])
             return
 
 
@@ -793,7 +898,7 @@ frame = urwid.Frame(top_widget)
 
 # Define the color palette
 palette = [
-    ('caption_space', 'white', 'dark gray'),
+    ('caption_space', 'white', 'dark gray' if advanced_term else ''),
     ('caption_marker', 'dark gray', ''),
     ('input', 'light green', '', '', '#05e665', ''),
     ('hint', 'dark gray', ''),
@@ -829,7 +934,7 @@ def run_application():
 
     # Give an error if elevated
     if constants.is_admin():
-        print(f"\n> Error:  Running auto-mcs as {'administrator' if constants.os_name == 'windows' else 'root'} can expose your system to security vulnerabilities.\n\nPlease restart with standard user privileges to continue")
+        print(f"\n> Error:  Running auto-mcs as {'administrator' if constants.os_name == 'windows' else 'root'} can expose your system to security vulnerabilities\n\nPlease restart with standard user privileges to continue")
         return False
 
 
