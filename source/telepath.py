@@ -206,6 +206,11 @@ class TelepathManager():
     def _read_session(self):
         self.authenticated_sessions = self.secret_file.read()
 
+        # Fix borked file if it's saved as a dict
+        if not self.authenticated_sessions and isinstance(self.authenticated_sessions, dict):
+            self.authenticated_sessions = []
+            self.secret_file.write([])
+
     def _reset_session(self):
         self.secret_file.write([])
         self.authenticated_sessions = []
