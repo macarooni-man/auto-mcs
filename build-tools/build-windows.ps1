@@ -60,6 +60,8 @@ if (-not $version) {
 cd $current
 echo "Detected $version"
 
+cmd /c "`"$python`" -m pip install --upgrade pip setuptools wheel"
+
 if (-not (Test-Path $venv_path)) {
     echo "A virtual environment was not detected"
     cmd /c "`"$python`" -m venv $venv_path"
@@ -69,7 +71,7 @@ if (-not (Test-Path $venv_path)) {
 
 # Install/Upgrade packages
 echo "Installing packages"
-cmd /c "$start_venv && pip install --upgrade pip setuptools wheel && pip install --upgrade -r ./reqs-windows.txt"
+cmd /c "$start_venv && pip install --upgrade -r ./reqs-windows.txt"
 
 
 # Patch and install Kivy hook for Pyinstaller

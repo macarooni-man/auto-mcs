@@ -62,8 +62,6 @@ if [ $errorlevel -ne 0 ]; then
 	# Install appropriate packages
 	eval $brew" install python@3.9 python-tk@3.9 upx"
 
-	eval $python" -m pip install --upgrade pip setuptools wheel"
-
 	errorlevel=$?
 	if [ $errorlevel -ne 0 ]; then
     	error "Something went wrong installing Python, please try again (did you install all the packages?)"
@@ -76,6 +74,8 @@ fi
 # If Python 3.9 is installed, check for a virtual environment
 cd $current
 echo Detected $version
+
+eval $python" -m pip install --upgrade pip setuptools wheel"
 
 if ! [ -d $venv_path ]; then
 	echo "A virtual environment was not detected"
@@ -90,7 +90,6 @@ fi
 # Install/Upgrade packages
 echo "Installing packages"
 source $venv_path/bin/activate
-pip install --upgrade pip setuptools wheel
 pip install --upgrade -r ./reqs-macos.txt
 
 # Remove Kivy icons to prevent dock flickering

@@ -118,9 +118,9 @@ jobs:
           export DISPLAY=:0.0
           cd build-tools
           current=$( pwd )
+          python3.9 -m pip install --upgrade pip setuptools wheel
           python3.9 -m venv ./venv
           source ./venv/bin/activate
-          pip install --upgrade pip setuptools wheel
           pip install -r reqs-linux.txt
           python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
           cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
@@ -195,9 +195,9 @@ jobs:
               export DISPLAY=:0.0
               cd build-tools
               current=$( pwd )
+              python3 -m pip install --upgrade pip setuptools wheel
               python3 -m venv ./venv
               . ./venv/bin/activate
-              pip install --upgrade pip setuptools wheel
               pip install -r reqs-linux.txt
               python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
               cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
