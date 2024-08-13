@@ -404,7 +404,7 @@ def telepath_revoke(user_id=None):
             ("info", "first to pair a client")
         ], 'fail'
 
-    elif user_id is None or user_id not in range(0, len(constants.api_manager.authenticated_sessions) - 1):
+    elif user_id is None or user_id > len(constants.api_manager.authenticated_sessions) - 1 or user_id < 0:
         return [
             ("info", "A valid user ID was not specified. Please run "),
             ("command", "telepath "),
