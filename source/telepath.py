@@ -121,8 +121,13 @@ class TelepathManager():
         self.port = self.default_port
         self.sessions = {}
         self.jwt_tokens = {}
-        self.client_data = {'host': constants.hostname, 'user': constants.username, 'session_id': SESSION_ID}
         self.update_config(host=self.host, port=self.port)
+        self.client_data = {
+            'host': constants.hostname,
+            'user': constants.username,
+            'session_id': SESSION_ID,
+            'telepath-version': self.version
+        }
 
         # Helper classes for security
         self.auth = AuthHandler()
@@ -486,10 +491,10 @@ class TelepathManager():
 
     def _login(self, host: dict, id_hash: bytes, request: Request):
 
-        if host['telepath-version'] != constants.telepath_version:
+        if host['telepath-version'] != self.version:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"API versions do not match. Server - v{constants.telepath_version}"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"API versions do not match. Server - v{self.version}"
             )
 
 
@@ -555,8 +560,7 @@ class TelepathManager():
         url = f"http://{ip}:{port}/telepath/login"
         host_data = {
             'host': self.client_data,
-            'id_hash': token,
-            'telepath-version': constants.telepath_version
+            'id_hash': token
         }
 
         # Eventually add a retry algorithm
@@ -603,8 +607,7 @@ class TelepathManager():
         url = f"http://{ip}:{port}/telepath/request_pair"
         host_data = {
             'host': self.client_data,
-            'id_hash': token,
-            'telepath-version': constants.telepath_version
+            'id_hash': token
         }
 
         # Eventually add a retry algorithm
@@ -625,8 +628,7 @@ class TelepathManager():
         url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
         host_data = {
             'host': self.client_data,
-            'id_hash': token,
-            'telepath-version': constants.telepath_version
+            'id_hash': token
         }
 
         # Eventually add a retry algorithm
