@@ -59,7 +59,6 @@ if (-not $version) {
 # If Python 3.9 is installed and a DE is present, check for a virtual environment
 cd $current
 echo "Detected $version"
-cmd /c "`"$python`" -m pip install --upgrade pip setuptools wheel"
 
 if (-not (Test-Path $venv_path)) {
     echo "A virtual environment was not detected"
@@ -70,6 +69,7 @@ if (-not (Test-Path $venv_path)) {
 
 # Install/Upgrade packages
 echo "Installing packages"
+cmd /c "$start_venv && pip install --upgrade pip setuptools wheel"
 cmd /c "$start_venv && pip install --upgrade -r ./reqs-windows.txt"
 
 
