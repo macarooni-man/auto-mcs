@@ -562,7 +562,11 @@ class TelepathManager():
             return {}
 
         # Get the server's public key and create an encrypted token
-        token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
+        try:
+            token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
+        except AttributeError:
+            return {}
+
         url = f"http://{ip}:{port}/telepath/login"
         host_data = {
             'host': self.client_data,
@@ -609,7 +613,11 @@ class TelepathManager():
             return None
 
         # Get the server's public key and create an encrypted token
-        token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
+        try:
+            token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
+        except AttributeError:
+            return None
+
         url = f"http://{ip}:{port}/telepath/request_pair"
         host_data = {
             'host': self.client_data,
@@ -630,7 +638,11 @@ class TelepathManager():
             return None
 
         # Get the server's public key and create an encrypted token
-        token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
+        try:
+            token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
+        except AttributeError:
+            return None
+
         url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
         host_data = {
             'host': self.client_data,
@@ -683,7 +695,7 @@ class AuthHandler():
 
         return private_key.public_key()
 
-    def _get_public_key(self, ip: str, expire_immediately=True):
+    def _get_public_key(self, ip: str, expire_immediately=False):
         public_key = None
         if ip not in self.key_pairs:
             public_key = self._create_key_pair(ip)
