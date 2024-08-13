@@ -43,7 +43,7 @@ import amscript
 
 app_version = "2.2"
 ams_version = "1.2.1"
-telepath_version = "0.9.0"
+telepath_version = "0.9.1"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -5170,7 +5170,13 @@ def get_current_ip(name: str, proxy=False):
                             else:
                                 final_port = int(original_port)
 
-                            port_check = check_port(public_ip, final_port)
+                            # Make a few attempts to verify WAN connection
+                            port_check = False
+                            for attempt in range(10):
+                                port_check = check_port(public_ip, final_port, timeout=5)
+                                if port_check:
+                                    break
+
                             if port_check:
                                 try:
                                     server_manager.running_servers[server_name].run_data['network']['address']['ip'] = public_ip

@@ -200,8 +200,14 @@ class TelepathManager():
             'telepath-version': self.version
         }
 
-    def _save_session(self, session: dict):
-        self.authenticated_sessions.append(session)
+    def _save_session(self, new_session: dict):
+
+        # Remove saved data to prevent duplication
+        for session in self.authenticated_sessions:
+            if new_session['id'] == session['id']:
+                self.authenticated_sessions.remove(session)
+
+        self.authenticated_sessions.append(new_session)
         self.secret_file.write(self.authenticated_sessions)
 
         # Eventually add code here to save and reload this from a file

@@ -184,11 +184,20 @@ def manage_server(name: str, action: str):
         server_obj = constants.server_manager.open_server(name)
 
         if action == 'info':
-            return return_log([
+            return_text = [
                 ("normal", "Server info - "), ("parameter", name),
-                ("info", "\n\nVersion:  "), ("normal", f'{server_obj.type.title()} {server_obj.version}' + (f' (b{server_obj.build})\n' if server_obj.build else '\n')),
-                ("success", "Running") if server_obj.running else ("info", "Not running")
-            ])
+                ("normal", f'\n\n{server_obj.type.title()} {server_obj.version}' + (f' (b{server_obj.build})\n' if server_obj.build else '\n')),
+                ("sub_command", server_obj.server_properties['motd'])
+            ]
+            if server_obj.running:
+                try:
+                    return_text.append(("success", f"\n\n> {server_obj.run_data['network']['address']['ip']}:{server_obj.run_data['network']['address']['port']}"))
+                except:
+                    return_text.append(("success", f"\n\nRunning, waiting to bind port..."))
+            else:
+                return_text.append(("info", "\n\nNot running"))
+
+            return return_log(return_text)
 
         elif action == 'start':
             if server_obj.running:
@@ -718,10 +727,12 @@ command_content = urwid.Text(content)
 console = urwid.Pile([
     ('flow', telepath_content),
     urwid.Filler(command_content, valign='bottom')
+    # urwid.ScrollBar(urwid.Scrollable(urwid.Filler(command_content, valign='bottom')))
 ])
 
 title = f"auto-mcs v{constants.app_version} (headless)" if constants.app_latest else f"auto-mcs v{constants.app_version} (!)"
-message_box = urwid.LineBox(console, title=title, title_attr=('normal' if constants.app_latest else 'parameter'))
+message_box = urwid.AttrMap(urwid.LineBox(console, title=title, title_attr=('normal' if constants.app_latest else 'parameter')), 'line')
+
 refresh_telepath_host()
 
 # Create an Edit widget for command input
@@ -970,6 +981,7 @@ palette = [
     ('caption_marker', 'dark gray', ''),
     ('input', 'light green', '', '', '#05e665', ''),
     ('hint', 'dark gray', ''),
+    ('line', 'white', '', '', '#444444', ''),
     ('telepath_enabled', 'light cyan', ''),
     ('telepath_disabled', 'dark gray', ''),
     ('telepath_host', 'dark cyan', ''),
