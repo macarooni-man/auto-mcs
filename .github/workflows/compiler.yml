@@ -195,7 +195,6 @@ jobs:
               export DISPLAY=:0.0
               cd build-tools
               current=$( pwd )
-              python3 -m pip install --upgrade pip setuptools wheel
               python3 -m venv ./venv
               . ./venv/bin/activate
               pip install -r reqs-linux.txt
