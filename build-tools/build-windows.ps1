@@ -69,8 +69,7 @@ if (-not (Test-Path $venv_path)) {
 
 # Install/Upgrade packages
 echo "Installing packages"
-cmd /c "$start_venv && pip install --upgrade pip setuptools wheel"
-cmd /c "$start_venv && pip install --upgrade -r ./reqs-windows.txt"
+cmd /c "$start_venv && pip install --upgrade pip setuptools wheel && pip install --upgrade -r ./reqs-windows.txt"
 
 
 # Patch and install Kivy hook for Pyinstaller
