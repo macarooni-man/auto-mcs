@@ -485,6 +485,14 @@ class TelepathManager():
                 return False
 
     def _login(self, host: dict, id_hash: bytes, request: Request):
+
+        if host['telepath-version'] != constants.telepath_version:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"API versions do not match. Server - v{constants.telepath_version}"
+            )
+
+
         if self.running:
             ip = request.client.host
             id = self.auth._decrypt(id_hash, ip)
@@ -547,7 +555,8 @@ class TelepathManager():
         url = f"http://{ip}:{port}/telepath/login"
         host_data = {
             'host': self.client_data,
-            'id_hash': token
+            'id_hash': token,
+            'telepath-version': constants.telepath_version
         }
 
         # Eventually add a retry algorithm
@@ -594,7 +603,8 @@ class TelepathManager():
         url = f"http://{ip}:{port}/telepath/request_pair"
         host_data = {
             'host': self.client_data,
-            'id_hash': token
+            'id_hash': token,
+            'telepath-version': constants.telepath_version
         }
 
         # Eventually add a retry algorithm
@@ -615,7 +625,8 @@ class TelepathManager():
         url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
         host_data = {
             'host': self.client_data,
-            'id_hash': token
+            'id_hash': token,
+            'telepath-version': constants.telepath_version
         }
 
         # Eventually add a retry algorithm
@@ -1677,13 +1688,13 @@ class RemoteAmsWebObject(RemoteObject):
 # API endpoints for authentication
 # Keep-alive, unauthenticated
 @app.get('/telepath/check_status', tags=['telepath'])
-@limiter.limit('10/minute')
+@limiter.limit('100/minute')
 async def check_status(request: Request):
     return True
 
 # Retrieve the server's public key to encrypt and send the token
 @app.get('/telepath/get_public_key', tags=['telepath'])
-@limiter.limit('10/minute')
+@limiter.limit('100/minute')
 async def get_public_key(request: Request):
     if constants.api_manager:
         return constants.api_manager.auth._get_public_key(request.client.host)
@@ -1693,7 +1704,7 @@ async def get_public_key(request: Request):
 
 # Pair and authentication
 @app.post("/telepath/request_pair", tags=['telepath'])
-@limiter.limit('1/minute')
+@limiter.limit('100/minute')
 async def request_pair(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
         if 'token' in id_hash:
@@ -1714,7 +1725,7 @@ async def request_pair(host: dict, id_hash: dict, request: Request):
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/submit_pair", tags=['telepath'])
-@limiter.limit('1/minute')
+@limiter.limit('100/minute')
 async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
     if constants.api_manager:
         if 'token' in id_hash:
@@ -1737,7 +1748,7 @@ async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/login", tags=['telepath'])
-@limiter.limit('1/minute')
+@limiter.limit('100/minute')
 async def login(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
         if 'token' in id_hash:
