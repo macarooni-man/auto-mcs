@@ -90,6 +90,7 @@ fi
 # Install/Upgrade packages
 echo "Installing packages"
 source $venv_path/bin/activate
+pip install --upgrade pip setuptools wheel
 pip install --upgrade -r ./reqs-macos.txt
 
 # Remove Kivy icons to prevent dock flickering
