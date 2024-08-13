@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Request, Depends, status
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from slowapi import Limiter, _rate_limit_exceeded_handler
 from fastapi.responses import JSONResponse, FileResponse
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
@@ -8,6 +9,8 @@ from cryptography.hazmat.primitives import hashes
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, create_model
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from cryptography.fernet import Fernet
 from datetime import timedelta as td
 from datetime import datetime as dt
@@ -92,7 +95,10 @@ def create_schema():
 def get_docs_url(type: str):
     if not constants.app_compiled:
         return "/docs" if "docs" in type else "/redoc"
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(docs_url=get_docs_url("docs"), redoc_url=get_docs_url("redoc"))
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.state.limiter = limiter
 app.openapi = create_schema
 
 
@@ -895,6 +901,7 @@ def create_access_token(data: dict, expires_delta: td = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+@limiter.limit('500/minute')
 async def authenticate(token: str = Depends(auth_scheme), request: Request = None):
     global blacklisted_tokens
 
@@ -1670,11 +1677,13 @@ class RemoteAmsWebObject(RemoteObject):
 # API endpoints for authentication
 # Keep-alive, unauthenticated
 @app.get('/telepath/check_status', tags=['telepath'])
-async def check_status():
+@limiter.limit('10/minute')
+async def check_status(request: Request):
     return True
 
 # Retrieve the server's public key to encrypt and send the token
 @app.get('/telepath/get_public_key', tags=['telepath'])
+@limiter.limit('10/minute')
 async def get_public_key(request: Request):
     if constants.api_manager:
         return constants.api_manager.auth._get_public_key(request.client.host)
@@ -1684,6 +1693,7 @@ async def get_public_key(request: Request):
 
 # Pair and authentication
 @app.post("/telepath/request_pair", tags=['telepath'])
+@limiter.limit('1/minute')
 async def request_pair(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
         if 'token' in id_hash:
@@ -1704,6 +1714,7 @@ async def request_pair(host: dict, id_hash: dict, request: Request):
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/submit_pair", tags=['telepath'])
+@limiter.limit('1/minute')
 async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
     if constants.api_manager:
         if 'token' in id_hash:
@@ -1726,6 +1737,7 @@ async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
         raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail='Telepath is still initializing')
 
 @app.post("/telepath/login", tags=['telepath'])
+@limiter.limit('1/minute')
 async def login(host: dict, id_hash: dict, request: Request):
     if constants.api_manager:
         if 'token' in id_hash:

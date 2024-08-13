@@ -38,11 +38,12 @@ import addons
 import backup
 import amscript
 
+
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
 app_version = "2.2"
 ams_version = "1.2.1"
-telepath_version = "0.8.8"
+telepath_version = "0.8.9"
 app_title = "auto-mcs"
 
 dev_version = False
