@@ -4780,6 +4780,7 @@ def write_geyser_config(server_obj: object, reset=False) -> bool:
     final_path = os.path.join(config_path, config_name)
     config_data = f"""# Setup: https://wiki.geysermc.org/geyser/setup/
 bedrock:
+  address: 127.0.0.1
   port: 19132
   clone-remote-port: true
   motd1: "{server_obj.name}"
@@ -5761,7 +5762,7 @@ class PlayitManager():
             "tunnel_type": tunnel_type,
             "port_type": protocol,
             "port_count": 2 if protocol == 'both' else 1,
-            "local_ip": "0.0.0.0",
+            "local_ip": "127.0.0.1",
             "local_port": port,
             "agent_id": self.agent_id
         }
@@ -5806,6 +5807,9 @@ class PlayitManager():
         # If a .toml isn't generated, the guest is unclaimed
         if not os.path.exists(self.toml_path):
             self._claim_agent()
+            if not os.path.exists(self.toml_path):
+                with open(self.toml_path, 'w+') as f:
+                    f.write(f'secret_key = "{self.secret_key}"\n')
 
         # Otherwise, get the secret key from .toml
         else:
