@@ -1856,7 +1856,7 @@ class ViewObject():
         if self.running:
             server_obj = constants.server_manager.running_servers[self.name]
             self.run_data = {'network': server_obj.run_data['network']}
-            self.run_data['playit-tunnel'] = server_obj.run_data['playit-tunnel']
+            self.run_data['playit-tunnel'] = bool(server_obj.run_data['playit-tunnel'])
         else:
             self.run_data = {}
 
