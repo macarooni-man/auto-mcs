@@ -2080,6 +2080,7 @@ class ServerManager():
             del instance['host']
         constants.folder_check(constants.telepathDir)
         with open(constants.telepathFile, 'w+') as f:
+            print(self.telepath_servers)
             f.write(json.dumps(self.telepath_servers))
         return self.telepath_servers
 
@@ -2087,8 +2088,7 @@ class ServerManager():
         if not instance['nickname']:
             instance['nickname'] = constants.format_nickname(instance['hostname'])
 
-        self.telepath_servers[instance['host']] = instance
-        self.write_telepath_servers()
+        self.write_telepath_servers(instance)
 
     # Retrieves remote update list
     def reload_telepath_updates(self, host_data=None):
