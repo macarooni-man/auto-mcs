@@ -23237,12 +23237,13 @@ class ServerSettingsScreen(MenuBackground):
             constants.server_manager.current_server = None
 
             def switch_screens(*a):
-                if len(constants.generate_server_list()) > 0:
-                    screen_manager.current = "ServerManagerScreen"
-                    constants.screen_tree = ['MainMenuScreen']
-                else:
+                constants.server_manager.refresh_list()
+                if not constants.server_list and not constants.server_manager.check_telepath_servers():
                     screen_manager.current = "MainMenuScreen"
                     constants.screen_tree = []
+                else:
+                    screen_manager.current = "ServerManagerScreen"
+                    constants.screen_tree = ['MainMenuScreen']
 
                 Clock.schedule_once(
                     functools.partial(
@@ -23912,6 +23913,7 @@ class TelepathCodeInput(BigBaseInput):
 
             if data and screen_manager.current_screen.name == 'TelepathManagerScreen':
                 def back_to_menu(*a):
+                    constants.server_manager.refresh_list()
                     if not constants.server_list and not constants.server_manager.check_telepath_servers():
                         screen_manager.current = 'MainMenuScreen'
                         constants.screen_tree = []
@@ -24413,6 +24415,7 @@ def check_telepath_disconnect():
                 sm.current_server = None
 
                 if telepath_data and screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
+                    constants.server_manager.refresh_list()
                     if not constants.server_list and not constants.server_manager.check_telepath_servers():
                         screen_manager.current = 'MainMenuScreen'
                         constants.screen_tree = []
