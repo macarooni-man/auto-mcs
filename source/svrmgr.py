@@ -2057,13 +2057,14 @@ class ServerManager():
                     if login_data:
 
                         # Update values if host exists
-                        if host in data:
+                        if host in self.telepath_servers:
                             for k, v in login_data.items():
-                                if host in data and v:
-                                    data[host][k] = v
+                                if host in self.telepath_servers and v:
+                                    self.telepath_servers[host][k] = v
 
                         # Otherwise, set the whole thing
-                        data[host] = login_data
+                        else:
+                            self.telepath_servers[host] = login_data
 
                         new_server_list[host] = constants.deepcopy(data)
             except:
@@ -2080,7 +2081,6 @@ class ServerManager():
             del instance['host']
         constants.folder_check(constants.telepathDir)
         with open(constants.telepathFile, 'w+') as f:
-            print(self.telepath_servers)
             f.write(json.dumps(self.telepath_servers))
         return self.telepath_servers
 

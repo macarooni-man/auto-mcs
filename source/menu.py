@@ -1161,7 +1161,6 @@ class ServerRenameInput(BaseInput):
             return super().insert_text(s, from_undo=from_undo)
 
 
-
 class ScriptNameInput(BaseInput):
 
     def __init__(self, **kwargs):
@@ -1262,7 +1261,6 @@ class ScriptNameInput(BaseInput):
             self.valid(self.convert_name(self.text + s) not in self.script_list, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             return super().insert_text(s, from_undo=from_undo)
-
 
 
 class ServerVersionInput(BaseInput):
@@ -3835,7 +3833,7 @@ class ScrollItem(RelativeLayout):
         if widget:
             self.add_widget(widget)
 
-def scroll_background(pos_hint, pos, size, highlight=False):
+def scroll_background(pos_hint, pos, size, highlight=False, color=None):
 
     class ScrollBackground(Image):
 
@@ -3847,7 +3845,10 @@ def scroll_background(pos_hint, pos, size, highlight=False):
             self.allow_stretch = True
             self.keep_ratio = False
             self.size_hint = (None, None)
-            self.color = (1, 1, 1, 1) if highlight else constants.background_color
+            if color:
+                self.color = color
+            else:
+                self.color = (1, 1, 1, 1) if highlight else constants.background_color
             self.source = os.path.join(constants.gui_assets, 'scroll_gradient.png')
             Window.bind(on_resize=self.resize)
 
@@ -14819,6 +14820,12 @@ class ServerManagerScreen(MenuBackground):
 
             self.resize_bind()
 
+        # Go back to main menu if they don't
+        else:
+            screen_manager.current = 'MainMenuScreen'
+            constants.screen_tree = []
+            return
+
         # Animate scrolling
         def set_scroll(*args):
             Animation.stop_all(self.scroll_layout.parent.parent)
@@ -23705,6 +23712,492 @@ class UpdateModpackProgressScreen(ProgressScreen):
 # ============================================= Telepath Utilities =====================================================
 # <editor-fold desc="Telepath Utilities">
 
+class InstanceButton(HoverButton):
+
+    def animate_button(self, image, color, **kwargs):
+        image_animate = Animation(duration=0.05)
+
+        def f(w):
+            w.background_normal = image
+
+        Animation(color=color, duration=0.06).start(self.title)
+        Animation(color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color), duration=0.06).start(self.subtitle)
+        Animation(color=color, duration=0.06).start(self.type_image.image)
+
+        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
+            Animation(color=color, duration=0.06).start(self.type_image.version_label)
+        Animation(color=color, duration=0.06).start(self.type_image.type_label)
+
+        a = Animation(duration=0.0)
+        a.on_complete = functools.partial(f)
+
+        image_animate += a
+
+        image_animate.start(self)
+
+    def resize_self(self, *args):
+
+        # Title and description
+        padding = 2.17
+        # self.title.pos = (self.x + (self.title.text_size[0] / padding) - (8.3) + 30, self.y + 31)
+        self.title.pos = (self.x + 53, self.y + 26)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78, self.y + 8)
+        offset = 9.55
+
+        self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 13
+        self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
+
+        self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
+        self.type_image.type_label.y = self.y + (self.height * 0.05)
+
+
+        # Edit button
+        self.edit_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
+        self.edit_layout.pos = (self.pos[0] - 6, self.pos[1] + 13)
+
+
+        # Update label
+        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
+            self.type_image.version_label.y = self.y - (self.height / 3.2)
+
+        # Banner version object
+        else:
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 130
+            self.type_image.version_label.y = self.y - (self.height / 3.2) - 2
+
+    def highlight(self):
+        def next_frame(*args):
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        Clock.schedule_once(next_frame, 0)
+
+    def update_subtitle(self):
+
+        def reset(*a):
+            self.subtitle.copyable = False
+            self.subtitle.color = self.color_id[1]
+            self.subtitle.default_opacity = 0.56
+            self.subtitle.font_name = self.original_font
+            self.subtitle.text = self.original_subtitle
+            self.enabled = False
+            self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+
+        try:
+            if self.properties['host'] in constants.server_manager.online_telepath_servers:
+                self.connect_color = (0.529, 1, 0.729, 1)
+                self.subtitle.color = self.connect_color
+                self.subtitle.default_opacity = 0.8
+                self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                self.subtitle.text = 'Connected'
+                self.enabled = True
+                self.background_normal = os.path.join(constants.gui_assets, 'server_button.png')
+
+            else:
+                url = f'http://{self.properties["host"]}:{self.properties["port"]}/telepath/check_status'
+                # Check if remote server is online
+                if constants.requests.get(url, timeout=1).json():
+                    self.connect_color = (1, 0.65, 0.65, 1)
+                    self.subtitle.color = self.connect_color
+                    self.subtitle.default_opacity = 0.8
+                    self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                    self.subtitle.text = 'Authentication failure'
+                    self.enabled = False
+                    self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+
+                else:
+                    reset()
+
+        except KeyError:
+            reset()
+
+        self.background_down = self.background_normal
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.enabled else [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
+        self.title.color = self.color_id[1]
+
+    def generate_name(self):
+        tld = self.properties['host']
+        if self.properties['nickname']:
+            tld = self.properties['nickname']
+        return tld
+
+    def __init__(self, instance_data, click_function=None, fade_in=0.0, highlight=None, update_banner="", **kwargs):
+        super().__init__(**kwargs)
+
+        self.properties = instance_data
+        self.border = (-5, -5, -5, -5)
+        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.65, 0.65, 1, 1), 0.07)]
+        self.connect_color = (0.529, 1, 0.729, 1)
+        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+        self.size_hint_max = (580, 80)
+        self.id = "server_button"
+        self.enabled = False
+
+        self.background_normal = os.path.join(constants.gui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png')
+        self.background_down = self.background_normal
+
+        self.icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+
+
+        # Loading stuffs
+        self.original_subtitle = 'Offline'
+        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Title of Instance
+
+        # self.title = Label()
+        # self.title.__translate__ = False
+        # self.title.id = "title"
+        # self.title.halign = "left"
+        # self.title.color = self.color_id[1]
+        # self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        # self.title.font_size = sp(25)
+        # self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
+        # self.title.shorten = True
+        # self.title.markup = True
+        # self.title.shorten_from = "right"
+        # self.title.max_lines = 1
+        # self.title.text = self.generate_name()
+        # self.add_widget(self.title)
+
+        self.title = TextInput()
+        self.title.__translate__ = False
+        self.title.id = "title"
+        self.title.halign = "left"
+        self.title.foreground_color = self.color_id[1]
+        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.background_color = (0, 0, 0, 0)
+        self.title.size = (400, 50)
+        self.title.font_size = sp(25)
+        self.title.max_lines = 1
+        self.title.text = self.generate_name()
+        self.add_widget(self.title)
+
+
+        # Authentication status formatted
+        self.subtitle = Label()
+        self.subtitle.__translate__ = False
+        self.subtitle.size = (300, 30)
+        self.subtitle.id = "subtitle"
+        self.subtitle.halign = "left"
+        self.subtitle.valign = "center"
+        self.subtitle.font_size = sp(21)
+        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.shorten = True
+        self.subtitle.markup = True
+        self.subtitle.shorten_from = "right"
+        self.subtitle.max_lines = 1
+        self.subtitle.text_size[0] = 350
+        self.subtitle.copyable = False
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.default_opacity = 0.56
+        self.subtitle.font_name = self.original_font
+        self.subtitle.text = self.original_subtitle
+
+        self.subtitle.opacity = self.subtitle.default_opacity
+
+        self.add_widget(self.subtitle)
+        self.update_subtitle()
+
+
+        # Edit button
+        self.edit_layout = RelativeLayout()
+        edit_instance = None
+        try:
+            edit_instance = functools.partial(screen_manager.current_screen.edit_instance, self.properties)
+        except AttributeError:
+            pass
+
+        self.edit_button = IconButton('', {}, (0, 0), (None, None), 'settings-sharp.png', anchor='right', click_func=edit_instance)
+
+        self.edit_layout.add_widget(self.edit_button)
+        self.add_widget(self.edit_layout)
+
+
+        # Type icon and info
+        self.type_image = RelativeLayout()
+        self.type_image.width = 400
+
+        instance_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{self.properties["os"]}.png')
+        self.type_image.image = Image(source=instance_icon)
+
+        self.type_image.image.allow_stretch = True
+        self.type_image.image.size_hint_max = (65, 65)
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.add_widget(self.type_image.image)
+
+        def TemplateLabel():
+            template_label = AlignLabel()
+            template_label.__translate__ = False
+            template_label.halign = "right"
+            template_label.valign = "middle"
+            template_label.text_size = template_label.size
+            template_label.font_size = sp(19)
+            template_label.color = self.color_id[1]
+            template_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            template_label.width = 150
+            return template_label
+
+        if update_banner:
+            self.type_image.version_label = RelativeLayout()
+            self.type_image.version_label.add_widget(
+                BannerObject(
+                    pos_hint={"center_x": 1, "center_y": 0.5},
+                    size=(100, 30),
+                    color=(0.647, 0.839, 0.969, 1),
+                    text= ('   ' + update_banner + '  ') if update_banner.startswith('b-') else update_banner,
+                    icon="arrow-up-circle.png",
+                    icon_side="left"
+                )
+            )
+
+        else:
+            self.type_image.version_label = TemplateLabel()
+            self.type_image.version_label.color = self.color_id[1]
+            self.type_image.version_label.text = f"auto-mcs v{self.properties['app-version']}"
+            self.type_image.version_label.opacity = 0.6
+
+
+        self.type_image.type_label = TemplateLabel()
+        self.type_image.type_label.text = self.properties["os"].replace('macos', 'macOS')
+        self.type_image.type_label.font_size = sp(23)
+        self.type_image.add_widget(self.type_image.version_label)
+        self.type_image.add_widget(self.type_image.type_label)
+        self.add_widget(self.type_image)
+
+
+        # If click_function
+        if click_function:
+            self.bind(on_press=click_function)
+
+
+        # Animate opacity
+        if fade_in > 0:
+            self.opacity = 0
+            self.title.opacity = 0
+
+            Animation(opacity=1, duration=fade_in).start(self)
+            Animation(opacity=1, duration=fade_in).start(self.title)
+            Animation(opacity=self.subtitle.default_opacity, duration=fade_in).start(self.subtitle)
+
+        self.bind(pos=self.resize_self)
+
+    def on_enter(self, *args):
+        return
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
+
+    def on_leave(self, *args):
+        return
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+
+    def update_context_options(self):
+        def rename():
+            pass
+        def settings():
+            pass
+        def delete():
+            pass
+
+        self.context_options = [
+            {'name': 'Rename', 'icon': 'rename.png', 'action': rename},
+            {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings},
+            {'name': 'Delete', 'icon': 'trash-sharp.png', 'action': delete, 'color': 'red'}
+        ]
+
+class TelepathInstanceScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True, *args):
+        default_scroll = 1
+
+        # Update page counter
+        self.last_results = results
+        self.max_pages = (len(results) / self.page_size).__ceil__()
+        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        page_list = []
+        for k, v in constants.deepcopy(results).items():
+            v['host'] = k
+            page_list.append(v)
+        page_list = page_list[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+        self.scroll_layout.clear_widgets()
+
+
+        # Generate header
+        server_count = len(constants.server_manager.telepath_servers)
+        header_content = "Select an instance to manage"
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                break
+
+
+        # Show servers if they exist
+        if server_count != 0:
+
+            # Clear and add all ServerButtons
+            for x, instance in enumerate(page_list, 1):
+
+                # Activated when server is clicked
+                def view_server(server, index, *args):
+                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "InstanceButton"][index - 1]
+
+                # Add-on button click function
+                self.scroll_layout.add_widget(
+                    ScrollItem(
+                        widget = InstanceButton(
+                            instance_data = instance,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            click_function = functools.partial(
+                                view_server,
+                                instance,
+                                x
+                            )
+                        )
+                    )
+                )
+
+            self.resize_bind()
+
+        # Go back to main menu if they don't
+        else:
+            screen_manager.current = 'TelepathManagerScreen'
+            constants.screen_tree = ['MainMenuScreen']
+            return
+
+        # Animate scrolling
+        def set_scroll(*args):
+            Animation.stop_all(self.scroll_layout.parent.parent)
+            if animate_scroll:
+                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+            else:
+                self.scroll_layout.parent.parent.scroll_y = default_scroll
+        Clock.schedule_once(set_scroll, 0)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.background_color = constants.brighten_color(constants.background_color, -0.09)
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.page_switcher = None
+
+        self.last_results = []
+        self.page_size = 10
+        self.current_page = 0
+        self.max_pages = 0
+        self.anim_speed = 10
+
+        with self.canvas.before:
+            self.color = Color(*self.background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.82
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60), color=self.background_color)
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60), color=self.background_color)
+
+        # Generate buttons on page load
+        header_content = "Select an instance to manage"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.page_switcher)
+
+        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = "Instance Manager"
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(f'Telepath, {menu_name}', no_background=True))
+
+        self.add_widget(float_layout)
+
+        # Automatically generate results on page load
+        self.gen_search_results(constants.server_manager.telepath_servers)
+
+
+
+
 class TelepathHostInput(CreateServerPortInput):
     def __init__(self, **kwargs):
         self.ip = ''
@@ -23899,7 +24392,6 @@ class TelepathCodeInput(BigBaseInput):
 
             try:
                 if not data or 'detail' in data:
-                    print(data)
                     self.stinky_text = '  Unable to connect or invalid code'
                     self.fail_count += 1
                     self.valid_text(False, True)
@@ -24646,7 +25138,6 @@ class MainApp(App):
                         if len(constants.boot_launches) > 1:
                             while server not in constants.server_manager.running_servers:
                                 time.sleep(0.5)
-                                print(constants.server_manager.running_servers)
                             Clock.schedule_once(previous_screen, 1.5)
                             time.sleep(2)
 

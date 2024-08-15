@@ -475,6 +475,9 @@ class TelepathManager():
                     if self._verify_id(id, self.pair_data['id']) and code == self.pair_data['code']:
                         # Successfully authenticated
 
+                        # Reset remote server for permission reasons
+                        constants.server_manager.remote_server = None
+
                         # Call function to write this data to a file
                         session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip}
                         self._save_session(session)
@@ -526,6 +529,9 @@ class TelepathManager():
                             headers={"WWW-Authenticate": "Bearer"},
                         )
 
+                    # Reset remote server for permission reasons
+                    constants.server_manager.remote_server = None
+
                     # Show banner on login
                     constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
 
@@ -536,6 +542,7 @@ class TelepathManager():
                     # Return data without the ID
                     returned_session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'ip': ip}
                     return self._return_token(returned_session)
+
 
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
