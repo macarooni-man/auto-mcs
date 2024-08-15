@@ -23714,6 +23714,62 @@ class UpdateModpackProgressScreen(ProgressScreen):
 
 class InstanceButton(HoverButton):
 
+    class NameInput(TextInput):
+
+        def _on_focus(self, instance, value, *largs):
+            super()._on_focus(instance, value, *largs)
+
+            if not value and not self.text:
+                self.text = constants.format_nickname(self.original_text)
+
+
+        # Ignore popup text
+        def insert_text(self, substring, from_undo=False):
+            if screen_manager.current_screen.popup_widget:
+                return None
+
+            # Input validation & formatting
+            if len(substring) > 1 or (substring in [' ', '-', '.'] and (not self.text or self.text[self.cursor_col-1] in ['-', '.'])):
+                return
+
+            if len(self.text) >= 20:
+                return
+
+            substring = substring.lower().replace(' ', '-')
+            substring = re.sub('[^a-zA-Z0-9.-]', '', substring)
+
+            super().insert_text(substring, from_undo)
+
+        # Special keypress behaviors
+        def keyboard_on_key_down(self, window, keycode, text, modifiers):
+
+            if keycode[1] == "backspace" and control in modifiers:
+                original_index = self.cursor_col
+                new_text, index = constants.control_backspace(self.text, original_index)
+                self.select_text(original_index - index, original_index)
+                self.delete_selection()
+            else:
+                super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.__translate__ = False
+            self.id = "title"
+            self.halign = "left"
+            self.foreground_color = constants.brighten_color((0.65, 0.65, 1, 1), 0.07)
+            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            self.background_color = (0, 0, 0, 0)
+            self.size = (400, 50)
+            self.font_size = sp(25)
+            self.max_lines = 1
+            self.multiline = False
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.cursor_width = dp(3)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
+            self.hint_text = 'enter a nickname...'
+            self.original_text = ''
+
     def animate_button(self, image, color, **kwargs):
         image_animate = Animation(duration=0.05)
 
@@ -23798,16 +23854,18 @@ class InstanceButton(HoverButton):
             else:
                 url = f'http://{self.properties["host"]}:{self.properties["port"]}/telepath/check_status'
                 # Check if remote server is online
-                if constants.requests.get(url, timeout=1).json():
-                    self.connect_color = (1, 0.65, 0.65, 1)
-                    self.subtitle.color = self.connect_color
-                    self.subtitle.default_opacity = 0.8
-                    self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-                    self.subtitle.text = 'Authentication failure'
-                    self.enabled = False
-                    self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
-
-                else:
+                try:
+                    if constants.requests.get(url, timeout=1).json():
+                        self.connect_color = (1, 0.65, 0.65, 1)
+                        self.subtitle.color = self.connect_color
+                        self.subtitle.default_opacity = 0.8
+                        self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                        self.subtitle.text = 'Authentication failure'
+                        self.enabled = False
+                        self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+                    else:
+                        reset()
+                except constants.requests.exceptions.ConnectionError:
                     reset()
 
         except KeyError:
@@ -23848,33 +23906,8 @@ class InstanceButton(HoverButton):
 
 
         # Title of Instance
-
-        # self.title = Label()
-        # self.title.__translate__ = False
-        # self.title.id = "title"
-        # self.title.halign = "left"
-        # self.title.color = self.color_id[1]
-        # self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-        # self.title.font_size = sp(25)
-        # self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
-        # self.title.shorten = True
-        # self.title.markup = True
-        # self.title.shorten_from = "right"
-        # self.title.max_lines = 1
-        # self.title.text = self.generate_name()
-        # self.add_widget(self.title)
-
-        self.title = TextInput()
-        self.title.__translate__ = False
-        self.title.id = "title"
-        self.title.halign = "left"
-        self.title.foreground_color = self.color_id[1]
-        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-        self.title.background_color = (0, 0, 0, 0)
-        self.title.size = (400, 50)
-        self.title.font_size = sp(25)
-        self.title.max_lines = 1
-        self.title.text = self.generate_name()
+        self.title = self.NameInput()
+        self.title.text = self.title.original_text = self.generate_name()
         self.add_widget(self.title)
 
 
@@ -24131,6 +24164,7 @@ class TelepathInstanceScreen(MenuBackground):
             self.switch_page(keycode[1])
 
     def generate_menu(self, **kwargs):
+        constants.server_manager.check_telepath_servers()
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
