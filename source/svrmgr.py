@@ -14,7 +14,7 @@ import json
 import os
 import re
 
-from acl import AclManager, get_uuid
+from acl import AclManager, get_uuid, check_online
 from backup import BackupManager
 from addons import AddonManager
 import constants
@@ -263,7 +263,7 @@ class ServerObject():
     def _start_performance_clock(self):
         self._loop_clock = 0
         def loop(*a):
-            if self.running:
+            while self.running:
                 if self._is_telepath_session():
                     self.performance_stats(1, (self._loop_clock == 3))
                     self._loop_clock += 1
@@ -272,11 +272,8 @@ class ServerObject():
                 else:
                     time.sleep(0.5)
 
-                loop()
-
             # Reset on close
-            else:
-                self._loop_clock = 0
+            self._loop_clock = 0
 
         # Don't run on telepath
         if not self._telepath_data:
@@ -285,6 +282,11 @@ class ServerObject():
     # Check status of loaded objects
     def _check_object_init(self):
         return {'addon': bool(self.addon), 'backup': bool(self.backup), 'acl': bool(self.backup), 'script_manager': bool(self.script_manager)}
+
+    # Checks if a user is online
+    def user_online(self, user: str):
+        return check_online(user)
+
 
     # Telepath-compatible methods for interacting with the proxy
     def proxy_installed(self):
