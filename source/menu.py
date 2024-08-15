@@ -10780,7 +10780,7 @@ class AclRulePanel(RelativeLayout):
 
 
             # Online status
-            if acl.check_online(displayed_rule.rule):
+            if constants.server_manager.current_server.user_online(displayed_rule.rule):
                 self.player_layout.online_label.color = self.color_dict['green']
                 self.player_layout.online_icon.color = self.color_dict['green']
                 self.player_layout.online_label.text = "Currently online"
