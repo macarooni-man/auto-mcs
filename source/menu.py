@@ -23859,7 +23859,7 @@ class InstanceButton(HoverButton):
                 self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
                 self.subtitle.text = 'Connected'
                 self.enabled = True
-                self.background_normal = os.path.join(constants.gui_assets, 'server_button.png')
+                self.background_normal = os.path.join(constants.gui_assets, 'telepath_button_enabled.png')
 
             else:
                 url = f'http://{self.properties["host"]}:{self.properties["port"]}/telepath/check_status'
