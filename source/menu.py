@@ -8739,6 +8739,16 @@ class ProgressWidget(RelativeLayout):
         self.cover.color = constants.background_color
         self.cover.pos_hint = {'center_y': 0.5}
 
+        # Fake shading to change the depth
+        self.shadow = Image()
+        self.shadow.allow_stretch = True
+        self.shadow.keep_ratio = False
+        self.shadow.size_hint_max_x = self.size_hint_max_x
+        self.shadow.color = constants.background_color
+        self.shadow.opacity = 0.1
+        self.shadow.size_hint_max_y = self.size_hint_max_y / 2
+        self.shadow.y = self.y
+
         # Progress bar animation
         self.bar = Image()
         self.bar.allow_stretch = True
@@ -8775,6 +8785,7 @@ class ProgressWidget(RelativeLayout):
         self.add_widget(self.cover)
         self.add_widget(self.rail)
         self.add_widget(self.percentage)
+        self.add_widget(self.shadow)
 
         self.update_progress(self.value)
 
@@ -8787,6 +8798,10 @@ class ProgressScreen(MenuBackground):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
+        def sleep(delay: float or int):
+            time.sleep(delay)
+            return True
+
         self.page_contents = {
 
             # Page name
@@ -8801,17 +8816,17 @@ class ProgressScreen(MenuBackground):
             'default_error': 'There was an issue, please try again later',
 
             'function_list': (
-                ('Step 1', functools.partial(time.sleep, 3), 30),
-                ('Step 2', functools.partial(time.sleep, 3), 30),
-                ('Step 3', functools.partial(time.sleep, 0.1), 30),
-                ('Step 4', functools.partial(time.sleep, 0.1), 10)
+                ('Step 1', functools.partial(sleep, 3), 30),
+                ('Step 2', functools.partial(sleep, 3), 30),
+                ('Step 3', functools.partial(sleep, 0.1), 30),
+                ('Step 4', functools.partial(sleep, 0.1), 10)
             ),
 
             # Function to run before steps (like checking for an internet connection)
-            'before_function': functools.partial(time.sleep, 0),
+            'before_function': functools.partial(sleep, 0),
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(time.sleep, 0),
+            'after_function': functools.partial(sleep, 0),
 
             # Screen to go to after complete
             'next_screen': 'MainMenuScreen'
