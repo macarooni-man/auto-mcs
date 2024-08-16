@@ -188,11 +188,16 @@ script_obj = None
 
 # App/Assets folder
 launch_path = None
-if hasattr(sys, '_MEIPASS'):
-    executable_folder = sys._MEIPASS
-    gui_assets = os.path.join(executable_folder, 'gui-assets')
-else:
-    executable_folder = os.path.abspath(".")
+try:
+    if hasattr(sys, '_MEIPASS'):
+        executable_folder = sys._MEIPASS
+        gui_assets = os.path.join(executable_folder, 'gui-assets')
+    else:
+        executable_folder = os.path.abspath(".")
+        gui_assets = os.path.join(executable_folder, 'gui-assets')
+
+except FileNotFoundError:
+    executable_folder = '.'
     gui_assets = os.path.join(executable_folder, 'gui-assets')
 
 
@@ -3447,7 +3452,9 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             os.remove(script)
 
         # Extract info from auto-mcs.ini
-        config_file = server_config(server_name=None, config_path=glob(os.path.join(tmpsvr, "*auto-mcs.ini"))[0])
+        all_configs = glob(os.path.join(tmpsvr, "auto-mcs.ini*"))
+        all_configs.extend(glob(os.path.join(tmpsvr, ".auto-mcs.ini*")))
+        config_file = server_config(server_name=None, config_path=all_configs[0])
         import_data['version'] = config_file.get('general', 'serverVersion').lower()
         import_data['type'] = config_file.get('general', 'serverType').lower()
         try:

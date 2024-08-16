@@ -2074,13 +2074,17 @@ class ServerManager():
 
         # Add a discovery endpoint at some point here, and only return active servers
         self.online_telepath_servers = new_server_list
+        self.write_telepath_servers(overwrite=True)
         return new_server_list
 
-    def write_telepath_servers(self, instance=None):
-        self.telepath_servers = self.load_telepath_servers()
+    def write_telepath_servers(self, instance=None, overwrite=False):
+        if not overwrite:
+            self.telepath_servers = self.load_telepath_servers()
+
         if instance:
             self.telepath_servers[instance['host']] = instance
             del instance['host']
+
         constants.folder_check(constants.telepathDir)
         with open(constants.telepathFile, 'w+') as f:
             f.write(json.dumps(self.telepath_servers))
@@ -2091,6 +2095,20 @@ class ServerManager():
             instance['nickname'] = constants.format_nickname(instance['hostname'])
 
         self.write_telepath_servers(instance)
+
+    def remove_telepath_server(self, instance: dict):
+        if instance['host'] in self.telepath_servers:
+            del self.telepath_servers[instance['host']]
+
+        self.write_telepath_servers(overwrite=True)
+
+    def rename_telepath_server(self, instance: dict, new_name: str):
+        new_name = constants.format_nickname(new_name)
+        instance['nickname'] = new_name
+        self.telepath_servers[instance['host']]['nickname'] = new_name
+        self.telepath_servers[instance['host']]['display-name'] = new_name
+
+        self.write_telepath_servers(overwrite=True)
 
     # Retrieves remote update list
     def reload_telepath_updates(self, host_data=None):

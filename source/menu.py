@@ -2325,11 +2325,11 @@ class ServerImportBackupInput(DirectoryInput):
             new_path = None
             test_path = constants.tempDir
             cwd = constants.get_cwd()
-            print(self.selected_server)
             if (self.selected_server.endswith(".tgz") or self.selected_server.endswith(".amb") and os.path.isfile(self.selected_server)):
                 constants.folder_check(test_path)
                 os.chdir(test_path)
-                constants.run_proc(f'tar -xf "{self.selected_server}"{"" if constants.os_name == "windows" else " --wildcards"} *auto-mcs.ini')
+                constants.run_proc(f'tar -xf "{self.selected_server}" auto-mcs.ini')
+                constants.run_proc(f'tar -xf "{self.selected_server}" .auto-mcs.ini')
                 constants.run_proc(f'tar -xf "{self.selected_server}" server.properties')
                 if (os.path.exists(os.path.join(test_path, "auto-mcs.ini")) or os.path.exists(os.path.join(test_path, ".auto-mcs.ini"))) and os.path.exists(os.path.join(test_path, "server.properties")):
                     if os.path.exists(os.path.join(test_path, "auto-mcs.ini")):
@@ -23716,12 +23716,19 @@ class InstanceButton(HoverButton):
 
     class NameInput(TextInput):
 
+        def update_config(self, *a):
+            def write(*a):
+                constants.server_manager.rename_telepath_server(self.properties, self.text)
+
+            if self.change_timeout:
+                self.change_timeout.cancel()
+            self.change_timeout = Clock.schedule_once(write, 0.7)
+
         def _on_focus(self, instance, value, *largs):
             super()._on_focus(instance, value, *largs)
 
             if not value and not self.text:
                 self.text = constants.format_nickname(self.original_text)
-
 
         # Ignore popup text
         def insert_text(self, substring, from_undo=False):
@@ -23738,6 +23745,8 @@ class InstanceButton(HoverButton):
             substring = substring.lower().replace(' ', '-')
             substring = re.sub('[^a-zA-Z0-9.-]', '', substring)
 
+            self.update_config()
+
             super().insert_text(substring, from_undo)
 
         # Special keypress behaviors
@@ -23751,8 +23760,9 @@ class InstanceButton(HoverButton):
             else:
                 super().keyboard_on_key_down(window, keycode, text, modifiers)
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, instance_data, *args, **kwargs):
             super().__init__(*args, **kwargs)
+            self.properties = instance_data
             self.__translate__ = False
             self.id = "title"
             self.halign = "left"
@@ -23769,6 +23779,7 @@ class InstanceButton(HoverButton):
             self.selection_color = (0.5, 0.5, 1, 0.4)
             self.hint_text = 'enter a nickname...'
             self.original_text = ''
+            self.change_timeout = None
 
     def animate_button(self, image, color, **kwargs):
         image_animate = Animation(duration=0.05)
@@ -23795,7 +23806,6 @@ class InstanceButton(HoverButton):
 
         # Title and description
         padding = 2.17
-        # self.title.pos = (self.x + (self.title.text_size[0] / padding) - (8.3) + 30, self.y + 31)
         self.title.pos = (self.x + 53, self.y + 26)
         self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78, self.y + 8)
         offset = 9.55
@@ -23906,7 +23916,7 @@ class InstanceButton(HoverButton):
 
 
         # Title of Instance
-        self.title = self.NameInput()
+        self.title = self.NameInput(instance_data)
         self.title.text = self.title.original_text = self.generate_name()
         self.add_widget(self.title)
 
@@ -23939,14 +23949,7 @@ class InstanceButton(HoverButton):
 
         # Edit button
         self.edit_layout = RelativeLayout()
-        edit_instance = None
-        try:
-            edit_instance = functools.partial(screen_manager.current_screen.edit_instance, self.properties)
-        except AttributeError:
-            pass
-
-        self.edit_button = IconButton('', {}, (0, 0), (None, None), 'settings-sharp.png', anchor='right', click_func=edit_instance)
-
+        self.edit_button = IconButton('', {}, (0, 0), (None, None), 'unpair.png', anchor='right', click_func=functools.partial(click_function, instance_data))
         self.edit_layout.add_widget(self.edit_button)
         self.add_widget(self.edit_layout)
 
@@ -24003,11 +24006,6 @@ class InstanceButton(HoverButton):
         self.add_widget(self.type_image)
 
 
-        # If click_function
-        if click_function:
-            self.bind(on_press=click_function)
-
-
         # Animate opacity
         if fade_in > 0:
             self.opacity = 0
@@ -24028,20 +24026,6 @@ class InstanceButton(HoverButton):
         return
         if not self.ignore_hover:
             self.animate_button(image=os.path.join(constants.gui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
-
-    def update_context_options(self):
-        def rename():
-            pass
-        def settings():
-            pass
-        def delete():
-            pass
-
-        self.context_options = [
-            {'name': 'Rename', 'icon': 'rename.png', 'action': rename},
-            {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings},
-            {'name': 'Delete', 'icon': 'trash-sharp.png', 'action': delete, 'color': 'red'}
-        ]
 
 class TelepathInstanceScreen(MenuBackground):
 
@@ -24101,8 +24085,35 @@ class TelepathInstanceScreen(MenuBackground):
             for x, instance in enumerate(page_list, 1):
 
                 # Activated when server is clicked
-                def view_server(server, index, *args):
-                    selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "InstanceButton"][index - 1]
+                def view_server(data, *a):
+                    if data['nickname']:
+                        display_name = f"{data['host']} ({data['nickname']})"
+                    else:
+                        display_name = data['nickname']
+
+                    desc = f"Un-pairing this instance will prevent you from accessing it via $Telepath$ until it's paired again.\n\nAre you sure you want to un-pair from '${display_name}$'?"
+
+                    def unpair(*a):
+                        # Log out if possible
+                        if data['host'] in constants.api_manager.jwt_tokens:
+                            constants.api_manager.logout(data['host'], data['port'])
+
+                        constants.server_manager.remove_telepath_server(data)
+                        self.gen_search_results(constants.server_manager.telepath_servers)
+
+                        telepath_banner(f"Un-paired from '${data['host']}$'", False)
+
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_popup,
+                            "warning_query",
+                            f'Un-pair Instance',
+                            desc,
+                            (None, unpair)
+                        ),
+                        0
+                    )
 
                 # Add-on button click function
                 self.scroll_layout.add_widget(
@@ -24110,11 +24121,7 @@ class TelepathInstanceScreen(MenuBackground):
                         widget = InstanceButton(
                             instance_data = instance,
                             fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            click_function = functools.partial(
-                                view_server,
-                                instance,
-                                x
-                            )
+                            click_function = view_server
                         )
                     )
                 )
