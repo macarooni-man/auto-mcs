@@ -8146,7 +8146,7 @@ class MenuBackground(Screen):
 
         # Ignore loading anything if server is remote and unavailable
         screen_name = self.__class__.__name__
-        if screen_name.startswith('Server') and screen_name not in ['ServerManagerScreen']:
+        if screen_name.startswith('Server') and screen_name not in ['ServerManagerScreen', 'ServerImportScreen']:
             if check_telepath_disconnect():
                 return True
 
