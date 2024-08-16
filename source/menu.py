@@ -3423,8 +3423,11 @@ def footer_label(path, color, progress_screen=False):
     if constants.server_manager.current_server:
         server_obj = constants.server_manager.current_server
         data = server_obj._telepath_data
-        if data and path.strip().startswith(server_obj.name):
-            path = f'[color=#353565]{data["display-name"]}/[/color]{path}'
+        try:
+            if data and path.strip().startswith(server_obj.name):
+                path = f'[color=#353565]{data["display-name"]}/[/color]{path}'
+        except:
+            pass
 
     # Translate footer paths that don't include the server name
     t_path = []
@@ -13243,7 +13246,7 @@ class CreateServerProgressScreen(ProgressScreen):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
@@ -13457,7 +13460,7 @@ class ServerImportProgressScreen(ProgressScreen):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
@@ -13592,7 +13595,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
@@ -13981,7 +13984,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     # Automatically update if available
     if server_obj.running:
         ignore_update = True
-    if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space():
+    if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space(telepath_data=server_obj._telepath_data):
         while not server_obj.addon:
             time.sleep(0.05)
 
@@ -14063,8 +14066,8 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
     return remote_obj
 
 
-def disk_popup(go_to='back'):
-    if not constants.check_free_space():
+def disk_popup(go_to='back', telepath_data=None):
+    if not constants.check_free_space(telepath_data=telepath_data):
         def go_back(*a):
             constants.back_clicked = True
             if go_to == 'back':
@@ -14077,7 +14080,7 @@ def disk_popup(go_to='back'):
             screen_manager.current_screen.show_popup(
                 "warning",
                 "Storage Error",
-                "auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up space on your disk to continue",
+                f"auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up space on {'this $Telepath$ instance' if telepath_data else 'your disk'} to continue",
                 go_back
             )
         Clock.schedule_once(disk_error, 0)
@@ -17757,12 +17760,12 @@ class ServerBackupScreen(MenuBackground):
                 v.disable(True) if loading else v.disable(False)
 
     def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
 
         # Return if no free space
-        if disk_popup('ServerViewScreen'):
+        if disk_popup('ServerViewScreen', telepath_data=server_obj._telepath_data):
             return
 
-        server_obj = constants.server_manager.current_server
         server_obj.backup._update_data()
         backup_stats = server_obj.backup._backup_stats
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
@@ -19264,7 +19267,7 @@ class ServerAddonUpdateScreen(ProgressScreen):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
@@ -19564,12 +19567,11 @@ class ServerAddonScreen(MenuBackground):
             self.switch_page(keycode[1])
 
     def generate_menu(self, **kwargs):
+        self.server = constants.server_manager.current_server
 
         # Return if no free space
-        if disk_popup('ServerViewScreen'):
+        if disk_popup('ServerViewScreen', telepath_data=self.server._telepath_data):
             return
-
-        self.server = constants.server_manager.current_server
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
@@ -20894,12 +20896,11 @@ class ServerAmscriptScreen(MenuBackground):
             self.switch_page(keycode[1])
 
     def generate_menu(self, **kwargs):
+        self.server = constants.server_manager.current_server
 
         # Return if no free space
-        if disk_popup('ServerViewScreen'):
+        if disk_popup('ServerViewScreen', telepath_data=self.server._telepath_data):
             return
-
-        self.server = constants.server_manager.current_server
 
 
         # Scroll list
@@ -22521,12 +22522,12 @@ class ServerWorldScreen(MenuBackground):
         self.new_type = 'default'
 
     def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
 
         # Return if no free space
-        if disk_popup('ServerSettingsScreen'):
+        if disk_popup('ServerSettingsScreen', telepath_data=server_obj._telepath_data):
             return
 
-        server_obj = constants.server_manager.current_server
         self.new_world = 'world'
         self.new_seed = ''
         self.new_type = 'default'
@@ -23245,12 +23246,8 @@ class ServerSettingsScreen(MenuBackground):
 
             def switch_screens(*a):
                 constants.server_manager.refresh_list()
-                if not constants.server_list and not constants.server_manager.check_telepath_servers():
-                    screen_manager.current = "MainMenuScreen"
-                    constants.screen_tree = []
-                else:
-                    screen_manager.current = "ServerManagerScreen"
-                    constants.screen_tree = ['MainMenuScreen']
+                screen_manager.current = "ServerManagerScreen"
+                constants.screen_tree = ['MainMenuScreen']
 
                 Clock.schedule_once(
                     functools.partial(
@@ -23341,14 +23338,14 @@ class MigrateServerTypeScreen(MenuBackground):
         self.content_layout_2 = None
 
     def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
 
         # Return if no free space or telepath is busy
-        if disk_popup('ServerSettingsScreen'):
+        if disk_popup('ServerSettingsScreen', telepath_data=server_obj._telepath_data):
             return
         if telepath_popup('ServerSettingsScreen'):
             return
 
-        server_obj = constants.server_manager.current_server
 
         # Generate buttons on page load
         buttons = []
@@ -23526,7 +23523,7 @@ class MigrateServerProgressScreen(ProgressScreen):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
@@ -23625,7 +23622,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
@@ -23870,7 +23867,12 @@ class InstanceButton(HoverButton):
                         self.subtitle.color = self.connect_color
                         self.subtitle.default_opacity = 0.8
                         self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-                        self.subtitle.text = 'Authentication failure'
+
+                        if self.properties['telepath-version'] != constants.api_manager.version:
+                            self.subtitle.text = 'API version mismatch'
+                        else:
+                            self.subtitle.text = 'Authentication failure'
+
                         self.enabled = False
                         self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
                     else:
@@ -24447,12 +24449,8 @@ class TelepathCodeInput(BigBaseInput):
             if data and screen_manager.current_screen.name == 'TelepathManagerScreen':
                 def back_to_menu(*a):
                     constants.server_manager.refresh_list()
-                    if not constants.server_list and not constants.server_manager.check_telepath_servers():
-                        screen_manager.current = 'MainMenuScreen'
-                        constants.screen_tree = []
-                    else:
-                        screen_manager.current = 'ServerManagerScreen'
-                        constants.screen_tree = ['MainMenuScreen']
+                    screen_manager.current = 'ServerManagerScreen'
+                    constants.screen_tree = ['MainMenuScreen']
                     server_name = data['nickname'] if data['nickname'] else data['host']
                     telepath_banner(f"Successfully paired '${server_name}$'", True, play_sound='popup_telepath_success.wav')
                 Clock.schedule_once(back_to_menu, 0)
@@ -24661,7 +24659,7 @@ class TelepathManagerScreen(MenuBackground):
                     self.remove_widget(self.confirm_layout)
                     self.add_widget(self.pair_layout)
                     Animation(opacity=1, duration=self.page_speed).start(self.pair_layout)
-
+                Animation.stop_all(self.confirm_layout)
                 Animation(opacity=0, duration=self.page_speed).start(self.confirm_layout)
                 Clock.schedule_once(after, self.page_speed + 0.05)
 
@@ -24671,6 +24669,7 @@ class TelepathManagerScreen(MenuBackground):
                     self.remove_widget(self.main_layout)
                     self.add_widget(self.pair_layout)
                     Animation(opacity=1, duration=self.page_speed).start(self.pair_layout)
+                Animation.stop_all(self.main_layout)
                 Animation(opacity=0, duration=self.page_speed).start(self.main_layout)
                 Clock.schedule_once(after, self.page_speed + 0.05)
 
@@ -24716,6 +24715,7 @@ class TelepathManagerScreen(MenuBackground):
                 self.remove_widget(self.pair_layout)
                 self.add_widget(self.confirm_layout)
                 Animation(opacity=1, duration=self.page_speed).start(self.confirm_layout)
+            Animation.stop_all(self.pair_layout)
             Animation(opacity=0, duration=self.page_speed).start(self.pair_layout)
             self.confirm_input.grab_focus()
             Clock.schedule_once(after, self.page_speed + 0.05)
@@ -24729,7 +24729,7 @@ class TelepathManagerScreen(MenuBackground):
             self.remove_widget(self.pair_layout)
             self.add_widget(self.main_layout)
             Animation(opacity=1, duration=self.page_speed).start(self.main_layout)
-
+        Animation.stop_all(self.pair_layout)
         Animation(opacity=0, duration=self.page_speed).start(self.pair_layout)
         Clock.schedule_once(after, self.page_speed + 0.05)
 
@@ -24964,12 +24964,8 @@ def check_telepath_disconnect():
 
                 if telepath_data and screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
                     constants.server_manager.refresh_list()
-                    if not constants.server_list and not constants.server_manager.check_telepath_servers():
-                        screen_manager.current = 'MainMenuScreen'
-                        constants.screen_tree = []
-                    else:
-                        screen_manager.current = 'ServerManagerScreen'
-                        constants.screen_tree = ['MainMenuScreen']
+                    screen_manager.current = 'ServerManagerScreen'
+                    constants.screen_tree = ['MainMenuScreen']
 
                 server_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
                 telepath_banner(f"Lost connection to $'{server_name}'$", False)

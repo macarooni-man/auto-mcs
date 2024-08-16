@@ -43,7 +43,7 @@ import amscript
 
 app_version = "2.2"
 ams_version = "1.2.1"
-telepath_version = "0.9.2"
+telepath_version = "0.9.3"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -476,7 +476,14 @@ def translate(text: str):
 
 
 # Returns False if less than 500MB free
-def check_free_space():
+def check_free_space(telepath_data=None):
+    if telepath_data:
+        url = f'http://{telepath_data["host"]}:{telepath_data["port"]}/telepath/check_free_space'
+        try:
+            return requests.get(url, timeout=1).json() == 'true'
+        except:
+            return True
+
     free_space = round(disk_usage('/').free / 1048576)
     return free_space > 500
 
