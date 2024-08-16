@@ -24793,7 +24793,22 @@ Once paired, remote servers will appear in the Server Manager and can be interac
         self.main_layout.add_widget(session_splash)
 
 
-        self.pair_button = color_button("PAIR A SERVER", position=(0.5, 0.5), icon_name='telepath.png', click_func=functools.partial(self.show_pair_input, False), color=(0.8, 0.8, 1, 1))
+        if constants.server_manager.telepath_servers:
+            def show_manager(*a):
+                screen_manager.current = "TelepathInstanceScreen"
+            self.pair_button = color_button("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png', click_func=show_manager, color=(0.8, 0.8, 1, 1))
+            self.main_layout.add_widget(self.pair_button)
+
+            pair_pos = (0.5, 0.42)
+            enable_pos = (0.5, 0.29)
+            back_pos = (0.5, 0.13)
+
+        else:
+            pair_pos = (0.5, 0.5)
+            enable_pos = (0.5, 0.35)
+            back_pos = (0.5, 0.17)
+
+        self.pair_button = color_button("PAIR A SERVER", position=pair_pos, icon_name='telepath.png', click_func=functools.partial(self.show_pair_input, False), color=(0.8, 0.8, 1, 1))
         self.main_layout.add_widget(self.pair_button)
 
 
@@ -24827,9 +24842,9 @@ Once paired, remote servers will appear in the Server Manager and can be interac
 
             self.api_input.hint_text = new_text
         sub_layout = RelativeLayout()
-        self.api_input = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.35}, hint_text="share this instance")
+        self.api_input = blank_input(pos_hint={"center_x": enable_pos[0], "center_y": enable_pos[1]}, hint_text="share this instance")
         sub_layout.add_widget(self.api_input)
-        sub_layout.add_widget(toggle_button('api', (0.5, 0.35), default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api))
+        sub_layout.add_widget(toggle_button('api', enable_pos, default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api))
         self.main_layout.add_widget(sub_layout)
         if constants.app_config.telepath_settings['enable-api']:
             toggle_api(True, True)
@@ -24839,7 +24854,7 @@ Once paired, remote servers will appear in the Server Manager and can be interac
         self.add_widget(generate_footer('$Telepath$', no_background=True))
         self.add_widget(self.main_layout)
         Animation(opacity=1, duration=1).start(self.main_layout)
-        self.back_button = ExitButton('Back', (0.5, 0.17), cycle=True)
+        self.back_button = ExitButton('Back', back_pos, cycle=True)
         self.add_widget(self.back_button)
 
 
