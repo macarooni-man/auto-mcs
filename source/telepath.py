@@ -1907,6 +1907,7 @@ async def download_file(file: str):
 # General auto-mcs endpoints
 create_endpoint(svrmgr.create_server_list, 'main')
 create_endpoint(constants.make_update_list, 'main')
+create_endpoint(constants.check_free_space, 'main')
 create_endpoint(constants.get_remote_var, 'main', True)
 create_endpoint(constants.java_check, 'main', True)
 create_endpoint(constants.allow_close, 'main', True)
