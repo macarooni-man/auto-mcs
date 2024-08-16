@@ -24661,7 +24661,7 @@ class TelepathManagerScreen(MenuBackground):
                     self.remove_widget(self.confirm_layout)
                     self.add_widget(self.pair_layout)
                     Animation(opacity=1, duration=self.page_speed).start(self.pair_layout)
-
+                Animation.stop_all(self.confirm_layout)
                 Animation(opacity=0, duration=self.page_speed).start(self.confirm_layout)
                 Clock.schedule_once(after, self.page_speed + 0.05)
 
@@ -24671,6 +24671,7 @@ class TelepathManagerScreen(MenuBackground):
                     self.remove_widget(self.main_layout)
                     self.add_widget(self.pair_layout)
                     Animation(opacity=1, duration=self.page_speed).start(self.pair_layout)
+                Animation.stop_all(self.main_layout)
                 Animation(opacity=0, duration=self.page_speed).start(self.main_layout)
                 Clock.schedule_once(after, self.page_speed + 0.05)
 
@@ -24716,6 +24717,7 @@ class TelepathManagerScreen(MenuBackground):
                 self.remove_widget(self.pair_layout)
                 self.add_widget(self.confirm_layout)
                 Animation(opacity=1, duration=self.page_speed).start(self.confirm_layout)
+            Animation.stop_all(self.pair_layout)
             Animation(opacity=0, duration=self.page_speed).start(self.pair_layout)
             self.confirm_input.grab_focus()
             Clock.schedule_once(after, self.page_speed + 0.05)
@@ -24729,7 +24731,7 @@ class TelepathManagerScreen(MenuBackground):
             self.remove_widget(self.pair_layout)
             self.add_widget(self.main_layout)
             Animation(opacity=1, duration=self.page_speed).start(self.main_layout)
-
+        Animation.stop_all(self.pair_layout)
         Animation(opacity=0, duration=self.page_speed).start(self.pair_layout)
         Clock.schedule_once(after, self.page_speed + 0.05)
 
