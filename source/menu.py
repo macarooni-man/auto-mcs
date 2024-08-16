@@ -3423,8 +3423,11 @@ def footer_label(path, color, progress_screen=False):
     if constants.server_manager.current_server:
         server_obj = constants.server_manager.current_server
         data = server_obj._telepath_data
-        if data and path.strip().startswith(server_obj.name):
-            path = f'[color=#353565]{data["display-name"]}/[/color]{path}'
+        try:
+            if data and path.strip().startswith(server_obj.name):
+                path = f'[color=#353565]{data["display-name"]}/[/color]{path}'
+        except:
+            pass
 
     # Translate footer paths that don't include the server name
     t_path = []
@@ -23864,7 +23867,12 @@ class InstanceButton(HoverButton):
                         self.subtitle.color = self.connect_color
                         self.subtitle.default_opacity = 0.8
                         self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-                        self.subtitle.text = 'Authentication failure'
+
+                        if self.properties['telepath-version'] != constants.api_manager.version:
+                            self.subtitle.text = 'API version mismatch'
+                        else:
+                            self.subtitle.text = 'Authentication failure'
+
                         self.enabled = False
                         self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
                     else:

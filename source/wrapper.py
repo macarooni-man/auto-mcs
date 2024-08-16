@@ -66,21 +66,23 @@ if __name__ == '__main__':
         parser = argparse.ArgumentParser(description='CLI options for auto-mcs')
         parser.add_argument('-d', '--debug', default='', help='execute auto-mcs with verbose console logging', action='store_true')
         parser.add_argument('-l', '--launch', type=str, default='', help='specify a server name (or list of server names) to launch automatically', metavar='"Server 1, Server 2"')
-        parser.add_argument('-r', '--reset', default='', help='reset global configuration file before launch', action='store_true')
+        parser.add_argument('--reset', default='', help='reset global configuration file before launch', action='store_true')
 
-        # For now, Windows doesn't support headless due to the GUI entrypoint from Pyinstaller
-        if constants.os_name != 'windows':
+        # For now, Windows doesn't support headless when compiled due to the GUI entrypoint from Pyinstaller
+        if constants.os_name != 'windows' or not constants.app_compiled:
             parser.add_argument('-s', '--headless', default='', help='launch without initializing the UI and enable the Telepath API', action='store_true')
+
 
         args = parser.parse_args()
 
-        # Check for debug mode
+        # Assign parsed arguments to global variables
         constants.debug = args.debug
         reset_config = args.reset
-        if constants.os_name != 'windows':
+        if constants.os_name != 'windows' or not constants.app_compiled:
             constants.headless = args.headless
 
-        # Force headless if display is not set
+
+        # Force headless if display is not set on Linux
         if constants.os_name == 'linux' and 'DISPLAY' not in os.environ:
             constants.headless = True
 
