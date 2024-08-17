@@ -77,6 +77,7 @@ localhost = ['127.0.0.1', 'localhost', constants.get_private_ip()]
 
 # "Force" expire JWT tokens when a user logs out
 blacklisted_tokens = []
+expire_timers = []
 
 
 # Instantiate the API if main
@@ -162,7 +163,6 @@ class TelepathManager():
 
         if constants.headless:
             logging.disable(logging.CRITICAL)
-
 
     def _run_uvicorn(self):
         self.server = uvicorn.Server(self.config)
@@ -607,7 +607,7 @@ class TelepathManager():
         # Eventually add a retry algorithm
         try:
             session = self._get_session(ip, port)
-            data = session.post(url, json=host_data, headers=self._get_headers(ip)).json()
+            data = session.post(url, json=host_data, headers=self._get_headers(ip), timeout=3).json()
             if not constants.headless:
                 print(f"[INFO] [telepath] Logged out from '{ip}:{port}'")
             return data
@@ -960,7 +960,13 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
                 if request.url.path == '/telepath/logout':
                     if token not in blacklisted_tokens:
                         blacklisted_tokens.append(token)
-                        threading.Timer(ACCESS_TOKEN_EXPIRE_MINUTES * 60, partial(blacklisted_tokens.remove, token)).start()
+                        def execute(*a):
+                            expire_timers.remove(timer)
+                            blacklisted_tokens.remove(token)
+
+                        timer = threading.Timer(ACCESS_TOKEN_EXPIRE_MINUTES * 60, execute)
+                        timer.start()
+                        expire_timers.append(timer)
 
                 # Successfully authenticated
                 current_user['last_active'] = dt.now()

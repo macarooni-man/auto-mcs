@@ -186,6 +186,11 @@ if __name__ == '__main__':
         constants.api_manager.stop()
         constants.api_manager.close_sessions()
 
+        # Cancel all token expiry timers to prevent hanging on close
+        for timer in telepath.expire_timers:
+            if timer.is_alive():
+                timer.cancel()
+
         # Delete live images/temp files on close
         for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
             try:
@@ -290,7 +295,6 @@ if __name__ == '__main__':
 
             # Normal Python behavior when testing
             if not constants.app_compiled:
-                cleanup_on_close()
                 raise e
 
         # Destroy init window if macOS
