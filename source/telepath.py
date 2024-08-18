@@ -584,7 +584,7 @@ class TelepathManager():
 
         try:
             session = self._get_session(ip, port)
-            data = session.post(url, json=host_data, timeout=3).json()
+            data = session.post(url, json=host_data, timeout=5).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
                 return_data = deepcopy(data)

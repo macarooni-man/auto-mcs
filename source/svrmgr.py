@@ -50,7 +50,7 @@ class ServerObject():
         self.custom_flags = ''
         self.is_modpack = ''
         self.crash_log = None
-        self.max_log_size = 800
+        self.max_log_size = 2000
         self.run_data = {}
         self.viewed_notifs = {}
         self.taskbar = None
@@ -849,6 +849,10 @@ class ServerObject():
                 else:
                     if cmd != self.run_data['command-history'][0]:
                         self.run_data['command-history'].insert(0, cmd)
+
+                # Limit size of command history
+                if len(self.run_data['command-history']) > 100:
+                    self.run_data['command-history'].pop()
 
             # Send command to Popen stdin
             if self.run_data['process']:

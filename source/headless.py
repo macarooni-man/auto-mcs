@@ -77,6 +77,10 @@ def process_command(cmd: str):
     if cmd not in command_history[:1]:
         command_history.insert(0, cmd)
 
+        # Limit size of command history
+        if len(command_history) > 100:
+            command_history.pop()
+
     command_edit.set_edit_text('')
     response = [('normal', "Type a command, ?, or "), ('command', 'help')]
     if cmd.strip():
