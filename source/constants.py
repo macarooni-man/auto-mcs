@@ -478,9 +478,13 @@ def translate(text: str):
 # Returns False if less than 500MB free
 def check_free_space(telepath_data=None):
     if telepath_data:
-        url = f'http://{telepath_data["host"]}:{telepath_data["port"]}/telepath/check_free_space'
+        url = f'http://{telepath_data["host"]}:{telepath_data["port"]}/main/check_free_space'
         try:
-            return requests.get(url, timeout=1).json() == 'true'
+            return str(api_manager.request(
+                endpoint='/main/check_free_space',
+                host=telepath_data['host'],
+                port=telepath_data['port']
+            )).lower() == 'true'
         except:
             return True
 
@@ -3095,14 +3099,13 @@ def pre_server_create(telepath=False):
         new_info = deepcopy(new_server_info)
         if new_info['acl_object']:
             new_info['acl_object'] = new_server_info['acl_object']._to_json()
-            new_info['addon_objects'] = []
 
         # Convert add-ons to remote
-        for addon in new_server_info['addon_objects']:
+        for pos, addon in enumerate(new_server_info['addon_objects'], 0):
             a = addon._to_json()
             if 'AddonFileObject' == a['__reconstruct__']:
                 a['path'] = telepath_upload(new_server_info['_telepath_data'], a['path'])['path']
-            new_info['addon_objects'].append(a)
+            new_info['addon_objects'][pos] = a
 
         # Upload world if specified
         if new_server_info['server_settings']['world'] != 'world':
