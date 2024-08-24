@@ -4278,13 +4278,16 @@ def scan_modpack(update=False, progress_func=None):
     if not data['name']:
 
         # Get the name from "server.properties"
-        if os.path.isfile('server.properties'):
-            with open('server.properties', 'r', encoding='utf-8', errors='ignore') as f:
+        for file in glob('*server.properties'):
+            with open(file, 'r', encoding='utf-8', errors='ignore') as f:
                 for line in f.readlines():
                     if line.lower().startswith('motd='):
                         line = line.split('motd=', 1)[1]
                         process_name(line)
                         break
+                else:
+                    continue
+                break
 
         # Get the name from the file if not declared in the "server.properties"
         if not data['name'] or data['name'].lower() == 'a minecraft server':
@@ -4293,6 +4296,10 @@ def scan_modpack(update=False, progress_func=None):
             if 'server' in name.lower():
                 name = name[:len(name.lower().split('server')[0])].strip()
             process_name(name)
+
+        # Add a default name case because it's not that important
+        if not data['name']:
+            process_name('Modpack Server')
 
     # Look in alternate locations for launch flags
     for file in glob(os.path.join(test_server, '*.*')):
