@@ -2617,7 +2617,10 @@ class ServerPortInput(CreateServerPortInput):
         def write(*a):
             server_obj = constants.server_manager.current_server
             server_obj.properties_hash = server_obj._get_properties_hash()
-            screen_manager.current_screen.check_changes(server_obj, force_banner=True)
+            try:
+                screen_manager.current_screen.check_changes(server_obj, force_banner=True)
+            except AttributeError:
+                pass
             server_obj.write_config()
             server_obj.reload_config()
             change_timeout = None
@@ -2671,7 +2674,10 @@ class ServerPortInput(CreateServerPortInput):
             server_obj.ip = new_ip
             server_obj.server_properties['server-ip'] = new_ip
             server_obj.properties_hash = server_obj._get_properties_hash()
-            screen_manager.current_screen.check_changes(server_obj, force_banner=True)
+            try:
+                screen_manager.current_screen.check_changes(server_obj, force_banner=True)
+            except AttributeError:
+                pass
 
         if new_port and not fail:
             server_obj.port = int(new_port)

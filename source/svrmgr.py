@@ -905,6 +905,8 @@ class ServerObject():
                 self.run_data['playit-tunnel'] = None
             else:
                 self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
+                if self.run_data['console-panel']:
+                    self.run_data['console-panel'].toggle_deadlock(False)
 
             if self.custom_flags:
                 self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Using launch flags: '{self.custom_flags}'", (0.7, 0.7, 0.7, 1))})
@@ -1365,7 +1367,7 @@ class ServerObject():
 
             # If after a delay the server is still running, it is likely deadlocked
             time.sleep(1)
-            if self.running and self.name not in constants.backup_lock:
+            if self.running and self.name not in constants.backup_lock and not self.restart_flag:
                 try:
                     # Delay if CPU usage is higher than expected
                     if self.run_data['performance']['cpu'] > 0.5:
