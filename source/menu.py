@@ -17168,17 +17168,19 @@ class ConsolePanel(FloatLayout):
                 self.multiline = False
                 self.halign = "left"
                 self.hint_text = "enter command..."
+
                 self.hint_text_color = (0.6, 0.6, 1, 0.4)
                 self.foreground_color = (0.6, 0.6, 1, 1)
                 self.background_color = (0, 0, 0, 0)
                 self.disabled_foreground_color = (0.6, 0.6, 1, 0.4)
+                self.cursor_color = (0.55, 0.55, 1, 1)
+                self.selection_color = (0.5, 0.5, 1, 0.4)
+
                 self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
                 self.font_size = sp(22)
                 self.padding_y = (12, 12)
                 self.padding_x = (70, 12)
-                self.cursor_color = (0.55, 0.55, 1, 1)
                 self.cursor_width = dp(3)
-                self.selection_color = (0.5, 0.5, 1, 0.4)
 
                 self.bind(on_text_validate=self.on_enter)
 
@@ -17750,6 +17752,7 @@ class ServerBackupScreen(MenuBackground):
         self.restore_backup_button = None
         self.open_path_button = None
         self.migrate_path_button = None
+        self.download_button = None
 
         self.header = None
         self.menu_taskbar = None
