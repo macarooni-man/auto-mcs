@@ -317,6 +317,10 @@ if __name__ == '__main__':
     b = threading.Thread(name='background', target=background)
     b.setDaemon(True)
 
+    # Log errors to file if debug
+    if constants.app_compiled and constants.debug is True:
+        sys.stderr = open("error.log", "a")
+
     b.start()
     foreground()
     b.join()
