@@ -5505,6 +5505,41 @@ class PlayitManager():
     class TunnelException(BaseException):
         pass
 
+    # Handles tunnel cache for retaining certain tunnel when the API is unreliable
+    class TunnelCacheHelper():
+        def __init__(self, root_path: str):
+            self._path = os.path.join(root_path, 'tunnel-cache.json')
+            self._data = {}
+            self._read_data()
+
+        def _read_data(self):
+            if os.path.exists(self._path):
+                with open(self._path, 'r') as f:
+                    self._data = json.loads(f.read())
+
+        def _write_data(self):
+            with open(self._path, 'w+') as f:
+                f.write(json.dumps(self._data))
+
+        # Write a tunnel's data to the cache
+        def add_tunnel(self, tunnel_id: str, data: dict) -> bool:
+            self._data[tunnel_id] = data
+            self._write_data()
+            return tunnel_id in self._data
+
+        # Remove a tunnel from the cache
+        def remove_tunnel(self, tunnel_id: str) -> bool:
+            if tunnel_id in self._data:
+                del self._data[tunnel_id]
+            self._write_data()
+            return tunnel_id not in self._data
+
+        # Retrieve the cache from a tunnel
+        def get_tunnel(self, tunnel_id: str) -> dict:
+            if tunnel_id in self._data:
+                return self._data[tunnel_id]
+            return {}
+
     # Houses all tunnel data
     class Tunnel():
         def __init__(self, _parent: 'PlayitManager', tunnel_data: dict):
@@ -5516,8 +5551,20 @@ class PlayitManager():
             self.region = tunnel_data['alloc']['data']['region']
             self.type = tunnel_data['tunnel_type'] if tunnel_data['tunnel_type'] else 'both'
             self.protocol = tunnel_data['port_type']
-            self.port = tunnel_data['origin']['data']['local_port']
-            self.host = tunnel_data['origin']['data']['local_ip']
+
+            # Mechanism to load data from cache if it's missing from the API
+            try:
+                self.port = tunnel_data['origin']['data']['local_port']
+                self.host = tunnel_data['origin']['data']['local_ip']
+            except:
+
+                # If tunnel is not cached and port is unknown, delete itself
+                try:
+                    cached_data = self._parent.tunnel_cache.get_tunnel(self._data_id)
+                    self.port = cached_data['local_port']
+                    self.host = cached_data['local_ip']
+                except:
+                    self.delete()
 
             # Format playit tunnel data
             self.id = tunnel_data['id']
@@ -5555,6 +5602,7 @@ class PlayitManager():
         self.directory = os.path.join(toolDir, 'playit')
         self.exec_path = os.path.join(self.directory, self._filename)
         self.toml_path = os.path.join(self.directory, 'playit.toml')
+        self.tunnel_cache = self.TunnelCacheHelper(self.directory)
         self.config = {}
 
         self.initialized = False
@@ -5563,6 +5611,7 @@ class PlayitManager():
 
 
         # Client info
+        self.agent_web_url = None
         self.agent_id = None
         self.secret_key = None
         self.max_tunnels = 4
@@ -5787,7 +5836,7 @@ class PlayitManager():
             'udp': 'minecraft-bedrock',
             'both': None
         }[protocol]
-        body = {
+        tunnel_data = {
             "type": "create-tunnel",
             "tunnel_type": tunnel_type,
             "port_type": protocol,
@@ -5798,7 +5847,10 @@ class PlayitManager():
         }
 
         try:
-            tunnel_id = self.session.post("https://api.playit.cloud/account", json=body).json()['id']
+            tunnel_id = self.session.post("https://api.playit.cloud/account", json=tunnel_data).json()['id']
+            if tunnel_id:
+                self.tunnel_cache.add_tunnel(tunnel_id, tunnel_data)
+
             self._retrieve_tunnels()
 
             # Lookup method to reverse search the actual ID
@@ -5813,6 +5865,7 @@ class PlayitManager():
     def _delete_tunnel(self, tunnel: Tunnel) -> bool:
         tunnel_status = self.session.post("https://api.playit.gg/tunnels/delete", json={'tunnel_id': tunnel.id}).json()
         if tunnel_status['status'] == 'success':
+            self.tunnel_cache.remove_tunnel(tunnel._data_id)
             self.tunnels[tunnel.protocol].remove(tunnel)
             return tunnel not in self.tunnels[tunnel.protocol]
         else:
@@ -5856,6 +5909,8 @@ class PlayitManager():
         self.session.headers['Authorization'] = f'agent-key {self.secret_key}'
         data = self.session.post("https://api.playit.gg/agents/rundata").json()
         self.agent_id = data['data']['agent_id']
+        self.agent_web_url = f'https://playit.gg/account/agents/{self.agent_id}/tunnels'
+        print(self.agent_web_url)
 
         # Get current tunnels
         self._retrieve_tunnels()
@@ -5886,13 +5941,13 @@ class PlayitManager():
 
                 return self._create_tunnel(port, protocol)
 
-    # Initializes tunnel of the server object
+    # Initializes tunnel for a server object
     def start_tunnel(self, server_obj: object) -> Tunnel or False:
         if not self.initialized:
             if not self.initialize():
                 return False
 
-        port = server_obj.run_data['network']['address']['port']
+        port = int(server_obj.run_data['network']['address']['port'])
         protocol = 'both' if server_obj.geyser_enabled else 'tcp'
 
         tunnel = self.get_tunnel(port, protocol, ensure=True)

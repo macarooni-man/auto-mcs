@@ -948,14 +948,15 @@ class ServerObject():
 
                 # Launch playit if proxy is enabled
                 if self.proxy_enabled and constants.app_online and self.proxy_installed():
-                    self.run_data['playit-tunnel'] = constants.playit.start_tunnel(self)
                     try:
+                        self.run_data['playit-tunnel'] = constants.playit.start_tunnel(self)
                         hostname = self.run_data['playit-tunnel'].hostname
                         self.run_data['network']['address']['ip'] = hostname
                         self.run_data['network']['public_ip'] = hostname
                         self.send_log(f"Initialized playit connection '{hostname}'", 'success')
-                    except KeyError:
-                        pass
+                    except:
+                        self.send_log(f"The playit service is currently unavailable", 'warning')
+                        self.run_data['playit-tunnel'] = None
 
                 # If port was changed, use that instead
                 if self.run_data['network']['original_port']:
