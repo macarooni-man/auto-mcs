@@ -22094,12 +22094,6 @@ class ServerPropertiesEditScreen(MenuBackground):
         float_layout.add_widget(scroll_bottom)
 
 
-        # # Configure header
-        # header_content = "Editing 'server.properties'"
-        # self.header = HeaderText(header_content, '', (0, 0.89))
-        # float_layout.add_widget(self.header)
-
-
         # Fullscreen shadow
         self.fullscreen_shadow = Image()
         self.fullscreen_shadow.allow_stretch = True
@@ -22204,6 +22198,12 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.add_widget(self.header)
 
 
+        # Save & quit button
+        self.controls_button = IconButton('save & quit', {}, (120, 110), (None, None), 'save-sharp.png', clickable=True, anchor='right', click_func=self.save_and_quit, text_offset=(-5, 50))
+        float_layout.add_widget(self.controls_button)
+
+
+
     # Writes config to server.properties file, and reloads it in the server manager if the server is not running
     def save_config(self):
         server_obj = constants.server_manager.current_server
@@ -22265,6 +22265,19 @@ class ServerPropertiesEditScreen(MenuBackground):
                     {"center_x": 0.5, "center_y": 0.965}
                 ), 0
             )
+
+    def quit_to_menu(self, *a):
+        for button in self.walk():
+            try:
+                if button.id == "exit_button":
+                    button.force_click()
+                    break
+            except AttributeError:
+                continue
+
+    def save_and_quit(self, *a):
+        self.save_config()
+        self.quit_to_menu()
 
     # Reset results of all cells
     def reset_data(self):
@@ -22402,20 +22415,6 @@ class ServerPropertiesEditScreen(MenuBackground):
             Clock.schedule_once(reset, 0.25)
             return True
 
-        def quit_to_menu(*a):
-            for button in self.walk():
-                try:
-                    if button.id == "exit_button":
-                        button.force_click()
-                        break
-                except AttributeError:
-                    continue
-            keyboard.release()
-
-        def save_and_quit(*a):
-            self.save_config()
-            quit_to_menu()
-
         def return_to_input():
             if self.current_line is not None:
                 self.focus_input()
@@ -22445,10 +22444,10 @@ class ServerPropertiesEditScreen(MenuBackground):
                     "query",
                     "Unsaved Changes",
                     'There are unsaved changes in your configuration.\n\nWould you like to save the file before quitting?',
-                    [functools.partial(Clock.schedule_once, quit_to_menu, 0.25), functools.partial(Clock.schedule_once, save_and_quit, 0.25)]
+                    [functools.partial(Clock.schedule_once, self.quit_to_menu, 0.25), functools.partial(Clock.schedule_once, self.save_and_quit, 0.25)]
                 )
             else:
-                quit_to_menu()
+                self.quit_to_menu()
 
 
         # Focus text input if server is started
