@@ -25386,7 +25386,3 @@ def run_application():
     except Exception as e:
         Window.close()
         raise e
-
-
-if constants.app_compiled and constants.debug is True:
-    sys.stderr = open("error.log", "a")

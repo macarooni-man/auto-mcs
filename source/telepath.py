@@ -1820,7 +1820,7 @@ async def logout(host: dict, request: Request):
 # Authenticated and functional endpoints
 @app.post("/main/open_remote_server", tags=['main'], dependencies=[Depends(authenticate)])
 async def open_remote_server(name: str):
-    if constants.app_config.telepath_settings['enable-api'] and constants.server_manager:
+    if (constants.app_config.telepath_settings['enable-api'] or constants.headless) and constants.server_manager:
 
         # Report event to logger
         constants.api_manager.logger._report('main.open_remote_server', extra_data=f'Opened: "{name}"')
