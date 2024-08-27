@@ -2199,12 +2199,10 @@ def validate_version(server_info: dict):
 
                         else:
                             soup = get_url(url)
-                            urls = []
 
-                            for link in soup.find_all('a'):
-                                urls.append(link.get('href'))
-
-                            serverLink = urls[2]
+                            for a in soup.find_all('a'):
+                                if a.get_text().strip().lower() == "download server jar":
+                                    serverLink = a.get('href')
 
 
                     final_info = [True, {'version': mcVer, 'build': buildNum}, "", serverLink]
