@@ -197,6 +197,12 @@ def open_log(log_path):
 # Launches Tk window to provide crash information
 def launch_window(exc_code, log_path):
 
+    # Override if headless
+    if constants.headless:
+        print(f'(!)  Uh oh, auto-mcs has crashed:  {exc_code}\n\n> Crash log:  {log_path}')
+        return
+
+
     # Init Tk window
     crash_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'crash.wav'))
     background_color = constants.convert_color(constants.background_color)['hex']
