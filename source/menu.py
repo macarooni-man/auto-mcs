@@ -4146,7 +4146,7 @@ class MainButton(FloatLayout):
 
 
 
-def color_button(name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, color=(1, 1, 1, 1), disabled=False):
+def color_button(name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, color=(1, 1, 1, 1), disabled=False, hover_data={'color': None, 'image': None}):
 
     def repos_icon(icon_widget, button_widget, *args):
 
@@ -4159,7 +4159,15 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
     final = FloatLayout()
     final.id = name
 
-    final.button = HoverButton()
+    class ColorButton(HoverButton):
+        def on_enter(self, *args):
+            if not self.ignore_hover:
+                if hover_data['color'] or hover_data['image']:
+                    animate_button(self, image=hover_data['image'], color=hover_data['color'])
+                else:
+                    super().on_enter(*args)
+
+    final.button = ColorButton()
     final.button.id = 'color_button'
     final.button.color_id = [constants.brighten_color(color, -0.9), color]
 
@@ -17293,7 +17301,7 @@ class ConsolePanel(FloatLayout):
                 self.add_widget(self.button_shadow)
 
                 # Launch button
-                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='play-circle-sharp.png', click_func=self.panel.launch_server)
+                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='play-circle-sharp.png', click_func=self.panel.launch_server, hover_data={'color': (0.05, 0.05, 0.1, 1), 'image': os.path.join(constants.gui_assets, 'launch-button-hover.png')})
                 self.launch_button.disabled = False
                 self.add_widget(self.launch_button)
 
