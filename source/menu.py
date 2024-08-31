@@ -10812,7 +10812,7 @@ class AclRulePanel(RelativeLayout):
 
 
             # Online status
-            if constants.server_manager.current_server.user_online(displayed_rule.rule):
+            if constants.server_manager.current_server and constants.server_manager.current_server.user_online(displayed_rule.rule):
                 self.player_layout.online_label.color = self.color_dict['green']
                 self.player_layout.online_icon.color = self.color_dict['green']
                 self.player_layout.online_label.text = "Currently online"
@@ -15322,6 +15322,11 @@ class PerformancePanel(RelativeLayout):
 
         # Get performance stats if running locally
         server_obj = constants.server_manager.current_server
+
+        # Prevent a crash from doing something while in the menu of a server, and current_server is reset
+        if not server_obj:
+            return
+
         if server_obj and not server_obj._telepath_data:
             threading.Timer(0, functools.partial(server_obj.performance_stats, interval, (self.player_clock == 3))).start()
 
