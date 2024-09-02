@@ -49,8 +49,6 @@ def generate_log(exception, error_info=None):
     exception_lines = exception.splitlines()
     last_line = None
     for line in exception_lines:
-        # if "Traceback (" in line:
-        #     continue
         if ("192.168" in line or "auto-mcs-gui" in line) and 'File "' in line:
             indent, line_end = line.split('File "', 1)
             path, line_end = line_end.split('"', 1)

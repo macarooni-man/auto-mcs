@@ -119,7 +119,6 @@ def scale_size(obj, o, n, *a):
         if screen_manager.current.endswith('ProgressScreen') or r'[ref=none]' in obj.text:
             return None
 
-
         # Ignore header resizing
         if parent_class not in ('HeaderText'):
             new_size = round(diff * 0.4)
@@ -3384,11 +3383,24 @@ class SettingsButton(RelativeLayout):
         self.settings_button.x = -35
         self.add_widget(self.settings_button)
 
+
+        # Buttons when settings menu is opened
+        def open_changelog(*a):
+            if constants.app_online:
+                url = f'{constants.project_link}/releases/latest'
+                webbrowser.open_new_tab(url)
+        self.changelog_button = RelativeIconButton('view changelog', {'center_x': 1}, (0, 5), (None, None), 'document-text-sharp.png', anchor='right', clickable=True, click_func=open_changelog, anchor_text='right', text_offset=(-40, 40))
+        self.changelog_button.x = -35
+        self.changelog_button.y = 50
+        self.changelog_button.opacity = 0
+        self.changelog_button.button.disabled = True
+        self.add_widget(self.changelog_button)
+
         def change_telepath_screen(*a):
             screen_manager.current = 'TelepathManagerScreen'
         self.telepath_button = RelativeIconButton('$telepath$', {'center_x': 1}, (0, 5), (None, None), 'telepath.png', anchor='right', clickable=True, click_func=change_telepath_screen, anchor_text='right', text_offset=(-70, 40))
         self.telepath_button.x = -35
-        self.telepath_button.y = 50
+        self.telepath_button.y = 100
         self.telepath_button.opacity = 0
         self.telepath_button.button.disabled = True
         self.add_widget(self.telepath_button)
@@ -3397,30 +3409,34 @@ class SettingsButton(RelativeLayout):
             screen_manager.current = 'ChangeLocaleScreen'
         self.locale_button = RelativeIconButton(constants.get_locale_string(), {'center_x': 1}, (0, 5), (None, None), 'language.png', anchor='right', clickable=True, click_func=change_locale_screen, anchor_text='right', text_offset=(-55, 40))
         self.locale_button.x = -35
-        self.locale_button.y = 100
+        self.locale_button.y = 150
         self.locale_button.opacity = 0
         self.locale_button.button.disabled = True
         self.add_widget(self.locale_button)
 
     def show(self, *a):
         self.shown = True
-        Animation(opacity=1, duration=0.3).start(self.locale_button)
-        Animation(opacity=1, duration=0.15).start(self.telepath_button)
+        Animation(opacity=1, duration=0.45).start(self.locale_button)
+        Animation(opacity=1, duration=0.3).start(self.telepath_button)
+        Animation(opacity=1, duration=0.15).start(self.changelog_button)
         self.remove_widget(self.settings_button)
         self.add_widget(self.hide_button)
         self.telepath_button.button.disabled = False
         self.locale_button.button.disabled = False
+        self.changelog_button.button.disabled = False
 
     def hide(self, *a):
         self.shown = False
-        Animation(opacity=0, duration=0.15).start(self.locale_button)
-        Animation(opacity=0, duration=0.3).start(self.telepath_button)
+        Animation(opacity=0, duration=0.08).start(self.locale_button)
+        Animation(opacity=0, duration=0.16).start(self.telepath_button)
+        Animation(opacity=0, duration=0.24).start(self.changelog_button)
         self.remove_widget(self.hide_button)
         self.add_widget(self.settings_button)
         def after(*a):
             self.telepath_button.button.disabled = True
             self.locale_button.button.disabled = True
-        Clock.schedule_once(after, 0.3)
+            self.changelog_button.button.disabled = True
+        Clock.schedule_once(after, 0.2)
 
 
 def footer_label(path, color, progress_screen=False):
@@ -3543,10 +3559,10 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
             click_func = None
             try:
                 if func_dict:
-                    click_func = func_dict['changelog']
+                    click_func = func_dict['donate']
             except:
                 pass
-            footer.add_widget(IconButton('view changelog', {}, (102, 5), (None, None), 'document-text-outline.png', clickable=True, click_func=click_func))
+            footer.add_widget(IconButton('support us', {}, (102, 5), (None, None), 'sponsor.png', clickable=True, click_func=click_func))
 
         else:
             footer.add_widget(IconButton('no connection', {}, (0, 5), (None, None), 'ban.png', clickable=True, force_color=[[(0.07, 0.07, 0.07, 1), (0.7, 0.7, 0.7, 1)], 'gray']))
@@ -4538,6 +4554,9 @@ class RelativeIconButton(RelativeLayout):
         if anchor_text == "right":
             self.bind(size=self.resize)
             self.bind(pos=self.resize)
+
+        Clock.schedule_once(self.text.texture_update, 0)
+        Clock.schedule_once(self.resize, 0)
 
 class AnimButton(FloatLayout):
 
@@ -9338,6 +9357,11 @@ class MainMenuScreen(MenuBackground):
                 self.show_popup("update", title=None, content=None, callback=(None, install_update))
             constants.update_data['auto-show'] = False
 
+    def open_donate(self, *a):
+        if constants.app_online:
+            url = "https://github.com/sponsors/macarooni-man"
+            webbrowser.open_new_tab(url)
+
     def generate_menu(self, **kwargs):
         # Generate buttons on page load
         buttons = []
@@ -9398,13 +9422,7 @@ class MainMenuScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        # Opens release changelog
-        def changelog(*a):
-            if constants.app_online:
-                url = f'{constants.project_link}/releases/latest'
-                webbrowser.open_new_tab(url)
-
-        footer = generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True), 'changelog': changelog})
+        footer = generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True), 'donate': self.open_donate})
         float_layout.add_widget(footer)
 
         self.add_widget(float_layout)
@@ -9454,6 +9472,38 @@ class MainMenuScreen(MenuBackground):
                         Clock.schedule_once(functools.partial(wait_anim, c, c_y), delay)
                     Clock.schedule_once(functools.partial(wait_anim_2, w), delay)
 
+
+                # Animate sponsor button
+                if constants.app_online:
+
+                    # Only show a reminder once per month
+                    show_anim = True
+                    try:
+                        if constants.app_config.sponsor_reminder:
+                            if int(dt.now().strftime('%y%m')) == constants.app_config.sponsor_reminder:
+                                show_anim = False
+                    except:
+                        pass
+
+                    if show_anim:
+                        constants.app_config.sponsor_reminder = int(dt.now().strftime('%y%m'))
+                        def anim(*a):
+                            sponsor_anim = Image(
+                                source=os.path.join(constants.gui_assets, 'animations', 'sponsor.webp'),
+                                allow_stretch=True,
+                                size_hint=(None, None),
+                                width=dp(50),
+                                height=dp(50),
+                                anim_loop=1,
+                                anim_delay=constants.anim_speed * 0.02,
+                                color=(1, 0.85, 1, 1)
+                            )
+                            footer.add_widget(sponsor_anim)
+                            sponsor_anim.pos = (113, 5)
+                            def a(*a):
+                                Animation(opacity=0, duration=0.5).start(sponsor_anim)
+                            Clock.schedule_once(a, 0.6)
+                        Clock.schedule_once(anim, 1.2)
 
         Clock.schedule_once(animate_screen, 0)
 

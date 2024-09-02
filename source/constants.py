@@ -5420,6 +5420,7 @@ class ConfigManager():
         defaults.geometry = {}
         defaults.auto_update = True
         defaults.locale = None
+        defaults.sponsor_reminder = None
         defaults.telepath_settings = {
             'enable-api': False,
             'api-host': "0.0.0.0",
