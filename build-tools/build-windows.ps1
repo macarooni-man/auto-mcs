@@ -50,8 +50,6 @@ if (-not $version) {
 
     echo "Installing Python"
     Start-Process -FilePath $dest_py -ArgumentList "/S" -Wait
-      
-    cmd /c "`"$python`" -m pip install --upgrade pip setuptools wheel"
 
     if (-not (Test-Path $python)) {
         error "Something went wrong installing Python, please try again"
@@ -61,6 +59,8 @@ if (-not $version) {
 # If Python 3.9 is installed and a DE is present, check for a virtual environment
 cd $current
 echo "Detected $version"
+
+cmd /c "`"$python`" -m pip install --upgrade pip setuptools wheel"
 
 if (-not (Test-Path $venv_path)) {
     echo "A virtual environment was not detected"

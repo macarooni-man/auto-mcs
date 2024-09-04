@@ -108,8 +108,6 @@ if [ $errorlevel -ne 0 ]; then
 	make altinstall
 	rm /tmp/Python-3.9.18.tgz
 
-	su $(logname) -c $python" -m pip install --upgrade pip setuptools wheel"
-
 	errorlevel=$?
 	if [ $errorlevel -ne 0 ]; then
     	error "Something went wrong installing Python, please try again (did you install all the packages?)"
@@ -122,6 +120,8 @@ fi
 # If Python 3.9 is installed and a DE is present, check for a virtual environment
 cd $current
 echo Detected $version
+
+su $(logname) -c $python" -m pip install --upgrade pip setuptools wheel"
 
 if ! [ -d $venv_path ]; then
 	echo "A virtual environment was not detected"

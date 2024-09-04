@@ -8,6 +8,7 @@ from platform import system
 from threading import Timer
 from copy import deepcopy
 from pathlib import Path
+from munch import Munch
 from glob import glob
 from PIL import Image
 from nbt import nbt
@@ -22,7 +23,6 @@ import datetime
 import tarfile
 import zipfile
 import hashlib
-import urllib
 import string
 import psutil
 import socket
@@ -38,18 +38,19 @@ import addons
 import backup
 import amscript
 
+
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.1.3"
+app_version = "2.2"
 ams_version = "1.2.1"
+telepath_version = "1.0.0"
 app_title = "auto-mcs"
+
 dev_version = False
-window_size = (850, 850)
 refresh_rate = 60
 anim_speed = 1
-fullscreen = False
 last_window = {}
-geometry = {}
+window_size = (850, 850)
 project_link = "https://github.com/macarooni-man/auto-mcs"
 website = "https://auto-mcs.com"
 update_data = {
@@ -60,7 +61,6 @@ update_data = {
     "reboot-msg": [],
     "auto-show": True
 }
-auto_update = True
 app_online = False
 app_latest = True
 app_loaded = False
@@ -68,15 +68,14 @@ version_loading = False
 screen_tree = []
 back_clicked = False
 session_splash = ''
-ignore_close = False
 boot_launches = []
+
 
 # Global debug mode and app_compiled, set debug to false before release
 debug = False
 app_compiled = getattr(sys, 'frozen', False)
 
 public_ip = ""
-ngrok_ip = {'name': None, 'ip': None}
 footer_path = ""
 last_widget = None
 
@@ -160,32 +159,81 @@ applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' els
 
 saveFolder = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' else f"{home}/Library/Application Support/minecraft/saves"
 downDir = os.path.join(applicationFolder, 'Downloads')
+uploadDir = os.path.join(applicationFolder, 'Uploads')
 backupFolder = os.path.join(applicationFolder, 'Backups')
 userDownloads = os.path.join(home, 'Downloads')
 serverDir = os.path.join(applicationFolder, 'Servers')
+toolDir = os.path.join(applicationFolder, 'Tools')
+scriptDir = os.path.join(toolDir, 'amscript')
 
 tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
 cacheDir = os.path.join(applicationFolder, 'Cache')
 configDir = os.path.join(applicationFolder, 'Config')
-scriptDir = os.path.join(applicationFolder, 'Tools', 'amscript')
-javaDir = os.path.join(applicationFolder, 'Tools', 'java')
+javaDir = os.path.join(toolDir, 'java')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
-global_conf = os.path.join(configDir, 'app-config.json')
+
+telepathDir = os.path.join(toolDir, 'telepath')
+telepathFile = os.path.join(telepathDir, 'telepath-servers.json')
+telepathSecrets = os.path.join(telepathDir, 'telepath-secrets')
+telepathScriptDir = os.path.join(scriptDir, 'telepath-temp')
+
 username = ''
+hostname = ''
 
 server_ini = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'
 command_tmp = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'
+script_obj = None
 
 
 # App/Assets folder
 launch_path = None
-if hasattr(sys, '_MEIPASS'):
-    executable_folder = sys._MEIPASS
+try:
+    if hasattr(sys, '_MEIPASS'):
+        executable_folder = sys._MEIPASS
+        gui_assets = os.path.join(executable_folder, 'gui-assets')
+    else:
+        executable_folder = os.path.abspath(".")
+        gui_assets = os.path.join(executable_folder, 'gui-assets')
+
+except FileNotFoundError:
+    executable_folder = '.'
     gui_assets = os.path.join(executable_folder, 'gui-assets')
-else:
-    executable_folder = os.path.abspath(".")
-    gui_assets = os.path.join(executable_folder, 'gui-assets')
+
+
+# API stuff
+def get_private_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0)
+    try:
+        # doesn't even have to be reachable
+        s.connect(('10.254.254.254', 1))
+        return s.getsockname()[0]
+    except OSError:
+        s.close()
+def sync_attr(self, name):
+    if name != '__all__':
+        return getattr(self, name)
+    else:
+        blacklist = ['addon', 'backup', 'acl', 'script_manager', 'script_object', 'run_data', 'taskbar']
+        def allow(x):
+            return ((not callable(getattr(self, x))) and (str(x) not in blacklist) and (not str(x).endswith('__')))
+        return {a: getattr(self, a) for a in dir(self) if allow(a)}
+api_manager = None
+headless = False
+
+# Prevent app from closing during critical operations
+ignore_close = False
+telepath_banner = None
+telepath_pair = None
+telepath_disconnect = None
+def allow_close(allow: bool, banner=''):
+    global ignore_close
+    ignore_close = not allow
+
+    if banner and telepath_banner and app_config.telepath_settings['show-banners']:
+        telepath_banner(banner, allow)
+
 
 
 # SSL crap
@@ -197,17 +245,6 @@ elif os_name == 'macos':
     os.environ['SSL_CERT_DIR'] = os.path.join(executable_folder, 'certifi')
     os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'certifi', 'cacert.pem')
 
-
-# Ngrok info
-ngrok_installed = False
-ngrok_exec = 'ngrok-v3.exe' if os_name == 'windows' else 'ngrok-v3'
-
-# Checks if ngrok is installed (returns bool)
-def check_ngrok():
-    global ngrok_installed
-    ngrok_installed = os.path.exists(os.path.join(applicationFolder, 'Tools', ngrok_exec))
-    return ngrok_installed
-check_ngrok()
 
 
 # Bigboi server manager
@@ -224,12 +261,13 @@ max_memory = int(round(total_ram - (total_ram / 4)))
 # Replacement for os.system to prevent CMD flashing
 def run_proc(cmd, return_text=False):
     if return_text:
-        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
+        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         if debug:
             print(f'{cmd}: returned exit code {result.returncode}')
         return result.stdout.decode('utf-8', errors='ignore')
     else:
-        return_code = subprocess.call(cmd, shell=True)
+        kwargs = {'stdout': subprocess.DEVNULL, 'stderr': subprocess.DEVNULL} if headless else {}
+        return_code = subprocess.call(cmd, shell=True, **kwargs)
         if debug:
             print(f'{cmd}: returned exit code {return_code}')
         return return_code
@@ -237,17 +275,16 @@ def run_proc(cmd, return_text=False):
 
 
 # Check if running in Docker
-def check_docker():
+def check_docker() -> bool:
     cgroup = Path('/proc/self/cgroup')
     return Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
 is_docker = check_docker()
 
 # Check if OS is ARM
-def check_arm():
-    if os_name != 'windows':
-        return run_proc('uname -m', True).strip() == 'aarch64'
-    else:
-        return run_proc('echo %PROCESSOR_ARCHITECTURE%', True).strip() == 'ARM64'
+def check_arm() -> bool:
+    command = 'echo %PROCESSOR_ARCHITECTURE%' if os_name == 'windows' else 'uname -m'
+    arch = run_proc(command, True).strip()
+    return arch in ['aarch64', 'arm64']
 is_arm = check_arm()
 
 
@@ -296,12 +333,11 @@ def get_repo_scripts():
 # ---------------------------------------------- Global Functions ------------------------------------------------------
 
 # Functions and data for translation
-locale = 'en'
 locale_file = os.path.join(executable_folder, 'locales.json')
 locale_data = {}
 if os.path.isfile(locale_file):
     with open(locale_file, 'r') as f:
-        locale_data = json.loads(f.read())
+        locale_data = json.load(f)
 available_locales = {
     "English": {"name": 'English', "code": 'en'},
     "Spanish": {"name": 'Español', "code": 'es'},
@@ -326,14 +362,14 @@ available_locales = {
 }
 def get_locale_string(english=False, *a):
     for k, v in available_locales.items():
-        if locale in v.values():
+        if app_config.locale in v.values():
             return f'{k if english else v["name"]} ({v["code"]})'
 
 def translate(text: str):
-    global locale_data, locale
+    global locale_data, app_config
 
     # Ignore if text is blank, or locale is set to english
-    if not text.strip() or locale.startswith('en'):
+    if not text.strip() or app_config.locale.startswith('en'):
         return text
 
     # Create translator object
@@ -345,7 +381,7 @@ def translate(text: str):
     # Searches locale_data for string
     def search_data(s, *a):
         try:
-            return locale_data[s.strip().lower()][locale]
+            return locale_data[s.strip().lower()][app_config.locale]
         except KeyError:
             pass
 
@@ -365,7 +401,7 @@ def translate(text: str):
     if not new_text:
         def match_data(s, *a):
             try:
-                return locale_data[s.group(0).strip().lower()][locale]
+                return locale_data[s.group(0).strip().lower()][app_config.locale]
             except KeyError:
                 pass
             return s.group(0)
@@ -376,7 +412,7 @@ def translate(text: str):
     if new_text:
 
         # Escape proper nouns that ignore translation
-        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip')
+        overrides = ('server.properties', 'server.jar', 'amscript', 'Geyser', 'Java', 'GB', '.zip', 'Telepath', 'telepath', 'ngrok', 'playit')
         for o in overrides:
             new_key = search_data(o)
             if not new_key:
@@ -391,13 +427,13 @@ def translate(text: str):
 
 
         # Manual overrides
-        if locale == 'es':
+        if app_config.locale == 'es':
             new_text = re.sub('servidor\.properties', 'server.properties', new_text, re.IGNORECASE)
             new_text = re.sub('servidor\.jar', 'server.jar', new_text, re.IGNORECASE)
             new_text = re.sub('control S', 'Administrar', new_text, re.IGNORECASE)
-        if locale == 'it':
+        if app_config.locale == 'it':
             new_text = re.sub(r'ESENTATO', 'ESCI', new_text, re.IGNORECASE)
-        if locale == 'fr':
+        if app_config.locale == 'fr':
             new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, re.IGNORECASE)
 
 
@@ -440,9 +476,23 @@ def translate(text: str):
 
 
 # Returns False if less than 500MB free
-def check_free_space():
+def check_free_space(telepath_data=None):
+    if telepath_data:
+        url = f'http://{telepath_data["host"]}:{telepath_data["port"]}/main/check_free_space'
+        try:
+            return str(api_manager.request(
+                endpoint='/main/check_free_space',
+                host=telepath_data['host'],
+                port=telepath_data['port']
+            )).lower() == 'true'
+        except:
+            return True
+
     free_space = round(disk_usage('/').free / 1048576)
     return free_space > 500
+
+def telepath_busy():
+    return ignore_close and server_manager.remote_server
 
 
 # Retrieves the refresh rate of the display to calculate consistent animation speed
@@ -530,7 +580,7 @@ def restart_app(*a):
         if app_compiled:  # Running as compiled
             batch_file.write(
 f"""taskkill /f /im \"{executable}\"
-start \"\" \"{launch_path}\"
+start \"\" \"{launch_path}\"{' --headless' if headless else ''}
 del \"{os.path.join(tempDir, script_name)}\""""
             )
 
@@ -550,7 +600,7 @@ del \"{os.path.join(tempDir, script_name)}\""""
             shell_file.write(
 f"""#!/bin/bash
 kill {os.getpid()}
-exec {escaped_path} &
+exec {escaped_path}{' --headless' if headless else ''} &
 rm \"{os.path.join(tempDir, script_name)}\""""
             )
 
@@ -599,7 +649,7 @@ if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
     echo banner-failure@{failure_str} > "{update_log}"
 )
 
-start \"\" \"{launch_path}\"
+start \"\" \"{launch_path}\"{' --headless' if headless else ''}
 del \"{os.path.join(tempDir, script_name)}\""""
             )
 
@@ -634,7 +684,7 @@ fi
 hdiutil unmount /Volumes/auto-mcs
 rm -rf "{dmg_path}"
 chmod +x "{launch_path}"
-exec {escaped_path} &
+exec {escaped_path}{' --headless' if headless else ''} &
 rm \"{os.path.join(tempDir, script_name)}\""""
             )
 
@@ -667,7 +717,7 @@ else
 fi
 
 chmod +x "{launch_path}"
-exec {escaped_path} &
+exec {escaped_path}{' --headless' if headless else ''} &
 rm \"{os.path.join(tempDir, script_name)}\""""
             )
 
@@ -831,6 +881,78 @@ def cs_download_url(url: str, file_name: str, destination_path: str):
         except Exception as e:
             raise e
 
+# Uploads a file or directory to a telepath session of auto-mcs --> destination path
+def telepath_upload(telepath_data: dict, path: str):
+    if not api_manager:
+        return False
+
+    if os.path.exists(path):
+        is_dir = False
+
+        # If path is a directory, compress to tmp and use the archive instead
+        if os.path.isdir(path):
+            is_dir = True
+            path = create_archive(path, tempDir, 'tar')
+
+        url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/upload_file?is_dir={is_dir}"
+        data = requests.post(url, headers=api_manager._get_headers(telepath_data['host'], True), files={'file': open(path, 'rb')})
+        return data.json()
+
+# Downloads a file to a telepath session --> destination path
+# Whitelist is for restricting downloadable content
+telepath_download_whitelist = {
+    'paths': [serverDir, scriptDir, backupFolder],
+    'names': ['.ams', '.amb', 'server.properties', 'server-icon.png']
+}
+def telepath_download(telepath_data: dict, path: str, destination=downDir, rename=''):
+    if not api_manager:
+        return False
+
+    url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file?file={quote(path)}"
+    data = requests.post(url, headers=api_manager._get_headers(telepath_data['host']), stream=True)
+
+    # Save if the request was successful
+    if data.status_code == 200:
+
+        # File name input validation
+        file_name = os.path.basename(rename if rename else path)
+        if '/' in file_name:
+            file_name = file_name.rsplit('/', 1)[-1]
+        elif '\\' in file_name:
+            file_name = file_name.rsplit('\\', 1)[-1]
+
+        final_path = os.path.join(destination, file_name)
+        folder_check(destination)
+
+        with open(final_path, 'wb') as file:
+            for chunk in data.iter_content(chunk_size=8192):
+                file.write(chunk)
+
+        return final_path
+
+# Delete all files in telepath uploads remotely
+def clear_uploads():
+    safe_delete(uploadDir)
+    return not os.path.exists(uploadDir)
+
+# Gets a variable from this module, remotely if telepath_data is specified
+def get_remote_var(var: str, telepath_data={}):
+    if telepath_data:
+        return api_manager.request(
+            endpoint='/main/get_remote_var',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'var': var}
+        )
+
+    else:
+        try:
+            var = getattr(sys.modules[__name__], var)
+        except:
+            var = None
+        return var
+
+
 # Removes invalid characters from a filename
 def sanitize_name(value, addon=False):
 
@@ -841,6 +963,20 @@ def sanitize_name(value, addon=False):
     value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
     value = re.sub(r'[^\'\w\s-]', '', value)
     return re.sub(r'[-\s]+', '-', value).strip('-_')
+
+# Removes invalid characters for a telepath nickname
+def format_nickname(nickname):
+    formatted = re.sub('[^a-zA-Z0-9 _().-]', '', nickname.lower())
+    formatted = re.sub(r'[\s-]+', '-', formatted)
+
+    # Remove leading and trailing hyphens
+    formatted = formatted.strip('-')
+
+    # If the length of the string is greater than 20 characters
+    if len(formatted) > 20 and '-' in formatted:
+        formatted = formatted.split('-', 1)[0]
+
+    return formatted
 
 # Comparison tool for Minecraft version strings
 def version_check(version_a: str, comparator: str, version_b: str): # Comparator can be '>', '>=', '<', '<=', '=='
@@ -1040,15 +1176,30 @@ def folder_check(directory: str):
             print(f'"{directory}" already exists')
 
 
-# Open folder in default file browser
+# Open folder in default file browser, and highlight if file is passed
 def open_folder(directory: str):
     try:
-        if os_name == 'linux':
-            subprocess.Popen(['xdg-open', directory])
-        elif os_name == 'macos':
-            subprocess.Popen(['open', directory])
-        elif os_name == 'windows':
-            subprocess.Popen(['explorer', directory])
+
+        # Open directory, and highlight a file
+        if os.path.isfile(directory):
+            if os_name == 'linux':
+                subprocess.Popen([
+                    'dbus-send', '--session', '--print-reply', '--dest=org.freedesktop.FileManager1', '--type=method_call',
+                    f'/org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"file://{directory}"', 'string:""'
+                ])
+            elif os_name == 'macos':
+                subprocess.Popen(['open', '-R', directory])
+            elif os_name == 'windows':
+                subprocess.Popen(['explorer', '/select,', directory])
+
+        # Otherwise, just open a directory
+        else:
+                if os_name == 'linux':
+                    subprocess.Popen(['xdg-open', directory])
+                elif os_name == 'macos':
+                    subprocess.Popen(['open', directory])
+                elif os_name == 'windows':
+                    subprocess.Popen(['explorer', directory])
 
     except Exception as e:
         if debug:
@@ -1074,10 +1225,10 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
 
     try:
         if archive_file.endswith("tar.gz"):
-            archive = tarfile.open(archive_file, "r:gz", compresslevel=6)
+            archive = tarfile.open(archive_file, "r:gz")
             archive_type = "tar"
         elif archive_file.endswith("tar"):
-            archive = tarfile.open(archive_file, "r:", compresslevel=6)
+            archive = tarfile.open(archive_file, "r:")
             archive_type = "tar"
         elif archive_file.endswith("zip") or archive_file.endswith("mrpack"):
             archive = zipfile.ZipFile(archive_file, 'r')
@@ -1156,6 +1307,62 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
     except Exception as e:
         print(f"Something went wrong extracting '{archive_file}': {e}")
 
+    if archive:
+        archive.close()
+
+
+# Create an archive
+def create_archive(file_path: str, export_path: str, archive_type='tar'):
+    file_name = os.path.basename(file_path)
+    archive_name = f'{file_name}.{archive_type}'
+    final_path = os.path.join(export_path, archive_name)
+
+    if debug:
+        print(f"Compressing '{file_path}' to '{export_path}'...")
+
+    folder_check(export_path)
+
+    # Create a .tar archive
+    if archive_type == 'tar':
+        try:
+            rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL)
+            use_tar = rc == 0
+
+        except Exception as e:
+            if debug:
+                print(e)
+            use_tar = False
+
+        # Use tar command if available
+        if use_tar:
+            run_proc(f'tar -C \"{os.path.dirname(file_path)}\" -cvf \"{final_path}\" \"{file_name}\"')
+
+        # Oherwise, use the Python implementation
+        else:
+            with tarfile.open(final_path, "w", compresslevel=6) as tar_file:
+                # Use glob for when an asterisk is used
+                for file in glob(file_path):
+                    tar_file.add(file, os.path.basename(file))
+
+    # Create a .zip archive
+    elif archive_type == 'zip':
+        with zipfile.ZipFile(final_path, "w", compresslevel=6) as zip_file:
+            # Use glob for when an asterisk is used
+            for file in glob(file_path):
+                zip_file.write(file, os.path.basename(file))
+
+    # Return file path if it exists
+    if os.path.exists(final_path):
+
+        if debug:
+            print(f"Compressed '{file_path}' to '{export_path}'")
+
+        return final_path
+
+    else:
+        print(f"Something went wrong compressing '{file_path}'")
+
+
 
 # Check if root is a folder instead of files, and move sub-folders to destination
 def move_files_root(source, destination=None):
@@ -1214,7 +1421,7 @@ def safe_delete(directory: str):
         print(f"Could not delete '{directory}'")
 
 
-# Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads'
+# Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads' and '.auto-mcs\Uploads'
 def cleanup_old_files():
     os_temp_folder = os.path.normpath(executable_folder + os.sep + os.pardir)
     for item in glob(os.path.join(os_temp_folder, "*")):
@@ -1227,9 +1434,11 @@ def cleanup_old_files():
                     pass
     safe_delete(os.path.join(os_temp, '.kivy'))
 
-    # Delete downloads folder
+    # Delete temporary files
     safe_delete(downDir)
+    safe_delete(uploadDir)
     safe_delete(tempDir)
+    safe_delete(telepathScriptDir)
 
 
 # Glob to find hidden folders as well
@@ -1318,7 +1527,7 @@ def gen_rstring(size: int):
 
 # Check if client has an internet connection
 def check_app_updates():
-    global project_link, app_version, dev_version, app_latest, app_online, update_data, auto_update
+    global project_link, app_version, dev_version, app_latest, app_online, update_data
 
     # Check if updates are available
     try:
@@ -1330,7 +1539,7 @@ def check_app_updates():
         release_data = req.json()
 
         # Don't automatically update if specified in config
-        if not auto_update:
+        if not app_config.auto_update:
             app_latest = True
             return None
 
@@ -1644,7 +1853,7 @@ def check_data_cache():
 
 # Random splash message
 def generate_splash(crash=False):
-    global session_splash
+    global session_splash, headless
 
     splashes = ["Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
             "Did you know: you were born on your birthday.", "Okay, I'm here. What are your other two wishes?",
@@ -1668,13 +1877,16 @@ def generate_splash(crash=False):
             "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
             "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
             "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
-            "You can't run away from all your problems…\n            Not when they have ender pearls."]
+            "You can't run away from all your problems…\n            Not when they have ender pearls.", "[!] bite hazard [!]"]
 
     if crash:
         exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
         return f'"{exp}"'
 
-    session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
+    if headless:
+        session_splash = f"“{splashes[randrange(len(splashes))]}”"
+    else:
+        session_splash = f"“ {splashes[randrange(len(splashes))]} ”"
 
 
 # Downloads the latest version of auto-mcs if available
@@ -1754,7 +1966,19 @@ def get_checksum(file_path):
 
 
 # Grabs addon_cache if it exists
-def load_addon_cache(write=False):
+def load_addon_cache(write=False, telepath=False):
+    if not telepath and server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/addon/load_addon_cache',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'write': write, 'telepath': True}
+            )
+            return response
+
+
     global addon_cache
     file_name = "addon-db.json"
     file_path = os.path.join(cacheDir, file_name)
@@ -1962,7 +2186,6 @@ def validate_version(server_info: dict):
 
             try:
                 if get_url(url, return_code=True) == 200:
-                    urlValid = True
 
                     serverLink = url
 
@@ -1977,12 +2200,10 @@ def validate_version(server_info: dict):
 
                         else:
                             soup = get_url(url)
-                            urls = []
 
-                            for link in soup.find_all('a'):
-                                urls.append(link.get('href'))
-
-                            serverLink = urls[2]
+                            for a in soup.find_all('a'):
+                                if a.get_text().strip().lower() == "download server jar":
+                                    serverLink = a.get('href')
 
 
                     final_info = [True, {'version': mcVer, 'build': buildNum}, "", serverLink]
@@ -2045,6 +2266,7 @@ def new_server_init():
     global new_server_info
     new_server_info = {
         "_hash": gen_rstring(8),
+        '_telepath_data': None,
 
         "name": "",
         "type": "vanilla",
@@ -2087,12 +2309,39 @@ def new_server_init():
 
     }
 
+# Override remote new server configuration
+def push_new_server(server_info: dict, import_info={}):
+    global new_server_info, import_data, server_list_lower
+    new_server_init()
+    if import_info:
+        import_data = import_info
+
+    if server_info:
+        server_info['_telepath_data'] = None
+        new_server_info = server_info
+
+        # Reconstruct ACL manager
+        if 'acl_object' in server_info and server_info['acl_object']:
+            from acl import AclManager
+            acl_mgr = AclManager(server_info['name'])
+            if server_info['acl_object']:
+                for list_type, rules in server_info['acl_object']['rules'].items():
+                    [acl_mgr.edit_list(r['rule'], list_type, not r['list_enabled']) for r in rules]
+                new_server_info['acl_object'] = acl_mgr
+
+            # Reconstruct add-ons
+        if 'addon_objects' in server_info and server_info['addon_objects']:
+            addon_dict = deepcopy(server_info['addon_objects'])
+            new_server_info['addon_objects'] = []
+            for addon in addon_dict:
+                new_server_info['addon_objects'].append(addons.AddonWebObject(addon) if addon['__reconstruct__'] == 'AddonWebObject' else addons.get_addon_file(addon['path'], new_server_info))
+
 
 # Generate new server name
-def new_server_name(existing_server=None):
+def new_server_name(existing_server=None, s_list=server_list_lower):
     def iter_name(new_name):
         x = 1
-        while new_name.lower() in server_list_lower:
+        while new_name.lower() in s_list:
             new_name = f'{new_name} ({x})'
             x += 1
         return new_name
@@ -2109,6 +2358,30 @@ modern_pct = 0
 lts_pct = 0
 legacy_pct = 0
 def java_check(progress_func=None):
+
+    # If telepath, check if Java is installed remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/main/java_check',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     global java_executable, modern_pct, lts_pct, legacy_pct
     max_retries = 3
     retries = 0
@@ -2282,6 +2555,29 @@ def java_check(progress_func=None):
 # Downloads jar file from new_server_info, and generates link if it doesn't exist
 def download_jar(progress_func=None, imported=False):
 
+    # If telepath, check if Java is installed remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/download_jar',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'imported': imported}
+        )
+        if progress_func:
+            progress_func(100)
+        return response
+
+
     def hook(a, b, c):
         if progress_func:
             progress_func(round(100 * a * b / c))
@@ -2336,8 +2632,32 @@ def download_jar(progress_func=None, imported=False):
 
 # Iterates through new server addon objects and downloads/installs them to tmpsvr
 hook_lock = False
-def iter_addons(progress_func=None, update=False):
+def iter_addons(progress_func=None, update=False, telepath=False):
     global hook_lock
+
+    # If telepath, update addons remotely
+    if not telepath:
+        telepath_data = None
+        if server_manager.current_server:
+            telepath_data = server_manager.current_server._telepath_data
+
+        try:
+            if not telepath_data and new_server_info['_telepath_data']:
+                telepath_data = new_server_info['_telepath_data']
+        except KeyError:
+            pass
+
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/addon/iter_addons',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'update': update, 'telepath': True}
+            )
+            if progress_func and response:
+                progress_func(100)
+            return response
+
 
     all_addons = deepcopy(new_server_info['addon_objects'])
 
@@ -2390,13 +2710,13 @@ def iter_addons(progress_func=None, update=False):
                 if update:
 
                     # Ignore updates for Geyser and Floodgate because they are already added
-                    if addon_object.author.lower() == 'geysermc':
+                    if addons.is_geyser_addon(addon_object):
                         return True
 
                     addon_web = addons.get_update_url(addon_object, new_server_info['version'], new_server_info['type'])
                     downloaded = addons.download_addon(addon_web, new_server_info, tmpsvr=True)
                     if not downloaded:
-                        disabled_folder = "plugins" if server_type(server_manager.current_server.type) == 'bukkit' else 'mods'
+                        disabled_folder = "plugins" if server_type(new_server_info['type']) == 'bukkit' else 'mods'
                         copy(addon_object.path, os.path.join(tmpsvr, "disabled-" + disabled_folder, os.path.basename(addon_object.path)))
 
                     return True
@@ -2434,10 +2754,99 @@ def iter_addons(progress_func=None, update=False):
         progress_func(100)
 
     return True
+def pre_addon_update(telepath=False):
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    if telepath:
+        server_obj = server_manager.remote_server
+
+    # If remote, do this through telepath
+    else:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/addon/pre_addon_update',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'telepath': True}
+            )
+            return response
+
+
+    # Clear folders beforehand
+    safe_delete(tmpsvr)
+    safe_delete(tempDir)
+    safe_delete(downDir)
+
+    # Generate server info for downloading proper add-on versions
+    new_server_init()
+    new_server_info = server_obj.properties_dict()
+    init_update(telepath=True)
+    new_server_info['addon_objects'] = server_obj.addon.return_single_list()
+def post_addon_update(telepath=False):
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    if telepath:
+        server_obj = server_manager.remote_server
+
+    # If remote, do this through telepath
+    else:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/addon/post_addon_update',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'telepath': True}
+            )
+            return response
+
+
+    server_obj.addon.update_required = False
+
+    # Clear items from addon cache to re-cache
+    for addon in server_obj.addon.installed_addons['enabled']:
+        if addon.hash in addon_cache:
+            del addon_cache[addon.hash]
+    load_addon_cache(True)
+
+    # Copy folder to server path and delete tmpsvr
+    new_path = os.path.join(serverDir, new_server_info['name'])
+    copytree(tmpsvr, new_path, dirs_exist_ok=True)
+    safe_delete(tempDir)
+    safe_delete(downDir)
+
+    new_server_info = {}
 
 
 # If Fabric or Forge, install server
 def install_server(progress_func=None, imported=False):
+
+    # If telepath, do this remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/install_server',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'imported': imported}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
 
     # Change directory to tmpsvr
     cwd = get_cwd()
@@ -2511,6 +2920,29 @@ def install_server(progress_func=None, imported=False):
 
 # Configures server via server info in a variety of ways
 def generate_server_files(progress_func=None):
+
+    # If telepath, do all of this remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/generate_server_files',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
 
     time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
     world_name = 'world'
@@ -2650,10 +3082,133 @@ max-world-size=29999984"""
 
         make_update_list()
         return True
+def pre_server_create(telepath=False):
+    global new_server_info, import_data
 
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data and not telepath:
+
+        # Convert ACL object for remote
+        new_info = deepcopy(new_server_info)
+        if new_info['acl_object']:
+            new_info['acl_object'] = new_server_info['acl_object']._to_json()
+
+        # Convert add-ons to remote
+        for pos, addon in enumerate(new_server_info['addon_objects'], 0):
+            a = addon._to_json()
+            if 'AddonFileObject' == a['__reconstruct__']:
+                a['path'] = telepath_upload(new_server_info['_telepath_data'], a['path'])['path']
+            new_info['addon_objects'][pos] = a
+
+        # Upload world if specified
+        if new_server_info['server_settings']['world'] != 'world':
+            new_path = telepath_upload(telepath_data, new_server_info['server_settings']['world'])['path']
+            new_info['server_settings']['world'] = new_path
+
+        # Copy import remotely if available
+        try:
+            if import_data['path']:
+                import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
+        except KeyError:
+            pass
+
+        api_manager.request(
+            endpoint='/create/push_new_server',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'server_info': new_info, 'import_info': import_data}
+        )
+        response = api_manager.request(
+            endpoint='/create/pre_server_create',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'telepath': True}
+        )
+        return response
+
+
+    # Input validate name to prevent overwriting
+    if import_data['name']:
+        if import_data['name'].lower() in server_list_lower:
+            import_data['name'] = new_server_name(import_data['name'])
+    elif new_server_info['name']:
+        if new_server_info['name'].lower() in server_list_lower:
+            new_server_info['name'] = new_server_name(new_server_info['name'])
+
+    server_manager.current_server = None
+
+    # First, clean out any existing server in temp folder
+    safe_delete(tmpsvr)
+    folder_check(tmpsvr)
+
+    # Report to telepath logger
+    if telepath:
+        prefix = 'Importing: ' if bool('name' in import_data and import_data['name']) else 'Creating: '
+        data = new_server_info if new_server_info['name'] else import_data
+        api_manager.logger._report(f'create.pre_server_create', extra_data=f'{prefix}{data}')
+
+def post_server_create(telepath=False, modpack=False):
+    global new_server_info, import_data
+    return_data = {'name': import_data['name'], 'readme': None}
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data and not telepath:
+        response = api_manager.request(
+            endpoint='/create/post_server_create',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'telepath': True}
+        )
+        return response
+
+    if modpack:
+        server_path = os.path.join(serverDir, import_data['name'])
+        read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
+        if read_me:
+            return_data['readme'] = read_me[0]
+
+    clear_uploads()
+    new_server_info = {}
+    import_data = {'name': None, 'path': None}
+    return return_data
 
 # Configures server via server info in a variety of ways (for updates)
 def update_server_files(progress_func=None):
+
+    # If telepath, do all of this remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/update_server_files',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     print(glob(os.path.join(tmpsvr, '*')))
     new_config_path = os.path.join(tmpsvr, server_ini)
 
@@ -2699,17 +3254,119 @@ def update_server_files(progress_func=None):
             run_proc(f"attrib +H \"{os.path.join(new_path, server_ini)}\"")
 
         return True
+def pre_server_update(telepath=False):
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    if telepath:
+        server_obj = server_manager.remote_server
+
+    # If remote, do this through telepath
+    else:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/create/pre_server_update',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'telepath': True}
+            )
+            return response
+
+
+    # First, clean out any existing server in temp folder
+    safe_delete(tmpsvr)
+
+    # Copy over existing server and remove the files which will be replaced
+    copytree(server_obj.server_path, tmpsvr)
+    for jar in glob(os.path.join(tmpsvr, '*.jar')):
+        os.remove(jar)
+
+    safe_delete(os.path.join(tmpsvr, 'addons'))
+    safe_delete(os.path.join(tmpsvr, 'disabled-addons'))
+    safe_delete(os.path.join(tmpsvr, 'mods'))
+    safe_delete(os.path.join(tmpsvr, 'disabled-mods'))
+
+    # Delete EULA.txt
+    def delete_eula(eula_path):
+        if os.path.exists(eula_path):
+            os.remove(eula_path)
+
+    delete_eula(os.path.join(tmpsvr, 'eula.txt'))
+    delete_eula(os.path.join(tmpsvr, 'EULA.txt'))
+    delete_eula(os.path.join(tmpsvr, 'EULA.TXT'))
+
+    # Report to telepath logger
+    if telepath:
+        data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
+        api_manager.logger._report(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
+
+def post_server_update(telepath=False):
+    global new_server_info
+    server_obj = server_manager.current_server
+
+    if telepath:
+        server_obj = server_manager.remote_server
+
+    # If remote, do this through telepath
+    else:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+            response = api_manager.request(
+                endpoint='/create/post_server_update',
+                host=telepath_data['host'],
+                port=telepath_data['port'],
+                args={'telepath': True}
+            )
+            return response
+
+    make_update_list()
+    server_obj._view_notif('add-ons', False)
+    server_obj._view_notif('settings', viewed=new_server_info['version'])
+
+    clear_uploads()
+    new_server_info = {}
 
 
 # Create initial backup of new server
 # For existing servers, use server_manager.current_server.backup.save()
 def create_backup(import_server=False, *args):
+
+    # If telepath, check if Java is installed remotely
+    telepath_data = None
+    if server_manager.current_server:
+        telepath_data = server_manager.current_server._telepath_data
+
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/create_backup',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'import_server': import_server}
+        )
+        return response
+
+
     backup.BackupManager(new_server_info['name'] if not import_server else import_data['name']).save()
     return True
 
 
 # Restore backup and track progress for ServerBackupRestoreProgressScreen
 def restore_server(backup_obj: backup.BackupObject, progress_func=None):
+
+    # Restore a remote backup
+    if 'RemoteBackupObject' in backup_obj.__class__.__name__:
+        success = server_manager.current_server.backup.restore(backup_obj)
+        if progress_func:
+            progress_func(100)
+        return success
+
 
     # Get file count of backup
     total_files = 0
@@ -2754,6 +3411,27 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
 # Figures out type and version of server. Returns information to import_data dict
 # There will be issues importing 1.17.0 bukkit derivatives due to Java 16 requirement
 def scan_import(bkup_file=False, progress_func=None, *args):
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    print(telepath_data, import_data)
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/scan_import',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'bkup_file': bkup_file}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     name = import_data['name']
     path = import_data['path']
 
@@ -2783,7 +3461,9 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             os.remove(script)
 
         # Extract info from auto-mcs.ini
-        config_file = server_config(server_name=None, config_path=glob(os.path.join(tmpsvr, "*auto-mcs.ini"))[0])
+        all_configs = glob(os.path.join(tmpsvr, "auto-mcs.ini*"))
+        all_configs.extend(glob(os.path.join(tmpsvr, ".auto-mcs.ini*")))
+        config_file = server_config(server_name=None, config_path=all_configs[0])
         import_data['version'] = config_file.get('general', 'serverVersion').lower()
         import_data['type'] = config_file.get('general', 'serverType').lower()
         try:
@@ -3144,6 +3824,25 @@ eula=true"""
 def finalize_import(progress_func=None, *args):
     global import_data
 
+    telepath_data = None
+    try:
+        if new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/finalize_import',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
     if import_data['name']:
 
         # Copy folder to server path and delete tmpsvr
@@ -3227,6 +3926,27 @@ eula=true"""
 # Imports a modpack from a .zip file
 def scan_modpack(update=False, progress_func=None):
     global import_data
+
+    telepath_data = None
+    if server_manager.current_server and update:
+        telepath_data = server_manager.current_server._telepath_data
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/scan_modpack',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'update': update}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
 
     # First, download modpack if it's a URL
     try:
@@ -3557,13 +4277,16 @@ def scan_modpack(update=False, progress_func=None):
     if not data['name']:
 
         # Get the name from "server.properties"
-        if os.path.isfile('server.properties'):
-            with open('server.properties', 'r', encoding='utf-8', errors='ignore') as f:
+        for file in glob('*server.properties'):
+            with open(file, 'r', encoding='utf-8', errors='ignore') as f:
                 for line in f.readlines():
                     if line.lower().startswith('motd='):
                         line = line.split('motd=', 1)[1]
                         process_name(line)
                         break
+                else:
+                    continue
+                break
 
         # Get the name from the file if not declared in the "server.properties"
         if not data['name'] or data['name'].lower() == 'a minecraft server':
@@ -3572,6 +4295,10 @@ def scan_modpack(update=False, progress_func=None):
             if 'server' in name.lower():
                 name = name[:len(name.lower().split('server')[0])].strip()
             process_name(name)
+
+        # Add a default name case because it's not that important
+        if not data['name']:
+            process_name('Modpack Server')
 
     # Look in alternate locations for launch flags
     for file in glob(os.path.join(test_server, '*.*')):
@@ -3606,6 +4333,28 @@ def scan_modpack(update=False, progress_func=None):
 # Moves tmpsvr to actual server and checks for ACL and other file validity
 def finalize_modpack(update=False, progress_func=None, *args):
     global import_data
+
+    telepath_data = None
+    if server_manager.current_server and update:
+        telepath_data = server_manager.current_server._telepath_data
+    try:
+        if not telepath_data and new_server_info['_telepath_data']:
+            telepath_data = new_server_info['_telepath_data']
+    except KeyError:
+        pass
+
+    if telepath_data:
+        response = api_manager.request(
+            endpoint='/create/finalize_modpack',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={'update': update}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
 
     test_server = os.path.join(tempDir, 'importtest')
 
@@ -3652,7 +4401,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
 
         # Copy existing data from modpack if updating
-        new_path = os.path.join(serverDir, import_data['name'])
+        new_path = os.path.join(serverDir, str(import_data['name']))
         if update and os.path.isdir(new_path):
             valid_files = ['server.properties', 'eula.txt', 'auto-mcs.ini', '.auto-mcs.ini', 'start-cmd.tmp']
             for item in glob(os.path.join(new_path, '*')):
@@ -3754,10 +4503,12 @@ eula=true"""
             return True
 
 
-
 # Generates new information for a server update
-def init_update():
-    server_obj = server_manager.current_server
+def init_update(telepath=False):
+    if telepath:
+        server_obj = server_manager.remote_server
+    else:
+        server_obj = server_manager.current_server
     new_server_info['name'] = server_obj.name
 
     # Check for Geyser and chat reporting, and prep addon objects
@@ -3782,8 +4533,62 @@ def init_update():
     new_server_info['server_settings']['geyser_support'] = server_obj.geyser_enabled
 
 
+# Updates a world in a server
+def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
+    if telepath_data:
+        server_obj = server_manager.remote_server
+
+        # Report to telepath logger
+        api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
+
+    else:
+        server_obj = server_manager.current_server
+
+    # First, save backup
+    server_obj.backup.save()
+
+    # Delete current world
+    world_path = server_path(server_obj.name, server_obj.world)
+    if world_path:
+        def delete_world(w: str):
+            if os.path.exists(w):
+                safe_delete(w)
+
+        delete_world(world_path)
+        delete_world(world_path + "_nether")
+        delete_world(world_path + "_the_end")
+
+    # Copy world to server if one is selected
+    world_name = 'world'
+    if path.strip().lower() != "world":
+        world_name = os.path.basename(path)
+        copytree(path, os.path.join(server_obj.server_path, world_name))
+
+    # Fix level-type
+    if version_check(server_obj.version, '>=', '1.19') and new_type == 'default':
+        new_type = 'normal'
+
+    # Change level-name in 'server.properties' and server_obj.world
+    server_obj.server_properties['level-name'] = world_name
+    server_obj.server_properties['level-type'] = new_type
+    server_obj.server_properties['level-seed'] = new_seed
+
+    server_obj.write_config()
+    server_obj.reload_config()
+
+
 
 # ------------------------------------------------ Server Functions ----------------------------------------------------
+
+
+# Toggles favorite status in Server Manager
+def toggle_favorite(server_name: str):
+    config_file = server_config(server_name)
+    config_file.set('general', 'isFavorite', ('false' if config_file.get('general', 'isFavorite') == 'true' else 'true'))
+    server_config(server_name, config_file)
+
+    return bool(config_file.get('general', 'isFavorite') == 'true')
+
 
 # Returns general server type from specific type
 def server_type(specific_type: str):
@@ -3801,7 +4606,7 @@ def server_path(server_name: str, *args):
 
 # auto-mcs.ini config file function
 # write_object is the configparser object returned from this function
-def server_config(server_name: str, write_object=None, config_path=None):
+def server_config(server_name: str, write_object: configparser.ConfigParser = None, config_path: str = None):
     if config_path:
         config_file = os.path.abspath(config_path)
     else:
@@ -3830,9 +4635,20 @@ def server_config(server_name: str, write_object=None, config_path=None):
         config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
         config.optionxform = str
         config.read(config_file)
+        def rename_option(old_name: str, new_name: str):
+            try:
+                if config.get("general", old_name):
+                    config.set("general", new_name, config.get("general", old_name))
+                    config.remove_option("general", old_name)
+            except:
+                pass
+
         if config:
             if config.get('general', 'serverType').lower() not in ['forge', 'paper']:
                 config.remove_option('general', 'serverBuild')
+
+            # Override legacy configuration options
+            rename_option('enableNgrok', 'enableProxy')
 
         return config
 
@@ -3858,7 +4674,7 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
         config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
     except:
         config.set('general', 'enableGeyser', 'false')
-    config.set('general', 'enableNgrok', 'false')
+    config.set('general', 'enableProxy', 'false')
     try:
         config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
     except:
@@ -3881,6 +4697,27 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
     if os_name == "windows":
         run_proc(f"attrib +H \"{config_path}\"")
 
+    return config
+
+
+# Reconstruct API dict to a configparser object
+def reconstruct_config(remote_config: dict or configparser.ConfigParser, to_dict=False):
+    if to_dict:
+        if isinstance(remote_config, dict):
+            return remote_config
+        else:
+            return {section: dict(remote_config.items(section)) for section in remote_config.sections()}
+
+    else:
+        config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+        config.optionxform = str
+        for section, values in remote_config.items():
+            if section == 'DEFAULT':
+                continue
+
+            config.add_section(section)
+            for key, value in values.items():
+                config.set(section, key, value)
     return config
 
 
@@ -3951,6 +4788,78 @@ def server_properties(server_name: str, write_object=None):
             config = server_properties(server_name)
 
         return config
+
+
+# Creates a new Geyser config with auto-mcs data
+def write_geyser_config(server_obj: object, reset=False) -> bool:
+    config_name = 'config.yml'
+
+    if server_obj.type in ['vanilla', 'forge']:
+        return False
+    if server_obj.type == 'fabric':
+        config_path = os.path.join(server_obj.server_path, 'config', 'Geyser-Fabric')
+    else:
+        config_path = os.path.join(server_obj.server_path, 'plugins', 'Geyser-Spigot')
+    final_path = os.path.join(config_path, config_name)
+    config_data = f"""# Setup: https://wiki.geysermc.org/geyser/setup/
+bedrock:
+  address: 127.0.0.1
+  port: 19132
+  clone-remote-port: true
+  motd1: "{server_obj.name}"
+  motd2: "{server_obj.server_properties['motd']}"
+  server-name: "{server_obj.name}"
+  compression-level: 6
+  enable-proxy-protocol: false
+remote:
+  address: auto
+  port: 25565
+  auth-type: online
+  allow-password-authentication: true
+  use-proxy-protocol: false
+  forward-hostname: true
+floodgate-key-file: key.pem
+pending-authentication-timeout: 120
+command-suggestions: true
+passthrough-motd: true
+passthrough-player-counts: true
+legacy-ping-passthrough: false
+ping-passthrough-interval: 3
+forward-player-ping: false
+max-players: 100
+debug-mode: false
+show-cooldown: title
+show-coordinates: true
+disable-bedrock-scaffolding: false
+emote-offhand-workaround: "disabled"
+cache-images: 0
+allow-custom-skulls: true
+max-visible-custom-skulls: 128
+custom-skull-render-distance: 32
+add-non-bedrock-items: true
+above-bedrock-nether-building: false
+force-resource-packs: true
+xbox-achievements-enabled: true
+log-player-ip-addresses: true
+notify-on-new-bedrock-update: true
+unusable-space-block: minecraft:barrier
+metrics:
+  enabled: false
+  uuid: 00000000-0000-0000-0000-000000000000
+scoreboard-packet-threshold: 20
+enable-proxy-connections: false
+mtu: 1400
+use-direct-connection: true
+disable-compression: true
+config-version: 4
+"""
+
+    if not os.path.exists(final_path) or reset:
+        folder_check(config_path)
+        with open(final_path, 'w+') as yml:
+            yml.write(config_data)
+
+    return os.path.exists(final_path)
 
 
 # Calculate system memory for server
@@ -4029,7 +4938,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     if properties['type'] != 'forge':
 
         # Make sure this works non-spigot versions
-        java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<','1.20.5') else java_executable['modern']
+        java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
 
         # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
         script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
@@ -4049,7 +4958,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
         # Modern
         if version_check(properties['version'], ">=", "1.17"):
-            java = java_executable["lts"] if version_check(properties['version'], '<', '1.20.5') else java_executable['modern']
+            java = java_executable["lts"] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
             version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*")) if os.listdir(file)]
             arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
             script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
@@ -4132,6 +5041,7 @@ def get_modrinth_data(name: str):
 
     return index_data
 
+
 # Return list of every valid server update property in 'applicationFolder'
 def make_update_list():
     global update_list
@@ -4193,120 +5103,10 @@ def make_update_list():
     return update_list
 
 
-# Installs ngrok in tools directory
-def install_ngrok():
-
-    # Attempt to find download URL
-    ngrok_url = "https://dl.equinox.io/ngrok/ngrok-v3/stable"
-    final_url = None
-    file_name = None
-
-    soup = BeautifulSoup(requests.get(ngrok_url).content, features="html.parser")
-    for a in soup.find_all('a', "btn"):
-        try:
-            dl_url = a.get('href')
-            if os_name == "windows" and "stable-windows-amd64" in dl_url:
-                final_url = dl_url
-                file_name = "ngrok.zip"
-                break
-
-            if os_name == "macos" and "stable-darwin-amd64" in dl_url:
-                final_url = dl_url
-                file_name = "ngrok.zip"
-                break
-
-            if os_name == "linux" and is_arm and "stable-linux-arm64" in dl_url:
-                final_url = dl_url
-                file_name = "ngrok.tgz"
-                break
-
-            if os_name == "linux" and not is_arm and "stable-linux-amd64" in dl_url:
-                final_url = dl_url
-                file_name = "ngrok.tgz"
-                break
-
-        except AttributeError:
-            continue
-
-    # If URL not found, error out operation
-    if not final_url:
-        return False
-
-    try:
-        # If URL found, download ngrok archive
-        tool_path = os.path.join(applicationFolder, 'Tools')
-        folder_check(downDir)
-        download_url(final_url, file_name, downDir)
-
-        # Extract executable from archive
-        folder_check(tool_path)
-        cwd = get_cwd()
-        os.chdir(tool_path)
-        archive_file = ('ngrok.exe' if os_name == 'windows' else 'ngrok')
-        run_proc(f"tar -xf \"{os.path.join(downDir, file_name)}\" \"{archive_file}\"")
-        os.rename(archive_file, ngrok_exec)
-        os.chdir(cwd)
-        safe_delete(downDir)
-
-    except Exception as e:
-        print(e)
-        return False
-
-    return os.path.exists(os.path.join(tool_path, ngrok_exec))
-
-
-# Checks for a valid ngrok config file
-def check_ngrok_creds():
-    identifier = 'authtoken:'
-
-    if os_name == 'windows':
-        config_path = os.path.join(home, 'AppData', 'Local', 'ngrok', 'ngrok.yml')
-        old_path = os.path.join(home, '.ngrok2', 'ngrok.yml')
-    elif os_name == 'macos':
-        config_path = os.path.join(appdata, 'ngrok', 'ngrok.yml')
-        old_path = os.path.join(home, '.config', 'ngrok', 'ngrok.yml')
-    else:
-        config_path = os.path.join(home, '.config', 'ngrok', 'ngrok.yml')
-        old_path = os.path.join(home, '.ngrok2', 'ngrok.yml')
-
-    if os.path.isfile(old_path):
-        run_proc(f'"{os.path.join(applicationFolder, "Tools", ngrok_exec)}" config upgrade')
-        with open(config_path, 'r') as f:
-            for line in f.readlines():
-                if line.startswith(identifier) and line.strip() != identifier:
-                    return True
-
-    if os.path.isfile(config_path):
-        with open(config_path, 'r') as f:
-            for line in f.readlines():
-                if line.startswith(identifier) and line.strip() != identifier:
-                    return True
-
-    return False
-
-
-# Gets current ngrok IP
-def get_ngrok_ip(server_name: str):
-    global ngrok_ip
-    retries = 0
-
-    while retries < 10:
-        try:
-            url = "http://localhost:4040/api/tunnels"
-            reqs = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
-            json_obj = json.loads(reqs.text)
-            ip = json_obj["tunnels"][0]["public_url"]
-            ngrok_ip = {'name': server_name, 'ip': ip.split("tcp://")[1].strip()}
-            break
-        except:
-            time.sleep(1)
-            retries += 1
-
-
 # Check if port is open on host
-def check_port(ip: str, port: int):
+def check_port(ip: str, port: int, timeout=120):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(120)
+    sock.settimeout(timeout)
     result = sock.connect_ex((ip, port))
     return result == 0
 
@@ -4315,8 +5115,8 @@ def check_port(ip: str, port: int):
 refresh_ips = None
 
 # Returns active IP address of 'name'
-def get_current_ip(name: str, get_ngrok=False):
-    global public_ip, ngrok_ip
+def get_current_ip(name: str, proxy=False):
+    global public_ip
 
     private_ip = ""
     original_port = "25565"
@@ -4366,17 +5166,9 @@ def get_current_ip(name: str, get_ngrok=False):
 
         # More ip info
         if not private_ip:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(0)
-            try:
-                # doesn't even have to be reachable
-                s.connect(('10.254.254.254', 1))
-                private_ip = s.getsockname()[0]
-            finally:
-                s.close()
+            private_ip = get_private_ip()
 
-
-        if not get_ngrok:
+        if not proxy:
             if app_online:
                 def get_public_ip(server_name, *args):
                     global public_ip
@@ -4401,7 +5193,13 @@ def get_current_ip(name: str, get_ngrok=False):
                             else:
                                 final_port = int(original_port)
 
-                            port_check = check_port(public_ip, final_port)
+                            # Make a few attempts to verify WAN connection
+                            port_check = False
+                            for attempt in range(10):
+                                port_check = check_port(public_ip, final_port, timeout=5)
+                                if port_check:
+                                    break
+
                             if port_check:
                                 try:
                                     server_manager.running_servers[server_name].run_data['network']['address']['ip'] = public_ip
@@ -4420,28 +5218,6 @@ def get_current_ip(name: str, get_ngrok=False):
 
 
     # Format network info
-    if get_ngrok:
-        def get_ngk_ip(server_name, *args):
-            global ngrok_ip
-            get_ngrok_ip(server_name)
-
-            if ngrok_ip['ip']:
-                # Assign ngrok IP to current running server
-                if server_manager.running_servers:
-                    try:
-                        server_obj = server_manager.running_servers[server_name]
-                        server_obj.run_data['network']['address']['ip'] = ngrok_ip['ip']
-                        server_obj.run_data['network']['public_ip'] = ngrok_ip['ip']
-                        server_obj.send_log(f"Initialized ngrok connection '{ngrok_ip['ip']}'", 'success')
-                    except KeyError:
-                        pass
-
-        ip_timer = Timer(0, functools.partial(get_ngk_ip, name))
-        ip_timer.daemon = True
-        ip_timer.start()
-
-    # if public_ip:
-    #     final_addr['ip'] = public_ip
     if private_ip:
         final_addr['ip'] = private_ip
     else:
@@ -4589,12 +5365,630 @@ def get_player_head(user: str):
         return default_image
 
 
+# Compatibility to cache server icon with telepath
+def get_server_icon(server_name: str, telepath_data: dict):
+    if not (app_online and server_name):
+        return None
+
+    try:
+        name = f"{telepath_data['host'].replace('/', '+')}+{server_name}"
+        icon_cache = os.path.join(cacheDir, 'icons')
+        final_path = os.path.join(icon_cache, name)
+
+        if os.path.exists(final_path):
+            age = abs(datetime.datetime.today().day - datetime.datetime.fromtimestamp(os.stat(final_path).st_mtime).day)
+            if age < 3:
+                return final_path
+            else:
+                os.remove(final_path)
+
+        elif not check_free_space():
+            return None
+
+        folder_check(icon_cache)
+        telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
+
+        if os.path.exists(final_path):
+            return final_path
+        else:
+            return None
+
+    except Exception as e:
+        if debug:
+            print(f"Error retrieving icon for '{server_name}': {e}")
+        return None
+
+
+
+# ---------------------------------------------- Global Config Function ------------------------------------------------
+
+# Handles all operations when writing/reading from global config. Adding attributes changes the config file
+class ConfigManager():
+    def __init__(self):
+        self._path = os.path.join(configDir, 'app-config.json')
+        self._defaults = self._init_defaults()
+        self._data = Munch({})
+
+        # Initialize default values
+        if os.path.exists(applicationFolder):
+            self.load_config()
+
+    # Specify default values
+    @staticmethod
+    def _init_defaults():
+        defaults = Munch({})
+        defaults.fullscreen = False
+        defaults.geometry = {}
+        defaults.auto_update = True
+        defaults.locale = None
+        defaults.sponsor_reminder = None
+        defaults.telepath_settings = {
+            'enable-api': False,
+            'api-host': "0.0.0.0",
+            'api-port': 7001,
+            'show-banners': True,
+            'id_hash': None
+        }
+        defaults.ide_settings = {
+            'fullscreen': False,
+            'font-size': 15,
+            'geometry': {}
+        }
+        return defaults
+
+    def __setattr__(self, key, value):
+        if key.startswith('_'):
+            super().__setattr__(key, value)
+        elif key not in self._defaults:
+            raise AttributeError(f"'{self.__class__.__name__}' does not support '{key}'")
+        else:
+            self._data[key] = value
+            self.save_config()
+
+    def __getattr__(self, key):
+        if key == '__setstate__':
+            self._data = Munch({})
+            self._path = os.path.join(configDir, 'app-config.json')
+            self._defaults = self._init_defaults()
+            self.load_config()
+
+        if key in self._data:
+
+            # First, fix empty dictionaries
+            if isinstance(self._data[key], dict):
+                for k, v in self._defaults[key].items():
+                    if k not in self._data[key]:
+                        self._data[key][k] = v
+
+            # Then return the value
+            return self._data[key]
+
+        elif key in self._defaults:
+            return self._defaults[key]
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
+
+
+    def load_config(self):
+        if os.path.exists(self._path):
+            with open(self._path, 'r') as file:
+                try:
+                    self._data = json.loads(file.read().replace('ide-settings', 'ide_settings'))
+                    return True
+                except json.decoder.JSONDecodeError:
+                    pass
+
+        print('[INFO] [auto-mcs] Failed to read global configuration, resetting...')
+        self.reset()
+
+    def save_config(self):
+        folder_check(os.path.dirname(self._path))
+        with open(self._path, 'w') as file:
+            json.dump(self._data, file, indent=2)
+
+    def reset(self):
+        if os.path.exists(self._path):
+            os.remove(self._path)
+        self._data = self._defaults.copy()
+        self.save_config()
+
+# Global config manager
+app_config = ConfigManager()
+
+
+
+# ----------------------------------------------- playit.gg Integration ------------------------------------------------
+
+# Handles all methods and data relating to playit.gg integration
+class PlayitManager():
+
+    # Raised when a tunnel has an issue being modified
+    class TunnelException(BaseException):
+        pass
+
+    # Handles tunnel cache for retaining certain tunnel when the API is unreliable
+    class TunnelCacheHelper():
+        def __init__(self, root_path: str):
+            self._path = os.path.join(root_path, 'tunnel-cache.json')
+            self._data = {}
+            self._read_data()
+
+        def _read_data(self):
+            if os.path.exists(self._path):
+                with open(self._path, 'r') as f:
+                    self._data = json.loads(f.read())
+
+        def _write_data(self):
+            with open(self._path, 'w+') as f:
+                f.write(json.dumps(self._data))
+
+        # Write a tunnel's data to the cache
+        def add_tunnel(self, tunnel_id: str, data: dict) -> bool:
+            self._data[tunnel_id] = data
+            self._write_data()
+            return tunnel_id in self._data
+
+        # Remove a tunnel from the cache
+        def remove_tunnel(self, tunnel_id: str) -> bool:
+            if tunnel_id in self._data:
+                del self._data[tunnel_id]
+            self._write_data()
+            return tunnel_id not in self._data
+
+        # Retrieve the cache from a tunnel
+        def get_tunnel(self, tunnel_id: str) -> dict:
+            if tunnel_id in self._data:
+                return self._data[tunnel_id]
+            return {}
+
+    # Houses all tunnel data
+    class Tunnel():
+        def __init__(self, _parent: 'PlayitManager', tunnel_data: dict):
+            self._parent = _parent
+            self._data_id = tunnel_data['alloc']['data']['id']
+            self._cost = tunnel_data['port_count']
+
+            # Format networking data
+            self.region = tunnel_data['alloc']['data']['region']
+            self.type = tunnel_data['tunnel_type'] if tunnel_data['tunnel_type'] else 'both'
+            self.protocol = tunnel_data['port_type']
+
+            # Mechanism to load data from cache if it's missing from the API
+            try:
+                self.port = tunnel_data['origin']['data']['local_port']
+                self.host = tunnel_data['origin']['data']['local_ip']
+            except:
+
+                # If tunnel is not cached and port is unknown, delete itself
+                try:
+                    cached_data = self._parent.tunnel_cache.get_tunnel(self._data_id)
+                    self.port = cached_data['local_port']
+                    self.host = cached_data['local_ip']
+                except:
+                    self.delete()
+
+            # Format playit tunnel data
+            self.id = tunnel_data['id']
+            self.domain = tunnel_data['alloc']['data']['assigned_domain']
+            self.remote_port = tunnel_data['alloc']['data']['port_start']
+            self.hostname = f'{self.domain}:{self.remote_port}' if self.type == 'both' else self.domain
+
+
+            date_object = datetime.datetime.fromisoformat(tunnel_data['created_at'].replace("Z", "+00:00"))
+            timezone = datetime.datetime.now().astimezone().tzinfo
+            self.created = date_object.astimezone(timezone)
+
+            # If tunnel is assigned to a server object
+            self.in_use = False
+
+        def delete(self):
+            self._parent._delete_tunnel(self)
+
+    def __init__(self):
+        base_path = "https://github.com/playit-cloud/playit-agent/releases"
+        self._download_url = {
+            'windows': f'{base_path}/latest/download/playit-windows-x86_64-signed.exe',
+            'linux': f'{base_path}/latest/download/playit-linux-{"aarch" if is_arm else "amd"}64',
+            'macos': f'{base_path}/download/v0.15.13/playit-darwin-{"arm" if is_arm else "intel"}'
+        }[os_name]
+        self._filename = {
+            'windows': 'playit.exe',
+            'linux': 'playit',
+            'macos': 'playit'
+        }[os_name]
+
+
+        # General stuff
+        self.provider = 'playit'
+        self.directory = os.path.join(toolDir, 'playit')
+        self.exec_path = os.path.join(self.directory, self._filename)
+        self.toml_path = os.path.join(self.directory, 'playit.toml')
+        self.tunnel_cache = self.TunnelCacheHelper(self.directory)
+        self.config = {}
+
+        self.initialized = False
+        self.session = requests.Session()
+        self.service = None
+
+
+        # Client info
+        self.agent_web_url = None
+        self.agent_id = None
+        self.secret_key = None
+        self.max_tunnels = 4
+        self.tunnels = {'tcp': [], 'udp': [], 'both': []}
+
+
+
+    # ----- OS/filesystem handling -----
+    # Check if the agent is installed
+    def _check_agent(self) -> bool:
+        return os.path.exists(self.exec_path)
+
+    # Load playit.toml into an attribute
+    def _load_config(self) -> bool:
+        if os.path.exists(self.toml_path):
+            with open(self.toml_path, 'r') as toml:
+                strip_list = "'\" \n"
+                self.config = {
+                    k.strip(strip_list): v.strip(strip_list)
+                    for k, v in (line.split('=', 1) for line in toml.readlines())
+                }
+        return bool(self.config)
+
+    # Deletes config and starts over
+    def _reset_config(self) -> bool:
+        if os.path.exists(self.toml_path):
+            os.remove(self.toml_path)
+
+        self.config = {}
+        return not os.path.exists(self.toml_path)
+
+    # Download and install the agent
+    def _install_agent(self, progress_func: callable = None) -> bool:
+        if not app_online:
+            raise ConnectionError('Downloading playit requires an internet connection')
+        if self.service:
+            raise RuntimeError("Can't re-install while playit is running")
+
+        # If ngrok is present, delete it
+        ngrok = os.path.join(applicationFolder, 'Tools', ('ngrok-v3.exe' if os_name == 'windows' else 'ngrok-v3'))
+        if os.path.exists(ngrok):
+            os.remove(ngrok)
+
+        # Delete current version first
+        if self._check_agent():
+            os.remove(self.exec_path)
+
+        # Install the new version
+        folder_check(self.directory)
+        download_url(self._download_url, self._filename, self.directory, progress_func)
+
+        # chmod if UNIX-based
+        if os_name != 'windows':
+            run_proc(f'chmod +x "{self.exec_path}"')
+
+        return self._check_agent()
+
+    # Removes the agent from the filesystem
+    def _uninstall_agent(self) -> bool:
+        if self.service:
+            raise RuntimeError("Can't delete while playit is running")
+
+        if os.path.exists(self.directory):
+            safe_delete(self.directory)
+
+        return not self._check_agent()
+
+    # Starts the agent and returns status
+    def _start_agent(self) -> bool:
+        if not self.service:
+            self.service = subprocess.Popen(f'"{self.exec_path}" -s --secret_path "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
+        return bool(self.service.poll())
+
+    # Stops the agent and returns output
+    def _stop_agent(self) -> str:
+        if self.service and self.service.poll() is None:
+
+            # Iterate over self and children to find playit process
+            try:
+                parent = psutil.Process(self.service.pid)
+            except KeyError:
+                parent = self.service
+
+            # Windows
+            if os_name == "windows":
+                children = parent.children(recursive=True)
+                for proc in children:
+                    if proc.name() == "playit.exe":
+                        run_proc(f"taskkill /f /pid {proc.pid}")
+                        break
+
+            # macOS
+            elif os_name == "macos":
+                if parent.name() == "playit":
+                    run_proc(f"kill {parent.pid}")
+
+            # Linux
+            else:
+                if parent.name() == "playit":
+                    run_proc(f"kill {parent.pid}")
+                else:
+                    children = parent.children(recursive=True)
+                    for proc in children:
+                        if proc.name() == "playit":
+                            run_proc(f"kill {proc.pid}")
+                            break
+
+            self.service.kill()
+
+        return_code = self.service.poll() if self.service else 0
+        del self.service
+        self.service = None
+
+        return return_code
+
+
+
+    # ----- API auth handling -----
+    # Retrieves claim code from the console output
+    def _get_claim_code(self) -> str:
+        if self.service:
+
+            # Loop over output for claim code
+            url = 'https://playit.gg/claim/'
+            code = None
+
+            # Be careful with this, it could potentially wait for a new line forever
+            for line in iter(self.service.stdout.readline, ""):
+                if url in line.decode():
+                    code = line.decode().split(url)[-1].strip()
+                    break
+
+            return code
+
+    # Claim the agent as a guest user
+    def _claim_agent(self) -> bool:
+        self._start_agent()
+        claim_code = self._get_claim_code()
+
+        # First, retrieve guest auth cookie for agent
+        url_claim = f"https://playit.gg/login/create?redirect=/claim/{claim_code}?type=self-managed&_data=routes/login.create"
+        body = {'email': "", 'password': "", 'confirm-password': "", '_action': "guest"}
+        response = self.session.post(url_claim, data=body)
+        cookie = response.headers['set-cookie'].split(';')[0]
+        response.headers['Cookie'] = cookie
+
+        # Wait until agent is claimed
+        url_claim_code = f"https://playit.gg/claim/{claim_code}?type=self-managed&_data=routes%2Fclaim%2F%24claimCode"
+        while self.session.get(url_claim_code).json()['status'] == 'fail':
+            time.sleep(1)
+
+        # Accept claim and send to agent
+        url_accept = f"https://playit.gg/claim/{claim_code}/accept?type=self-managed&_data=routes/claim/$claimCode/accept"
+        self.session.post(
+            url_accept,
+            data={
+                "_action": "accept",
+                "source": "",
+                "agent_name": f"from-key-{claim_code[:4]}",
+                "agent_type": "self-managed",
+            },
+        )
+
+        # Retrieve secret key
+        data = self.session.post("https://api.playit.gg/claim/exchange", json={"code": claim_code}).json()
+        self.secret_key = data['data']['secret_key']
+
+        self._stop_agent()
+        return bool(self.secret_key)
+
+
+
+    # ----- API tunnel handling -----
+    # Creates two lists of all tunnels, sorted by protocol
+    def _retrieve_tunnels(self) -> dict:
+        self.tunnels = {'tcp': [], 'udp': [], 'both': []}
+
+        data = self.session.post("https://api.playit.gg/tunnels/list", json={"agent_id": self.agent_id}).json()
+        if data['status'] == 'success':
+
+            # Update maximum tunnels allowed by account (seems to be inaccurate)
+            # self.max_tunnels = data['data']['tcp_alloc']['allowed']
+
+            # Create tunnel objects from tunnels
+            for tunnel_data in data['data']['tunnels']:
+                tunnel = self.Tunnel(self, tunnel_data)
+                self.tunnels[tunnel.protocol].append(tunnel)
+
+        return self.tunnels
+
+    # Returns consolidated list of every tunnel
+    def _return_single_list(self) -> list:
+        single_list = self.tunnels['tcp']
+        single_list.extend(self.tunnels['udp'])
+        single_list.extend(self.tunnels['both'])
+        return single_list
+
+    # Returns True if any tunnels are in use
+    def _tunnels_in_use(self) -> bool:
+        return any([t.in_use for t in self._return_single_list()])
+
+    # Returns False if protocol type exceeds the max tunnel limit
+    # protocol: 'tcp', 'udp', or 'both'
+    def _check_tunnel_limit(self) -> bool:
+        tunnel_count = sum(t._cost for t in self.tunnels['both'])
+        tunnel_count += sum(t._cost for t in self.tunnels['tcp'])
+        tunnel_count += sum(t._cost for t in self.tunnels['udp'])
+        return not bool(tunnel_count >= self.max_tunnels)
+
+    # Create a tunnel with
+    # protocol: 'tcp', 'udp', or 'both'
+    def _create_tunnel(self, port: int = 25565, protocol: str = 'tcp') -> Tunnel:
+        if port not in range(1024, 65535):
+            port = 25565
+
+        # Can't exceed maximum tunnels specified
+        if not self._check_tunnel_limit():
+            raise self.TunnelException(f"Your account can't create more than {self.max_tunnels} tunnels")
+
+        tunnel_type = {
+            'tcp': 'minecraft-java',
+            'udp': 'minecraft-bedrock',
+            'both': None
+        }[protocol]
+        tunnel_data = {
+            "type": "create-tunnel",
+            "tunnel_type": tunnel_type,
+            "port_type": protocol,
+            "port_count": 2 if protocol == 'both' else 1,
+            "local_ip": "127.0.0.1",
+            "local_port": port,
+            "agent_id": self.agent_id
+        }
+
+        try:
+            tunnel_id = self.session.post("https://api.playit.cloud/account", json=tunnel_data).json()['id']
+            if tunnel_id:
+                self.tunnel_cache.add_tunnel(tunnel_id, tunnel_data)
+
+            self._retrieve_tunnels()
+
+            # Lookup method to reverse search the actual ID
+            for tunnel in self.tunnels[protocol]:
+                if tunnel_id == tunnel._data_id:
+                    return tunnel
+
+        except KeyError:
+            pass
+
+    # Delete a tunnel with the object
+    def _delete_tunnel(self, tunnel: Tunnel) -> bool:
+        tunnel_status = self.session.post("https://api.playit.gg/tunnels/delete", json={'tunnel_id': tunnel.id}).json()
+        if tunnel_status['status'] == 'success':
+            self.tunnel_cache.remove_tunnel(tunnel._data_id)
+            self.tunnels[tunnel.protocol].remove(tunnel)
+            return tunnel not in self.tunnels[tunnel.protocol]
+        else:
+            return False
+
+    # Deletes all tunnels
+    def _clear_tunnels(self) -> dict:
+        [tunnel.delete() for tunnel in self.tunnels['tcp']]
+        [tunnel.delete() for tunnel in self.tunnels['udp']]
+        [tunnel.delete() for tunnel in self.tunnels['both']]
+        self.tunnels = {'tcp': [], 'udp': [], 'both': []}
+        return self.tunnels
+
+
+
+    # ----- General use -----
+    # Configures the playit session and retrieves the agent key
+    def initialize(self) -> bool:
+        if not self._check_agent():
+            return False
+
+        # If a .toml isn't generated, the guest is unclaimed
+        if not os.path.exists(self.toml_path):
+            self._claim_agent()
+            if not os.path.exists(self.toml_path):
+                with open(self.toml_path, 'w+') as f:
+                    f.write(f'secret_key = "{self.secret_key}"\n')
+
+        # Otherwise, get the secret key from .toml
+        else:
+            try:
+                self._load_config()
+                self.secret_key = self.config['secret_key']
+
+            # If the key couldn't be retrieved, delete .toml and try again
+            except KeyError:
+                self._reset_config()
+                self._initialize()
+
+        # Agent ID
+        self.session.headers['Authorization'] = f'agent-key {self.secret_key}'
+        data = self.session.post("https://api.playit.gg/agents/rundata").json()
+        self.agent_id = data['data']['agent_id']
+        self.agent_web_url = f'https://playit.gg/account/agents/{self.agent_id}/tunnels'
+        print(self.agent_web_url)
+
+        # Get current tunnels
+        self._retrieve_tunnels()
+
+        self.initialized = True
+        return self.initialized
+
+    # Get a tunnel by port and (optionally type)
+    # Will recycle old tunnels if a new one needs to be made to not exceed the account limit
+    # protocol: 'tcp', 'udp', or 'both'
+    def get_tunnel(self, port: int, protocol: str = 'tcp', ensure: bool = False) -> Tunnel:
+        self._retrieve_tunnels()
+
+        for tunnel in self.tunnels[protocol]:
+            if int(tunnel.port) == int(port) and not tunnel.in_use:
+                return tunnel
+
+        # If ensure is True, create the tunnel if it doesn't exist
+        else:
+            if ensure:
+
+                # Remove the oldest tunnel before creating a new once if limit is exceeded
+                if not self._check_tunnel_limit():
+                    for tunnel in sorted(self._return_single_list(), key=lambda t: t.created):
+                        tunnel.delete()
+                        if self._check_tunnel_limit():
+                            break
+
+                return self._create_tunnel(port, protocol)
+
+    # Initializes tunnel for a server object
+    def start_tunnel(self, server_obj: object) -> Tunnel or False:
+        if not self.initialized:
+            if not self.initialize():
+                return False
+
+        port = int(server_obj.run_data['network']['address']['port'])
+        protocol = 'both' if server_obj.geyser_enabled else 'tcp'
+
+        tunnel = self.get_tunnel(port, protocol, ensure=True)
+        if tunnel:
+            tunnel.in_use = True
+
+            # Add the tunnel to the server's run_data
+            server_obj.run_data['playit-tunnel'] = tunnel
+            # Ignore the tunnel with server_obj._telepath_run_data()
+            self._start_agent()
+        return tunnel
+
+    # Stops the current tunnel of the server object
+    def stop_tunnel(self, server_obj: object) -> False:
+        if not self.initialized:
+            return False
+
+        # Get tunnel from run_data
+        tunnel = server_obj.run_data['playit-tunnel']
+        tunnel.in_use = False
+
+        # Stop agent only if no tunnels are in use
+        if not self._tunnels_in_use() and self.service:
+            self._stop_agent()
+
+# Global playit.gg manager
+playit = PlayitManager()
+
+
 
 # ---------------------------------------------- Global Search Function ------------------------------------------------
 
 # Generates content for all global searches
 class SearchManager():
-    
+
+    def get_server_list(self):
+        if server_manager.server_list:
+            return {s._view_name: s._telepath_data for s in server_manager.server_list}
+        else:
+            return {s: None for s in generate_server_list()}
+
     def __init__(self):
 
         # Used to contain attributes of pages
@@ -4610,8 +6004,8 @@ class SearchManager():
         self.options_tree = {
 
             'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen'}, ['addonpack', 'modpack', 'import modpack']),
-                ScreenObject('Server Manager', 'ServerManagerScreen', generate_server_list),
+                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['addonpack', 'modpack', 'import modpack']),
+                ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
             ],
 
             'CreateServer': [
@@ -4636,7 +6030,7 @@ class SearchManager():
                 ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
                 ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}, ['mod', 'plugin', 'addon', 'extension']),
                 ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}, ['amscript', 'script', 'ide', 'develop']),
-                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (ngrok)': None, 'Install proxy (ngrok)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'update', 'jvm', 'motd'])
+                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (playit)': None, 'Install proxy (playit)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'playit', 'update', 'jvm', 'motd'])
             ]
         }
 
@@ -4804,8 +6198,14 @@ class SearchManager():
         for screen in screen_list:
             if screen.id == 'ServerManagerScreen':
                 final_list.append(ScreenResult(screen.name, 'Configuration page', screen.id, screen.helper_keywords))
-                for server in screen.options():
-                    final_list.append(ServerResult(server, 'Installed server', None))
+                for server, telepath_data in screen.options().items():
+                    if telepath_data:
+                        telepath = deepcopy(telepath_data)
+                        telepath['name'] = server.rsplit('/', 1)[-1]
+                        keywords = [telepath['host'], telepath['nickname'], 'telepath', 'remote', telepath['name']]
+                        final_list.append(ServerResult(server, 'Telepath server', None, keywords, telepath=telepath))
+                    else:
+                        final_list.append(ServerResult(server, 'Installed server', None))
 
             elif (screen.id.startswith('Server') and 'Import' not in screen.id) and server_manager.current_server:
                 keywords = list(screen.options.keys())
@@ -4820,13 +6220,13 @@ class SearchManager():
                     elif not server_manager.current_server.running and setting.lower() in ('restart server', 'stop server'):
                         continue
 
-                    # Change results for ngrok installation
-                    if setting.lower() == 'enable proxy (ngrok)' and not ngrok_installed:
+                    # Change results for proxy installation
+                    if setting.lower() == 'enable proxy (playit)' and not playit._check_agent():
                         continue
-                    if setting.lower() == 'install proxy (ngrok)' and ngrok_installed:
+                    if setting.lower() == 'install proxy (playit)' and playit._check_agent():
                         continue
 
-                    # If server is up to date, hide update prompt
+                    # If server is up-to-date, hide update prompt
                     if setting.lower() == 'update this server' and not server_manager.current_server.update_string:
                         continue
 
@@ -4974,17 +6374,18 @@ class SearchManager():
 
                         # Finally, increase score by pre-existing keyword matches
                         for keyword in obj.keywords:
-                            if keyword in query:
-                                obj.score += 5
+                            if clean_str(keyword) in query:
+                                obj.score += 20
 
                         # Modify values based on object type
-                        if obj.type == 'server' and current_screen == 'ServerManagerScreen':
+                        if obj.type in ['server'] and current_screen == 'ServerManagerScreen':
                             obj.score *= 2
-                        elif obj.type == 'server' and (current_screen.startswith('Server') or current_screen.startswith('CreateServer')):
+                        elif obj.type in ['server'] and (current_screen.startswith('Server') or current_screen.startswith('CreateServer')):
                             obj.score /= 1.5
 
-                    if obj not in match_list[obj.type]:
-                        match_list[obj.type].append(obj)
+                    list_type = obj.type
+                    if obj not in match_list[list_type]:
+                        match_list[list_type].append(obj)
 
 
         # Search through every guide to return relevant information from a query
@@ -5102,12 +6503,17 @@ class GuideResult(SearchObject):
 
 # Search result that matches an installed server
 class ServerResult(SearchObject):
-    def __init__(self, title, subtitle, target, keywords=[], score=0):
+    def __init__(self, title, subtitle, target, keywords=[], score=0, telepath=None):
         super().__init__()
+        self._telepath_data = telepath
         self.type = 'server'
         self.icon = os.path.join(gui_assets, 'icons', 'sm', 'terminal.png')
         self.color = (1, 0.598, 0.9, 1)
-        self.title = title
+
+        if self._telepath_data:
+            self.title = f'[color=#9383A2]{self._telepath_data["display-name"]}/[/color]{self._telepath_data["name"]}'
+        else:
+            self.title = title
         self.subtitle = subtitle
         self.target = target
         self.keywords = keywords

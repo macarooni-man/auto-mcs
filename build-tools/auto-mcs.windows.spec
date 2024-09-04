@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_submodules
 from kivy_deps import sdl2, glew
 from time import sleep
 from re import findall
@@ -8,6 +9,8 @@ from glob import glob
 
 
 block_cipher = None
+hiddenimports = ['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern']
+hiddenimports.extend(collect_submodules('uvicorn'))
 
 
 a = Analysis(['wrapper.py'],
@@ -19,11 +22,11 @@ a = Analysis(['wrapper.py'],
                         ('.\\locales.json', '.'),
                         ('.\\gui-assets\\icons\\sm\\*', '.\\gui-assets\\icons\\sm')
                     ],
-             hiddenimports=['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern'],
+             hiddenimports=hiddenimports,
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],
-             excludes=['pandas', 'matplotlib', 'packaging'],
+             excludes=['pandas', 'matplotlib'],
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher,
@@ -35,7 +38,7 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 # Import assets, and only use icons that are needed
 png_list = []
 
-with open(".\\menu.py", 'r') as f:
+with open(".\\menu.py", 'r', errors='ignore') as f:
     script_contents = f.read()
     [png_list.append(x) for x in findall(r"'(.*?)'", script_contents) if '.png' in x and '{' not in x]
     [png_list.append(x) for x in findall(r'"(.*?)"', script_contents) if '.png' in x and '{' not in x]
@@ -112,7 +115,7 @@ exe = EXE(pyz,
           splash.binaries,
           *[Tree(p) for p in (sdl2.dep_bins + glew.dep_bins)],
           name='auto-mcs.exe',
-          debug=True,
+          debug=False,
           bootloader_ignore_signals=False,
           strip=False,
           upx=True,

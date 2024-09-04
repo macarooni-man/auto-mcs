@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
 from PIL.ImageFilter import GaussianBlur
 from datetime import datetime as dt
 from PIL import Image as PILImage
@@ -14,6 +13,7 @@ import traceback
 import functools
 import threading
 import inspect
+import random
 import time
 import math
 import sys
@@ -26,7 +26,9 @@ import re
 import amseditor
 import logviewer
 import constants
+import crashmgr
 import amscript
+import telepath
 import addons
 import backup
 import acl
@@ -75,9 +77,9 @@ from kivy.uix.recycleview import RecycleView
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.relativelayout import RelativeLayout
-from kivy.graphics import Color, Rectangle, Ellipse
 from kivy.input.providers.mouse import MouseMotionEvent
 from kivy.uix.recyclegridlayout import RecycleGridLayout
+from kivy.graphics import Color, Rectangle, Ellipse, Line
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition, FadeTransition
 
 
@@ -92,7 +94,7 @@ from kivy.uix.dropdown import DropDown
 from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
-from kivy.properties import BooleanProperty, ObjectProperty
+from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
 
 
 
@@ -116,7 +118,6 @@ def scale_size(obj, o, n, *a):
         # Ignore on certain screens
         if screen_manager.current.endswith('ProgressScreen') or r'[ref=none]' in obj.text:
             return None
-
 
         # Ignore header resizing
         if parent_class not in ('HeaderText'):
@@ -160,14 +161,14 @@ class Label(Label):
         super().__init__(*args, **kwargs)
 
     def __setattr__(self, key, value):
-        if constants.locale != 'en':
+        if constants.app_config.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
             if key in ['text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ['text']:
+        elif constants.app_config.locale == 'en' and key in ['text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 class Button(Button):
@@ -177,14 +178,14 @@ class Button(Button):
         super().__init__(*args, **kwargs)
 
     def __setattr__(self, key, value):
-        if constants.locale != 'en':
+        if constants.app_config.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
             if key in ['text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ['text']:
+        elif constants.app_config.locale == 'en' and key in ['text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 class TextInput(TextInput):
@@ -194,14 +195,14 @@ class TextInput(TextInput):
         super().__init__(*args, **kwargs)
 
     def __setattr__(self, key, value):
-        if constants.locale != 'en':
+        if constants.app_config.locale != 'en':
             if key == 'font_size' and not self.__o_size__:
                 self.__o_size__ = value
             if key in ['hint_text'] and isinstance(value, str) and not value.isnumeric() and value.strip() and self.__translate__:
                 o = value
                 value = constants.translate(value)
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
-        elif constants.locale == 'en' and key in ['hint_text']:
+        elif constants.app_config.locale == 'en' and key in ['hint_text']:
             value = filter_text(value)
         super().__setattr__(key, value)
 
@@ -217,7 +218,7 @@ def view_file(path: str, title=None):
         'translate': constants.translate
     }
 
-    if not title:
+    if not title and constants.server_manager.current_server:
         title = constants.server_manager.current_server.name
 
     Clock.schedule_once(
@@ -606,7 +607,7 @@ class BaseInput(TextInput):
         self.selection_color = (0.5, 0.5, 1, 0.4)
 
         with self.canvas.after:
-            self.rect = Image(size=(100, 15), color=constants.background_color, opacity=0, allow_stretch=True, keep_ratio=False)
+            self.rect = Image(size=(100, 15), color=screen_manager.current_screen.background_color, opacity=0, allow_stretch=True, keep_ratio=False)
             self.title = AlignLabel(halign="center", text=self.title_text, color=self.foreground_color, opacity=0, font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
             self.bind(pos=self.update_rect)
             self.bind(size=self.update_rect)
@@ -681,7 +682,99 @@ class BaseInput(TextInput):
         else:
             super().keyboard_on_key_down(window, keycode, text, modifiers)
 
+class BigBaseInput(BaseInput):
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.title_text = "InputTitle"
+        self.is_valid = True
+
+        self.multiline = False
+        self.size_hint_max = (400, 100)
+        self.border = (-15, -15, -15, -15)
+        self.background_normal = os.path.join(constants.gui_assets, f'big_input.png')
+        self.background_active = os.path.join(constants.gui_assets, f'big_input_selected.png')
+        self.background_disabled_normal = self.background_normal
+
+        self.halign = "center"
+        self.hint_text_color = (0.6, 0.6, 1, 0.4)
+        self.foreground_color = (0.6, 0.6, 1, 1)
+        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.font_size = sp(22)
+        self.padding_y = (12, 12)
+        self.cursor_color = (0.55, 0.55, 1, 1)
+        self.cursor_width = dp(3)
+        self.selection_color = (0.5, 0.5, 1, 0.4)
+
+        with self.canvas.after:
+            self.rect = Image(size=(100, 15), color=screen_manager.current_screen.background_color, opacity=0, allow_stretch=True, keep_ratio=False)
+            self.title = AlignLabel(halign="center", text=self.title_text, color=self.foreground_color, opacity=0, font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf'))
+            self.bind(pos=self.update_rect)
+            self.bind(size=self.update_rect)
+            self.bind(text=self.update_rect)
+            self.bind(foreground_color=self.update_rect)
+            self.bind(focused=self.update_rect)
+
+        if self.disabled:
+            c = self.foreground_color
+            self.disabled_foreground_color = (c[0], c[1], c[2], 0.4)
+            self.background_color = (1, 1, 1, 0.4)
+
+        self.bind(cursor_pos=self.fix_overscroll)
+
+
+    def update_rect(self, *args):
+        self.rect.source = os.path.join(constants.gui_assets, f'text_input_cover{"" if self.focused else "_fade"}.png')
+
+        self.title.text = self.title_text
+        self.rect.width = (len(self.title.text) * 16) + 116 if self.title.text else 0
+        if self.width > 500:
+            self.rect.width += (self.width - 500)
+        self.rect.pos = self.pos[0] + (self.size[0] / 2) - (self.rect.size[0] / 2) - 1, self.pos[1] + 43 + 50
+        self.title.pos = self.pos[0] + (self.size[0] / 2) - (self.title.size[0] / 2), self.pos[1] + 2 + 50
+        Animation(opacity=(0.85 if self.text and self.title_text else 0), color=self.foreground_color, duration=0.06).start(self.title)
+        Animation(opacity=(1 if self.text and self.title_text else 0), duration=0.08).start(self.rect)
+
+        if self.disabled:
+            Animation.stop_all(self.title)
+            c = self.foreground_color
+            self.title.opacity = 0.85
+            self.title.color = (c[0], c[1], c[2], 0.4)
+
+        # Auto position cursor at end if typing
+        if self.cursor_index() == len(self.text) - 1:
+            self.do_cursor_movement('cursor_end', True)
+            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0.01)
+
+    #               if error       visible text
+    def valid(self, boolean_value, text=True):
+
+        if boolean_value:
+
+            # Hide text
+            self.valid_text(boolean_value, text)
+            self.is_valid = True
+
+            self.background_normal = os.path.join(constants.gui_assets, f'big_input.png')
+            self.background_active = os.path.join(constants.gui_assets, f'big_input_selected.png')
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.foreground_color = (0.6, 0.6, 1, 1)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
+
+        else:
+
+            # Show error
+            self.valid_text(boolean_value, text)
+            self.is_valid = False
+
+            self.background_normal = os.path.join(constants.gui_assets, f'big_input_invalid.png')
+            self.background_active = os.path.join(constants.gui_assets, f'big_input_invalid_selected.png')
+            self.hint_text_color = (1, 0.6, 0.6, 0.4)
+            self.foreground_color = (1, 0.56, 0.6, 1)
+            self.cursor_color = (1, 0.52, 0.55, 1)
+            self.selection_color = (1, 0.5, 0.5, 0.4)
 
 
 class SearchButton(HoverButton):
@@ -786,8 +879,7 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
                 results = False
 
                 try:
-                    results = return_function(query, server_info)
-
+                    results = return_function(query) if not server_info else return_function(query, server_info)
                 except ConnectionRefusedError:
                     pass
 
@@ -861,12 +953,24 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
 
 class ServerNameInput(BaseInput):
 
+    def get_server_list(self):
+        try:
+            telepath_data = constants.new_server_info['_telepath_data']
+            if telepath_data:
+                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                return True
+        except:
+            pass
+        self.server_list = constants.server_list_lower
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
         self.title_text = "name"
         self.hint_text = "enter a name..."
         self.bind(on_text_validate=self.on_enter)
+        self.server_list = []
+        self.get_server_list()
 
 
     def on_enter(self, value):
@@ -877,7 +981,7 @@ class ServerNameInput(BaseInput):
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
 
-        elif self.text.lower().strip() in constants.server_list_lower:
+        elif self.text.lower().strip() in self.server_list:
             self.valid(False)
 
     # Valid input
@@ -928,7 +1032,7 @@ class ServerNameInput(BaseInput):
             # Add name to current config
             constants.new_server_info['name'] = (self.text).strip()
 
-            self.valid((self.text).lower().strip() not in constants.server_list_lower)
+            self.valid((self.text).lower().strip() not in self.server_list)
 
         def check_validity(*a):
             if not self.text or str.isspace(self.text):
@@ -947,7 +1051,7 @@ class ServerNameInput(BaseInput):
                 substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
-            self.valid((self.text + s).lower().strip() not in constants.server_list_lower, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            self.valid((self.text + s).lower().strip() not in self.server_list, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             # Add name to current config
             def get_text(*a):
@@ -958,6 +1062,16 @@ class ServerNameInput(BaseInput):
 
 
 class ServerRenameInput(BaseInput):
+
+    def get_server_list(self):
+        try:
+            telepath_data = constants.server_manager.current_server._telepath_data
+            if telepath_data:
+                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                return True
+        except:
+            pass
+        self.server_list = constants.server_list_lower
 
     def _on_focus(self, instance, value, *largs):
         super()._on_focus(instance, value)
@@ -974,6 +1088,8 @@ class ServerRenameInput(BaseInput):
         self.bind(on_text_validate=self.on_enter)
         self.is_valid = False
         self.starting_text = self.text
+        self.server_list = []
+        self.get_server_list()
 
 
     def on_enter(self, value):
@@ -982,7 +1098,7 @@ class ServerRenameInput(BaseInput):
         if not self.text or str.isspace(self.text):
             self.valid(True, False)
 
-        elif (self.text.lower().strip() in constants.server_list_lower) and (self.text.lower().strip() != self.starting_text.lower().strip()):
+        elif (self.text.lower().strip() in self.server_list) and (self.text.lower().strip() != self.starting_text.lower().strip()):
             self.valid(False)
 
         if self.is_valid and self.text.strip() and (self.text.lower().strip() != self.starting_text.lower().strip()):
@@ -1019,7 +1135,7 @@ class ServerRenameInput(BaseInput):
 
         if keycode[1] == "backspace" and len(self.text) >= 1:
             text_check = (self.text.lower().strip())
-            self.valid((text_check not in constants.server_list_lower) or (text_check == self.starting_text.lower().strip()))
+            self.valid((text_check not in self.server_list) or (text_check == self.starting_text.lower().strip()))
 
         def check_validity(*a):
             if not self.text or str.isspace(self.text):
@@ -1039,10 +1155,9 @@ class ServerRenameInput(BaseInput):
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
             text_check = (self.text + s).lower().strip()
-            self.valid((text_check not in constants.server_list_lower) or (text_check == self.starting_text.lower().strip()), ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            self.valid((text_check not in self.server_list) or (text_check == self.starting_text.lower().strip()), ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             return super().insert_text(s, from_undo=from_undo)
-
 
 
 class ScriptNameInput(BaseInput):
@@ -1145,7 +1260,6 @@ class ScriptNameInput(BaseInput):
             self.valid(self.convert_name(self.text + s) not in self.script_list, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             return super().insert_text(s, from_undo=from_undo)
-
 
 
 class ServerVersionInput(BaseInput):
@@ -1964,6 +2078,16 @@ class ServerSeedInput(BaseInput):
 
 class ServerImportPathInput(DirectoryInput):
 
+    def get_server_list(self):
+        try:
+            telepath_data = constants.new_server_info['_telepath_data']
+            if telepath_data:
+                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                return True
+        except:
+            pass
+        self.server_list = constants.server_list_lower
+
     # Hide input_button on focus
     def _on_focus(self, *args):
         super()._on_focus(*args)
@@ -2015,6 +2139,8 @@ class ServerImportPathInput(DirectoryInput):
         self.selected_server = None if server == '' else server
         self.server_verified = False
         self.update_server(hide_popup=True)
+        self.server_list = []
+        self.get_server_list()
 
     def on_enter(self, value):
         self.selected_server = self.text.replace("~", constants.home)
@@ -2054,6 +2180,8 @@ class ServerImportPathInput(DirectoryInput):
         self.scroll_x = 0
 
         if self.selected_server:
+            self.get_server_list()
+
             self.selected_server = os.path.abspath(self.selected_server)
 
             # Check if the selected server is invalid
@@ -2069,7 +2197,7 @@ class ServerImportPathInput(DirectoryInput):
 
 
             # Don't allow import of already imported servers
-            elif os.path.join(constants.applicationFolder, 'Servers') in self.selected_server or constants.server_path(os.path.basename(self.selected_server)):
+            elif os.path.join(constants.applicationFolder, 'Servers') in self.selected_server and os.path.basename(self.selected_server).lower() in self.server_list:
                 self.valid_text(False, "This server already exists!")
                 disable_next(True)
 
@@ -2083,6 +2211,16 @@ class ServerImportPathInput(DirectoryInput):
                 disable_next(False)
 
 class ServerImportBackupInput(DirectoryInput):
+
+    def get_server_list(self):
+        try:
+            telepath_data = constants.new_server_info['_telepath_data']
+            if telepath_data:
+                self.server_list = constants.get_remote_var('server_list_lower', telepath_data)
+                return True
+        except:
+            pass
+        self.server_list = constants.server_list_lower
 
     # Hide input_button on focus
     def _on_focus(self, *args):
@@ -2136,6 +2274,9 @@ class ServerImportBackupInput(DirectoryInput):
         self.server_verified = False
         self.update_server(hide_popup=True)
 
+        self.server_list = []
+        self.get_server_list()
+
     def on_enter(self, value):
         self.selected_server = self.text.replace("~", constants.home)
         self.update_server()
@@ -2174,6 +2315,7 @@ class ServerImportBackupInput(DirectoryInput):
         self.scroll_x = 0
 
         if self.selected_server:
+            self.get_server_list()
             self.selected_server = os.path.abspath(self.selected_server)
 
             # Extract auto-mcs.ini and server.properties
@@ -2182,11 +2324,11 @@ class ServerImportBackupInput(DirectoryInput):
             new_path = None
             test_path = constants.tempDir
             cwd = constants.get_cwd()
-            print(self.selected_server)
             if (self.selected_server.endswith(".tgz") or self.selected_server.endswith(".amb") and os.path.isfile(self.selected_server)):
                 constants.folder_check(test_path)
                 os.chdir(test_path)
-                constants.run_proc(f'tar -xf "{self.selected_server}"{"" if constants.os_name == "windows" else " --wildcards"} *auto-mcs.ini')
+                constants.run_proc(f'tar -xf "{self.selected_server}" auto-mcs.ini')
+                constants.run_proc(f'tar -xf "{self.selected_server}" .auto-mcs.ini')
                 constants.run_proc(f'tar -xf "{self.selected_server}" server.properties')
                 if (os.path.exists(os.path.join(test_path, "auto-mcs.ini")) or os.path.exists(os.path.join(test_path, ".auto-mcs.ini"))) and os.path.exists(os.path.join(test_path, "server.properties")):
                     if os.path.exists(os.path.join(test_path, "auto-mcs.ini")):
@@ -2219,7 +2361,7 @@ class ServerImportBackupInput(DirectoryInput):
 
 
             # Don't allow import of already imported servers
-            elif constants.server_path(server_name):
+            elif server_name.lower() in self.server_list:
                 self.valid_text(False, "This server already exists!")
                 disable_next(True)
 
@@ -2353,7 +2495,7 @@ class CreateServerPortInput(BaseInput):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
+        self.change_timeout = None
         self.size_hint_max = (528, 54)
         self.title_text = "IPv4/port"
         self.hint_text = "enter IPv4 or port  (localhost:25565)"
@@ -2470,6 +2612,22 @@ class CreateServerPortInput(BaseInput):
         self.valid(not self.stinky_text)
 
 class ServerPortInput(CreateServerPortInput):
+    def update_config(self, *a):
+        def write(*a):
+            server_obj = constants.server_manager.current_server
+            server_obj.properties_hash = server_obj._get_properties_hash()
+            try:
+                screen_manager.current_screen.check_changes(server_obj, force_banner=True)
+            except AttributeError:
+                pass
+            server_obj.write_config()
+            server_obj.reload_config()
+            change_timeout = None
+
+        if self.change_timeout:
+            self.change_timeout.cancel()
+        self.change_timeout = Clock.schedule_once(write, 0.7)
+
     def process_text(self, text=''):
         server_obj = constants.server_manager.current_server
         new_ip = ''
@@ -2514,16 +2672,18 @@ class ServerPortInput(CreateServerPortInput):
         if not fail:
             server_obj.ip = new_ip
             server_obj.server_properties['server-ip'] = new_ip
-            server_obj.properties_hash = server_obj.__get_properties_hash__()
-            screen_manager.current_screen.check_changes(server_obj, force_banner=True)
+            server_obj.properties_hash = server_obj._get_properties_hash()
+            try:
+                screen_manager.current_screen.check_changes(server_obj, force_banner=True)
+            except AttributeError:
+                pass
 
         if new_port and not fail:
             server_obj.port = int(new_port)
             server_obj.server_properties['server-port'] = new_port
 
         if (new_ip or new_port) and not fail:
-            constants.server_properties(server_obj.name, write_object=server_obj.server_properties)
-            server_obj.reload_config()
+            self.update_config()
 
         process_ip_text(server_obj=server_obj)
         self.valid(not self.stinky_text)
@@ -2586,20 +2746,27 @@ class CreateServerMOTDInput(BaseInput):
 class ServerMOTDInput(BaseInput):
 
     def update_text(self, text):
-        print(text, self.server_obj.server_properties['motd'])
-        if text != self.server_obj.server_properties['motd'] and text:
-            self.server_obj.server_properties['motd'] = text
-            self.server_obj.properties_hash = self.server_obj.__get_properties_hash__()
-            screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
-            constants.server_properties(self.server_obj.name, write_object=self.server_obj.server_properties)
-            self.server_obj.reload_config()
+        def write(*a):
+            if self.screen_name == screen_manager.current_screen.name:
+                if text != self.server_obj.server_properties['motd'] and text:
+                    self.server_obj.server_properties['motd'] = text
+                    self.server_obj.properties_hash = self.server_obj._get_properties_hash()
+                    screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
+                    self.server_obj.write_config()
+                    self.server_obj.reload_config()
+                    self.change_timeout = None
+
+        if self.change_timeout:
+            self.change_timeout.cancel()
+        self.change_timeout = Clock.schedule_once(write, 0.5)
 
     def on_enter(self, value):
         self.update_text((self.text).strip() if self.text else "A Minecraft Server")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
+        self.change_timeout = None
+        self.screen_name = screen_manager.current_screen.name
         self.server_obj = constants.server_manager.current_server
         self.size_hint_max = (528, 54)
         self.title_text = "MOTD"
@@ -2890,78 +3057,29 @@ class AclRuleInput(BaseInput):
 
 
 
-class NgrokAuthInput(BaseInput):
-
-    def check_next(self):
-        break_loop = False
-        for child in self.parent.children:
-            if break_loop:
-                break
-            for item in child.children:
-                try:
-                    if item.id == "next_button":
-                        item.disable(self.text == '')
-                        break
-                except AttributeError:
-                    pass
-
-    def on_enter(self, value):
-        break_loop = False
-        for child in self.parent.children:
-            if break_loop:
-                break
-            for item in child.children:
-                try:
-                    if item.id == "next_button":
-                        item.force_click()
-                        break
-                except AttributeError:
-                    pass
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.size_hint_max = (528, 54)
-        self.padding_x = 25
-        self.title_text = "authtoken"
-        self.hint_text = "paste your ngrok authtoken..."
-        self.padding_y = (14, 0)
-        self.text = ''
-        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
-        self.bind(on_text_validate=self.on_enter)
-
-    def keyboard_on_key_down(self, window, keycode, text, modifiers):
-        super().keyboard_on_key_down(window, keycode, text, modifiers)
-
-        if keycode[1] == "backspace":
-            self.text = ''
-
-        self.check_next()
-
-    # Input validation
-    def insert_text(self, substring, from_undo=False):
-        if not self.text and len(substring) > 10 and '\n' not in substring:
-            self.text = substring
-        self.check_next()
-
-
-
 class ServerFlagInput(BaseInput):
 
     def write_config(self, text):
-        self.server_obj.update_flags(text)
-        screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
+        def write(*a):
+            self.server_obj.update_flags(text)
+            if self.screen_name == screen_manager.current_screen.name:
+                screen_manager.current_screen.check_changes(self.server_obj, force_banner=True)
+
+        if self.change_timeout:
+            self.change_timeout.cancel()
+        self.change_timeout = Clock.schedule_once(write, 0.5)
 
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
+        self.change_timeout = None
+        self.screen_name = screen_manager.current_screen.name
         self.server_obj = constants.server_manager.current_server
         self.size_hint_max = (528, 54)
         self.title_text = "flags"
         self.halign = "left"
         self.padding_x = 25
-        self.hint_text = "enter custom launch flags..." if constants.locale == 'en' else 'launch flags...'
+        self.hint_text = "enter custom launch flags..." if constants.app_config.locale == 'en' else 'launch flags...'
 
         if self.server_obj.custom_flags:
             self.text = self.server_obj.custom_flags
@@ -3193,12 +3311,19 @@ class FooterBackground(Widget):
         self.rect.size = self.size[0], self.y_offset
         self.rect.pos = self.pos
 
-    def __init__(self, **kwargs):
+    def __init__(self, no_background=False, **kwargs):
         super().__init__(**kwargs)
 
+        if no_background:
+            source = os.path.join(constants.gui_assets, 'no_background_footer.png')
+            color = screen_manager.current_screen.background_color
+        else:
+            source = os.path.join(constants.gui_assets, 'footer_background.png')
+            color = self.background_color = constants.brighten_color(constants.background_color, -0.02)
+
         with self.canvas.before:
-            self.rect = Image(pos=self.pos, size=self.size, allow_stretch=True, keep_ratio=False, source=os.path.join(constants.gui_assets, 'footer_background.png'))
-            self.rect.color = (constants.background_color[0] - 0.02, constants.background_color[1] - 0.02, constants.background_color[2] - 0.02, 1)
+            self.rect = Image(pos=self.pos, size=self.size, allow_stretch=True, keep_ratio=False, source=source)
+            self.rect.color = color
 
         with self.canvas.after:
             self.canvas.clear()
@@ -3245,12 +3370,93 @@ def generate_title(title):
 
 
 
+class SettingsButton(RelativeLayout):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.shown = False
+
+        self.hide_button = RelativeIconButton('close', {'center_x': 1}, (0, 5), (None, None), 'close-sharp.png', anchor='right', clickable=True, click_func=self.hide, anchor_text='right', text_offset=(-85, 40), force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'])
+        self.hide_button.x = -35
+
+        self.settings_button = RelativeIconButton('settings', {'center_x': 1}, (0, 5), (None, None), 'settings-sharp.png', anchor='right', clickable=True, click_func=self.show, anchor_text='right', text_offset=(-20, 0))
+        self.settings_button.x = -35
+        self.add_widget(self.settings_button)
+
+
+        # Buttons when settings menu is opened
+        def open_changelog(*a):
+            if constants.app_online:
+                url = f'{constants.project_link}/releases/latest'
+                webbrowser.open_new_tab(url)
+        self.changelog_button = RelativeIconButton('view changelog', {'center_x': 1}, (0, 5), (None, None), 'document-text-sharp.png', anchor='right', clickable=True, click_func=open_changelog, anchor_text='right', text_offset=(-40, 40))
+        self.changelog_button.x = -35
+        self.changelog_button.y = 50
+        self.changelog_button.opacity = 0
+        self.changelog_button.button.disabled = True
+        self.add_widget(self.changelog_button)
+
+        def change_telepath_screen(*a):
+            screen_manager.current = 'TelepathManagerScreen'
+        self.telepath_button = RelativeIconButton('$telepath$', {'center_x': 1}, (0, 5), (None, None), 'telepath.png', anchor='right', clickable=True, click_func=change_telepath_screen, anchor_text='right', text_offset=(-70, 40))
+        self.telepath_button.x = -35
+        self.telepath_button.y = 100
+        self.telepath_button.opacity = 0
+        self.telepath_button.button.disabled = True
+        self.add_widget(self.telepath_button)
+
+        def change_locale_screen(*a):
+            screen_manager.current = 'ChangeLocaleScreen'
+        self.locale_button = RelativeIconButton(constants.get_locale_string(), {'center_x': 1}, (0, 5), (None, None), 'language.png', anchor='right', clickable=True, click_func=change_locale_screen, anchor_text='right', text_offset=(-55, 40))
+        self.locale_button.x = -35
+        self.locale_button.y = 150
+        self.locale_button.opacity = 0
+        self.locale_button.button.disabled = True
+        self.add_widget(self.locale_button)
+
+    def show(self, *a):
+        self.shown = True
+        Animation(opacity=1, duration=0.45).start(self.locale_button)
+        Animation(opacity=1, duration=0.3).start(self.telepath_button)
+        Animation(opacity=1, duration=0.15).start(self.changelog_button)
+        self.remove_widget(self.settings_button)
+        self.add_widget(self.hide_button)
+        self.telepath_button.button.disabled = False
+        self.locale_button.button.disabled = False
+        self.changelog_button.button.disabled = False
+
+    def hide(self, *a):
+        self.shown = False
+        Animation(opacity=0, duration=0.08).start(self.locale_button)
+        Animation(opacity=0, duration=0.16).start(self.telepath_button)
+        Animation(opacity=0, duration=0.24).start(self.changelog_button)
+        self.remove_widget(self.hide_button)
+        self.add_widget(self.settings_button)
+        def after(*a):
+            self.telepath_button.button.disabled = True
+            self.locale_button.button.disabled = True
+            self.changelog_button.button.disabled = True
+        Clock.schedule_once(after, 0.2)
+
+
 def footer_label(path, color, progress_screen=False):
+
+    # If remote server, put the instance name behind it
+    if constants.server_manager.current_server:
+        server_obj = constants.server_manager.current_server
+        data = server_obj._telepath_data
+        try:
+            if data and path.strip().startswith(server_obj.name):
+                path = f'[color=#353565]{data["display-name"]}/[/color]{path}'
+        except:
+            pass
 
     # Translate footer paths that don't include the server name
     t_path = []
     for i in path.split(', '):
-        if i.lower() in constants.server_list_lower:
+        if '/' in i.lower():
+            t_path.append(i)
+        elif i.lower() in constants.server_list_lower:
             t_path.append(i)
         else:
             t_path.append(constants.translate(i))
@@ -3265,7 +3471,9 @@ def footer_label(path, color, progress_screen=False):
             shrink_value -= (len("".join(path_list[2:])))
 
         for item in path_list:
-            if x == 2 and len(item) > shrink_value and len(path_list) > 2:
+            item_no_tag = item.strip('[color=#353565]').replace('[/color]','')
+            if x == 2 and len(item_no_tag) > shrink_value and len(path_list) > 2:
+                item = item_no_tag
                 item = item[:shrink_value - 4] + f"...{item[-1]}" if (item.endswith("'") or item.endswith("\"")) else item[:shrink_value - 5] + "..."
 
             text += f'[color={"555599" if x < len(path_list) else color}]' + item + '[/color]'
@@ -3313,9 +3521,7 @@ def footer_label(path, color, progress_screen=False):
 
     return final_layout
 
-
-
-def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=False):
+def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=False, no_background=False):
 
     # Sanitize footer path for crash logs to remove server name
     if ", Launch" in menu_path or ", Access Control" in menu_path or ", Back-ups" in menu_path or ", Add-ons" in menu_path or ", amscript" in menu_path or ", Settings" in menu_path:
@@ -3353,23 +3559,20 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
             click_func = None
             try:
                 if func_dict:
-                    click_func = func_dict['changelog']
+                    click_func = func_dict['donate']
             except:
                 pass
-            footer.add_widget(IconButton('view changelog', {}, (102, 5), (None, None), 'document-text-outline.png', clickable=True, click_func=click_func))
+            footer.add_widget(IconButton('support us', {}, (102, 5), (None, None), 'sponsor.png', clickable=True, force_color=[[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], 'pink'], click_func=click_func, text_hover_color=(0.85, 0.6, 0.95, 1)))
 
         else:
             footer.add_widget(IconButton('no connection', {}, (0, 5), (None, None), 'ban.png', clickable=True, force_color=[[(0.07, 0.07, 0.07, 1), (0.7, 0.7, 0.7, 1)], 'gray']))
 
-        # Locale button
-        def change_locale_screen(*a):
-            screen_manager.current = 'ChangeLocaleScreen'
-        locale_button = RelativeIconButton(constants.get_locale_string(), {'center_x': 1}, (0, 5), (None, None), 'language.png', anchor='right', clickable=True, click_func=change_locale_screen, anchor_text='right')
-        locale_button.x = -35
-        footer.add_widget(locale_button)
+        # Settings button
+        settings_button = SettingsButton()
+        footer.add_widget(settings_button)
 
     else:
-        footer.add_widget(FooterBackground())
+        footer.add_widget(FooterBackground(no_background=no_background))
         footer.add_widget(footer_label(path=menu_path, color=color, progress_screen=progress_screen)) # menu_path
         if not progress_screen:
             footer.add_widget(IconButton('main menu', {}, (-5, 0), (None, None), 'home-sharp.png', clickable=True))
@@ -3655,7 +3858,7 @@ class ScrollItem(RelativeLayout):
         if widget:
             self.add_widget(widget)
 
-def scroll_background(pos_hint, pos, size, highlight=False):
+def scroll_background(pos_hint, pos, size, highlight=False, color=None):
 
     class ScrollBackground(Image):
 
@@ -3667,7 +3870,10 @@ def scroll_background(pos_hint, pos, size, highlight=False):
             self.allow_stretch = True
             self.keep_ratio = False
             self.size_hint = (None, None)
-            self.color = (1, 1, 1, 1) if highlight else constants.background_color
+            if color:
+                self.color = color
+            else:
+                self.color = (1, 1, 1, 1) if highlight else constants.background_color
             self.source = os.path.join(constants.gui_assets, 'scroll_gradient.png')
             Window.bind(on_resize=self.resize)
 
@@ -3956,7 +4162,7 @@ class MainButton(FloatLayout):
 
 
 
-def color_button(name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, color=(1, 1, 1, 1), disabled=False):
+def color_button(name, position, icon_name=None, width=None, icon_offset=None, auto_adjust_icon=False, click_func=None, color=(1, 1, 1, 1), disabled=False, hover_data={'color': None, 'image': None}):
 
     def repos_icon(icon_widget, button_widget, *args):
 
@@ -3969,7 +4175,15 @@ def color_button(name, position, icon_name=None, width=None, icon_offset=None, a
     final = FloatLayout()
     final.id = name
 
-    final.button = HoverButton()
+    class ColorButton(HoverButton):
+        def on_enter(self, *args):
+            if not self.ignore_hover:
+                if hover_data['color'] or hover_data['image']:
+                    animate_button(self, image=hover_data['image'], color=hover_data['color'])
+                else:
+                    super().on_enter(*args)
+
+    final.button = ColorButton()
     final.button.id = 'color_button'
     final.button.color_id = [constants.brighten_color(color, -0.9), color]
 
@@ -4249,6 +4463,8 @@ class RelativeIconButton(RelativeLayout):
 
     def resize(self, *args):
         self.text.x = Window.width - self.text.texture_size[0] + 25
+        if self.text_offset:
+            self.text.x += self.text_offset[0]
 
     def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, **kwargs):
         super().__init__(**kwargs)
@@ -4259,6 +4475,7 @@ class RelativeIconButton(RelativeLayout):
         self.button = HoverButton()
         self.button.id = 'icon_button'
         self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)] if not force_color else force_color[0]
+        self.text_offset = text_offset
 
         if force_color and force_color[1]:
             self.button.alt_color = "_" + force_color[1]
@@ -4337,6 +4554,10 @@ class RelativeIconButton(RelativeLayout):
         if anchor_text == "right":
             self.bind(size=self.resize)
             self.bind(pos=self.resize)
+
+        if screen_manager.current_screen.name == 'MainMenuScreen':
+            Clock.schedule_once(self.text.texture_update, 0)
+            Clock.schedule_once(self.resize, 0)
 
 class AnimButton(FloatLayout):
 
@@ -4561,7 +4782,7 @@ def big_icon_button(name, pos_hint, position, size_hint, icon_name=None, clickab
 
 class ExitButton(RelativeLayout):
 
-    def __init__(self, name, position, cycle=False, **args):
+    def __init__(self, name, position, cycle=False, custom_func=None, **args):
         super().__init__(**args)
 
         self.button = HoverButton()
@@ -4573,6 +4794,7 @@ class ExitButton(RelativeLayout):
         self.button.border = (-10, -10, -10, -10)
         self.button.background_normal = os.path.join(constants.gui_assets, 'exit_button.png')
         self.button.background_down = os.path.join(constants.gui_assets, 'exit_button_click.png')
+        self.custom_func = custom_func
 
         self.text = Label()
         self.text.id = 'text'
@@ -4601,7 +4823,13 @@ class ExitButton(RelativeLayout):
 
 
         # Button click behavior
-        self.button.on_release = functools.partial(button_action, name, self.button)
+        def execute(*a):
+            if self.custom_func:
+                self.custom_func()
+            else:
+                button_action(name, self.button)
+
+        self.button.on_release = execute
 
 
         self.add_widget(self.button)
@@ -4954,11 +5182,12 @@ class DropButton(FloatLayout):
 
         self.add_widget(self.icon)
 
-    def change_text(self, text):
+    def change_text(self, text, translate=True):
+        self.text.__translate__ = translate
         self.text.text = text.upper() + (" " * self.text_padding)
 
     # Create button in drop-down list
-    def list_button(self, sub_name, sub_id):
+    def list_button(self, sub_name, sub_id, translate=True):
 
         sub_final = AnchorLayout()
         sub_final.id = sub_name
@@ -4974,6 +5203,7 @@ class DropButton(FloatLayout):
         sub_button.background_down = os.path.join(constants.gui_assets, f'{sub_id}_click.png')
 
         sub_text = Label()
+        sub_text.__translate__ = translate
         sub_text.id = 'text'
         sub_text.text = sub_name
         sub_text.font_size = sp(19)
@@ -5004,6 +5234,188 @@ class DropButton(FloatLayout):
             else:
                 end_btn = self.list_button(item, sub_id='list_end_button')
                 self.dropdown.add_widget(end_btn)
+
+# Figure out where self.change_text is called, and add telepath icon to label
+class TelepathDropButton(DropButton):
+    def __init__(self, telepath_data, type, position, x_offset=0, facing='center', *args, **kwargs):
+        FloatLayout.__init__(self, *args, **kwargs)
+
+        if type == 'create':
+            name = 'create a server on'
+        else:
+            name = 'import server to'
+
+        # Side label
+        self.label_layout = RelativeLayout(pos_hint={"center_x": 0.5, "center_y": position[1]})
+        self.label_layout.size_hint_max = (400, 40)
+        self.label_layout.id = 'relative_layout'
+        self.label = AlignLabel()
+        self.label.halign = 'right'
+        self.label.valign = 'center'
+        self.label.id = 'label'
+        self.label.size_hint_max = (300, 50)
+        self.label.text = name
+        self.label.x -= 210
+        self.label.y += 2
+        self.label.font_size = sp(25)
+        self.label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.label.color = (0.6, 0.6, 1, 1)
+        self.label_layout.add_widget(self.label)
+
+        self.label_icon = Image(source=icon_path('telepath.png'))
+        self.label_icon.size_hint_max = (35, 35)
+        self.label_icon.allow_stretch = True
+        self.label_icon.keep_ratio = False
+        self.label_icon.pos = (self.label.x + 20, self.label.y + 3)
+        self.color_id = [(0.2, 0.2, 0.4, 1), (0.65, 0.65, 1, 1)]
+        self.label_icon.color = self.color_id[0]
+        self.label_layout.add_widget(self.label_icon)
+        self.add_widget(self.label_layout)
+
+        self.text_padding = 5
+        self.facing = facing
+
+        self.options_list = {'this machine': None}
+        self.options_list.update(constants.deepcopy(telepath_data))
+
+        self.x += 152 + x_offset
+
+        self.button = HoverButton()
+        self.id = self.button.id = 'drop_button' if facing == 'center' else f'drop_button_{self.facing}'
+        self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
+
+        self.button.size_hint_max = (200, 65)
+        self.button.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.button.border = (0, 0, 0, 0)
+        self.button.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
+        self.button.background_down = os.path.join(constants.gui_assets, f'{self.id}_click.png')
+
+        # Change background when expanded - A
+        def toggle_background(boolean, *args):
+
+            self.button.ignore_hover = boolean
+
+            for child in self.button.parent.children:
+                if child.id == 'icon':
+                    Animation(height=-abs(child.init_height) if boolean else abs(child.init_height), duration=0.15).start(child)
+
+            if boolean:
+                Animation(opacity=1, duration=0.13).start(self.dropdown)
+                self.button.background_normal = os.path.join(constants.gui_assets, f'{self.id}_expand.png')
+            else:
+                self.button.on_mouse_pos(None, Window.mouse_pos)
+                if self.button.hovered:
+                    self.button.on_enter()
+                else:
+                    self.button.on_leave()
+
+        self.text = Label()
+        self.text.id = 'text'
+        self.text.size_hint = (None, None)
+        self.text.pos_hint = {"center_x": position[0], "center_y": position[1]}
+        self.text.text = 'THIS MACHINE' + (" " * self.text_padding)
+        self.text.font_size = sp(17)
+        self.text.shorten = True
+        self.text.shorten_from = 'right'
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.text.color = (0.6, 0.6, 1, 1)
+
+        # Dropdown list
+        class FadeDrop(DropDown):
+            def dismiss(self, *largs):
+                Animation(opacity=0, duration=0.13).start(self)
+                super().dismiss(self, *largs)
+                Clock.schedule_once(functools.partial(self.deselect_buttons), 0.15)
+
+            def deselect_buttons(self, *args):
+                for child in self.children:
+                    for child_item in child.children:
+                        for child_button in child_item.children:
+                            if "button" in child_button.id:
+                                child_button.on_leave()
+
+        self.dropdown = FadeDrop()
+        self.dropdown.id = 'dropdown'
+        self.dropdown.opacity = 0
+        self.dropdown.min_state_time = 0.13
+
+        for item, telepath_data in self.options_list.items():
+            original_item = item
+
+            # Set display name
+            if telepath_data:
+                telepath_data['host'] = item
+                if telepath_data['nickname']:
+                    item = telepath_data['nickname']
+
+            # Middle of the list
+            if original_item != list(self.options_list.keys())[-1]:
+                mid_btn = self.list_button(item, sub_id='list_mid_button', translate=(original_item=='this machine'))
+                self.dropdown.add_widget(mid_btn)
+
+            # Last button
+            else:
+                end_btn = self.list_button(item, sub_id='list_end_button')
+                self.dropdown.add_widget(end_btn)
+
+        # Button click behavior
+        def set_var(parent, result):
+            for k, v in self.options_list.items():
+                if (k == 'this machine' == result) or (v and (('.' in result and result == k) or (result == v['nickname']))):
+                    constants.new_server_info['_telepath_data'] = v
+                    if type == 'import':
+                        constants.import_data['_telepath_data'] = v
+
+                    # Change icon color
+                    Animation.stop_all(parent.label_icon)
+                    Animation(color=parent.color_id[0 if result == 'this machine' else 1], duration=0.2).start(parent.label_icon)
+
+                    # Update name list if creating a server
+                    try:
+                        screen_manager.current_screen.name_input.get_server_list()
+                    except:
+                        pass
+                    try:
+                        screen_manager.current_screen.name_input.update_server()
+                    except:
+                        pass
+
+                    break
+
+        self.button.on_release = functools.partial(lambda: self.dropdown.open(self.button))
+        self.dropdown.bind(on_select=lambda instance, x: self.change_text(x, translate=(x=='this machine')))
+        self.dropdown.bind(on_select=lambda instance, x: set_var(self, x))
+
+        # Change background when expanded - B
+        self.button.bind(on_release=functools.partial(toggle_background, True))
+        self.dropdown.bind(on_dismiss=functools.partial(toggle_background, False))
+
+        self.add_widget(self.button)
+        self.add_widget(self.text)
+
+        # dropdown arrow
+        self.icon = Image()
+        self.icon.id = 'icon'
+        self.icon.source = os.path.join(constants.gui_assets, 'drop_arrow.png')
+        self.icon.init_height = 14
+        self.icon.size = (14, self.icon.init_height)
+        self.icon.allow_stretch = True
+        self.icon.keep_ratio = True
+        self.icon.size_hint_y = None
+        self.icon.color = (0.6, 0.6, 1, 1)
+        self.icon.pos_hint = {"center_y": position[1]}
+        self.icon.pos = (225 + x_offset, 200)
+
+        self.add_widget(self.icon)
+
+
+        if '_telepath_data' in constants.new_server_info and constants.new_server_info['_telepath_data']:
+            self.label_icon.color = self.color_id[1]
+            if constants.new_server_info['_telepath_data']['nickname']:
+                name = constants.new_server_info['_telepath_data']['nickname']
+            else:
+                name = constants.new_server_info['_telepath_data']['host']
+            self.text.text = name.upper() + (" " * self.text_padding)
 
 
 # Similar to DropButton, but for a right-click context menu
@@ -5847,6 +6259,169 @@ class PopupWarningQuery(PopupWindow):
         for widget in self.window.children:
             widget.opacity = 0
 
+# View/Back
+class PopupErrorLog(PopupWindow):
+    def __init__(self, **kwargs):
+        self.window_color = (1, 0.56, 0.6, 1)
+        self.window_text_color = (0.2, 0.1, 0.1, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'question-circle.png')
+        super().__init__(**kwargs)
+
+        # Modal specific settings
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+        self.ok_button = None
+        with self.canvas.after:
+            self.no_button = Button()
+            self.no_button.id = "no_button"
+            self.no_button.size_hint = (None, None)
+            self.no_button.size = (229.5, 65)
+            self.no_button.border = (0, 0, 0, 0)
+            self.no_button.background_color = self.window_color
+            self.no_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.no_button.pos = (0.5, -0.3)
+            self.no_button.text = "BACK"
+            self.no_button.color = self.window_text_color
+            self.no_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.no_button.font_size = sp(22)
+
+
+            self.yes_button = Button()
+            self.yes_button.id = "yes_button"
+            self.yes_button.size_hint = (None, None)
+            self.yes_button.size = (-229.5, 65)
+            self.yes_button.border = (0, 0, 0, 0)
+            self.yes_button.background_color = self.window_color
+            self.yes_button.background_normal = os.path.join(constants.gui_assets, "popup_half_button.png")
+            self.yes_button.pos = (self.window_background.size[0] - 0.5, -0.3)
+            self.yes_button.text = "VIEW LOG"
+            self.yes_button.color = self.window_text_color
+            self.yes_button.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["very-bold"]}.ttf')
+            self.yes_button.font_size = sp(22)
+            self.bind(on_touch_down=self.click_event)
+
+
+        self.window.add_widget(self.no_button)
+        self.window.add_widget(self.yes_button)
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+
+# Telepath pop-up window
+class PopupTelepathPair(PopupWindow):
+
+    def close_pair(self, *a):
+        self.self_destruct(True)
+        constants.telepath_pair.close()
+
+    def update_expiry_bar(self):
+        pair_data = constants.api_manager.pair_data
+        Animation(size_hint_max_x=0, duration=(pair_data['expire'] - dt.now()).seconds).start(self.pair_bar)
+
+        def later(*a):
+            pair_data = constants.api_manager.pair_data
+            if pair_data:
+                Clock.schedule_once(later, 0.2)
+
+                # Resize bar based on time remaining
+                remaining = (pair_data['expire'] - dt.now()).seconds / (telepath.PAIR_CODE_EXPIRE_MINUTES * 60)
+                if remaining <= 1:
+
+                    # Change color if the code is about to expire
+                    if remaining < 0.2:
+                        self.pair_bar.color = (1, 0.56, 0.6, 1)
+                        self.pair_rail.color = (0.2, 0.1, 0.1, 0.3)
+
+                    self.resize_window()
+
+            else:
+                self.close_pair()
+
+        later()
+
+    def __init__(self, prompt=False, **kwargs):
+        self.window_color = (0.3, 1, 0.6, 1)
+        self.window_text_color = (0.07, 0.2, 0.12, 1)
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'telepath.png')
+        super().__init__(**kwargs)
+
+        # Check if pair succeeded with an API call from constants.telepath_pair
+        if prompt:
+            window_sound = 'popup_telepath_request.wav'
+            title = '$Telepath$ Pair Request'
+            button_text = 'CANCEL'
+            self.data = constants.deepcopy(constants.telepath_pair.pair_data)
+
+            # Override to show pair code
+            self.window_content.markup = True
+            code = f"{self.data['code'][0:3]}-{self.data['code'][3:]}"
+            user_string = f'{self.data["host"]["host"]}/{self.data["host"]["user"]}'
+            very_bold = os.path.join(constants.gui_assets, 'fonts', constants.fonts["mono-bold"])
+            self.window_content.text = f"Pair '${user_string}$' with[size={round(sp(13))}]\n\n[/size][font={very_bold}.otf][size={round(sp(70))}]{code}[/size][/font]\n\n"
+            self.window_content.pos_hint = {'center_y': 0.47, 'center_x': 0.5}
+
+            # Pair texture
+            self.bar_width = 250
+            self.bar_offset = 0.32 if len(user_string) > 25 else 0.35
+            with self.canvas.after:
+                self.pair_rail = Image()
+                self.pair_rail.id = "pair_bar"
+                self.pair_rail.allow_stretch = True
+                self.pair_rail.keep_ratio = False
+                self.pair_rail.color = (*self.window_text_color[:-1], 0.3)
+                self.pair_rail.size_hint_max = (self.bar_width, 10)
+                self.pair_rail.pos_hint = {"center_x": 0.5, "center_y": self.bar_offset}
+
+                self.pair_bar = Image()
+                self.pair_bar.id = "pair_bar"
+                self.pair_bar.allow_stretch = True
+                self.pair_bar.keep_ratio = False
+                self.pair_bar.color = self.window_color
+                self.pair_bar.size_hint_max = (self.bar_width, 10)
+                self.pair_bar.pos_hint = {"center_x": 0.5, "center_y": self.bar_offset}
+            self.window.add_widget(self.pair_rail)
+            self.window.add_widget(self.pair_bar)
+            self.update_expiry_bar()
+
+        else:
+            success = True
+            if success:
+                window_sound = 'popup_telepath_success.wav'
+                title = 'Pair Success'
+                button_text = 'OKAY'
+            else:
+                window_sound = 'popup_warning.wav'
+                title = 'Pair Failure'
+                button_text = 'OKAY'
+
+        # Modal specific settings
+        self.window_title.text = title
+        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', window_sound))
+        self.no_button = None
+        self.yes_button = None
+        with self.canvas.after:
+            self.ok_button = Button()
+            self.ok_button.id = "ok_button"
+            self.ok_button.size_hint = (None, None)
+            self.ok_button.size = (459, 65)
+            self.ok_button.border = (0, 0, 0, 0)
+            self.ok_button.background_color = self.window_color
+            self.ok_button.background_normal = os.path.join(constants.gui_assets, "popup_full_button.png")
+            self.ok_button.pos_hint = {"center_x": 0.5}
+            self.ok_button.text = button_text
+            self.ok_button.color = self.window_text_color
+            self.ok_button.font_name = os.path.join(constants.gui_assets,'fonts',f'{constants.fonts["very-bold"]}.ttf')
+            self.ok_button.font_size = sp(22)
+            self.bind(on_touch_down=self.click_event)
+
+        self.window.add_widget(self.ok_button)
+        self.canvas.after.clear()
+
+        self.blur_background.opacity = 0
+        for widget in self.window.children:
+            widget.opacity = 0
+
 
 
 # Big popup widgets
@@ -6215,7 +6790,7 @@ class PopupFile(BigPopupWindow):
             self.body_button = Button()
             self.body_button.id = "body_button"
             self.body_button.size_hint = (None, None)
-            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
+            self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
             self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
@@ -6320,7 +6895,7 @@ class PopupAddon(BigPopupWindow):
             self.body_button = Button()
             self.body_button.id = "body_button"
             self.body_button.size_hint = (None, None)
-            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
+            self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
             self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
@@ -6484,7 +7059,7 @@ class PopupScript(BigPopupWindow):
             self.body_button = Button()
             self.body_button.id = "body_button"
             self.body_button.size_hint = (None, None)
-            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
+            self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
             self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
@@ -6606,7 +7181,7 @@ class PopupUpdate(BigPopupWindow):
             self.body_button = Button()
             self.body_button.id = "body_button"
             self.body_button.size_hint = (None, None)
-            self.body_button.size = (200 if constants.locale == 'en' else 260, 40)
+            self.body_button.size = (200 if constants.app_config.locale == 'en' else 260, 40)
             self.body_button.border = (0, 0, 0, 0)
             self.body_button.background_color = self.window_text_color
             self.body_button.background_normal = os.path.join(constants.gui_assets, "addon_view_button.png")
@@ -6692,6 +7267,7 @@ class PopupSearch(RelativeLayout):
             self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
             self.title.font_size = sp(30)
             self.title.pos_hint = {'center_x': 0.5, 'center_y': 0.75}
+            self.title.markup = True
             self.add_widget(self.title)
 
             self.subtitle = Label()
@@ -6831,20 +7407,22 @@ class PopupSearch(RelativeLayout):
                     screen_manager.current_screen.scroll_widget.scroll_to(delete_button, animate=False)
                     Clock.schedule_once(delete_button.button.trigger_action, 0.1)
 
-                # Install ngrok
-                elif self.search_obj.title.lower() == 'install proxy (ngrok)':
+                # Install proxy
+                elif self.search_obj.title.lower() == 'install proxy (playit)':
                     screen_manager.current = self.search_obj.target
-                    ngrok_button = screen_manager.current_screen.ngrok_button
-                    screen_manager.current_screen.scroll_widget.scroll_to(ngrok_button, animate=False)
-                    Clock.schedule_once(ngrok_button.button.trigger_action, 0.1)
-
+                    proxy_button = screen_manager.current_screen.proxy_button
+                    screen_manager.current_screen.scroll_widget.scroll_to(proxy_button, animate=False)
+                    Clock.schedule_once(proxy_button.button.trigger_action, 0.1)
 
 
                 # Below is standard functionality for the server actions
 
                 # Open server
                 elif self.search_obj.type == 'server':
-                    open_server(self.search_obj.title)
+                    if self.search_obj._telepath_data:
+                        open_remote_server(self.search_obj._telepath_data, self.search_obj._telepath_data['name'])
+                    else:
+                        open_server(self.search_obj.title)
 
                 # Otherwise, launch web URL or go to screen
                 elif self.search_obj.target:
@@ -7571,6 +8149,9 @@ def button_action(button_name, button, specific_screen=''):
         elif "ServerBackupScreen" in str(screen_manager.current_screen) and "restore" in button_name.lower():
             screen_manager.current = "ServerBackupRestoreScreen"
 
+        elif "ServerBackupScreen" in str(screen_manager.current_screen) and "download" in button_name.lower():
+            screen_manager.current = "ServerBackupDownloadScreen"
+
 
         elif "CreateServerReview" in str(screen_manager.current_screen) and "create server" in button_name.lower():
             screen_manager.current = "CreateServerProgressScreen"
@@ -7599,6 +8180,14 @@ class MenuBackground(Screen):
 
     # Reset page on screen load
     def on_pre_enter(self, *args):
+
+        # Ignore loading anything if server is remote and unavailable
+        screen_name = self.__class__.__name__
+        if screen_name.startswith('Server') and screen_name not in ['ServerManagerScreen', 'ServerImportScreen']:
+            if check_telepath_disconnect():
+                return True
+
+
         if self.reload_page and constants.app_loaded:
             self.reload_menu()
 
@@ -7655,7 +8244,7 @@ class MenuBackground(Screen):
 
         self.canvas.clear()
         self.clear_widgets()
-        # gc.collect()
+
 
 
     def reload_menu(self, *args):
@@ -7698,12 +8287,15 @@ class MenuBackground(Screen):
 
     # Show popup; popup_type can be "info", "warning", "query"
     def show_popup(self, popup_type, title, content, callback=None, *args):
-        popup_types = ("info", "warning", "query", "warning_query", "controls", "addon", "script", "file")
-
+        popup_types = (
+            "info", "warning", "query", "warning_query", "controls", "addon",
+            "script", "file", "error_log"
+        )
+        telepath_types = ("pair_request", "pair_result")
         if self.context_menu:
             self.context_menu.hide()
 
-        if ((popup_type == "update") or (title and content and popup_type in popup_types)) and (self == screen_manager.current_screen):
+        if ((popup_type == "update") or (title and content and (popup_type in popup_types or popup_type in telepath_types))) and (self == screen_manager.current_screen):
 
             # self.show_popup("info", "Title", "This is an info popup!", functools.partial(callback_func))
             # self.show_popup("warning", "Title", "This is a warning popup!", functools.partial(callback_func))
@@ -7760,14 +8352,23 @@ class MenuBackground(Screen):
                 elif popup_type == "file":
                     self.popup_widget = PopupFile()
                     Clock.schedule_once(functools.partial(self.popup_widget.set_text, content), 0)
+                elif popup_type == "error_log":
+                    self.popup_widget = PopupErrorLog()
+
+                # Telepath pop-ups
+                elif popup_type == "pair_request":
+                    self.popup_widget = PopupTelepathPair(prompt=True)
+                elif popup_type == "pair_result":
+                    self.popup_widget = PopupTelepathPair()
 
             self.popup_widget.generate_blur_background()
 
-            if title.strip():
-                self.popup_widget.window_title.text = title
+            if popup_type not in telepath_types:
+                if title.strip():
+                    self.popup_widget.window_title.text = title
 
-            if content.strip():
-                self.popup_widget.window_content.text = content
+                if content.strip():
+                    self.popup_widget.window_content.text = content
 
             self.popup_widget.callback = callback
 
@@ -7839,7 +8440,7 @@ class MenuBackground(Screen):
 
     # Show banner; pass in color, text, icon name, and duration
     @staticmethod
-    def show_banner(color, text, icon, duration=5, pos_hint={"center_x": 0.5, "center_y": 0.895}, *args):
+    def show_banner(color, text, icon, duration=5, pos_hint={"center_x": 0.5, "center_y": 0.895}, play_sound=None, *args):
 
         # Base banner layout
         banner_layout = BannerLayout()
@@ -7913,6 +8514,12 @@ class MenuBackground(Screen):
         Clock.schedule_once(functools.partial(banner_object.show_animation, False), duration)
         Clock.schedule_once(functools.partial(hide_widgets, banner_shadow, banner_progress_bar), duration)
         Clock.schedule_once(functools.partial(hide_banner, banner_layout), duration + 0.32)
+
+        if play_sound:
+            try:
+                sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', play_sound)).play()
+            except:
+                pass
 
 
     # Keyboard listeners
@@ -8055,6 +8662,7 @@ class MenuBackground(Screen):
         self._input_focused = False
         self._keyboard = None
         self._shift_pressed = False
+        self.background_color = constants.background_color
 
         # Add keys to override in child windows
         self._ignore_keys = []
@@ -8165,6 +8773,16 @@ class ProgressWidget(RelativeLayout):
         self.cover.color = constants.background_color
         self.cover.pos_hint = {'center_y': 0.5}
 
+        # Fake shading to change the depth
+        self.shadow = Image()
+        self.shadow.allow_stretch = True
+        self.shadow.keep_ratio = False
+        self.shadow.size_hint_max_x = self.size_hint_max_x
+        self.shadow.color = constants.background_color
+        self.shadow.opacity = 0.1
+        self.shadow.size_hint_max_y = self.size_hint_max_y / 2
+        self.shadow.y = self.y
+
         # Progress bar animation
         self.bar = Image()
         self.bar.allow_stretch = True
@@ -8201,8 +8819,10 @@ class ProgressWidget(RelativeLayout):
         self.add_widget(self.cover)
         self.add_widget(self.rail)
         self.add_widget(self.percentage)
+        self.add_widget(self.shadow)
 
         self.update_progress(self.value)
+
 class ProgressScreen(MenuBackground):
 
     # Returns current progress bar value
@@ -8212,6 +8832,10 @@ class ProgressScreen(MenuBackground):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
+        def sleep(delay: float or int):
+            time.sleep(delay)
+            return True
+
         self.page_contents = {
 
             # Page name
@@ -8226,27 +8850,78 @@ class ProgressScreen(MenuBackground):
             'default_error': 'There was an issue, please try again later',
 
             'function_list': (
-                ('Step 1', functools.partial(time.sleep, 3), 30),
-                ('Step 2', functools.partial(time.sleep, 3), 30),
-                ('Step 3', functools.partial(time.sleep, 0.1), 30),
-                ('Step 4', functools.partial(time.sleep, 0.1), 10)
+                ('Step 1', functools.partial(sleep, 3), 30),
+                ('Step 2', functools.partial(sleep, 3), 30),
+                ('Step 3', functools.partial(sleep, 0.1), 30),
+                ('Step 4', functools.partial(sleep, 0.1), 10)
             ),
 
             # Function to run before steps (like checking for an internet connection)
-            'before_function': functools.partial(time.sleep, 0),
+            'before_function': functools.partial(sleep, 0),
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(time.sleep, 0),
+            'after_function': functools.partial(sleep, 0),
 
             # Screen to go to after complete
             'next_screen': 'MainMenuScreen'
         }
 
 
+    # Check if there's a telepath client or server, and if it's using a blocking action
+    def _check_telepath(self):
+        server_obj = constants.server_manager.current_server
+
+        try:
+            if constants.telepath_busy():
+                self.execute_error('A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later', reset_close=False)
+                return True
+
+            elif server_obj and server_obj._telepath_data:
+                self.telepath = server_obj._telepath_data
+
+            elif '_telepath_data' in constants.new_server_info and constants.new_server_info['_telepath_data']:
+                self.telepath = constants.deepcopy(constants.new_server_info['_telepath_data'])
+
+            if self.telepath:
+                self.telepath['server-name'] = server_obj.name
+                host = self.telepath['nickname'] if self.telepath['nickname'] else self.telepath['host']
+                if not server_obj.progress_available():
+                    self.execute_error(f"A critical operation is currently running locally on '${host}$'.\n\nPlease try again later", reset_close=False)
+                    return True
+
+        except AttributeError:
+            return False
+
+        return False
+
+    def allow_close(self, allow: bool):
+        if self.telepath:
+            banner = f'$Telepath$ action {"finished" if allow else "started"}: {self.page_contents["title"]}'
+            constants.api_manager.request(
+                endpoint='/main/allow_close',
+                host=self.telepath['host'],
+                port=self.telepath['port'],
+                args={'allow': allow, 'banner': banner}
+            )
+        else:
+            constants.allow_close(allow)
+
+    def open_server(self, *args, **kwargs):
+        if self.telepath:
+            open_remote_server(self.telepath, *args, **kwargs)
+        else:
+            open_server(*args, **kwargs)
+
+
     def execute_steps(self):
+
+        # Before doing anything, check telepath data to prevent issues with concurrency
+        if self._check_telepath():
+            return
+
         icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
 
-        constants.ignore_close = True
+        self.allow_close(False)
 
         # Execute before function
         if self.page_contents['before_function']:
@@ -8270,17 +8945,27 @@ class ProgressScreen(MenuBackground):
 
             # Execute function and check for completion
             self.last_progress = self.progress_bar.value
+            exception = None
+            crash_log = None
             try:
                 test = step[1]()
+
+            # On error, log it and prompt user to open it
             except Exception as e:
-                print(f"ProgressScreen error on Step {x + 1}:")
-                traceback.print_exc()
+                exception = e
+                error_info = f"'{screen_manager.current_screen.name}' failed on step {x+1}: {step[0]}"
+
+                crash_log = crashmgr.generate_log(traceback.format_exc(), error_info=error_info)
                 test = False
+
+                print(error_info)
+                traceback.print_exc()
+
             time.sleep(0.2)
 
             # If it failed, execute default error
             if not test:
-                self.execute_error(self.page_contents['default_error'])
+                self.execute_error(self.page_contents['default_error'], exception=exception, log_data=crash_log)
                 return
 
             self.progress_bar.update_progress(self.progress_bar.value + step[2])
@@ -8299,7 +8984,7 @@ class ProgressScreen(MenuBackground):
             self.page_contents['after_function']()
 
         # Switch to next_page after it's done
-        constants.ignore_close = False
+        self.allow_close(True)
         if not self.error and self.page_contents['next_screen']:
             def next_screen(*args):
                 constants.back_clicked = True
@@ -8308,9 +8993,13 @@ class ProgressScreen(MenuBackground):
             Clock.schedule_once(next_screen, 0.8)
 
 
-    def execute_error(self, msg, *args):
-        constants.ignore_close = False
+    def execute_error(self, msg, reset_close=True, exception=None, log_data=None, *args):
+        if reset_close:
+            self.allow_close(True)
         self.error = True
+
+        if exception:
+            msg = f'{msg}\n\n{exception}'
 
         def close(*args):
             Clock.schedule_once(previous_screen, 0.25)
@@ -8319,7 +9008,18 @@ class ProgressScreen(MenuBackground):
 
         def function(*args):
             self.timer.cancel()
-            self.show_popup('warning', 'Error', msg, (close))
+
+            if log_data:
+                print(log_data)
+                title = f'Error: {log_data[0]}'
+                log_path = log_data[1]
+                def open_log():
+                    view_file(log_path, title)
+                    close()
+                self.show_popup('error_log', 'Error', msg, (close, open_log))
+
+            else:
+                self.show_popup('warning', 'Error', msg, (close))
 
         Clock.schedule_once(function, 0)
 
@@ -8330,6 +9030,7 @@ class ProgressScreen(MenuBackground):
         self.menu = 'init'
 
         self._ignore_tree = True
+        self.telepath = None
 
         self.title = None
         self.footer = None
@@ -8430,6 +9131,7 @@ class ProgressScreen(MenuBackground):
         # Generate buttons on page load
         self.contents()
         self.start = False
+        self.telepath = None
         self.last_progress = 0
 
         float_layout = FloatLayout()
@@ -8592,11 +9294,11 @@ class BlurredLoadingScreen(MenuBackground):
 # <editor-fold desc="Main Menu">
 shown_disk_error = False
 class MainMenuScreen(MenuBackground):
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
         self.loaded = False
+        self.settings_bar = None
 
     # Prompt update/show banner when starting up
     def on_enter(self, *args):
@@ -8656,6 +9358,11 @@ class MainMenuScreen(MenuBackground):
                 self.show_popup("update", title=None, content=None, callback=(None, install_update))
             constants.update_data['auto-show'] = False
 
+    def open_donate(self, *a):
+        if constants.app_online:
+            url = "https://github.com/sponsors/macarooni-man"
+            webbrowser.open_new_tab(url)
+
     def generate_menu(self, **kwargs):
         # Generate buttons on page load
         buttons = []
@@ -8666,8 +9373,20 @@ class MainMenuScreen(MenuBackground):
 
         splash = FloatLayout()
 
-        logo = Image(source=os.path.join(constants.gui_assets, 'logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
+        logo = Image(source=os.path.join(constants.gui_assets, 'title.png'), allow_stretch=True, size_hint=(None, None), width=dp(550), pos_hint={"center_x": 0.5, "center_y": 0.77})
         splash.add_widget(logo)
+
+        anim_logo = Image(
+            source=os.path.join(constants.gui_assets, 'animations', 'animated_logo.gif'),
+            allow_stretch=True,
+            size_hint=(None, None),
+            width=dp(550),
+            pos_hint={"center_x": 0.5, "center_y": 0.77},
+            anim_loop=1,
+            anim_delay=constants.anim_speed * 0.02
+        )
+        splash.add_widget(anim_logo)
+
 
         version_text = f"{constants.app_version}{' (dev)' if constants.dev_version else ''}"
         version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
@@ -8687,7 +9406,7 @@ class MainMenuScreen(MenuBackground):
 
         float_layout.add_widget(splash)
 
-        if not constants.server_list:
+        if not constants.server_list and not constants.server_manager.online_telepath_servers:
             top_button = MainButton('Import a server', (0.5, 0.42), 'download-outline.png')
         else:
             top_button = MainButton('Manage Auto-MCS servers', (0.5, 0.38 if constants.is_docker else 0.42), 'settings-outline.png')
@@ -8704,13 +9423,7 @@ class MainMenuScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        # Opens release changelog
-        def changelog(*a):
-            if constants.app_online:
-                url = f'{constants.project_link}/releases/latest'
-                webbrowser.open_new_tab(url)
-
-        footer = generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True), 'changelog': changelog})
+        footer = generate_footer('splash', func_dict={'update': functools.partial(self.prompt_update, True), 'donate': self.open_donate})
         float_layout.add_widget(footer)
 
         self.add_widget(float_layout)
@@ -8720,9 +9433,9 @@ class MainMenuScreen(MenuBackground):
             if not self.loaded:
                 self.loaded = True
 
-                logo.opacity = 0
+                anim_logo.opacity = logo.opacity = 0
                 logo_width = logo.width
-                logo.width = logo.width * 0.97
+                anim_logo.width = logo.width = logo.width * 0.97
 
                 version.opacity = 0
                 version_x = version.x
@@ -8733,6 +9446,7 @@ class MainMenuScreen(MenuBackground):
                 quit_button.opacity = 0
 
                 Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(logo)
+                Animation(opacity=1, duration=0.8, width=logo_width, transition='out_quad').start(anim_logo)
                 Animation(opacity=1, duration=1, x=version_x, transition='out_sine').start(version)
 
                 def button_1(*b):
@@ -8759,6 +9473,52 @@ class MainMenuScreen(MenuBackground):
                         Clock.schedule_once(functools.partial(wait_anim, c, c_y), delay)
                     Clock.schedule_once(functools.partial(wait_anim_2, w), delay)
 
+
+                # Animate sponsor button
+                if constants.app_online:
+
+                    # Only show a reminder once per month
+                    show_anim = True
+                    try:
+                        if constants.app_config.sponsor_reminder:
+                            if int(dt.now().strftime('%y%m')) == constants.app_config.sponsor_reminder:
+                                show_anim = False
+                    except:
+                        pass
+
+                    if show_anim:
+                        constants.app_config.sponsor_reminder = int(dt.now().strftime('%y%m'))
+                        def anim(*a):
+                            anim_background = Image(
+                                source=os.path.join(constants.gui_assets, 'menu_shadow.png'),
+                                allow_stretch=True,
+                                size_hint=(None, None),
+                                width=dp(100),
+                                height=dp(100),
+                                color=(0.9, 0.65, 1, 0.08)
+                            )
+                            footer.add_widget(anim_background)
+                            anim_background.pos = (88, -18)
+                            anim_background.opacity = 0
+                            Animation(opacity=1, duration=0.1).start(anim_background)
+
+                            sponsor_anim = Image(
+                                source=os.path.join(constants.gui_assets, 'animations', 'sponsor.webp'),
+                                allow_stretch=True,
+                                size_hint=(None, None),
+                                width=dp(50),
+                                height=dp(50),
+                                anim_loop=1,
+                                anim_delay=constants.anim_speed * 0.02,
+                                color=(1, 0.85, 1, 1)
+                            )
+                            footer.add_widget(sponsor_anim)
+                            sponsor_anim.pos = (113, 5)
+                            def a(*a):
+                                Animation(opacity=0, duration=0.5).start(anim_background)
+                                Animation(opacity=0, duration=0.5).start(sponsor_anim)
+                            Clock.schedule_once(a, 0.6)
+                        Clock.schedule_once(anim, 1.2)
 
         Clock.schedule_once(animate_screen, 0)
 
@@ -8816,6 +9576,11 @@ class MainMenuScreen(MenuBackground):
                 except AttributeError:
                     pass
             return
+
+
+        # Force a crash for debugging
+        if 'c' in keycode[1] and 'ctrl' in modifiers and 'shift' in modifiers and constants.debug:
+            raise Exception('Forced a crash for testing (CTRL-SHIFT-C)')
 
 
         # Trigger for showing search bar
@@ -9000,7 +9765,7 @@ class ChangeLocaleScreen(MenuBackground):
         class LocaleButton(MainButton):
 
             def on_press(self, *a):
-                constants.locale = self.code
+                constants.app_config.locale = self.code
                 size_list()
                 constants.back_clicked = True
                 previous_screen()
@@ -9024,7 +9789,7 @@ class ChangeLocaleScreen(MenuBackground):
             def __init__(self, name, code='en', **args):
 
                 self.code = code
-                in_use = self.code == constants.locale
+                in_use = self.code == constants.app_config.locale
 
                 icon = 'checkmark-sharp.png' if in_use else 'arrow-forward.png'
 
@@ -9086,11 +9851,14 @@ class CreateServerNameScreen(MenuBackground):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
         self.menu = 'init'
+        self.name_input = None
 
     def generate_menu(self, **kwargs):
 
-        # Return if no free space
+        # Return if no free space or telepath is busy
         if disk_popup():
+            return
+        if telepath_popup():
             return
 
         # Generate buttons on page load
@@ -9107,14 +9875,21 @@ class CreateServerNameScreen(MenuBackground):
         else:
             float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
             float_layout.add_widget(HeaderText("What would you like to name your server?", '', (0, 0.76)))
-            name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['name'])
-            float_layout.add_widget(name_input)
+            self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=constants.new_server_info['name'])
+            float_layout.add_widget(self.name_input)
             buttons.append(next_button('Next', (0.5, 0.24), not constants.new_server_info['name'], next_screen='CreateServerTypeScreen'))
             buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
             float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
 
         for button in buttons:
             float_layout.add_widget(button)
+
+
+        # Add telepath button if servers are connected
+        telepath_data = constants.server_manager.check_telepath_servers()
+        if telepath_data:
+            float_layout.add_widget(TelepathDropButton(telepath_data, 'create', (0.5, 0.4)))
+
 
         float_layout.add_widget(generate_title('Create New Server'))
         float_layout.add_widget(generate_footer('Create new server'))
@@ -9123,7 +9898,7 @@ class CreateServerNameScreen(MenuBackground):
 
 
         if constants.app_online:
-            name_input.grab_focus()
+            self.name_input.grab_focus()
 
 
 
@@ -10102,7 +10877,7 @@ class AclRulePanel(RelativeLayout):
 
 
             # Online status
-            if acl.check_online(displayed_rule.rule):
+            if constants.server_manager.current_server and constants.server_manager.current_server.user_online(displayed_rule.rule):
                 self.player_layout.online_label.color = self.color_dict['green']
                 self.player_layout.online_icon.color = self.color_dict['green']
                 self.player_layout.online_label.text = "Currently online"
@@ -10186,7 +10961,7 @@ class AclRulePanel(RelativeLayout):
             # Whitelist data
             if screen_manager.current_screen.acl_object._server['whitelist']:
                 self.player_layout.access_line_3.opacity = 1
-                if constants.locale == 'en':
+                if constants.app_config.locale == 'en':
                     final_text += ("\n[color=" + (f"{self.color_dict['green']}]Whitelisted" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]Not whitelisted") + "[/color]")
                 else:
                     final_text += ("\n[color=" + (f"{self.color_dict['green']}]{constants.translate('Allowed')}" if displayed_rule.display_data['wl'] else f"{self.color_dict['red']}]{constants.translate('Denied')}") + "[/color]")
@@ -10910,7 +11685,6 @@ class CreateServerAclScreen(MenuBackground):
             for rule_button in self.scroll_layout.children:
                 rule_button.change_properties(rule_button.rule)
 
-            # gc.collect()
 
             # Dirty fix to hide grid resize that fixes RuleButton text.pos_hint x
             if list_changed:
@@ -11641,7 +12415,6 @@ class CreateServerAddonScreen(MenuBackground):
         page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
-        # gc.collect()
 
         # Generate header
         addon_count = len(results)
@@ -11666,9 +12439,6 @@ class CreateServerAddonScreen(MenuBackground):
         # If there are addons, display them here
         else:
             constants.hide_widget(self.blank_label, True)
-
-            # Create list of addon names
-            installed_addon_names = [addon.name for addon in constants.new_server_info["addon_objects"]]
 
             # Clear and add all addons
             for x, addon_object in enumerate(page_list, 1):
@@ -11903,7 +12673,6 @@ class CreateServerAddonSearchScreen(MenuBackground):
             page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
             self.scroll_layout.clear_widgets()
-            # gc.collect()
 
 
             # Generate header
@@ -12172,10 +12941,17 @@ class ServerDemoInput(BaseInput):
         self.type_image.image.x = self.width+self.x-self.type_image.image.width-self.padding_x[0]+10
         self.type_image.image.y = self.y+(self.padding_y[0]/2.7)
 
-        self.type_image.type_label.x = self.width+self.x-(self.padding_x[0]*offset)
+        self.title_t.pos = (self.x + 185, self.y - 7)
+
+        # Telepath icon
+        if self.type_image.tp_shadow:
+            self.type_image.tp_shadow.pos = (self.type_image.image.x - 2, self.type_image.image.y)
+            self.type_image.tp_icon.pos = (self.type_image.image.x - 2, self.type_image.image.y)
+
+        self.type_image.type_label.x = (self.width+self.x-(self.padding_x[0]*offset)) - 3
         self.type_image.type_label.y = self.y+(self.padding_y[0]/6.9)
 
-        self.type_image.version_label.x = self.width+self.x-(self.padding_x[0]*offset)
+        self.type_image.version_label.x = (self.width+self.x-(self.padding_x[0]*offset)) - 3
         self.type_image.version_label.y = self.y-(self.padding_y[0]*0.85)
 
     def __init__(self, **kwargs):
@@ -12191,6 +12967,8 @@ class ServerDemoInput(BaseInput):
         self.background_normal = os.path.join(constants.gui_assets, 'server_preview.png')
         self.title_text = ""
         self.hint_text = ""
+        self.markup = True
+
 
         # Type icon and info
         with self.canvas.after:
@@ -12215,8 +12993,18 @@ class ServerDemoInput(BaseInput):
             self.type_image.version_label.color = (0.6, 0.6, 1, 0.6)
             self.type_image.type_label = TemplateLabel()
             self.type_image.type_label.font_size = sp(22)
+            self.type_image.tp_shadow = None
 
             self.bind(pos=self.resize_self)
+
+            self.title_t = AlignLabel(halign='left', valign='center')
+            self.title_t.font_size = sp(25)
+            self.title_t.size_hint_max = (400, 80)
+            self.title_t.text_size = self.title_t.size_hint_max
+            self.title_t.color = (0.65, 0.65, 1, 1)
+            self.title_t.markup = True
+            self.title_t.font_name = self.font_name
+            self.add_widget(self.title_t)
 
     # Make the text box non-interactive
     def on_enter(self, value):
@@ -12235,12 +13023,35 @@ def server_demo_input(pos_hint, properties):
     demo_input.properties = properties
     demo_input.pos_hint = pos_hint
     demo_input.__translate__ = False
-    demo_input.hint_text = properties['name']
+    demo_input.title_t.text = properties['name']
     demo_input.type_image.version_label.__translate__ = False
     demo_input.type_image.version_label.text = properties['version']
     demo_input.type_image.type_label.__translate__ = False
     demo_input.type_image.type_label.text = properties['type'].lower().replace("craft", "")
     demo_input.type_image.image.source = os.path.join(constants.gui_assets, 'icons', 'big', f'{properties["type"].lower()}_small.png')
+
+    print(properties)
+    if properties['_telepath_data']:
+        if properties['_telepath_data']['nickname']:
+            head = properties['_telepath_data']['nickname']
+        else:
+            properties['_telepath_data']['host']
+
+        demo_input.title_t.text = f"[color=#7373A2]{head}/[/color]{properties['name']}"
+
+        with demo_input.canvas.after:
+            demo_input.type_image.tp_shadow = Image(source=icon_path('shadow.png'))
+            demo_input.type_image.tp_shadow.allow_stretch = True
+            demo_input.type_image.tp_shadow.size_hint_max = (33, 33)
+            demo_input.type_image.tp_shadow.color = constants.background_color
+            demo_input.type_image.add_widget(demo_input.type_image.tp_shadow)
+
+            demo_input.type_image.tp_icon = Image(source=icon_path('telepath.png'))
+            demo_input.type_image.tp_icon.allow_stretch = True
+            demo_input.type_image.tp_icon.size_hint_max = (33, 33)
+            demo_input.type_image.tp_icon.color = demo_input.type_image.image.color
+            demo_input.type_image.add_widget(demo_input.type_image.tp_icon)
+    
     return demo_input
 
 class CreateServerReviewScreen(MenuBackground):
@@ -12268,7 +13079,7 @@ class CreateServerReviewScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget()
         scroll_anchor = AnchorLayout()
-        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=(1050 if constants.locale == 'en' else 1130), size_hint_y=None, padding=[0, -10, 0, 60])
+        scroll_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=(1050 if constants.app_config.locale == 'en' else 1130), size_hint_y=None, padding=[0, -10, 0, 60])
 
 
         # Bind / cleanup height on resize
@@ -12322,7 +13133,7 @@ class CreateServerReviewScreen(MenuBackground):
 
 
             # Format spacing appropriately for content
-            if constants.locale == 'en':
+            if constants.app_config.locale == 'en':
                 paragraph_width = 485
                 for line in text.splitlines():
                     if '||' in line:
@@ -12522,20 +13333,22 @@ class CreateServerProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
+        open_after = functools.partial(self.open_server, constants.new_server_info['name'], True, f"'${constants.new_server_info['name']}$' was created successfully")
 
         def before_func(*args):
-
-            # First, clean out any existing server in temp folder
-            constants.safe_delete(constants.tmpsvr)
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.folder_check(constants.tmpsvr)
+                constants.pre_server_create()
+
+        def after_func(*args):
+            constants.post_server_create()
+            open_after()
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -12567,7 +13380,7 @@ class CreateServerProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(open_server, constants.new_server_info['name'], True, f"'${constants.new_server_info['name']}$' was created successfully"),
+            'after_function': after_func,
 
             # Screen to go to after complete
             'next_screen': None
@@ -12624,6 +13437,7 @@ class ServerImportScreen(MenuBackground):
         self.input_type = None
         self.input = None
         self.next_button = None
+        self.name_input = None
 
 
     def load_input(self, input_type, *args):
@@ -12633,25 +13447,35 @@ class ServerImportScreen(MenuBackground):
         self.layout.remove_widget(self.page_counter)
 
         # Change the input based on input_type
-        self.page_counter = page_counter(2, 2, (0, 0.768))
+        self.page_counter = page_counter(2, 2, (0, 0.818))
         self.button_layout.opacity = 0
         self.add_widget(self.page_counter)
 
 
+        # Add telepath button if servers are connected
+        offset = 0
+        telepath_data = constants.server_manager.check_telepath_servers()
+        if telepath_data:
+            offset = 0.05
+            self.add_widget(TelepathDropButton(telepath_data, 'import', (0.5, 0.45)))
+
+
         if input_type == "external":
-            self.button_layout.add_widget(ServerImportPathInput(pos_hint={"center_x": 0.5, "center_y": 0.47}))
-            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.47), ('dir', constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home), input_name='ServerImportPathInput', title='Select a Server Folder'))
+            self.name_input = ServerImportPathInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
+            self.button_layout.add_widget(self.name_input)
+            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('dir', constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home), input_name='ServerImportPathInput', title='Select a Server Folder'))
 
         elif input_type == "backup":
-            self.button_layout.add_widget(ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.47}))
+            self.name_input = ServerImportBackupInput(pos_hint={"center_x": 0.5, "center_y": 0.5 + offset})
+            self.button_layout.add_widget(self.name_input)
             start_path = constants.backupFolder if os.path.isdir(constants.backupFolder) else constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
-            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.47), ('file', start_path), input_name='ServerImportBackupInput', title='Select an auto-mcs back-up file', ext_list=['*.amb', '*.tgz']))
+            self.button_layout.add_widget(input_button('Browse...', (0.5, 0.5 + offset), ('file', start_path), input_name='ServerImportBackupInput', title='Select an auto-mcs back-up file', ext_list=['*.amb', '*.tgz']))
 
 
         # Auto-launch popup
         try:
             for item in self.button_layout.children[0].children:
-                if item.id == "input_button":
+                if item.id == "input_button" and not telepath_data:
                     Clock.schedule_once(item.force_click, 0)
                     Clock.schedule_once(item.on_leave, 0.01)
                     break
@@ -12665,7 +13489,7 @@ class ServerImportScreen(MenuBackground):
         #             constants.import_data['path'] = item.selected_server
 
 
-        self.button_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.56}))
+        self.button_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58 + offset}))
         self.next_button = next_button('Next', (0.5, 0.24), True, next_screen='ServerImportProgressScreen')
         # self.next_button.children[2].bind(on_press=set_import_path)
         self.button_layout.add_widget(self.next_button)
@@ -12674,8 +13498,10 @@ class ServerImportScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
 
-        # Return if no free space
+        # Return if no free space or telepath is busy
         if disk_popup():
+            return
+        if telepath_popup():
             return
 
         # Reset import path
@@ -12720,20 +13546,24 @@ class ServerImportProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
+        import_name = constants.import_data['name']
+        open_after = functools.partial(self.open_server, import_name, True, f"'${import_name}$' was imported successfully")
 
         def before_func(*args):
-
-            # First, clean out any existing server in temp folder
-            constants.safe_delete(constants.tempDir)
 
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.folder_check(constants.tmpsvr)
+                constants.pre_server_create()
+
+        def after_func(*args):
+            constants.post_server_create()
+            open_after()
+
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -12745,7 +13575,6 @@ class ServerImportProgressScreen(ProgressScreen):
                 final = original
             self.progress_bar.update_progress(final)
 
-        import_name = constants.import_data['name']
         self.page_contents = {
 
             # Page name
@@ -12765,7 +13594,7 @@ class ServerImportProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(open_server, import_name, True, f"'${import_name}$' was imported successfully"),
+            'after_function': after_func,
 
             # Screen to go to after complete
             'next_screen': None
@@ -12810,17 +13639,24 @@ class ServerImportModpackScreen(MenuBackground):
         self.layout = FloatLayout()
         self.layout.id = 'content'
 
+        # Add telepath button if servers are connected
+        offset = 0
+        telepath_data = constants.server_manager.check_telepath_servers()
+        if telepath_data:
+            offset = 0.05
+            self.add_widget(TelepathDropButton(telepath_data, 'import', (0.5, 0.37)))
+
 
         # Regular menus
         self.layout.add_widget(HeaderText("Which modpack do you wish to import?", '', (0, 0.81)))
         def download_modpack(*a):
             screen_manager.current = 'ServerImportModpackSearchScreen'
-        buttons.append(MainButton('Download a Modpack', (0.5, 0.576), 'download-outline.png', width=528, click_func=download_modpack))
+        buttons.append(MainButton('Download a Modpack', (0.5, 0.576 + offset), 'download-outline.png', width=528, click_func=download_modpack))
 
         start_path = constants.userDownloads if os.path.isdir(constants.userDownloads) else constants.home
-        buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505}))
-        buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44}))
-        buttons.append(input_button('Browse...', (0.5, 0.44), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
+        buttons.append(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.505 + offset}))
+        buttons.append(ServerImportModpackInput(pos_hint={"center_x": 0.5, "center_y": 0.44 + offset}))
+        buttons.append(input_button('Browse...', (0.5, 0.44 + offset), ('file', start_path), input_name='ServerImportModpackInput', title='Select a modpack', ext_list=['*.zip', '*.mrpack']))
 
         self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
         def remove_page(*a):
@@ -12847,28 +13683,30 @@ class ServerImportModpackProgressScreen(ProgressScreen):
     # Only replace this function when making a child screen
     # Set fail message in child functions to trigger an error
     def contents(self):
+        import_name = constants.import_data['name']
 
         def before_func(*args):
-
-            # First, clean out any existing server in temp folder
-            constants.safe_delete(constants.tempDir)
-
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.folder_check(constants.tmpsvr)
+                constants.pre_server_create()
 
         def after_func(*args):
-            import_name = constants.import_data['name']
-            server_path = os.path.join(constants.serverDir, constants.import_data['name'])
-            read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
-            if read_me:
-                read_me = read_me[0]
-            open_server(constants.import_data['name'], True, f"'${import_name}$' was imported successfully", show_readme=read_me)
+            import_data = constants.post_server_create(modpack=True)
+
+            if self.telepath and import_data['readme']:
+                import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
+
+            self.open_server(
+                import_data['name'],
+                True,
+                f"'${import_data['name']}$' was imported successfully",
+                show_readme=import_data['readme']
+            )
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -12966,7 +13804,6 @@ class ServerImportModpackSearchScreen(MenuBackground):
             page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
             self.scroll_layout.clear_widgets()
-            # gc.collect()
 
 
             # Generate header
@@ -13151,7 +13988,7 @@ class ServerImportModpackSearchScreen(MenuBackground):
 
 
         search_function = addons.search_modpacks
-        self.search_bar = search_input(return_function=search_function, server_info='import_modpack', pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -13241,7 +14078,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     # Automatically update if available
     if server_obj.running:
         ignore_update = True
-    if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space():
+    if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space(telepath_data=server_obj._telepath_data):
         while not server_obj.addon:
             time.sleep(0.05)
 
@@ -13268,8 +14105,63 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
     else:
         Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
 
-def disk_popup(go_to='back'):
-    if not constants.check_free_space():
+def open_remote_server(instance, server_name, wait_page_load=False, show_banner='', ignore_update=True, launch=False, show_readme=None, *args):
+
+    def next_screen(*args):
+        different_server = constants.server_manager.current_server.name != server_name
+        if different_server:
+            while constants.server_manager.current_server.name != server_name:
+                time.sleep(0.005)
+
+        elif constants.server_manager.current_server:
+            constants.server_manager.current_server.reload_config()
+
+        if screen_manager.current == 'ServerViewScreen' and different_server:
+            screen_manager.current = 'ServerManagerScreen'
+
+        screen_manager.current = 'ServerViewScreen'
+
+        if launch:
+            Clock.schedule_once(screen_manager.current_screen.console_panel.launch_server, 0)
+
+        if show_banner:
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_banner,
+                    (0.553, 0.902, 0.675, 1),
+                    show_banner,
+                    "checkmark-circle-sharp.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+        constants.screen_tree = ['MainMenuScreen', 'ServerManagerScreen']
+
+
+        # If showing readme
+        if show_readme:
+            Clock.schedule_once(
+                functools.partial(screen_manager.current_screen.show_popup, "file", "Author's Notes", show_readme, (None)),
+                1
+            )
+
+
+    remote_obj = constants.api_manager.request(
+        endpoint=f'/main/open_remote_server?name={constants.quote(server_name)}',
+        host=instance['host'],
+        port=instance['port'],
+        args={'none': None}
+    )
+    telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
+    constants.server_manager._init_telepathy(telepath_data)
+    Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
+
+    return remote_obj
+
+
+def disk_popup(go_to='back', telepath_data=None):
+    if not constants.check_free_space(telepath_data=telepath_data):
         def go_back(*a):
             constants.back_clicked = True
             if go_to == 'back':
@@ -13282,10 +14174,29 @@ def disk_popup(go_to='back'):
             screen_manager.current_screen.show_popup(
                 "warning",
                 "Storage Error",
-                "auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up space on your disk to continue",
+                f"auto-mcs has limited functionality from low disk space. Further changes can lead to corruption in your servers.\n\nPlease free up space on {'this $Telepath$ instance' if telepath_data else 'your disk'} to continue",
                 go_back
             )
         Clock.schedule_once(disk_error, 0)
+        return True
+def telepath_popup(go_to='back'):
+    if constants.telepath_busy():
+        def go_back(*a):
+            constants.back_clicked = True
+            if go_to == 'back':
+                previous_screen()
+            else:
+                screen_manager.current = go_to
+            constants.back_clicked = False
+
+        def telepath_error(*_):
+            screen_manager.current_screen.show_popup(
+                "warning",
+                "Telepath Error",
+                "A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later",
+                go_back
+            )
+        Clock.schedule_once(telepath_error, 0)
         return True
 
 def refresh_ips(server_name):
@@ -13371,6 +14282,7 @@ class ServerButton(HoverButton):
         self.title.text_size = (self.size_hint_max[0] * (0.7 if favorite else 0.94), self.size_hint_max[1])
         self.background_normal = os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png')
         self.resize_self()
+        return favorite
 
     def animate_button(self, image, color, **kwargs):
         image_animate = Animation(duration=0.05)
@@ -13399,8 +14311,8 @@ class ServerButton(HoverButton):
 
         # Title and description
         padding = 2.17
-        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (6 if self.favorite else 0) + 30, self.y + 31)
-        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1 + 30 - 100, self.y + 8)
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - (5.3 if self.favorite else 8.3) + 30, self.y + 31)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78, self.y + 8)
 
 
         offset = 9.45 if self.type_image.type_label.text in ["vanilla", "paper", "purpur"]\
@@ -13411,6 +14323,12 @@ class ServerButton(HoverButton):
 
         self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 13
         self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
+
+        # Telepath icon
+        if self.telepath_data:
+            self.type_image.tp_shadow.pos = (self.type_image.image.x - 2, self.type_image.image.y)
+            self.type_image.tp_icon.pos = (self.type_image.image.x - 2, self.type_image.image.y)
+
 
         self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
         self.type_image.type_label.y = self.y + (self.height * 0.05)
@@ -13461,11 +14379,11 @@ class ServerButton(HoverButton):
                 self.subtitle.color = self.run_color
                 self.subtitle.default_opacity = 0.8
                 self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-                if 'ngrok' in run_data['network']['address']['ip'].lower():
+                if 'playit-tunnel' in run_data and run_data['playit-tunnel']:
                     text = run_data['network']['address']['ip']
                 else:
                     text = ':'.join(run_data['network']['address'].values())
-                self.subtitle.text = f"{constants.translate('Running')}  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+                self.subtitle.text = f"[font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
             else:
                 reset()
 
@@ -13474,8 +14392,20 @@ class ServerButton(HoverButton):
 
         self.subtitle.opacity = self.subtitle.default_opacity
 
+    def generate_name(self, color='#7373A2'):
+        if self.telepath_data:
+            tld = self.telepath_data['host']
+            if self.telepath_data['nickname']:
+                tld = self.telepath_data['nickname']
+            return f'[color={color}]{tld}/[/color]{self.properties.name}'
+        else:
+            return self.properties.name.strip()
+
     def __init__(self, server_object, click_function=None, fade_in=0.0, highlight=None, update_banner="", view_only=False, **kwargs):
         super().__init__(**kwargs)
+
+        # Check if server is remote
+        self.telepath_data = server_object._telepath_data
 
         self.view_only = view_only
 
@@ -13515,12 +14445,12 @@ class ServerButton(HoverButton):
         self.title.color = self.color_id[1]
         self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
         self.title.font_size = sp(25)
-        self.title.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
         self.title.shorten = True
         self.title.markup = True
         self.title.shorten_from = "right"
         self.title.max_lines = 1
-        self.title.text = server_object.name
+        self.title.text = self.generate_name()
         self.add_widget(self.title)
 
 
@@ -13540,17 +14470,19 @@ class ServerButton(HoverButton):
         self.subtitle.markup = True
         self.subtitle.shorten_from = "right"
         self.subtitle.max_lines = 1
+        self.subtitle.text_size[0] = 350
 
         if self.running:
             self.subtitle.copyable = True
             self.subtitle.color = self.run_color
             self.subtitle.default_opacity = 0.8
             self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-            if 'ngrok' in server_object.run_data['network']['address']['ip'].lower():
+
+            if 'playit-tunnel' in server_object.run_data and server_object.run_data['playit-tunnel']:
                 text = server_object.run_data['network']['address']['ip']
             else:
                 text = ':'.join(server_object.run_data['network']['address'].values())
-            self.subtitle.text = f"{constants.translate('Running')}  [font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
+            self.subtitle.text = f"[font={self.icons}]N[/font]  {text.replace('127.0.0.1', 'localhost')}"
         else:
             self.subtitle.copyable = False
             self.subtitle.color = self.color_id[1]
@@ -13569,7 +14501,12 @@ class ServerButton(HoverButton):
         self.type_image.width = 400
 
         # Check for custom server icon
-        server_icon = constants.server_path(server_object.name, 'server-icon.png')
+        if self.telepath_data:
+            self.telepath_data['icon-path'] = server_object.server_icon
+            server_icon = constants.get_server_icon(server_object.name, self.telepath_data)
+        else:
+            server_icon = server_object.server_icon
+
         if server_icon:
             self.custom_icon = True
             class CustomServerIcon(RelativeLayout):
@@ -13589,6 +14526,25 @@ class ServerButton(HoverButton):
         self.type_image.image.size_hint_max = (65, 65)
         self.type_image.image.color = self.color_id[1]
         self.type_image.add_widget(self.type_image.image)
+
+
+        # Show icon on self.type_image to specify
+        if self.telepath_data:
+            self.type_image.tp_shadow = Image(source=icon_path('shadow.png'))
+            self.type_image.tp_shadow.allow_stretch = True
+            self.type_image.tp_shadow.size_hint_max = (33, 33)
+            self.type_image.tp_shadow.color = self.color_id[0]
+            self.type_image.add_widget(self.type_image.tp_shadow)
+
+            self.type_image.tp_icon = Image(source=icon_path('telepath.png'))
+            self.type_image.tp_icon.allow_stretch = True
+            self.type_image.tp_icon.size_hint_max = (33, 33)
+            self.type_image.tp_icon.color = self.color_id[1]
+            self.type_image.add_widget(self.type_image.tp_icon)
+        else:
+            self.type_image.tp_shadow = None
+            self.type_image.tp_icon = None
+
 
         def TemplateLabel():
             template_label = AlignLabel()
@@ -13642,7 +14598,7 @@ class ServerButton(HoverButton):
         favorite = None
         if not view_only:
             try:
-                favorite = functools.partial(screen_manager.current_screen.favorite, server_object.name)
+                favorite = functools.partial(screen_manager.current_screen.favorite, server_object.name, server_object)
             except AttributeError:
                 pass
 
@@ -13697,21 +14653,50 @@ class ServerButton(HoverButton):
         if not self.ignore_hover:
             self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}_hover.png'), color=self.color_id[0], hover_action=True)
 
+            self.title.text = self.generate_name('#2D2D4E')
+
+            if self.telepath_data:
+                new_color = constants.convert_color('#E865D4' if self.favorite else '#6769D9')['rgb']
+                Animation(color=new_color, duration=0.1).start(self.type_image.tp_shadow)
+                Animation(color=constants.brighten_color(self.color_id[0], -0.1), duration=0.1).start(self.type_image.tp_icon)
+
     def on_leave(self, *args):
         if not self.ignore_hover:
             self.animate_button(image=os.path.join(constants.gui_assets, f'{self.id}{"_favorite" if self.favorite else ""}.png'), color=self.color_id[1], hover_action=False)
 
+            self.title.text = self.generate_name()
+
+            if self.telepath_data:
+                Animation(color=self.color_id[0], duration=0.1).start(self.type_image.tp_shadow)
+                Animation(color=self.color_id[1], duration=0.1).start(self.type_image.tp_icon)
+
     def update_context_options(self):
+        def _open_server(name):
+            if self.telepath_data:
+                constants.api_manager.request(
+                    endpoint=f'/main/open_remote_server?name={constants.quote(name)}',
+                    host=self.telepath_data['host'],
+                    port=self.telepath_data['port'],
+                    args={'none': None}
+                )
+                new_data = constants.deepcopy(self.telepath_data)
+                new_data['name'] = name
+                return constants.server_manager._init_telepathy(new_data)
+            else:
+                return constants.server_manager.open_server(name)
 
         # Functions for context menu
         def launch(*a):
-            open_server(self.properties.name, launch=True)
+            if self.telepath_data:
+                open_remote_server(self.telepath_data, self.properties.name, launch=True)
+            else:
+                open_server(self.properties.name, launch=True)
         def restart(*a):
-            constants.server_manager.open_server(self.properties.name).restart()
+            _open_server(self.properties.name).restart()
         def stop(*a):
-            constants.server_manager.open_server(self.properties.name).stop()
+            _open_server(self.properties.name).stop()
         def settings(*a):
-            constants.server_manager.open_server(self.properties.name)
+            _open_server(self.properties.name)
             screen_manager.current = 'ServerSettingsScreen'
         def update(*a):
             settings()
@@ -13773,7 +14758,7 @@ class ServerButton(HoverButton):
                 else:
                     u = self.properties.update_string
                 self.context_options = [
-                    {'name': 'Launch', 'icon': 'start-server.png', 'action': launch},
+                    {'name': 'Launch', 'icon': 'start-server.png', 'action': launch} if screen_manager.current_screen.name != "ServerViewScreen" else None,
                     {'name': f'Update {"build" if u.startswith("b-") else f"{u}"}', 'icon': 'arrow-up.png', 'action': update} if u else None,
                     {'name': 'Rename', 'icon': 'rename.png', 'action': rename},
                     {'name': 'Settings', 'icon': os.path.join('sm', 'advanced.png'), 'action': settings},
@@ -13783,14 +14768,15 @@ class ServerButton(HoverButton):
 class ServerManagerScreen(MenuBackground):
 
     # Toggles favorite of item, and reload list
-    def favorite(self, server_name):
-        config_file = constants.server_config(server_name)
-        config_file.set('general', 'isFavorite', ('false' if config_file.get('general', 'isFavorite') == 'true' else 'true'))
-        constants.server_config(server_name, config_file)
+    def favorite(self, server_name, properties):
+        if properties._telepath_data:
+            properties.toggle_favorite()
+            bool_favorite = properties.favorite
 
+        else:
+            bool_favorite = constants.toggle_favorite(server_name)
 
         # Show banner
-        bool_favorite = bool(config_file.get('general', 'isFavorite') == 'true')
         if server_name in constants.server_manager.running_servers:
             constants.server_manager.running_servers[server_name].favorite = bool_favorite
 
@@ -13812,7 +14798,7 @@ class ServerManagerScreen(MenuBackground):
 
 
         constants.server_manager.refresh_list()
-        self.gen_search_results(constants.server_manager.server_list, fade_in=False, highlight=server_name)
+        self.gen_search_results(constants.server_manager.server_list, fade_in=False, highlight=properties._view_name)
 
     def switch_page(self, direction):
 
@@ -13836,7 +14822,7 @@ class ServerManagerScreen(MenuBackground):
 
     def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True, *args):
 
-        # Set to proper page on favorite/unfavorite
+        # Set to proper page on favorite/un-favorite
         default_scroll = 1
         if highlight:
             def divide_chunks(l, n):
@@ -13847,7 +14833,7 @@ class ServerManagerScreen(MenuBackground):
 
                 return final_list
 
-            for x, l in enumerate(divide_chunks([x.name for x in results], self.page_size), 1):
+            for x, l in enumerate(divide_chunks([x._view_name for x in results], self.page_size), 1):
                 if highlight in l:
                     if self.current_page != x:
                         self.current_page = x
@@ -13872,7 +14858,7 @@ class ServerManagerScreen(MenuBackground):
         page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
-        # gc.collect()
+
 
         # Generate header
         server_count = len(constants.server_manager.server_list)
@@ -13887,19 +14873,19 @@ class ServerManagerScreen(MenuBackground):
         # Show servers if they exist
         if server_count != 0:
 
-            # Create list of server names
-            server_names = [server.name for server in constants.server_manager.server_list]
-
             # Clear and add all ServerButtons
-            for x, server_object in enumerate(page_list, 1):
+            for x, server_obj in enumerate(page_list, 1):
 
-                # Activated when addon is clicked
+                # Activated when server is clicked
                 def view_server(server, index, *args):
                     selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "ServerButton"][index - 1]
 
                     # View Server
                     if selected_button.last_touch.button == "left":
-                        open_server(server.name, ignore_update=False)
+                        if not selected_button.telepath_data:
+                            open_server(server.name, ignore_update=False)
+                        else:
+                            open_remote_server(selected_button.telepath_data, server.name)
 
                     # Favorite
                     elif selected_button.last_touch.button == "middle":
@@ -13908,21 +14894,21 @@ class ServerManagerScreen(MenuBackground):
 
                 # Check if updates are available
                 update_banner = ""
-                if server_object.auto_update == 'true':
-                    update_banner = server_object.update_string
+                if server_obj.auto_update == 'true':
+                    update_banner = server_obj.update_string
 
 
                 # Add-on button click function
                 self.scroll_layout.add_widget(
                     ScrollItem(
                         widget = ServerButton(
-                            server_object = server_object,
+                            server_object = server_obj,
                             fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
-                            highlight = (highlight == server_object.name),
+                            highlight = (highlight == server_obj._view_name),
                             update_banner = update_banner,
                             click_function = functools.partial(
                                 view_server,
-                                server_object,
+                                server_obj,
                                 x
                             )
                         )
@@ -13930,6 +14916,12 @@ class ServerManagerScreen(MenuBackground):
                 )
 
             self.resize_bind()
+
+        # Go back to main menu if they don't
+        else:
+            screen_manager.current = 'MainMenuScreen'
+            constants.screen_tree = []
+            return
 
         # Animate scrolling
         def set_scroll(*args):
@@ -14032,8 +15024,9 @@ class ServerManagerScreen(MenuBackground):
 
         # Highlight the last server that was last selected
         def highlight_last_server(*args):
-            if constants.server_manager.current_server:
-                highlight = constants.server_manager.current_server.name
+            server_obj = constants.server_manager.current_server
+            if server_obj:
+                highlight = server_obj._view_name
                 self.gen_search_results(constants.server_manager.server_list, highlight=highlight, animate_scroll=False)
         Clock.schedule_once(highlight_last_server, 0)
 
@@ -14061,6 +15054,7 @@ class MenuTaskbar(RelativeLayout):
         show_addons = (server_obj.type != 'vanilla')
         server_obj.taskbar = self
         self.pos_hint = {"center_x": 0.5}
+
 
         # Layout for icon object
         class TaskbarItem(RelativeLayout):
@@ -14296,9 +15290,20 @@ class MenuTaskbar(RelativeLayout):
                 Clock.schedule_once(item.icon.animate, x / 15)
 
             # Show notification if appropriate
-            if name in server_obj.viewed_notifs:
+            show = False
+
+            if name == 'settings' and server_obj.update_string:
+                if 'settings' not in server_obj.viewed_notifs:
+                    show = True
+                elif server_obj.update_string != server_obj.viewed_notifs['settings']:
+                    show = True
+
+            elif name in server_obj.viewed_notifs:
                 if not server_obj.viewed_notifs[name]:
-                    item.show_notification(True, animate)
+                    show = True
+
+            if show:
+                item.show_notification(True, animate)
 
         self.add_widget(self.taskbar)
 
@@ -14380,13 +15385,61 @@ class PerformancePanel(RelativeLayout):
     # Updates data in panel while the server is running
     def refresh_data(self, interval=0.5, *args):
 
-        # Get performance stats
-        threading.Timer(0, functools.partial(constants.server_manager.current_server.performance_stats, interval, (self.player_clock == 3))).start()
+        # Get performance stats if running locally
+        server_obj = constants.server_manager.current_server
+
+        # Prevent a crash from doing something while in the menu of a server, and current_server is reset
+        if not server_obj:
+            return
+
+        if server_obj and not server_obj._telepath_data:
+            threading.Timer(0, functools.partial(server_obj.performance_stats, interval, (self.player_clock == 3))).start()
+
+        # If the server is running remotely, update the console text as needed
+        # This should probably be moved, though, it's the only client loop
+        elif screen_manager.current_screen.name == 'ServerViewScreen' and server_obj._telepath_data:
+            console_panel = screen_manager.current_screen.console_panel
+            if server_obj.running and server_obj.run_data:
+                server_obj.run_data = server_obj._telepath_run_data()
+
+                # Check if remote server has disconnected when updating panel
+                if not server_obj.run_data:
+                    if check_telepath_disconnect():
+                        return True
+
+                try:
+                    data_len = len(console_panel.scroll_layout.data)
+                    run_len = len(server_obj.run_data['log'])
+                    if data_len <= run_len:
+                        console_panel.update_text(server_obj.run_data['log'], animate_last=(run_len > data_len))
+
+                    if server_obj.run_data['deadlocked']:
+                        console_panel.toggle_deadlock(True)
+
+                # If log was removed from run_data
+                except KeyError:
+                    pass
+
+                # Close the console if remotely launched, and no logs exist
+                if not server_obj.running or not server_obj.run_data:
+                    data = server_obj._sync_telepath_stop()
+                    server_obj.crash_log = data['crash']
+                    console_panel.update_text(data['log'])
+                    console_panel.reset_panel(data['crash'])
+
+                    # Before closing, save contents to temp for view screen
+                    constants.folder_check(constants.tempDir)
+                    file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
+                    with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
+                        f.write(constants.json.dumps(data['log']))
+
 
         def update_data(*args):
             try:
                 perf_data = constants.server_manager.current_server.run_data['performance']
-            except KeyError or AttributeError:
+            except KeyError:
+                return
+            except AttributeError:
                 return
 
             # Update meter
@@ -14438,7 +15491,8 @@ class PerformancePanel(RelativeLayout):
             self.overview_widget.uptime_label.text = formatted_color[:-1]
             Animation(color=(0.92, 0.92, 0.92, 1), duration=0.4, transition='in_out_sine').start(self.overview_widget.uptime_label.label)
 
-        Clock.schedule_once(update_data, (interval + 0.05))
+        if server_obj:
+            Clock.schedule_once(update_data, (interval + 0.05))
 
     # Sets panel back to the default state
     def reset_panel(self):
@@ -15106,7 +16160,28 @@ class ConsolePanel(FloatLayout):
 
     # Update process to communicate with
     def update_process(self, run_data, *args):
+
         self.run_data = run_data
+
+        # Close panel if telepath server closed immediately
+        server_obj = constants.server_manager.current_server
+
+        if server_obj._telepath_data:
+            def check_for_crash(*a):
+                data = server_obj._sync_telepath_stop(reset=False)
+                if data['crash']:
+                    server_obj.crash_log = data['crash']
+                    self.update_text(data['log'])
+                    self.reset_panel(data['crash'])
+
+                    # Before closing, save contents to temp for view screen
+                    constants.folder_check(constants.tempDir)
+                    file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
+                    with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
+                        f.write(constants.json.dumps(data['log']))
+            Clock.schedule_once(check_for_crash, 1)
+
+
         try:
             if self.update_text not in self.run_data['process-hooks']:
                 self.run_data['process-hooks'].append(self.update_text)
@@ -15164,7 +16239,7 @@ class ConsolePanel(FloatLayout):
                     if label.original_text == self.scroll_layout.data[-1]['text']:
                         label.main_label.opacity = 0
                         label.anim_cover.opacity = 1
-                        Animation(opacity=1, duration = 0.3).start(label.main_label)
+                        Animation(opacity=1, duration=0.3).start(label.main_label)
                         Animation(opacity=0, duration=0.3).start(label.anim_cover)
                 except:
                     pass
@@ -15250,7 +16325,7 @@ class ConsolePanel(FloatLayout):
 
 
     # Launch server and update properties
-    def launch_server(self, animate=True, *args):
+    def launch_server(self, animate=True, wait_for_ip=True, *args):
         self.update_size()
         self.toggle_deadlock(False)
         self.selected_labels = []
@@ -15294,17 +16369,31 @@ class ConsolePanel(FloatLayout):
             self.controls.log_button.button.on_leave()
             self.controls.view_button.button.on_leave()
             def delay(function, obj, delay):
-                def ad(*a):
+                def anim_delay(*a):
                     function.start(obj)
-                Clock.schedule_once(ad, delay)
+                Clock.schedule_once(anim_delay, delay)
             delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.restart_button, 0.12)
             delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.stop_button, 0.06)
             Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine').start(self.controls.maximize_button)
 
+        # Update IP info at the top of the ServerViewScreen
         def update_launch_data(*args):
             if self.server_button:
                 self.server_button.update_subtitle(self.run_data)
-        Clock.schedule_once(update_launch_data, 3)
+        Clock.schedule_once(update_launch_data, 3 if wait_for_ip else 1)
+        if wait_for_ip:
+            for x in range(5):
+                Clock.schedule_once(update_launch_data, x*5)
+
+        # Show telepath banner when server is started remotely
+        server_obj = constants.server_manager.current_server
+        if wait_for_ip and server_obj._telepath_data:
+            constants.api_manager.request(
+                endpoint='/main/telepath_banner',
+                host=server_obj._telepath_data['host'],
+                port=server_obj._telepath_data['port'],
+                args={'message': f"$Telepath$ action: Launched '${server_obj.name}$'", 'finished': True}
+            )
 
         Clock.schedule_once(after_anim, (anim_speed*1.51) if animate else 0)
 
@@ -15312,7 +16401,17 @@ class ConsolePanel(FloatLayout):
         def start_timer(*_):
             server_obj = screen_manager.current_screen.server
 
-            self.update_text(text=[{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Launching '{server_obj.name}', please wait...", (0.7,0.7,0.7,1))}])
+            if server_obj._telepath_data:
+                boot_text = f"Connecting to '{server_obj._view_name}', please wait..."
+            else:
+                boot_text = f"Launching '{server_obj.name}', please wait..."
+
+            text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7,0.7,0.7,1))}]
+
+            if server_obj.proxy_enabled and server_obj.proxy_installed() and not constants.playit.initialized:
+                text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6,0.6,1,1))})
+
+            self.update_text(text=text_list)
             while not server_obj.addon or not server_obj.backup or not server_obj.script_manager or not server_obj.acl:
                 time.sleep(0.05)
 
@@ -15335,6 +16434,9 @@ class ConsolePanel(FloatLayout):
         if self.run_data:
             screen_manager.current_screen.server.stop()
 
+        # Show deadlocked icon after stopping
+        Clock.schedule_once(self.toggle_deadlock, 1)
+
 
     # Kills running process forcefully
     def kill_server(self, *args):
@@ -15356,6 +16458,7 @@ class ConsolePanel(FloatLayout):
 
 
         def reset(*args):
+            server_obj = constants.server_manager.current_server
 
             # Show crash banner if not on server screen
             def show_crash_banner(*args):
@@ -15397,10 +16500,11 @@ class ConsolePanel(FloatLayout):
 
 
             # Before deleting run data, save log to a file
-            constants.folder_check(constants.tempDir)
-            file_name = f"{constants.server_manager.current_server.name}-latest.log"
-            with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
-                f.write(constants.json.dumps(self.run_data['log']))
+            if not server_obj._telepath_data:
+                constants.folder_check(constants.tempDir)
+                file_name = f"{server_obj.name}-latest.log"
+                with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
+                    f.write(constants.json.dumps(self.run_data['log']))
 
 
             self.run_data = None
@@ -15624,7 +16728,13 @@ class ConsolePanel(FloatLayout):
 
     # Opens crash log in auto-mcs logviewer
     def open_log(self, *args):
-        view_file(constants.server_manager.current_server.crash_log)
+        server_obj = constants.server_manager.current_server
+        title = None
+
+        if server_obj._telepath_data:
+            title = f'{server_obj._view_name}'
+
+        view_file(server_obj.crash_log, title)
         self.controls.log_button.button.on_leave()
         self.controls.log_button.button.on_release()
 
@@ -15634,9 +16744,16 @@ class ConsolePanel(FloatLayout):
         self.log_view = False
         self.input.hint_text = "enter command..."
 
+        # Choose path based on server name
+        server_obj = constants.server_manager.current_server
+        if server_obj._telepath_data:
+            log_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
+        else:
+            log_name = f"{server_obj.name}-latest.log"
+
         # Before deleting run data, save log to a file
         constants.folder_check(constants.tempDir)
-        file_path = os.path.join(constants.tempDir, f"{constants.server_manager.current_server.name}-latest.log")
+        file_path = os.path.join(constants.tempDir, log_name)
         if os.path.isfile(file_path):
             self.deselect_all()
             self.scroll_layout.data = []
@@ -15883,7 +17000,7 @@ class ConsolePanel(FloatLayout):
         return super().on_touch_move(touch)
 
 
-    def __init__(self, server_name, server_button=None, **kwargs):
+    def __init__(self, server_name, server_button=None, start_launched=False, **kwargs):
         super().__init__(**kwargs)
 
         self.server_name = server_name
@@ -16129,17 +17246,19 @@ class ConsolePanel(FloatLayout):
                 self.multiline = False
                 self.halign = "left"
                 self.hint_text = "enter command..."
+
                 self.hint_text_color = (0.6, 0.6, 1, 0.4)
                 self.foreground_color = (0.6, 0.6, 1, 1)
                 self.background_color = (0, 0, 0, 0)
                 self.disabled_foreground_color = (0.6, 0.6, 1, 0.4)
+                self.cursor_color = (0.55, 0.55, 1, 1)
+                self.selection_color = (0.5, 0.5, 1, 0.4)
+
                 self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
                 self.font_size = sp(22)
                 self.padding_y = (12, 12)
                 self.padding_x = (70, 12)
-                self.cursor_color = (0.55, 0.55, 1, 1)
                 self.cursor_width = dp(3)
-                self.selection_color = (0.5, 0.5, 1, 0.4)
 
                 self.bind(on_text_validate=self.on_enter)
 
@@ -16252,7 +17371,7 @@ class ConsolePanel(FloatLayout):
                 self.add_widget(self.button_shadow)
 
                 # Launch button
-                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='play-circle-sharp.png', click_func=self.panel.launch_server)
+                self.launch_button = color_button("LAUNCH", position=(0.5, 0.5), icon_name='play-circle-sharp.png', click_func=self.panel.launch_server, hover_data={'color': (0.05, 0.05, 0.1, 1), 'image': os.path.join(constants.gui_assets, 'launch-button-hover.png')})
                 self.launch_button.disabled = False
                 self.add_widget(self.launch_button)
 
@@ -16413,6 +17532,9 @@ class ConsolePanel(FloatLayout):
         self.bind(pos=self.update_size)
         self.bind(size=self.update_size)
         Clock.schedule_once(self.update_size, 0)
+
+        if start_launched:
+            Clock.schedule_once(functools.partial(self.launch_server, False, False), 0)
 
 class ServerViewScreen(MenuBackground):
 
@@ -16619,12 +17741,15 @@ class ServerViewScreen(MenuBackground):
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
+
     def generate_menu(self, **kwargs):
 
         # If a new server is selected, animate the taskbar
         animate_taskbar = False
         try:
-            if self.server.name != constants.server_manager.current_server.name:
+            if not self.server:
+                animate_taskbar = True
+            elif self.server.name != constants.server_manager.current_server.name:
                 animate_taskbar = True
         except AttributeError:
             pass
@@ -16666,7 +17791,7 @@ class ServerViewScreen(MenuBackground):
 
         # Add performance panel
         perf_layout = ScrollItem()
-        if self.server.run_data:
+        if self.server.run_data and 'performance-panel' in self.server.run_data and self.server.run_data['performance-panel']:
             self.performance_panel = self.server.run_data['performance-panel']
             try:
                 if self.performance_panel.parent:
@@ -16680,12 +17805,12 @@ class ServerViewScreen(MenuBackground):
 
 
         # Add ConsolePanel
-        if self.server.run_data:
+        if self.server.run_data and 'console-panel' in self.server.run_data and 'log' in self.server.run_data and self.server.run_data['console-panel']:
             self.console_panel = self.server.run_data['console-panel']
             self.console_panel.scroll_layout.data = []
             Clock.schedule_once(functools.partial(self.console_panel.update_text, self.server.run_data['log'], True, False), 0)
         else:
-            self.console_panel = ConsolePanel(self.server.name, self.server_button)
+            self.console_panel = ConsolePanel(self.server.name, self.server_button, start_launched=self.server.running)
 
         self.add_widget(self.console_panel)
         self.console_panel.server_obj = self.server
@@ -16705,6 +17830,7 @@ class ServerBackupScreen(MenuBackground):
         self.restore_backup_button = None
         self.open_path_button = None
         self.migrate_path_button = None
+        self.download_button = None
 
         self.header = None
         self.menu_taskbar = None
@@ -16722,6 +17848,12 @@ class ServerBackupScreen(MenuBackground):
             print(server_obj.backup._backup_stats['backup-list'])
             if k == 'restore' and not server_obj.backup._backup_stats['backup-list']:
                 v.disable(True)
+                if self.download_button:
+                    self.download_button.disable(True)
+                continue
+
+            if k == 'migrate' and server_obj._telepath_data:
+                v.disable(True)
                 continue
 
             if k == button_name:
@@ -16730,12 +17862,12 @@ class ServerBackupScreen(MenuBackground):
                 v.disable(True) if loading else v.disable(False)
 
     def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
 
         # Return if no free space
-        if disk_popup('ServerViewScreen'):
+        if disk_popup('ServerViewScreen', telepath_data=server_obj._telepath_data):
             return
 
-        server_obj = constants.server_manager.current_server
         server_obj.backup._update_data()
         backup_stats = server_obj.backup._backup_stats
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
@@ -16867,16 +17999,30 @@ class ServerBackupScreen(MenuBackground):
         scroll_layout.add_widget(sub_layout)
 
 
-        # Open back-up directory
-        def open_backup_dir(*args):
-            backup_stats = server_obj.backup._backup_stats
-            constants.open_folder(backup_stats['backup-path'])
-            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+        if server_obj._telepath_data:
 
-        sub_layout = ScrollItem()
-        self.open_path_button = WaitButton('Open Back-up Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_backup_dir)
-        sub_layout.add_widget(self.open_path_button)
-        scroll_layout.add_widget(sub_layout)
+            # Download a back-up
+            def download_backup(*args):
+                Clock.schedule_once(self.download_button.button.on_leave, 0.5)
+
+            sub_layout = ScrollItem()
+            self.download_button = WaitButton('Download a Back-up', (0.5, 0.5), 'cloud-download-sharp.png', click_func=download_backup)
+            sub_layout.add_widget(self.download_button)
+            scroll_layout.add_widget(sub_layout)
+
+
+        else:
+
+            # Open back-up directory
+            def open_backup_dir(*args):
+                backup_stats = server_obj.backup._backup_stats
+                constants.open_folder(backup_stats['backup-path'])
+                Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+            sub_layout = ScrollItem()
+            self.open_path_button = WaitButton('Open Back-up Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_backup_dir)
+            sub_layout.add_widget(self.open_path_button)
+            scroll_layout.add_widget(sub_layout)
 
 
         # Migrate back-up directory
@@ -16957,7 +18103,6 @@ class ServerBackupScreen(MenuBackground):
         # Add ManuTaskbar
         self.menu_taskbar = MenuTaskbar(selected_item='back-ups')
         self.add_widget(self.menu_taskbar)
-
 
 class BackupButton(HoverButton):
 
@@ -17197,7 +18342,7 @@ class ServerBackupRestoreScreen(MenuBackground):
         page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
-        # gc.collect()
+
 
         # Generate header
         backup_count = len(results)
@@ -17295,7 +18440,7 @@ class ServerBackupRestoreScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
-        backup_list = [backup.BackupObject(server_obj.name, file) for file in server_obj.backup._backup_stats['backup-list']]
+        backup_list = server_obj.backup.return_backup_list()
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
@@ -17360,6 +18505,213 @@ class ServerBackupRestoreScreen(MenuBackground):
         constants.server_manager.refresh_list()
         self.gen_search_results(backup_list)
 
+class ServerBackupDownloadScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, fade_in=True, animate_scroll=True, *args):
+
+        # Set to proper page on favorite/unfavorite
+        default_scroll = 1
+
+
+        # Update page counter
+        self.last_results = results
+        self.max_pages = (len(results) / self.page_size).__ceil__()
+        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+        self.scroll_layout.clear_widgets()
+
+
+        # Generate header
+        backup_count = len(results)
+        header_content = "Select a back-up to download"
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                break
+
+
+        # Show back-ups if they exist
+        if backup_count != 0:
+
+            # Clear and add all ServerButtons
+            for x, backup_object in enumerate(page_list, 1):
+
+                # Activated when addon is clicked
+                def download_backup(backup_obj, index, *args):
+                    server_obj = constants.server_manager.current_server
+                    if not server_obj._telepath_data:
+                        return
+
+                    screen_manager.current = 'ServerBackupScreen'
+                    def download_thread():
+                        if screen_manager.current_screen.name == 'ServerBackupScreen':
+                            download_button = screen_manager.current_screen.download_button
+                            if download_button:
+                                Clock.schedule_once(functools.partial(download_button.loading, True), 0)
+
+                        location = constants.telepath_download(server_obj._telepath_data, backup_obj.path, constants.userDownloads)
+                        if os.path.exists(location):
+                            constants.open_folder(location)
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (0.553, 0.902, 0.675, 1),
+                                    f'Downloaded back-up successfully',
+                                    "cloud-download-sharp.png",
+                                    3,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 1
+                            )
+
+                        if screen_manager.current_screen.name == 'ServerBackupScreen':
+                            download_button = screen_manager.current_screen.download_button
+                            if download_button:
+                                Clock.schedule_once(functools.partial(download_button.loading, False), 0)
+
+                    threading.Timer(0, download_thread).start()
+
+
+                # Add-on button click function
+                self.scroll_layout.add_widget(
+                    ScrollItem(
+                        widget = BackupButton(
+                            backup_object = backup_object,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            index = x + ((self.current_page - 1) * self.page_size),
+                            click_function = functools.partial(
+                                download_backup,
+                                backup_object,
+                                x
+                            )
+                        )
+                    )
+                )
+
+            self.resize_bind()
+
+        # Animate scrolling
+        def set_scroll(*args):
+            Animation.stop_all(self.scroll_layout.parent.parent)
+            if animate_scroll:
+                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+            else:
+                self.scroll_layout.parent.parent.scroll_y = default_scroll
+        Clock.schedule_once(set_scroll, 0)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.page_switcher = None
+
+        self.last_results = []
+        self.page_size = 10
+        self.current_page = 0
+        self.max_pages = 0
+        self.anim_speed = 10
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+        backup_list = server_obj.backup.return_backup_list()
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.82
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        header_content = "Select a back-up to download"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.page_switcher)
+
+        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups"))
+
+        self.add_widget(float_layout)
+
+        # Automatically generate results on page load
+        constants.server_manager.refresh_list()
+        self.gen_search_results(backup_list)
+
 class ServerBackupRestoreProgressScreen(ProgressScreen):
 
     # Only replace this function when making a child screen
@@ -17371,6 +18723,10 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
             # First, clean out any existing server in temp folder
             constants.safe_delete(constants.tempDir)
             constants.folder_check(constants.tmpsvr)
+
+        def after_func(server_obj, restore_date):
+            message = f"'${server_obj.name}$' was restored to ${restore_date}$"
+            self.open_server(server_obj.name, True, message)
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -17404,7 +18760,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
             'before_function': before_func,
 
             # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
-            'after_function': functools.partial(open_server, server_obj.name, True, f"'${server_obj.name}$' was restored to ${restore_date}$"),
+            'after_function': functools.partial(after_func, server_obj, restore_date),
 
             # Screen to go to after complete
             'next_screen': None
@@ -17808,7 +19164,7 @@ class AddonListButton(HoverButton):
                 addon_manager = constants.server_manager.current_server.addon
                 addon_manager.delete_addon(self.properties)
                 addon_screen = screen_manager.current_screen
-                new_list = [addon for addon in addon_manager.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
+                new_list = [addon for addon in addon_manager.return_single_list() if not addons.is_geyser_addon(addon)]
                 addon_screen.gen_search_results(new_list, fade_in=True)
 
                 # Show banner if server is running
@@ -18013,39 +19369,19 @@ class ServerAddonUpdateScreen(ProgressScreen):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                # Clear folders beforehand
-                constants.safe_delete(constants.tmpsvr)
-                constants.safe_delete(constants.tempDir)
-                constants.safe_delete(constants.downDir)
-
-                # Generate server info for downloading proper add-on versions
-                constants.new_server_init()
-                constants.new_server_info = server_obj.properties_dict()
-                constants.init_update()
-                constants.new_server_info['addon_objects'] = server_obj.addon.installed_addons['enabled']
+                constants.pre_addon_update()
 
         def after_func(*args):
-            server_obj.addon.update_required = False
             self.steps.label_2.text = "Updates complete!" + f"   [font={icons}]å[/font]"
 
-            # Clear items from addon cache to re-cache
-            for addon in server_obj.addon.installed_addons['enabled']:
-                if addon.hash in constants.addon_cache:
-                    del constants.addon_cache[addon.hash]
-            constants.load_addon_cache(True)
+            constants.post_addon_update()
+            if self.telepath:
+                server_obj._clear_all_cache()
 
-
-            # Copy folder to server path and delete tmpsvr
-            new_path = os.path.join(constants.serverDir, constants.new_server_info['name'])
-            constants.copytree(constants.tmpsvr, new_path, dirs_exist_ok=True)
-            constants.safe_delete(constants.tempDir)
-            constants.safe_delete(constants.downDir)
-
-            constants.new_server_info = {}
             if server_obj.running:
                 Clock.schedule_once(
                     functools.partial(
@@ -18081,8 +19417,12 @@ class ServerAddonUpdateScreen(ProgressScreen):
             if final < 0:
                 final = original
 
-            count = round(len(constants.new_server_info['addon_objects']) * (final * 0.01))
-            self.steps.label_2.text = "Updating Add-ons" + f"   ({count}/{len(constants.new_server_info['addon_objects'])})"
+            if self.telepath:
+                completed_count = addon_count = len(server_obj.addon.return_single_list())
+            else:
+                addon_count = len(constants.new_server_info['addon_objects'])
+                completed_count = round(len(constants.new_server_info['addon_objects']) * (final * 0.01))
+            self.steps.label_2.text = "Updating Add-ons" + f"   ({completed_count}/{addon_count})"
 
             self.progress_bar.update_progress(final)
 
@@ -18175,7 +19515,6 @@ class ServerAddonScreen(MenuBackground):
         page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
-        # gc.collect()
 
 
         # Animate scrolling
@@ -18190,7 +19529,7 @@ class ServerAddonScreen(MenuBackground):
 
         # Generate header
         addon_count = len(results)
-        enabled_count = len([addon for addon in addon_manager.installed_addons['enabled'] if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))])
+        enabled_count = len([addon for addon in addon_manager.installed_addons['enabled'] if not addons.is_geyser_addon(addon)])
         disabled_count = len(addon_manager.installed_addons['disabled'])
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{enabled_count:,}{("/[color=#FF8793]" + str(disabled_count) + "[/color]") if disabled_count > 0 else ""}[/font] {constants.translate("items")}')
@@ -18219,11 +19558,10 @@ class ServerAddonScreen(MenuBackground):
         else:
             constants.hide_widget(self.blank_label, True)
 
-            # Create list of addon names
-            installed_addon_names = [addon.name for addon in self.server.addon.return_single_list()]
-
             # Clear and add all addons
             for x, addon_object in enumerate(page_list, 1):
+                if addons.is_geyser_addon(addon_object):
+                    continue
 
                 # Activated when addon is clicked
                 def toggle_addon(index, *args):
@@ -18249,7 +19587,7 @@ class ServerAddonScreen(MenuBackground):
                             ), 0
                         )
                         return False
-                    addon_list = [addon for addon in addon_manager.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
+                    addon_list = [addon for addon in addon_manager.return_single_list() if not addons.is_geyser_addon(addon)]
                     self.gen_search_results(addon_list, fade_in=False, highlight=addon.hash, animate_scroll=True)
 
 
@@ -18331,12 +19669,11 @@ class ServerAddonScreen(MenuBackground):
             self.switch_page(keycode[1])
 
     def generate_menu(self, **kwargs):
+        self.server = constants.server_manager.current_server
 
         # Return if no free space
-        if disk_popup('ServerViewScreen'):
+        if disk_popup('ServerViewScreen', telepath_data=self.server._telepath_data):
             return
-
-        self.server = constants.server_manager.current_server
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
@@ -18437,11 +19774,13 @@ class ServerAddonScreen(MenuBackground):
 
 
         # Automatically generate results (installed add-ons) on page load
-        addon_list = [addon for addon in self.server.addon.return_single_list() if (addon.author != 'GeyserMC' and not (addon.name.startswith('Geyser') or addon.name == 'floodgate'))]
+        addon_manager = constants.server_manager.current_server.addon
+        addon_list = [addon for addon in addon_manager.return_single_list() if not addons.is_geyser_addon(addon)]
+
         self.gen_search_results(addon_list)
 
         # Show banner if server is running
-        if constants.server_manager.current_server.addon._hash_changed():
+        if addon_manager._hash_changed():
             Clock.schedule_once(
                 functools.partial(
                     self.show_banner,
@@ -18515,7 +19854,6 @@ class ServerAddonSearchScreen(MenuBackground):
             page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
             self.scroll_layout.clear_widgets()
-            # gc.collect()
 
 
             # Generate header
@@ -18761,9 +20099,9 @@ class ServerAddonSearchScreen(MenuBackground):
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
         float_layout.add_widget(self.blank_label)
 
-
-        search_function = addons.search_addons
-        self.search_bar = search_input(return_function=search_function, server_info=constants.server_manager.current_server.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
+        server_obj = constants.server_manager.current_server
+        search_function = server_obj.addon.search_addons
+        self.search_bar = search_input(return_function=search_function, server_info=server_obj.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -18801,22 +20139,34 @@ class ServerAddonSearchScreen(MenuBackground):
 
 # amscript Manager ------------------------------------------------------------------------------------------------
 
-script_obj = amscript.ScriptObject()
-def edit_script(edit_button, server_obj, script_path):
+constants.script_obj = amscript.ScriptObject()
+def edit_script(edit_button, server_obj, script_path, download=True):
     "amscript-icon.png"
+
+    # Override to download locally
+    telepath_data = None
+    if server_obj._telepath_data:
+        telepath_data = constants.deepcopy(server_obj._telepath_data)
+        telepath_data['headers'] = constants.api_manager._get_headers(telepath_data['host'], True)
+        if download:
+            script_path = constants.telepath_download(server_obj._telepath_data, script_path, constants.telepathScriptDir)
+
+    constants.app_config.load_config()
     data_dict = {
+        '_telepath_data': telepath_data,
         'app_title': constants.app_title,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
-        'global_conf': constants.global_conf,
+        'app_config': constants.app_config,
         'script_obj': {
-            'syntax_func': script_obj.is_valid,
-            'protected': script_obj.protected_variables,
-            'events': script_obj.valid_events
+            'syntax_func': constants.script_obj.is_valid,
+            'protected': constants.script_obj.protected_variables,
+            'events': constants.script_obj.valid_events
         },
-        'suggestions': server_obj.retrieve_suggestions(script_obj),
+        'suggestions': server_obj.retrieve_suggestions(),
         'os_name': constants.os_name,
-        'translate': constants.translate
+        'translate': constants.translate,
+        'telepath_script_dir': constants.telepathScriptDir
     }
     Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict), 0.1)
     if edit_button:
@@ -19358,8 +20708,14 @@ class CreateAmscriptScreen(MenuBackground):
 
         def on_click(*a):
             script_name = self.name_input.convert_name(self.name_input.text)
-            script_path = os.path.join(constants.scriptDir, script_name)
             script_title = self.name_input.text.strip()
+
+            if server_obj._telepath_data:
+                script_path = os.path.join(constants.telepathScriptDir, script_name)
+                constants.folder_check(constants.telepathScriptDir)
+            else:
+                script_path = os.path.join(constants.scriptDir, script_name)
+                constants.folder_check(constants.scriptDir)
 
             contents = f"""#!
 # title: {script_title}
@@ -19378,9 +20734,12 @@ class CreateAmscriptScreen(MenuBackground):
         player.log(f"{constants.translate('Welcome to')} {{server}} {{player}}!")
 """
 
-            constants.folder_check(constants.scriptDir)
             with open(script_path, 'w+', encoding='utf-8', errors='ignore') as f:
                 f.write(contents)
+
+            # Upload and import if it's remote
+            if server_obj._telepath_data:
+                server_obj.script_manager.import_script(script_path)
 
             for s in server_obj.script_manager.return_single_list():
                 if s.file_name == script_name:
@@ -19388,7 +20747,7 @@ class CreateAmscriptScreen(MenuBackground):
                     break
 
             def later(*_):
-                edit_script(None, server_obj, script_path)
+                edit_script(None, server_obj, script_path, download=False)
             threading.Timer(1, later).start()
 
             previous_screen()
@@ -19502,7 +20861,6 @@ class ServerAmscriptScreen(MenuBackground):
         page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
         self.scroll_layout.clear_widgets()
-        # gc.collect()
 
 
         # Animate scrolling
@@ -19640,12 +20998,11 @@ class ServerAmscriptScreen(MenuBackground):
             self.switch_page(keycode[1])
 
     def generate_menu(self, **kwargs):
+        self.server = constants.server_manager.current_server
 
         # Return if no free space
-        if disk_popup('ServerViewScreen'):
+        if disk_popup('ServerViewScreen', telepath_data=self.server._telepath_data):
             return
-
-        self.server = constants.server_manager.current_server
 
 
         # Scroll list
@@ -19823,7 +21180,6 @@ class ServerAmscriptSearchScreen(MenuBackground):
             page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
 
             self.scroll_layout.clear_widgets()
-            # gc.collect()
 
 
             # Generate header
@@ -20003,7 +21359,8 @@ class ServerAmscriptSearchScreen(MenuBackground):
                     pass
 
     def generate_menu(self, **kwargs):
-        script_manager = constants.server_manager.current_server.script_manager
+        server_obj = constants.server_manager.current_server
+        script_manager = server_obj.script_manager
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.437))
@@ -20053,9 +21410,8 @@ class ServerAmscriptSearchScreen(MenuBackground):
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
         float_layout.add_widget(self.blank_label)
 
-
         search_function = script_manager.search_scripts
-        self.search_bar = search_input(return_function=search_function, server_info=constants.server_manager.current_server.properties_dict(), pos_hint={"center_x": 0.5, "center_y": 0.795})
+        self.search_bar = search_input(return_function=search_function, pos_hint={"center_x": 0.5, "center_y": 0.795})
         self.page_switcher = PageSwitcher(0, 0, (0.5, 0.805), self.switch_page)
 
 
@@ -20741,8 +22097,27 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.match_list = []
         self.modified = False
 
-        with open(constants.server_path(server_obj.name, 'server.properties'), 'r') as f:
-            self.server_properties = f.read().strip().splitlines()
+        # Get 'server.properties' remotely if needed
+        if server_obj._telepath_data:
+            server_obj._clear_attr_cache()
+            self.server_properties = []
+            for key, value in server_obj.server_properties.items():
+                if not (key or value):
+                    continue
+
+                if key.startswith("#"):
+                    line = "#" + key.strip('#').strip()
+                else:
+                    if isinstance(value, bool):
+                        value = str(value).lower()
+                    line = f"{key}={value}"
+
+                self.server_properties.append(line)
+
+        else:
+            properties = constants.server_path(server_obj.name, 'server.properties')
+            with open(properties, 'r') as f:
+                self.server_properties = f.read().strip().splitlines()
 
 
         # Scroll list
@@ -20804,12 +22179,6 @@ class ServerPropertiesEditScreen(MenuBackground):
         float_layout.add_widget(self.scroll_widget)
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
-
-
-        # # Configure header
-        # header_content = "Editing 'server.properties'"
-        # self.header = HeaderText(header_content, '', (0, 0.89))
-        # float_layout.add_widget(self.header)
 
 
         # Fullscreen shadow
@@ -20916,6 +22285,12 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.add_widget(self.header)
 
 
+        # Save & quit button
+        self.controls_button = IconButton('save & quit', {}, (120, 110), (None, None), 'save-sharp.png', clickable=True, anchor='right', click_func=self.save_and_quit, text_offset=(-5, 50))
+        float_layout.add_widget(self.controls_button)
+
+
+
     # Writes config to server.properties file, and reloads it in the server manager if the server is not running
     def save_config(self):
         server_obj = constants.server_manager.current_server
@@ -20933,12 +22308,23 @@ class ServerPropertiesEditScreen(MenuBackground):
             else:
                 final_config[key] = value.strip()
 
-        constants.server_properties(server_obj.name, write_object=final_config)
+        server_obj.server_properties = final_config
+        server_obj.write_config()
         server_obj.reload_config()
 
-        # Reload config
-        with open(constants.server_path(server_obj.name, 'server.properties'), 'r') as f:
-            self.server_properties = f.read().strip().splitlines()
+        self.server_properties = []
+        for line in self.line_list:
+            key = line.key_label.original_text
+            value = line.value_label.text
+
+            if not (key or value):
+                continue
+
+            if key.startswith("# "):
+                line = "#" + key[1:].strip()
+            else:
+                line = f"{key}={value}"
+            self.server_properties.append(line)
 
         self.set_banner_status(False)
 
@@ -20966,6 +22352,19 @@ class ServerPropertiesEditScreen(MenuBackground):
                     {"center_x": 0.5, "center_y": 0.965}
                 ), 0
             )
+
+    def quit_to_menu(self, *a):
+        for button in self.walk():
+            try:
+                if button.id == "exit_button":
+                    button.force_click()
+                    break
+            except AttributeError:
+                continue
+
+    def save_and_quit(self, *a):
+        self.save_config()
+        self.quit_to_menu()
 
     # Reset results of all cells
     def reset_data(self):
@@ -21001,8 +22400,8 @@ class ServerPropertiesEditScreen(MenuBackground):
             if not (key or value):
                 continue
 
-            if key.startswith("# "):
-                line = "#" + key[1:].strip()
+            if key.startswith("#"):
+                line = "#" + key.strip("#").strip()
             else:
                 line = f"{key}={value}"
 
@@ -21103,20 +22502,6 @@ class ServerPropertiesEditScreen(MenuBackground):
             Clock.schedule_once(reset, 0.25)
             return True
 
-        def quit_to_menu(*a):
-            for button in self.walk():
-                try:
-                    if button.id == "exit_button":
-                        button.force_click()
-                        break
-                except AttributeError:
-                    continue
-            keyboard.release()
-
-        def save_and_quit(*a):
-            self.save_config()
-            quit_to_menu()
-
         def return_to_input():
             if self.current_line is not None:
                 self.focus_input()
@@ -21135,21 +22520,21 @@ class ServerPropertiesEditScreen(MenuBackground):
 
 
         # Exiting search bar
-        elif keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
+        elif keycode[1] == 'escape' and screen_manager.current_screen._input_focused:
             return_to_input()
 
 
         # Quit and prompt to save if file was changed
-        if keycode[1] == 'q' and control in modifiers:
+        elif (keycode[1] == 'q' and control in modifiers) or keycode[1] == 'escape':
             if self.modified:
                 self.show_popup(
                     "query",
                     "Unsaved Changes",
                     'There are unsaved changes in your configuration.\n\nWould you like to save the file before quitting?',
-                    [functools.partial(Clock.schedule_once, quit_to_menu, 0.25), functools.partial(Clock.schedule_once, save_and_quit, 0.25)]
+                    [functools.partial(Clock.schedule_once, self.quit_to_menu, 0.25), functools.partial(Clock.schedule_once, self.save_and_quit, 0.25)]
                 )
             else:
-                quit_to_menu()
+                self.quit_to_menu()
 
 
         # Focus text input if server is started
@@ -21191,19 +22576,9 @@ class ServerPropertiesEditScreen(MenuBackground):
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
-def toggle_ngrok(boolean, *args):
+def toggle_proxy(boolean, *args):
     server_obj = constants.server_manager.current_server
-
-    if boolean:
-        # Switch to screen to authenticate ngrok if toggled and authtoken is missing
-        if not constants.check_ngrok_creds():
-            screen_manager.current = "NgrokAuthScreen"
-            return
-
-    # Actually make changes
-    server_obj.config_file.set("general", "enableNgrok", str(boolean).lower())
-    constants.server_config(server_obj.name, server_obj.config_file)
-    server_obj.ngrok_enabled = boolean
+    server_obj.enable_proxy(boolean)
 
     # Show banner if server is running
     def default_message(*a):
@@ -21211,7 +22586,7 @@ def toggle_ngrok(boolean, *args):
             functools.partial(
                 screen_manager.current_screen.show_banner,
                 (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
-                f"ngrok proxy is {'en' if boolean else 'dis'}abled",
+                f"playit proxy is {'en' if boolean else 'dis'}abled",
                 "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
                 2.5,
                 {"center_x": 0.5, "center_y": 0.965}
@@ -21236,50 +22611,6 @@ def toggle_ngrok(boolean, *args):
     except AttributeError:
         default_message()
 
-class NgrokAuthScreen(MenuBackground):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.authtoken_input = None
-        self.menu = 'init'
-
-    def generate_menu(self, **kwargs):
-
-        # Generate buttons on page load
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-
-        def open_ngrok_site(*a):
-            url = 'https://dashboard.ngrok.com/get-started/your-authtoken'
-            webbrowser.open_new_tab(url)
-
-        def authorize_ngrok(*a):
-            constants.run_proc(f'"{os.path.join(constants.applicationFolder, "Tools", constants.ngrok_exec)}" config add-authtoken {self.authtoken_input.text}')
-            if constants.check_ngrok_creds():
-                toggle_ngrok(True)
-            previous_screen()
-            constants.screen_tree.pop(-1)
-
-
-
-        float_layout.add_widget(HeaderText("Login to ngrok and paste your authtoken below", '', (0, 0.8)))
-        float_layout.add_widget(WaitButton('Login to ngrok', (0.5, 0.555), 'ngrok.png', width=531, click_func=open_ngrok_site))
-        self.authtoken_input = NgrokAuthInput(pos_hint={"center_x": 0.5, "center_y": 0.45})
-        float_layout.add_widget(self.authtoken_input)
-        buttons.append(next_button('Next', (0.5, 0.24), True, next_screen='ServerSettingsScreen', click_func=authorize_ngrok))
-        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
-
-        for button in buttons:
-            float_layout.add_widget(button)
-
-        menu_name = f"Login to ngrok"
-        float_layout.add_widget(generate_title(menu_name))
-        float_layout.add_widget(generate_footer(menu_name))
-
-        self.add_widget(float_layout)
-
 class ServerWorldScreen(MenuBackground):
 
     def __init__(self, **kwargs):
@@ -21292,12 +22623,12 @@ class ServerWorldScreen(MenuBackground):
         self.new_type = 'default'
 
     def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
 
         # Return if no free space
-        if disk_popup('ServerSettingsScreen'):
+        if disk_popup('ServerSettingsScreen', telepath_data=server_obj._telepath_data):
             return
 
-        server_obj = constants.server_manager.current_server
         self.new_world = 'world'
         self.new_seed = ''
         self.new_type = 'default'
@@ -21349,36 +22680,29 @@ class ServerWorldScreen(MenuBackground):
                         pass
                 Clock.schedule_once(update_button, 0)
 
-                # First, save backup
-                server_obj.backup.save()
+                # If telepath, upload world here and return path
+                if server_obj._telepath_data:
+                    telepath_data = server_obj._telepath_data
+                    if self.new_world != 'world':
+                        new_path = constants.telepath_upload(telepath_data, self.new_world)['path']
+                    else:
+                        new_path = 'world'
+                    constants.api_manager.request(
+                        endpoint='/main/update_world',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={
+                            'path': new_path,
+                            'new_type': self.new_type,
+                            'new_seed': self.new_seed,
+                            'telepath_data': telepath_data
+                        }
+                    )
+                    constants.api_manager.request(endpoint='/main/clear_uploads', host=telepath_data['host'], port=telepath_data['port'])
 
-                # Delete current world
-                world_path = constants.server_path(server_obj.name, server_obj.world)
-                if world_path:
-                    def delete_world(path):
-                        if os.path.exists(path):
-                            constants.safe_delete(path)
-                    delete_world(world_path)
-                    delete_world(world_path + "_nether")
-                    delete_world(world_path + "_the_end")
-
-                # Copy world to server if one is selected
-                world_name = 'world'
-                if self.new_world.strip().lower() != "world":
-                    world_name = os.path.basename(self.new_world)
-                    constants.copytree(self.new_world, os.path.join(server_obj.server_path, world_name))
-
-                # Fix level-type
-                if constants.version_check(server_obj.version, '>=', '1.19') and self.new_type == 'default':
-                    self.new_type = 'normal'
-
-                # Change level-name in 'server.properties' and server_obj.world
-                server_obj.server_properties['level-name'] = world_name
-                server_obj.server_properties['level-type'] = self.new_type
-                server_obj.server_properties['level-seed'] = self.new_seed
-
-                server_obj.write_config()
-                server_obj.reload_config()
+                # If local, update normally
+                else:
+                    constants.update_world(self.new_world, self.new_type, self.new_seed)
 
                 def update_ui(*a):
                     try:
@@ -21488,15 +22812,15 @@ class ServerSettingsScreen(MenuBackground):
         self.open_path_button = None
         self.update_button = None
         self.update_label = None
-        self.ngrok_button = None
+        self.proxy_button = None
         self.rename_input = None
         self.delete_button = None
         self.world_button = None
 
     def check_changes(self, server_obj, force_banner=False):
         if server_obj.running:
-            # print(server_obj.run_data['advanced-hash'], server_obj.__get_advanced_hash__(), sep="\n")
-            if server_obj.run_data['advanced-hash'] != server_obj.__get_advanced_hash__():
+            # print(server_obj.run_data['advanced-hash'], server_obj._get_advanced_hash(), sep="\n")
+            if server_obj.run_data and server_obj.run_data['advanced-hash'] != server_obj._get_advanced_hash():
                 if "[font=" not in self.header.text.text:
                     icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
                     self.header.text.text = f"[color=#EFD49E][font={icons}]y[/font] " + self.header.text.text + "[/color]"
@@ -21522,7 +22846,6 @@ class ServerSettingsScreen(MenuBackground):
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
         server_obj.reload_config()
-        constants.check_ngrok()
 
         # Scroll list
         scroll_widget = ScrollViewWidget()
@@ -21589,19 +22912,56 @@ class ServerSettingsScreen(MenuBackground):
         general_layout.add_widget(sub_layout)
 
 
-        # Open server directory
-        def open_server_dir(*args):
-            constants.open_folder(server_obj.server_path)
-            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+        if server_obj._telepath_data:
+            def download_server(*a):
+                def download_thread():
+                    if screen_manager.current_screen.name == 'ServerSettingsScreen':
+                        download_button = screen_manager.current_screen.download_button
+                        if download_button:
+                            Clock.schedule_once(functools.partial(download_button.loading, True), 0)
 
-        sub_layout = ScrollItem()
-        self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
-        sub_layout.add_widget(self.open_path_button)
-        general_layout.add_widget(sub_layout)
+                    path = os.path.join(server_obj.backup.directory, server_obj.backup.save()[0])
+                    location = constants.telepath_download(server_obj._telepath_data, path, constants.userDownloads)
+                    if os.path.exists(location):
+                        constants.open_folder(location)
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.553, 0.902, 0.675, 1),
+                                f"Downloaded $'{server_obj._view_name}'$ successfully",
+                                "cloud-download-sharp.png",
+                                3,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 1
+                        )
+
+                    if screen_manager.current_screen.name == 'ServerSettingsScreen':
+                        download_button = screen_manager.current_screen.download_button
+                        if download_button:
+                            Clock.schedule_once(functools.partial(download_button.loading, False), 0)
+
+                threading.Timer(0, download_thread).start()
+
+            sub_layout = ScrollItem()
+            self.download_button = WaitButton('Download Server', (0.5, 0.5), 'cloud-download-sharp.png', click_func=download_server)
+            sub_layout.add_widget(self.download_button)
+            general_layout.add_widget(sub_layout)
+
+        else:
+
+            # Open server directory
+            def open_server_dir(*args):
+                constants.open_folder(server_obj.server_path)
+                Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+            sub_layout = ScrollItem()
+            self.open_path_button = WaitButton('Open Server Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_server_dir)
+            sub_layout.add_widget(self.open_path_button)
+            general_layout.add_widget(sub_layout)
 
 
         # RAM allocation slider (Max limit = 75% of memory capacity)
-        max_limit = constants.max_memory
+        max_limit = constants.get_remote_var('max_memory', server_obj._telepath_data)
         min_limit = 0
         start_value = min_limit if str(server_obj.dedicated_ram) == 'auto' else int(server_obj.dedicated_ram)
 
@@ -21652,33 +23012,33 @@ class ServerSettingsScreen(MenuBackground):
         network_layout.add_widget(sub_layout)
 
 
-        # Ngrok toggle/install button
+        # Playit toggle/install button
         def add_switch(index=0, fade=False, *a):
             sub_layout = ScrollItem()
-            state = server_obj.ngrok_enabled
-            input_border = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (ngrok)', disabled=(not constants.app_online))
+            state = server_obj.proxy_enabled
+            input_border = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)', disabled=(not constants.app_online))
             sub_layout.add_widget(input_border)
-            sub_layout.add_widget(toggle_button('ngrok', (0.5, 0.5), custom_func=toggle_ngrok, default_state=server_obj.ngrok_enabled, disabled=(not constants.app_online)))
+            sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=server_obj.proxy_enabled, disabled=(not constants.app_online)))
             network_layout.add_widget(sub_layout, index)
             if fade:
                 input_border.opacity = 0
                 Animation(opacity=1, duration=0.5).start(input_border)
 
-        if not constants.ngrok_installed:
+        if not server_obj.proxy_installed():
             def prompt_install(*args):
                 def install_wrapper(*a):
-                    Clock.schedule_once(functools.partial(self.ngrok_button.loading, True), 0)
-                    boolean = constants.install_ngrok()
+                    Clock.schedule_once(functools.partial(self.proxy_button.loading, True), 0)
+                    boolean = server_obj.install_proxy()
 
                     def add_widgets(*b):
-                        self.ngrok_button.loading(False)
-                        network_layout.remove_widget(self.ngrok_button.parent)
+                        self.proxy_button.loading(False)
+                        network_layout.remove_widget(self.proxy_button.parent)
                         add_switch(1, True)
                         Clock.schedule_once(
                             functools.partial(
                                 screen_manager.current_screen.show_banner,
                                 (0.553, 0.902, 0.675, 1) if boolean else (0.937, 0.831, 0.62, 1),
-                                f"ngrok was {'installed successfully' if boolean else 'not installed'}",
+                                f"playit was {'installed successfully' if boolean else 'not installed'}",
                                 "checkmark-circle-outline.png" if boolean else "close-circle-outline.png",
                                 2.5,
                                 {"center_x": 0.5, "center_y": 0.965}
@@ -21691,18 +23051,18 @@ class ServerSettingsScreen(MenuBackground):
                         functools.partial(
                             self.show_popup,
                             "query",
-                            "Install ngrok",
-                            "ngrok is a free proxy service that creates a tunnel to the internet. It can be used to bypass ISP port blocking or conflicts in which the client refuses to connect (e.g. strict NAT).\n\nWould you like to install ngrok?",
+                            "Install playit",
+                            "playit is a free proxy service that creates a tunnel to the internet. It can be used to bypass ISP port blocking or conflicts in which the client refuses to connect (e.g. strict NAT).\n\nWould you like to install playit?",
                             (None, threading.Timer(0, install_wrapper).start)
                         ),
                         0
                     )
                 else:
-                    self.show_popup('warning', 'Error', 'An internet connection is required to install ngrok\n\nPlease check your connection and try again', (None))
+                    self.show_popup('warning', 'Error', 'An internet connection is required to install playit\n\nPlease check your connection and try again', (None))
 
             sub_layout = ScrollItem()
-            self.ngrok_button = WaitButton('Install Ngrok', (0.5, 0.5), 'ngrok.png', click_func=prompt_install)
-            sub_layout.add_widget(self.ngrok_button)
+            self.proxy_button = WaitButton('Install playit', (0.5, 0.5), 'earth.png', click_func=prompt_install)
+            sub_layout.add_widget(self.proxy_button)
             network_layout.add_widget(sub_layout)
         else:
             add_switch()
@@ -21711,17 +23071,11 @@ class ServerSettingsScreen(MenuBackground):
         # Enable Geyser toggle switch
         def toggle_geyser(boolean, install=True):
             if install:
-                addon_manager = server_obj.addon
-                if boolean:
-                    with ThreadPoolExecutor(max_workers=3) as pool:
-                        pool.map(addon_manager.download_addon, addons.geyser_addons(server_obj.properties_dict()))
-                else:
-                    for a in [a for a in addon_manager.return_single_list() if (a.author == 'GeyserMC' and (a.name.startswith('Geyser') or a.name == 'floodgate'))]:
-                        addon_manager.delete_addon(a)
+                server_obj.addon._install_geyser(boolean)
 
                 # Actually make changes
                 server_obj.config_file.set("general", "enableGeyser", str(boolean).lower())
-                constants.server_config(server_obj.name, server_obj.config_file)
+                server_obj.write_config()
                 server_obj.geyser_enabled = boolean
 
                 # Show banner if server is running
@@ -21795,10 +23149,19 @@ class ServerSettingsScreen(MenuBackground):
         # Updates server
         def update_server(*a):
             if server_obj.is_modpack == 'mrpack':
-                if constants.update_list[server_obj.name]['updateUrl']:
+                update_url = ''
+                if server_obj._telepath_data:
+                    try:
+                        update_url = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['updateUrl']
+                    except KeyError:
+                        pass
+                else:
+                    update_url = constants.update_list[server_obj.name]['updateUrl']
+                print(update_url)
+                if update_url:
                     constants.import_data = {
                         'name': server_obj.name,
-                        'url': constants.update_list[server_obj.name]['updateUrl']
+                        'url': update_url
                     }
                     constants.safe_delete(constants.tempDir)
                     screen_manager.current = 'UpdateModpackProgressScreen'
@@ -21814,10 +23177,26 @@ class ServerSettingsScreen(MenuBackground):
 
         # Check for updates button
         sub_layout = ScrollItem()
-        while server_obj.name not in constants.update_list:
-            time.sleep(0.1)
+
+        if server_obj._telepath_data:
+            while not constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name):
+                constants.server_manager.reload_telepath_updates(server_obj._telepath_data)
+                time.sleep(0.5)
+        else:
+            while server_obj.name not in constants.update_list:
+                time.sleep(0.1)
 
         # First check if the server is a '.zip' format modpack
+        needs_update = False
+        if server_obj._telepath_data:
+            try:
+                needs_update = constants.server_manager.get_telepath_update(server_obj._telepath_data, server_obj.name)['needsUpdate'] == 'true'
+            except KeyError:
+                pass
+        else:
+            needs_update = constants.update_list[server_obj.name]['needsUpdate'] == 'true'
+
+
         if server_obj.is_modpack == 'zip':
             def select_file(*a):
                 zip_file = file_popup("file", start_dir=constants.userDownloads, ext=["*.zip", "*.mrpack"], input_name=None, select_multiple=True, title='Select a modpack update')
@@ -21838,7 +23217,7 @@ class ServerSettingsScreen(MenuBackground):
             self.update_button = WaitButton("Update from '.zip'", (0.5, 0.5), 'modpack.png', disabled=disabled, click_func=select_file)
 
 
-        elif constants.update_list[server_obj.name]['needsUpdate'] == 'true':
+        elif needs_update:
             if 'settings' in server_obj.viewed_notifs:
                 if server_obj.viewed_notifs['settings'] != server_obj.update_string:
                     Clock.schedule_once(
@@ -21967,12 +23346,9 @@ class ServerSettingsScreen(MenuBackground):
             constants.server_manager.current_server = None
 
             def switch_screens(*a):
-                if len(constants.generate_server_list()) > 0:
-                    screen_manager.current = "ServerManagerScreen"
-                    constants.screen_tree = ['MainMenuScreen']
-                else:
-                    screen_manager.current = "MainMenuScreen"
-                    constants.screen_tree = []
+                constants.server_manager.refresh_list()
+                screen_manager.current = "ServerManagerScreen"
+                constants.screen_tree = ['MainMenuScreen']
 
                 Clock.schedule_once(
                     functools.partial(
@@ -22063,12 +23439,14 @@ class MigrateServerTypeScreen(MenuBackground):
         self.content_layout_2 = None
 
     def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
 
-        # Return if no free space
-        if disk_popup('ServerSettingsScreen'):
+        # Return if no free space or telepath is busy
+        if disk_popup('ServerSettingsScreen', telepath_data=server_obj._telepath_data):
+            return
+        if telepath_popup('ServerSettingsScreen'):
             return
 
-        server_obj = constants.server_manager.current_server
 
         # Generate buttons on page load
         buttons = []
@@ -22173,7 +23551,6 @@ class MigrateServerVersionScreen(MenuBackground):
                 def check_version(*args, **kwargs):
                     self.final_button.loading(True)
                     version_data = constants.search_version(constants.new_server_info)
-                    print(version_data)
                     constants.new_server_info['version'] = version_data[1]['version']
                     constants.new_server_info['build'] = version_data[1]['build']
                     constants.new_server_info['jar_link'] = version_data[3]
@@ -22244,40 +23621,27 @@ class MigrateServerProgressScreen(ProgressScreen):
 
         def before_func(*args):
 
-            # First, clean out any existing server in temp folder
-            constants.safe_delete(constants.tmpsvr)
-
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                # Copy over existing server and remove the files which will be replaced
-                constants.copytree(server_obj.server_path, constants.tmpsvr)
-                for jar in glob(os.path.join(constants.tmpsvr, '*.jar')):
-                    os.remove(jar)
-
-                constants.safe_delete(os.path.join(constants.tmpsvr, 'addons'))
-                constants.safe_delete(os.path.join(constants.tmpsvr, 'disabled-addons'))
-                constants.safe_delete(os.path.join(constants.tmpsvr, 'mods'))
-                constants.safe_delete(os.path.join(constants.tmpsvr, 'disabled-mods'))
-
-                # Delete EULA.txt
-                def delete_eula(eula_path):
-                    if os.path.exists(eula_path):
-                        os.remove(eula_path)
-                delete_eula(os.path.join(constants.tmpsvr, 'eula.txt'))
-                delete_eula(os.path.join(constants.tmpsvr, 'EULA.txt'))
-                delete_eula(os.path.join(constants.tmpsvr, 'EULA.TXT'))
+                telepath_data = server_obj._telepath_data
+                if telepath_data:
+                    response = constants.api_manager.request(
+                        endpoint='/create/push_new_server',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={'server_info': constants.new_server_info}
+                    )
+                constants.pre_server_update()
 
 
         def after_func(*args):
-            constants.make_update_list()
-            server_obj._view_notif('add-ons', False)
-            server_obj._view_notif('settings', viewed=constants.new_server_info['version'])
-            open_server(server_obj.name, True, f"{final_text} '${server_obj.name}$' successfully", launch=self.page_contents['launch'])
+            constants.post_server_update()
+            self.open_server(server_obj.name, True, f"{final_text} '${server_obj.name}$' successfully", launch=self.page_contents['launch'])
 
 
         # Original is percentage before this function, adjusted is a percent of hooked value
@@ -22359,21 +23723,32 @@ class UpdateModpackProgressScreen(ProgressScreen):
             if not constants.app_online:
                 self.execute_error("An internet connection is required to continue\n\nVerify connectivity and try again")
 
-            elif not constants.check_free_space():
+            elif not constants.check_free_space(telepath_data=server_obj._telepath_data):
                 self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
 
             else:
-                constants.folder_check(constants.tmpsvr)
+                telepath_data = server_obj._telepath_data
+                if telepath_data:
+                    response = constants.api_manager.request(
+                        endpoint='/create/push_new_server',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={'server_info': constants.new_server_info, 'import_info': constants.import_data}
+                    )
+                constants.pre_server_update()
 
         def after_func(*args):
-            constants.make_update_list()
-            server_obj._view_notif('add-ons', True)
-            server_obj._view_notif('settings', viewed=server_obj.update_string)
-            server_path = server_obj.server_path
-            read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
-            if read_me:
-                read_me = read_me[0]
-            open_server(server_obj.name, True, f"Updated '${server_obj.name}$' successfully", show_readme=read_me)
+            import_data = constants.post_server_create(modpack=True)
+
+            if self.telepath and import_data['readme']:
+                import_data['readme'] = constants.telepath_download(self.telepath, import_data['readme'])['path']
+
+            self.open_server(
+                import_data['name'],
+                True,
+                f"'Updated ${import_data['name']}$' successfully",
+                show_readme=import_data['readme']
+            )
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -22424,6 +23799,1281 @@ class UpdateModpackProgressScreen(ProgressScreen):
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
+
+
+
+# </editor-fold> ///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+# ============================================= Telepath Utilities =====================================================
+# <editor-fold desc="Telepath Utilities">
+
+class InstanceButton(HoverButton):
+
+    class NameInput(TextInput):
+
+        def update_config(self, *a):
+            def write(*a):
+                constants.server_manager.rename_telepath_server(self.properties, self.text)
+
+            if self.change_timeout:
+                self.change_timeout.cancel()
+            self.change_timeout = Clock.schedule_once(write, 0.7)
+
+        def _on_focus(self, instance, value, *largs):
+            super()._on_focus(instance, value, *largs)
+
+            if not value and not self.text:
+                self.text = constants.format_nickname(self.original_text)
+
+        # Ignore popup text
+        def insert_text(self, substring, from_undo=False):
+            if screen_manager.current_screen.popup_widget:
+                return None
+
+            # Input validation & formatting
+            if len(substring) > 1 or (substring in [' ', '-', '.'] and (not self.text or self.text[self.cursor_col-1] in ['-', '.'])):
+                return
+
+            if len(self.text) >= 20:
+                return
+
+            substring = substring.lower().replace(' ', '-')
+            substring = re.sub('[^a-zA-Z0-9.-]', '', substring)
+
+            self.update_config()
+
+            super().insert_text(substring, from_undo)
+
+        # Special keypress behaviors
+        def keyboard_on_key_down(self, window, keycode, text, modifiers):
+
+            if keycode[1] == "backspace" and control in modifiers:
+                original_index = self.cursor_col
+                new_text, index = constants.control_backspace(self.text, original_index)
+                self.select_text(original_index - index, original_index)
+                self.delete_selection()
+            else:
+                super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+        def __init__(self, instance_data, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.properties = instance_data
+            self.__translate__ = False
+            self.id = "title"
+            self.halign = "left"
+            self.foreground_color = constants.brighten_color((0.65, 0.65, 1, 1), 0.07)
+            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            self.background_color = (0, 0, 0, 0)
+            self.size = (400, 50)
+            self.font_size = sp(25)
+            self.max_lines = 1
+            self.multiline = False
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.cursor_width = dp(3)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
+            self.hint_text = 'enter a nickname...'
+            self.original_text = ''
+            self.change_timeout = None
+
+    def animate_button(self, image, color, **kwargs):
+        image_animate = Animation(duration=0.05)
+
+        def f(w):
+            w.background_normal = image
+
+        Animation(color=color, duration=0.06).start(self.title)
+        Animation(color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color), duration=0.06).start(self.subtitle)
+        Animation(color=color, duration=0.06).start(self.type_image.image)
+
+        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
+            Animation(color=color, duration=0.06).start(self.type_image.version_label)
+        Animation(color=color, duration=0.06).start(self.type_image.type_label)
+
+        a = Animation(duration=0.0)
+        a.on_complete = functools.partial(f)
+
+        image_animate += a
+
+        image_animate.start(self)
+
+    def resize_self(self, *args):
+
+        # Title and description
+        padding = 2.17
+        self.title.pos = (self.x + 53, self.y + 26)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78, self.y + 8)
+        offset = 9.55
+
+        self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 13
+        self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
+
+        self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
+        self.type_image.type_label.y = self.y + (self.height * 0.05)
+
+
+        # Edit button
+        self.edit_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
+        self.edit_layout.pos = (self.pos[0] - 6, self.pos[1] + 13)
+
+
+        # Update label
+        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 83
+            self.type_image.version_label.y = self.y - (self.height / 3.2)
+
+        # Banner version object
+        else:
+            self.type_image.version_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 130
+            self.type_image.version_label.y = self.y - (self.height / 3.2) - 2
+
+    def highlight(self):
+        def next_frame(*args):
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        Clock.schedule_once(next_frame, 0)
+
+    def update_subtitle(self):
+
+        def reset(*a):
+            self.subtitle.copyable = False
+            self.subtitle.color = self.color_id[1]
+            self.subtitle.default_opacity = 0.56
+            self.subtitle.font_name = self.original_font
+            self.subtitle.text = self.original_subtitle
+            self.enabled = False
+            self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+
+        try:
+            if self.properties['host'] in constants.server_manager.online_telepath_servers:
+                self.connect_color = (0.529, 1, 0.729, 1)
+                self.subtitle.color = self.connect_color
+                self.subtitle.default_opacity = 0.8
+                self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                self.subtitle.text = 'Connected'
+                self.enabled = True
+                self.background_normal = os.path.join(constants.gui_assets, 'telepath_button_enabled.png')
+
+            else:
+                url = f'http://{self.properties["host"]}:{self.properties["port"]}/telepath/check_status'
+                # Check if remote server is online
+                try:
+                    if constants.requests.get(url, timeout=1).json():
+                        self.connect_color = (1, 0.65, 0.65, 1)
+                        self.subtitle.color = self.connect_color
+                        self.subtitle.default_opacity = 0.8
+                        self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+
+                        if self.properties['telepath-version'] != constants.api_manager.version:
+                            self.subtitle.text = 'API version mismatch'
+                        else:
+                            self.subtitle.text = 'Authentication failure'
+
+                        self.enabled = False
+                        self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+                    else:
+                        reset()
+                except constants.requests.exceptions.ConnectionError:
+                    reset()
+
+        except KeyError:
+            reset()
+
+        self.background_down = self.background_normal
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.enabled else [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
+        self.title.color = self.color_id[1]
+
+    def generate_name(self):
+        tld = self.properties['host']
+        if self.properties['nickname']:
+            tld = self.properties['nickname']
+        return tld
+
+    def __init__(self, instance_data, click_function=None, fade_in=0.0, highlight=None, update_banner="", **kwargs):
+        super().__init__(**kwargs)
+
+        self.properties = instance_data
+        self.border = (-5, -5, -5, -5)
+        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.65, 0.65, 1, 1), 0.07)]
+        self.connect_color = (0.529, 1, 0.729, 1)
+        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+        self.size_hint_max = (580, 80)
+        self.id = "server_button"
+        self.enabled = False
+
+        self.background_normal = os.path.join(constants.gui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png')
+        self.background_down = self.background_normal
+
+        self.icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+
+
+        # Loading stuffs
+        self.original_subtitle = 'Offline'
+        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Title of Instance
+        self.title = self.NameInput(instance_data)
+        self.title.text = self.title.original_text = self.generate_name()
+        self.add_widget(self.title)
+
+
+        # Authentication status formatted
+        self.subtitle = Label()
+        self.subtitle.__translate__ = False
+        self.subtitle.size = (300, 30)
+        self.subtitle.id = "subtitle"
+        self.subtitle.halign = "left"
+        self.subtitle.valign = "center"
+        self.subtitle.font_size = sp(21)
+        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.shorten = True
+        self.subtitle.markup = True
+        self.subtitle.shorten_from = "right"
+        self.subtitle.max_lines = 1
+        self.subtitle.text_size[0] = 350
+        self.subtitle.copyable = False
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.default_opacity = 0.56
+        self.subtitle.font_name = self.original_font
+        self.subtitle.text = self.original_subtitle
+
+        self.subtitle.opacity = self.subtitle.default_opacity
+
+        self.add_widget(self.subtitle)
+        self.update_subtitle()
+
+
+        # Edit button
+        self.edit_layout = RelativeLayout()
+        self.edit_button = IconButton('', {}, (0, 0), (None, None), 'unpair.png', anchor='right', click_func=functools.partial(click_function, instance_data))
+        self.edit_layout.add_widget(self.edit_button)
+        self.add_widget(self.edit_layout)
+
+
+        # Type icon and info
+        self.type_image = RelativeLayout()
+        self.type_image.width = 400
+
+        instance_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{self.properties["os"]}.png')
+        self.type_image.image = Image(source=instance_icon)
+
+        self.type_image.image.allow_stretch = True
+        self.type_image.image.size_hint_max = (65, 65)
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.add_widget(self.type_image.image)
+
+        def TemplateLabel():
+            template_label = AlignLabel()
+            template_label.__translate__ = False
+            template_label.halign = "right"
+            template_label.valign = "middle"
+            template_label.text_size = template_label.size
+            template_label.font_size = sp(19)
+            template_label.color = self.color_id[1]
+            template_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+            template_label.width = 150
+            return template_label
+
+        if update_banner:
+            self.type_image.version_label = RelativeLayout()
+            self.type_image.version_label.add_widget(
+                BannerObject(
+                    pos_hint={"center_x": 1, "center_y": 0.5},
+                    size=(100, 30),
+                    color=(0.647, 0.839, 0.969, 1),
+                    text= ('   ' + update_banner + '  ') if update_banner.startswith('b-') else update_banner,
+                    icon="arrow-up-circle.png",
+                    icon_side="left"
+                )
+            )
+
+        else:
+            self.type_image.version_label = TemplateLabel()
+            self.type_image.version_label.color = self.color_id[1]
+            self.type_image.version_label.text = f"auto-mcs v{self.properties['app-version']}"
+            self.type_image.version_label.opacity = 0.6
+
+
+        self.type_image.type_label = TemplateLabel()
+        self.type_image.type_label.text = self.properties["os"].replace('macos', 'macOS')
+        self.type_image.type_label.font_size = sp(23)
+        self.type_image.add_widget(self.type_image.version_label)
+        self.type_image.add_widget(self.type_image.type_label)
+        self.add_widget(self.type_image)
+
+
+        # Animate opacity
+        if fade_in > 0:
+            self.opacity = 0
+            self.title.opacity = 0
+
+            Animation(opacity=1, duration=fade_in).start(self)
+            Animation(opacity=1, duration=fade_in).start(self.title)
+            Animation(opacity=self.subtitle.default_opacity, duration=fade_in).start(self.subtitle)
+
+        self.bind(pos=self.resize_self)
+
+    def on_enter(self, *args):
+        return
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
+
+    def on_leave(self, *args):
+        return
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+
+class TelepathInstanceScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True, *args):
+        default_scroll = 1
+
+        # Update page counter
+        self.last_results = results
+        self.max_pages = (len(results) / self.page_size).__ceil__()
+        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        page_list = []
+        for k, v in constants.deepcopy(results).items():
+            v['host'] = k
+            page_list.append(v)
+        page_list = page_list[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+        self.scroll_layout.clear_widgets()
+
+
+        # Generate header
+        server_count = len(constants.server_manager.telepath_servers)
+        header_content = "Select an instance to manage"
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                break
+
+
+        # Show servers if they exist
+        if server_count != 0:
+
+            # Clear and add all ServerButtons
+            for x, instance in enumerate(page_list, 1):
+
+                # Activated when server is clicked
+                def view_server(data, *a):
+                    if data['nickname']:
+                        display_name = f"{data['host']} ({data['nickname']})"
+                    else:
+                        display_name = data['nickname']
+
+                    desc = f"Un-pairing this instance will prevent you from accessing it via $Telepath$ until it's paired again.\n\nAre you sure you want to un-pair from '${display_name}$'?"
+
+                    def unpair(*a):
+                        # Log out if possible
+                        if data['host'] in constants.api_manager.jwt_tokens:
+                            constants.api_manager.logout(data['host'], data['port'])
+
+                        constants.server_manager.remove_telepath_server(data)
+                        self.gen_search_results(constants.server_manager.telepath_servers)
+
+                        telepath_banner(f"Un-paired from '${data['host']}$'", False)
+
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_popup,
+                            "warning_query",
+                            f'Un-pair Instance',
+                            desc,
+                            (None, unpair)
+                        ),
+                        0
+                    )
+
+                # Add-on button click function
+                self.scroll_layout.add_widget(
+                    ScrollItem(
+                        widget = InstanceButton(
+                            instance_data = instance,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            click_function = view_server
+                        )
+                    )
+                )
+
+            self.resize_bind()
+
+        # Go back to main menu if they don't
+        else:
+            screen_manager.current = 'TelepathManagerScreen'
+            constants.screen_tree = ['MainMenuScreen']
+            return
+
+        # Animate scrolling
+        def set_scroll(*args):
+            Animation.stop_all(self.scroll_layout.parent.parent)
+            if animate_scroll:
+                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+            else:
+                self.scroll_layout.parent.parent.scroll_y = default_scroll
+        Clock.schedule_once(set_scroll, 0)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.background_color = constants.brighten_color(constants.background_color, -0.09)
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.page_switcher = None
+
+        self.last_results = []
+        self.page_size = 10
+        self.current_page = 0
+        self.max_pages = 0
+        self.anim_speed = 10
+
+        with self.canvas.before:
+            self.color = Color(*self.background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+
+    def generate_menu(self, **kwargs):
+        constants.server_manager.check_telepath_servers()
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.82
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60), color=self.background_color)
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60), color=self.background_color)
+
+        # Generate buttons on page load
+        header_content = "Select an instance to manage"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.page_switcher)
+
+        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = "Instance Manager"
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(f'Telepath, {menu_name}', no_background=True))
+
+        self.add_widget(float_layout)
+
+        # Automatically generate results on page load
+        self.gen_search_results(constants.server_manager.telepath_servers)
+
+
+
+
+class TelepathHostInput(CreateServerPortInput):
+    def __init__(self, **kwargs):
+        self.ip = ''
+        self.port = ''
+        super().__init__(**kwargs)
+        self.checking = False
+        self.bind(on_text_validate=self.check_connection)
+
+    def check_connection(self, *a):
+
+        def change_icon(show=True, *a):
+            try:
+                load_icon = screen_manager.current_screen.load_icon
+                Animation.stop_all(load_icon)
+                Animation(opacity=1 if show else 0, duration=0.15).start(load_icon)
+            except AttributeError:
+                pass
+
+        def background(*a):
+            self.checking = True
+            try:
+                data = {'detail': 'Failed to connect'}
+                Clock.schedule_once(functools.partial(change_icon, True), 0)
+                if constants.check_port(self.ip, int(self.port), timeout=5):
+                    data = constants.api_manager.request_pair(self.ip, self.port)
+            except:
+                pass
+
+            Clock.schedule_once(functools.partial(change_icon, False), 0)
+            self.checking = False
+
+            try:
+                if 'detail' in data:
+                    self.stinky_text = ' Unable to connect'
+                    self.valid(False)
+                    return
+            except:
+                pass
+
+            if data and screen_manager.current_screen.name == 'TelepathManagerScreen':
+                Clock.schedule_once(
+                    functools.partial(screen_manager.current_screen.confirm_pair_input, self.ip, self.port), 0)
+
+        if not self.checking:
+            threading.Timer(0, background).start()
+        change_timeout = None
+
+    def update_config(self, *a):
+
+        if self.change_timeout:
+            self.change_timeout.cancel()
+        self.change_timeout = Clock.schedule_once(self.check_connection, 2)
+
+    # Input validation
+    def insert_text(self, substring, from_undo=False):
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 30:
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-z0-9-:.]', '', substring)
+
+            if ":" in self.text and ":" in s:
+                s = ''
+            if ("." in s and ((self.cursor_col > self.text.find(":")) and (self.text.find(":") > -1))) or ("." in s and self.text.count(".") >= 3):
+                s = ''
+
+            # Add name to current config
+            def process(*a):
+                self.process_text(text=(self.text))
+            Clock.schedule_once(process, 0)
+
+            return BaseInput.insert_text(self, s, from_undo=from_undo)
+
+    def process_text(self, text=''):
+        new_ip = ''
+        default_port = constants.api_manager.default_port
+        new_port = default_port
+
+        typed_info = text if text else self.text
+
+        # interpret typed information
+        if ":" in typed_info:
+            new_ip, new_port = typed_info.split(":")
+        else:
+            if "." in typed_info or not new_port:
+                new_ip = typed_info.replace(":", "")
+                new_port = default_port
+            else:
+                new_port = typed_info.replace(":", "")
+
+        if not str(self.port) or not new_port:
+            new_port = default_port
+
+        if not str(new_port).isnumeric():
+            new_port = default_port
+
+        # Input validation
+        try:
+            port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        except:
+            port_check = True
+        ip_check = (constants.check_ip(new_ip) and '.' in typed_info) or new_ip.replace('-','').replace('.','').isalpha()
+        self.stinky_text = ''
+        fail = False
+
+        if typed_info:
+
+            if new_ip in constants.server_manager.telepath_servers:
+                self.stinky_text = ' Host is already added'
+                fail = True
+
+            elif '.' not in typed_info and typed_info.isnumeric():
+                self.stinky_text = ' Enter an IPv4 address'
+                fail = True
+
+            elif not ip_check and ("." in typed_info or ":" in typed_info):
+                self.stinky_text = 'Invalid IPv4 address' if not port_check else 'Invalid IPv4 and port'
+                fail = True
+
+            elif port_check:
+                self.stinky_text = ' Invalid port  (use 1024-65535)'
+                fail = True
+
+        else:
+            new_ip = ''
+            new_port = constants.api_manager.default_port
+
+        if not fail:
+            self.ip = new_ip
+
+        if new_port and not fail:
+            self.port = int(new_port)
+
+        if fail:
+            self.ip = ''
+            self.port = default_port
+
+        self.valid(not self.stinky_text)
+
+class TelepathCodeInput(BigBaseInput):
+    def __init__(self, ip: str, port: int, **kwargs):
+        super().__init__(**kwargs)
+        self.ip = ip
+        self.port = port
+
+        self.title_text = "pair code"
+        self.hint_text = '000-000'
+        self.is_valid = True
+        self.stinky_text = ''
+
+        self.valign = "center"
+        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+        self.font_size = sp(69)
+        self.padding_y = (12, 9)
+        self.cursor_width = dp(5)
+        self.checking = False
+        self.bind(on_text_validate=self.check_connection)
+        self.fail_count = 0
+
+    def check_connection(self, *a):
+        code = self.text.replace('-', '').upper().strip()
+        if len(code) != 6:
+            self.stinky_text = 'Invalid code length'
+            self.valid_text(False, True)
+            self.valid(False)
+            return
+        else:
+            self.valid(True)
+
+        def change_icon(show=True, *a):
+            try:
+                load_icon = screen_manager.current_screen.load_icon
+                Animation.stop_all(load_icon)
+                Animation(opacity=1 if show else 0, duration=0.15).start(load_icon)
+            except AttributeError:
+                pass
+
+        def background(*a):
+            self.checking = True
+            data = None
+
+            Clock.schedule_once(functools.partial(change_icon, True), 0)
+            if constants.check_port(self.ip, int(self.port), timeout=5):
+                data = constants.api_manager.submit_pair(self.ip, self.port, code)
+
+
+            Clock.schedule_once(functools.partial(change_icon, False), 0)
+            self.checking = False
+
+            try:
+                if not data or 'detail' in data:
+                    self.stinky_text = '  Unable to connect or invalid code'
+                    self.fail_count += 1
+                    self.valid_text(False, True)
+                    self.valid(False)
+            except:
+                pass
+
+            if self.fail_count >= 3 and screen_manager.current_screen.name == 'TelepathManagerScreen':
+                Clock.schedule_once(functools.partial(screen_manager.current_screen.show_pair_input, True), 0)
+                return
+
+            if data and screen_manager.current_screen.name == 'TelepathManagerScreen':
+                def back_to_menu(*a):
+                    constants.server_manager.refresh_list()
+                    screen_manager.current = 'ServerManagerScreen'
+                    constants.screen_tree = ['MainMenuScreen']
+                    server_name = data['nickname'] if data['nickname'] else data['host']
+                    telepath_banner(f"Successfully paired '${server_name}$'", True, play_sound='popup_telepath_success.wav')
+                Clock.schedule_once(back_to_menu, 0)
+                return
+        if not self.checking:
+            threading.Timer(0, background).start()
+
+    # Ignore popup text
+    def insert_text(self, substring, from_undo=False):
+        substring = substring.upper()
+        if len(substring) > 1:
+            substring = ''
+
+        if not self.text and substring == " ":
+            substring = ""
+
+        elif len(self.text) < 7:
+            if '\n' in substring:
+                substring = substring.splitlines()[0]
+            s = re.sub('[^a-zA-Z0-9]', '', substring).upper().replace('O', '0')
+
+            super().insert_text(s, from_undo)
+            if len(self.text) == 3:
+                super().insert_text('-')
+
+    def valid_text(self, boolean_value, text):
+        for child in self.parent.children:
+            try:
+                if child.id == "InputLabel":
+
+                # Valid input
+                    if boolean_value:
+                        child.clear_text()
+                        child.disable_text(False)
+
+                # Invalid input
+                    else:
+                        child.update_text(self.stinky_text)
+                        child.disable_text(True)
+                    break
+
+            except AttributeError:
+                pass
+
+    # Special keypress behaviors
+    def keyboard_on_key_down(self, window, keycode, text, modifiers):
+
+        def update_bar(*a):
+            if (not self.text.endswith('-')) or keycode[1] == "backspace":
+                self.text = self.text.replace('-','')
+            if len(self.text.replace('-', '')) > 3:
+                self.text = self.text[:3] + '-' + self.text[3:]
+        Clock.schedule_once(update_bar, 0)
+
+        if keycode[1] == "backspace" and control in modifiers:
+            original_index = self.cursor_col
+            new_text, index = constants.control_backspace(self.text, original_index)
+            self.select_text(original_index - index, original_index)
+            self.delete_selection()
+
+        else:
+            super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+class ParticleMesh(Widget):
+    points = ListProperty()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.direction = []
+        self._generated = False
+
+        self.point_number = 50
+        self.point_radius = 3
+        self.line_width = 1
+        self.speed = 0.05
+        self.max_line_length = 200
+
+        self.line_color = (0.55, 0.55, 0.8)
+        self.point_color = (0.8, 0.8, 1)
+
+        # Generate points and fade in
+        self.opacity = 0
+        self.bind(size=self.plot_points)
+
+    def show(self, *a):
+        Animation(opacity=1, duration=3, transition='out_sine').start(self)
+
+    def plot_points(self, *a):
+        if self.height > 200 and not self._generated:
+            Clock.schedule_once(self.show, 0)
+            self._generated = True
+            for _ in range(self.point_number):
+                x = random.randint(0, self.width)
+                y = random.randint(0, self.height)
+                self.points.extend([x, y])
+                self.direction.append(random.randint(0, 300))
+            Clock.schedule_interval(self.update_positions, self.speed)
+
+    def draw_lines(self):
+        self.canvas.after.clear()
+        with self.canvas.after:
+            for i in range(0, len(self.points), 2):
+                for j in range(i + 2, len(self.points), 2):
+                    d = self.distance_between_points(self.points[i], self.points[i + 1], self.points[j], self.points[j + 1])
+                    if d > self.max_line_length:
+                        continue
+                    opacity = 1 - (d / self.max_line_length)
+                    Color(rgba=[*self.line_color, opacity])
+                    Line(points=[self.points[i], self.points[i + 1], self.points[j], self.points[j + 1]], width=self.line_width)
+                    Color(rgba=[*self.point_color, opacity])
+                Ellipse(pos=(self.points[i] - self.point_radius, self.points[i + 1] - self.point_radius), size=(self.point_radius * 2, self.point_radius * 2))
+
+    def update_positions(self, *args):
+        step = 1
+        for i, j in zip(range(0, len(self.points), 2), range(len(self.direction))):
+            theta = self.direction[j]
+            self.points[i] += step * math.cos(theta)
+            self.points[i + 1] += step * math.sin(theta)
+
+            if self.off_screen(self.points[i], self.points[i + 1]):
+                self.direction[j] = 90 + self.direction[j]
+
+        self.draw_lines()
+
+    @staticmethod
+    def distance_between_points(x1, y1, x2, y2):
+        return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
+
+    def off_screen(self, x, y):
+        return x < -5 or x > self.width + 5 or y < -5 or y > self.height + 5
+
+class TelepathManagerScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.background_color = constants.brighten_color(constants.background_color, -0.09)
+        self.back_button = None
+        self.help_button = None
+        self.pair_button = None
+        self.api_input = None
+        self.host_input = None
+        self.confirm_input = None
+        self.load_icon = None
+        self.page_speed = 0.15
+
+        with self.canvas.before:
+            self.canvas.clear()
+
+        with self.canvas.before:
+            self.color = Color(*self.background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+        # Layouts
+        self.main_layout = None
+        self.pair_layout = None
+        self.confirm_layout = None
+
+    def on_pre_enter(self, *args):
+        constants.api_manager.pair_listen = True
+        return super().on_pre_enter(*args)
+
+    def on_pre_leave(self, *args):
+        constants.api_manager.pair_listen = False
+        return super().on_pre_leave(*args)
+
+    def show_pair_input(self, back=False, show=True):
+        self.pair_button.disabled = True
+        if show:
+            self.back_button.custom_func = self.main_menu
+            if self.pair_layout:
+                self.pair_layout.clear_widgets()
+
+            self.pair_layout = FloatLayout()
+            self.pair_layout.opacity = 0
+            self.pair_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.55}))
+            self.pair_layout.add_widget(HeaderText("Enter the IPv4/port you wish to connect", 'make sure "share this instance" is enabled on the server', (0, 0.75)))
+            self.host_input = TelepathHostInput(pos_hint={"center_x": 0.5, "center_y": 0.45}, text='')
+            self.pair_layout.add_widget(self.host_input)
+
+            # Spinning pickaxe
+            load_icon = Image()
+            load_icon.id = "load_icon"
+            load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+            load_icon.size_hint_max = (self.host_input.height / 2.5, self.host_input.height / 2.5)
+            load_icon.color = (0.6, 0.6, 1, 1)
+            load_icon.pos_hint = {"center_y": 0.45}
+            load_icon.allow_stretch = True
+            load_icon.anim_delay = constants.anim_speed * 0.02
+            load_icon.opacity = 0
+            if self.load_icon and self.confirm_layout:
+                self.confirm_layout.remove_widget(self.load_icon)
+            self.load_icon = load_icon
+            self.pair_layout.add_widget(load_icon)
+            def recenter(*a):
+                def r(*a):
+                    load_icon.x = Window.center[0] - (self.host_input.width / 2) + 13
+                Clock.schedule_once(r, 0)
+            self.pair_layout.bind(pos=recenter, size=recenter)
+
+            # Switch "screens"
+            if back:
+                def after(*a):
+                    self.confirm_layout.opacity = 0
+                    self.remove_widget(self.confirm_layout)
+                    self.add_widget(self.pair_layout)
+                    Animation(opacity=1, duration=self.page_speed).start(self.pair_layout)
+                Animation.stop_all(self.confirm_layout)
+                Animation(opacity=0, duration=self.page_speed).start(self.confirm_layout)
+                Clock.schedule_once(after, self.page_speed + 0.05)
+
+            else:
+                def after(*a):
+                    self.main_layout.opacity = 0
+                    self.remove_widget(self.main_layout)
+                    self.add_widget(self.pair_layout)
+                    Animation(opacity=1, duration=self.page_speed).start(self.pair_layout)
+                Animation.stop_all(self.main_layout)
+                Animation(opacity=0, duration=self.page_speed).start(self.main_layout)
+                Clock.schedule_once(after, self.page_speed + 0.05)
+
+    def confirm_pair_input(self, ip: str, port: int, show=True):
+        self.pair_button.disabled = True
+        self.back_button.custom_func = functools.partial(self.show_pair_input, True)
+        if show:
+            if self.confirm_layout:
+                self.confirm_layout.clear_widgets()
+
+            self.confirm_layout = FloatLayout()
+            self.confirm_layout.opacity = 0
+            self.confirm_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
+            self.confirm_layout.add_widget(HeaderText(f"Enter the pair code from:   $[color=#AAAAEE]{ip}[/color]$", 'if headless, use the "$telepath pair$" command', (0, 0.75)))
+            self.confirm_input = TelepathCodeInput(ip, port, pos_hint={"center_x": 0.5, "center_y": 0.45}, text='')
+            self.confirm_layout.add_widget(self.confirm_input)
+
+
+            # Spinning pickaxe
+            load_icon = Image()
+            load_icon.id = "load_icon"
+            load_icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+            load_icon.size_hint_max = (self.host_input.height, self.host_input.height)
+            load_icon.color = (0.6, 0.6, 1, 1)
+            load_icon.pos_hint = {"center_y": 0.45}
+            load_icon.allow_stretch = True
+            load_icon.anim_delay = constants.anim_speed * 0.02
+            load_icon.opacity = 0
+            if self.load_icon and self.pair_layout:
+                self.pair_layout.remove_widget(self.load_icon)
+            self.load_icon = load_icon
+            self.confirm_layout.add_widget(load_icon)
+            def recenter(*a):
+                def r(*a):
+                    load_icon.x = Window.center[0] - (self.host_input.width / 2) + 70
+                Clock.schedule_once(r, 0)
+            self.confirm_layout.bind(pos=recenter, size=recenter)
+
+
+            # Switch "screens"
+            def after(*a):
+                self.pair_layout.opacity = 0
+                self.remove_widget(self.pair_layout)
+                self.add_widget(self.confirm_layout)
+                Animation(opacity=1, duration=self.page_speed).start(self.confirm_layout)
+            Animation.stop_all(self.pair_layout)
+            Animation(opacity=0, duration=self.page_speed).start(self.pair_layout)
+            self.confirm_input.grab_focus()
+            Clock.schedule_once(after, self.page_speed + 0.05)
+
+    def main_menu(self):
+        # Switch "screens"
+        def after(*a):
+            self.back_button.custom_func = None
+            self.pair_button.disabled = False
+            self.pair_layout.opacity = 0
+            self.remove_widget(self.pair_layout)
+            self.add_widget(self.main_layout)
+            Animation(opacity=1, duration=self.page_speed).start(self.main_layout)
+        Animation.stop_all(self.pair_layout)
+        Animation(opacity=0, duration=self.page_speed).start(self.pair_layout)
+        Clock.schedule_once(after, self.page_speed + 0.05)
+
+    def generate_menu(self, **kwargs):
+        self.main_layout = FloatLayout()
+        self.main_layout.opacity = 0
+
+        # Add particle background and gradient on top
+        particles = ParticleMesh()
+        self.add_widget(particles)
+
+        # Menu shadow
+        shadow = Image(source=os.path.join(constants.gui_assets, 'menu_shadow.png'))
+        shadow.color = self.background_color
+        shadow.opacity = 0.8
+        shadow.size_hint_max = (600, 600)
+        shadow.allow_stretch = True
+        shadow.keep_ratio = False
+        shadow.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+        self.add_widget(shadow)
+
+        gradient = Image(source=os.path.join(constants.gui_assets, 'telepath_gradient.png'))
+        gradient.size_hint_max = (None, None)
+        gradient.allow_stretch = True
+        gradient.keep_ratio = False
+        gradient.opacity = 0.6
+        gradient.color = constants.brighten_color(self.background_color, 0.03)
+        self.add_widget(gradient)
+
+
+        # Help button
+        def show_help():
+            help_text = """$Telepath$ is an $auto-mcs$ protocol to control remote sessions seamlessly. For example, $Telepath$ can connect a local computer to an instance of $auto-mcs$ running on a different computer, or a VPS in the cloud.
+            
+To connect via $Telepath$, enable “share this instance” on the server you intend to connect. Then click “Pair a Server” on the client and follow the prompts.
+
+Once paired, remote servers will appear in the Server Manager and can be interacted with like normal. You can also import or create a server on a $Telepath$ instance."""
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_popup,
+                    "controls",
+                    "About $Telepath$",
+                    help_text,
+                    (None)
+                ),
+                0
+            )
+        self.help_button = IconButton('help', {}, (70, 60), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_help)
+        self.add_widget(self.help_button)
+
+
+
+        # Add telepath logo
+        logo = Image(source=os.path.join(constants.gui_assets, 'telepath_logo.png'), allow_stretch=True, size_hint=(None, None), width=dp(400), pos_hint={"center_x": 0.5, "center_y": 0.77})
+        logo.color = (0.8, 0.8, 1, 0.9)
+        self.main_layout.add_widget(logo)
+
+        session_splash = Label(pos_hint={"center_y": 0.7}, color=(0.7, 0.7, 1, 0.4), font_name=os.path.join(constants.gui_assets, 'fonts', constants.fonts['medium']), font_size=sp(25))
+        session_splash.text = 'simplified remote access'
+        self.main_layout.add_widget(session_splash)
+
+
+        if constants.server_manager.telepath_servers:
+            def show_manager(*a):
+                screen_manager.current = "TelepathInstanceScreen"
+            self.pair_button = color_button("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png', click_func=show_manager, color=(0.8, 0.8, 1, 1))
+            self.main_layout.add_widget(self.pair_button)
+
+            pair_pos = (0.5, 0.42)
+            enable_pos = (0.5, 0.29)
+            back_pos = (0.5, 0.13)
+
+        else:
+            pair_pos = (0.5, 0.5)
+            enable_pos = (0.5, 0.35)
+            back_pos = (0.5, 0.17)
+
+        self.pair_button = color_button("PAIR A SERVER", position=pair_pos, icon_name='telepath.png', click_func=functools.partial(self.show_pair_input, False), color=(0.8, 0.8, 1, 1))
+        self.main_layout.add_widget(self.pair_button)
+
+
+        # Enable API toggle button
+        def toggle_api(state, only_input=False, *a):
+            if not only_input:
+                constants.app_config.telepath_settings['enable-api'] = state
+                constants.app_config.save_config()
+                text = 'enabled' if state else 'disabled'
+                constants.telepath_banner(f'$Telepath$ API is now {text}', state)
+
+            # Update hint text
+            if state:
+                port = constants.api_manager.port
+                ip = constants.api_manager.host
+                if ip == '0.0.0.0':
+                    ip = constants.get_private_ip()
+                if constants.public_ip:
+                    if constants.check_port(constants.public_ip, port, 0.05):
+                        ip = constants.public_ip
+                new_text = f">   {ip}:{port}"
+                self.api_input.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                self.api_input.hint_text_color = (0.6, 0.9, 1, 1)
+                constants.api_manager.start()
+
+            else:
+                new_text = 'share this instance'
+                self.api_input.hint_text_color = (0.6, 0.6, 1, 0.8)
+                self.api_input.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+                constants.api_manager.stop()
+
+            self.api_input.hint_text = new_text
+        sub_layout = RelativeLayout()
+        self.api_input = blank_input(pos_hint={"center_x": enable_pos[0], "center_y": enable_pos[1]}, hint_text="share this instance")
+        sub_layout.add_widget(self.api_input)
+        sub_layout.add_widget(toggle_button('api', enable_pos, default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api))
+        self.main_layout.add_widget(sub_layout)
+        if constants.app_config.telepath_settings['enable-api']:
+            toggle_api(True, True)
+
+
+        # Static content on each page
+        self.add_widget(generate_footer('$Telepath$', no_background=True))
+        self.add_widget(self.main_layout)
+        Animation(opacity=1, duration=1).start(self.main_layout)
+        self.back_button = ExitButton('Back', back_pos, cycle=True)
+        self.add_widget(self.back_button)
+
+
+# Telepath notifications and pairing
+class TelepathPair():
+    def __init__(self):
+        self.is_open = False
+        self.pair_data = {}
+
+    def close(self):
+        if not self.is_open:
+            return
+
+        current_user = constants.api_manager.current_user
+        if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
+            message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
+            color = (0.553, 0.902, 0.675, 1)
+            sound = 'popup_telepath_success.wav'
+        else:
+            message = f'$Telepath$ pair request expired'
+            color = (0.937, 0.831, 0.62, 1)
+            sound = 'popup_warning.wav'
+
+        # Reset token if cancelled
+        if constants.api_manager.pair_data:
+            constants.api_manager.pair_data = {}
+
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_banner,
+                color,
+                message,
+                "telepath.png",
+                2.5,
+                {"center_x": 0.5, "center_y": 0.965},
+                sound
+            ), 0.1
+        )
+
+        self.is_open = False
+        self.pair_data = {}
+
+    def open(self, data: dict):
+        if self.is_open:
+            return
+
+        self.pair_data = data
+
+        # If the application is blocked, wait until it's not to show the pop-up
+        def wait_thread(*a):
+            self.is_open = True
+            while constants.ignore_close or screen_manager.current_screen.popup_widget:
+                time.sleep(1)
+
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_popup,
+                    "pair_request",
+                    " ",
+                    self.pair_data,
+                    self.close
+                ), 0
+            )
+
+        threading.Timer(0, wait_thread).start()
+constants.telepath_pair = TelepathPair()
+
+# Telepath banner endpoint for sending remote notifications
+def telepath_banner(message: str, finished: bool, play_sound=None):
+    if screen_manager.current_screen.show_banner:
+        Clock.schedule_once(
+            functools.partial(
+                screen_manager.current_screen.show_banner,
+                (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
+                message,
+                "checkmark-circle-sharp.png" if finished else "telepath.png",
+                3,
+                {"center_x": 0.5, "center_y": 0.965},
+                play_sound
+            ), 0.1
+        )
+constants.telepath_banner = telepath_banner
+telepath.create_endpoint(constants.telepath_banner, 'main', True)
+
+# Handle UI logic when telepath session gets disconnected
+def telepath_disconnect():
+    try:
+        # This is handled in MenuBackground.on_pre_enter()
+        if constants.server_manager.current_server:
+            constants.server_manager.current_server._disconnected = True
+    except AttributeError:
+        pass
+constants.telepath_disconnect = telepath_disconnect
+
+def check_telepath_disconnect():
+    sm = constants.server_manager
+    server_obj = sm.current_server
+
+    if server_obj:
+        telepath_data = server_obj._telepath_data
+        if telepath_data:
+
+            # Make a better health check at some point, this is really expensive with latency
+            server_obj._check_object_init()
+            if server_obj._disconnected:
+                sm.current_server = None
+
+                if telepath_data and screen_manager.current_screen.name not in ['MainMenuScreen', 'ServerManagerScreen']:
+                    constants.server_manager.refresh_list()
+                    screen_manager.current = 'ServerManagerScreen'
+                    constants.screen_tree = ['MainMenuScreen']
+
+                server_name = telepath_data['nickname'] if telepath_data['nickname'] else telepath_data['host']
+                telepath_banner(f"Lost connection to $'{server_name}'$", False)
+                return True
+
+    return False
+
 
 
 
@@ -22492,10 +25142,11 @@ class MainApp(App):
 
     # Check if window pos is set in config
     preconfigured = False
-    if constants.geometry:
-        pos = constants.geometry['pos']
-        size = constants.geometry['size']
-        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1]):
+    if constants.app_config.geometry:
+        constants.last_window = constants.app_config.geometry
+        pos = constants.app_config.geometry['pos']
+        size = constants.app_config.geometry['size']
+        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50):
             Window.size = size
             Window.left = pos[0]
             Window.top = pos[1]
@@ -22523,26 +25174,9 @@ class MainApp(App):
     def exit_check(self, force_close=False, *args):
 
         # Write window size to global config
-        global_conf = {}
-        try:
-            constants.folder_check(constants.configDir)
-            if os.path.exists(constants.global_conf):
-                try:
-                    with open(constants.global_conf, 'r') as f:
-                        conf = constants.json.loads(f.read())
-                        if conf:
-                            global_conf = conf
-                except:
-                    pass
-            with open(constants.global_conf, 'w+') as f:
-                save_window_pos()
-                global_conf['fullscreen'] = (Window.width > (constants.window_size[0] + 400))
-                global_conf['geometry'] = constants.last_window
-                global_conf['locale'] = constants.locale
-                # print(global_conf)
-                f.write(constants.json.dumps(global_conf, indent=2))
-        except Exception as e:
-            print(e)
+        save_window_pos()
+        constants.app_config.fullscreen = (Window.width > (constants.window_size[0] + 400))
+        constants.app_config.geometry = constants.last_window
 
         if force_close:
             Window.close()
@@ -22583,11 +25217,11 @@ class MainApp(App):
         screen_manager.transition = FadeTransition(duration=0.115)
 
         # Close splash screen if compiled
-        if constants.app_compiled and constants.os_name != 'macos':
+        if constants.app_compiled and constants.os_name == 'windows':
             import pyi_splash
             pyi_splash.close()
 
-        if constants.fullscreen or constants.is_docker:
+        if constants.app_config.fullscreen or constants.is_docker:
             Window.maximize()
         Window.show()
 
@@ -22615,7 +25249,6 @@ class MainApp(App):
             #         no_color = (0.6, 0.6, 0.88, 1)
             #         screen_manager.current_screen.performance_panel.player_widget.update_data(
             #             [{'text': 'KChicken', 'color': op_color},
-            #              {'text': 'LeopardGecko22', 'color': op_color},
             #              {'text': 'bgmombo', 'color': no_color},
             #              {'text': 'Test1234', 'color': no_color},
             #              {'text': 'Im_a_USERNAME', 'color': no_color},
@@ -22626,6 +25259,23 @@ class MainApp(App):
             #     #     screen_manager.current = "ServerAddonScreen"
             #     # Clock.schedule_once(open_ams, 1)
             # Clock.schedule_once(open_menu, 0.5)
+        # if not constants.app_compiled:
+        #     constants.new_server_init()
+        #     constants.new_server_info['_telepath_data'] = {"host": "192.168.1.210", "port": 7001, "nickname": "dev-test", "added-servers": {}, "display-name": "dev-test"}
+        #     constants.new_server_info['type'] = 'paper'
+        #     constants.new_server_info['version'] = '1.21'
+        #     constants.new_server_info['name'] = 'auto-creating'
+        #     constants.new_server_info['acl_object'] = acl.AclManager(constants.new_server_info['name'])
+        #     constants.new_server_info['addon_objects'] = [addons.get_addon_file(a, constants.new_server_info) for a in glob(r'C:\Users\macarooni machine\AppData\Roaming\.auto-mcs\Servers\pluginupdate test\plugins\*.jar')]
+        #     # constants.new_server_info['addon_objects'].extend([addons.get_addon_url(addons.get_addon_info(a, constants.new_server_info), constants.new_server_info, compat_mode=True) for a in addons.search_addons("worldedit", constants.new_server_info)])
+        #
+        #     #     addon_search = search_addons("worldedit", properties)
+        #     #     addon_search[0] = get_addon_info(addon_search[0], properties)
+        #     #     addon_search[0] = get_addon_url(addon_search[0], properties, compat_mode=True)
+        #
+        #     def test(*a):
+        #         screen_manager.current = "CreateServerReviewScreen"
+        #     Clock.schedule_once(test, 1)
 
 
         # Process --launch flag
@@ -22641,7 +25291,6 @@ class MainApp(App):
                         if len(constants.boot_launches) > 1:
                             while server not in constants.server_manager.running_servers:
                                 time.sleep(0.5)
-                                print(constants.server_manager.running_servers)
                             Clock.schedule_once(previous_screen, 1.5)
                             time.sleep(2)
 
@@ -22824,7 +25473,3 @@ def run_application():
     except Exception as e:
         Window.close()
         raise e
-
-
-if constants.app_compiled and constants.debug is True:
-    sys.stderr = open("error.log", "a")
