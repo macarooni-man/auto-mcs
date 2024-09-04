@@ -522,7 +522,8 @@ class TelepathManager():
                         self._force_logout(self.current_user['session_id'])
 
                     # This can change later, but currently, there can only be one telepath user globally
-                    if self.current_user and not (self.current_user['id'] == session['id'] and self.current_user['ip'] == request.client.host):
+                    # (self.current_user['id'] == session['id'] and self.current_user['ip'] == request.client.host)
+                    if self.current_user and not (self.current_user['ip'] == request.client.host):
                         raise HTTPException(
                             status_code=status.HTTP_409_CONFLICT,
                             detail="Logged in from another session",
