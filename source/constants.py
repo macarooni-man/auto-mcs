@@ -2186,6 +2186,7 @@ def validate_version(server_info: dict):
 
             try:
                 if get_url(url, return_code=True) == 200:
+
                     serverLink = url
 
                     # Upon valid URL

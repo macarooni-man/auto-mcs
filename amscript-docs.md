@@ -852,7 +852,7 @@ Inspects installed add-ons to determine if Geyser and Floodgate are installed. R
 #### addon.installed_addons
  - `dict`, contains lists of `AddonFileObject` with the following structure:
  ```python
-acl.rules = {
+addon.installed_addons = {
     'enabled': [AddonFileObject, AddonFileObject, ...],
     'disabled': [AddonFileObject, AddonFileObject, ...]
 }
@@ -1051,7 +1051,7 @@ Returns a single `list` of both enabled and disabled `AmsFileObject` from `amscr
 #### amscript.installed_scripts
  - `dict`, contains lists of `AmsFileObject` with the following structure:
  ```python
-acl.rules = {
+amscript.installed_scripts = {
     'enabled': [AmsFileObject, AmsFileObject, ...],
     'disabled': [AmsFileObject, AmsFileObject, ...]
 }
