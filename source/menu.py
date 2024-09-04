@@ -4555,8 +4555,9 @@ class RelativeIconButton(RelativeLayout):
             self.bind(size=self.resize)
             self.bind(pos=self.resize)
 
-        Clock.schedule_once(self.text.texture_update, 0)
-        Clock.schedule_once(self.resize, 0)
+        if screen_manager.current_screen.name == 'MainMenuScreen':
+            Clock.schedule_once(self.text.texture_update, 0)
+            Clock.schedule_once(self.resize, 0)
 
 class AnimButton(FloatLayout):
 
