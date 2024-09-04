@@ -3562,7 +3562,7 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
                     click_func = func_dict['donate']
             except:
                 pass
-            footer.add_widget(IconButton('support us', {}, (102, 5), (None, None), 'sponsor.png', clickable=True, click_func=click_func))
+            footer.add_widget(IconButton('support us', {}, (102, 5), (None, None), 'sponsor.png', clickable=True, force_color=[[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], 'pink'], click_func=click_func, text_hover_color=(0.85, 0.6, 0.95, 1)))
 
         else:
             footer.add_widget(IconButton('no connection', {}, (0, 5), (None, None), 'ban.png', clickable=True, force_color=[[(0.07, 0.07, 0.07, 1), (0.7, 0.7, 0.7, 1)], 'gray']))
@@ -9488,6 +9488,19 @@ class MainMenuScreen(MenuBackground):
                     if show_anim:
                         constants.app_config.sponsor_reminder = int(dt.now().strftime('%y%m'))
                         def anim(*a):
+                            anim_background = Image(
+                                source=os.path.join(constants.gui_assets, 'menu_shadow.png'),
+                                allow_stretch=True,
+                                size_hint=(None, None),
+                                width=dp(100),
+                                height=dp(100),
+                                color=(0.9, 0.65, 1, 0.08)
+                            )
+                            footer.add_widget(anim_background)
+                            anim_background.pos = (88, -18)
+                            anim_background.opacity = 0
+                            Animation(opacity=1, duration=0.1).start(anim_background)
+
                             sponsor_anim = Image(
                                 source=os.path.join(constants.gui_assets, 'animations', 'sponsor.webp'),
                                 allow_stretch=True,
@@ -9501,6 +9514,7 @@ class MainMenuScreen(MenuBackground):
                             footer.add_widget(sponsor_anim)
                             sponsor_anim.pos = (113, 5)
                             def a(*a):
+                                Animation(opacity=0, duration=0.5).start(anim_background)
                                 Animation(opacity=0, duration=0.5).start(sponsor_anim)
                             Clock.schedule_once(a, 0.6)
                         Clock.schedule_once(anim, 1.2)
