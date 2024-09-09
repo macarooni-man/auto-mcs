@@ -3588,10 +3588,22 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             for jar in glob(os.path.join(str(path), 'minecraft_server*.jar')):
                                 copy(jar, test_server)
 
-                        if file_name != "server":
-                            if os.path.exists("server.jar"):
-                                os.remove("server.jar")
-                            run_proc(f"{'move' if os_name == 'windows' else 'mv'} {file_name}.jar server.jar")
+                        if import_data['type'] == 'fabric':
+                            for properties in glob(os.path.join(str(path), '*.properties')):
+                                copy(properties, test_server)
+                            for folder in ['libraries', 'versions']:
+                                if os.path.exists(os.path.join(str(path), folder)):
+                                    copy_to(os.path.join(str(path), folder), test_server, folder)
+                            for jar in glob(os.path.join(str(path), '*server*.jar')):
+                                copy(jar, test_server)
+                            if os.path.exists(os.path.join(test_server, 'fabric-server-launch.jar')):
+                                file_name = 'fabric-server-launch.jar'
+
+                        else:
+                            if file_name != "server":
+                                if os.path.exists("server.jar"):
+                                    os.remove("server.jar")
+                                run_proc(f"{'move' if os_name == 'windows' else 'mv'} {file_name}.jar server.jar")
 
                         time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
 
@@ -3605,7 +3617,7 @@ eula=true"""
 
                         # Run legacy version of java
                         if import_data['type'] == "forge":
-                            server = subprocess.Popen(f"\"{java_executable['legacy']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar server.jar nogui", stdout=subprocess.DEVNULL, shell=True)
+                            server = subprocess.Popen(f"\"{java_executable['legacy']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar {file_name} nogui", shell=True)
 
                         # Run latest version of java
                         else:
@@ -3613,7 +3625,7 @@ eula=true"""
                             if import_data['type'] in ["paper", "purpur"]:
                                 copy_to(os.path.join(str(path), 'cache'), test_server, 'cache', True)
 
-                            server = subprocess.Popen(f"\"{java_executable['modern']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar server.jar nogui", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
+                            server = subprocess.Popen(f"\"{java_executable['modern']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar {file_name} nogui", shell=True)
 
                         found_version = False
                         timeout = 0
