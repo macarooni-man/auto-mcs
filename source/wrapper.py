@@ -125,7 +125,7 @@ if __name__ == '__main__':
 
         elif constants.os_name == "macos":
             command = f'ps -e | grep .app/Contents/MacOS/{os.path.basename(constants.launch_path)}'
-            response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and line]
+            response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2:
                 print('Closed: auto-mcs is already open')
                 sys.exit(10)
@@ -133,7 +133,7 @@ if __name__ == '__main__':
         # Linux
         else:
             command = f'ps -e | grep {os.path.basename(constants.launch_path)}'
-            response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and line]
+            response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2:
                 print('Closed: auto-mcs is already open')
                 sys.exit(10)

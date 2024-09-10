@@ -72,7 +72,7 @@ try:
 except:
     import uuid
     UNIQUE_ID = int(str(uuid.getnode()).ljust(64, '0'))
-    
+
 SESSION_ID = codecs.encode(os.urandom(8), 'hex').decode()
 ALGORITHM = "HS256"
 
