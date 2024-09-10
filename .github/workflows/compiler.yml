@@ -262,7 +262,7 @@ jobs:
             spec_file="auto-mcs.linux.spec"
             cd build-tools
             current=$( pwd )
-            ls -l /opt/hostedtoolcache/Python/3.9.19/x64
+            ls -l /mnt/python
             /mnt/python/python3.9 -m pip install --upgrade pip setuptools wheel
             /mnt/python/python3.9 -m venv ./venv
             source ./venv/bin/activate
