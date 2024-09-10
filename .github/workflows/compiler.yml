@@ -251,11 +251,12 @@ jobs:
             Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
             sleep 1
             fluxbox > /dev/null 2>&1 &
+            cp --parents -f /usr/lib/libcrypto.so.1.1 /usr/lib64/libcrypt.so.2
+
           shell: alpine.sh --root {0}
 
         - name: Setup upterm session
           uses: lhotari/action-upterm@v1
-          # sudo cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
 
         - name: Compile auto-mcs
           run: |
