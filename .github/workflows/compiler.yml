@@ -243,7 +243,9 @@ jobs:
           uses: jirutka/setup-alpine@v1
           with:
             branch: v3.15
-            volumes: /opt/hostedtoolcache/Python/3.9.19/x64/bin:/mnt/python
+
+        - name: Setup upterm session
+          uses: lhotari/action-upterm@v1
 
         - name: Install Dependencies
           run: |
