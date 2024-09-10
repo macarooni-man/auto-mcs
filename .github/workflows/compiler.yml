@@ -245,7 +245,8 @@ jobs:
 
         - name: Setup Alpine Linux
           uses: jirutka/setup-alpine@v1
-          volumes: /opt/hostedtoolcache/Python/3.9.19/x64:/mnt/python
+          with:
+            volumes: /opt/hostedtoolcache/Python/3.9.19/x64:/mnt/python
 
         - name: Install Dependencies
           run: |
