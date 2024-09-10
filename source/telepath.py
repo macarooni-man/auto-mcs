@@ -71,7 +71,7 @@ try:
 # If machine ID is busted (like on Alpine), do it the good ol' fashioned way
 except:
     import uuid
-    UNIQUE_ID = int(str(uuid.getnode()).ljust(64, '0'))
+    UNIQUE_ID = str(uuid.getnode()).ljust(64, '0')
 
 SESSION_ID = codecs.encode(os.urandom(8), 'hex').decode()
 ALGORITHM = "HS256"
