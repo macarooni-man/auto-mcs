@@ -256,6 +256,7 @@ jobs:
         - name: Compile auto-mcs
           run: |
             spec_file="auto-mcs.linux.spec"
+            export DISPLAY=:0.0
             cd build-tools
             current=$( pwd )
             python3.9 -m pip install --upgrade pip setuptools wheel
