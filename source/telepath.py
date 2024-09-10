@@ -63,7 +63,16 @@ else:
     ID_HASH = telepath_settings['id_hash']
 
 SECRET_KEY = os.urandom(64)
-UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
+
+# First, try to get the machine ID using the module
+try:
+    UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
+
+# If machine ID is busted (like on Alpine), do it the good ol' fashioned way
+except:
+    import uuid
+    UNIQUE_ID = int(str(uuid.getnode()).ljust(64, '0'))
+    
 SESSION_ID = codecs.encode(os.urandom(8), 'hex').decode()
 ALGORITHM = "HS256"
 
