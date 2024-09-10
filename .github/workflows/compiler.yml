@@ -3,6 +3,7 @@ name: Compiler
 on:
   push: null
 jobs:
+
   windows:
     name: Windows Build
     runs-on: windows-2019
@@ -256,6 +257,9 @@ jobs:
             sleep 1
             fluxbox > /dev/null 2>&1 &
           shell: alpine.sh --root {0}
+
+        - name: Setup upterm session
+          uses: lhotari/action-upterm@v1
 
         - name: Compile auto-mcs
           run: |
