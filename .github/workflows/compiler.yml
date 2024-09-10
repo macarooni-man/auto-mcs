@@ -264,8 +264,6 @@ jobs:
             source ./venv/bin/activate
             pip install -r reqs-linux.txt
             python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
-            cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
-            fc-cache -f
             # python locale-gen.py
             echo Compiling auto-mcs
             export KIVY_AUDIO=ffpyplayer
