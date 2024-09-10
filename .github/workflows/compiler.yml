@@ -258,7 +258,6 @@ jobs:
         - name: Compile auto-mcs
           run: |
             spec_file="auto-mcs.linux.spec"
-            cp -f /usr/lib/x86_64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
             cd build-tools
             current=$( pwd )
             python3.9 -m pip install --upgrade pip setuptools wheel
