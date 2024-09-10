@@ -247,7 +247,7 @@ jobs:
         - name: Setup Alpine Linux
           uses: jirutka/setup-alpine@v1
           with:
-            volumes: /opt/hostedtoolcache/Python/3.9.19/x64:/mnt/python
+            volumes: /bin:/mnt/bin
 
         - name: Install Dependencies
           run: |
@@ -267,8 +267,8 @@ jobs:
             cd build-tools
             current=$( pwd )
             ls -l /mnt/python
-            /mnt/python/python -m pip install --upgrade pip setuptools wheel
-            /mnt/python/python -m venv ./venv
+            /mnt/bin/python3.9 -m pip install --upgrade pip setuptools wheel
+            /mnt/bin/python3.9 -m venv ./venv
             source ./venv/bin/activate
             pip install -r reqs-linux.txt
             python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
