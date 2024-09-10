@@ -237,9 +237,15 @@ jobs:
           uses: actions/checkout@v4
           with:
             fetch-depth: 1
+                    
+        - name: Install Python
+          uses: actions/setup-python@v5
+          with:
+            python-version: '3.9'
 
         - name: Setup Alpine Linux
           uses: jirutka/setup-alpine@v1
+          volumes: /opt/hostedtoolcache/Python/3.9.19/x64:/mnt/python
 
         - name: Install Dependencies
           run: |
@@ -249,11 +255,6 @@ jobs:
             sleep 1
             fluxbox > /dev/null 2>&1 &
           shell: alpine.sh --root {0}
-            
-        - name: Install Python
-          uses: actions/setup-python@v5
-          with:
-            python-version: '3.9'
 
         - name: Compile auto-mcs
           run: |
@@ -261,8 +262,8 @@ jobs:
             cd build-tools
             current=$( pwd )
             ls -l /opt/hostedtoolcache/Python/3.9.19/x64
-            /opt/hostedtoolcache/Python/3.9.19/x64/python3.9 -m pip install --upgrade pip setuptools wheel
-            /opt/hostedtoolcache/Python/3.9.19/x64/python3.9 -m venv ./venv
+            /mnt/python/python3.9 -m pip install --upgrade pip setuptools wheel
+            /mnt/python/python3.9 -m venv ./venv
             source ./venv/bin/activate
             pip install -r reqs-linux.txt
             python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
