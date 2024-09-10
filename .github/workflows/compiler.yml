@@ -283,7 +283,7 @@ jobs:
               echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
             fi
             chmod +x dist/auto-mcs
-          shell: alpine.sh --root {0}
+          shell: alpine.sh {0}
 
         - name: Upload Binary
           uses: actions/upload-artifact@v4
