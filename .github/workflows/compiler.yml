@@ -244,12 +244,9 @@ jobs:
           with:
             branch: v3.15
 
-        - name: Setup upterm session
-          uses: lhotari/action-upterm@v1
-
         - name: Install Dependencies
           run: |
-            apk add xvfb fluxbox
+            apk add xvfb fluxbox python3
             export DISPLAY=:0.0
             Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
             sleep 1
