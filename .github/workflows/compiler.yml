@@ -246,7 +246,7 @@ jobs:
 
         - name: Install Dependencies
           run: |
-            apk add xvfb fluxbox python3 py3-pip gcc gstreamer-dev sdl2_mixer-dev sdl2_ttf-dev pangomm-dev sdl2_image-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev portaudio-dev musl-dev linux-headers
+            apk add xvfb fluxbox python3 py3-pip gcc gstreamer-dev sdl2_mixer-dev sdl2_ttf-dev pangomm-dev sdl2_image-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev portaudio-dev musl-dev linux-headers mtdev-dev mtdev
             export DISPLAY=:0.0
             Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
             sleep 1
