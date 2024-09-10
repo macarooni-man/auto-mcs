@@ -49,7 +49,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install python@3.9 python-tk@3.9 upx create-dmg
+          brew install python@3.9 python-tk@3.9 create-dmg
       
       - name: Compile auto-mcs
         run: |
