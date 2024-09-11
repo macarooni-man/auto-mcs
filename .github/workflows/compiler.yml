@@ -230,7 +230,7 @@ jobs:
 
 
   alpine:
-      name: Alpine Build
+      name: Docker Build
       runs-on: ubuntu-latest
       steps:
 
@@ -246,7 +246,7 @@ jobs:
 
         - name: Install Dependencies
           run: |
-            apk add xvfb fluxbox python3 py3-pip gcc gstreamer-dev sdl2_mixer-dev sdl2_ttf-dev pangomm-dev sdl2_image-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev portaudio-dev musl-dev linux-headers mtdev-dev mtdev
+            apk add xvfb fluxbox python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev musl-dev linux-headers mtdev-dev mtdev
             export DISPLAY=:0.0
             Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
             sleep 1
@@ -258,18 +258,15 @@ jobs:
 
         - name: Compile auto-mcs
           run: |
-            spec_file="auto-mcs.linux.spec"
+            spec_file="auto-mcs.docker.spec"
             export DISPLAY=:0.0
             cd build-tools
             current=$( pwd )
             python3.9 -m pip install --upgrade pip setuptools wheel
             python3.9 -m venv ./venv
             source ./venv/bin/activate
-            pip install -r reqs-linux.txt
-            python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
-            # python locale-gen.py
+            pip install -r reqs-docker.txt
             echo Compiling auto-mcs
-            export KIVY_AUDIO=ffpyplayer
             cd $current
             cp $spec_file ../source
             cd ../source

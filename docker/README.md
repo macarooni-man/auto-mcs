@@ -6,3 +6,4 @@ This is a placeholder for now
 - [ ] Add persistent directory for applicationFolder
 - [ ] Remove Kivy dependencies from Alpine build with a custom .spec and reqs
 - [ ] Eventually turn Alpine Build into Docker image, and don't upload Alpine as an artifact
+- [ ] If Alpine is detected, set the is_docker flag to True in check_docker()
