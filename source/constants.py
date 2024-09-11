@@ -41,7 +41,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.2"
+app_version = "2.2.1"
 ams_version = "1.2.1"
 telepath_version = "1.0.0"
 app_title = "auto-mcs"
@@ -276,6 +276,10 @@ def run_proc(cmd, return_text=False):
 
 # Check if running in Docker
 def check_docker() -> bool:
+    if os_name == 'linux':
+        if 'Alpine' in run_proc('uname -v', True).strip():
+            return True
+
     cgroup = Path('/proc/self/cgroup')
     return Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
 is_docker = check_docker()

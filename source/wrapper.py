@@ -83,7 +83,7 @@ if __name__ == '__main__':
 
 
         # Force headless if display is not set on Linux
-        if constants.os_name == 'linux' and 'DISPLAY' not in os.environ:
+        if (constants.os_name == 'linux' and 'DISPLAY' not in os.environ) or constants.is_docker:
             constants.headless = True
 
         # Close splash if headless & compiled

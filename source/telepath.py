@@ -21,7 +21,6 @@ from functools import partial
 from copy import deepcopy
 from munch import Munch
 from glob import glob
-import machineid
 import threading
 import requests
 import inspect
@@ -66,6 +65,7 @@ SECRET_KEY = os.urandom(64)
 
 # First, try to get the machine ID using the module
 try:
+    import machineid
     UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
 
 # If machine ID is busted (like on Alpine), do it the good ol' fashioned way

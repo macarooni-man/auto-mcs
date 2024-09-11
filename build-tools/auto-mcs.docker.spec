@@ -13,6 +13,26 @@ hiddenimports = ['dataclasses', 'nbt.world', 'pkg_resources.extern']
 hiddenimports.extend(collect_submodules('uvicorn'))
 
 sys.modules['FixTk'] = None
+excluded_imports = [
+
+    # Local modules
+    'menu',
+    'amseditor',
+    'logviewer',
+
+    # External modules
+    'simpleaudio',
+    'pandas',
+    'matplotlib',
+    'Kivy',
+    'FixTk',
+    'tcl',
+    'tk',
+    '_tkinter',
+    'tkinter',
+    'Tkinter',
+    'pygments'
+]
 
 
 a = Analysis(['wrapper.py'],
@@ -27,7 +47,7 @@ a = Analysis(['wrapper.py'],
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],
-             excludes=['simpleaudio', 'pandas', 'matplotlib', 'Kivy', 'menu', 'FixTk', 'tcl', 'tk', '_tkinter', 'tkinter', 'Tkinter'],
+             excludes=excluded_imports,
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher,
@@ -45,8 +65,19 @@ excluded_binaries = [
     'libfontconfig.so.1',
     'libreadline',
     'libncursesw',
-    'libasound'
-	]
+    'libasound',
+    'libharfbuzz',
+    'libfreetype',
+    'libSDL2',
+    'libX11',
+    'libgstreamer',
+    'libtiff',
+    'libjpeg',
+    'libopenjp2',
+    'libwebp',
+    'libgraphite2',
+    'libglapi'
+]
 
 for binary in a.binaries:
     remove = False
@@ -73,7 +104,7 @@ exe = EXE(pyz,
           debug=False,
           bootloader_ignore_signals=False,
           strip=False,
-          upx=True,
+          upx=False,
           upx_exclude=[],
           runtime_tmpdir=None,
           console=True,

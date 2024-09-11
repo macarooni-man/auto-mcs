@@ -468,7 +468,7 @@ def update_app(info=False):
 
 
 # Override print
-if not constants.is_admin():
+if not constants.is_admin() and not constants.debug:
     def print(*args, **kwargs):
         telepath_content.set_text(" ".join([str(a) for a in args]))
 
