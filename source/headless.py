@@ -1017,7 +1017,7 @@ loop = urwid.MainLoop(frame, unhandled_input=handle_input, screen=screen)
 def run_application():
 
     # Give an error if elevated
-    if constants.is_admin():
+    if constants.is_admin() and not constants.is_docker:
         print(f"\n> Error:  Running auto-mcs as {'administrator' if constants.os_name == 'windows' else 'root'} can expose your system to security vulnerabilities\n\nPlease restart with standard user privileges to continue")
         return False
 
