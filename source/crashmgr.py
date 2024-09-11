@@ -1,7 +1,4 @@
-from tkinter import Tk, Entry, SUNKEN, Canvas, PhotoImage, CENTER, END
-from platform import platform, architecture
 from operator import itemgetter
-from PIL import ImageTk, Image
 import simpleaudio as sa
 from glob import glob
 import functools
@@ -13,6 +10,13 @@ import os
 
 import constants
 import logviewer
+
+
+# Import Tk if not headless
+if not constants.headless:
+    from tkinter import Tk, Entry, SUNKEN, Canvas, PhotoImage, CENTER, END
+    from platform import platform, architecture
+    from PIL import ImageTk, Image
 
 
 # Remove border on macOS buttons
