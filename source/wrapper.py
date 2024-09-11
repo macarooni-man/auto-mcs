@@ -308,7 +308,7 @@ if __name__ == '__main__':
     # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
     constants.api_manager = telepath.TelepathManager()
     config = constants.app_config
-    if (config.telepath_settings['enable-api'] or constants.headless) and not constants.is_admin():
+    if ((config.telepath_settings['enable-api'] or constants.headless) and not constants.is_admin()) or constants.is_docker:
         constants.api_manager.update_config(config.telepath_settings['api-host'], config.telepath_settings['api-port'])
         constants.api_manager.start()
 
