@@ -10,7 +10,9 @@ This is a placeholder for now
 - [ ] On Linux, if headless is run by default due to the DISPLAY not being set, it doesn't start Telepath by default, and possibly some other stuff. Check the logic order
 - [ ] Offer documentation for building the Docker image similar to this: https://hub.docker.com/_/mariadb
 - [ ] Make account for Docker Hub
+      
 <br>
+
 - `dockerfile` is to build the image
 
 - `docker-compose.yml` is to build the container with the image
