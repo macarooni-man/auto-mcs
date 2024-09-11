@@ -41,7 +41,6 @@ a = Analysis(['wrapper.py'],
              datas = [
                         ('./baselib.ams', '.'),
                         ('../build-tools/ca-bundle.crt', '.'),
-                        ('/usr/lib64/libcrypt.so.2', '.'),
                     ],
              hiddenimports=hiddenimports,
              hookspath=[],
