@@ -71,7 +71,6 @@ excluded_binaries = [
     'libSDL2',
     'libX11',
     'libgstreamer',
-    'libopenjp2',
     'libgraphite2',
     'libglapi'
 ]
