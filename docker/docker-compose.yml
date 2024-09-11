@@ -1,0 +1,14 @@
+version: '3'
+services:
+  app:
+    command: ["ttyd", "-p", "8080", "-c", "root:auto-mcs", "./auto-mcs"]
+    image: auto-mcs
+    container_name: auto-mcs
+    build: .
+    stdin_open: true
+    tty: true
+    # Add more ports based on the servers you create
+    ports:
+      - "8080:8080"
+      - "7001:7001"
+      - "25565:25565"
