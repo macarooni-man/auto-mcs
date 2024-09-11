@@ -1245,7 +1245,7 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
             use_tar = False
             if archive_type == 'tar':
                 try:
-                    rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL)
+                    rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     use_tar = rc == 0
 
                 except Exception as e:
@@ -1329,7 +1329,7 @@ def create_archive(file_path: str, export_path: str, archive_type='tar'):
     # Create a .tar archive
     if archive_type == 'tar':
         try:
-            rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL)
+            rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             use_tar = rc == 0
 
         except Exception as e:
@@ -2445,7 +2445,7 @@ def java_check(progress_func=None):
             if (run_proc(f'"{os.path.abspath(modern_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(lts_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(legacy_path)}" -version') == 0):
 
                 # Check for appropriate modern version
-                if run_proc(f'"{os.path.abspath(modern_path)}" --version', return_text=True).startswith(f'java {modern_version}.'):
+                if is_docker or run_proc(f'"{os.path.abspath(modern_path)}" --version', return_text=True).startswith(f'java {modern_version}.'):
 
                     java_executable = {
                         "modern": str(os.path.abspath(modern_path)),
