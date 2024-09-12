@@ -1,19 +1,36 @@
 version: "3"
 services:
   app:
-    command: ["ttyd", "-p", "8080", "-c", "root:auto-mcs", "./auto-mcs"]
+    command: [
+      "auto-mcs-ttyd",
+      "-W",
+      "-t", "disableLeaveAlert=true",
+      "-t", "titleFixed=auto-mcs (docker)",
+      "-t", "fontSize=20",
+      "-t", 'theme={"background": "#1C1C1C"}',
+      "-p", "8080",
+      "-c", "root:auto-mcs",
+      "./auto-mcs"
+    ]
+
     image: auto-mcs
     container_name: auto-mcs
     build: .
     stdin_open: true
     tty: true
-    # Add more ports based on the servers you create
     ports:
+
+      # ttyd web UI
       - "8080:8080"
+
+      # Telepath API (auto-mcs)
       - "7001:7001"
+
+      # Add more ports based on the servers you create
       - "25565:25565"
+
     volumes:
-      - auto-mcs-config:/root/.auto-mcs
+      - auto-mcs-data:/root/.auto-mcs
 
 volumes:
-  auto-mcs-config:
+  auto-mcs-data:

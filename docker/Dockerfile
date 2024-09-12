@@ -1,12 +1,14 @@
 FROM alpine:3.20
 
+ARG binary="https://URL_GOES_HERE"
+
+ARG ttyd_binary="https://github.com/macarooni-man/auto-mcs-ttyd/releases/download/v1.0.0/auto-mcs-ttyd"
+
 RUN apk update && apk upgrade && \
-    apk add --no-cache wget unzip ttyd openjdk21 openjdk17 openjdk8 && \
-    mkdir -p ~/.auto-mcs/Tools/java/ && \
-    ln -s /usr/lib/jvm/java-21-openjdk/ ~/.auto-mcs/Tools/java/modern && \
-    ln -s /usr/lib/jvm/java-17-openjdk/ ~/.auto-mcs/Tools/java/lts && \
-    ln -s /usr/lib/jvm/java-8-openjdk/ ~/.auto-mcs/Tools/java/legacy && \
-    wget -O auto-mcs.zip "https://URL_GOES_HERE" && \
+    apk add --no-cache wget unzip json-c libcrypto3 libssl3 libuv libwebsockets libwebsockets-evlib_uv musl zlib && \
+    wget -O auto-mcs.zip "$binary" && \
     unzip auto-mcs.zip && \
     rm -rf auto-mcs.zip && \
-    chmod +x auto-mcs
+    chmod +x auto-mcs && \
+    wget -O /usr/bin/auto-mcs-ttyd "$ttyd_binary" && \
+    chmod +x /usr/bin/auto-mcs-ttyd
