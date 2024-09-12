@@ -2474,9 +2474,9 @@ def java_check(progress_func=None):
             if is_docker:
                 run_proc('apk add --no-cache openjdk21 openjdk17 openjdk8')
                 folder_check(javaDir)
-                run_proc('ln -s /usr/lib/jvm/java-21-openjdk/ ~/.auto-mcs/Tools/java/modern')
-                run_proc('ln -s /usr/lib/jvm/java-17-openjdk/ ~/.auto-mcs/Tools/java/lts')
-                run_proc('ln -s /usr/lib/jvm/java-8-openjdk/ ~/.auto-mcs/Tools/java/legacy')
+                move('/usr/lib/jvm/java-21-openjdk', os.path.join(javaDir, 'modern'))
+                move('/usr/lib/jvm/java-17-openjdk', os.path.join(javaDir, 'lts'))
+                move('/usr/lib/jvm/java-8-openjdk', os.path.join(javaDir, 'legacy'))
                 continue
 
 
