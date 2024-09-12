@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 services:
   app:
     command: ["ttyd", "-p", "8080", "-c", "root:auto-mcs", "./auto-mcs"]
@@ -12,3 +12,8 @@ services:
       - "8080:8080"
       - "7001:7001"
       - "25565:25565"
+    volumes:
+      - auto-mcs-config:/root/.auto-mcs
+
+volumes:
+  auto-mcs-config:
