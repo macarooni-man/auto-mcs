@@ -8,7 +8,6 @@ import psutil
 import os
 
 import constants
-import logviewer
 
 
 
@@ -18,6 +17,8 @@ if not constants.headless:
     from platform import platform, architecture
     from PIL import ImageTk, Image
     import simpleaudio as sa
+
+    import logviewer
 
 
     # Remove border on macOS buttons

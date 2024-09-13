@@ -1956,7 +1956,8 @@ class ServerManager():
         # Load telepath servers
         self.load_telepath_servers()
 
-        print("[INFO] [auto-mcs] Server Manager initialized")
+        if not constants.is_docker:
+            print("[INFO] [auto-mcs] Server Manager initialized")
 
     def _init_telepathy(self, telepath_data: dict):
         self.current_server = telepath.RemoteServerObject(telepath_data)

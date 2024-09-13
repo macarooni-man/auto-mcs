@@ -163,7 +163,8 @@ if __name__ == '__main__':
                     constants.app_config.locale = v['code']
                 break
     except Exception as e:
-        print(f'Failed to determine locale: {e}')
+        if not constants.is_docker:
+            print(f'Failed to determine locale: {e}')
     if not constants.app_config.locale:
         constants.app_config.locale = 'en'
 
