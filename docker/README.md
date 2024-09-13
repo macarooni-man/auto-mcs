@@ -11,6 +11,7 @@ This is a placeholder for now
 - [ ] Offer documentation for building the Docker image similar to this: https://hub.docker.com/_/mariadb
 - [x] Make account for Docker Hub
 - [ ] For headless update command, disable the ability to update inside of the container with a command, and instead direct the user to the Docker hub documentation
+- [ ] Check if playit agent is compatible with musl out of the box, or if we need to compile a custom binary on the fly
       
 <br>
 
