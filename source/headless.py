@@ -285,6 +285,26 @@ def list_servers():
     else:
         return [('info', 'No servers were found')], 'fail'
 
+def enable_playit(name: str, enabled=True):
+    if name.lower() in constants.server_list_lower:
+        server_obj = constants.server_manager.open_server(name)
+        update_console('Retrieving server configuration...')
+        while not all(list(server_obj._check_object_init().values())):
+            time.sleep(0.5)
+
+        if not server_obj.proxy_installed():
+            update_console('Installing playit agent...')
+            server_obj.install_proxy()
+
+        update_console('Configuring playit agent...')
+        server_obj.enable_proxy(enabled)
+
+        return [("normal", f"{'En' if enabled else 'Dis'}abled tunneling for "), ("parameter", name)]
+
+    # If server doesn't exist
+    else:
+        return [('parameter', name), ('info',  ' does not exist')], 'fail'
+
 
 # Refreshes telepath display data at the top
 def refresh_telepath_host(data=None):
@@ -689,6 +709,21 @@ command_data = {
                 'help': 'removes all paired sessions and users',
                 'exec': reset_telepath
             }
+        }
+    },
+    'playit': {
+        'help': 'tunnel a server through playit.gg',
+        'sub-commands': {
+            'enable': {
+                'help': 'enable tunneling for a server by name',
+                'one-arg': True,
+                'params': {'server name': lambda name: enable_playit(name, enabled=True)}
+            },
+            'disable': {
+                'help': 'disable tunneling for a server by name',
+                'one-arg': True,
+                'params': {'server name': lambda name: enable_playit(name, enabled=False)}
+            },
         }
     },
     'update': {
