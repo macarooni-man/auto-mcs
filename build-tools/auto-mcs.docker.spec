@@ -74,7 +74,8 @@ excluded_binaries = [
     'libexpat',
     'libbz2',
     'libwebpmux',
-    'liblcms'
+    'liblcms',
+    '_yaml'
 ]
 
 for binary in a.binaries:
