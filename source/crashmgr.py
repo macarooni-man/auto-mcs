@@ -1,3 +1,4 @@
+from platform import platform, architecture
 from operator import itemgetter
 from glob import glob
 import functools
@@ -14,7 +15,6 @@ import constants
 # Import Tk if not headless
 if not constants.headless:
     from tkinter import Tk, Entry, SUNKEN, Canvas, PhotoImage, CENTER, END
-    from platform import platform, architecture
     from PIL import ImageTk, Image
     import simpleaudio as sa
 
