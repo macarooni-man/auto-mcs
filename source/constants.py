@@ -2472,7 +2472,8 @@ def java_check(progress_func=None):
 
             # On Docker, use apk to install Java instead
             if is_docker:
-                run_proc('apk add --no-cache openjdk21 openjdk17 openjdk8', True)
+                print(run_proc('apk add --no-cache openjdk21 openjdk17 openjdk8', True))
+                time.sleep(10)
                 folder_check(javaDir)
                 move('/usr/lib/jvm/java-21-openjdk', os.path.join(javaDir, 'modern'))
                 move('/usr/lib/jvm/java-17-openjdk', os.path.join(javaDir, 'lts'))
