@@ -1,5 +1,4 @@
 from operator import itemgetter
-import simpleaudio as sa
 from glob import glob
 import functools
 import datetime
@@ -12,22 +11,24 @@ import constants
 import logviewer
 
 
+
 # Import Tk if not headless
 if not constants.headless:
     from tkinter import Tk, Entry, SUNKEN, Canvas, PhotoImage, CENTER, END
     from platform import platform, architecture
     from PIL import ImageTk, Image
+    import simpleaudio as sa
 
 
-# Remove border on macOS buttons
-if constants.os_name == 'macos':
-    import tkmacosx
-    class Button(tkmacosx.Button):
-        def __init__(self, **args):
-            super().__init__(**args)
-            self.config(borderless=1, focusthickness=0, state='active')
-else:
-    from tkinter import Button
+    # Remove border on macOS buttons
+    if constants.os_name == 'macos':
+        import tkmacosx
+        class Button(tkmacosx.Button):
+            def __init__(self, **args):
+                super().__init__(**args)
+                self.config(borderless=1, focusthickness=0, state='active')
+    else:
+        from tkinter import Button
 
 
 
