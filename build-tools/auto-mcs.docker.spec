@@ -73,7 +73,6 @@ excluded_binaries = [
 
     'libXau',
     'libbsd',
-    'liblzma',
     'libXdmcp',
     'libexpat',
     'libbz2',
