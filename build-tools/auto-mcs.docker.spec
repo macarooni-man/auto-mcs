@@ -31,15 +31,17 @@ excluded_imports = [
     '_tkinter',
     'tkinter',
     'Tkinter',
-    'pygments',
-    'watchfiles'
+    'pygments'
 ]
 
 
 a = Analysis(['wrapper.py'],
              pathex=[],
              binaries=[],
-             datas = [('./baselib.ams', '.')],
+             datas = [
+                        ('./baselib.ams', '.'),
+                        ('../build-tools/ca-bundle.crt', '.'),
+                    ],
              hiddenimports=hiddenimports,
              hookspath=[],
              hooksconfig={},
@@ -69,12 +71,7 @@ excluded_binaries = [
     'libX11',
     'libgstreamer',
     'libgraphite2',
-    'libglapi',
-
-    'libbz2',
-    'libwebpmux',
-    'liblcms',
-    '_yaml'
+    'libglapi'
 ]
 
 for binary in a.binaries:
