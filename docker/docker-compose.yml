@@ -10,6 +10,7 @@ services:
       "-t", 'theme={"background": "#1C1C1C"}',
       "-p", "8080",
       "-c", "root:auto-mcs",
+      "tmux", "-u", "-2", "new", "-A", "-s", "-c",
       "./auto-mcs"
     ]
 

@@ -13,7 +13,7 @@ import acl
 # Check if advanced terminal features are supported
 advanced_term = False
 try:
-    if os.environ['TERM'] in ['xterm-256color']:
+    if os.environ['TERM'].endswith('-256color'):
         advanced_term = True
 except:
     pass
