@@ -72,7 +72,6 @@ excluded_binaries = [
     'libglapi',
 
     'libbsd',
-    'libXdmcp',
     'libexpat',
     'libbz2',
     'libwebpmux',
