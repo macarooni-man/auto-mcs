@@ -10,6 +10,7 @@ This is a placeholder for now
 - [ ] On Linux, if headless is run by default due to the DISPLAY not being set, it doesn't start Telepath by default, and possibly some other stuff. Check the logic order
 - [ ] Offer documentation for building the Docker image similar to this: https://hub.docker.com/_/mariadb
 - [ ] Make account for Docker Hub
+- [ ] For headless update command, disable the ability to update inside of the container with a command, and instead direct the user to the Docker hub documentation
       
 <br>
 
