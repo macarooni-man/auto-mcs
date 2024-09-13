@@ -71,7 +71,6 @@ excluded_binaries = [
     'libgraphite2',
     'libglapi',
 
-    'libexpat',
     'libbz2',
     'libwebpmux',
     'liblcms',
