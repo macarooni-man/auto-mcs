@@ -1,6 +1,10 @@
+import pyperclip
 import threading
+import datetime
+import curses
 import urwid
 import time
+import math
 import sys
 import re
 import os
@@ -9,6 +13,8 @@ import constants
 import telepath
 import acl
 
+
+# ----------------------------------------------- Global Functions -----------------------------------------------------
 
 # Check if advanced terminal features are supported
 advanced_term = False
@@ -493,6 +499,9 @@ if not constants.is_admin() and not constants.debug:
         telepath_content.set_text(" ".join([str(a) for a in args]))
 
 
+
+# -------------------------------------------------- Main Menu ---------------------------------------------------------
+
 class Command:
 
     def exec(self, args=()):
@@ -658,6 +667,11 @@ command_data = {
                 'help': 'creates a Vanilla server on the latest version',
                 'one-arg': True,
                 'params': {'server name': lambda name: manage_server(name, 'create')}
+            },
+            'properties': {
+                'help': "edit the 'server.properties' file",
+                'one-arg': True,
+                'params': {'server name': lambda name: edit_properties(name)}
             },
             'delete': {
                 'help': 'deletes a server by name',
@@ -1049,7 +1063,1127 @@ loop = urwid.MainLoop(frame, unhandled_input=handle_input, screen=screen)
 
 
 
-def run_application():
+# ------------------------------------------- 'server.properties' Editor -----------------------------------------------
+
+leftMargin = 4
+status = "Viewing"
+saveColor = 9
+
+con_line = 0
+con_col = 0
+
+search_mode = False
+search_text = ""
+search_view = ""
+search_banner = ""
+search_list = []
+current_match = 0
+total_matches = 0
+horizontal_control = ""
+horizontal_scroll = 0
+start_char = 0
+end_char = 0
+long_text = False
+long_selected = False
+
+class EditorWindow:
+
+    def __init__(self, n_rows, n_cols, row=0, col=0):
+        self.n_rows = n_rows
+        self.n_cols = n_cols
+        self.row = row
+        self.col = col
+
+    @property
+    def bottom(self):
+        return self.row + self.n_rows - 1
+
+    def up(self, cursor):
+        if cursor.row == self.row - 1 and self.row > 0:
+            self.row -= 1
+
+    def down(self, buffer, cursor):
+        if cursor.row == self.bottom + 1 and self.bottom < buffer.bottom:
+            self.row += 1
+
+    def translate(self, cursor):
+        return cursor.row - self.row, cursor.col - self.col
+
+    def horizontal_scroll(self, cursor, buffer, left_margin=5, right_margin=2):
+        global horizontal_scroll
+        global horizontal_control
+        global start_char
+        global end_char
+        global long_text
+
+        try:
+            line = buffer.__getitem__(cursor.row)
+
+            try:
+                line_key = line.split("=")[0] + " = "
+                line_value = line.split("=")[1]
+
+            except IndexError:
+                line_key = line
+                line_value = 0
+
+
+
+            if (len(line) - 2 > self.n_cols - 10):
+
+                if (self.col == 0) and (long_text is False) and (horizontal_scroll > 0):
+                    weird_calc = len(buffer.__getitem__(cursor.row)) - self.n_cols + 10 if len(buffer.__getitem__(cursor.row)) - self.n_cols + 8 > 0 else 0
+                    horizontal_scroll = weird_calc
+                    start_char = weird_calc + 1
+                    end_char = 0
+
+                    cursor.col = len(line_key) + leftMargin + len(line_value[start_char:len(line_value) - end_char]) + 3 + 2
+
+            horizontal_control = ""
+
+        except IndexError:
+            pass
+
+
+    def undo(self, cursor, buffer, window, save=False):
+        global undoHistory
+        global status
+        global saveColor
+        global long_selected
+        global horizontal_scroll
+        global start_char
+        global end_char
+
+
+        if save is True:
+            if not any(cursor.row in x for x in undoHistory):
+                try:
+                    undoHistory.append([cursor.row, buffer.__getitem__(cursor.row), window.row])
+                except:
+                    undoHistory.append([cursor.row, "", window.row])
+
+        else:
+            if undoHistory:
+                cursor.row = undoHistory[-1][0]
+                window.row = undoHistory[-1][2]
+                buffer.lines.pop(cursor.row)
+                new = undoHistory[-1][1]
+                buffer.lines.insert(cursor.row, new)
+                if cursor.col < len(buffer.__getitem__(cursor.row)) + leftMargin + 2:
+                    cursor.col = len(buffer.__getitem__(cursor.row)) + leftMargin + 2
+                else:
+                    try:
+                        if cursor.col > len(buffer.__getitem__(cursor.row)) + leftMargin + 2:
+                            cursor.col = len(buffer.__getitem__(cursor.row)) + leftMargin + 2
+                    except IndexError:
+                        cursor.col = len(buffer.__getitem__(cursor.row).split("=")[0]) + 2 + leftMargin + 1
+                undoHistory.pop(-1)
+
+                if (len(new) - 2 > self.n_cols - 10) and (long_selected is True):
+                    line_key = new.split("=")[0] + " = "
+                    line_value = new.split("=")[1]
+
+                    extra_space = 0 if horizontal_scroll > 1 else 1
+
+                    weird_calc = len(new) - self.n_cols + 10 if len(new) - self.n_cols + 8 > 0 else 0
+                    horizontal_scroll = weird_calc
+                    start_char = weird_calc + 1
+                    end_char = 0
+
+                    cursor.col = len(line_key) + leftMargin + len(line_value[start_char:len(line_value) - end_char]) + 3 + extra_space
+
+
+            if not undoHistory:
+                status = "Viewing"
+                saveColor = 9
+
+
+class EditorCursor:
+    def __init__(self, row=0, col=0, col_hint=None):
+        self.row = row
+        self._col = col
+        self._col_hint = col if col_hint is None else col_hint
+
+    @property
+    def col(self):
+        return self._col
+
+    @col.setter
+    def col(self, col):
+        self._col = col
+        self._col_hint = col
+
+
+    def center(self, buffer):
+        if self.row > len(buffer.lines) - 1:
+            self.row = len(buffer.lines) - 1
+
+        self._clamp_col(buffer)
+        if self.col < len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1:
+            self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1
+
+
+    def up(self, buffer):
+        if self.row > 0:
+            self.row -= 1
+            self._clamp_col(buffer)
+            if self.col < len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1:
+                self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1
+
+    def down(self, buffer):
+        if self.row < buffer.bottom:
+            self.row += 1
+            self._clamp_col(buffer)
+            if self.col < len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1:
+                self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1
+
+
+    def _clamp_col(self, buffer):
+        self._col = min(self._col_hint, len(buffer[self.row]))
+        try:
+            len(buffer.__getitem__(self.row).split("=")[1])
+            self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1 + len(buffer.__getitem__(self.row).split("=")[1])
+
+        except IndexError:
+            self.col -= 1
+            pass
+
+
+    def left(self, buffer):
+        global long_selected
+
+        if self.col > len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1:
+            self.col -= 1
+        elif self.row > 0 and long_selected is False:
+            self.row -= 1
+            self.col = int(len(buffer[self.row]) + int(leftMargin)) + 2
+
+    def right(self, buffer):
+        if self.col < int(len(buffer[self.row]) + int(leftMargin)) + 2:
+            if self.col < len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1:
+                self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1
+                self.row += 1
+            else:
+                self.col += 1
+        elif self.row < buffer.bottom:
+            self.row += 1
+            self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1
+
+
+def right(window, buffer, cursor):
+    global long_selected
+
+    cursor.right(buffer)
+    window.down(buffer, cursor)
+
+    if long_selected is False and len(buffer.__getitem__(cursor.row)) - 2 > window.n_cols - 10:
+        window.horizontal_scroll(cursor, buffer)
+        cursor.col = window.n_cols - 2
+
+
+def left(window, buffer, cursor):
+    global long_selected
+
+    cursor.left(buffer)
+    window.up(cursor)
+
+    if long_selected is False and len(buffer.__getitem__(cursor.row)) - 2 > window.n_cols - 10:
+        window.horizontal_scroll(cursor, buffer)
+        cursor.col = window.n_cols - 2
+
+
+class Buffer:
+    def __init__(self, lines):
+        self.lines = lines
+
+    def __len__(self):
+        return len(self.lines)
+
+    def __getitem__(self, index):
+        return self.lines[index]
+
+    @property
+    def bottom(self):
+        return len(self) - 1
+
+    def insert(self, cursor, string, window, buffer):
+        global horizontal_scroll
+
+        window.undo(cursor, buffer, window, save=True)
+
+        horizontal_scroll = horizontal_scroll - 2 if horizontal_scroll > 0 else 0
+
+        row, col = cursor.row, cursor.col - 4 + horizontal_scroll - 2
+        current = self.lines.pop(row)
+        new = current[:col] + string + current[col:]
+        self.lines.insert(row, new)
+
+
+    def split(self, cursor):
+        row, col = cursor.row, cursor.col
+        current = self.lines.pop(row)
+        self.lines.insert(row, current[:col])
+        self.lines.insert(row + 1, current[col:])
+
+
+    def delete(self, cursor, window, buffer):
+        global horizontal_scroll
+        global horizontal_control
+        global long_text
+        global end_char
+        global start_char
+        global long_selected
+
+        window.undo(cursor, buffer, window, save=True)
+
+        horizontal_scroll = horizontal_scroll - 3 if horizontal_scroll > 0 else 0
+
+        if (long_text is True) and (cursor.col + 2 >= window.n_cols - 5) and (horizontal_control == "backspace"):
+            row, col = cursor.row, cursor.col - leftMargin + horizontal_scroll - 2
+            if (row, col) < (self.bottom, len(self[row])):
+                current = self.lines.pop(row)
+                new = current[:col] + current[col + 1:]
+                self.lines.insert(row, new)
+
+            long_text = False
+            return
+
+        elif (long_selected is True) and (horizontal_scroll < 2) and (cursor.col + 2 >= window.n_cols - 5) and (horizontal_control == "backspace"):
+            if end_char > 0:
+                cursor.left(buffer)
+
+        if long_text is True and horizontal_control == "delete" and (cursor.col + 2 <= window.n_cols - 1):
+
+            if (end_char > 0) and (cursor.col + 2 <= window.n_cols - 4):
+
+                end_char -= 1
+                start_char += 1
+                horizontal_scroll += 1
+
+                row, col = cursor.row, cursor.col - leftMargin + horizontal_scroll - 2
+                if (row, col) < (self.bottom, len(self[row])):
+                    current = self.lines.pop(row)
+                    new = current[:col] + current[col + 1:]
+                    self.lines.insert(row, new)
+
+                return
+
+            else:
+                cursor.right(buffer)
+
+        elif long_text is True and horizontal_control == "delete" and (cursor.col + 2 >= window.n_cols - 5):
+            return
+
+        row, col = cursor.row, cursor.col - leftMargin + horizontal_scroll - 2
+        if (row, col) < (self.bottom, len(self[row])):
+
+            current = self.lines.pop(row)
+            new = current[:col] + current[col + 1:]
+            self.lines.insert(row, new)
+
+
+def edit_properties(server_name: str):
+    def editMain(stdscr):
+        global undoHistory
+        global status
+        global saveColor
+        global search_mode
+        global search_text
+        global search_view
+        global search_banner
+        global search_list
+        global current_match
+        global total_matches
+
+        global horizontal_control
+        global horizontal_scroll
+        global start_char
+        global end_char
+        global long_text
+        global long_selected
+
+        global con_line
+        global con_col
+
+        buffer = None
+        window = None
+
+        last_key = ""
+        long_selected = False
+        long_text = False
+        line_key = ""
+        line_value = ""
+        start_char = 0
+        end_char = 0
+        horizontal_scroll = 0
+        horizontal_control = ""
+        total_matches = 0
+        current_match = 0
+        search_list = []
+        status = "Viewing"
+        saveColor = 9
+        undoHistory = []
+        search_text = ""
+        search_mode = False
+        reset_cursor = False
+        long_text = False
+        right_lock = False
+
+        filename = os.path.join(constants.serverDir, server_name, 'server.properties')
+        if not os.path.exists(filename):
+            constants.fix_empty_properties(server_name)
+
+        with open(filename) as f:
+            buffer = Buffer(f.read().splitlines())
+
+        window = EditorWindow(curses.LINES - 1, curses.COLS - 1)
+
+        index = 0
+        for row, line in enumerate(buffer[window.row:window.row + window.n_rows]):
+            if index == 2:
+                cursor = EditorCursor(col=len(line) + leftMargin + 2, row=index)
+                break
+            index += 1
+
+        # Custom colors
+        curses.init_color(99, 950, 450, 150)   # Orange
+        curses.init_color(98, 950, 250, 1000)  # Purple
+        curses.init_color(100, 300, 850, 1000)    # Aqua
+
+        curses.init_color(101, 300, 300, 1000)  # text blue
+        curses.init_color(104, 300, 300, 1000)  # line-num color
+
+        curses.init_color(102, 0, 800, 450)      # Saved
+        curses.init_color(103, 800, 800, 600)    # Unsaved
+        curses.init_color(105, 400, 400, 400)    # Gray
+        curses.init_color(106, 120, 120, 120)    # Dark Gray
+        curses.init_color(107, 600, 1000, 600)   # Select green
+        curses.init_color(108, 1000, 1000, 1000) # White
+        curses.start_color()
+
+        curses.init_pair(9, curses.COLOR_BLACK, curses.COLOR_WHITE)
+        curses.init_pair(10, curses.COLOR_BLACK, 103)
+        curses.init_pair(11, curses.COLOR_BLACK, 102)
+        curses.init_pair(3, 101, curses.COLOR_BLACK)
+        curses.init_pair(4, curses.COLOR_BLACK, 104)
+        curses.init_pair(5, 105, curses.COLOR_BLACK)
+
+        curses.init_pair(20, curses.COLOR_WHITE, 106)  # Search stuff
+        curses.init_pair(21, 105, curses.COLOR_BLACK)
+        curses.init_pair(22, curses.COLOR_BLACK, 107)
+
+        curses.init_pair(30, 100, curses.COLOR_BLACK)  # String
+        curses.init_pair(31, 99, curses.COLOR_BLACK)   # Int
+        curses.init_pair(32, 98, curses.COLOR_BLACK)   # Bool
+
+        curses.init_pair(40, 108, curses.COLOR_BLACK)  # Scrollbar bar
+        curses.init_pair(41, 105, curses.COLOR_BLACK)  # Scrollbar line
+
+
+        def generate_search():
+            global search_text
+            global search_view
+            global search_banner
+            global current_match
+            global total_matches
+
+            max_search_size = 20
+
+            multiplier = (max_search_size - len(search_text))
+            if multiplier < 1:
+                multiplier = 1
+
+            search_view = search_text
+            if len(search_view) >= max_search_size:
+                search_view = "..." + search_view[len(search_view) - max_search_size + 4:]
+
+            total_matches = 0
+
+            if search_text:
+                for item in buffer:
+                    if search_text in item:
+                        total_matches += 1
+
+            else:
+                total_matches = 0
+
+            current_match = total_matches if current_match > total_matches else current_match
+
+            num_fix = 1
+            if total_matches == 0:
+                num_fix = 0
+
+
+            # matches = '\n'.join(buffer).count(search_text) if len(search_text) > 0 else 0
+
+            search_banner = " Ϙ ⁞  " + search_view + (" " * multiplier) + "  "
+            search_banner = search_banner + f"│ {current_match + num_fix} / {total_matches} matches - 'ESC' " if len(search_text) > 0 else search_banner + f"│ 'ESC' to exit search "
+
+            # if (cursor.row != (window.n_rows + window.row)) and (search_mode is True) and (len(search_text) > 0):
+            #     search_banner += "- 'ESC' "
+
+
+        def find_search(direction):
+            global search_list
+            global current_match
+
+            foundItem = None
+
+            if search_list:
+
+                if direction == "down":
+
+                    search_list = sorted(search_list)
+
+                    for item in search_list:
+
+                        if item[0] > cursor.row:
+
+                            foundItem = item
+                            break
+
+                    foundItem = search_list[0] if foundItem is None else foundItem
+
+                elif direction == "up":
+
+                    search_list = sorted(search_list, reverse=True)
+
+                    for item in search_list:
+
+                        if item[0] < cursor.row:
+                            foundItem = item
+                            break
+
+                    foundItem = search_list[0] if foundItem is None else foundItem
+
+                elif direction == "first":
+
+                    search_list = sorted(search_list)
+                    foundItem = search_list[0]
+
+                window.horizontal_scroll(cursor, buffer)
+                cursor.row = foundItem[0]
+                window.row = foundItem[1]
+                current_match = foundItem[2]
+                cursor.center(buffer)
+                return foundItem
+
+
+
+        while True:
+
+            # Prevent stinky lil crash
+            if cursor.col > window.n_cols:
+                cursor.col = window.n_cols - 2
+
+            stdscr.erase()
+            x, y = stdscr.getmaxyx()
+            con_line = y
+            con_col = x
+
+            statusText = f" {status} 'server.properties' (CTL+Q quit/+S save/+Z undo/+F search)"
+
+
+            # Show scrollbar
+            if (len(buffer.lines) > window.n_rows):
+
+                height = round(window.n_rows / 1.2)
+                offset = round((window.n_rows * 0.2) / 4)
+                item = window.row / window.n_rows
+                total = len(buffer) / window.n_rows
+
+                # print(window.n_rows, x)
+
+                bar_pos = math.ceil((item / total) * height)
+                bar_len = math.ceil(height / total)
+
+                handle_range = range(bar_pos, bar_pos + bar_len)
+
+                try:
+                    stdscr.addstr(offset, window.n_cols - 1, "↑", curses.color_pair(41))
+
+                    for x in range(1, height + 1):
+
+                        if x in handle_range:
+                            stdscr.addstr(offset + x, window.n_cols - 1, "█", curses.color_pair(40))
+
+                        else:
+                            stdscr.addstr(offset + x, window.n_cols - 1, "│", curses.color_pair(41))
+
+                    stdscr.addstr(offset + height + 1, window.n_cols - 1, "↓", curses.color_pair(41))
+                except:
+                    pass
+
+
+
+            # Search mode
+            try:
+
+                if not search_mode:
+
+                    stdscr.addstr(window.n_rows, curses.COLS // 2 - len(statusText) // 2, statusText, curses.color_pair(saveColor))
+
+                else:
+
+                    generate_search()
+
+                    stdscr.addstr(window.n_rows, curses.COLS // 2 - len(search_banner) // 2, search_banner, curses.color_pair(20))
+
+
+                # Find location of search matches
+                search_list = []
+                line_num = 0
+                match_num = 0
+                if search_text:
+                    for row, line in enumerate(buffer):
+                        if search_text in line:
+
+                            scroll = len(buffer) - window.n_rows if len(buffer) - window.n_rows > 0 else 0
+
+                            search_list.append([line_num, scroll, match_num])
+
+                            match_num += 1
+
+                        line_num += 1
+
+
+                for row, line in enumerate(buffer[window.row:window.row + window.n_rows]):
+
+                    # Check if line exceeds screen space
+                    try:
+                        horizontal_scroll = len(buffer.__getitem__(cursor.row)) - window.n_cols + 10 - end_char if len(buffer.__getitem__(cursor.row)) - window.n_cols + 8 > 0 else 0
+                        weird_calc = len(buffer.__getitem__(cursor.row)) - window.n_cols + 10 if len(buffer.__getitem__(cursor.row)) - window.n_cols + 8 > 0 else 0
+
+                        if (row == (cursor.row - window.row)) and (horizontal_control == "right") and (end_char < weird_calc + 1) and (long_text is False) and (cursor.col - 2 >= window.n_cols - 7):
+                            horizontal_scroll += 2
+                            start_char += 2
+                            end_char -= 2
+
+
+                        if horizontal_scroll < 2:
+                            long_text = False
+                            start_char = 0
+                            end_char = weird_calc
+
+
+                        if len(buffer.__getitem__(cursor.row)) - 2 > (window.n_cols - 10):
+                            pass
+
+                        else:
+                            long_selected = False
+
+
+                        if (row == (cursor.row - window.row)) and (len(line) - 2 > window.n_cols - 10):
+
+                            line_key = line.split("=", 1)[0] + "="
+                            line_value = line.split("=", 1)[1]
+
+                            if long_text is False:
+                                if (cursor.col - 2 >= window.n_cols - 5) and end_char > 0:
+                                    left(window, buffer, cursor)
+                                long_text = True
+                                long_selected = True
+
+                            # start_char = 0 if len(line) - window.n_cols + 10 < 0 else len(line) - window.n_cols + 11
+                            start_char = horizontal_scroll + 1
+
+
+                            if (start_char < 4 and (cursor.col + 2 <= window.n_cols - 8)) or horizontal_scroll < 0:
+                                horizontal_scroll = 0
+                                start_char = 0
+                                end_char = weird_calc
+
+                            if start_char > 0:
+
+                                if horizontal_control in ["right", "insert"]:
+
+                                    if end_char == 0:
+
+                                        if horizontal_control in ["right", "insert"] and (cursor.col - 2 >= window.n_cols - 5):
+                                            end_char = end_char - 1 if end_char > 0 else 0
+
+                                        if horizontal_control in ["right", "insert"] and (cursor.col - start_char + 2 == window.n_cols - 4):
+                                            start_char = start_char + 1 if start_char > 0 else start_char
+                                            cursor.col = window.n_rows - 5 + 2
+
+
+                                    elif end_char > 0:
+
+                                        if horizontal_control == "right" and (cursor.col - 2 >= window.n_cols - 7):
+                                            end_char = end_char - 1 if end_char > 2 else 0
+
+                                        if horizontal_control == "right" and (cursor.col - start_char - 2 >= window.n_cols - 7):
+                                            start_char = start_char + 1 if start_char > 0 else start_char
+                                            cursor.col = window.n_rows - 8 + 2
+
+
+
+                                elif horizontal_control == "backspace" and (cursor.col - start_char - 2 == window.n_cols - 4):
+                                    start_char = start_char - 1 if start_char > 0 else start_char
+
+
+                                elif horizontal_control == "left" and cursor.col - 2 <= len(line_key) + 7:
+                                    end_char = end_char + 1 # if cursor.col - len(line_key) - 4 > 3 else 0
+                                    start_char = start_char - 1 if start_char > 0 else start_char
+                                    cursor.col = len(line_key) + 7 + 2
+
+
+                            if horizontal_scroll < 2:
+                                start_char = 0
+                                horizontal_scroll = 0
+                                end_char = weird_calc
+
+
+
+                            line = line_value[start_char:len(line_value) - end_char]
+                            line = line_key + "..." + line if horizontal_scroll > 0 else line_key + line + "..."
+
+
+                            end = -3
+                            if ((horizontal_control == "right") and (end_char > 0) and (cursor.col - 2 >= window.n_cols - 7)) or (end_char == weird_calc):
+                                end = -4
+
+
+                            line = line[:end] + "..." if end_char > 0 else line
+
+
+                            horizontal_control = ""
+
+
+                        elif (len(line) - 2 > window.n_cols - 10):
+                            line = line[:window.n_cols - 11] + "..."
+
+
+                        right_lock = False
+                        if end_char > 0:
+                            right_lock = True
+
+
+                        # debug use
+                        # stdscr.addstr(0, window.n_cols - len(f"{long_selected}, {long_text}, {weird_calc}, {horizontal_scroll}, {start_char}, {end_char}"), f"{long_selected}, {long_text}, {weird_calc}, {horizontal_scroll}, {start_char}, {end_char}")
+                        # stdscr.addstr(0, window.n_cols - len(last_key) - 1, last_key)
+
+                    except IndexError:
+                        cursor.row = 0 if cursor.row < 0 or cursor.row > window.n_rows + window.row else cursor.row
+
+
+
+                    if window.row < buffer.bottom - window.n_rows + 1:
+                        stdscr.addstr(window.n_rows, 0, " ▼ more ▼", curses.color_pair(5))
+
+            # Line counter
+                    rowNumber = str(window.row + row + 1) + " "
+                    if len(rowNumber) == 2:
+                        rowNumber = " " + rowNumber
+
+                    if len(rowNumber) > 3:
+                        rowNumber = str(window.row + row + 1)
+
+                    stdscr.addstr(row, 0, rowNumber, curses.color_pair(4))
+
+
+            # Highlight matches in search
+                    sassy_line = buffer.__getitem__(row + window.row).replace("=", " = ", 1)
+
+                    if (len(search_text) > 0) and (search_text in sassy_line) and (search_mode is True):
+                        line = line.replace("=", " = ", 1)
+                        lines = line.split(search_text)
+
+                        length = 0
+                        line_key = sassy_line.split('=')[0] + ' = '
+                        match_pos = len(line_key) + leftMargin + sassy_line.find(search_text)
+                        start_text = horizontal_scroll if cursor.row != row + window.row else match_pos - len(search_text) - 3 - len(line_key) - leftMargin
+
+                        # Long string
+                        if ((((len(sassy_line) - 2 > window.n_cols - 10) and len(sassy_line.split('=')[0] + ' = ') + leftMargin + sassy_line.find(search_text) > window.n_cols - 10) or (horizontal_scroll > start_text)) and (search_text not in line_key)):
+
+                            if cursor.row != row + window.row:
+                                stdscr.addstr(row, leftMargin, line.split("...")[0], curses.color_pair(21))
+                                stdscr.addstr(row, leftMargin + len(line.split("...")[0]), "...", curses.color_pair(22))
+
+                            else:
+                                start = start_char + leftMargin + len(line_key) + 5
+                                end = len(sassy_line.split(' = ')[1] + ' = ') - end_char + leftMargin + len(line_key) - len(search_text) + 2
+
+                                # stdscr.addstr(window.n_rows, window.n_cols - len(f"{start}, {end}, {match_pos}, {horizontal_scroll}"), f"{start}, {end}, {match_pos}, {horizontal_scroll}")
+
+                                if (match_pos not in range(start, end) and (search_text not in line_key)) or (horizontal_scroll > start_text):
+                                    if (match_pos < start and horizontal_scroll > 0) or (horizontal_scroll > start_text) and (long_selected is True):
+                                        stdscr.addstr(row, leftMargin, line_key, curses.color_pair(21))
+                                        stdscr.addstr(row, leftMargin + len(line_key) + 3, line.split("...", 1)[1], curses.color_pair(21))
+                                        stdscr.addstr(row, leftMargin + len(line_key), "...", curses.color_pair(22))
+
+                                    elif end_char > 0:
+                                        stdscr.addstr(row, leftMargin, line_key, curses.color_pair(21))
+                                        stdscr.addstr(row, leftMargin + len(line_key), line.split(" = ", 1)[1], curses.color_pair(21))
+                                        stdscr.addstr(row, leftMargin + len(line_key) + len(line.split(" = ", 1)[1]) - 3, "...", curses.color_pair(22))
+
+                                    else:
+
+                                        for item in lines:
+                                            stdscr.addstr(row, leftMargin + length, item, curses.color_pair(21))
+                                            length += len(item)
+
+                                            if lines.index(item) != len(lines) - 1:
+                                                # Highlight
+                                                stdscr.addstr(row, leftMargin + length, search_text, curses.color_pair(22))
+                                                length += len(search_text)
+
+                                else:
+
+                                    for item in lines:
+                                        stdscr.addstr(row, leftMargin + length, item, curses.color_pair(21))
+                                        length += len(item)
+
+                                        if lines.index(item) != len(lines) - 1:
+
+                                            # Highlight
+                                            stdscr.addstr(row, leftMargin + length, search_text, curses.color_pair(22))
+                                            length += len(search_text)
+
+                        # Normal string
+                        else:
+
+                            for item in lines:
+                                stdscr.addstr(row, leftMargin + length, item, curses.color_pair(21))
+                                length += len(item)
+
+                                if lines.index(item) != len(lines) - 1:
+
+                                    # Highlight
+                                    stdscr.addstr(row, leftMargin + length, search_text, curses.color_pair(22))
+                                    length += len(search_text)
+
+
+                    elif "=" in line:
+
+                        try:
+                            line = line.split("=", 1)
+                            stdscr.addstr(row, leftMargin, line[0], curses.color_pair(3))
+
+                            if cursor.row == window.row + row:
+                                stdscr.addstr(row, len(line[0]) + leftMargin, " = ")
+
+                            else:
+                                stdscr.addstr(row, len(line[0]) + leftMargin, " = ", curses.color_pair(5))
+
+
+                            # Register colors for different data types
+
+                            # Int
+                            try:
+                                test = float(line[1])
+                                is_int = True
+                            except ValueError:
+                                is_int = False
+
+                            if is_int is True:
+                                stdscr.addstr(row, len(line[0]) + leftMargin + 3, line[1], curses.color_pair(31))
+
+                            # Bool
+                            elif line[1] in ["true", "false"]:
+                                stdscr.addstr(row, len(line[0]) + leftMargin + 3, line[1], curses.color_pair(32))
+
+                            # String
+                            else:
+                                stdscr.addstr(row, len(line[0]) + leftMargin + 3, line[1], curses.color_pair(30))
+
+                        except:
+                            left(window, buffer, cursor)
+                            buffer.delete(cursor, window, buffer)
+                    else:
+                        stdscr.addstr(row, leftMargin, line, curses.color_pair(5))
+
+                try:
+                    stdscr.move(*window.translate(cursor))
+                except curses.error:
+                    window.row = cursor.row
+                    # continue
+
+                if (cursor.row == (window.n_rows + window.row)) and (search_mode is True):
+                    charTest = ["", 0]
+
+                else:
+                    charTest = buffer.__getitem__(cursor.row).split("=")
+
+            except curses.error:
+                try:
+                    if curses.KEY_RESIZE == last_key:
+                        print(True)
+                        stdscr.refresh()
+                        time.sleep(0.5)
+                        # continue
+                except:
+                    time.sleep(0.5)
+
+                print('fail')
+
+
+            if reset_cursor is True:
+                cursor.row = window.n_rows + window.row
+                generate_search()
+
+                cursor.col = round(con_col / 2) - round(len(search_banner) / 2) + 6 + len(search_view)
+
+            reset_cursor = False
+
+
+    # user input
+            k = stdscr.getch()
+            if k >= 0:
+                last_key = str(k)
+
+
+            # Detect key input
+            print(k)
+            if k > 0:
+
+                if k == 17: # CTRL+Q
+                    stdscr.erase()
+                    return
+
+                elif k == 26: # CTRL+Z
+                    window.undo(cursor, buffer, window, save=False)
+
+                elif k == 19: # CTRL+S
+                    status = "Saved"
+                    saveColor = 11
+
+
+                # Save file
+                    outFile = ""
+                    for row, line in enumerate(buffer[:buffer.bottom + 1]):
+                        outFile += line + "\n"
+
+                    with open(filename, 'w') as f:
+                        f.write(outFile)
+
+
+                # Toggle search mode
+                elif k == 6: # CTRL+F
+                    search_mode = True
+
+                    generate_search()
+
+                    cursor.row = window.n_rows + window.row
+                    cursor.col = round(con_col / 2) - round(len(search_banner) / 2) + 5 + len(search_view) + 1 # + (4 if (len(search_text) > 0) else 0)
+
+
+
+                # Paste content
+                elif k == 22: # CTRL+V
+
+                    if "=" in buffer.__getitem__(cursor.row):
+                        data = pyperclip.paste().replace("\n", "    ").replace("\r", "")
+
+                        buffer.insert(cursor, data, window, buffer)
+                        cursor.col += len(data)
+
+
+
+                elif k == 27: # ESC
+
+                    if cursor.row > (window.n_rows + window.row) - 1:
+
+                        if total_matches == 0:
+                            cursor.row = 0
+                            window.row = 0
+                        else:
+                            cursor.row = search_list[current_match][0]
+                            window.row = search_list[current_match][1]
+
+                    search_mode = False
+                    total_matches = 0
+                    cursor.center(buffer)
+
+
+                elif k == 259: # up arrow
+
+                    if (search_mode is False) or (total_matches == 0):
+                        cursor.up(buffer)
+                        window.up(cursor)
+                        window.horizontal_scroll(cursor, buffer)
+
+                    else:
+                        find_search("up")
+
+
+
+                elif k == 258: # down arrow
+
+                    if (search_mode is False) or (total_matches == 0):
+                        cursor.down(buffer)
+                        window.down(buffer, cursor)
+                        window.horizontal_scroll(cursor, buffer)
+
+                    else:
+                        find_search("down")
+
+
+                elif k == 260: # left arrow
+                    if (cursor.row != (window.n_rows + window.row)):
+                        horizontal_control = "left"
+                        cursor.left(buffer)
+                        window.up(cursor)
+                        # window.horizontal_scroll(cursor, buffer)
+
+                elif k == 261: # right arrow
+                    if (cursor.row != (window.n_rows + window.row)):
+                        horizontal_control = "right"
+
+                        if (horizontal_scroll == 0) or ((horizontal_scroll > 0) and (cursor.col - 2 <= window.n_cols - 5)):
+
+                            if ((cursor.col - 2 >= window.n_cols - 7) and (right_lock is True)):
+                                pass
+
+                            else:
+                                right(window, buffer, cursor)
+
+
+                elif k == 9: # TAB
+                    if search_mode:
+
+                        if cursor.row == window.n_rows + window.row:
+
+                            if cursor.row > (window.n_rows + window.row) - 1:
+                                cursor.row = (window.n_rows + window.row) - 1
+
+                            cursor.center(buffer)
+
+                        else:
+                            generate_search()
+
+                            cursor.row = window.n_rows + window.row
+                            cursor.col = round(con_col / 2) - round(len(search_banner) / 2) + 5 + len(search_view) + 3 # + (4 if (len(search_text) > 0) else 0)
+
+
+                elif k == 330: # DELETE
+
+                    if (cursor.row != (window.n_rows + window.row)):
+                        if cursor.col - 2 > int(len(charTest[0]) + leftMargin):
+                            horizontal_control = "delete"
+                            buffer.delete(cursor, window, buffer)
+                            if status != "Editing":
+                                status = "Editing"
+                                saveColor = 10
+
+                elif k == 8: # backspace
+
+                    if search_mode:
+
+                        find_search("first")
+                        reset_cursor = True
+
+                        search_text = "" if len(search_text) == 1 else search_text[:-1]
+
+                        generate_search()
+
+                        cursor.col = round(con_col / 2) - round(len(search_banner) / 2) + 5 + len(search_view) + 1
+
+                    elif (cursor.row, cursor.col) > (0, 0):
+                        if cursor.col - 2 > int(len(charTest[0]) + leftMargin + 1):
+                            horizontal_control = "backspace"
+
+                            if (horizontal_scroll == 0) and (cursor.col > len(buffer.__getitem__(cursor.row).split("=")[0]) + 2 + leftMargin + 1):
+
+                                left(window, buffer, cursor)
+
+                            buffer.delete(cursor, window, buffer)
+                            if status != "Editing":
+                                status = "Editing"
+                                saveColor = 10
+
+
+                elif k in [262, 358] and long_selected is True: # HOME/END keys
+
+                    try:
+                        line = buffer.__getitem__(cursor.row)
+                        weird_calc = len(buffer.__getitem__(cursor.row)) - window.n_cols + 10 if len(buffer.__getitem__(cursor.row)) - window.n_cols + 8 > 0 else 0
+
+                        try:
+                            line_key = line.split("=")[0] + " = "
+                            line_value = line.split("=")[1]
+
+                        except IndexError:
+                            line_key = line
+                            line_value = 0
+
+                        if k == 358:
+                            if (len(line) - 2 > window.n_cols - 10):
+                                random_char = 1 if horizontal_scroll == 0 else 0
+
+                                horizontal_scroll = weird_calc
+                                start_char = weird_calc + 1
+                                end_char = 0
+
+                                cursor.col = len(line_key) + leftMargin + len(line_value[start_char:len(line_value) - end_char]) + 3 + random_char
+
+                        else:
+                            if (len(line) - 2 > window.n_cols - 10):
+                                horizontal_scroll = 0
+                                start_char = 0
+                                end_char = weird_calc
+
+                                cursor.col = len(line_key) + leftMargin
+
+                        horizontal_control = ""
+
+                    except IndexError:
+                        pass
+
+
+                elif k == 10: # ENTER
+                    "do nothing"
+
+                elif k >= 0:
+                    k = chr(k)
+                    if len(k) == 1:
+
+                        if search_mode:
+
+                            search_text += k
+
+                            find_search("first")
+                            reset_cursor = True
+
+                            generate_search()
+
+                            cursor.col = round(con_col / 2) - round(len(search_banner) / 2) + 6 + len(search_view)
+
+                        elif (cursor.col - 2 > int(len(charTest[0]) + leftMargin)):
+                            try:
+                                str(charTest[1])
+
+                                horizontal_control = "insert"
+
+                                buffer.insert(cursor, k, window, buffer)
+                                for _ in k:
+
+                                    if horizontal_scroll == 0:
+
+                                        if ((cursor.col - 1 >= window.n_cols - 7) and (right_lock is True)):
+                                            if long_text is False:
+                                                right(window, buffer, cursor)
+                                                horizontal_scroll += 1
+                                                end_char -= 1
+                                                start_char += 1
+                                            pass
+
+                                        else:
+                                            right(window, buffer, cursor)
+
+                                if status != "Editing":
+                                    status = "Editing"
+                                    saveColor = 10
+                            except IndexError:
+                                pass
+
+    curses.wrapper(editMain)
+
+
+
+# ------------------------------------------------ Launch Menu ---------------------------------------------------------
+
 
     # Give an error if elevated
     if constants.is_admin() and not constants.is_docker:

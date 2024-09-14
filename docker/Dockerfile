@@ -5,6 +5,7 @@ ARG ttyd_binary="https://github.com/macarooni-man/auto-mcs-ttyd/releases/downloa
 
 RUN apk update && apk upgrade && \
     apk add --no-cache wget unzip json-c libcrypto3 libssl3 libuv libwebsockets libwebsockets-evlib_uv tmux musl zlib && \
+    echo "set -g status off" > ~/.tmux.conf && \
     wget -O auto-mcs.zip "$binary" && \
     unzip auto-mcs.zip && \
     rm -rf auto-mcs.zip && \
