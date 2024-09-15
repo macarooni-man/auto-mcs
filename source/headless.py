@@ -1,10 +1,7 @@
-import pyperclip
 import threading
-import datetime
-import curses
+import functools
 import urwid
 import time
-import math
 import sys
 import re
 import os
@@ -499,6 +496,22 @@ if not constants.is_admin() and not constants.debug:
         telepath_content.set_text(" ".join([str(a) for a in args]))
 
 
+class ScreenManager():
+    def __init__(self):
+        global loop
+        self.placeholder = urwid.WidgetPlaceholder(urwid.Text(""))
+        self.screens = {
+            'MainMenuScreen': (main_menu, handle_input),
+            'ServerPropertiesEditScreen': (None, None)
+        }
+
+    def current_screen(self, screen_name: str):
+        global loop
+        self.placeholder.original_widget = self.screens[screen_name][0]
+        loop.unhandled_input = self.screens[screen_name][1]
+
+
+
 
 # -------------------------------------------------- Main Menu ---------------------------------------------------------
 
@@ -784,7 +797,7 @@ console = urwid.Pile([
 ])
 
 title = f"auto-mcs v{constants.app_version} (headless)" if constants.app_latest else f"auto-mcs v{constants.app_version} (!)"
-message_box = urwid.AttrMap(urwid.LineBox(console, title=title, title_attr=('normal' if constants.app_latest else 'parameter')), 'line')
+message_box = urwid.AttrMap(urwid.LineBox(console, title=title, title_attr=('normal' if constants.app_latest else 'parameter')), 'menu_line')
 
 refresh_telepath_host()
 
@@ -1021,20 +1034,18 @@ pile = urwid.Pile([
     ('weight', 0.5, urwid.Padding(message_box, left=1, right=1)),
     ('flow', command_edit)
 ])
-
-# Wrap the pile in a padding widget to ensure it resizes with the terminal
 top_widget = urwid.Padding(pile)
-
-# Create a Frame to add a border around the top_widget
-frame = urwid.Frame(top_widget)
+main_menu = urwid.Frame(top_widget)
 
 # Define the color palette
 palette = [
+
+    # Main menu palette
     ('caption_space', 'white', 'dark gray' if advanced_term else ''),
     ('caption_marker', 'dark gray', ''),
     ('input', 'light green', '', '', '#05e665', ''),
     ('hint', 'dark gray', ''),
-    ('line', 'white', '', '', '#444444', ''),
+    ('menu_line', 'white', '', '', '#444444', ''),
     ('telepath_enabled', 'light cyan', ''),
     ('telepath_disabled', 'dark gray', ''),
     ('telepath_host', 'dark cyan', ''),
@@ -1047,1144 +1058,662 @@ palette = [
     ('normal', 'white', ''),
     ('command', 'light green', '', '', '#05e665', ''),
     ('sub_command', 'dark cyan', '', '', '#13e8cc', ''),
-    ('parameter', 'yellow', '', '', '#F3ED61', '')
+    ('parameter', 'yellow', '', '', '#F3ED61', ''),
+
+
+
+    # 'server.properties' palette
+    ('key', 'dark blue', '', '', '#4455FF', ''),
+    ('comment',  'dark gray', '', '', '#636363', ''),
+    ('line', 'dark gray', '', '', '#212141', ''),
+    ('eq', 'dark gray', ''),
+    ('selected_line', 'white', '', '', '#B2B2FF', ''),
+    ('selected_eq', 'white', ''),
+    ('search_highlight', 'black', 'light green', '', 'black', '#4DFF99'),
+    ('search_bar', 'white', 'dark gray', '', 'white', '#333333'),
+
+    ('boolean', 'light magenta', '', '', '#DD53DD', ''),
+    ('integer', 'yellow', '', '', '#FF9525', ''),
+    ('string', 'light cyan', '', '', '#68E3FF', ''),
+    ('scrollbar_thumb', 'light gray', '', '', '#7777FF', '')
 ]
 def get_color(key):
     for c in palette:
         if key == c[0]:
             return c
 
-
-# Create a Loop and run the UI
+screen_manager = ScreenManager()
 screen = urwid.raw_display.Screen()
 screen.set_terminal_properties(colors=256)
 screen.register_palette(palette)
-loop = urwid.MainLoop(frame, unhandled_input=handle_input, screen=screen)
+loop = urwid.MainLoop(screen_manager.placeholder, unhandled_input=handle_input, screen=screen)
 
 
 
 # ------------------------------------------- 'server.properties' Editor -----------------------------------------------
 
-leftMargin = 4
-status = "Viewing"
-saveColor = 9
+class PropertiesEditor():
 
-con_line = 0
-con_col = 0
+    # Custom ListBox to handle focus movement and wrapping
+    class SearchListBox(urwid.ListBox):
+        def __init__(self, body, editor):
+            super().__init__(body)
+            self.editor = editor
 
-search_mode = False
-search_text = ""
-search_view = ""
-search_banner = ""
-search_list = []
-current_match = 0
-total_matches = 0
-horizontal_control = ""
-horizontal_scroll = 0
-start_char = 0
-end_char = 0
-long_text = False
-long_selected = False
-
-class EditorWindow:
-
-    def __init__(self, n_rows, n_cols, row=0, col=0):
-        self.n_rows = n_rows
-        self.n_cols = n_cols
-        self.row = row
-        self.col = col
-
-    @property
-    def bottom(self):
-        return self.row + self.n_rows - 1
-
-    def up(self, cursor):
-        if cursor.row == self.row - 1 and self.row > 0:
-            self.row -= 1
-
-    def down(self, buffer, cursor):
-        if cursor.row == self.bottom + 1 and self.bottom < buffer.bottom:
-            self.row += 1
-
-    def translate(self, cursor):
-        return cursor.row - self.row, cursor.col - self.col
-
-    def horizontal_scroll(self, cursor, buffer, left_margin=5, right_margin=2):
-        global horizontal_scroll
-        global horizontal_control
-        global start_char
-        global end_char
-        global long_text
-
-        try:
-            line = buffer.__getitem__(cursor.row)
-
-            try:
-                line_key = line.split("=")[0] + " = "
-                line_value = line.split("=")[1]
-
-            except IndexError:
-                line_key = line
-                line_value = 0
-
-
-
-            if (len(line) - 2 > self.n_cols - 10):
-
-                if (self.col == 0) and (long_text is False) and (horizontal_scroll > 0):
-                    weird_calc = len(buffer.__getitem__(cursor.row)) - self.n_cols + 10 if len(buffer.__getitem__(cursor.row)) - self.n_cols + 8 > 0 else 0
-                    horizontal_scroll = weird_calc
-                    start_char = weird_calc + 1
-                    end_char = 0
-
-                    cursor.col = len(line_key) + leftMargin + len(line_value[start_char:len(line_value) - end_char]) + 3 + 2
-
-            horizontal_control = ""
-
-        except IndexError:
-            pass
-
-
-    def undo(self, cursor, buffer, window, save=False):
-        global undoHistory
-        global status
-        global saveColor
-        global long_selected
-        global horizontal_scroll
-        global start_char
-        global end_char
-
-
-        if save is True:
-            if not any(cursor.row in x for x in undoHistory):
-                try:
-                    undoHistory.append([cursor.row, buffer.__getitem__(cursor.row), window.row])
-                except:
-                    undoHistory.append([cursor.row, "", window.row])
-
-        else:
-            if undoHistory:
-                cursor.row = undoHistory[-1][0]
-                window.row = undoHistory[-1][2]
-                buffer.lines.pop(cursor.row)
-                new = undoHistory[-1][1]
-                buffer.lines.insert(cursor.row, new)
-                if cursor.col < len(buffer.__getitem__(cursor.row)) + leftMargin + 2:
-                    cursor.col = len(buffer.__getitem__(cursor.row)) + leftMargin + 2
+        def keypress(self, size, key):
+            if key in ('up', 'down'):
+                if self.editor.search_mode:
+                    self.editor.handle_search_navigation(key)
+                    return None  # Consume the key event
                 else:
-                    try:
-                        if cursor.col > len(buffer.__getitem__(cursor.row)) + leftMargin + 2:
-                            cursor.col = len(buffer.__getitem__(cursor.row)) + leftMargin + 2
-                    except IndexError:
-                        cursor.col = len(buffer.__getitem__(cursor.row).split("=")[0]) + 2 + leftMargin + 1
-                undoHistory.pop(-1)
+                    self.editor.handle_navigation(key)
+                    return None  # Consume the key event
+            return super().keypress(size, key)
 
-                if (len(new) - 2 > self.n_cols - 10) and (long_selected is True):
-                    line_key = new.split("=")[0] + " = "
-                    line_value = new.split("=")[1]
+        def mouse_event(self, size, event, button, col, row, focus):
+            if event == 'mouse press' and button in (4, 5):  # Scroll up/down
+                key = 'up' if button == 4 else 'down'
+                if self.editor.search_mode:
+                    self.editor.handle_search_navigation(key)
+                    return True  # Consume the event
+                else:
+                    self.editor.handle_navigation(key)
+                    return True  # Consume the event
+            return super().mouse_event(size, event, button, col, row, focus)
 
-                    extra_space = 0 if horizontal_scroll > 1 else 1
+    class Scrollbar(urwid.WidgetWrap):
+        def __init__(self, listbox):
+            self.listbox = listbox  # This is the ListBox
+            self.scrollbar = urwid.WidgetPlaceholder(urwid.SolidFill(' '))  # Placeholder for the scrollbar
+            self.thumb_char = '▐'
+            # Combine the ListBox and the scrollbar
+            self.widget = urwid.Columns([
+                ('weight', 1, self.listbox),
+                ('fixed', 1, self.scrollbar)
+            ], focus_column=0)
+            super().__init__(self.widget)
 
-                    weird_calc = len(new) - self.n_cols + 10 if len(new) - self.n_cols + 8 > 0 else 0
-                    horizontal_scroll = weird_calc
-                    start_char = weird_calc + 1
-                    end_char = 0
+        def render(self, size, focus=False):
+            # size is a tuple (maxcol, maxrow)
+            maxcol, maxrow = size
+            # Update the scrollbar with the current size
+            self._update_scrollbar(size)
+            # Render the widget
+            return self.widget.render(size, focus=focus)
 
-                    cursor.col = len(line_key) + leftMargin + len(line_value[start_char:len(line_value) - end_char]) + 3 + extra_space
+        def _update_scrollbar(self, size):
+            maxcol, maxrow = size
+            listbox = self.listbox
 
-
-            if not undoHistory:
-                status = "Viewing"
-                saveColor = 9
-
-
-class EditorCursor:
-    def __init__(self, row=0, col=0, col_hint=None):
-        self.row = row
-        self._col = col
-        self._col_hint = col if col_hint is None else col_hint
-
-    @property
-    def col(self):
-        return self._col
-
-    @col.setter
-    def col(self, col):
-        self._col = col
-        self._col_hint = col
-
-
-    def center(self, buffer):
-        if self.row > len(buffer.lines) - 1:
-            self.row = len(buffer.lines) - 1
-
-        self._clamp_col(buffer)
-        if self.col < len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1:
-            self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1
-
-
-    def up(self, buffer):
-        if self.row > 0:
-            self.row -= 1
-            self._clamp_col(buffer)
-            if self.col < len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1:
-                self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1
-
-    def down(self, buffer):
-        if self.row < buffer.bottom:
-            self.row += 1
-            self._clamp_col(buffer)
-            if self.col < len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1:
-                self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1
-
-
-    def _clamp_col(self, buffer):
-        self._col = min(self._col_hint, len(buffer[self.row]))
-        try:
-            len(buffer.__getitem__(self.row).split("=")[1])
-            self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1 + len(buffer.__getitem__(self.row).split("=")[1])
-
-        except IndexError:
-            self.col -= 1
-            pass
-
-
-    def left(self, buffer):
-        global long_selected
-
-        if self.col > len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1:
-            self.col -= 1
-        elif self.row > 0 and long_selected is False:
-            self.row -= 1
-            self.col = int(len(buffer[self.row]) + int(leftMargin)) + 2
-
-    def right(self, buffer):
-        if self.col < int(len(buffer[self.row]) + int(leftMargin)) + 2:
-            if self.col < len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1:
-                self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1
-                self.row += 1
+            total_lines = len(listbox.body)
+            if total_lines == 0:
+                thumb_size = maxrow
+                thumb_position = 0
             else:
-                self.col += 1
-        elif self.row < buffer.bottom:
-            self.row += 1
-            self.col = len(buffer.__getitem__(self.row).split("=")[0]) + 2 + leftMargin + 1
+                # Calculate the visible portion
+                focus_position = listbox.body.focus
+                if focus_position is None:
+                    focus_position = 0
 
+                # Estimate the number of lines per screen
+                lines_per_screen = maxrow
+                thumb_size = max(1, round(int(lines_per_screen * maxrow / total_lines) / 2))
+                thumb_position = int(
+                    focus_position * (maxrow - thumb_size) / (max(1, total_lines - lines_per_screen) * 1.8))
 
-def right(window, buffer, cursor):
-    global long_selected
+                # Clamp thumb_position to ensure it stays within the scrollbar
+                thumb_position = max(0, min(thumb_position, maxrow - thumb_size))
 
-    cursor.right(buffer)
-    window.down(buffer, cursor)
+            # Create the scrollbar thumb using the "▐" character
+            scrollbar_thumb = urwid.AttrMap(urwid.SolidFill(self.thumb_char), 'scrollbar_thumb')
 
-    if long_selected is False and len(buffer.__getitem__(cursor.row)) - 2 > window.n_cols - 10:
-        window.horizontal_scroll(cursor, buffer)
-        cursor.col = window.n_cols - 2
+            # Create spaces above and below the thumb
+            scrollbar_top = urwid.SolidFill(' ')
+            scrollbar_bottom = urwid.SolidFill(' ')
 
+            # Build the scrollbar pile
+            scrollbar_pile = urwid.Pile([
+                ('fixed', thumb_position, scrollbar_top),
+                ('fixed', thumb_size, scrollbar_thumb),
+                ('weight', 1, scrollbar_bottom)
+            ])
 
-def left(window, buffer, cursor):
-    global long_selected
+            self.scrollbar.original_widget = scrollbar_pile
 
-    cursor.left(buffer)
-    window.up(cursor)
+        def keypress(self, size, key):
+            return self.widget.keypress(size, key)
 
-    if long_selected is False and len(buffer.__getitem__(cursor.row)) - 2 > window.n_cols - 10:
-        window.horizontal_scroll(cursor, buffer)
-        cursor.col = window.n_cols - 2
+        def mouse_event(self, size, event, button, col, row, focus):
+            return self.widget.mouse_event(size, event, button, col, row, focus)
 
+    def __init__(self, server_name: str):
+        self.server_name = server_name
+        self.file_path = constants.server_path(server_name, 'server.properties')
+        self.properties = self.load_properties()
+        self.search_mode = False
+        self.search_term = ""
+        self.search_results = []
+        self.focused_result = 0
+        self.previous_focus = None
+        self.current_index = 0
 
-class Buffer:
-    def __init__(self, lines):
-        self.lines = lines
+        self.widget_info = []  # Store references to widgets
+        self.loop = None  # Will be set later
 
-    def __len__(self):
-        return len(self.lines)
+        self.list_walker = urwid.SimpleFocusListWalker(self.build_ui())
+        self.listbox = self.SearchListBox(self.list_walker, self)
+        self.search_edit = urwid.Edit(('search_bar', "Search: "))
+        self.matches_display = urwid.Text("", align='right')
+        search_columns = urwid.Columns([
+            ('weight', 1, self.search_edit),
+            ('pack', self.matches_display)
+        ], dividechars=1)
+        self.search_widget = urwid.AttrMap(search_columns, 'search_bar')
 
-    def __getitem__(self, index):
-        return self.lines[index]
+        # Help text to be displayed when search bar is hidden
+        self.help_text = urwid.Text(('search_bar', " ESC - save & quit, CTRL+F - search "), align='center')
 
-    @property
-    def bottom(self):
-        return len(self) - 1
+        # Wrap the ListBox with the Scrollbar
+        self.scrollbar = self.Scrollbar(self.listbox)
 
-    def insert(self, cursor, string, window, buffer):
-        global horizontal_scroll
+        # Initially show the help text at the footer
+        self.main_widget = urwid.Frame(
+            body=self.scrollbar,
+            footer=self.help_text  # Show help text by default
+        )
 
-        window.undo(cursor, buffer, window, save=True)
+    def connect_signals(self):
+        urwid.connect_signal(self.list_walker, 'modified', self.render_focus)
+        urwid.connect_signal(self.search_edit, 'change', self.on_search_edit_change)
 
-        horizontal_scroll = horizontal_scroll - 2 if horizontal_scroll > 0 else 0
+    # Load server.properties file
+    def load_properties(self):
+        properties = []
 
-        row, col = cursor.row, cursor.col - 4 + horizontal_scroll - 2
-        current = self.lines.pop(row)
-        new = current[:col] + string + current[col:]
-        self.lines.insert(row, new)
+        if os.path.exists(self.file_path):
+            with open(self.file_path, 'r') as f:
+                content = f.read()
+                if content.strip():
 
+                    for line in content.splitlines():
 
-    def split(self, cursor):
-        row, col = cursor.row, cursor.col
-        current = self.lines.pop(row)
-        self.lines.insert(row, current[:col])
-        self.lines.insert(row + 1, current[col:])
+                        if line.startswith("#"):
+                            properties.append(('comment', line.strip().replace('# ', '#'), None))
 
+                        elif '=' in line:
+                            key, value = line.strip().split('=', 1)
+                            properties.append(('entry', key, value))
 
-    def delete(self, cursor, window, buffer):
-        global horizontal_scroll
-        global horizontal_control
-        global long_text
-        global end_char
-        global start_char
-        global long_selected
+                        else:
+                            properties.append(('raw', line.strip(), None))
 
-        window.undo(cursor, buffer, window, save=True)
+        if not properties:
+            constants.fix_empty_properties(self.server_name)
+            return self.load_properties()
 
-        horizontal_scroll = horizontal_scroll - 3 if horizontal_scroll > 0 else 0
+        return properties
 
-        if (long_text is True) and (cursor.col + 2 >= window.n_cols - 5) and (horizontal_control == "backspace"):
-            row, col = cursor.row, cursor.col - leftMargin + horizontal_scroll - 2
-            if (row, col) < (self.bottom, len(self[row])):
-                current = self.lines.pop(row)
-                new = current[:col] + current[col + 1:]
-                self.lines.insert(row, new)
+    # Save properties back to the file
+    def save_properties(self):
+        final_text = []
+        for i, widget in enumerate(self.list_walker):
 
-            long_text = False
+            # Skip divider lines
+            if isinstance(widget, urwid.Divider):
+                continue
+
+            # Normal line
+            if isinstance(widget, urwid.Columns) and len(widget.contents) >= 4:
+                key_widget = widget.contents[1][0]
+                key = urwid.Text.get_text(key_widget)[0]
+                value_placeholder = widget.contents[3][0]
+                value_widget = value_placeholder.original_widget
+
+                if isinstance(value_widget, urwid.AttrMap):
+                    value_widget = value_widget.original_widget
+
+                if isinstance(value_widget, urwid.Edit):
+                    value = value_widget.get_edit_text()
+                elif isinstance(value_widget, urwid.Text):
+                    value = ''.join([t for attr, t in value_widget.text])
+                else:
+                    value = ''
+
+                final_text.append(f'{key}={value}\n')
+
+            # Comment
+            elif isinstance(widget, urwid.Columns):
+                comment = widget.contents[1][0].get_text()[0]
+                final_text.append(f'{comment.replace("# ", "#")}\n')
+
+        if final_text:
+            with open(self.file_path, 'w') as f:
+                f.writelines(final_text)
+
+    def build_ui(self):
+        widgets = []
+        self.editable_indices = []  # Indices of editable lines
+        for i, (entry_type, key, value) in enumerate(self.properties):
+
+            # Comments
+            if entry_type == 'comment':
+                line_number_widget = urwid.Text(('line', f"{i + 1:3} "), align='right')
+                comment_widget = urwid.Text(('comment', key.replace('#', '# ')))
+                line_widget = urwid.Columns([
+                    ('fixed', 4, line_number_widget),
+                    comment_widget
+                ], dividechars=1)
+                widgets.append(line_widget)
+                widgets.append(urwid.Divider())
+
+            # Key and Value entries
+            elif entry_type == 'entry':
+                line_number_widget = urwid.Text(('line_number', f"{i + 1:3} "), align='right')
+                key_widget = urwid.Text(('key', key))
+                equal_sign_widget = urwid.Text(('line', '= '))
+
+                # Define the value widget
+                value_widget = urwid.Edit('', value)
+                value_wrapper = urwid.AttrMap(value_widget, self.value_type(value))
+                value_wrapper.edit = value_widget
+                urwid.connect_signal(value_widget, 'change', functools.partial(self.on_edit, value_wrapper))
+
+                # Wrap the value widget in a WidgetPlaceholder
+                value_placeholder = urwid.WidgetPlaceholder(value_wrapper)
+
+                # Assemble the columns
+                columns = urwid.Columns([
+                    ('fixed', 4, line_number_widget),
+                    ('fixed', 20, key_widget),
+                    ('fixed', 2, equal_sign_widget),
+                    ('weight', 1, value_placeholder)
+                ], dividechars=1)
+
+                # Store the index before appending the widget
+                widget_index = len(widgets)
+
+                widgets.append(columns)
+                widgets.append(urwid.Divider())
+
+                self.editable_indices.append(widget_index)
+
+                # Store references for later use
+                self.widget_info.append({
+                    'index': widget_index,
+                    'entry_type': entry_type,
+                    'key': key,
+                    'value': value,
+                    'key_widget': key_widget,
+                    'value_widget': value_widget,
+                    'value_placeholder': value_placeholder,
+                    'value_wrapper': value_wrapper,
+                    'line_widget': columns
+                })
+
+            else:
+                widgets.append(urwid.Text(key))
+                widgets.append(urwid.Divider())
+
+        return widgets
+
+    def toggle_search(self):
+        if self.search_mode:
+            self.search_mode = False
+            self.main_widget.footer = self.help_text  # Show the help text again
+            self.reset_highlighting()
+            self.matches_display.set_text("")
+
+            # Restore focus and explicitly set the cursor position after a short delay
+            self.loop.set_alarm_in(0.01, self.restore_focus_and_cursor)
+        else:
+            self.search_mode = True
+            self.previous_focus = self.listbox.get_focus()[1]  # Save current focus
+            self.main_widget.footer = self.search_widget  # Show the search bar
+            self.main_widget.set_focus('footer')
+            if self.search_term:
+                self.perform_search()
+
+    def restore_focus_and_cursor(self, loop=None, user_data=None):
+        focus_widget, focus_position = self.listbox.get_focus()
+
+        # Explicitly set focus to the current line
+        if focus_widget:
+            self.listbox.set_focus(focus_position)
+
+            # Ensure the cursor is placed at the end of the Edit widget if applicable
+            self.set_cursor_to_end()
+
+            # Force a screen redraw to ensure the cursor is visible
+            self.loop.draw_screen()
+
+    def set_cursor_to_end(self):
+        focus_widget, focus_position = self.listbox.get_focus()
+
+        # Ensure that we are focusing on an editable line
+        if focus_position is not None and isinstance(self.list_walker[focus_position], urwid.Columns):
+            value_placeholder = self.list_walker[focus_position].contents[3][0]
+            value_widget = value_placeholder.original_widget
+
+            if isinstance(value_widget, urwid.AttrMap):
+                value_widget = value_widget.original_widget
+
+            if isinstance(value_widget, urwid.Edit):
+                # Explicitly move cursor to the end of the line
+                value_widget.set_edit_pos(len(value_widget.get_edit_text()))
+
+    def reset_highlighting(self):
+        for info in self.widget_info:
+            if info['entry_type'] == 'entry':
+                key = info['key']
+                key_widget = info['key_widget']
+                value_placeholder = info['value_placeholder']
+                value_wrapper = info['value_wrapper']
+
+                # Reset key_widget text
+                key_widget.set_text(('key', key))
+
+                # Reset value_placeholder to original value_wrapper if needed
+                if value_placeholder.original_widget != value_wrapper:
+                    value_placeholder.original_widget = value_wrapper
+
+    def on_search_edit_change(self, edit, new_edit_text):
+        self.search_term = new_edit_text
+        self.loop.set_alarm_in(0, lambda *_: self.perform_search())
+
+    def perform_search(self):
+        self.search_results = []
+        self.search_term = self.search_edit.get_edit_text()
+        if not self.search_term:
+            self.reset_highlighting()
+            self.matches_display.set_text("")
             return
 
-        elif (long_selected is True) and (horizontal_scroll < 2) and (cursor.col + 2 >= window.n_cols - 5) and (horizontal_control == "backspace"):
-            if end_char > 0:
-                cursor.left(buffer)
+        for info in self.widget_info:
+            if info['entry_type'] == 'entry':
+                key = info['key']
+                value_widget = info['value_widget']
+                value = value_widget.get_edit_text()
+                key_widget = info['key_widget']
+                value_placeholder = info['value_placeholder']
+                value_wrapper = info['value_wrapper']
 
-        if long_text is True and horizontal_control == "delete" and (cursor.col + 2 <= window.n_cols - 1):
+                # Reset key_widget text
+                key_widget.set_text(('key', key))
 
-            if (end_char > 0) and (cursor.col + 2 <= window.n_cols - 4):
+                # Reset value_placeholder to original value_wrapper if needed
+                if value_placeholder.original_widget != value_wrapper:
+                    value_placeholder.original_widget = value_wrapper
 
-                end_char -= 1
-                start_char += 1
-                horizontal_scroll += 1
+                # Now, check for matches
+                key_matches = self.search_term.lower() in key.lower()
+                value_matches = self.search_term.lower() in value.lower()
 
-                row, col = cursor.row, cursor.col - leftMargin + horizontal_scroll - 2
-                if (row, col) < (self.bottom, len(self[row])):
-                    current = self.lines.pop(row)
-                    new = current[:col] + current[col + 1:]
-                    self.lines.insert(row, new)
+                # For key
+                if key_matches:
+                    highlighted_key = self.highlight_text(key, self.search_term, default_attr='key')
+                    key_widget.set_text(highlighted_key)
+                else:
+                    key_widget.set_text(('key', key))
 
-                return
+                # For value
+                if value_matches:
+                    # Determine the value_type attribute
+                    value_type_attr = self.value_type(value)
+                    highlighted_value = self.highlight_text(value, self.search_term, default_attr=value_type_attr)
+                    highlighted_value_widget = urwid.Text(highlighted_value)
+                    value_placeholder.original_widget = highlighted_value_widget
+                else:
+                    # Restore the value_placeholder to the Edit widget if it was replaced
+                    if value_placeholder.original_widget != value_wrapper:
+                        value_placeholder.original_widget = value_wrapper
 
+                # Add to search results if either key or value matches
+                if key_matches or value_matches:
+                    self.search_results.append(info['index'])
+
+        if self.search_results:
+            self.focused_result = 0
+            self.focus_search_result(self.focused_result)
+        else:
+            # No results, update matches display
+            self.matches_display.set_text("No Results")
+
+    def highlight_text(self, text, term, default_attr=None):
+        # Split the text into parts where the term occurs (case-insensitive)
+        regex = re.compile('(' + re.escape(term) + ')', re.IGNORECASE)
+        parts = regex.split(text)
+        # Apply highlighting to the matched terms
+        result = []
+        for part in parts:
+            if not part:
+                continue  # Skip empty strings
+            if regex.fullmatch(part):
+                result.append(('search_highlight', part))
             else:
-                cursor.right(buffer)
+                if default_attr:
+                    result.append((default_attr, part))
+                else:
+                    result.append(part)
+        return result
 
-        elif long_text is True and horizontal_control == "delete" and (cursor.col + 2 >= window.n_cols - 5):
+    def focus_search_result(self, index):
+        if self.search_results:
+            self.focused_result = index % len(self.search_results)
+            self.loop.set_alarm_in(0, lambda *_: self.listbox.set_focus(self.search_results[self.focused_result]))
+            # Update matches display
+            self.matches_display.set_text(f"{self.focused_result + 1} / {len(self.search_results)} Results")
+        else:
+            self.matches_display.set_text("No Results")
+
+    @staticmethod
+    def return_to_menu():
+        screen_manager.current_screen('MainMenuScreen')
+
+    def handle_input(self, key):
+        # Ignore mouse events
+        if isinstance(key, tuple):
             return
 
-        row, col = cursor.row, cursor.col - leftMargin + horizontal_scroll - 2
-        if (row, col) < (self.bottom, len(self[row])):
-
-            current = self.lines.pop(row)
-            new = current[:col] + current[col + 1:]
-            self.lines.insert(row, new)
-
-
-def edit_properties(server_name: str):
-    def editMain(stdscr):
-        global undoHistory
-        global status
-        global saveColor
-        global search_mode
-        global search_text
-        global search_view
-        global search_banner
-        global search_list
-        global current_match
-        global total_matches
-
-        global horizontal_control
-        global horizontal_scroll
-        global start_char
-        global end_char
-        global long_text
-        global long_selected
-
-        global con_line
-        global con_col
-
-        buffer = None
-        window = None
-
-        last_key = ""
-        long_selected = False
-        long_text = False
-        line_key = ""
-        line_value = ""
-        start_char = 0
-        end_char = 0
-        horizontal_scroll = 0
-        horizontal_control = ""
-        total_matches = 0
-        current_match = 0
-        search_list = []
-        status = "Viewing"
-        saveColor = 9
-        undoHistory = []
-        search_text = ""
-        search_mode = False
-        reset_cursor = False
-        long_text = False
-        right_lock = False
-
-        filename = os.path.join(constants.serverDir, server_name, 'server.properties')
-        if not os.path.exists(filename):
-            constants.fix_empty_properties(server_name)
-
-        with open(filename) as f:
-            buffer = Buffer(f.read().splitlines())
-
-        window = EditorWindow(curses.LINES - 1, curses.COLS - 1)
-
-        index = 0
-        for row, line in enumerate(buffer[window.row:window.row + window.n_rows]):
-            if index == 2:
-                cursor = EditorCursor(col=len(line) + leftMargin + 2, row=index)
-                break
-            index += 1
-
-        # Custom colors
-        curses.init_color(99, 950, 450, 150)   # Orange
-        curses.init_color(98, 950, 250, 1000)  # Purple
-        curses.init_color(100, 300, 850, 1000)    # Aqua
-
-        curses.init_color(101, 300, 300, 1000)  # text blue
-        curses.init_color(104, 300, 300, 1000)  # line-num color
-
-        curses.init_color(102, 0, 800, 450)      # Saved
-        curses.init_color(103, 800, 800, 600)    # Unsaved
-        curses.init_color(105, 400, 400, 400)    # Gray
-        curses.init_color(106, 120, 120, 120)    # Dark Gray
-        curses.init_color(107, 600, 1000, 600)   # Select green
-        curses.init_color(108, 1000, 1000, 1000) # White
-        curses.start_color()
-
-        curses.init_pair(9, curses.COLOR_BLACK, curses.COLOR_WHITE)
-        curses.init_pair(10, curses.COLOR_BLACK, 103)
-        curses.init_pair(11, curses.COLOR_BLACK, 102)
-        curses.init_pair(3, 101, curses.COLOR_BLACK)
-        curses.init_pair(4, curses.COLOR_BLACK, 104)
-        curses.init_pair(5, 105, curses.COLOR_BLACK)
-
-        curses.init_pair(20, curses.COLOR_WHITE, 106)  # Search stuff
-        curses.init_pair(21, 105, curses.COLOR_BLACK)
-        curses.init_pair(22, curses.COLOR_BLACK, 107)
-
-        curses.init_pair(30, 100, curses.COLOR_BLACK)  # String
-        curses.init_pair(31, 99, curses.COLOR_BLACK)   # Int
-        curses.init_pair(32, 98, curses.COLOR_BLACK)   # Bool
-
-        curses.init_pair(40, 108, curses.COLOR_BLACK)  # Scrollbar bar
-        curses.init_pair(41, 105, curses.COLOR_BLACK)  # Scrollbar line
-
-
-        def generate_search():
-            global search_text
-            global search_view
-            global search_banner
-            global current_match
-            global total_matches
-
-            max_search_size = 20
-
-            multiplier = (max_search_size - len(search_text))
-            if multiplier < 1:
-                multiplier = 1
-
-            search_view = search_text
-            if len(search_view) >= max_search_size:
-                search_view = "..." + search_view[len(search_view) - max_search_size + 4:]
-
-            total_matches = 0
-
-            if search_text:
-                for item in buffer:
-                    if search_text in item:
-                        total_matches += 1
-
+        # Close search or save & quit
+        if key == 'esc':
+            if self.search_mode:
+                self.toggle_search()
             else:
-                total_matches = 0
+                self.save_properties()
+                self.return_to_menu()
 
-            current_match = total_matches if current_match > total_matches else current_match
+        # Quit without saving
+        elif key in ['ctrl c', 'ctrl q']:
+            self.return_to_menu()
 
-            num_fix = 1
-            if total_matches == 0:
-                num_fix = 0
+        # Toggle search
+        elif key == 'ctrl f':
+            self.toggle_search()
+        elif self.search_mode:
+            if key == 'esc':
+                self.toggle_search()
+            elif key in ('up', 'down', 'page up', 'page down', 'n', 'p'):
+                # Handle navigation keys in search mode
+                self.handle_search_navigation(key)
+            else:
+                # Allow the search_edit widget to handle the key
+                maxcol = self.loop.screen_size[0]
+                self.search_edit.keypress((maxcol,), key)
+        else:
+            # Handle navigation keys
+            if key in ('up', 'down', 'page up', 'page down'):
+                self.handle_navigation(key)
+            else:
+                # Let the ListBox handle other keys
+                self.listbox.keypress(self.loop.screen_size, key)
 
+    def handle_navigation(self, key):
+        if isinstance(key, tuple):
+            return
 
-            # matches = '\n'.join(buffer).count(search_text) if len(search_text) > 0 else 0
+        if key in ('up', 'down'):
+            self.move_focus_to_next_editable_line(key)
+        elif key == 'page up':
+            # Move up several lines
+            for _ in range(5):  # Adjust as needed
+                self.move_focus_to_next_editable_line('up')
+        elif key == 'page down':
+            for _ in range(5):
+                self.move_focus_to_next_editable_line('down')
 
-            search_banner = " Ϙ ⁞  " + search_view + (" " * multiplier) + "  "
-            search_banner = search_banner + f"│ {current_match + num_fix} / {total_matches} matches - 'ESC' " if len(search_text) > 0 else search_banner + f"│ 'ESC' to exit search "
+    def move_focus_to_next_editable_line(self, direction):
+        current_focus = self.listbox.get_focus()[1]
+        if current_focus is None:
+            # No focus, start from 0 or max_index depending on direction
+            current_focus = 0 if direction == 'down' else len(self.list_walker) - 1
 
-            # if (cursor.row != (window.n_rows + window.row)) and (search_mode is True) and (len(search_text) > 0):
-            #     search_banner += "- 'ESC' "
-
-
-        def find_search(direction):
-            global search_list
-            global current_match
-
-            foundItem = None
-
-            if search_list:
-
-                if direction == "down":
-
-                    search_list = sorted(search_list)
-
-                    for item in search_list:
-
-                        if item[0] > cursor.row:
-
-                            foundItem = item
-                            break
-
-                    foundItem = search_list[0] if foundItem is None else foundItem
-
-                elif direction == "up":
-
-                    search_list = sorted(search_list, reverse=True)
-
-                    for item in search_list:
-
-                        if item[0] < cursor.row:
-                            foundItem = item
-                            break
-
-                    foundItem = search_list[0] if foundItem is None else foundItem
-
-                elif direction == "first":
-
-                    search_list = sorted(search_list)
-                    foundItem = search_list[0]
-
-                window.horizontal_scroll(cursor, buffer)
-                cursor.row = foundItem[0]
-                window.row = foundItem[1]
-                current_match = foundItem[2]
-                cursor.center(buffer)
-                return foundItem
-
-
+        index = current_focus
+        max_index = len(self.list_walker) - 1
 
         while True:
-
-            # Prevent stinky lil crash
-            if cursor.col > window.n_cols:
-                cursor.col = window.n_cols - 2
-
-            stdscr.erase()
-            x, y = stdscr.getmaxyx()
-            con_line = y
-            con_col = x
-
-            statusText = f" {status} 'server.properties' (CTL+Q quit/+S save/+Z undo/+F search)"
-
-
-            # Show scrollbar
-            if (len(buffer.lines) > window.n_rows):
-
-                height = round(window.n_rows / 1.2)
-                offset = round((window.n_rows * 0.2) / 4)
-                item = window.row / window.n_rows
-                total = len(buffer) / window.n_rows
-
-                # print(window.n_rows, x)
-
-                bar_pos = math.ceil((item / total) * height)
-                bar_len = math.ceil(height / total)
-
-                handle_range = range(bar_pos, bar_pos + bar_len)
-
-                try:
-                    stdscr.addstr(offset, window.n_cols - 1, "↑", curses.color_pair(41))
-
-                    for x in range(1, height + 1):
-
-                        if x in handle_range:
-                            stdscr.addstr(offset + x, window.n_cols - 1, "█", curses.color_pair(40))
-
-                        else:
-                            stdscr.addstr(offset + x, window.n_cols - 1, "│", curses.color_pair(41))
-
-                    stdscr.addstr(offset + height + 1, window.n_cols - 1, "↓", curses.color_pair(41))
-                except:
-                    pass
-
-
-
-            # Search mode
-            try:
-
-                if not search_mode:
-
-                    stdscr.addstr(window.n_rows, curses.COLS // 2 - len(statusText) // 2, statusText, curses.color_pair(saveColor))
-
-                else:
-
-                    generate_search()
-
-                    stdscr.addstr(window.n_rows, curses.COLS // 2 - len(search_banner) // 2, search_banner, curses.color_pair(20))
-
-
-                # Find location of search matches
-                search_list = []
-                line_num = 0
-                match_num = 0
-                if search_text:
-                    for row, line in enumerate(buffer):
-                        if search_text in line:
-
-                            scroll = len(buffer) - window.n_rows if len(buffer) - window.n_rows > 0 else 0
-
-                            search_list.append([line_num, scroll, match_num])
-
-                            match_num += 1
-
-                        line_num += 1
-
-
-                for row, line in enumerate(buffer[window.row:window.row + window.n_rows]):
-
-                    # Check if line exceeds screen space
-                    try:
-                        horizontal_scroll = len(buffer.__getitem__(cursor.row)) - window.n_cols + 10 - end_char if len(buffer.__getitem__(cursor.row)) - window.n_cols + 8 > 0 else 0
-                        weird_calc = len(buffer.__getitem__(cursor.row)) - window.n_cols + 10 if len(buffer.__getitem__(cursor.row)) - window.n_cols + 8 > 0 else 0
-
-                        if (row == (cursor.row - window.row)) and (horizontal_control == "right") and (end_char < weird_calc + 1) and (long_text is False) and (cursor.col - 2 >= window.n_cols - 7):
-                            horizontal_scroll += 2
-                            start_char += 2
-                            end_char -= 2
-
-
-                        if horizontal_scroll < 2:
-                            long_text = False
-                            start_char = 0
-                            end_char = weird_calc
-
-
-                        if len(buffer.__getitem__(cursor.row)) - 2 > (window.n_cols - 10):
-                            pass
-
-                        else:
-                            long_selected = False
-
-
-                        if (row == (cursor.row - window.row)) and (len(line) - 2 > window.n_cols - 10):
-
-                            line_key = line.split("=", 1)[0] + "="
-                            line_value = line.split("=", 1)[1]
-
-                            if long_text is False:
-                                if (cursor.col - 2 >= window.n_cols - 5) and end_char > 0:
-                                    left(window, buffer, cursor)
-                                long_text = True
-                                long_selected = True
-
-                            # start_char = 0 if len(line) - window.n_cols + 10 < 0 else len(line) - window.n_cols + 11
-                            start_char = horizontal_scroll + 1
-
-
-                            if (start_char < 4 and (cursor.col + 2 <= window.n_cols - 8)) or horizontal_scroll < 0:
-                                horizontal_scroll = 0
-                                start_char = 0
-                                end_char = weird_calc
-
-                            if start_char > 0:
-
-                                if horizontal_control in ["right", "insert"]:
-
-                                    if end_char == 0:
-
-                                        if horizontal_control in ["right", "insert"] and (cursor.col - 2 >= window.n_cols - 5):
-                                            end_char = end_char - 1 if end_char > 0 else 0
-
-                                        if horizontal_control in ["right", "insert"] and (cursor.col - start_char + 2 == window.n_cols - 4):
-                                            start_char = start_char + 1 if start_char > 0 else start_char
-                                            cursor.col = window.n_rows - 5 + 2
-
-
-                                    elif end_char > 0:
-
-                                        if horizontal_control == "right" and (cursor.col - 2 >= window.n_cols - 7):
-                                            end_char = end_char - 1 if end_char > 2 else 0
-
-                                        if horizontal_control == "right" and (cursor.col - start_char - 2 >= window.n_cols - 7):
-                                            start_char = start_char + 1 if start_char > 0 else start_char
-                                            cursor.col = window.n_rows - 8 + 2
-
-
-
-                                elif horizontal_control == "backspace" and (cursor.col - start_char - 2 == window.n_cols - 4):
-                                    start_char = start_char - 1 if start_char > 0 else start_char
-
-
-                                elif horizontal_control == "left" and cursor.col - 2 <= len(line_key) + 7:
-                                    end_char = end_char + 1 # if cursor.col - len(line_key) - 4 > 3 else 0
-                                    start_char = start_char - 1 if start_char > 0 else start_char
-                                    cursor.col = len(line_key) + 7 + 2
-
-
-                            if horizontal_scroll < 2:
-                                start_char = 0
-                                horizontal_scroll = 0
-                                end_char = weird_calc
-
-
-
-                            line = line_value[start_char:len(line_value) - end_char]
-                            line = line_key + "..." + line if horizontal_scroll > 0 else line_key + line + "..."
-
-
-                            end = -3
-                            if ((horizontal_control == "right") and (end_char > 0) and (cursor.col - 2 >= window.n_cols - 7)) or (end_char == weird_calc):
-                                end = -4
-
-
-                            line = line[:end] + "..." if end_char > 0 else line
-
-
-                            horizontal_control = ""
-
-
-                        elif (len(line) - 2 > window.n_cols - 10):
-                            line = line[:window.n_cols - 11] + "..."
-
-
-                        right_lock = False
-                        if end_char > 0:
-                            right_lock = True
-
-
-                        # debug use
-                        # stdscr.addstr(0, window.n_cols - len(f"{long_selected}, {long_text}, {weird_calc}, {horizontal_scroll}, {start_char}, {end_char}"), f"{long_selected}, {long_text}, {weird_calc}, {horizontal_scroll}, {start_char}, {end_char}")
-                        # stdscr.addstr(0, window.n_cols - len(last_key) - 1, last_key)
-
-                    except IndexError:
-                        cursor.row = 0 if cursor.row < 0 or cursor.row > window.n_rows + window.row else cursor.row
-
-
-
-                    if window.row < buffer.bottom - window.n_rows + 1:
-                        stdscr.addstr(window.n_rows, 0, " ▼ more ▼", curses.color_pair(5))
-
-            # Line counter
-                    rowNumber = str(window.row + row + 1) + " "
-                    if len(rowNumber) == 2:
-                        rowNumber = " " + rowNumber
-
-                    if len(rowNumber) > 3:
-                        rowNumber = str(window.row + row + 1)
-
-                    stdscr.addstr(row, 0, rowNumber, curses.color_pair(4))
-
-
-            # Highlight matches in search
-                    sassy_line = buffer.__getitem__(row + window.row).replace("=", " = ", 1)
-
-                    if (len(search_text) > 0) and (search_text in sassy_line) and (search_mode is True):
-                        line = line.replace("=", " = ", 1)
-                        lines = line.split(search_text)
-
-                        length = 0
-                        line_key = sassy_line.split('=')[0] + ' = '
-                        match_pos = len(line_key) + leftMargin + sassy_line.find(search_text)
-                        start_text = horizontal_scroll if cursor.row != row + window.row else match_pos - len(search_text) - 3 - len(line_key) - leftMargin
-
-                        # Long string
-                        if ((((len(sassy_line) - 2 > window.n_cols - 10) and len(sassy_line.split('=')[0] + ' = ') + leftMargin + sassy_line.find(search_text) > window.n_cols - 10) or (horizontal_scroll > start_text)) and (search_text not in line_key)):
-
-                            if cursor.row != row + window.row:
-                                stdscr.addstr(row, leftMargin, line.split("...")[0], curses.color_pair(21))
-                                stdscr.addstr(row, leftMargin + len(line.split("...")[0]), "...", curses.color_pair(22))
-
-                            else:
-                                start = start_char + leftMargin + len(line_key) + 5
-                                end = len(sassy_line.split(' = ')[1] + ' = ') - end_char + leftMargin + len(line_key) - len(search_text) + 2
-
-                                # stdscr.addstr(window.n_rows, window.n_cols - len(f"{start}, {end}, {match_pos}, {horizontal_scroll}"), f"{start}, {end}, {match_pos}, {horizontal_scroll}")
-
-                                if (match_pos not in range(start, end) and (search_text not in line_key)) or (horizontal_scroll > start_text):
-                                    if (match_pos < start and horizontal_scroll > 0) or (horizontal_scroll > start_text) and (long_selected is True):
-                                        stdscr.addstr(row, leftMargin, line_key, curses.color_pair(21))
-                                        stdscr.addstr(row, leftMargin + len(line_key) + 3, line.split("...", 1)[1], curses.color_pair(21))
-                                        stdscr.addstr(row, leftMargin + len(line_key), "...", curses.color_pair(22))
-
-                                    elif end_char > 0:
-                                        stdscr.addstr(row, leftMargin, line_key, curses.color_pair(21))
-                                        stdscr.addstr(row, leftMargin + len(line_key), line.split(" = ", 1)[1], curses.color_pair(21))
-                                        stdscr.addstr(row, leftMargin + len(line_key) + len(line.split(" = ", 1)[1]) - 3, "...", curses.color_pair(22))
-
-                                    else:
-
-                                        for item in lines:
-                                            stdscr.addstr(row, leftMargin + length, item, curses.color_pair(21))
-                                            length += len(item)
-
-                                            if lines.index(item) != len(lines) - 1:
-                                                # Highlight
-                                                stdscr.addstr(row, leftMargin + length, search_text, curses.color_pair(22))
-                                                length += len(search_text)
-
-                                else:
-
-                                    for item in lines:
-                                        stdscr.addstr(row, leftMargin + length, item, curses.color_pair(21))
-                                        length += len(item)
-
-                                        if lines.index(item) != len(lines) - 1:
-
-                                            # Highlight
-                                            stdscr.addstr(row, leftMargin + length, search_text, curses.color_pair(22))
-                                            length += len(search_text)
-
-                        # Normal string
-                        else:
-
-                            for item in lines:
-                                stdscr.addstr(row, leftMargin + length, item, curses.color_pair(21))
-                                length += len(item)
-
-                                if lines.index(item) != len(lines) - 1:
-
-                                    # Highlight
-                                    stdscr.addstr(row, leftMargin + length, search_text, curses.color_pair(22))
-                                    length += len(search_text)
-
-
-                    elif "=" in line:
-
-                        try:
-                            line = line.split("=", 1)
-                            stdscr.addstr(row, leftMargin, line[0], curses.color_pair(3))
-
-                            if cursor.row == window.row + row:
-                                stdscr.addstr(row, len(line[0]) + leftMargin, " = ")
-
-                            else:
-                                stdscr.addstr(row, len(line[0]) + leftMargin, " = ", curses.color_pair(5))
-
-
-                            # Register colors for different data types
-
-                            # Int
-                            try:
-                                test = float(line[1])
-                                is_int = True
-                            except ValueError:
-                                is_int = False
-
-                            if is_int is True:
-                                stdscr.addstr(row, len(line[0]) + leftMargin + 3, line[1], curses.color_pair(31))
-
-                            # Bool
-                            elif line[1] in ["true", "false"]:
-                                stdscr.addstr(row, len(line[0]) + leftMargin + 3, line[1], curses.color_pair(32))
-
-                            # String
-                            else:
-                                stdscr.addstr(row, len(line[0]) + leftMargin + 3, line[1], curses.color_pair(30))
-
-                        except:
-                            left(window, buffer, cursor)
-                            buffer.delete(cursor, window, buffer)
+            if direction == 'up':
+                index -= 1
+                if index < 0:
+                    index = max_index  # Wrap around to bottom
+            elif direction == 'down':
+                index += 1
+                if index > max_index:
+                    index = 0  # Wrap around to top
+
+            if index == current_focus:
+                # We've looped all the way around
+                return
+
+            if index in self.editable_indices:
+                self.listbox.set_focus(index)
+                break
+
+    def handle_search_navigation(self, key):
+        if not self.search_results:
+            return  # No matches to navigate
+
+        if key in ('down', 'n', 'page down'):
+            self.focus_search_result(self.focused_result + 1)
+        elif key in ('up', 'p', 'page up'):
+            self.focus_search_result(self.focused_result - 1)
+        else:
+            pass  # Ignore other keys
+
+    def on_edit(self, edit_widget, widget, value):
+        def change(*a):
+            value_type = self.value_type(value)
+
+            # Toggle boolean values
+            if value.endswith(' ') and value_type == 'boolean':
+                edit_widget.edit.set_edit_text('false' if value.strip() == 'true' else 'true')
+            else:
+                edit_widget.attr_map = {None: value_type}
+        self.loop.set_alarm_in(0, change)
+
+    @staticmethod
+    def value_type(value):
+        value_type = 'string'
+        if value.strip().lower() in ['true', 'false']:
+            value_type = 'boolean'
+        elif value.strip().isdigit():
+            value_type = 'integer'
+        return value_type
+
+    def set_cursor_to_end(self):
+        focus_widget, focus_position = self.listbox.get_focus()
+        if focus_position is None or focus_position >= len(self.list_walker):
+            return
+        # Use focus_position instead of self.current_index
+        if isinstance(self.list_walker[focus_position], urwid.Columns) and len(self.list_walker[focus_position].contents) >= 4:
+            value_placeholder = self.list_walker[focus_position].contents[3][0]
+            value_widget = value_placeholder.original_widget
+            if isinstance(value_widget, urwid.AttrMap):
+                value_widget = value_widget.original_widget
+            if isinstance(value_widget, urwid.Edit):
+                self.loop.set_alarm_in(0, lambda *_: value_widget.set_edit_pos(len(value_widget.get_edit_text())))
+
+    def render_line(self):
+        for i, widget in enumerate(self.list_walker):
+            if isinstance(widget, urwid.Columns):
+                if len(widget.contents) > 2:
+                    line_number_widget = widget.contents[0][0]
+                    equal_sign_widget = widget.contents[2][0]
+
+                    # Highlight the selected line number and '=' sign
+                    if i == self.current_index:
+                        line_number_widget.set_text(('selected_line', line_number_widget.get_text()[0]))
+                        equal_sign_widget.set_text(('selected_eq', equal_sign_widget.get_text()[0]))
                     else:
-                        stdscr.addstr(row, leftMargin, line, curses.color_pair(5))
+                        line_number_widget.set_text(('line', line_number_widget.get_text()[0]))
+                        equal_sign_widget.set_text(('eq', equal_sign_widget.get_text()[0]))
 
-                try:
-                    stdscr.move(*window.translate(cursor))
-                except curses.error:
-                    window.row = cursor.row
-                    # continue
+    def render_focus(self):
+        if getattr(self, '_adjusting_focus', False):
+            return
 
-                if (cursor.row == (window.n_rows + window.row)) and (search_mode is True):
-                    charTest = ["", 0]
+        focused_widget, focus_position = self.listbox.get_focus()
 
-                else:
-                    charTest = buffer.__getitem__(cursor.row).split("=")
+        # Loop through the list_walker to find the index of the focused widget
+        for i, widget in enumerate(self.list_walker):
+            if widget == focused_widget:
+                # Update the current index
+                self.current_index = i
+                self.render_line()
+                self.set_cursor_to_end()
 
-            except curses.error:
-                try:
-                    if curses.KEY_RESIZE == last_key:
-                        print(True)
-                        stdscr.refresh()
-                        time.sleep(0.5)
-                        # continue
-                except:
-                    time.sleep(0.5)
-
-                print('fail')
-
-
-            if reset_cursor is True:
-                cursor.row = window.n_rows + window.row
-                generate_search()
-
-                cursor.col = round(con_col / 2) - round(len(search_banner) / 2) + 6 + len(search_view)
-
-            reset_cursor = False
-
-
-    # user input
-            k = stdscr.getch()
-            if k >= 0:
-                last_key = str(k)
-
-
-            # Detect key input
-            print(k)
-            if k > 0:
-
-                if k == 17: # CTRL+Q
-                    stdscr.erase()
-                    return
-
-                elif k == 26: # CTRL+Z
-                    window.undo(cursor, buffer, window, save=False)
-
-                elif k == 19: # CTRL+S
-                    status = "Saved"
-                    saveColor = 11
-
-
-                # Save file
-                    outFile = ""
-                    for row, line in enumerate(buffer[:buffer.bottom + 1]):
-                        outFile += line + "\n"
-
-                    with open(filename, 'w') as f:
-                        f.write(outFile)
-
-
-                # Toggle search mode
-                elif k == 6: # CTRL+F
-                    search_mode = True
-
-                    generate_search()
-
-                    cursor.row = window.n_rows + window.row
-                    cursor.col = round(con_col / 2) - round(len(search_banner) / 2) + 5 + len(search_view) + 1 # + (4 if (len(search_text) > 0) else 0)
-
-
-
-                # Paste content
-                elif k == 22: # CTRL+V
-
-                    if "=" in buffer.__getitem__(cursor.row):
-                        data = pyperclip.paste().replace("\n", "    ").replace("\r", "")
-
-                        buffer.insert(cursor, data, window, buffer)
-                        cursor.col += len(data)
-
-
-
-                elif k == 27: # ESC
-
-                    if cursor.row > (window.n_rows + window.row) - 1:
-
-                        if total_matches == 0:
-                            cursor.row = 0
-                            window.row = 0
-                        else:
-                            cursor.row = search_list[current_match][0]
-                            window.row = search_list[current_match][1]
-
-                    search_mode = False
-                    total_matches = 0
-                    cursor.center(buffer)
-
-
-                elif k == 259: # up arrow
-
-                    if (search_mode is False) or (total_matches == 0):
-                        cursor.up(buffer)
-                        window.up(cursor)
-                        window.horizontal_scroll(cursor, buffer)
-
+                # If in search mode, ensure focus is on a matching line
+                if self.search_mode:
+                    if self.current_index in self.search_results:
+                        # Update the focused_result index
+                        self.focused_result = self.search_results.index(self.current_index)
+                        self.matches_display.set_text(f"{self.focused_result + 1} / {len(self.search_results)} Results")
                     else:
-                        find_search("up")
+                        # Adjust focus to the nearest matching line
+                        self.adjust_focus_to_match(self.current_index)
+                break
 
+    def adjust_focus_to_match(self, index):
+        if getattr(self, '_adjusting_focus', False):
+            return
+        self._adjusting_focus = True
 
+        if not self.search_results:
+            self._adjusting_focus = False
+            return
 
-                elif k == 258: # down arrow
+        # Find the matching index closest to 'index'
+        distances = [(abs(i - index), i) for i in self.search_results]
+        distances.sort()
+        _, closest_index = distances[0]
 
-                    if (search_mode is False) or (total_matches == 0):
-                        cursor.down(buffer)
-                        window.down(buffer, cursor)
-                        window.horizontal_scroll(cursor, buffer)
+        if closest_index != index:
+            def set_focus(*args):
+                self.listbox.set_focus(closest_index)
+                self._adjusting_focus = False  # Reset after focus change
+            self.loop.set_alarm_in(0, set_focus)
+        else:
+            self._adjusting_focus = False  # No need to adjust focus
 
-                    else:
-                        find_search("down")
+editor = None
+def edit_properties(server_name: str):
+    global loop, editor
 
+    if server_name.lower() in constants.server_list_lower:
+        editor = PropertiesEditor(server_name)
+        editor.loop = loop
+        editor.connect_signals()
+        screen_manager.screens['ServerPropertiesEditScreen'] = (editor.main_widget, editor.handle_input)
+        screen_manager.current_screen('ServerPropertiesEditScreen')
+        return [("normal", "Successfully saved 'server.properties'")]
 
-                elif k == 260: # left arrow
-                    if (cursor.row != (window.n_rows + window.row)):
-                        horizontal_control = "left"
-                        cursor.left(buffer)
-                        window.up(cursor)
-                        # window.horizontal_scroll(cursor, buffer)
-
-                elif k == 261: # right arrow
-                    if (cursor.row != (window.n_rows + window.row)):
-                        horizontal_control = "right"
-
-                        if (horizontal_scroll == 0) or ((horizontal_scroll > 0) and (cursor.col - 2 <= window.n_cols - 5)):
-
-                            if ((cursor.col - 2 >= window.n_cols - 7) and (right_lock is True)):
-                                pass
-
-                            else:
-                                right(window, buffer, cursor)
-
-
-                elif k == 9: # TAB
-                    if search_mode:
-
-                        if cursor.row == window.n_rows + window.row:
-
-                            if cursor.row > (window.n_rows + window.row) - 1:
-                                cursor.row = (window.n_rows + window.row) - 1
-
-                            cursor.center(buffer)
-
-                        else:
-                            generate_search()
-
-                            cursor.row = window.n_rows + window.row
-                            cursor.col = round(con_col / 2) - round(len(search_banner) / 2) + 5 + len(search_view) + 3 # + (4 if (len(search_text) > 0) else 0)
-
-
-                elif k == 330: # DELETE
-
-                    if (cursor.row != (window.n_rows + window.row)):
-                        if cursor.col - 2 > int(len(charTest[0]) + leftMargin):
-                            horizontal_control = "delete"
-                            buffer.delete(cursor, window, buffer)
-                            if status != "Editing":
-                                status = "Editing"
-                                saveColor = 10
-
-                elif k == 8: # backspace
-
-                    if search_mode:
-
-                        find_search("first")
-                        reset_cursor = True
-
-                        search_text = "" if len(search_text) == 1 else search_text[:-1]
-
-                        generate_search()
-
-                        cursor.col = round(con_col / 2) - round(len(search_banner) / 2) + 5 + len(search_view) + 1
-
-                    elif (cursor.row, cursor.col) > (0, 0):
-                        if cursor.col - 2 > int(len(charTest[0]) + leftMargin + 1):
-                            horizontal_control = "backspace"
-
-                            if (horizontal_scroll == 0) and (cursor.col > len(buffer.__getitem__(cursor.row).split("=")[0]) + 2 + leftMargin + 1):
-
-                                left(window, buffer, cursor)
-
-                            buffer.delete(cursor, window, buffer)
-                            if status != "Editing":
-                                status = "Editing"
-                                saveColor = 10
-
-
-                elif k in [262, 358] and long_selected is True: # HOME/END keys
-
-                    try:
-                        line = buffer.__getitem__(cursor.row)
-                        weird_calc = len(buffer.__getitem__(cursor.row)) - window.n_cols + 10 if len(buffer.__getitem__(cursor.row)) - window.n_cols + 8 > 0 else 0
-
-                        try:
-                            line_key = line.split("=")[0] + " = "
-                            line_value = line.split("=")[1]
-
-                        except IndexError:
-                            line_key = line
-                            line_value = 0
-
-                        if k == 358:
-                            if (len(line) - 2 > window.n_cols - 10):
-                                random_char = 1 if horizontal_scroll == 0 else 0
-
-                                horizontal_scroll = weird_calc
-                                start_char = weird_calc + 1
-                                end_char = 0
-
-                                cursor.col = len(line_key) + leftMargin + len(line_value[start_char:len(line_value) - end_char]) + 3 + random_char
-
-                        else:
-                            if (len(line) - 2 > window.n_cols - 10):
-                                horizontal_scroll = 0
-                                start_char = 0
-                                end_char = weird_calc
-
-                                cursor.col = len(line_key) + leftMargin
-
-                        horizontal_control = ""
-
-                    except IndexError:
-                        pass
-
-
-                elif k == 10: # ENTER
-                    "do nothing"
-
-                elif k >= 0:
-                    k = chr(k)
-                    if len(k) == 1:
-
-                        if search_mode:
-
-                            search_text += k
-
-                            find_search("first")
-                            reset_cursor = True
-
-                            generate_search()
-
-                            cursor.col = round(con_col / 2) - round(len(search_banner) / 2) + 6 + len(search_view)
-
-                        elif (cursor.col - 2 > int(len(charTest[0]) + leftMargin)):
-                            try:
-                                str(charTest[1])
-
-                                horizontal_control = "insert"
-
-                                buffer.insert(cursor, k, window, buffer)
-                                for _ in k:
-
-                                    if horizontal_scroll == 0:
-
-                                        if ((cursor.col - 1 >= window.n_cols - 7) and (right_lock is True)):
-                                            if long_text is False:
-                                                right(window, buffer, cursor)
-                                                horizontal_scroll += 1
-                                                end_char -= 1
-                                                start_char += 1
-                                            pass
-
-                                        else:
-                                            right(window, buffer, cursor)
-
-                                if status != "Editing":
-                                    status = "Editing"
-                                    saveColor = 10
-                            except IndexError:
-                                pass
-
-    curses.wrapper(editMain)
-
+    # If server doesn't exist
+    else:
+        return [('parameter', server_name), ('info', ' does not exist')], 'fail'
 
 
 # ------------------------------------------------ Launch Menu ---------------------------------------------------------
 
-
+def run_application():
     # Give an error if elevated
     if constants.is_admin() and not constants.is_docker:
         print(f"\n> Error:  Running auto-mcs as {'administrator' if constants.os_name == 'windows' else 'root'} can expose your system to security vulnerabilities\n\nPlease restart with standard user privileges to continue")
@@ -2255,7 +1784,9 @@ def edit_properties(server_name: str):
 
 
         # Run UI
+        screen_manager.current_screen('MainMenuScreen')
         loop.run()
+
 
 
         # Enable STDOUT
