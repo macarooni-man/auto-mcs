@@ -556,8 +556,15 @@ class ServerObject():
                     except KeyError:
                         message = original_message
 
+
+                # Remove escape codes
+                if message.strip().replace('','').endswith('[0m'):
+                    message = re.sub(r'(\[\S*\d+m)', '', message)
+
+
                 main_label = message.strip()
                 message = message.replace('[Not Secure]', '').strip()
+
 
                 # Calculate color based on log type
 

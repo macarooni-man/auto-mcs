@@ -2912,7 +2912,7 @@ def install_server(progress_func=None, imported=False):
 
         print("test", f'"{java_executable["modern"]}" -jar server.jar nogui')
 
-        process = subprocess.Popen(f'"{java_executable["modern"]}" -jar server.jar nogui', shell=True)
+        process = subprocess.Popen(f'"{java_executable["modern"]}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         while True:
             time.sleep(1)
