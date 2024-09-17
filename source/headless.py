@@ -155,10 +155,7 @@ def manage_server(name: str, action: str):
 
 
         # Create server here
-        constants.new_server_init()
         constants.new_server_info['name'] = name
-        constants.new_server_info['type'] = 'vanilla'
-        constants.new_server_info['version'] = constants.latestMC['vanilla']
         constants.new_server_info['acl_object'] = acl.AclManager(name)
 
         # Run things and stuff
@@ -182,7 +179,7 @@ def manage_server(name: str, action: str):
         return [
             ("normal", "Successfully created "),
             ("parameter", name),
-            ("info", f" (Vanilla {constants.latestMC['vanilla']})\n\n"),
+            ("info", f" ({constants.new_server_info['type'].replace('craft','').title()} {constants.new_server_info['version']})\n\n"),
             ("info", " - to modify this server, run "),
             ("command", "telepath "),
             ("sub_command", "pair "),
@@ -197,16 +194,16 @@ def manage_server(name: str, action: str):
         if action == 'info':
             return_text = [
                 ("normal", "Server info - "), ("parameter", name),
-                ("normal", f'\n\n{server_obj.type.title()} {server_obj.version}' + (f' (b{server_obj.build})\n' if server_obj.build else '\n')),
-                ("sub_command", server_obj.server_properties['motd'])
+                ("normal", '\n\n\n' + server_obj.server_properties['motd']),
+                ("stat", f'\n{server_obj.type.title()} {server_obj.version}' + (f' (b{server_obj.build})\n' if server_obj.build else '\n'))
             ]
             if server_obj.running:
                 try:
-                    return_text.append(("success", f"\n\n> {server_obj.run_data['network']['address']['ip']}:{server_obj.run_data['network']['address']['port']}"))
+                    return_text.append(("success", f"\n> {server_obj.run_data['network']['address']['ip']}:{server_obj.run_data['network']['address']['port']}"))
                 except:
-                    return_text.append(("success", f"\n\nRunning, waiting to bind port..."))
+                    return_text.append(("success", f"\nRunning, waiting to bind port..."))
             else:
-                return_text.append(("info", "\n\nNot running"))
+                return_text.append(("info", "\n < not running >"))
 
             return return_log(return_text)
 
@@ -280,6 +277,51 @@ def manage_server(name: str, action: str):
     # If server doesn't exist
     else:
         return [('parameter', name), ('info',  ' does not exist')], 'fail'
+
+
+def init_create_server(data):
+
+    # Invalid info
+    if len(data) < 2:
+        return 'Server name is required', 'fail'
+
+    else:
+        constants.new_server_init()
+        constants.new_server_info['type'] = 'vanilla'
+        name = data[1]
+        data = data[0].replace('bukkit','craftbukkit').replace('builds','').lower()
+
+        # Check if only a version was specified
+        if data.replace('.', '').isdigit() or data == 'latest':
+            constants.new_server_info['version'] = data
+
+        # Check if only a type was specified
+        elif ':' not in data:
+            constants.new_server_info['type'] = data
+
+        # Check if both a type and version was specified
+        else:
+            constants.new_server_info['type'], constants.new_server_info['version'] = data.split(':', 1)
+
+
+        # Fail if type is invalid
+        if constants.new_server_info['type'] not in list(constants.latestMC.keys()):
+            return [('fail', constants.new_server_info['type']), ('info', ' is not a supported server type')], 'fail'
+
+        # Set to latest version if specified
+        if constants.new_server_info['version'] == 'latest':
+            constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+
+        # Check if version is valid
+        version_data = constants.search_version(constants.new_server_info)
+        if not version_data[0]:
+            return [('fail', constants.new_server_info['version']), ('info', f' is not a supported {constants.new_server_info["type"].replace("craft","").title()} version')], 'fail'
+
+        constants.new_server_info['version'] = version_data[1]['version']
+        constants.new_server_info['build'] = version_data[1]['build']
+        constants.new_server_info['jar_link'] = version_data[3]
+
+        return manage_server(name, 'create')
 
 def list_servers():
     if constants.server_list:
@@ -480,14 +522,22 @@ def update_app(info=False):
 
     # Display update info
     if info:
-        return [
-            ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
-            ("info", constants.update_data['desc'].replace('\r','')),
-            ("success", response_header),
-            ("normal", "To update to this version, run "),
-            ("command", "update "),
-            ("sub_command", "install ")
-        ]
+        if not constants.is_docker:
+            return [
+                ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
+                ("info", constants.update_data['desc'].replace('\r','')),
+                ("success", response_header),
+                ("normal", "To update to this version, run "),
+                ("command", "update "),
+                ("sub_command", "install ")
+            ]
+        else:
+            return [
+                ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
+                ("info", constants.update_data['desc'].replace('\r','')),
+                ("success", response_header),
+                ("normal", "Update to this version from Docker Hub")
+            ]
 
     else:
         update_console([("info", response_header), ('parameter', f'Downloading auto-mcs v{constants.update_data["version"].strip()}...')])
@@ -529,8 +579,16 @@ class ScreenManager():
 class Command:
 
     def exec(self, args=()):
+        # Combine all arguments into one if one_arg
         if self.one_arg:
             args = ' '.join(args).strip()
+
+        # If args is longer than self.params, concatenate the last args
+        else:
+            if len(args) > len(self.params):
+                args = list(args[:len(self.params) - 1]) + [' '.join(args[len(self.params) - 1:])]
+                args = tuple(args)
+
 
         # Execute subcommands if specified
         if self.sub_commands and args:
@@ -673,6 +731,11 @@ command_data = {
                 'one-arg': True,
                 'params': {'server name': lambda name: manage_server(name, 'stop')}
             },
+            'restart': {
+                'help': 'restarts a server by name',
+                'one-arg': True,
+                'params': {'server name': lambda name: manage_server(name, 'restart')}
+            },
             'list': {
                 'help': 'lists installed server names (* - active)',
                 'exec': list_servers
@@ -682,20 +745,17 @@ command_data = {
                 'one-arg': True,
                 'params': {'server name': lambda name: manage_server(name, 'info')}
             },
-            'restart': {
-                'help': 'restarts a server by name',
-                'one-arg': True,
-                'params': {'server name': lambda name: manage_server(name, 'restart')}
-            },
-            'create': {
-                'help': 'creates a Vanilla server on the latest version',
-                'one-arg': True,
-                'params': {'server name': lambda name: manage_server(name, 'create')}
-            },
             'properties': {
                 'help': "edit the 'server.properties' file",
                 'one-arg': True,
                 'params': {'server name': lambda name: edit_properties(name)}
+            },
+            'create': {
+                'help': 'creates a server on a specified type/version',
+                'params': {
+                    'type:version': lambda data: init_create_server(data),
+                    'server name': lambda data: init_create_server(data)
+                }
             },
             'delete': {
                 'help': 'deletes a server by name',
@@ -776,13 +836,14 @@ command_data = {
                 'help': 'show the changelog of a pending update',
                 'exec': lambda *_: update_app(info=True)
             },
-            'install': {
-                'help': 'install a pending update and restart',
-                'exec': lambda *_: update_app()
-            }
         }
     }
 }
+if not constants.is_docker:
+    command_data['update']['sub-commands']['install'] = {
+                'help': 'install a pending update and restart',
+                'exec': lambda *_: update_app()
+            }
 commands = {n: Command(n, d) if isinstance(d, dict) else d for n, d in command_data.items()}
 
 # Display messages
@@ -835,6 +896,9 @@ class CommandInput(urwid.Edit):
         loop.screen.register_palette_entry('input', *color[1:])
 
     def _get_hint_text(self, input_text):
+        version_hints = [f'{t.replace("craft", "")}:latest' for t in constants.latestMC.keys() if t != 'builds']
+        version_hints.insert(0, 'latest')
+
         if input_text:
             command_name = input_text.split(' ')[0]
             self.hint_text = ''
@@ -885,21 +949,49 @@ class CommandInput(urwid.Edit):
                         for sc in command.sub_commands.values():
                             if sc.params:
                                 self.hint_params = 2
-                                self._valid(True)
-                                if input_text.strip().endswith(sc.name):
-                                    self.hint_text = f'{input_text.strip()} {" ".join(["<" + p + ">" for p in sc.params])}'
+                                param_index = 0
+                                args = ()
+
+
+                                if len(sc.params) > 1:
+                                    try:
+                                        args = input_text.strip().split(' ', len(sc.params) + self.hint_params)[self.hint_params:]
+                                    except:
+                                        args = ()
+
+                                    param_index = len(args)
+                                    if param_index < 0:
+                                        param_index = 0
+                                    elif param_index > len(sc.params):
+                                        param_index = len(sc.params)
+
+                                    self._valid(True)
+
+                                    if param_index >= len(sc.params):
+                                        break
+
+                                if input_text.endswith(sc.name + ' ') or (len(args) > 0 and input_text.endswith(' ')):
+                                    self.hint_text = f'{input_text.strip()} <{list(sc.params.keys())[param_index]}>'
 
                                 # Override "server name" parameter to display server names
                                 elif sc.name in input_text and list(sc.params.items())[0][0] == 'server name':
                                     command_start = ' '.join(input_text.split(' ', 2)[:2])
                                     partial_name = input_text.split(' ', 2)[-1].strip()
-
                                     if command_start != 'server create':
-
                                         for server in constants.server_list:
                                             if server.lower().startswith(partial_name.lower()):
                                                 self.hint_text = f'{command_start} {server}'
                                                 break
+
+                                # Override "type:version" parameter to display latest versions
+                                elif sc.name in input_text and list(sc.params.items())[0][0] == 'type:version':
+                                    command_start = ' '.join(input_text.split(' ', 2)[:2])
+                                    partial_name = input_text.split(' ', 2)[-1].strip()
+                                    for version in version_hints:
+                                        if version.startswith(partial_name):
+                                            self.hint_text = f'{command_start} {version} '
+                                            break
+
 
                     if not self.hint_text:
                         self.hint_text = command.name
@@ -920,7 +1012,6 @@ class CommandInput(urwid.Edit):
 
     def render(self, size, focus=False):
         original_text = input_text = super().get_edit_text()
-        hint_text = self._get_hint_text(input_text)
 
         # Combine input text with hint text
         caption_space = ('caption_space', re.search(r'^\s+', self.caption)[0])
@@ -928,7 +1019,6 @@ class CommandInput(urwid.Edit):
 
         if ' ' in input_text and self.is_valid:
             command = f"{original_text.split(' ', 1)[0]} "
-
             sub_command = ''
             if self.hint_params != 1:
                 sub_command = original_text.split(' ')[1]
@@ -948,12 +1038,76 @@ class CommandInput(urwid.Edit):
                 input_text.append(('command', command))
             if sub_command:
                 input_text.append(('sub_command', sub_command))
+
             if param:
-                input_text.append(('parameter', param))
+
+                if commands[command.strip()].sub_commands:
+
+                    # Get index of param in command to check for special types
+                    params = []
+                    try:
+                        params = commands[command.strip()].sub_commands[sub_command.strip()].params
+                        args = param.split()
+                        if len(args) > len(params):
+                            args = list(args[:len(params) - 1]) + [' '.join(args[len(params) - 1:])]
+                            args = tuple(args)
+                    except:
+                        args = ()
+
+
+                    # Color different parameters differently
+                    for x, arg in enumerate(args, 0):
+                        found_type = False
+                        try:
+                            arg = re.findall(fr'{arg}\s*', param)[0]
+                        except:
+                            pass
+
+                        # If the param patches the path of a matching data type
+                        if params and args:
+                            param_type = list(params.keys())[x]
+                            if ':' in param_type:
+                                found_type = True
+
+                                if ':' in arg and not arg.endswith(':'):
+                                    type_a, type_b = arg.split(':', 1)
+                                    input_text.extend([
+                                        ('type_a', type_a),
+                                        ('hint', ':'),
+                                        ('type_b', type_b)
+                                    ])
+
+                                elif ':' in arg:
+                                    input_text.extend([
+                                        ('type_a', arg.strip(':')),
+                                        ('hint', ':')
+                                    ])
+
+
+                                else:
+                                    s = arg.strip().lower()
+                                    color = 'type_b' if s.replace('.', '').isdigit() or s == 'latest' else 'type_a'
+                                    input_text.append((color, arg))
+
+
+                        # Get index of parameter in question
+                        if not found_type:
+                            input_text.append(('parameter', arg))
+
+                else:
+                    input_text.append(('parameter', param))
 
         else:
             input_text = ('input', input_text)
 
+        # Reformat original text for proper spacing
+        if isinstance(input_text, list):
+            final_space = ''
+            if original_text.endswith(' '):
+                final_space = (len(original_text) - len(original_text.rstrip())) * ' '
+            original_text = re.sub(r'\s*\:\s*', ':', ' '.join([s[1].strip() for s in input_text])) + final_space
+
+        hint_text = self._get_hint_text(original_text)
         combined_text = [caption_space, caption_marker, input_text, ('hint', hint_text)]
 
         # Create the canvas using urwid.Text
@@ -995,6 +1149,8 @@ class CommandInput(urwid.Edit):
                 return
         except IndexError:
             pass
+        if key == ' ' and self.get_edit_text().endswith(' '):
+            return
 
 
         # Show help content with "?"
@@ -1020,7 +1176,7 @@ class CommandInput(urwid.Edit):
                     sub_command = self.hint_text.split(' ', 1)[-1].strip()
                     if sub_command in commands[command].sub_commands.keys():
                         if commands[command].sub_commands[sub_command].params:
-                            self.set_edit_text(self.text + ' ')
+                            self.set_edit_text(self.text + (' ' if not self.get_edit_text().endswith(' ') else ''))
                             self.set_edit_pos(len(self.get_edit_text()))
                             return None
 
@@ -1028,17 +1184,21 @@ class CommandInput(urwid.Edit):
                 if '<' in self.hint_text and '>' in self.hint_text and ' ' in self.edit_text:
                     return None
 
-                # Don't auto-fill one command params
+                # Don't autofill one command params
                 elif ('<' in self.hint_text and '>' in self.hint_text) or (self.hint_text in commands and commands[self.hint_text].params):
                     self.set_edit_text(self.hint_text.split(' ', 1)[0] + ' ')
                     self.set_edit_pos(len(self.get_edit_text()))
                     return None
 
+                # Only autofill half of hybrid params
+                if ':' in self.hint_text and ':' not in self.get_edit_text().rsplit(' ',1)[-1]:
+                    self.hint_text = self.hint_text.rsplit(':')[0] + ':'
 
                 # Complete text with the hint
                 self.set_edit_text(self.hint_text)
                 self.set_edit_pos(len(self.get_edit_text()))
                 return None
+
 
         # Handle other keys normally
         result = super().keypress(size, key)
@@ -1086,6 +1246,8 @@ palette = [
     ('command', 'light green', '', '', '#05e665', ''),
     ('sub_command', 'dark cyan', '', '', '#13e8cc', ''),
     ('parameter', 'yellow', '', '', '#F3ED61', ''),
+    ('type_a', 'light magenta', ''),
+    ('type_b', 'light cyan', ''),
 
 
 
