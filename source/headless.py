@@ -159,7 +159,8 @@ def manage_server(name: str, action: str):
         constants.new_server_info['acl_object'] = acl.AclManager(name)
 
         # Run things and stuff
-        update_console('(1/5) Validating Java')
+        verb = 'Validating' if os.path.exists(constants.javaDir) else 'Installing'
+        update_console(f'(1/5) {verb} Java')
         constants.java_check()
 
         update_console(f"(2/5) Downloading 'server.jar'")
@@ -183,7 +184,11 @@ def manage_server(name: str, action: str):
             ("info", " - to modify this server, run "),
             ("command", "telepath "),
             ("sub_command", "pair "),
-            ("info", "to connect from a remote instance of auto-mcs")
+            ("info", "to connect from a remote instance of auto-mcs"),
+            ("info", "\n\n - to launch this server, run "),
+            ("command", "server "),
+            ("sub_command", "launch "),
+            ("parameter", name),
         ]
 
 
@@ -1246,7 +1251,7 @@ palette = [
     ('command', 'light green', '', '', '#05e665', ''),
     ('sub_command', 'dark cyan', '', '', '#13e8cc', ''),
     ('parameter', 'yellow', '', '', '#F3ED61', ''),
-    ('type_a', 'light magenta', ''),
+    ('type_a', 'light magenta', '', '', '#FF00AA', ''),
     ('type_b', 'light cyan', ''),
 
 
@@ -2284,7 +2289,7 @@ class ConsolePanel():
             def render(self, size, focus=False):
                 if not self.get_edit_text():
                     # Display the hint text in dark gray when input is empty
-                    hint = urwid.Text(('bar_inactive', self.hint_text))
+                    hint = urwid.Text(('bar_label', self.hint_text))
                     return hint.render(size, focus)
                 else:
                     # Display the regular input when there is text
