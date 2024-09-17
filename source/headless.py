@@ -1295,7 +1295,7 @@ palette = [
     # 'server.properties' palette
     ('key', 'dark blue', '', '', '#4455FF', ''),
     ('comment',  'dark gray', '', '', '#636363', ''),
-    ('line', 'dark gray', '', '', '#212141', ''),
+    ('line', 'dark gray', '', '', 'h239', ''),
     ('eq', 'dark gray', ''),
     ('selected_line', 'white', '', '', '#B2B2FF', ''),
     ('selected_eq', 'white', ''),
