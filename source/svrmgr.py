@@ -548,9 +548,9 @@ class ServerObject():
                         code_list = [message[x:x + 2] for x, y in enumerate(message, 0) if y == '§']
 
                         for code in code_list:
-                            message = message.replace(code, format_color(code))
+                            message = message.replace(code, '' if constants.headless else format_color(code))
 
-                        if len(code_list) % 2 == 1:
+                        if (len(code_list) % 2 == 1) and not constants.headless:
                             message = message + '[/color]'
 
                     except KeyError:
@@ -801,6 +801,10 @@ class ServerObject():
 
                 formatted_line = {'text': log_line}
                 if formatted_line not in self.run_data['log'] and formatted_line['text']:
+                    def update_headless():
+                        if constants.headless:
+                            for hook in self.run_data['process-hooks']:
+                                hook(self.run_data['log'])
 
                     # Progress bars for preparing spawn area
                     def format_pct(line, *a):
@@ -813,11 +817,13 @@ class ServerObject():
                     if log_line[2].startswith('Preparing spawn') and log_line[1] == 'INFO' and self.run_data['log'][-1]['text'][2].startswith('Preparing spawn'):
                         new = formatted_line['text']
                         self.run_data['log'][-1] = {'text': (new[0], new[1], f'Preparing spawn area: {format_pct(new[2])}', new[3])}
-
+                        update_headless()
                     else:
                         if log_line[2].startswith('Time elapsed') and log_line[1] == 'INFO':
                             last = self.run_data['log'][-1]['text']
                             self.run_data['log'][-1] = {'text': (last[0], last[1], f'Preparing spawn area: {format_pct("100%")}', last[3])}
+                            update_headless()
+
                         elif log_line[2].startswith('Preparing spawn') and log_line[1] == 'INFO':
                             last = formatted_line['text']
                             formatted_line = {'text': (last[0], last[1], f'Preparing spawn area: {format_pct(last[2])}', last[3])}
@@ -1664,9 +1670,9 @@ class ServerObject():
                         message = escape_markup(message)
                         code_list = [message[x:x + 2] for x, y in enumerate(message, 0) if y == '§']
                         for code in code_list:
-                            message = message.replace(code, format_color(code))
+                            message = message.replace(code, '' if constants.headless else format_color(code))
 
-                        if len(code_list) % 2 == 1:
+                        if (len(code_list) % 2 == 1) and not constants.headless:
                             message = message + '[/color]'
 
                     except KeyError:

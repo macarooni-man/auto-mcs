@@ -13224,7 +13224,7 @@ class CreateServerReviewScreen(MenuBackground):
         content += f"[color=6666AA]{constants.translate('Command blocks')}:       ||{check_enabled(constants.new_server_info['server_settings']['command_blocks'])}\n"
 
         if constants.version_check(constants.new_server_info['version'], ">=", "1.19") and constants.new_server_info['type'].lower() != "vanilla":
-            content += f"[color=6666AA]{constants.translate('Chat reporting')}:       ||{check_enabled(constants.new_server_info['server_settings']['disable_chat_reporting'])}\n"
+            content += f"[color=6666AA]{constants.translate('Chat reporting')}:       ||{check_enabled(not constants.new_server_info['server_settings']['disable_chat_reporting'])}\n"
 
         if constants.version_check(constants.new_server_info['version'], ">=", "1.4.2"):
             content += f"[color=6666AA]{constants.translate('Random tick speed')}:    ||[/color]{constants.new_server_info['server_settings']['random_tick_speed']} {constants.translate('ticks')}"

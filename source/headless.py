@@ -1,3 +1,4 @@
+from datetime import datetime as dt
 import threading
 import functools
 import urwid
@@ -9,6 +10,9 @@ import os
 import constants
 import telepath
 import acl
+
+import warnings
+warnings.filterwarnings('ignore')
 
 
 # ----------------------------------------------- Global Functions -----------------------------------------------------
@@ -151,14 +155,12 @@ def manage_server(name: str, action: str):
 
 
         # Create server here
-        constants.new_server_init()
         constants.new_server_info['name'] = name
-        constants.new_server_info['type'] = 'vanilla'
-        constants.new_server_info['version'] = constants.latestMC['vanilla']
         constants.new_server_info['acl_object'] = acl.AclManager(name)
 
         # Run things and stuff
-        update_console('(1/5) Validating Java')
+        verb = 'Validating' if os.path.exists(constants.javaDir) else 'Installing'
+        update_console(f'(1/5) {verb} Java')
         constants.java_check()
 
         update_console(f"(2/5) Downloading 'server.jar'")
@@ -178,11 +180,15 @@ def manage_server(name: str, action: str):
         return [
             ("normal", "Successfully created "),
             ("parameter", name),
-            ("info", f" (Vanilla {constants.latestMC['vanilla']})\n\n"),
+            ("info", f" ({constants.new_server_info['type'].replace('craft','').title()} {constants.new_server_info['version']})\n\n"),
             ("info", " - to modify this server, run "),
             ("command", "telepath "),
             ("sub_command", "pair "),
-            ("info", "to connect from a remote instance of auto-mcs")
+            ("info", "to connect from a remote instance of auto-mcs"),
+            ("info", "\n\n - to launch this server, run "),
+            ("command", "server "),
+            ("sub_command", "launch "),
+            ("parameter", name),
         ]
 
 
@@ -193,25 +199,30 @@ def manage_server(name: str, action: str):
         if action == 'info':
             return_text = [
                 ("normal", "Server info - "), ("parameter", name),
-                ("normal", f'\n\n{server_obj.type.title()} {server_obj.version}' + (f' (b{server_obj.build})\n' if server_obj.build else '\n')),
-                ("sub_command", server_obj.server_properties['motd'])
+                ("normal", '\n\n\n' + server_obj.server_properties['motd']),
+                ("stat", f'\n{server_obj.type.title()} {server_obj.version}' + (f' (b{server_obj.build})\n' if server_obj.build else '\n'))
             ]
             if server_obj.running:
                 try:
-                    return_text.append(("success", f"\n\n> {server_obj.run_data['network']['address']['ip']}:{server_obj.run_data['network']['address']['port']}"))
+                    return_text.append(("success", f"\n> {server_obj.run_data['network']['address']['ip']}:{server_obj.run_data['network']['address']['port']}"))
                 except:
-                    return_text.append(("success", f"\n\nRunning, waiting to bind port..."))
+                    return_text.append(("success", f"\nRunning, waiting to bind port..."))
             else:
-                return_text.append(("info", "\n\nNot running"))
+                return_text.append(("info", "\n < not running >"))
 
             return return_log(return_text)
 
-        elif action == 'start':
+        elif action == 'launch':
             if server_obj.running:
-                return [('parameter', name), ('info', ' is already running')], 'fail'
+                return [
+                    ('parameter', name), ('info', ' is already running. '),
+                    ("info", "Run "),
+                    ("command", "console "),
+                    ("parameter", name),
+                    ("info", " to re-attach to the console")
+                ], 'fail'
 
-            func_wrapper(server_obj.launch)
-            return return_log([("normal", "Launched "), ("parameter", name)])
+            return open_console(name, force_start=True)
 
         elif action == 'stop':
             if not server_obj.running:
@@ -272,6 +283,51 @@ def manage_server(name: str, action: str):
     else:
         return [('parameter', name), ('info',  ' does not exist')], 'fail'
 
+
+def init_create_server(data):
+
+    # Invalid info
+    if len(data) < 2:
+        return 'Server name is required', 'fail'
+
+    else:
+        constants.new_server_init()
+        constants.new_server_info['type'] = 'vanilla'
+        name = data[1]
+        data = data[0].replace('bukkit','craftbukkit').replace('builds','').lower()
+
+        # Check if only a version was specified
+        if data.replace('.', '').isdigit() or data == 'latest':
+            constants.new_server_info['version'] = data
+
+        # Check if only a type was specified
+        elif ':' not in data:
+            constants.new_server_info['type'] = data
+
+        # Check if both a type and version was specified
+        else:
+            constants.new_server_info['type'], constants.new_server_info['version'] = data.split(':', 1)
+
+
+        # Fail if type is invalid
+        if constants.new_server_info['type'] not in list(constants.latestMC.keys()):
+            return [('fail', constants.new_server_info['type']), ('info', ' is not a supported server type')], 'fail'
+
+        # Set to latest version if specified
+        if constants.new_server_info['version'] == 'latest':
+            constants.new_server_info['version'] = constants.latestMC[constants.new_server_info['type']]
+
+        # Check if version is valid
+        version_data = constants.search_version(constants.new_server_info)
+        if not version_data[0]:
+            return [('fail', constants.new_server_info['version']), ('info', f' is not a supported {constants.new_server_info["type"].replace("craft","").title()} version')], 'fail'
+
+        constants.new_server_info['version'] = version_data[1]['version']
+        constants.new_server_info['build'] = version_data[1]['build']
+        constants.new_server_info['jar_link'] = version_data[3]
+
+        return manage_server(name, 'create')
+
 def list_servers():
     if constants.server_list:
         return_text = [('normal', f'Installed Servers'),  ('success', ' * - active'), ('info', f' ({len(constants.server_list)} total):\n\n')]
@@ -293,7 +349,8 @@ def enable_playit(name: str, enabled=True):
         server_obj = constants.server_manager.open_server(name)
         update_console('Retrieving server configuration...')
         while not all(list(server_obj._check_object_init().values())):
-            time.sleep(0.5)
+            time.sleep(0.1)
+        time.sleep(0.1)
 
         if not server_obj.proxy_installed():
             update_console('Installing playit agent...')
@@ -470,14 +527,22 @@ def update_app(info=False):
 
     # Display update info
     if info:
-        return [
-            ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
-            ("info", constants.update_data['desc'].replace('\r','')),
-            ("success", response_header),
-            ("normal", "To update to this version, run "),
-            ("command", "update "),
-            ("sub_command", "install ")
-        ]
+        if not constants.is_docker:
+            return [
+                ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
+                ("info", constants.update_data['desc'].replace('\r','')),
+                ("success", response_header),
+                ("normal", "To update to this version, run "),
+                ("command", "update "),
+                ("sub_command", "install ")
+            ]
+        else:
+            return [
+                ("sub_command", f"(!) Update - v{constants.update_data['version']}\n\n"),
+                ("info", constants.update_data['desc'].replace('\r','')),
+                ("success", response_header),
+                ("normal", "Update to this version from Docker Hub")
+            ]
 
     else:
         update_console([("info", response_header), ('parameter', f'Downloading auto-mcs v{constants.update_data["version"].strip()}...')])
@@ -502,7 +567,8 @@ class ScreenManager():
         self.placeholder = urwid.WidgetPlaceholder(urwid.Text(""))
         self.screens = {
             'MainMenuScreen': (main_menu, handle_input),
-            'ServerPropertiesEditScreen': (None, None)
+            'ServerPropertiesEditScreen': (None, None),
+            'ServerViewScreen': (None, None)
         }
 
     def current_screen(self, screen_name: str):
@@ -518,8 +584,16 @@ class ScreenManager():
 class Command:
 
     def exec(self, args=()):
+        # Combine all arguments into one if one_arg
         if self.one_arg:
             args = ' '.join(args).strip()
+
+        # If args is longer than self.params, concatenate the last args
+        else:
+            if len(args) > len(self.params):
+                args = list(args[:len(self.params) - 1]) + [' '.join(args[len(self.params) - 1:])]
+                args = tuple(args)
+
 
         # Execute subcommands if specified
         if self.sub_commands and args:
@@ -652,19 +726,10 @@ command_data = {
     'server': {
         'help': 'manage local servers',
         'sub-commands': {
-            'list': {
-                'help': 'lists installed server names (* - active)',
-                'exec': list_servers
-            },
-            'info': {
-                'help': 'displays basic information about a server',
-                'one-arg': True,
-                'params': {'server name': lambda name: manage_server(name, 'info')}
-            },
-            'start': {
+            'launch': {
                 'help': 'launches a server by name',
                 'one-arg': True,
-                'params': {'server name': lambda name: manage_server(name, 'start')}
+                'params': {'server name': lambda name: manage_server(name, 'launch')}
             },
             'stop': {
                 'help': 'stops a server by name',
@@ -676,15 +741,26 @@ command_data = {
                 'one-arg': True,
                 'params': {'server name': lambda name: manage_server(name, 'restart')}
             },
-            'create': {
-                'help': 'creates a Vanilla server on the latest version',
+            'list': {
+                'help': 'lists installed server names (* - active)',
+                'exec': list_servers
+            },
+            'info': {
+                'help': 'displays basic information about a server',
                 'one-arg': True,
-                'params': {'server name': lambda name: manage_server(name, 'create')}
+                'params': {'server name': lambda name: manage_server(name, 'info')}
             },
             'properties': {
                 'help': "edit the 'server.properties' file",
                 'one-arg': True,
                 'params': {'server name': lambda name: edit_properties(name)}
+            },
+            'create': {
+                'help': 'creates a server on a specified type/version',
+                'params': {
+                    'type:version': lambda data: init_create_server(data),
+                    'server name': lambda data: init_create_server(data)
+                }
             },
             'delete': {
                 'help': 'deletes a server by name',
@@ -692,6 +768,11 @@ command_data = {
                 'params': {'server name': lambda name: manage_server(name, 'delete')}
             },
         }
+    },
+    'console': {
+        'help': 'views a server console by name',
+        'one-arg': True,
+        'params': {'server name': lambda name: open_console(name)}
     },
     'backup': {
         'help': 'save or restore a server by name',
@@ -760,13 +841,14 @@ command_data = {
                 'help': 'show the changelog of a pending update',
                 'exec': lambda *_: update_app(info=True)
             },
-            'install': {
-                'help': 'install a pending update and restart',
-                'exec': lambda *_: update_app()
-            }
         }
     }
 }
+if not constants.is_docker:
+    command_data['update']['sub-commands']['install'] = {
+                'help': 'install a pending update and restart',
+                'exec': lambda *_: update_app()
+            }
 commands = {n: Command(n, d) if isinstance(d, dict) else d for n, d in command_data.items()}
 
 # Display messages
@@ -819,6 +901,9 @@ class CommandInput(urwid.Edit):
         loop.screen.register_palette_entry('input', *color[1:])
 
     def _get_hint_text(self, input_text):
+        version_hints = [f'{t.replace("craft", "")}:latest' for t in constants.latestMC.keys() if t != 'builds']
+        version_hints.insert(0, 'latest')
+
         if input_text:
             command_name = input_text.split(' ')[0]
             self.hint_text = ''
@@ -847,6 +932,14 @@ class CommandInput(urwid.Edit):
                         if input_text.strip().endswith(command.name) and ' ' not in input_text.strip():
                             self.hint_text = f'{command.name} {" ".join(["<" + p + ">" for p in command.params])}'
 
+                        # Override "server name" parameter to display server names
+                        elif command.name in input_text and list(command.params.items())[0][0] == 'server name':
+                            partial_name = input_text.split(' ', 1)[-1].strip()
+                            for server in constants.server_list:
+                                if server.lower().startswith(partial_name.lower()):
+                                    self.hint_text = f'{command.name} {server}'
+                                    break
+
                         # Override "command" parameter to display commands
                         elif command.name in input_text and list(command.params.items())[0][0] == 'command':
                             command_start = ' '.join(input_text.split(' ', 1)[:1])
@@ -861,18 +954,49 @@ class CommandInput(urwid.Edit):
                         for sc in command.sub_commands.values():
                             if sc.params:
                                 self.hint_params = 2
-                                self._valid(True)
-                                if input_text.strip().endswith(sc.name):
-                                    self.hint_text = f'{input_text.strip()} {" ".join(["<" + p + ">" for p in sc.params])}'
+                                param_index = 0
+                                args = ()
+
+
+                                if len(sc.params) > 1:
+                                    try:
+                                        args = input_text.strip().split(' ', len(sc.params) + self.hint_params)[self.hint_params:]
+                                    except:
+                                        args = ()
+
+                                    param_index = len(args)
+                                    if param_index < 0:
+                                        param_index = 0
+                                    elif param_index > len(sc.params):
+                                        param_index = len(sc.params)
+
+                                    self._valid(True)
+
+                                    if param_index >= len(sc.params):
+                                        break
+
+                                if input_text.endswith(sc.name + ' ') or (len(args) > 0 and input_text.endswith(' ')):
+                                    self.hint_text = f'{input_text.strip()} <{list(sc.params.keys())[param_index]}>'
 
                                 # Override "server name" parameter to display server names
                                 elif sc.name in input_text and list(sc.params.items())[0][0] == 'server name':
                                     command_start = ' '.join(input_text.split(' ', 2)[:2])
                                     partial_name = input_text.split(' ', 2)[-1].strip()
-                                    for server in constants.server_list:
-                                        if server.lower().startswith(partial_name.lower()):
-                                            self.hint_text = f'{command_start} {server}'
+                                    if command_start != 'server create':
+                                        for server in constants.server_list:
+                                            if server.lower().startswith(partial_name.lower()):
+                                                self.hint_text = f'{command_start} {server}'
+                                                break
+
+                                # Override "type:version" parameter to display latest versions
+                                elif sc.name in input_text and list(sc.params.items())[0][0] == 'type:version':
+                                    command_start = ' '.join(input_text.split(' ', 2)[:2])
+                                    partial_name = input_text.split(' ', 2)[-1].strip()
+                                    for version in version_hints:
+                                        if version.startswith(partial_name):
+                                            self.hint_text = f'{command_start} {version} '
                                             break
+
 
                     if not self.hint_text:
                         self.hint_text = command.name
@@ -893,7 +1017,6 @@ class CommandInput(urwid.Edit):
 
     def render(self, size, focus=False):
         original_text = input_text = super().get_edit_text()
-        hint_text = self._get_hint_text(input_text)
 
         # Combine input text with hint text
         caption_space = ('caption_space', re.search(r'^\s+', self.caption)[0])
@@ -901,7 +1024,6 @@ class CommandInput(urwid.Edit):
 
         if ' ' in input_text and self.is_valid:
             command = f"{original_text.split(' ', 1)[0]} "
-
             sub_command = ''
             if self.hint_params != 1:
                 sub_command = original_text.split(' ')[1]
@@ -921,12 +1043,76 @@ class CommandInput(urwid.Edit):
                 input_text.append(('command', command))
             if sub_command:
                 input_text.append(('sub_command', sub_command))
+
             if param:
-                input_text.append(('parameter', param))
+
+                if commands[command.strip()].sub_commands:
+
+                    # Get index of param in command to check for special types
+                    params = []
+                    try:
+                        params = commands[command.strip()].sub_commands[sub_command.strip()].params
+                        args = param.split()
+                        if len(args) > len(params):
+                            args = list(args[:len(params) - 1]) + [' '.join(args[len(params) - 1:])]
+                            args = tuple(args)
+                    except:
+                        args = ()
+
+
+                    # Color different parameters differently
+                    for x, arg in enumerate(args, 0):
+                        found_type = False
+                        try:
+                            arg = re.findall(fr'{arg}\s*', param)[0]
+                        except:
+                            pass
+
+                        # If the param patches the path of a matching data type
+                        if params and args:
+                            param_type = list(params.keys())[x]
+                            if ':' in param_type:
+                                found_type = True
+
+                                if ':' in arg and not arg.endswith(':'):
+                                    type_a, type_b = arg.split(':', 1)
+                                    input_text.extend([
+                                        ('type_a', type_a),
+                                        ('hint', ':'),
+                                        ('type_b', type_b)
+                                    ])
+
+                                elif ':' in arg:
+                                    input_text.extend([
+                                        ('type_a', arg.strip(':')),
+                                        ('hint', ':')
+                                    ])
+
+
+                                else:
+                                    s = arg.strip().lower()
+                                    color = 'type_b' if s.replace('.', '').isdigit() or s == 'latest' else 'type_a'
+                                    input_text.append((color, arg))
+
+
+                        # Get index of parameter in question
+                        if not found_type:
+                            input_text.append(('parameter', arg))
+
+                else:
+                    input_text.append(('parameter', param))
 
         else:
             input_text = ('input', input_text)
 
+        # Reformat original text for proper spacing
+        if isinstance(input_text, list):
+            final_space = ''
+            if original_text.endswith(' '):
+                final_space = (len(original_text) - len(original_text.rstrip())) * ' '
+            original_text = re.sub(r'\s*\:\s*', ':', ' '.join([s[1].strip() for s in input_text])) + final_space
+
+        hint_text = self._get_hint_text(original_text)
         combined_text = [caption_space, caption_marker, input_text, ('hint', hint_text)]
 
         # Create the canvas using urwid.Text
@@ -968,6 +1154,8 @@ class CommandInput(urwid.Edit):
                 return
         except IndexError:
             pass
+        if key == ' ' and self.get_edit_text().endswith(' '):
+            return
 
 
         # Show help content with "?"
@@ -993,7 +1181,7 @@ class CommandInput(urwid.Edit):
                     sub_command = self.hint_text.split(' ', 1)[-1].strip()
                     if sub_command in commands[command].sub_commands.keys():
                         if commands[command].sub_commands[sub_command].params:
-                            self.set_edit_text(self.text + ' ')
+                            self.set_edit_text(self.text + (' ' if not self.get_edit_text().endswith(' ') else ''))
                             self.set_edit_pos(len(self.get_edit_text()))
                             return None
 
@@ -1001,17 +1189,21 @@ class CommandInput(urwid.Edit):
                 if '<' in self.hint_text and '>' in self.hint_text and ' ' in self.edit_text:
                     return None
 
-                # Don't auto-fill one command params
+                # Don't autofill one command params
                 elif ('<' in self.hint_text and '>' in self.hint_text) or (self.hint_text in commands and commands[self.hint_text].params):
                     self.set_edit_text(self.hint_text.split(' ', 1)[0] + ' ')
                     self.set_edit_pos(len(self.get_edit_text()))
                     return None
 
+                # Only autofill half of hybrid params
+                if ':' in self.hint_text and ':' not in self.get_edit_text().rsplit(' ',1)[-1]:
+                    self.hint_text = self.hint_text.rsplit(':')[0] + ':'
 
                 # Complete text with the hint
                 self.set_edit_text(self.hint_text)
                 self.set_edit_pos(len(self.get_edit_text()))
                 return None
+
 
         # Handle other keys normally
         result = super().keypress(size, key)
@@ -1059,6 +1251,44 @@ palette = [
     ('command', 'light green', '', '', '#05e665', ''),
     ('sub_command', 'dark cyan', '', '', '#13e8cc', ''),
     ('parameter', 'yellow', '', '', '#F3ED61', ''),
+    ('type_a', 'light magenta', '', '', '#FF00AA', ''),
+    ('type_b', 'light cyan', ''),
+
+
+
+    # ConsolePanel palette
+    ('title', 'white', 'dark gray'),
+    ('box_title', 'white', ''),
+    ('stat', 'light gray', ''),
+    ('input_header', 'light gray', ''),
+    ('input', 'white', ''),
+    ('linebox', 'dark gray', ''),
+    ('bar_inactive', 'dark gray', '', '', 'h233', ''),
+    ('bar_label', 'dark gray', '', '', 'h240', ''),
+    ('ip', 'light green', ''),
+
+    # Performance panel colors
+    ('perf_normal', 'light green', '', '', '#22FF66', ''),
+    ('perf_warn', 'yellow', ''),
+    ('perf_critical', 'light red', '', '', '#FF3333', ''),
+
+    # Event colors
+    ('console_gray', 'light gray', ''),
+    ('console_gray_bg', 'black', 'light gray'),
+    ('console_purple', 'dark blue', '', '', '#6666FF', ''),
+    ('console_purple_bg', 'black', 'dark blue', '', 'black', '#6666FF'),
+    ('console_green', 'light green', '', '', '#22FF66', ''),
+    ('console_green_bg', 'black', 'light green', '', 'black', '#22FF66'),
+    ('console_blue', 'light cyan', ''),
+    ('console_blue_bg', 'black', 'light cyan'),
+    ('console_pink', 'light magenta', '', '', '#FF00AA', ''),
+    ('console_pink_bg', 'black', 'light magenta', '', 'black', '#FF00AA'),
+    ('console_red', 'light red', '', '', '#FF3333', ''),
+    ('console_red_bg', 'black', 'light red', '', 'black', '#FF3333'),
+    ('console_orange', 'yellow', '', '', '#FF9525', ''),
+    ('console_orange_bg', 'yellow', '', '', 'black', '#FF9525'),
+    ('console_yellow', 'yellow', ''),
+    ('console_yellow_bg', 'black', 'yellow'),
 
 
 
@@ -1075,7 +1305,7 @@ palette = [
     ('boolean', 'light magenta', '', '', '#DD53DD', ''),
     ('integer', 'yellow', '', '', '#FF9525', ''),
     ('string', 'light cyan', '', '', '#68E3FF', ''),
-    ('scrollbar_thumb', 'light gray', '', '', '#7777FF', '')
+    ('scrollbar_thumb', 'light gray', '')
 ]
 def get_color(key):
     for c in palette:
@@ -1711,7 +1941,565 @@ def edit_properties(server_name: str):
         return [('parameter', server_name), ('info', ' does not exist')], 'fail'
 
 
-# ------------------------------------------------ Launch Menu ---------------------------------------------------------
+
+# -------------------------------------------------- Console Panel -----------------------------------------------------
+
+player_counter = 0
+class ConsolePanel():
+
+    class Panels():
+
+        class PerformancePanel:
+            def __init__(self, parent, label, percent):
+                self.parent = parent
+                self.bar_width = 20
+
+                # Percentage bar
+                bar_active_length = int((percent / 100) * self.bar_width)
+                bar_inactive_length = self.bar_width - bar_active_length
+                self.bar = urwid.Text([
+                    ('bar_inactive', '▄' * bar_active_length),
+                    ('bar_inactive', ' ' * bar_inactive_length),
+                    ('bar_inactive', '\n'),
+                    ('bar_inactive', '▀' * self.bar_width)
+                ])
+                bar_pile = urwid.Pile([self.bar])
+
+                # Performance label
+                self.label = urwid.Text(('bar_label', f"{percent}%"), align='right')
+                progress_label = urwid.Text(('bar_label', f"{label}"), align='right')
+                label_pile = urwid.Pile([self.label, progress_label])
+
+                # Create columns with bar and labels
+                self.widgets = urwid.Columns([
+                    bar_pile,
+                    ('fixed', 6, label_pile)
+                ], dividechars=0)
+
+            def set_percent(self, percent):
+                color = self.parent.get_percent_color(percent, 5)
+                fraction = (percent / 100) * self.bar_width
+                full_steps = int(fraction)
+                fractional = fraction - full_steps
+
+                active_bars = ''
+                bar_inactive_length = 0
+
+                # If no full steps and percent > 0.5, display a half-step
+                if full_steps == 0 and percent > 0.5:
+                    active_bars = '▖'
+                    bar_inactive_length = self.bar_width - 1
+
+                # If fractional part > 0.5, add a half-step
+                elif fractional > 0.5:
+                    active_bars = '▄' * full_steps + '▖'
+                    bar_inactive_length = self.bar_width - full_steps - 1
+
+                # Otherwise, only full steps
+                else:
+                    active_bars = '▄' * full_steps
+                    bar_inactive_length = self.bar_width - full_steps
+
+                # Update the progress bar, and text
+                self.bar.set_text([
+                    (color, active_bars),
+                    ('bar_inactive', ' ' * bar_inactive_length),
+                    ('bar_inactive', '\n'),
+                    ('bar_inactive', '▀' * self.bar_width)
+                ])
+                number = '0' if float(percent) == 0 else round(float(percent), 1)
+                self.label.set_text((color, f"{number}%"))
+
+        @staticmethod
+        def get_percent_color(percent, min_limit=0):
+            if percent <= min_limit:
+                color = 'bar_label'
+            elif percent < 50:
+                color = 'perf_normal'
+            elif percent < 75:
+                color = 'perf_warn'
+            else:
+                color = 'perf_critical'
+
+            return color
+
+        def __init__(self, parent):
+            self.parent = parent
+            self.uptime = "00:00:00:00"
+            self.player_count = "0 / 20"
+            self.cpu_percent = 0
+            self.ram_percent = 0
+
+            # Stats panel
+            self.stats = urwid.Text([
+                ('stat', "up-time:\n"),
+                ('bar_label', f"{self.uptime}\n\n"),
+                ('stat', "players:\n"),
+                ('bar_label', self.player_count)
+            ], align='center')
+            left_box = urwid.AttrMap(urwid.LineBox(urwid.Padding(self.stats, left=2, right=2)), 'linebox')
+
+            # Center overview panel
+            self.overview = urwid.Text([('bar_label', '\n\n< not running >\n\n')], align='center')
+            middle_panel = urwid.Padding(self.overview, left=2, right=2)
+            middle_box = urwid.AttrMap(
+                urwid.LineBox(middle_panel, title=self.parent.server_name, title_attr='box_title'), 'linebox')
+            middle_box_filled = urwid.Filler(middle_box, valign='top')
+
+            # Performance panel
+            self.cpu_panel = self.PerformancePanel(self, "CPU", self.cpu_percent)
+            self.ram_panel = self.PerformancePanel(self, "RAM", self.ram_percent)
+
+            right_panel = urwid.Pile([
+                urwid.Padding(self.cpu_panel.widgets, left=2, right=2),
+                urwid.Text(''),
+                urwid.Padding(self.ram_panel.widgets, left=2, right=2)
+            ])
+            right_box = urwid.AttrMap(urwid.LineBox(urwid.Padding(right_panel, min_width=30)), 'linebox')
+
+            # Compile the panels
+            self.widgets = urwid.Columns([
+                ('pack', urwid.Padding(left_box, left=1, right=1)),  # Left side: Uptime and Player Count
+                ('weight', 1, urwid.Padding(middle_box_filled, left=1, right=1)),
+                ('pack', urwid.Padding(right_box, left=1, right=1))  # Right side: CPU and RAM with 40% width
+            ])
+
+        def refresh_data(self, refresh_players=False, *a):
+            server_obj = self.parent.server
+            server_obj.performance_stats(0.005, update_players=refresh_players)
+
+            try:
+                perf_data = constants.server_manager.current_server.run_data['performance']
+            except KeyError:
+                return
+            except AttributeError:
+                return
+
+            if not perf_data:
+                return
+
+            try:
+
+                # Update up-time
+                formatted_color = ''
+                found = False
+                for x, item in enumerate(perf_data['uptime'].split(":")):
+                    if x == 0 and len(item) > 2:
+                        formatted_color = f'{item}:'
+                        found = True
+                        continue
+                    if x == 0 and item != '00':
+                        item = int(item)
+                        formatted_color += '|' if len(str(item)) >= 2 else '0|'
+                        found = True
+                    if item != "00" and not found:
+                        found = True
+                        item = int(item)
+                        formatted_color += f'|{item}:' if len(str(item)) == 2 else f'0|{item}:'
+                    else:
+                        formatted_color += f'{item}:'
+
+                formatted_color = formatted_color.strip(':')
+                if '|' in formatted_color:
+                    empty, full = formatted_color.split('|')
+                else:
+                    empty = ''
+                    full = formatted_color
+
+                # Update player count
+                total_count = int(server_obj.server_properties['max-players'])
+                count = len(perf_data['current-players'])
+                percent = (count / total_count)
+                color = self.get_percent_color(percent).replace('perf_normal', 'box_title')
+                end_color = 'bar_label' if full == self.uptime else 'white'
+
+                self.stats.set_text([
+                    ('stat', "up-time:\n"),
+                    ('bar_label', f"{empty}"), (end_color, f"{full}\n\n"),
+                    ('stat', "players:\n"),
+                    (color, str(count)), ('bar_label', ' / '), (color, str(total_count)),
+                ])
+
+                # Update server overview
+                self.parent.ip_address = f"{server_obj.run_data['network']['address']['ip']}:{server_obj.run_data['network']['address']['port']}"
+                self.overview.set_text([
+                    ("white", f"\n{self.parent.motd}"),
+                    ("stat", f"\n{self.parent.server_version}"),
+                    ("ip", f"\n\n> {self.parent.ip_address}")
+                ])
+
+                # Update CPU/RAM stats
+                self.cpu_panel.set_percent(perf_data['cpu'])
+                self.ram_panel.set_percent(perf_data['ram'])
+
+            except KeyError:
+                return
+
+    class Log():
+
+        class ScrollBar(urwid.WidgetWrap):
+            def __init__(self, parent, listbox):
+                self.parent = parent
+                self.listbox = listbox
+                self.scrollbar = urwid.Text('')
+                self.thumb_char = '▐'
+
+                # Create a Columns widget with ListBox and ScrollBar
+                columns = urwid.Columns([
+                    ('weight', 1, listbox),
+                    ('fixed', 2, self.scrollbar)
+                ], dividechars=1)
+                super().__init__(columns)
+
+            def render(self, size, focus=False):
+
+                # Calculate scrollbar based on size
+                maxcol, maxrow = size
+                total_items = len(self.listbox.body)
+                if total_items <= 0:
+                    bar = ' ' * maxrow
+                else:
+
+                    # Calculate thumb size, make it at least 2 rows and proportional to the content
+                    thumb_size = max(2, int((maxrow / total_items) * maxrow * 0.6))
+                    thumb_size = min(thumb_size, maxrow)
+
+                    # Calculate thumb position based on focus
+                    thumb_pos = int(
+                        (self.listbox.focus_position / max(max(total_items - 1, 1), 1)) * (maxrow - thumb_size))
+                    thumb_pos = max(0, min(thumb_pos, maxrow - thumb_size))
+                    thumb_size = max(2, thumb_size)
+
+                    # Build scrollbar lines
+                    bar_lines = [' ' for _ in range(maxrow)]
+                    for i in range(thumb_pos, thumb_pos + thumb_size):
+                        if i < maxrow:
+                            bar_lines[i] = self.thumb_char
+                    bar = '\n'.join(bar_lines)
+
+                    if bar.count(self.thumb_char) == maxrow:
+                        bar = ' ' * maxrow
+
+                self.scrollbar.set_text(('scrollbar_thumb', bar))
+                return super().render(size, focus)
+
+        @staticmethod
+        def console_event(date, log_type, color, message):
+            def get_log_color(c, background=False):
+                new_color = 'console_purple'
+                if c == (0.7, 0.7, 0.7, 1):
+                    new_color = 'console_gray'
+                elif c == (0.3, 1, 0.6, 1):
+                    new_color = 'console_green'
+                elif c == (1, 0.5, 0.65, 1):
+                    new_color = 'console_red'
+                elif c == (1, 0.804, 0.42, 1):
+                    new_color = 'console_orange'
+                elif c == (0.953, 0.929, 0.38, 1):
+                    new_color = 'console_yellow'
+                elif c == (0.439, 0.839, 1, 1):
+                    new_color = 'console_blue'
+                elif c == (1, 0.298, 0.6, 1):
+                    new_color = 'console_pink'
+
+                if background:
+                    new_color += '_bg'
+
+                return new_color
+
+            # Make it fancy if the terminal supports it
+            if advanced_term:
+                line = urwid.Columns([
+                    ('fixed', 13,
+                     urwid.AttrMap(urwid.Text(f"{date} ", align='right'), get_log_color(color, True))),
+                    ('fixed', 7, urwid.AttrMap(urwid.Text(log_type, align='center'), get_log_color(color, True))),
+                    urwid.Text(f"{'█' if advanced_term else ''}  {message}\n", wrap='ellipsis')
+                ])
+                return urwid.AttrMap(line, get_log_color(color, False))
+
+            # Basic view
+            else:
+                line = urwid.Columns([
+                    ('fixed', 12, urwid.Text(f" {date}", align='right')),
+                    ('fixed', 10, urwid.Text(log_type, align='center')),
+                    urwid.Text(f"{message}\n", wrap='ellipsis')
+                ])
+                return urwid.AttrMap(line, get_log_color(color, False))
+
+        def __init__(self, parent):
+            self.parent = parent
+            self.log = []
+
+            self.data = urwid.SimpleFocusListWalker(self.log)
+            list_box = urwid.ListBox(self.data)
+
+            # Store a reference to list_box for scrolling
+            self.list_box = list_box
+
+            # Wrap the ListBox with ScrollBar
+            self.scroll_bar = self.ScrollBar(self, list_box)
+
+            # Wrap everything in a LineBox
+            log_box = urwid.LineBox(self.scroll_bar)
+            self.widget = urwid.AttrMap(urwid.Padding(log_box, left=1, right=1), 'linebox')  # Padding on the outside only
+
+        def update_text(self, text, refresh=False, force_scroll=False):
+
+            # Check if the scrollbar is at the bottom before adding new text
+            at_bottom = False
+            if force_scroll or (len(self.list_box.body) == 0 or self.list_box.focus_position == len(self.list_box.body) - 1):
+                at_bottom = True
+
+
+            # Update existing log
+            if (len(text) == len(self.log)) and not refresh:
+                last_entry = text[-1]['text']
+                time_stamp, log_type, message, color = last_entry
+                new_widget = self.console_event(time_stamp, log_type, color, message)
+                self.log[-1] = new_widget
+                self.data[-1] = new_widget
+
+            # Add entries to the log
+            else:
+                if refresh:
+                    self.log.clear()
+                    self.data.clear()
+
+                for line in text[len(self.log):]:
+                    time_stamp, log_type, message, color = line["text"]
+                    new_widget = self.console_event(time_stamp, log_type, color, message)
+                    self.log.append(new_widget)
+                    self.data.append(new_widget)
+
+
+            # If it was at the bottom before, scroll to the bottom again
+            if at_bottom:
+                self.list_box.set_focus(len(self.list_box.body) - 1)
+
+    class Input():
+
+        class ValidatedEdit(urwid.Edit):
+            def __init__(self, exec_func, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.command_history = []
+                self.history_index = 0
+                self.exec_func = exec_func
+                self.hint_text = "enter command, or 'ESC' to detach..."
+
+            def render(self, size, focus=False):
+                if not self.get_edit_text():
+                    # Display the hint text in dark gray when input is empty
+                    hint = urwid.Text(('bar_label', self.hint_text))
+                    return hint.render(size, focus)
+                else:
+                    # Display the regular input when there is text
+                    return super().render(size, focus)
+
+            def keypress(self, size, key):
+                if not self.get_edit_text() and key == '/':
+                    urwid.emit_signal(self, 'invalid_key', key)
+                    return None
+
+                elif key == 'enter':
+                    command = self.get_edit_text().strip()
+
+                    if command not in self.command_history[:1]:
+                        self.command_history.insert(0, command)
+
+                        # Limit size of command history
+                        if len(self.command_history) > 100:
+                            self.command_history.pop()
+
+                    self.exec_func(command)
+
+                    self.set_edit_text('')
+
+                # Modulate command history with arrow keys
+                elif key in ['up', 'down'] and self.command_history:
+
+                    if key == 'down':
+                        if self.history_index > 0:
+                            self.history_index -= 1
+                        else:
+                            self.set_edit_text('')
+                            return
+
+                    # Constrain history_index to valid range
+                    self.history_index = max(0, min(self.history_index, len(self.command_history) - 1))
+
+                    # Set the command text based on the updated index
+                    new_text = self.command_history[self.history_index]
+                    self.set_edit_text(new_text)
+                    self.set_edit_pos(len(new_text))
+
+                    if key == 'up':
+                        if self.history_index < len(self.command_history) - 1:
+                            self.history_index += 1
+
+                return super().keypress(size, key)
+
+        def send_command(self, command):
+            if self.parent.server.run_data:
+                self.parent.server.run_data['send-command'](command)
+                self.parent.log.update_text(self.parent.server.run_data['log'], force_scroll=True)
+
+        def __init__(self, parent):
+            self.parent = parent
+            self.command_header = ' ❯❯  ' if advanced_term else ' >>  '
+            prompt = urwid.Text(('input_header', self.command_header), align='left')
+            edit = urwid.AttrMap(self.ValidatedEdit(self.send_command), 'input')
+
+            self.widgets = urwid.Columns([('fixed', 5, prompt), edit])
+
+    def __init__(self, server_name: str):
+        # Initialize server
+        self.is_visible = True
+
+        self.server = constants.server_manager.open_server(server_name)
+        while not all(list(self.server._check_object_init().values())):
+            time.sleep(0.1)
+        time.sleep(0.1)
+
+        # Initialize IP address and server info for the middle box
+        self.server_name = server_name
+        self.motd = self.server.motd
+        self.server_version = f'{self.server.type.title()} {self.server.version}'
+        self.ip_address = '0.0.0.0:0'
+
+        # Performance panel
+        self.panels = self.Panels(self)
+
+        # Log panel
+        self.log = self.Log(self)
+
+        # Create the input field
+        self.input = self.Input(self)
+
+        # Widget layout
+        self.widgets = self.build_layout()
+
+        # Launch the actual server
+        self.launch_server()
+
+    def handle_input(self, key):
+        if key == 'esc':
+            self.reset_panel(show_attach=True)
+
+    def start_update_loop(self, *a):
+        global player_counter, loop
+        player_counter += 1
+
+        loop.set_alarm_in(0, functools.partial(self.panels.refresh_data, player_counter == 3))
+        if self.server.running and self.is_visible:
+            loop.set_alarm_in(1, self.start_update_loop)
+
+        if player_counter > 3:
+            player_counter = 0
+
+    def reset_panel(self, show_attach=False, *a):
+        self.is_visible = False
+        screen_manager.current_screen('MainMenuScreen')
+
+        if not show_attach:
+            update_console([('info', response_header), ('normal', "Type a command, ?, or "), ('command', 'help')])
+
+    def launch_server(self):
+
+        # Update log with initial message
+        boot_text = f"Launching '{self.server_name}', please wait..."
+        text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7, 0.7, 0.7, 1))}]
+
+        if self.server.proxy_enabled and self.server.proxy_installed() and not constants.playit.initialized:
+            text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6, 0.6, 1, 1))})
+
+        self.log.update_text(text_list)
+
+        while not self.server.addon or not self.server.backup or not self.server.script_manager or not self.server.acl:
+            time.sleep(0.05)
+
+
+        # Launch the server
+        self.server.launch()
+        self.log.update_text(self.server.run_data['log'], refresh=True)
+
+
+        # Map update functions to run_data hooks
+        if self.log.update_text not in self.server.run_data.get('process-hooks', []):
+            self.server.run_data.setdefault('process-hooks', []).append(self.log.update_text)
+
+        if self.reset_panel not in self.server.run_data.get('close-hooks', []):
+            self.server.run_data.setdefault('close-hooks', []).append(self.reset_panel)
+
+        self.server.run_data['console-panel'] = self
+
+
+        # Start timer to update performance stats
+        self.start_update_loop()
+
+    def open_panel(self):
+        self.is_visible = True
+        self.start_update_loop()
+        return self
+
+    def build_layout(self):
+        title_text = urwid.Text(('title', "auto-mcs v2.2.1 (headless)"), align='center')
+        top_content = urwid.Pile([
+            urwid.AttrMap(urwid.Filler(urwid.Padding(title_text, left=0, right=0), valign='top'), 'title'),
+            urwid.AttrMap(urwid.Filler(urwid.Padding(urwid.Text(''), left=0, right=0), valign='top'), '')
+        ])
+
+        layout = urwid.Frame(
+            self.log.widget,
+            footer=self.input.widgets,
+            header=urwid.Pile([top_content, self.panels.widgets]),
+            focus_part='footer'
+        )
+        return layout
+
+console = None
+def open_console(server_name: str, force_start=False):
+    global console, player_counter
+    console = None
+    if not force_start:
+
+        # First, check if the server exists
+        if server_name.lower() not in constants.server_list_lower:
+            return [('parameter', server_name), ('info', ' does not exist')], 'fail'
+
+        # Check if the server is running
+        elif server_name not in constants.server_manager.running_servers:
+            return [
+                ("info", "Run "),
+                ("command", "server "),
+                ("sub_command", "launch "),
+                ("parameter", server_name),
+                ("info", " to start the server")
+            ], 'fail'
+
+
+    # Attempt to re-attach to the console if it's already available
+    try:
+        if server_name in constants.server_manager.running_servers:
+            console = constants.server_manager.running_servers[server_name].run_data['console-panel'].open_panel()
+    except:
+        pass
+
+    if not console:
+        console = ConsolePanel(server_name)
+
+    screen_manager.screens['ServerViewScreen'] = (console.widgets, console.handle_input)
+    screen_manager.current_screen('ServerViewScreen')
+
+    return [
+        ("info", "Run "),
+        ("command", "console "),
+        ("parameter", server_name),
+        ("info", " to re-attach to the console")
+    ]
+
+
+
+# --------------------------------------------------- Launch Menu ------------------------------------------------------
 
 def run_application():
     # Give an error if elevated
