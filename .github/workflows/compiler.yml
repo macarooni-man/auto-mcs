@@ -365,7 +365,7 @@ jobs:
       id-token: write
 
     steps:
-      
+
       - name: Clone Repo
         uses: actions/checkout@v4
         with:
@@ -378,12 +378,8 @@ jobs:
 
       - name: Unzip artifact
         run: |
-          unzip auto-mcs-alpine.zip
-          rm -rf auto-mcs-alpine.zip
-          mv auto-mcs ./docker/auto-mcs
-
-      - name: Setup upterm session
-        uses: lhotari/action-upterm@v1
+          root=$(pwd)
+          unzip /home/runner/work/auto-mcs/auto-mcs/auto-mcs-alpine.zip -d /home/runner/work/auto-mcs/auto-mcs/docker
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
@@ -401,8 +397,8 @@ jobs:
         id: push
         uses: docker/build-push-action@v3
         with:
-          context: .
-          file: ./Dockerfile
+          context: /home/runner/work/auto-mcs/auto-mcs/docker
+          file: /home/runner/work/auto-mcs/auto-mcs/docker/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
