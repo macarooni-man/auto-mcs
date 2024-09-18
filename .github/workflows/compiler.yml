@@ -363,6 +363,9 @@ jobs:
       contents: read
       attestations: write
       id-token: write
+    env:
+      REGISTRY: docker.io
+      IMAGE_NAME: macarooniman/auto-mcs
 
     steps:
 
@@ -390,7 +393,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: macarooniman/auto-mcs
+          images: ${{ env.IMAGE_NAME }}
 
       - name: Build and push Docker image
         id: push
