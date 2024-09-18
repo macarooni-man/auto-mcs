@@ -3227,11 +3227,32 @@ def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, sele
 
         return end_dir
 
+    def linux_warning():
+        screen_manager.current_screen.show_popup(
+            "warning",
+            "No File Provider",
+            "auto-mcs was unable to open a file pop-up.\n\nPlease install the package 'zenity' and try again, or input a path to the input manually.",
+            None
+        )
 
     # Make sure that ask_type file can dynamically choose between a list and a single file
     if ask_type == "file":
-        final_path = filechooser.open_file(title=title, filters=ext, path=iter_start_dir(start_dir), multiple=select_multiple, icon=file_icon)
-        # Ext = [("Comma-separated Values", "*.csv")]
+        try:
+            final_path = filechooser.open_file(title=title, filters=ext, path=iter_start_dir(start_dir), multiple=select_multiple, icon=file_icon)
+            # Ext = [("Comma-separated Values", "*.csv")]
+        except:
+            if constants.os_name == 'linux':
+                linux_warning()
+
+            # Attempt to use a back-up AppleScript solution for macOS
+            elif constants.os_name == 'macos':
+                ext_list = '", "'.join(ext)
+                ext_command = f'of type {{"{ext_list}"}}'.replace('*.','') if ext else ''
+                start_path_command = f'with prompt "{title}"' + (f' default location POSIX file "{start_dir}"' if start_dir else '')
+
+                # AppleScript with f-string formatting for dynamically setting parameters
+                script = f"osascript -e 'set myFile to choose file {start_path_command} {ext_command}\nPOSIX path of myFile'"
+                final_path = [constants.run_proc(script, return_text=True).strip()]
 
     elif ask_type == "dir":
         if constants.os_name == "windows":
@@ -3241,8 +3262,21 @@ def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, sele
             final_path = filedialog.askdirectory(initialdir=start_dir, title=title)
             Window.raise_window()
         else:
-            final_path = filechooser.choose_dir(path=iter_start_dir(start_dir), title=title, icon=file_icon, multiple=False)
-            final_path = final_path[0] if final_path else None
+            try:
+                final_path = filechooser.choose_dir(path=iter_start_dir(start_dir), title=title, icon=file_icon, multiple=False)
+                final_path = final_path[0] if final_path else None
+
+            except:
+                if constants.os_name == 'linux':
+                    linux_warning()
+
+                # Attempt to use a back-up AppleScript solution for macOS
+                elif constants.os_name == 'macos':
+                    start_path_command = f'with prompt "{title}"' + (f' default location POSIX file "{start_dir}"' if start_dir else '')
+
+                    # AppleScript with f-string formatting for dynamically setting parameters
+                    script = f"    osascript -e 'set myFolder to choose folder {start_path_command}\nPOSIX path of myFolder'"
+                    final_path = constants.run_proc(script, return_text=True).strip()
 
     # World screen
     if input_name:
