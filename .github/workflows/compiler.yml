@@ -88,57 +88,6 @@ jobs:
 
 
 
-  # macos-arm64:
-  #   name: macOS Build (arm64)
-  #   runs-on: macos-13-arm64
-  #   steps:
-    
-  #     - name: Clone Repo
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 1
-
-  #     - name: Install Dependencies
-  #       run: |
-  #         brew install python@3.9 python-tk@3.9 create-dmg
-      
-  #     - name: Compile auto-mcs
-  #       run: |
-  #         root=$(pwd)
-  #         cd build-tools
-  #         mkdir -p /Users/runner/Library/Fonts
-  #         chmod +x build-macos.sh
-  #         sudo ./build-macos.sh
-  #         chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
-
-  #         # Create .dmg from .app
-  #         while : ; do
-  #           [[ -f "$root/build-tools/dist/auto-mcs.dmg" ]] && break
-  #           sleep 1
-  #           sudo create-dmg \
-  #             --volname "auto-mcs" \
-  #             --volicon "$root/other/macos-dmg/icon.icns" \
-  #             --background "$root/other/macos-dmg/bg.png" \
-  #             --window-pos 200 120 \
-  #             --window-size 835 620 \
-  #             --icon-size 128 \
-  #             --text-size 16 \
-  #             --icon "auto-mcs.app" 230 277 \
-  #             --hide-extension "auto-mcs.app" \
-  #             --app-drop-link 593 277 \
-  #             "$root/build-tools/dist/auto-mcs.dmg" \
-  #             "$root/build-tools/dist/auto-mcs.app"
-  #         done
-
-  #     - name: Upload Binary
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: auto-mcs-macos-arm64
-  #         path: build-tools/dist/auto-mcs.dmg
-  #         retention-days: 5
-
-
-
   linux:
     name: Linux Build
     runs-on: ubuntu-20.04
@@ -280,7 +229,7 @@ jobs:
 
 
 
-  docker:
+  alpine:
       name: Docker Build
       runs-on: ubuntu-latest
       steps:
@@ -342,7 +291,7 @@ jobs:
 
 
 
-  docker-arm64:
+  alpine-arm:
       name: Docker Build (arm64)
       runs-on: ubuntu-latest
       steps:
@@ -402,3 +351,56 @@ jobs:
             name: auto-mcs-alpine-arm64
             path: build-tools/dist/
             retention-days: 5
+
+
+
+  docker:
+    name: Push Docker image
+    runs-on: ubuntu-latest
+    needs: alpine
+    permissions:
+      packages: write
+      contents: read
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Download auto-mcs binary
+        uses: actions/download-artifact@v4
+        with:
+          name: auto-mcs-alpine
+
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Setup upterm session
+        uses: lhotari/action-upterm@v1
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: my-docker-hub-namespace/my-docker-hub-repository
+
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
