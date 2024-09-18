@@ -1,7 +1,7 @@
 # Docker Stuff
 This is a placeholder for now
 
-- [ ] Find a way to fix run log escape codes (it breaks the headless console view, and looks ugly)
+- [x] Find a way to fix run log escape codes (it breaks the headless console view, and looks ugly)
 - [ ] Allow user to set custom username and password for TTYD
 - [x] Fix tar issues on Alpine (for example, installing Java doesn't work)
 - [x] Add persistent directory for applicationFolder
@@ -12,7 +12,7 @@ This is a placeholder for now
 - [ ] Offer documentation for building the Docker image similar to this: https://hub.docker.com/_/mariadb
 - [x] Make account for Docker Hub
 - [x] For headless update command, disable the ability to update inside of the container with a command, and instead direct the user to the Docker hub documentation
-- [ ] Check if playit agent is compatible with musl out of the box, or if we need to compile a custom binary on the fly
+- [x] Check if playit agent is compatible with musl out of the box, or if we need to compile a custom binary on the fly
       
 <br>
 
