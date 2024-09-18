@@ -229,7 +229,7 @@ jobs:
 
 
 
-  alpine:
+  docker:
       name: Docker Build
       runs-on: ubuntu-latest
       steps:
@@ -286,5 +286,68 @@ jobs:
           uses: actions/upload-artifact@v4
           with:
             name: auto-mcs-alpine
+            path: build-tools/dist/
+            retention-days: 5
+
+
+
+  docker-arm64:
+      name: Docker Build (arm64)
+      runs-on: ubuntu-latest
+      steps:
+
+        - name: Clone Repo
+          uses: actions/checkout@v4
+          with:
+            fetch-depth: 1
+
+        - name: Setup Alpine Linux
+          uses: jirutka/setup-alpine@v1
+          with:
+            arch: aarch64
+            branch: v3.15
+
+        - name: Install Dependencies
+          run: |
+            apk add xvfb fluxbox python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
+            export DISPLAY=:0.0
+            Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+            sleep 1
+            fluxbox > /dev/null 2>&1 &
+
+          shell: alpine.sh --root {0}
+
+        - name: Compile auto-mcs
+          run: |
+            spec_file="auto-mcs.docker.spec"
+            export DISPLAY=:0.0
+            cd build-tools
+            current=$( pwd )
+            python3.9 -m pip install --upgrade pip setuptools wheel
+            python3.9 -m venv ./venv
+            source ./venv/bin/activate
+            pip install -r reqs-docker.txt
+            echo Compiling auto-mcs
+            cd $current
+            cp $spec_file ../source
+            cd ../source
+            pyinstaller $spec_file --upx-dir $current/upx/linux --clean
+            cd $current
+            rm -rf ../source/$spec_file
+            mv -f ../source/dist .
+            deactivate
+            if ! [ -f $current/dist/auto-mcs ]; then
+              "[FAIL] Something went wrong during compilation"
+              exit 1
+            else
+              echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
+            fi
+            chmod +x dist/auto-mcs
+          shell: alpine.sh {0}
+
+        - name: Upload Binary
+          uses: actions/upload-artifact@v4
+          with:
+            name: auto-mcs-alpine-arm64
             path: build-tools/dist/
             retention-days: 5

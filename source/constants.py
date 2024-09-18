@@ -211,6 +211,9 @@ def get_private_ip():
         return s.getsockname()[0]
     except OSError:
         s.close()
+
+    return '127.0.0.1'
+
 def sync_attr(self, name):
     if name != '__all__':
         return getattr(self, name)

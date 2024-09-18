@@ -558,7 +558,7 @@ class ServerObject():
 
 
                 # Remove escape codes
-                if message.strip().replace('','').endswith('[0m'):
+                if message.strip().endswith('[0m'):
                     message = re.sub(r'(\[\S*\d+m)', '', message)
 
 
