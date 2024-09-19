@@ -19,14 +19,12 @@ jobs:
               local key=$1
               local path="source/constants.py"
               value=$(python3 -c "with open('$path', 'r') as f: print([l for l in f.readlines() if '$key' in l][0].split(' = ')[1][1:-2].strip())")
-              echo "$key=$value" >> $GITHUB_ENV
+              echo "::set-output name=$key::$value"
           }
 
           get_env app_version
           get_env ams_version
           get_env telepath_version
-
-          cat $GITHUB_ENV
 
 
 
@@ -58,7 +56,7 @@ jobs:
       - name: Upload Executable
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-windows-${{ env.app_version }}
+          name: auto-mcs-windows-${{ needs.retrieve-data.outputs.app_version }}
           path: build-tools/dist/
           retention-days: 5
 
@@ -110,7 +108,7 @@ jobs:
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-macos-${{ env.app_version }}
+          name: auto-mcs-macos-${{ needs.retrieve-data.outputs.app_version }}
           path: build-tools/dist/auto-mcs.dmg
           retention-days: 5
 
@@ -177,7 +175,7 @@ jobs:
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-linux-${{ env.app_version }}
+          name: auto-mcs-linux-${{ needs.retrieve-data.outputs.app_version }}
           path: build-tools/dist/
           retention-days: 5
 
@@ -250,7 +248,7 @@ jobs:
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-linux-arm64-${{ env.app_version }}
+          name: auto-mcs-linux-arm64-${{ needs.retrieve-data.outputs.app_version }}
           path: build-tools/dist/
           retention-days: 5
 
@@ -313,7 +311,7 @@ jobs:
         - name: Upload Binary
           uses: actions/upload-artifact@v4
           with:
-            name: auto-mcs-alpine-${{ env.app_version }}
+            name: auto-mcs-alpine-${{ needs.retrieve-data.outputs.app_version }}
             path: build-tools/dist/
             retention-days: 5
 
@@ -377,7 +375,7 @@ jobs:
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-alpine-arm64-${{ env.app_version }}
+          name: auto-mcs-alpine-arm64-${{ needs.retrieve-data.outputs.app_version }}
           path: build-tools/dist/
           retention-days: 5
 
@@ -407,7 +405,7 @@ jobs:
       - name: Download auto-mcs binary
         uses: actions/download-artifact@v4
         with:
-          name: auto-mcs-alpine
+          name: auto-mcs-alpine-${{ needs.retrieve-data.outputs.app_version }}
 
       - name: Move artifact
         run: |
@@ -427,7 +425,7 @@ jobs:
           labels: |
               org.opencontainers.image.title={{ env.IMAGE_NAME }}
               org.opencontainers.image.description=auto-mcs (docker)
-              org.opencontainers.image.version={{ env.app_version }}
+              org.opencontainers.image.version={{ needs.retrieve-data.outputs.app_version }}
               org.opencontainers.image.revision={{ github.sha }}
               org.opencontainers.image.created={{ now }}
               org.opencontainers.image.authors=Kaleb Efflandt <kaleb.efflandt@auto-mcs.com>
@@ -443,7 +441,7 @@ jobs:
           file: /home/runner/work/auto-mcs/auto-mcs/docker/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ env.app_version }}
+            ${{ env.IMAGE_NAME }}:${{ needs.retrieve-data.outputs.app_version }}
             ${{ env.IMAGE_NAME }}:latest]
           labels: ${{ steps.meta.outputs.labels }}
 
