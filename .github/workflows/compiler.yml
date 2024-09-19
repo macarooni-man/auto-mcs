@@ -18,12 +18,12 @@ jobs:
               local key=$1
               local path="source/constants.py"
               value=$(python3 -c "with open('$path', 'r') as f: print([l for l in f.readlines() if '$key'.lower() in l][0].split(' = ')[1][1:-2].strip())")
-              echo "$key=$value" >> "$GITHUB_ENV"
+              echo "$key=$value"
           }
 
-          get_env APP_VERSION
-          get_env AMS_VERSION
-          get_env TELEPATH_VERSION
+          get_env APP_VERSION >> "$GITHUB_ENV"
+          get_env AMS_VERSION >> "$GITHUB_ENV"
+          get_env TELEPATH_VERSION >> "$GITHUB_ENV"
           cat "$GITHUB_ENV" | grep "APP_VERSION"
 
       - name: Test environment variables
