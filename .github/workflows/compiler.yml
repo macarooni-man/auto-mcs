@@ -5,7 +5,7 @@ on:
 jobs:
 
   retrieve-data:
-    name: Get variables
+    name: Setup environment
     runs-on: ubuntu-latest
     steps:
       - name: Clone Repo
@@ -27,6 +27,7 @@ jobs:
           get_env telepath_version
 
           cat $GITHUB_ENV
+
 
 
   windows:
@@ -57,7 +58,7 @@ jobs:
       - name: Upload Executable
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-windows
+          name: auto-mcs-windows-${{ env.app_version }}
           path: build-tools/dist/
           retention-days: 5
 
@@ -109,7 +110,7 @@ jobs:
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-macos
+          name: auto-mcs-macos-${{ env.app_version }}
           path: build-tools/dist/auto-mcs.dmg
           retention-days: 5
 
@@ -173,13 +174,10 @@ jobs:
           fi
           chmod +x dist/auto-mcs
 
-      # - name: Setup upterm session
-      #   uses: lhotari/action-upterm@v1
-
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-linux
+          name: auto-mcs-linux-${{ env.app_version }}
           path: build-tools/dist/
           retention-days: 5
 
@@ -252,7 +250,7 @@ jobs:
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-linux-arm64
+          name: auto-mcs-linux-arm64-${{ env.app_version }}
           path: build-tools/dist/
           retention-days: 5
 
@@ -315,7 +313,7 @@ jobs:
         - name: Upload Binary
           uses: actions/upload-artifact@v4
           with:
-            name: auto-mcs-alpine
+            name: auto-mcs-alpine-${{ env.app_version }}
             path: build-tools/dist/
             retention-days: 5
 
@@ -379,7 +377,7 @@ jobs:
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-alpine-arm64
+          name: auto-mcs-alpine-arm64-${{ env.app_version }}
           path: build-tools/dist/
           retention-days: 5
 
@@ -388,7 +386,8 @@ jobs:
   docker:
     name: Push Docker image
     runs-on: ubuntu-latest
-    needs: [alpine, alpine-arm]
+#    needs: [alpine, alpine-arm]
+    needs: alpine
     permissions:
       packages: write
       contents: read
@@ -425,6 +424,16 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: ${{ env.IMAGE_NAME }}
+          labels: |
+              org.opencontainers.image.title={{ env.IMAGE_NAME }}
+              org.opencontainers.image.description=auto-mcs (docker)
+              org.opencontainers.image.version={{ env.app_version }}
+              org.opencontainers.image.revision={{ github.sha }}
+              org.opencontainers.image.created={{ now }}
+              org.opencontainers.image.authors=Kaleb Efflandt <kaleb.efflandt@auto-mcs.com>
+              org.opencontainers.image.url=https://auto-mcs.com
+              org.opencontainers.image.source=https://github.com/{{ github.repository }}
+              org.opencontainers.image.licenses=GPL-3.0
 
       - name: Build and push Docker image
         id: push
@@ -433,7 +442,9 @@ jobs:
           context: /home/runner/work/auto-mcs/auto-mcs/docker
           file: /home/runner/work/auto-mcs/auto-mcs/docker/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ env.app_version }}
+            ${{ env.IMAGE_NAME }}:latest]
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Generate artifact attestation
