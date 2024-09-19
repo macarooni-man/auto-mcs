@@ -414,6 +414,7 @@ jobs:
       REGISTRY: docker.io
       IMAGE_NAME: macarooniman/auto-mcs
       APP_VERSION: ${{ needs.setup-env.outputs.APP_VERSION }}
+      TAG_SUFFIX: ${{ github.ref_name == 'main' && 'latest' || 'beta' }}
     steps:
 
       - name: Clone Repo
@@ -441,6 +442,7 @@ jobs:
 
       - name: Prepare build context
         run: |
+          mkdir -p ./docker
           mv binaries/x86_64/auto-mcs ./docker/auto-mcs-amd64
           mv binaries/arm64/auto-mcs ./docker/auto-mcs-arm64
 
@@ -476,5 +478,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE_NAME }}:${{ env.APP_VERSION }}
-            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ env.TAG_SUFFIX }}
           labels: ${{ steps.meta.outputs.labels }}
