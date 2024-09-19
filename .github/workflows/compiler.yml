@@ -404,8 +404,7 @@ jobs:
   publish-docker:
     name: Publish Docker image
     runs-on: ubuntu-latest
-#    needs: [setup-env, alpine, alpine-arm]
-    needs: [setup-env, alpine]
+    needs: [setup-env, alpine, alpine-arm]
     permissions:
       packages: write
       contents: read
@@ -414,6 +413,7 @@ jobs:
     env:
       REGISTRY: docker.io
       IMAGE_NAME: macarooniman/auto-mcs
+      APP_VERSION: ${{ needs.setup-env.outputs.APP_VERSION }}
     steps:
 
       - name: Clone Repo
@@ -421,14 +421,28 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Download auto-mcs binary
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Download x86_64 binary
         uses: actions/download-artifact@v4
         with:
-          name: auto-mcs-alpine-${{ needs.setup-env.outputs.APP_VERSION }}
+          name: auto-mcs-alpine-${{ env.APP_VERSION }}
+          path: ./binaries/x86_64
 
-      - name: Move artifact
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: auto-mcs-alpine-arm64-${{ env.APP_VERSION }}
+          path: ./binaries/arm64
+
+      - name: Prepare build context
         run: |
-          mv /home/runner/work/auto-mcs/auto-mcs/auto-mcs /home/runner/work/auto-mcs/auto-mcs/docker
+          mv binaries/x86_64/auto-mcs ./docker/auto-mcs-amd64
+          mv binaries/arm64/auto-mcs ./docker/auto-mcs-arm64
 
       - name: Login to Docker Hub
         uses: docker/login-action@v2
@@ -442,31 +456,25 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           labels: |
-              org.opencontainers.image.title={{ env.IMAGE_NAME }}
-              org.opencontainers.image.description=auto-mcs (docker)
-              org.opencontainers.image.version={{ needs.setup-env.outputs.APP_VERSION }}
-              org.opencontainers.image.revision={{ github.sha }}
-              org.opencontainers.image.created={{ now }}
-              org.opencontainers.image.authors=Kaleb Efflandt <kaleb.efflandt@auto-mcs.com>
-              org.opencontainers.image.url=https://auto-mcs.com
-              org.opencontainers.image.source=https://github.com/{{ github.repository }}
-              org.opencontainers.image.licenses=GPL-3.0
+            org.opencontainers.image.title={{ env.IMAGE_NAME }}
+            org.opencontainers.image.description=auto-mcs (docker)
+            org.opencontainers.image.version={{ env.APP_VERSION }}
+            org.opencontainers.image.revision={{ github.sha }}
+            org.opencontainers.image.created={{ now }}
+            org.opencontainers.image.authors=Kaleb Efflandt <kaleb.efflandt@auto-mcs.com>
+            org.opencontainers.image.url=https://auto-mcs.com
+            org.opencontainers.image.source=https://github.com/{{ github.repository }}
+            org.opencontainers.image.licenses=GPL-3.0
 
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@v3
         with:
-          context: /home/runner/work/auto-mcs/auto-mcs/docker
-          file: /home/runner/work/auto-mcs/auto-mcs/docker/Dockerfile
+          context: ./docker
+          file: ./docker/Dockerfile
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ needs.setup-env.outputs.APP_VERSION }}
+            ${{ env.IMAGE_NAME }}:${{ env.APP_VERSION }}
             ${{ env.IMAGE_NAME }}:latest
           labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
