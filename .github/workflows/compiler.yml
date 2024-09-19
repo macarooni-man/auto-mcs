@@ -24,6 +24,7 @@ jobs:
           get_env APP_VERSION
           get_env AMS_VERSION
           get_env TELEPATH_VERSION
+          cat "$GITHUB_ENV" | grep "APP_VERSION"
 
       - name: Test environment variables
         run: |
