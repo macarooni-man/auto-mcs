@@ -14,6 +14,7 @@ jobs:
       - name: Setup environment variables
         id: extract
         run: |
+          # Retrieve environment variables from code
           get_env() {
               local key=$1
               local path="source/constants.py"
@@ -21,9 +22,9 @@ jobs:
               echo "$key=$value" >> $GITHUB_ENV
           }
 
-          get_env("app_version")
-          get_env("ams_version")
-          get_env("telepath_version")
+          get_env app_version
+          get_env ams_version
+          get_env telepath_version
 
           cat $GITHUB_ENV
 
