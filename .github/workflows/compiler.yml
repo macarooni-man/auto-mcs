@@ -261,7 +261,7 @@ jobs:
     name: Docker Build
     runs-on: ubuntu-latest
     needs: retrieve-data
-      steps:
+    steps:
 
         - name: Clone Repo
           uses: actions/checkout@v4
@@ -387,7 +387,7 @@ jobs:
   docker:
     name: Push Docker image
     runs-on: ubuntu-latest
-    needs: alpine
+    needs: [alpine, alpine-arm]
     permissions:
       packages: write
       contents: read
