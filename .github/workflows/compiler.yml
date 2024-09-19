@@ -461,7 +461,7 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:${{ needs.setup-env.outputs.APP_VERSION }}
-            ${{ env.IMAGE_NAME }}:latest]
+            ${{ env.IMAGE_NAME }}:latest
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Generate artifact attestation
