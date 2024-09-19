@@ -4,9 +4,34 @@ on:
   push: null
 jobs:
 
+  retrieve-data:
+    name: Get variables
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v4
+
+      - name: Setup environment variables
+        id: extract
+        run: |
+          get_env() {
+              local key=$1
+              local path="source/constants.py"
+              value=$(python3 -c "with open('$path', 'r') as f: print([l for l in f.readlines() if '$key' in l][0].split(' = ')[1][1:-2].strip())")
+              echo "$key=$value" >> $GITHUB_ENV
+          }
+
+          get_env("app_version")
+          get_env("ams_version")
+          get_env("telepath_version")
+
+          cat $GITHUB_ENV
+
+
   windows:
     name: Windows Build
     runs-on: windows-2019
+    needs: retrieve-data
     steps:
     
       - name: Clone Repo
@@ -40,6 +65,7 @@ jobs:
   macos:
     name: macOS Build
     runs-on: macos-12
+    needs: retrieve-data
     steps:
     
       - name: Clone Repo
@@ -91,6 +117,7 @@ jobs:
   linux:
     name: Linux Build
     runs-on: ubuntu-20.04
+    needs: retrieve-data
     steps:
     
       - name: Clone Repo
@@ -160,6 +187,7 @@ jobs:
   linux-arm:
     name: Linux Build (arm64)
     runs-on: ubuntu-20.04
+    needs: retrieve-data
     steps:
     
       - name: Clone Repo
@@ -230,8 +258,9 @@ jobs:
 
 
   alpine:
-      name: Docker Build
-      runs-on: ubuntu-latest
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: retrieve-data
       steps:
 
         - name: Clone Repo
@@ -292,65 +321,66 @@ jobs:
 
 
   alpine-arm:
-      name: Docker Build (arm64)
-      runs-on: ubuntu-latest
-      steps:
+    name: Docker Build (arm64)
+    runs-on: ubuntu-latest
+    needs: retrieve-data
+    steps:
 
-        - name: Clone Repo
-          uses: actions/checkout@v4
-          with:
-            fetch-depth: 1
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-        - name: Setup Alpine Linux
-          uses: jirutka/setup-alpine@v1
-          with:
-            arch: aarch64
-            branch: v3.15
+      - name: Setup Alpine Linux
+        uses: jirutka/setup-alpine@v1
+        with:
+          arch: aarch64
+          branch: v3.15
 
-        - name: Install Dependencies
-          run: |
-            apk add xvfb fluxbox python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
-            export DISPLAY=:0.0
-            Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
-            sleep 1
-            fluxbox > /dev/null 2>&1 &
+      - name: Install Dependencies
+        run: |
+          apk add xvfb fluxbox python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
+          export DISPLAY=:0.0
+          Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+          sleep 1
+          fluxbox > /dev/null 2>&1 &
 
-          shell: alpine.sh --root {0}
+        shell: alpine.sh --root {0}
 
-        - name: Compile auto-mcs
-          run: |
-            spec_file="auto-mcs.docker.spec"
-            export DISPLAY=:0.0
-            cd build-tools
-            current=$( pwd )
-            python3.9 -m pip install --upgrade pip setuptools wheel
-            python3.9 -m venv ./venv
-            source ./venv/bin/activate
-            pip install -r reqs-docker.txt
-            echo Compiling auto-mcs
-            cd $current
-            cp $spec_file ../source
-            cd ../source
-            pyinstaller $spec_file --upx-dir $current/upx/linux --clean
-            cd $current
-            rm -rf ../source/$spec_file
-            mv -f ../source/dist .
-            deactivate
-            if ! [ -f $current/dist/auto-mcs ]; then
-              "[FAIL] Something went wrong during compilation"
-              exit 1
-            else
-              echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
-            fi
-            chmod +x dist/auto-mcs
-          shell: alpine.sh {0}
+      - name: Compile auto-mcs
+        run: |
+          spec_file="auto-mcs.docker.spec"
+          export DISPLAY=:0.0
+          cd build-tools
+          current=$( pwd )
+          python3.9 -m pip install --upgrade pip setuptools wheel
+          python3.9 -m venv ./venv
+          source ./venv/bin/activate
+          pip install -r reqs-docker.txt
+          echo Compiling auto-mcs
+          cd $current
+          cp $spec_file ../source
+          cd ../source
+          pyinstaller $spec_file --upx-dir $current/upx/linux --clean
+          cd $current
+          rm -rf ../source/$spec_file
+          mv -f ../source/dist .
+          deactivate
+          if ! [ -f $current/dist/auto-mcs ]; then
+            "[FAIL] Something went wrong during compilation"
+            exit 1
+          else
+            echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
+          fi
+          chmod +x dist/auto-mcs
+        shell: alpine.sh {0}
 
-        - name: Upload Binary
-          uses: actions/upload-artifact@v4
-          with:
-            name: auto-mcs-alpine-arm64
-            path: build-tools/dist/
-            retention-days: 5
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-mcs-alpine-arm64
+          path: build-tools/dist/
+          retention-days: 5
 
 
 
