@@ -3,7 +3,9 @@ FROM alpine:3.20
 
 ARG ttyd_binary="https://github.com/macarooni-man/auto-mcs-ttyd/releases/download/v1.0.0/auto-mcs-ttyd"
 
-COPY auto-mcs /auto-mcs
+ARG TARGETARCH
+
+COPY auto-mcs-${TARGETARCH} /auto-mcs
 
 RUN apk update && apk upgrade && \
     apk add --no-cache wget json-c libcrypto3 libssl3 libuv libwebsockets libwebsockets-evlib_uv tmux musl zlib && \
