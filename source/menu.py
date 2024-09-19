@@ -3144,7 +3144,12 @@ class ServerFlagInput(BaseInput):
         typed_info = (text if text else self.text).strip()
 
         # Input validation
-        flag_check = all([f.strip().startswith('-') for f in typed_info.split(' ')])
+        flag_check = all([
+            f.strip().startswith('-') or
+            f.strip().startswith('@') or
+            (f.strip().startswith('<java') and f.strip().endswith('>'))
+            for f in typed_info.split(' ')
+        ])
         space_check = re.search(r'(-\s|\w-\s|\d-| \s+|-+$)', typed_info, re.IGNORECASE)
         memory_check = re.search(r'-xm(x|s)\d+(b|k|m|g|t)', typed_info, re.IGNORECASE)
         self.stinky_text = ''

@@ -3748,7 +3748,7 @@ eula=true"""
                                     flag = flag[:-1]
 
                             # Ignore flags with invalid data
-                            if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
+                            if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                                 continue
                             for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version']:
                                 if exclude in flag:
@@ -4069,7 +4069,7 @@ def scan_modpack(update=False, progress_func=None):
                     flag = flag[:-1]
 
             # Ignore flags with invalid data
-            if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
+            if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                 continue
             for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version']:
                 if exclude in flag:
@@ -4982,11 +4982,27 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     ram = calculate_ram(properties)
 
     # Use custom flags, or Aikar's flags if none are provided
+    java_override = None
+
     if no_flags:
         start_flags = ''
     elif not custom_flags:
         start_flags = ' -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
     else:
+
+        # Override java version with custom flag
+        check_override = re.search(r'^<java\d+>', custom_flags.strip())
+        if check_override:
+            override = check_override[0]
+            custom_flags = custom_flags.replace(override, '').strip()
+            if override == '<java21>':
+                java_override = java_executable['modern']
+            elif override == '<java17>':
+                java_override = java_executable['lts']
+            elif override == '<java8>':
+                java_override = java_executable['legacy']
+
+        # Build start flags
         start_flags = f' {custom_flags}'
 
 
@@ -4994,7 +5010,10 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     if properties['type'] != 'forge':
 
         # Make sure this works non-spigot versions
-        java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
+        if java_override:
+            java = java_override
+        else:
+            java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
 
         # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
         script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
@@ -5014,14 +5033,21 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
         # Modern
         if version_check(properties['version'], ">=", "1.17"):
-            java = java_executable["lts"] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
+            if java_override:
+                java = java_override
+            else:
+                java = java_executable["lts"] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
             version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*")) if os.listdir(file)]
             arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
             script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
 
         # 1.6 to 1.16
         elif version_check(properties['version'], ">=", "1.6") and version_check(properties['version'], "<", "1.17"):
-            script = f'"{java_executable["legacy"]}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+            if java_override:
+                java = java_override
+            else:
+                java = java_executable["legacy"]
+            script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
 
 
     script_check = ""
