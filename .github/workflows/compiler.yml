@@ -34,8 +34,8 @@ jobs:
     steps:
       - name: Test environment variables
         run: |
-          echo auto-mcs-${{ needs.setup-env.outputs.APP_VERSION }}
-          # cat ${{ needs.setup-env.outputs.EXPORTED_ENV }} | grep "true"
+          echo ${{ needs.setup-env.outputs.APP_VERSION }}
+          echo ${{ needs.setup-env.outputs }} | grep "true"
 
 
 
