@@ -3596,6 +3596,40 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                         elif "net.minecraft.server.minecraftserver" in output.lower() or "net.minecraft.server.main" in output.lower() or "net.minecraft.bundler.main" in output.lower():
                             import_data['type'] = "vanilla"
 
+
+                    # Before starting the server, check mods folder for most common version specified
+                    if not import_data['version'] and import_data['type'] in ['forge', 'fabric']:
+
+                        # Generate script list and iterate through each one
+                        file_list = glob(os.path.join(path, "*.txt"))
+                        if os.path.exists(os.path.join(path, 'scripts')):
+                            file_list = glob(os.path.join(path, "scripts", "*.*"))
+                        if os.path.exists(os.path.join(path, 'config')):
+                            file_list.extend(glob(os.path.join(path, "config", "*.*")))
+
+                        version_matches = []
+
+                        def process_matches(content):
+                            version_matches.extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
+
+                        # First, search through all the files to find the type, version, and launch flags
+                        for file in file_list:
+                            # Find server jar name
+                            with open(file, 'r', encoding='utf-8', errors='ignore') as f:
+                                output = f.read()
+                                f.close()
+                                process_matches(output)
+                                process_matches(os.path.basename(file))
+
+                        # Second, search through all the mod names to more accurately determine the MC version
+                        if os.path.exists(os.path.join(path, 'mods')):
+                            for mod in glob(os.path.join(path, "mods", "*.jar")):
+                                process_matches(os.path.basename(mod))
+
+                        if version_matches:
+                            import_data['version'] = max(set(version_matches), key=version_matches.count)
+
+
                     # Check for server version
                     if not import_data['version']:
 
