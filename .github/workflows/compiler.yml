@@ -24,11 +24,12 @@ jobs:
           get_env APP_VERSION >> "$GITHUB_ENV"
           get_env AMS_VERSION >> "$GITHUB_ENV"
           get_env TELEPATH_VERSION >> "$GITHUB_ENV"
+          echo >> "EXPORTED_ENV=true" >> "$GITHUB_ENV"
 
       - name: Test environment variables
         run: |
           echo auto-mcs-${{ env.APP_VERSION }}
-          cat "$GITHUB_ENV" | grep "APP_VERSION"
+          cat "$GITHUB_ENV" | grep "EXPORTED_ENV=true"
 
 
 
