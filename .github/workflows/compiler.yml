@@ -208,7 +208,6 @@ jobs:
           copy_artifact_path: build-tools/dist/*
           copy_artifact_dest: build-tools/dist
           commands: |
-              cat $GITHUB_ENV
               # Install dependencies
               mkdir -p /usr/lib64/
               sudo cp -f /usr/lib/aarch64-linux-gnu/libcrypt.so.1 /usr/lib64/libcrypt.so.2
@@ -275,6 +274,7 @@ jobs:
 
         - name: Install Dependencies
           run: |
+            cat $GITHUB_ENV
             apk add xvfb fluxbox python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
             export DISPLAY=:0.0
             Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
