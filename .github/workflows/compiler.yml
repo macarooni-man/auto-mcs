@@ -4,6 +4,7 @@ on:
   push: null
 jobs:
 
+  # Setup and test variables from the code
   setup-env:
     name: Setup environment
     runs-on: ubuntu-latest
@@ -45,7 +46,7 @@ jobs:
 
 
 
-
+  # Compile binaries for every OS
   windows:
     name: Windows Build
     runs-on: windows-2019
@@ -399,11 +400,12 @@ jobs:
 
 
 
-  docker:
-    name: Push Docker image
+  # Publish images to Docker Hub
+  publish-docker:
+    name: Publish Docker image
     runs-on: ubuntu-latest
-#    needs: [alpine, alpine-arm]
-    needs: alpine
+#    needs: [setup-env, alpine, alpine-arm]
+    needs: [setup-env, alpine]
     permissions:
       packages: write
       contents: read
@@ -412,7 +414,6 @@ jobs:
     env:
       REGISTRY: docker.io
       IMAGE_NAME: macarooniman/auto-mcs
-
     steps:
 
       - name: Clone Repo
