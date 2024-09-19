@@ -14,7 +14,7 @@ services:
       "./auto-mcs"
     ]
 
-    image: auto-mcs
+    image: macarooniman/auto-mcs:latest
     container_name: auto-mcs
     build: .
     stdin_open: true
