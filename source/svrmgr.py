@@ -558,8 +558,11 @@ class ServerObject():
 
 
                 # Remove escape codes
-                if message.strip().endswith('[0m'):
-                    message = re.sub(r'(\[\S*\d+m)', '', message)
+                try:
+                    if message.strip().endswith('[0m'):
+                        message = re.sub(r'(\[\S*\d+m)', '', message)
+                except:
+                    pass
 
 
                 main_label = message.strip()
