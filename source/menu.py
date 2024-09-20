@@ -3121,7 +3121,7 @@ class ServerFlagInput(BaseInput):
     # Input validation
     def insert_text(self, substring, from_undo=False):
 
-        if not self.text and not substring.startswith('-'):
+        if not self.text and substring[0] not in ['-', '@', '<']:
             substring = ""
 
         elif len(self.text) < 5000:

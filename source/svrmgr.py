@@ -1250,8 +1250,13 @@ class ServerObject():
     def terminate(self):
 
         # Kill server process
-        if self.run_data['process'].poll() is None:
-            self.run_data['process'].kill()
+        try:
+            if self.run_data['process'].poll() is None:
+                self.run_data['process'].kill()
+
+        # Ignore errors stopping the process
+        except:
+            return
 
         # Reset port back to normal if required
         if self.run_data['network']['original_port']:

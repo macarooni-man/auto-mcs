@@ -16,9 +16,9 @@ services:
 
     image: macarooniman/auto-mcs:latest
     container_name: auto-mcs
-    build: .
     stdin_open: true
     tty: true
+    restart: always
     ports:
 
       # ttyd web UI
