@@ -350,7 +350,7 @@ def parse_template(path):
             if data['server']['version'] == 'latest':
                 data['server']['version'] = latestMC[data['server']['type']]
             return data
-    except None:
+    except:
         return {}
 
 # Apply template to new_server_info
