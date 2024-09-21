@@ -1,0 +1,71 @@
+---
+
+# auto-mcs - Instant Server Template
+template:
+
+  name: Beds Rock
+  
+  description: Supports Bedrock and Java clients
+
+  author: Kaleb Efflandt
+
+  template_version: 1
+
+
+
+# Server data
+server:
+
+  type: paper
+
+  version: latest
+
+  settings:
+
+    # Enable playit.gg tunneling
+    playit: true
+
+    # List of Modrinth/Bukkit.org ID's to install
+    addons: []
+
+    # Enables Bedrock compatibility on supported types
+    geyser_support: true
+
+
+    # Specify path/URL to download a world
+    # To create a new world, leave URL empty
+    world:
+
+      path: null
+
+      seed: null
+
+      level_type: default
+
+
+    # easy, normal, hard, hardcore
+    difficulty: normal
+
+
+    # survival, creative, adventure, spectator
+    gamemode: survival
+
+    spawn_creatures: true
+
+    spawn_protection: false
+
+    pvp: false
+
+    max_players: 20
+
+    disable_chat_reporting: true
+
+
+    # Gamerules
+    keep_inventory: false
+
+    daylight_weather_cycle: true
+
+    command_blocks: false
+
+    random_tick_speed: 3
