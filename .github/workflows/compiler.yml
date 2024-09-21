@@ -3,9 +3,54 @@ name: Compiler
 on:
   push: null
 jobs:
+
+  # Setup and test variables from the code
+  setup-env:
+    name: Setup environment
+    runs-on: ubuntu-latest
+    outputs:
+      APP_VERSION: ${{ steps.set-vars.outputs.APP_VERSION }}
+      AMS_VERSION: ${{ steps.set-vars.outputs.AMS_VERSION }}
+      TELEPATH_VERSION: ${{ steps.set-vars.outputs.TELEPATH_VERSION }}
+      EXPORTED_ENV: ${{ steps.set-vars.outputs.EXPORTED_ENV }}
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v4
+
+      - name: Setup environment variables
+        id: set-vars
+        run: |
+          get_env() {
+              local key="$1"
+              local path="source/constants.py"
+              value=$(python3 -c "with open('$path', 'r') as f: print([l for l in f.readlines() if '$key'.lower() in l][0].split(' = ')[1][1:-2].strip())")
+              echo "$key=$value" >> $GITHUB_OUTPUT
+          }
+
+          # Retrieve and set environment variables
+          get_env APP_VERSION
+          get_env AMS_VERSION
+          get_env TELEPATH_VERSION
+
+          echo "EXPORTED_ENV=true" >> $GITHUB_OUTPUT
+
+  test-env:
+    name: Test environment
+    runs-on: ubuntu-latest
+    needs: setup-env
+    steps:
+      - name: Test environment variables
+        run: |
+          echo auto-mcs-${{ needs.setup-env.outputs.APP_VERSION }}
+          echo "${{ needs.setup-env.outputs.EXPORTED_ENV }}" | grep "true"
+
+
+
+  # Compile binaries for every OS
   windows:
     name: Windows Build
     runs-on: windows-2019
+    needs: [setup-env, test-env]
     steps:
     
       - name: Clone Repo
@@ -30,7 +75,7 @@ jobs:
       - name: Upload Executable
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-windows
+          name: auto-mcs-windows-${{ needs.setup-env.outputs.APP_VERSION }}
           path: build-tools/dist/
           retention-days: 5
 
@@ -39,6 +84,7 @@ jobs:
   macos:
     name: macOS Build
     runs-on: macos-12
+    needs: [setup-env, test-env]
     steps:
     
       - name: Clone Repo
@@ -48,7 +94,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install python@3.9 python-tk@3.9 upx create-dmg
+          brew install python@3.9 python-tk@3.9 create-dmg
       
       - name: Compile auto-mcs
         run: |
@@ -81,7 +127,7 @@ jobs:
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-macos
+          name: auto-mcs-macos-${{ needs.setup-env.outputs.APP_VERSION }}
           path: build-tools/dist/auto-mcs.dmg
           retention-days: 5
 
@@ -90,6 +136,7 @@ jobs:
   linux:
     name: Linux Build
     runs-on: ubuntu-20.04
+    needs: [setup-env, test-env]
     steps:
     
       - name: Clone Repo
@@ -144,13 +191,10 @@ jobs:
           fi
           chmod +x dist/auto-mcs
 
-      # - name: Setup upterm session
-      #   uses: lhotari/action-upterm@v1
-
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-linux
+          name: auto-mcs-linux-${{ needs.setup-env.outputs.APP_VERSION }}
           path: build-tools/dist/
           retention-days: 5
 
@@ -159,6 +203,7 @@ jobs:
   linux-arm:
     name: Linux Build (arm64)
     runs-on: ubuntu-20.04
+    needs: [setup-env, test-env]
     steps:
     
       - name: Clone Repo
@@ -222,7 +267,216 @@ jobs:
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: auto-mcs-linux-arm64
+          name: auto-mcs-linux-arm64-${{ needs.setup-env.outputs.APP_VERSION }}
           path: build-tools/dist/
           retention-days: 5
 
+
+
+  alpine:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [setup-env, test-env]
+    steps:
+
+        - name: Clone Repo
+          uses: actions/checkout@v4
+          with:
+            fetch-depth: 1
+
+        - name: Setup Alpine Linux
+          uses: jirutka/setup-alpine@v1
+          with:
+            branch: v3.15
+
+        - name: Install Dependencies
+          run: |
+            apk add xvfb fluxbox python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
+            export DISPLAY=:0.0
+            Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+            sleep 1
+            fluxbox > /dev/null 2>&1 &
+
+          shell: alpine.sh --root {0}
+
+        - name: Compile auto-mcs
+          run: |
+            spec_file="auto-mcs.docker.spec"
+            export DISPLAY=:0.0
+            cd build-tools
+            current=$( pwd )
+            python3.9 -m pip install --upgrade pip setuptools wheel
+            python3.9 -m venv ./venv
+            source ./venv/bin/activate
+            pip install -r reqs-docker.txt
+            echo Compiling auto-mcs
+            cd $current
+            cp $spec_file ../source
+            cd ../source
+            pyinstaller $spec_file --upx-dir $current/upx/linux --clean
+            cd $current
+            rm -rf ../source/$spec_file
+            mv -f ../source/dist .
+            deactivate
+            if ! [ -f $current/dist/auto-mcs ]; then
+              "[FAIL] Something went wrong during compilation"
+              exit 1
+            else
+              echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
+            fi
+            chmod +x dist/auto-mcs
+          shell: alpine.sh {0}
+
+        - name: Upload Binary
+          uses: actions/upload-artifact@v4
+          with:
+            name: auto-mcs-alpine-${{ needs.setup-env.outputs.APP_VERSION }}
+            path: build-tools/dist/
+            retention-days: 5
+
+
+
+  alpine-arm:
+    name: Docker Build (arm64)
+    runs-on: ubuntu-latest
+    needs: [setup-env, test-env]
+    steps:
+
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Alpine Linux
+        uses: jirutka/setup-alpine@v1
+        with:
+          arch: aarch64
+          branch: v3.15
+
+      - name: Install Dependencies
+        run: |
+          apk add xvfb fluxbox python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
+          export DISPLAY=:0.0
+          Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
+          sleep 1
+          fluxbox > /dev/null 2>&1 &
+
+        shell: alpine.sh --root {0}
+
+      - name: Compile auto-mcs
+        run: |
+          spec_file="auto-mcs.docker.spec"
+          export DISPLAY=:0.0
+          cd build-tools
+          current=$( pwd )
+          python3.9 -m pip install --upgrade pip setuptools wheel
+          python3.9 -m venv ./venv
+          source ./venv/bin/activate
+          pip install -r reqs-docker.txt
+          echo Compiling auto-mcs
+          cd $current
+          cp $spec_file ../source
+          cd ../source
+          pyinstaller $spec_file --upx-dir $current/upx/linux --clean
+          cd $current
+          rm -rf ../source/$spec_file
+          mv -f ../source/dist .
+          deactivate
+          if ! [ -f $current/dist/auto-mcs ]; then
+            "[FAIL] Something went wrong during compilation"
+            exit 1
+          else
+            echo [SUCCESS] Compiled binary:  \"$current/dist/auto-mcs\"
+          fi
+          chmod +x dist/auto-mcs
+        shell: alpine.sh {0}
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-mcs-alpine-arm64-${{ needs.setup-env.outputs.APP_VERSION }}
+          path: build-tools/dist/
+          retention-days: 5
+
+
+
+  # Publish images to Docker Hub
+  publish-docker:
+    name: Publish Docker image
+    runs-on: ubuntu-latest
+    needs: [setup-env, alpine, alpine-arm]
+    permissions:
+      packages: write
+      contents: read
+      attestations: write
+      id-token: write
+    env:
+      REGISTRY: docker.io
+      IMAGE_NAME: macarooniman/auto-mcs
+      APP_VERSION: ${{ needs.setup-env.outputs.APP_VERSION }}
+      TAG_SUFFIX: ${{ github.ref_name == 'main' && 'latest' || 'beta' }}
+    steps:
+
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Download x86_64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: auto-mcs-alpine-${{ env.APP_VERSION }}
+          path: ./binaries/x86_64
+
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: auto-mcs-alpine-arm64-${{ env.APP_VERSION }}
+          path: ./binaries/arm64
+
+      - name: Prepare build context
+        run: |
+          mkdir -p ./docker
+          mv binaries/x86_64/auto-mcs ./docker/auto-mcs-amd64
+          mv binaries/arm64/auto-mcs ./docker/auto-mcs-arm64
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          labels: |
+            org.opencontainers.image.title={{ env.IMAGE_NAME }}
+            org.opencontainers.image.description=auto-mcs (docker)
+            org.opencontainers.image.version={{ env.APP_VERSION }}
+            org.opencontainers.image.revision={{ github.sha }}
+            org.opencontainers.image.created={{ now }}
+            org.opencontainers.image.authors=Kaleb Efflandt <kaleb.efflandt@auto-mcs.com>
+            org.opencontainers.image.url=https://auto-mcs.com
+            org.opencontainers.image.source=https://github.com/{{ github.repository }}
+            org.opencontainers.image.licenses=GPL-3.0
+
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v3
+        with:
+          context: ./docker
+          file: ./docker/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ env.APP_VERSION }}
+            ${{ env.IMAGE_NAME }}:${{ env.TAG_SUFFIX }}
+          labels: ${{ steps.meta.outputs.labels }}

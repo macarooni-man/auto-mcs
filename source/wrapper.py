@@ -40,7 +40,10 @@ if __name__ == '__main__':
     except:
         pass
     try:
-        constants.hostname = constants.run_proc('hostname', True).strip()
+        if constants.is_docker:
+            constants.hostname = f'{constants.app_title} (docker)'
+        else:
+            constants.hostname = constants.run_proc('hostname', True).strip()
     except:
         pass
 
@@ -83,7 +86,7 @@ if __name__ == '__main__':
 
 
         # Force headless if display is not set on Linux
-        if constants.os_name == 'linux' and 'DISPLAY' not in os.environ:
+        if (constants.os_name == 'linux' and 'DISPLAY' not in os.environ) or constants.is_docker:
             constants.headless = True
 
         # Close splash if headless & compiled
@@ -125,7 +128,7 @@ if __name__ == '__main__':
 
         elif constants.os_name == "macos":
             command = f'ps -e | grep .app/Contents/MacOS/{os.path.basename(constants.launch_path)}'
-            response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and line]
+            response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2:
                 print('Closed: auto-mcs is already open')
                 sys.exit(10)
@@ -133,7 +136,7 @@ if __name__ == '__main__':
         # Linux
         else:
             command = f'ps -e | grep {os.path.basename(constants.launch_path)}'
-            response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and line]
+            response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2:
                 print('Closed: auto-mcs is already open')
                 sys.exit(10)
@@ -163,7 +166,8 @@ if __name__ == '__main__':
                     constants.app_config.locale = v['code']
                 break
     except Exception as e:
-        print(f'Failed to determine locale: {e}')
+        if not constants.is_docker:
+            print(f'Failed to determine locale: {e}')
     if not constants.app_config.locale:
         constants.app_config.locale = 'en'
 
@@ -239,6 +243,7 @@ if __name__ == '__main__':
         def get_versions(*a):
             constants.find_latest_mc()
             constants.make_update_list()
+            constants.get_repo_templates()
         background_launch(get_public_ip)
         background_launch(get_versions)
         background_launch(constants.load_addon_cache)
@@ -308,7 +313,7 @@ if __name__ == '__main__':
     # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
     constants.api_manager = telepath.TelepathManager()
     config = constants.app_config
-    if (config.telepath_settings['enable-api'] or constants.headless) and not constants.is_admin():
+    if ((config.telepath_settings['enable-api'] or constants.headless) and not constants.is_admin()) or constants.is_docker:
         constants.api_manager.update_config(config.telepath_settings['api-host'], config.telepath_settings['api-port'])
         constants.api_manager.start()
 

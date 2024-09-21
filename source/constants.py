@@ -169,6 +169,7 @@ scriptDir = os.path.join(toolDir, 'amscript')
 tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
 cacheDir = os.path.join(applicationFolder, 'Cache')
+templateDir = os.path.join(toolDir, 'templates')
 configDir = os.path.join(applicationFolder, 'Config')
 javaDir = os.path.join(toolDir, 'java')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
@@ -211,6 +212,9 @@ def get_private_ip():
         return s.getsockname()[0]
     except OSError:
         s.close()
+
+    return '127.0.0.1'
+
 def sync_attr(self, name):
     if name != '__all__':
         return getattr(self, name)
@@ -276,6 +280,10 @@ def run_proc(cmd, return_text=False):
 
 # Check if running in Docker
 def check_docker() -> bool:
+    if os_name == 'linux':
+        if 'Alpine' in run_proc('uname -v', True).strip():
+            return True
+
     cgroup = Path('/proc/self/cgroup')
     return Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
 is_docker = check_docker()
@@ -297,14 +305,14 @@ def get_repo_scripts():
     global ams_web_list
     try:
         latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
-        ams_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
+        repo_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
 
         script_dict = {}
         ams_list = []
         root_url = "https://raw.githubusercontent.com/macarooni-man/auto-mcs/main/"
 
         # Organize all script files
-        for file in ams_data['tree']:
+        for file in repo_data['tree']:
             if file['path'].startswith('amscript-library'):
                 if "/" in file['path']:
                     root_name = file['path'].split("/")[1]
@@ -327,6 +335,102 @@ def get_repo_scripts():
 
     ams_web_list = ams_list
     return ams_list
+
+
+# Global templates
+
+# Parse template file into a Python object
+def parse_template(path):
+    try:
+        with open(path, 'r') as f:
+            data = yaml.safe_load(f.read())
+            if latestMC[data['server']['type']] == '0.0.0':
+                while latestMC[data['server']['type']] == '0.0.0':
+                    time.sleep(0.1)
+            if data['server']['version'] == 'latest':
+                data['server']['version'] = latestMC[data['server']['type']]
+            return data
+    except:
+        return {}
+
+# Apply template to new_server_info
+def apply_template(template: dict):
+    global new_server_info
+
+    # Get telepath data
+    telepath_data = None
+    if new_server_info:
+        telepath_data = new_server_info['_telepath_data']
+
+    new_server_init()
+
+    if telepath_data:
+        new_server_info['_telepath_data'] = telepath_data
+
+    t = template['server']
+    s = t['settings']
+
+    new_server_info["name"] = new_server_name(template['template']['name'])
+    new_server_info["type"] = t["type"]
+    new_server_info["version"] = t["version"]
+    new_server_info['server_settings']["world"] = "world" if not s["world"]["path"] else s["world"]["path"]
+    new_server_info['server_settings']["seed"] = "" if not s["world"]["seed"] else s["world"]["seed"]
+    new_server_info['server_settings']["level_type"] = s["world"]["level_type"]
+    new_server_info['server_settings']["difficulty"] = s["difficulty"]
+    new_server_info['server_settings']["gamemode"] = s["gamemode"]
+    new_server_info['server_settings']["spawn_creatures"] = s["spawn_creatures"]
+    new_server_info['server_settings']["spawn_protection"] = s["spawn_protection"]
+    new_server_info['server_settings']["pvp"] = s["pvp"]
+    new_server_info['server_settings']["max_players"] = str(s["max_players"])
+    new_server_info['server_settings']["keep_inventory"] = s["keep_inventory"]
+    new_server_info['server_settings']["daylight_weather_cycle"] = s["daylight_weather_cycle"]
+    new_server_info['server_settings']["command_blocks"] = s["command_blocks"]
+    new_server_info['server_settings']["random_tick_speed"] = str(s['random_tick_speed'])
+    new_server_info['server_settings']["geyser_support"] = s['geyser_support']
+    new_server_info['server_settings']["disable_chat_reporting"] = s['disable_chat_reporting']
+    new_server_info['server_settings']["enable_proxy"] = s['playit']
+
+    # Get add-ons
+    if s['addons']:
+        new_server_info['addon_objects'] = [a for a in [addons.find_addon(a, new_server_info) for a in s['addons']] if a]
+
+    # Initialize AclManager
+    from acl import AclManager
+    new_server_info['acl_object'] = AclManager(new_server_info['name'])
+
+
+# Grabs instant server template files from GitHub repo
+ist_data = {}
+def get_repo_templates():
+    global ist_data
+
+    if ist_data:
+        return
+
+    if not os.path.exists(templateDir):
+
+        try:
+            latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
+            repo_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
+            root_url = "https://raw.githubusercontent.com/macarooni-man/auto-mcs/main/"
+
+            # Organize all script files
+            folder_check(templateDir)
+            for file in repo_data['tree']:
+                if file['path'].startswith('template-library'):
+                    if "/" in file['path']:
+                        file_name = file['path'].split("/")[1]
+                        url = f'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/{quote(file["path"])}'
+                        download_url(url, file_name, templateDir)
+        except:
+            ist_data = []
+
+
+    if os.path.exists(templateDir):
+        for ist in glob(os.path.join(templateDir, '*.yml')):
+            data = parse_template(ist)
+            if ist not in ist_data:
+                ist_data[os.path.basename(ist)] = data
 
 
 
@@ -1241,7 +1345,7 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
             use_tar = False
             if archive_type == 'tar':
                 try:
-                    rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL)
+                    rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     use_tar = rc == 0
 
                 except Exception as e:
@@ -1325,7 +1429,7 @@ def create_archive(file_path: str, export_path: str, archive_type='tar'):
     # Create a .tar archive
     if archive_type == 'tar':
         try:
-            rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL)
+            rc = subprocess.call(['tar', '--help'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             use_tar = rc == 0
 
         except Exception as e:
@@ -2299,7 +2403,9 @@ def new_server_init():
 
             # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
             "geyser_support": False,
-            "disable_chat_reporting": True
+            "disable_chat_reporting": True,
+
+            "enable_proxy": False,
 
         },
 
@@ -2339,6 +2445,9 @@ def push_new_server(server_info: dict, import_info={}):
 
 # Generate new server name
 def new_server_name(existing_server=None, s_list=server_list_lower):
+    if not s_list:
+        generate_server_list()
+        s_list = server_list_lower
     def iter_name(new_name):
         x = 1
         while new_name.lower() in s_list:
@@ -2441,7 +2550,7 @@ def java_check(progress_func=None):
             if (run_proc(f'"{os.path.abspath(modern_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(lts_path)}" --version') == 0) and (run_proc(f'"{os.path.abspath(legacy_path)}" -version') == 0):
 
                 # Check for appropriate modern version
-                if run_proc(f'"{os.path.abspath(modern_path)}" --version', return_text=True).startswith(f'java {modern_version}.'):
+                if is_docker or run_proc(f'"{os.path.abspath(modern_path)}" --version', return_text=True).startswith(f'java {modern_version}.'):
 
                     java_executable = {
                         "modern": str(os.path.abspath(modern_path)),
@@ -2464,6 +2573,21 @@ def java_check(progress_func=None):
 
             if debug:
                 print('\nJava is not detected, installing...\n')
+
+
+            # On Docker, use apk to install Java instead
+            if is_docker:
+                run_proc('apk add openjdk21 openjdk17 openjdk8', True)
+                folder_check(javaDir)
+                try:
+                    move('/usr/lib/jvm/java-21-openjdk', os.path.join(javaDir, 'modern'))
+                    move('/usr/lib/jvm/java-17-openjdk', os.path.join(javaDir, 'lts'))
+                    move('/usr/lib/jvm/java-1.8-openjdk', os.path.join(javaDir, 'legacy'))
+                except:
+                    pass
+                continue
+
+
 
             # Download java versions in threadpool:
             folder_check(downDir)
@@ -2893,7 +3017,7 @@ def install_server(progress_func=None, imported=False):
 
         print("test", f'"{java_executable["modern"]}" -jar server.jar nogui')
 
-        process = subprocess.Popen(f'"{java_executable["modern"]}" -jar server.jar nogui', shell=True)
+        process = subprocess.Popen(f'"{java_executable["modern"]}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         while True:
             time.sleep(1)
@@ -2979,6 +3103,11 @@ def generate_server_files(progress_func=None):
     # Generate ACL rules to temp server
     if new_server_info['acl_object'].count_rules()['total'] > 0:
         new_server_info['acl_object'].write_rules()
+
+
+    # Install playit if specified
+    if new_server_info['server_settings']['enable_proxy'] and not playit._check_agent():
+        playit._install_agent()
 
 
     # Generate EULA.txt
@@ -3574,6 +3703,40 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                         elif "net.minecraft.server.minecraftserver" in output.lower() or "net.minecraft.server.main" in output.lower() or "net.minecraft.bundler.main" in output.lower():
                             import_data['type'] = "vanilla"
 
+
+                    # Before starting the server, check mods folder for most common version specified
+                    if not import_data['version'] and import_data['type'] in ['forge', 'fabric']:
+
+                        # Generate script list and iterate through each one
+                        file_list = glob(os.path.join(path, "*.txt"))
+                        if os.path.exists(os.path.join(path, 'scripts')):
+                            file_list = glob(os.path.join(path, "scripts", "*.*"))
+                        if os.path.exists(os.path.join(path, 'config')):
+                            file_list.extend(glob(os.path.join(path, "config", "*.*")))
+
+                        version_matches = []
+
+                        def process_matches(content):
+                            version_matches.extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
+
+                        # First, search through all the files to find the type, version, and launch flags
+                        for file in file_list:
+                            # Find server jar name
+                            with open(file, 'r', encoding='utf-8', errors='ignore') as f:
+                                output = f.read()
+                                f.close()
+                                process_matches(output)
+                                process_matches(os.path.basename(file))
+
+                        # Second, search through all the mod names to more accurately determine the MC version
+                        if os.path.exists(os.path.join(path, 'mods')):
+                            for mod in glob(os.path.join(path, "mods", "*.jar")):
+                                process_matches(os.path.basename(mod))
+
+                        if version_matches:
+                            import_data['version'] = max(set(version_matches), key=version_matches.count)
+
+
                     # Check for server version
                     if not import_data['version']:
 
@@ -3704,7 +3867,7 @@ eula=true"""
                                     flag = flag[:-1]
 
                             # Ignore flags with invalid data
-                            if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
+                            if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                                 continue
                             for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version']:
                                 if exclude in flag:
@@ -4025,7 +4188,7 @@ def scan_modpack(update=False, progress_func=None):
                     flag = flag[:-1]
 
             # Ignore flags with invalid data
-            if "%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5:
+            if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                 continue
             for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version']:
                 if exclude in flag:
@@ -4686,7 +4849,10 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
         config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
     except:
         config.set('general', 'enableGeyser', 'false')
-    config.set('general', 'enableProxy', 'false')
+    try:
+        config.set('general', 'enableProxy', str(properties['server_settings']['enable_proxy']).lower())
+    except:
+        config.set('general', 'enableProxy', 'false')
     try:
         config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
     except:
@@ -4938,11 +5104,27 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     ram = calculate_ram(properties)
 
     # Use custom flags, or Aikar's flags if none are provided
+    java_override = None
+
     if no_flags:
         start_flags = ''
     elif not custom_flags:
         start_flags = ' -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
     else:
+
+        # Override java version with custom flag
+        check_override = re.search(r'^<java\d+>', custom_flags.strip())
+        if check_override:
+            override = check_override[0]
+            custom_flags = custom_flags.replace(override, '').strip()
+            if override == '<java21>':
+                java_override = java_executable['modern']
+            elif override == '<java17>':
+                java_override = java_executable['lts']
+            elif override == '<java8>':
+                java_override = java_executable['legacy']
+
+        # Build start flags
         start_flags = f' {custom_flags}'
 
 
@@ -4950,7 +5132,10 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     if properties['type'] != 'forge':
 
         # Make sure this works non-spigot versions
-        java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
+        if java_override:
+            java = java_override
+        else:
+            java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
 
         # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
         script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
@@ -4970,14 +5155,21 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
         # Modern
         if version_check(properties['version'], ">=", "1.17"):
-            java = java_executable["lts"] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
+            if java_override:
+                java = java_override
+            else:
+                java = java_executable["lts"] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
             version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*")) if os.listdir(file)]
             arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
             script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
 
         # 1.6 to 1.16
         elif version_check(properties['version'], ">=", "1.6") and version_check(properties['version'], "<", "1.17"):
-            script = f'"{java_executable["legacy"]}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+            if java_override:
+                java = java_override
+            else:
+                java = java_executable["legacy"]
+            script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
 
 
     script_check = ""
@@ -6016,7 +6208,7 @@ class SearchManager():
         self.options_tree = {
 
             'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['addonpack', 'modpack', 'import modpack']),
+                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerModeScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['addonpack', 'modpack', 'import modpack']),
                 ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
             ],
 

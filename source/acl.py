@@ -1,3 +1,4 @@
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
 from urllib.request import urlopen
@@ -1174,7 +1175,11 @@ def dump_config(server_name: str, new_server=False):
 
     # Check auto-mcs.ini for info
     if config_file and os.path.isfile(config_file):
-        server_config = constants.server_config(server_name)
+        try:
+            server_config = constants.server_config(server_name)
+        except:
+            time.sleep(0.1)
+            server_config = constants.server_config(server_name)
 
         # Only pickup server as valid with good config
         if server_name == server_config.get("general", "serverName"):

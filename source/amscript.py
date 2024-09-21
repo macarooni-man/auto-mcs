@@ -1274,8 +1274,9 @@ class ScriptObject():
 
         self.call_event('@player.on_alias', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj['content'], permission))
 
-        print('player.on_alias')
-        print(player_obj)
+        if constants.debug:
+            print('player.on_alias')
+            print(player_obj)
 
 
 # Reconfigured ServerObject to be passed in as 'server' variable to amscripts
