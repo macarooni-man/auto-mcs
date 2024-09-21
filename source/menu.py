@@ -25859,9 +25859,6 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        if not constants.app_compiled:
-            constants.new_server_init()
-            screen_manager.current = 'CreateServerNetworkScreen'
         # if not constants.app_compiled:
         #     def open_menu(*a):
         #         open_server('test')
