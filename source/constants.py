@@ -420,7 +420,7 @@ def get_repo_templates():
                 if file['path'].startswith('template-library'):
                     if "/" in file['path']:
                         file_name = file['path'].split("/")[1]
-                        url = f'https://github.com/macarooni-man/auto-mcs/tree/main/{quote(file["path"])}'
+                        url = f'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/{quote(file["path"])}'
                         download_url(url, file_name, templateDir)
         except:
             ist_data = []
