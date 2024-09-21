@@ -169,6 +169,7 @@ scriptDir = os.path.join(toolDir, 'amscript')
 tempDir = os.path.join(applicationFolder, 'Temp')
 tmpsvr = os.path.join(tempDir, 'tmpsvr')
 cacheDir = os.path.join(applicationFolder, 'Cache')
+templateDir = os.path.join(toolDir, 'templates')
 configDir = os.path.join(applicationFolder, 'Config')
 javaDir = os.path.join(toolDir, 'java')
 os_temp = os.getenv("TEMP") if os_name == "windows" else "/tmp"
@@ -304,14 +305,14 @@ def get_repo_scripts():
     global ams_web_list
     try:
         latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
-        ams_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
+        repo_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
 
         script_dict = {}
         ams_list = []
         root_url = "https://raw.githubusercontent.com/macarooni-man/auto-mcs/main/"
 
         # Organize all script files
-        for file in ams_data['tree']:
+        for file in repo_data['tree']:
             if file['path'].startswith('amscript-library'):
                 if "/" in file['path']:
                     root_name = file['path'].split("/")[1]
@@ -334,6 +335,102 @@ def get_repo_scripts():
 
     ams_web_list = ams_list
     return ams_list
+
+
+# Global templates
+
+# Parse template file into a Python object
+def parse_template(path):
+    try:
+        with open(path, 'r') as f:
+            data = yaml.safe_load(f.read())
+            if latestMC[data['server']['type']] == '0.0.0':
+                while latestMC[data['server']['type']] == '0.0.0':
+                    time.sleep(0.1)
+            if data['server']['version'] == 'latest':
+                data['server']['version'] = latestMC[data['server']['type']]
+            return data
+    except None:
+        return {}
+
+# Apply template to new_server_info
+def apply_template(template: dict):
+    global new_server_info
+
+    # Get telepath data
+    telepath_data = None
+    if new_server_info:
+        telepath_data = new_server_info['_telepath_data']
+
+    new_server_init()
+
+    if telepath_data:
+        new_server_info['_telepath_data'] = telepath_data
+
+    t = template['server']
+    s = t['settings']
+
+    new_server_info["name"] = new_server_name(template['template']['name'])
+    new_server_info["type"] = t["type"]
+    new_server_info["version"] = t["version"]
+    new_server_info['server_settings']["world"] = "world" if not s["world"]["path"] else s["world"]["path"]
+    new_server_info['server_settings']["seed"] = "" if not s["world"]["seed"] else s["world"]["seed"]
+    new_server_info['server_settings']["level_type"] = s["world"]["level_type"]
+    new_server_info['server_settings']["difficulty"] = s["difficulty"]
+    new_server_info['server_settings']["gamemode"] = s["gamemode"]
+    new_server_info['server_settings']["spawn_creatures"] = s["spawn_creatures"]
+    new_server_info['server_settings']["spawn_protection"] = s["spawn_protection"]
+    new_server_info['server_settings']["pvp"] = s["pvp"]
+    new_server_info['server_settings']["max_players"] = str(s["max_players"])
+    new_server_info['server_settings']["keep_inventory"] = s["keep_inventory"]
+    new_server_info['server_settings']["daylight_weather_cycle"] = s["daylight_weather_cycle"]
+    new_server_info['server_settings']["command_blocks"] = s["command_blocks"]
+    new_server_info['server_settings']["random_tick_speed"] = str(s['random_tick_speed'])
+    new_server_info['server_settings']["geyser_support"] = s['geyser_support']
+    new_server_info['server_settings']["disable_chat_reporting"] = s['disable_chat_reporting']
+    new_server_info['server_settings']["enable_proxy"] = s['playit']
+
+    # Get add-ons
+    if s['addons']:
+        new_server_info['addon_objects'] = [a for a in [addons.find_addon(a, new_server_info) for a in s['addons']] if a]
+
+    # Initialize AclManager
+    from acl import AclManager
+    new_server_info['acl_object'] = AclManager(new_server_info['name'])
+
+
+# Grabs instant server template files from GitHub repo
+ist_data = []
+def get_repo_templates():
+    global ist_data
+
+    if ist_data:
+        return
+
+    if not os.path.exists(templateDir):
+
+        try:
+            latest_commit = requests.get("https://api.github.com/repos/macarooni-man/auto-mcs/commits").json()[0]['sha']
+            repo_data = requests.get(f"https://api.github.com/repos/macarooni-man/auto-mcs/git/trees/{latest_commit}?recursive=1").json()
+            root_url = "https://raw.githubusercontent.com/macarooni-man/auto-mcs/main/"
+
+            # Organize all script files
+            folder_check(templateDir)
+            for file in repo_data['tree']:
+                if file['path'].startswith('template-library'):
+                    if "/" in file['path']:
+                        file_name = file['path'].split("/")[1]
+                        url = f'https://github.com/macarooni-man/auto-mcs/tree/main/{quote(file["path"])}'
+                        download_url(url, file_name, templateDir)
+        except:
+            ist_data = []
+
+
+    if os.path.exists(templateDir):
+        for ist in glob(os.path.join(templateDir, '*.yml')):
+            data = parse_template(ist)
+            if data not in ist_data:
+                ist_data.append(data)
 
 
 
@@ -2306,7 +2403,9 @@ def new_server_init():
 
             # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
             "geyser_support": False,
-            "disable_chat_reporting": True
+            "disable_chat_reporting": True,
+
+            "enable_proxy": False,
 
         },
 
@@ -2346,6 +2445,9 @@ def push_new_server(server_info: dict, import_info={}):
 
 # Generate new server name
 def new_server_name(existing_server=None, s_list=server_list_lower):
+    if not s_list:
+        generate_server_list()
+        s_list = server_list_lower
     def iter_name(new_name):
         x = 1
         while new_name.lower() in s_list:
@@ -3001,6 +3103,11 @@ def generate_server_files(progress_func=None):
     # Generate ACL rules to temp server
     if new_server_info['acl_object'].count_rules()['total'] > 0:
         new_server_info['acl_object'].write_rules()
+
+
+    # Install playit if specified
+    if new_server_info['server_settings']['enable_proxy'] and not playit._check_agent():
+        playit._install_agent()
 
 
     # Generate EULA.txt
@@ -4730,7 +4837,10 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
         config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
     except:
         config.set('general', 'enableGeyser', 'false')
-    config.set('general', 'enableProxy', 'false')
+    try:
+        config.set('general', 'enableProxy', str(properties['server_settings']['enable_proxy']).lower())
+    except:
+        config.set('general', 'enableProxy', 'false')
     try:
         config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
     except:
@@ -6086,7 +6196,7 @@ class SearchManager():
         self.options_tree = {
 
             'MainMenu': [
-                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerNameScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['addonpack', 'modpack', 'import modpack']),
+                ScreenObject('Home', 'MainMenuScreen', {'Update auto-mcs': None, 'View changelog': f'{project_link}/releases/latest', 'Create a new server': 'CreateServerModeScreen', 'Import a server': 'ServerImportScreen', 'Change language': 'ChangeLocaleScreen', 'Telepath': 'TelepathManagerScreen'}, ['addonpack', 'modpack', 'import modpack']),
                 ScreenObject('Server Manager', 'ServerManagerScreen', self.get_server_list),
             ],
 

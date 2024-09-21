@@ -243,6 +243,7 @@ if __name__ == '__main__':
         def get_versions(*a):
             constants.find_latest_mc()
             constants.make_update_list()
+            constants.get_repo_templates()
         background_launch(get_public_ip)
         background_launch(get_versions)
         background_launch(constants.load_addon_cache)

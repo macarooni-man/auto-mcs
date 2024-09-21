@@ -1,0 +1,71 @@
+---
+
+# auto-mcs - Instant Server Template
+template:
+
+  name: Architect's Paradise
+
+  description: Optimized creative experience
+
+  author: Kaleb Efflandt
+
+  template_version: 1
+
+
+
+# Server data
+server:
+
+  type: purpur
+
+  version: latest
+
+  settings:
+
+    # Enable playit.gg tunneling
+    playit: true
+
+    # List of Modrinth/Bukkit.org ID's to install
+    addons: [worldedit, worldedit-selection-visualizer, player-heads]
+
+    # Enables Bedrock compatibility on supported types
+    geyser_support: false
+
+
+    # Specify path/URL to download a world
+    # To create a new world, leave URL empty
+    world:
+
+      path: null
+
+      seed: null
+
+      level_type: superflat
+
+
+    # easy, normal, hard, hardcore
+    difficulty: normal
+
+
+    # survival, creative, adventure, spectator
+    gamemode: creative
+
+    spawn_creatures: false
+
+    spawn_protection: true
+
+    pvp: false
+
+    max_players: 20
+
+    disable_chat_reporting: true
+
+
+    # Gamerules
+    keep_inventory: true
+
+    daylight_weather_cycle: false
+
+    command_blocks: true
+
+    random_tick_speed: 10
