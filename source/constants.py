@@ -400,7 +400,7 @@ def apply_template(template: dict):
 
 
 # Grabs instant server template files from GitHub repo
-ist_data = []
+ist_data = {}
 def get_repo_templates():
     global ist_data
 
@@ -429,8 +429,8 @@ def get_repo_templates():
     if os.path.exists(templateDir):
         for ist in glob(os.path.join(templateDir, '*.yml')):
             data = parse_template(ist)
-            if data not in ist_data:
-                ist_data.append(data)
+            if ist not in ist_data:
+                ist_data[os.path.basename(ist)] = data
 
 
 

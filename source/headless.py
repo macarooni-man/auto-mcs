@@ -290,6 +290,23 @@ def init_create_server(data):
     if len(data) < 2:
         return 'Server name is required', 'fail'
 
+    # Instant template
+    elif data[0].startswith('instant'):
+        if ':' in data[0]:
+            try:
+                name = data[1]
+                file = data[0].split(':')[1] + '.yml'
+                template = constants.ist_data[file]
+                constants.apply_template(template)
+
+                return manage_server(name, 'create')
+
+            except KeyError:
+                pass
+
+        return 'Invalid instant template specified', 'fail'
+
+    # Manual version
     else:
         constants.new_server_init()
         constants.new_server_info['type'] = 'vanilla'
@@ -901,8 +918,14 @@ class CommandInput(urwid.Edit):
         loop.screen.register_palette_entry('input', *color[1:])
 
     def _get_hint_text(self, input_text):
+
+        # Insert version hints
         version_hints = [f'{t.replace("craft", "")}:latest' for t in constants.latestMC.keys() if t != 'builds']
         version_hints.insert(0, 'latest')
+
+        # Insert instant template hints
+        version_hints.extend([f"instant:{f[:-4]}" for f in constants.ist_data.keys()])
+
 
         if input_text:
             command_name = input_text.split(' ')[0]

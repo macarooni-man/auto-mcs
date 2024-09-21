@@ -10193,7 +10193,6 @@ class CreateServerTemplateScreen(MenuBackground):
 
 
         # Generate header
-        ist_count = len(constants.ist_data)
         header_content = "Select a template to use"
 
         for child in self.header.children:
@@ -10348,7 +10347,7 @@ class CreateServerTemplateScreen(MenuBackground):
 
             self.add_widget(float_layout)
 
-            self.gen_search_results(constants.ist_data)
+            self.gen_search_results(list(constants.ist_data.values()))
 
 class CreateServerModeScreen(MenuBackground):
 
