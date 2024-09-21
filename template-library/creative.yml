@@ -40,7 +40,7 @@ server:
 
       seed: null
 
-      level_type: superflat
+      level_type: flat
 
 
     # easy, normal, hard, hardcore
