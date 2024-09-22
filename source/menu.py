@@ -61,7 +61,6 @@ Config.set('kivy', 'exit_on_escape', '0')
 
 # Import kivy elements
 from kivy.clock import Clock
-from kivy.loader import Loader
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 from kivy.animation import Animation
@@ -4814,8 +4813,9 @@ def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickab
 
         icon_text = Label()
         icon_text.id = 'icon'
-        icon_text.size_hint_max = (100, 120)
         icon_text.text_size = (100, 120)
+        icon_text.size_hint_max = (130, 120)
+        icon_text.text_size = (130, 120)
         icon_text.halign = 'center'
         icon_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
         icon_text.text = icon_name.lower()
@@ -15570,7 +15570,7 @@ class ServerManagerScreen(MenuBackground):
     def generate_menu(self, **kwargs):
 
         # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.48))
         scroll_anchor = AnchorLayout()
         self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
@@ -15595,8 +15595,8 @@ class ServerManagerScreen(MenuBackground):
 
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.755}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.22}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         header_content = "Select a server in which to manage"
@@ -15618,7 +15618,7 @@ class ServerManagerScreen(MenuBackground):
         float_layout.add_widget(scroll_bottom)
         float_layout.add_widget(self.page_switcher)
 
-        buttons.append(ExitButton('Back', (0.5, 0.15), cycle=True))
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
 
         for button in buttons:
             float_layout.add_widget(button)
