@@ -10330,12 +10330,8 @@ class CreateServerTemplateScreen(MenuBackground):
             float_layout.add_widget(scroll_bottom)
             float_layout.add_widget(self.page_switcher)
 
-            # Add telepath button if servers are connected
             telepath_data = constants.server_manager.check_telepath_servers()
-            if telepath_data:
-                float_layout.add_widget(TelepathDropButton(telepath_data, 'create', (0.5, 0.202)))
-
-            buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
+            buttons.append(ExitButton('Back', (0.5, 0.11 if telepath_data else 0.14), cycle=True))
 
             for button in buttons:
                 float_layout.add_widget(button)
@@ -10343,6 +10339,10 @@ class CreateServerTemplateScreen(MenuBackground):
             menu_name = "Instant Server"
             float_layout.add_widget(generate_title("Instant Server"))
             float_layout.add_widget(generate_footer(menu_name))
+
+            # Add telepath button if servers are connected
+            if telepath_data:
+                float_layout.add_widget(TelepathDropButton(telepath_data, 'create', (0.5, 0.202)))
 
             self.add_widget(float_layout)
 
