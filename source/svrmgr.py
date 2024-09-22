@@ -548,16 +548,26 @@ class ServerObject():
                         code_list = [message[x:x + 2] for x, y in enumerate(message, 0) if y == '§']
 
                         for code in code_list:
-                            message = message.replace(code, format_color(code))
+                            message = message.replace(code, '' if constants.headless else format_color(code))
 
-                        if len(code_list) % 2 == 1:
+                        if (len(code_list) % 2 == 1) and not constants.headless:
                             message = message + '[/color]'
 
                     except KeyError:
                         message = original_message
 
+
+                # Remove escape codes
+                try:
+                    if message.strip().endswith('[0m'):
+                        message = re.sub(r'(\[\S*\d+m)', '', message)
+                except:
+                    pass
+
+
                 main_label = message.strip()
                 message = message.replace('[Not Secure]', '').strip()
+
 
                 # Calculate color based on log type
 
@@ -801,6 +811,10 @@ class ServerObject():
 
                 formatted_line = {'text': log_line}
                 if formatted_line not in self.run_data['log'] and formatted_line['text']:
+                    def update_headless():
+                        if constants.headless:
+                            for hook in self.run_data['process-hooks']:
+                                hook(self.run_data['log'])
 
                     # Progress bars for preparing spawn area
                     def format_pct(line, *a):
@@ -813,11 +827,13 @@ class ServerObject():
                     if log_line[2].startswith('Preparing spawn') and log_line[1] == 'INFO' and self.run_data['log'][-1]['text'][2].startswith('Preparing spawn'):
                         new = formatted_line['text']
                         self.run_data['log'][-1] = {'text': (new[0], new[1], f'Preparing spawn area: {format_pct(new[2])}', new[3])}
-
+                        update_headless()
                     else:
                         if log_line[2].startswith('Time elapsed') and log_line[1] == 'INFO':
                             last = self.run_data['log'][-1]['text']
                             self.run_data['log'][-1] = {'text': (last[0], last[1], f'Preparing spawn area: {format_pct("100%")}', last[3])}
+                            update_headless()
+
                         elif log_line[2].startswith('Preparing spawn') and log_line[1] == 'INFO':
                             last = formatted_line['text']
                             formatted_line = {'text': (last[0], last[1], f'Preparing spawn area: {format_pct(last[2])}', last[3])}
@@ -1237,8 +1253,13 @@ class ServerObject():
     def terminate(self):
 
         # Kill server process
-        if self.run_data['process'].poll() is None:
-            self.run_data['process'].kill()
+        try:
+            if self.run_data['process'].poll() is None:
+                self.run_data['process'].kill()
+
+        # Ignore errors stopping the process
+        except:
+            return
 
         # Reset port back to normal if required
         if self.run_data['network']['original_port']:
@@ -1664,9 +1685,9 @@ class ServerObject():
                         message = escape_markup(message)
                         code_list = [message[x:x + 2] for x, y in enumerate(message, 0) if y == '§']
                         for code in code_list:
-                            message = message.replace(code, format_color(code))
+                            message = message.replace(code, '' if constants.headless else format_color(code))
 
-                        if len(code_list) % 2 == 1:
+                        if (len(code_list) % 2 == 1) and not constants.headless:
                             message = message + '[/color]'
 
                     except KeyError:
@@ -1956,7 +1977,8 @@ class ServerManager():
         # Load telepath servers
         self.load_telepath_servers()
 
-        print("[INFO] [auto-mcs] Server Manager initialized")
+        if not constants.is_docker:
+            print("[INFO] [auto-mcs] Server Manager initialized")
 
     def _init_telepathy(self, telepath_data: dict):
         self.current_server = telepath.RemoteServerObject(telepath_data)
