@@ -25438,7 +25438,7 @@ class TelepathManagerScreen(MenuBackground):
             self.confirm_layout.add_widget(load_icon)
             def recenter(*a):
                 def r(*a):
-                    load_icon.x = Window.center[0] - (self.host_input.width / 2) + 70
+                    load_icon.x = Window.center[0] - (self.host_input.width / 2) + 30
                 Clock.schedule_once(r, 0)
             self.confirm_layout.bind(pos=recenter, size=recenter)
 
