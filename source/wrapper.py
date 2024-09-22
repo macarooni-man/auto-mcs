@@ -41,7 +41,7 @@ if __name__ == '__main__':
         pass
     try:
         if constants.is_docker:
-            constants.hostname = f'{constants.app_title} (docker)'
+            constants.hostname = f'{constants.app_title}'
         else:
             constants.hostname = constants.run_proc('hostname', True).strip()
     except:
