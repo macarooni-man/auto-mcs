@@ -10335,7 +10335,7 @@ class CreateServerTemplateScreen(MenuBackground):
             if telepath_data:
                 float_layout.add_widget(TelepathDropButton(telepath_data, 'create', (0.5, 0.202)))
 
-            buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+            buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
             for button in buttons:
                 float_layout.add_widget(button)
@@ -10354,7 +10354,6 @@ class CreateServerModeScreen(MenuBackground):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
         self.menu = 'init'
-
     def generate_menu(self, **kwargs):
         # Generate buttons on page load
         buttons = []
@@ -10366,30 +10365,40 @@ class CreateServerModeScreen(MenuBackground):
         # Create UI buttons
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
 
-        # Row buttons
-        content_row = BoxLayout()
-        content_row.pos_hint = {"center_y": 0.5, "center_x": 0.5}
-        content_row.size_hint_max_x = dp(1000)
-        content_row.orientation = "horizontal"
+
+        # Create type buttons (Page 1)
+        row_top = BoxLayout()
+        row_bottom = BoxLayout()
+        row_top.pos_hint = {"center_y": 0.64, "center_x": 0.5}
+        row_bottom.pos_hint = {"center_y": 0.38, "center_x": 0.5}
+        row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(600)
+        row_top.orientation = row_bottom.orientation = "horizontal"
 
         def screen(name, *a):
             constants.new_server_init()
             screen_manager.current = name
 
-        content_row.add_widget(
-            big_mode_button('import an existing server', {"center_y": 0.5, "center_x": 0.5}, (0, 0),(None, None),
-                            'import', clickable=True, click_func=functools.partial(screen, 'ServerImportScreen'))
-        )
-        content_row.add_widget(
+        row_top.add_widget(
             big_mode_button('create a pre-configured server', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
                             'instant', clickable=True, click_func=functools.partial(screen, 'CreateServerTemplateScreen'))
         )
-        content_row.add_widget(
+        row_top.add_widget(
+            big_mode_button('install a modpack', {"center_y": 0.5, "center_x": 0.5}, (0, 0),(None, None),
+                            'modpack', clickable=True, click_func=functools.partial(screen, 'ServerImportModpackScreen'))
+        )
+
+        row_bottom.add_widget(
+            big_mode_button('import an existing server', {"center_y": 0.5, "center_x": 0.5}, (0, 0),(None, None),
+                            'import', clickable=True, click_func=functools.partial(screen, 'ServerImportScreen'))
+        )
+        row_bottom.add_widget(
             big_mode_button('create a server manually', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None),
                             'custom', clickable=True, click_func=functools.partial(screen, 'CreateServerNameScreen'))
         )
 
-        float_layout.add_widget(content_row)
+        float_layout.add_widget(row_top)
+        float_layout.add_widget(row_bottom)
+
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -14136,9 +14145,8 @@ class ServerImportScreen(MenuBackground):
                 screen_manager.current = 'ServerImportModpackScreen'
 
             self.layout.add_widget(HeaderText("What do you wish to import?", '', (0, 0.81)))
-            buttons.append(MainButton('Import a modpack', (0.5, 0.58), 'modpack.png', click_func=go_to_modpack))
-            buttons.append(MainButton('Import external server', (0.5, 0.46), 'folder-outline.png', click_func=functools.partial(self.load_input, 'external')))
-            buttons.append(MainButton('Import Auto-MCS back-up', (0.5, 0.34), 'backup-icon.png', click_func=functools.partial(self.load_input, 'backup')))
+            buttons.append(MainButton('Import external server', (0.5, 0.55), 'folder-outline.png', click_func=functools.partial(self.load_input, 'external')))
+            buttons.append(MainButton('Import Auto-MCS back-up', (0.5, 0.4), 'backup-icon.png', click_func=functools.partial(self.load_input, 'backup')))
             self.layout.add_widget(ExitButton('Back', (0.5, 0.14), cycle=True))
             self.page_counter = page_counter(1, 2, (0, 0.818))
             self.add_widget(self.page_counter)
@@ -14285,8 +14293,8 @@ class ServerImportModpackScreen(MenuBackground):
         self.layout.add_widget(self.button_layout)
         self.next_button = next_button('Next', (0.5, 0.24), True, next_screen='ServerImportModpackProgressScreen')
         self.button_layout.add_widget(self.next_button)
-        self.layout.add_widget(generate_title('Import Server'))
-        self.layout.add_widget(generate_footer('Import server'))
+        self.layout.add_widget(generate_title('Install a Modpack'))
+        self.layout.add_widget(generate_footer('Install a modpack'))
 
         self.add_widget(self.layout)
 
@@ -14334,7 +14342,7 @@ class ServerImportModpackProgressScreen(ProgressScreen):
         self.page_contents = {
 
             # Page name
-            'title': f"Importing Modpack",
+            'title': f"Installing Modpack",
 
             # Header text
             'header': "Sit back and relax, it's automation time...",
@@ -14618,8 +14626,8 @@ class ServerImportModpackSearchScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        menu_name = "Import server, Download modpack"
-        float_layout.add_widget(generate_title("Server Manager: Download Modpack"))
+        menu_name = "Install a modpack, Download"
+        float_layout.add_widget(generate_title("Download Modpack"))
         float_layout.add_widget(generate_footer(menu_name))
 
         self.add_widget(float_layout)
