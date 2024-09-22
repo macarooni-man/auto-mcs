@@ -4813,7 +4813,6 @@ def big_mode_button(name, pos_hint, position, size_hint, icon_name=None, clickab
 
         icon_text = Label()
         icon_text.id = 'icon'
-        icon_text.text_size = (100, 120)
         icon_text.size_hint_max = (130, 120)
         icon_text.text_size = (130, 120)
         icon_text.halign = 'center'
