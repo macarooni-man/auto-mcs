@@ -52,7 +52,7 @@ docker run -d \
   -t disableLeaveAlert=true \
   -t titleFixed="auto-mcs (docker)" \
   -t fontSize=20 \
-  -t theme='{"background": "#1A1A1A"}' \
+  -t theme="{\"background\": \"#1A1A1A\"}" \
   -p 8080 \
   -c root:auto-mcs \
   tmux -u -2 new -A -s -c ./auto-mcs
@@ -88,7 +88,7 @@ services:
       "-t", "disableLeaveAlert=true",
       "-t", "titleFixed=auto-mcs (docker)",
       "-t", "fontSize=20",
-      "-t", 'theme={"background": "#1A1A1A"}',
+      "-t", "theme={\"background\": \"#1A1A1A\"}",
       "-p", "8080",
       "-c", "root:auto-mcs",
       "tmux", "-u", "-2", "new", "-A", "-s", "-c",
