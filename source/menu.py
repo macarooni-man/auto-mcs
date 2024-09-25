@@ -5367,6 +5367,8 @@ class TelepathDropButton(DropButton):
 
         if type == 'create':
             name = 'create a server on'
+        elif type == 'install':
+            name = 'install server on'
         else:
             name = 'import server to'
 
@@ -14264,11 +14266,11 @@ class ServerImportModpackScreen(MenuBackground):
         telepath_data = constants.server_manager.check_telepath_servers()
         if telepath_data:
             offset = 0.05
-            self.add_widget(TelepathDropButton(telepath_data, 'import', (0.5, 0.37)))
+            self.add_widget(TelepathDropButton(telepath_data, 'install', (0.5, 0.37)))
 
 
         # Regular menus
-        self.layout.add_widget(HeaderText("Which modpack do you wish to import?", '', (0, 0.81)))
+        self.layout.add_widget(HeaderText("Which modpack do you wish to install?", '', (0, 0.81)))
         def download_modpack(*a):
             screen_manager.current = 'ServerImportModpackSearchScreen'
         buttons.append(MainButton('Download a Modpack', (0.5, 0.576 + offset), 'download-outline.png', width=528, click_func=download_modpack))

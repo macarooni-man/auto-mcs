@@ -41,8 +41,8 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.2.1"
-ams_version = "1.2.1"
+app_version = "2.2.2"
+ams_version = "1.2.2"
 telepath_version = "1.0.0"
 app_title = "auto-mcs"
 
@@ -926,7 +926,7 @@ def similarity(a, b):
 
 # Cloudscraper requests
 global_scraper = None
-def return_scraper(url_path: str, head=False):
+def return_scraper(url_path: str, head=False, params=None):
     global global_scraper
 
     if not global_scraper:
@@ -936,15 +936,15 @@ def return_scraper(url_path: str, head=False):
             debug=debug
         )
 
-    return global_scraper.head(url_path) if head else global_scraper.get(url_path)
+    return global_scraper.head(url_path) if head else global_scraper.get(url_path, params=params)
 
 # Return html content or status code
-def get_url(url: str, return_code=False, only_head=False, return_response=False):
+def get_url(url: str, return_code=False, only_head=False, return_response=False, params=None):
     global global_scraper
     max_retries = 10
     for retry in range(0, max_retries + 1):
         try:
-            html = return_scraper(url, head=(return_code or only_head))
+            html = return_scraper(url, head=(return_code or only_head), params=params)
             return html.status_code if return_code \
                 else html if (only_head or return_response) \
                 else BeautifulSoup(html.content, 'html.parser')
@@ -6453,7 +6453,7 @@ class SearchManager():
 
     # Generate a list of weighted results from a search
     def execute_search(self, current_screen, query):
-        
+
         match_list = {
             'guide': SearchObject(),
             'setting': [],

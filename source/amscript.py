@@ -1296,6 +1296,7 @@ class ServerScriptObject():
         # Assign callable functions from main server object
         self.execute = server_obj.silent_command
         self.restart = server_obj.restart
+        self.launch = server_obj.launch
         self.stop = server_obj.stop
         self.log = server_obj.send_log
         self.aliases = {}
