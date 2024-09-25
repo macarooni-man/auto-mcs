@@ -23,6 +23,15 @@ Accessed via the global variable `server`
 
 
 
+### server.launch()
+
+Immediately starts the server if it's not running.
+
+
+<br>
+
+
+
 ### server.stop()
 
 Immediately stops the server.
