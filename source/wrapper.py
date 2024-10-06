@@ -223,7 +223,8 @@ if __name__ == '__main__':
         if os.path.exists(constants.telepathFile):
             while not constants.server_manager:
                 time.sleep(0.1)
-            constants.server_manager.check_telepath_servers()
+            if constants.server_list_lower:
+                constants.server_manager.check_telepath_servers()
 
         def background_launch(func, *a):
             global exitApp, crash

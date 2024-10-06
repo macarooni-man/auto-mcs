@@ -346,10 +346,10 @@ class ScriptObject():
 
         # Yummy stuffs
         self.protected_variables = ["server", "acl", "backup", "addon", "amscript"]
-        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
+        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop", "@server.ams_restart"]
         self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@server.on_start", "@server.on_stop"]
         self.valid_imports = std_libs
-        for library in ['dataclasses', 'itertools', 'requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib']:
+        for library in ['dataclasses', 'itertools', 'requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib', 'asyncio']:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
 
@@ -1024,6 +1024,8 @@ class ScriptObject():
     # Deconstruct loaded .ams files
     def deconstruct(self):
 
+        self.ams_restart()
+
         # Write persistent data before doing anything
         self.server_script_obj._persistent_config.write_config()
 
@@ -1181,6 +1183,12 @@ class ScriptObject():
         if constants.debug:
             print('server.on_stop')
             print(data)
+
+    # Fires when amscript restarts, as the script object is shutting down
+    def ams_restart(self):
+        self.call_event('@server.ams_restart', ())
+        if constants.debug:
+            print('server.ams_restart')
 
 
     # ----------------------- Player Events ------------------------

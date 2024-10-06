@@ -3376,6 +3376,9 @@ def launch_window(path: str, data: dict, *a):
                     elif val == "@server.on_stop":
                         code_editor.insert(f'{line_num}.0', f"@server.on_stop(data, delay=0):")
 
+                    else:
+                        code_editor.insert(f'{line_num}.0', f"{val}():")
+
                     def newline(*a):
                         code_editor.insert(code_editor.index(INSERT), f'\n{tab_str}')
                         code_editor.recalc_lexer()

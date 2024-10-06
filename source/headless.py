@@ -9,10 +9,12 @@ import os
 
 import constants
 import telepath
+import amscript
 import acl
 
 import warnings
 warnings.filterwarnings('ignore')
+constants.script_obj = amscript.ScriptObject()
 
 
 # ----------------------------------------------- Global Functions -----------------------------------------------------

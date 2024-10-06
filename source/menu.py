@@ -9487,7 +9487,7 @@ class MainMenuScreen(MenuBackground):
 
     def open_donate(self, *a):
         if constants.app_online:
-            url = "https://github.com/sponsors/macarooni-man"
+            url = "https://www.auto-mcs.com/about-us"
             webbrowser.open_new_tab(url)
 
     def generate_menu(self, **kwargs):
