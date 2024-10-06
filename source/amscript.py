@@ -1661,6 +1661,20 @@ class PlayerScriptObject():
                 else:
                     log_data = self._execute(f'data get entity {self.name}', log=False, _capture=f"{self.name} has the following entity data: ", _send_twice=self._get_player)
                     nbt_data = log_data.split("following entity data: ")[1].strip()
+
+                    # Remove color escape codes if they exist
+                    try:
+                        # Define the ANSI escape code regex pattern
+                        ansi_escape = re.compile(r'''
+                            \x1B  # ESC character
+                            \[    # literal [
+                            [0-?]*  # zero or more chars between 0 and ?
+                            [ -/]*  # zero or more chars between space and /
+                            [@-~]   # one char between @ and ~
+                        ''', re.VERBOSE)
+                        nbt_data = ansi_escape.sub('', nbt_data)
+                    except:
+                        pass
                     # print(log_data)
 
                     # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
