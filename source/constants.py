@@ -4981,7 +4981,7 @@ def write_geyser_config(server_obj: object, reset=False) -> bool:
     final_path = os.path.join(config_path, config_name)
     config_data = f"""# Setup: https://wiki.geysermc.org/geyser/setup/
 bedrock:
-  address: 127.0.0.1
+  address: 0.0.0.0
   port: 19132
   clone-remote-port: true
   motd1: "{server_obj.name}"
