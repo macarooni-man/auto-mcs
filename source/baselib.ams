@@ -59,6 +59,8 @@ def generate_header(text):
 	def fmt_pct_color(pct, low_white=False):
 		return "red" if pct > 85 else "gold" if pct > 70 else "yellow" if pct > 50 else ("white" if low_white else "green") if pct > (0 if low_white else 5) else "gray"
 
+	current_players = len([p for p, d in server.player_list.items() if d["logged-in"]])
+
 	if player.is_server:
 		# General information
 		player.log(generate_header('Server Information'), 'green', 'normal')
@@ -68,7 +70,7 @@ def generate_header(text):
 		player.log(f'Uptime:    {server._performance["uptime"]}', 'gray', 'normal')
 
 		# Format metric colors based on utilization
-		player_pct = len(server.player_list) / int(server.properties["max-players"])*100
+		player_pct = current_players / int(server.properties["max-players"])*100
 		player.log(f'Players:   {len(server.player_list)} / {server.properties["max-players"]}', fmt_pct_color(player_pct, True), 'normal')
 		player.log(f'CPU:       {server._performance["cpu"]}%', fmt_pct_color(server._performance["cpu"]), 'normal')
 		player.log(f'RAM:       {server._performance["ram"]}%', fmt_pct_color(server._performance["ram"]), 'normal')
@@ -82,7 +84,7 @@ def generate_header(text):
 		player.log(f'Uptime:      {server._performance["uptime"]}', 'gray', 'normal')
 
 		# Format metric colors based on utilization
-		player_pct = len(server.player_list) / int(server.properties["max-players"])*100
+		player_pct = current_players / int(server.properties["max-players"])*100
 		player.log(f'Players:    {len(server.player_list)} / {server.properties["max-players"]}', fmt_pct_color(player_pct, True), 'normal')
 		player.log(f'CPU:         {server._performance["cpu"]}%', fmt_pct_color(server._performance["cpu"]), 'normal')
 		player.log(f'RAM:         {server._performance["ram"]}%', fmt_pct_color(server._performance["ram"]), 'normal')

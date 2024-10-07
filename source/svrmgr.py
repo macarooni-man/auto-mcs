@@ -602,7 +602,6 @@ class ServerObject():
                         content = message.split('>', 1)[1].strip()
                         event = functools.partial(self.script_object.message_event, {'user': user, 'content': content})
 
-
                 # Server message log
                 elif message.strip().startswith("[Server]"):
                     type_label = "CHAT"
@@ -775,7 +774,8 @@ class ServerObject():
                             ' died',
                             'impaled by',
                             'was killed',
-                            'left the confines of this world'
+                            'left the confines of this world',
+                            'blew up'
                         ]
                         include = False
 
