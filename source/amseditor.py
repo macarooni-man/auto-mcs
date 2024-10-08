@@ -3367,6 +3367,9 @@ def launch_window(path: str, data: dict, *a):
                     elif val == "@player.on_death":
                         code_editor.insert(f'{line_num}.0', f"@player.on_death(player, enemy, message):")
 
+                    elif val == "@player.on_achieve":
+                        code_editor.insert(f'{line_num}.0', f"@player.on_achieve(player, advancement):")
+
                     elif val == "@server.on_loop":
                         code_editor.insert(f'{line_num}.0', f"@server.on_loop(interval=1, unit='minute'):")
 

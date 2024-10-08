@@ -714,6 +714,16 @@ class ServerObject():
                     type_color = (0.953, 0.929, 0.38, 1)
 
 
+                # Player achievement/advancement log
+                elif " has made the advancement " in message:
+                    #  2:50:17 PM   [INFO] >   KChicken has made the advancement [Hot Stuff]
+                    type_label = "CHAT"
+                    type_color = (0.439, 0.839, 1, 1)
+                    user = message.split(' ', 1)[0].strip()
+                    advancement = message.split(' [')[1].strip(' ]')
+                    event = functools.partial(self.script_object.achieve_event, {'user': user, 'advancement': advancement})
+
+
                 # Other message events
                 elif "WARN" in line:
                     type_label = "WARN"
@@ -1279,13 +1289,11 @@ class ServerObject():
         try:
             if self.script_object.enabled:
 
-                crash_data = ''
+                crash_data = None
                 if self.crash_log:
                     with open(self.crash_log, 'r') as f:
                         crash_data = f.read()
-
-                self.script_object.shutdown_event({'date': dt.now(), 'crash': crash_data})
-                self.script_object.deconstruct()
+                self.script_object.deconstruct(crash_data=crash_data)
             del self.script_object
             self.script_object = None
 
