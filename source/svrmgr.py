@@ -1527,6 +1527,12 @@ class ServerObject():
         self.custom_flags = flags.strip()
         constants.server_config(self.name, self.config_file)
 
+    # Updates the server icon, deletes if "new_icon" is empty
+    def update_icon(self, new_icon: str = None):
+        data = constants.update_server_icon(self.name, new_icon)
+        self.server_icon = constants.server_path(self.name, 'server-icon.png')
+        return data
+
     # Renames server
     def rename(self, new_name: str):
         if not self.running:
@@ -1819,7 +1825,7 @@ class ServerObject():
                     return ""
 
     # Retrieves IDE suggestions from internal objects
-    def retrieve_suggestions(self):
+    def _retrieve_suggestions(self):
         script_obj = constants.script_obj
 
         # Gets list of functions and attributes

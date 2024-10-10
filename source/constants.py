@@ -43,7 +43,7 @@ import amscript
 
 app_version = "2.2.2"
 ams_version = "1.3"
-telepath_version = "1.0.0"
+telepath_version = "1.0.1"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -5532,6 +5532,71 @@ def control_backspace(text, index):
     return final_text, new_index
 
 
+# Updates the server icon with a new image
+# Returns: [bool: success, str: reason]
+valid_image_formats = [
+    "*.png", "*.jpg", "*.jpeg", "*.gif", "*.jpe", "*.jfif", "*.tif", "*.tiff", "*.bmp", "*.icns", "*.ico", "*.webp"
+]
+def update_server_icon(server_name: str, new_image: str = None) -> [bool, str]:
+    icon_path = os.path.join(server_path(server_name), 'server-icon.png')
+
+    # Delete if no image was provided
+    if not new_image:
+        if os.path.isfile(icon_path):
+            try:
+                os.remove(icon_path)
+            except:
+                pass
+
+        return (True, 'icon removed successfully') if os.path.exists(icon_path) else (False, 'something went wrong, please try again')
+
+
+    # First, check if the image has a valid extension
+    extension = new_image.rsplit('.')[-1]
+    if f'*.{extension}' not in valid_image_formats:
+        return (False, f'"{extension}" is not a valid extension')
+
+    # Next, try to convert the image
+    try:
+        img = Image.open(new_image)
+        width, height = img.size
+
+        # Handle images with an alpha channel
+        mode = 'RGBA' if img.mode in ['RGBA', 'LA'] else 'RGB'
+        size = 64
+
+        # Calculate new dimensions while maintaining aspect ratio
+        if width > height:
+            # Landscape orientation
+            new_width = size
+            new_height = int(size * height / width)
+        else:
+            # Portrait orientation or square
+            new_width = int(size * width / height)
+            new_height = size
+
+        # Resize the image while maintaining aspect ratio
+        resized_img = img.resize((new_width, new_height), Image.LANCZOS)
+
+        # Create new square image to re-center if needed
+        new_img = Image.new(mode, (size, size))
+        paste_x = (size - new_width) // 2
+        paste_y = (size - new_height) // 2
+        new_img.paste(resized_img, (paste_x, paste_y))
+
+        # Save image to new path
+        if os.path.isfile(icon_path):
+            os.remove(icon_path)
+        new_img.save(icon_path, 'PNG')
+
+    except Exception as e:
+        if debug:
+            print(f"Failed to convert icon: {e}")
+        return (False, 'failed to convert the icon')
+
+    return (True, 'successfully updated the icon')
+
+
 # Get player head to .png: pass player object
 def get_player_head(user: str):
 
@@ -5570,7 +5635,7 @@ def get_player_head(user: str):
 
 
 # Compatibility to cache server icon with telepath
-def get_server_icon(server_name: str, telepath_data: dict):
+def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
     if not (app_online and server_name):
         return None
 
@@ -5579,7 +5644,7 @@ def get_server_icon(server_name: str, telepath_data: dict):
         icon_cache = os.path.join(cacheDir, 'icons')
         final_path = os.path.join(icon_cache, name)
 
-        if os.path.exists(final_path):
+        if os.path.exists(final_path) and not overwrite:
             age = abs(datetime.datetime.today().day - datetime.datetime.fromtimestamp(os.stat(final_path).st_mtime).day)
             if age < 3:
                 return final_path
@@ -5601,7 +5666,6 @@ def get_server_icon(server_name: str, telepath_data: dict):
         if debug:
             print(f"Error retrieving icon for '{server_name}': {e}")
         return None
-
 
 
 # ---------------------------------------------- Global Config Function ------------------------------------------------

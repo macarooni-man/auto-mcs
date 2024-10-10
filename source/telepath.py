@@ -1493,6 +1493,11 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self._clear_attr_cache()
         return data
 
+    def update_icon(self, *args, **kwargs):
+        data = super().update_icon(*args, **kwargs)
+        self.clear_attr_cache()
+        return data
+
     # Shows taskbar notifications
     def _view_notif(self, name, add=True, viewed=''):
         if name and add:

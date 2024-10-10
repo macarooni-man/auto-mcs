@@ -3,8 +3,8 @@ from datetime import datetime as dt
 from PIL import Image as PILImage
 from ctypes import ArgumentError
 from plyer import filechooser
-from PIL import ImageEnhance
 from random import randrange
+from PIL import ImageEnhance
 import simpleaudio as sa
 from pathlib import Path
 from glob import glob
@@ -61,6 +61,7 @@ Config.set('kivy', 'exit_on_escape', '0')
 
 # Import kivy elements
 from kivy.clock import Clock
+from kivy.cache import Cache
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 from kivy.animation import Animation
@@ -14898,6 +14899,180 @@ class ServerButton(HoverButton):
             self.copyable = True
             self.bind(text=self.ref_text)
 
+    class ChangeIconButton(Button, HoverBehavior):
+
+        # Show menu to replace icon
+        def on_click(self, *a):
+            title = "Select an image"
+            selection = file_popup("file", start_dir=constants.userDownloads, ext=constants.valid_image_formats, input_name=None, select_multiple=False, title=title)
+            if selection:
+                def apply_new_icon(*a):
+                    def do_change():
+                        # Upload to remote if Telepath
+                        if self.server_obj._telepath_data:
+                            selection[0] = constants.telepath_upload(self.server_obj._telepath_data, selection[0])['path']
+
+                        success, message = self.server_obj.update_icon(selection[0])
+
+                        # Reload page
+                        if success:
+
+                            # Override for Telepath
+                            if self.server_obj._telepath_data:
+                                constants.get_server_icon(self.server_obj.name, self.server_obj._telepath_data, overwrite=True)
+
+                            # Remove the cached image and texture
+                            Cache.remove('kv.image')
+                            Cache.remove('kv.texture')
+                            for item in glob(os.path.join(constants.gui_assets, 'live', 'blur_icon_*.png')):
+                                os.remove(item)
+
+                            return success, message
+
+                    def loading_screen(*a):
+                        screen_manager.current = 'BlurredLoadingScreen'
+
+                    Clock.schedule_once(loading_screen, 0)
+
+                    # Actually rename the server files
+                    time.sleep(0.5)
+                    success, message = do_change()
+
+                    # Change header and footer text to reflect change
+                    def reload_page(*a):
+                        def go_back(*a):
+                            screen_manager.current = 'ServerViewScreen'
+
+                        Clock.schedule_once(go_back, 0)
+
+                        # Display banner to show success
+                        Clock.schedule_once(
+                            functools.partial(
+                                screen_manager.current_screen.show_banner,
+                                (0.553, 0.902, 0.675, 1) if success else (1, 0.5, 0.65, 1),
+                                message,
+                                "checkmark-circle-sharp.png" if success else "close-circle-sharp.png",
+                                3,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0.1
+                        )
+
+                    Clock.schedule_once(reload_page, 0)
+                threading.Timer(0, apply_new_icon).start()
+
+        def on_enter(self, *args):
+            Animation.stop_all(self)
+            Animation.stop_all(self.type_image)
+            Animation(opacity=1, duration=self.anim_duration).start(self)
+            Animation(opacity=0, duration=self.anim_duration).start(self.type_image)
+
+        def on_leave(self, *args):
+            Animation.stop_all(self)
+            Animation.stop_all(self.type_image)
+            Animation(opacity=0, duration=self.anim_duration).start(self)
+            Animation(opacity=1, duration=self.anim_duration).start(self.type_image)
+
+        def generate_blur_background(self, *args):
+            def run_in_foreground(*a):
+                self.blur_background.source = image_path
+                self.canvas.ask_update()
+
+            try:
+                # Attempt to remove existing icon temp, who even cares lol
+                for item in glob(os.path.join(constants.gui_assets, 'live', 'blur_icon_*.png')):
+                    if self.server_obj.name in item:
+                        image_path = item
+                        return run_in_foreground()
+                    os.remove(item)
+            except:
+                pass
+            image_path = os.path.join(constants.gui_assets, 'live', f'blur_icon_{self.server_obj.name}_{constants.gen_rstring(4)}.png')
+            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+
+            self.type_image.export_to_png(image_path)
+
+            # Convert the image in the background
+            def convert(*a):
+                im = PILImage.open(image_path)
+
+                # Center and resize icon when custom
+                if self.is_custom:
+                    im = im.convert('RGBA')
+                    left = 4
+                    upper = (im.height - 65)
+                    right = left + 65
+                    lower = upper + 65
+                    im = im.crop((left, upper, right, lower))
+
+                # Blur and darken the icon
+                im = ImageEnhance.Brightness(im)
+                im = im.enhance(0.75)
+                im1 = im.filter(GaussianBlur(3))
+
+                im1.save(image_path)
+
+                Clock.schedule_once(run_in_foreground, 0)
+            threading.Timer(0, convert).start()
+
+        def resize_self(self, *a):
+            for child in self.children:
+                child.pos = self.pos
+
+            offset = (self.pos[0] + 17.5, self.pos[1] + 16.5)
+            self.background_ellipse.pos = offset
+            self.blur_background.pos = offset
+            self.background_outline.ellipse = (*offset, 66, 66)
+
+        def __init__(self, type_image, **kwargs):
+            super().__init__(**kwargs)
+            self.type_image = type_image
+            self.size_hint_max = self.type_image.size
+            self.generating_background = False
+            self.is_custom = type_image.__class__.__name__ == 'CustomServerIcon'
+            self.background_normal = os.path.join(constants.gui_assets, 'empty.png')
+            self.background_down = os.path.join(constants.gui_assets, 'empty.png')
+            self.anim_duration = 0.1
+            self.fg = self.type_image.parent.version_label.color
+            self.bc = constants.brighten_color(constants.background_color, -0.1)
+            self.server_obj = constants.server_manager.current_server
+
+            with self.canvas.before:
+                # Background ellipse (drawn first)
+                Color(self.bc[0], self.bc[1], self.bc[2], 0.3)  # Adjust alpha as needed
+                self.background_ellipse = Ellipse(
+                    size=(66, 66),
+                    angle_start=0,
+                    angle_end=360
+                )
+
+            with self.canvas:
+                # Blur background ellipse (drawn after background ellipse)
+                Color(*self.fg)
+                self.blur_background = Ellipse(
+                    size=(66, 66),
+                    angle_start=0,
+                    angle_end=360
+                )
+
+                # Outline of the ellipse
+                Color(*self.fg[:3], 0.0)
+                self.background_outline = Line(
+                    ellipse=(0, 0, 66, 66),
+                    width=2
+                )
+
+            self.shadow = Image(source=icon_path('shadow.png'), color="#111122")
+            self.icon = Image(source=icon_path('pencil-sharp.png'), color=constants.brighten_color(self.fg, 0.15))
+            self.add_widget(self.shadow)
+            self.add_widget(self.icon)
+
+            # Bind and initialize
+            self.bind(size=self.resize_self, pos=self.resize_self)
+            self.bind(on_press=self.on_click)
+            self.generate_blur_background()
+            self.opacity = 0
+
+
     def toggle_favorite(self, favorite, *args):
         self.favorite = favorite
         self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
@@ -14969,6 +15144,13 @@ class ServerButton(HoverButton):
         # Favorite button
         self.favorite_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
         self.favorite_layout.pos = (self.pos[0] - 6, self.pos[1] + 13)
+
+
+        # Change Icon button pos
+        if self.icon_button:
+            half = self.type_image.image.size_hint_max[0] / 4
+            offset = 2.5 if self.type_image.image.__class__.__name__ == 'CustomServerIcon' else -1
+            self.icon_button.pos = (self.type_image.image.x - half + offset, self.type_image.image.y - half)
 
 
         # Highlight border
@@ -15125,24 +15307,24 @@ class ServerButton(HoverButton):
         # Check for custom server icon
         if self.telepath_data:
             self.telepath_data['icon-path'] = server_object.server_icon
-            server_icon = constants.get_server_icon(server_object.name, self.telepath_data)
+            self.server_icon = constants.get_server_icon(server_object.name, self.telepath_data)
         else:
-            server_icon = server_object.server_icon
+            self.server_icon = server_object.server_icon
 
-        if server_icon:
+        if self.server_icon:
             self.custom_icon = True
             class CustomServerIcon(RelativeLayout):
-                def __init__(self, **kwargs):
+                def __init__(self, server_icon, **kwargs):
                     super().__init__(**kwargs)
                     with self.canvas:
                         Color(1, 1, 1, 1)  # Set the color to white
-                        self.shadow = Ellipse(pos=(-13.5, -17.5), size=(100, 100), source=os.path.join(constants.gui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
+                        self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120), source=os.path.join(constants.gui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
                         self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0, angle_end=360)
-            self.type_image.image = CustomServerIcon()
+            self.type_image.image = CustomServerIcon(self.server_icon)
         else:
             self.custom_icon = False
-            server_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
-            self.type_image.image = Image(source=server_icon)
+            self.server_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
+            self.type_image.image = Image(source=self.server_icon)
 
         self.type_image.image.allow_stretch = True
         self.type_image.image.size_hint_max = (65, 65)
@@ -15219,10 +15401,15 @@ class ServerButton(HoverButton):
         self.favorite_layout = RelativeLayout()
         favorite = None
         if not view_only:
+            self.icon_button = None
             try:
                 favorite = functools.partial(screen_manager.current_screen.favorite, server_object.name, server_object)
             except AttributeError:
                 pass
+
+        else:
+            self.icon_button = self.ChangeIconButton(self.type_image.image)
+            self.add_widget(self.icon_button)
 
         if self.favorite:
             self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-sharp.png', clickable=not self.view_only, force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'], anchor='right', click_func=favorite)
@@ -20784,7 +20971,7 @@ def edit_script(edit_button, server_obj, script_path, download=True):
             'protected': constants.script_obj.protected_variables,
             'events': constants.script_obj.valid_events
         },
-        'suggestions': server_obj.retrieve_suggestions(),
+        'suggestions': server_obj._retrieve_suggestions(),
         'os_name': constants.os_name,
         'translate': constants.translate,
         'telepath_script_dir': constants.telepathScriptDir
@@ -25867,10 +26054,10 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        # if not constants.app_compiled:
-        #     def open_menu(*a):
-        #         open_server('test')
-        #     Clock.schedule_once(open_menu, 0.5)
+        if not constants.app_compiled:
+            def open_menu(*a):
+                open_server('Beds Rock')
+            Clock.schedule_once(open_menu, 0.5)
         #     def open_menu(*a):
         #         screen_manager.current = 'ServerPropertiesEditScreen'
         #     Clock.schedule_once(open_menu, 0.8)
