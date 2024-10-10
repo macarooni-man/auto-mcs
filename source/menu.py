@@ -147,7 +147,7 @@ class DiscordPresenceManager():
                 # Override for running server
                 if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
                     server_obj = constants.server_manager.current_server
-                    details = f"Server Manager - Running '{server_obj.name}'"
+                    details = f"Running '{server_obj.name}'"
                     state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
                     if server_obj._telepath_data:
                         state += ' (via Telepath)'
