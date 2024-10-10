@@ -5537,7 +5537,7 @@ def control_backspace(text, index):
 valid_image_formats = [
     "*.png", "*.jpg", "*.jpeg", "*.gif", "*.jpe", "*.jfif", "*.tif", "*.tiff", "*.bmp", "*.icns", "*.ico", "*.webp"
 ]
-def update_server_icon(server_name: str, new_image: str = None) -> [bool, str]:
+def update_server_icon(server_name: str, new_image: str = False) -> [bool, str]:
     icon_path = os.path.join(server_path(server_name), 'server-icon.png')
 
     # Delete if no image was provided
@@ -5548,7 +5548,7 @@ def update_server_icon(server_name: str, new_image: str = None) -> [bool, str]:
             except:
                 pass
 
-        return (True, 'icon removed successfully') if os.path.exists(icon_path) else (False, 'something went wrong, please try again')
+        return (True, 'icon removed successfully') if not os.path.exists(icon_path) else (False, 'something went wrong, please try again')
 
 
     # First, check if the image has a valid extension

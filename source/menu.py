@@ -3023,7 +3023,7 @@ class AclRuleInput(BaseInput):
             if screen_manager.current_screen.current_list == "bans":
                 reg_exp = '[^a-zA-Z0-9 _.,!/-]'
             else:
-                reg_exp = '[^a-zA-Z0-9 _,!]'
+                reg_exp = '[^a-zA-Z0-9 _.,!]'
 
             if '\n' in substring:
                 substring = substring.splitlines()[0]
@@ -14903,74 +14903,104 @@ class ServerButton(HoverButton):
 
         # Show menu to replace icon
         def on_click(self, *a):
-            title = "Select an image"
-            selection = file_popup("file", start_dir=constants.userDownloads, ext=constants.valid_image_formats, input_name=None, select_multiple=False, title=title)
-            if selection:
-                def apply_new_icon(*a):
-                    def do_change():
-                        # Upload to remote if Telepath
+
+            def apply_new_icon(path: str = None, *a):
+                def do_change():
+                    icon_path = False
+
+                    # Upload to remote if Telepath
+                    if path:
                         if self.server_obj._telepath_data:
-                            selection[0] = constants.telepath_upload(self.server_obj._telepath_data, selection[0])['path']
+                            icon_path = constants.telepath_upload(self.server_obj._telepath_data, path)['path']
+                        else:
+                            icon_path = path
+                    success, message = self.server_obj.update_icon(icon_path)
 
-                        success, message = self.server_obj.update_icon(selection[0])
+                    print(success, message)
 
-                        # Reload page
-                        if success:
+                    # Reload page
+                    if success:
 
-                            # Override for Telepath
-                            if self.server_obj._telepath_data:
-                                constants.get_server_icon(self.server_obj.name, self.server_obj._telepath_data, overwrite=True)
+                        # Override for Telepath
+                        if self.server_obj._telepath_data:
+                            constants.get_server_icon(self.server_obj.name, self.server_obj._telepath_data, overwrite=True)
 
-                            # Remove the cached image and texture
-                            Cache.remove('kv.image')
-                            Cache.remove('kv.texture')
-                            for item in glob(os.path.join(constants.gui_assets, 'live', 'blur_icon_*.png')):
-                                os.remove(item)
+                        # Remove the cached image and texture
+                        Cache.remove('kv.image')
+                        Cache.remove('kv.texture')
+                        for item in glob(os.path.join(constants.gui_assets, 'live', 'blur_icon_*.png')):
+                            os.remove(item)
 
-                            return success, message
+                        return success, message
 
-                    def loading_screen(*a):
-                        screen_manager.current = 'BlurredLoadingScreen'
+                def loading_screen(*a):
+                    screen_manager.current = 'BlurredLoadingScreen'
 
-                    Clock.schedule_once(loading_screen, 0)
+                Clock.schedule_once(loading_screen, 0)
 
-                    # Actually rename the server files
-                    time.sleep(0.5)
-                    success, message = do_change()
+                # Actually rename the server files
+                time.sleep(0.5)
+                success, message = do_change()
 
-                    # Change header and footer text to reflect change
-                    def reload_page(*a):
-                        def go_back(*a):
-                            screen_manager.current = 'ServerViewScreen'
+                # Change header and footer text to reflect change
+                def reload_page(*a):
+                    def go_back(*a):
+                        screen_manager.current = 'ServerViewScreen'
 
-                        Clock.schedule_once(go_back, 0)
+                    Clock.schedule_once(go_back, 0)
 
-                        # Display banner to show success
-                        Clock.schedule_once(
-                            functools.partial(
-                                screen_manager.current_screen.show_banner,
-                                (0.553, 0.902, 0.675, 1) if success else (1, 0.5, 0.65, 1),
-                                message,
-                                "checkmark-circle-sharp.png" if success else "close-circle-sharp.png",
-                                3,
-                                {"center_x": 0.5, "center_y": 0.965}
-                            ), 0.1
-                        )
+                    # Display banner to show success
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.553, 0.902, 0.675, 1) if success else (1, 0.5, 0.65, 1),
+                            message,
+                            "checkmark-circle-sharp.png" if success else "close-circle-sharp.png",
+                            3,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0.1
+                    )
 
-                    Clock.schedule_once(reload_page, 0)
-                threading.Timer(0, apply_new_icon).start()
+                Clock.schedule_once(reload_page, 0)
+
+            # Add icon with left click
+            if self.last_touch.button == 'left':
+                title = "Select an image"
+                selection = file_popup("file", start_dir=constants.userDownloads, ext=constants.valid_image_formats, input_name=None, select_multiple=False, title=title)
+                if selection and selection[0]:
+                    threading.Timer(0, functools.partial(apply_new_icon, selection[0])).start()
+
+            # Delete icon with right click
+            elif self.last_touch.button == 'right' and self.is_custom:
+
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_popup,
+                        "warning_query",
+                        'Remove Icon',
+                        "Do you want to remove this icon?\n\nYou'll need to re-import it again later",
+                        (None, functools.partial(threading.Timer(0, apply_new_icon).start))
+                    ),
+                    0
+                )
 
         def on_enter(self, *args):
             Animation.stop_all(self)
             Animation.stop_all(self.type_image)
             Animation(opacity=1, duration=self.anim_duration).start(self)
-            Animation(opacity=0, duration=self.anim_duration).start(self.type_image)
+            Animation(opacity=0, duration=self.anim_duration).start(self.type_image.image)
+            if self.server_obj._telepath_data:
+                Animation(opacity=0, duration=self.anim_duration).start(self.type_image.tp_shadow)
+                Animation(opacity=0, duration=self.anim_duration).start(self.type_image.tp_icon)
 
         def on_leave(self, *args):
             Animation.stop_all(self)
             Animation.stop_all(self.type_image)
             Animation(opacity=0, duration=self.anim_duration).start(self)
-            Animation(opacity=1, duration=self.anim_duration).start(self.type_image)
+            Animation(opacity=1, duration=self.anim_duration).start(self.type_image.image)
+            if self.server_obj._telepath_data:
+                Animation(opacity=1, duration=self.anim_duration).start(self.type_image.tp_shadow)
+                Animation(opacity=1, duration=self.anim_duration).start(self.type_image.tp_icon)
 
         def generate_blur_background(self, *args):
             def run_in_foreground(*a):
@@ -14989,7 +15019,7 @@ class ServerButton(HoverButton):
             image_path = os.path.join(constants.gui_assets, 'live', f'blur_icon_{self.server_obj.name}_{constants.gen_rstring(4)}.png')
             constants.folder_check(os.path.join(constants.gui_assets, 'live'))
 
-            self.type_image.export_to_png(image_path)
+            self.type_image.image.export_to_png(image_path)
 
             # Convert the image in the background
             def convert(*a):
@@ -15026,13 +15056,12 @@ class ServerButton(HoverButton):
         def __init__(self, type_image, **kwargs):
             super().__init__(**kwargs)
             self.type_image = type_image
-            self.size_hint_max = self.type_image.size
-            self.generating_background = False
-            self.is_custom = type_image.__class__.__name__ == 'CustomServerIcon'
+            self.size_hint_max = self.type_image.image.size
+            self.is_custom = self.type_image.image.__class__.__name__ == 'CustomServerIcon'
             self.background_normal = os.path.join(constants.gui_assets, 'empty.png')
             self.background_down = os.path.join(constants.gui_assets, 'empty.png')
             self.anim_duration = 0.1
-            self.fg = self.type_image.parent.version_label.color
+            self.fg = self.type_image.version_label.color
             self.bc = constants.brighten_color(constants.background_color, -0.1)
             self.server_obj = constants.server_manager.current_server
 
@@ -15062,6 +15091,7 @@ class ServerButton(HoverButton):
                 )
 
             self.shadow = Image(source=icon_path('shadow.png'), color="#111122")
+            self.shadow.opacity = 0.5
             self.icon = Image(source=icon_path('pencil-sharp.png'), color=constants.brighten_color(self.fg, 0.15))
             self.add_widget(self.shadow)
             self.add_widget(self.icon)
@@ -15408,7 +15438,7 @@ class ServerButton(HoverButton):
                 pass
 
         else:
-            self.icon_button = self.ChangeIconButton(self.type_image.image)
+            self.icon_button = self.ChangeIconButton(self.type_image)
             self.add_widget(self.icon_button)
 
         if self.favorite:

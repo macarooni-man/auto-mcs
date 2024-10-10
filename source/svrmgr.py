@@ -1528,7 +1528,7 @@ class ServerObject():
         constants.server_config(self.name, self.config_file)
 
     # Updates the server icon, deletes if "new_icon" is empty
-    def update_icon(self, new_icon: str = None):
+    def update_icon(self, new_icon: str or False):
         data = constants.update_server_icon(self.name, new_icon)
         self.server_icon = constants.server_path(self.name, 'server-icon.png')
         return data
