@@ -195,6 +195,11 @@ if __name__ == '__main__':
             if timer.is_alive():
                 timer.cancel()
 
+        # Close Discord rich presence
+        if constants.discord_presence:
+            if constants.discord_presence.presence:
+                constants.discord_presence.presence.close()
+
         # Delete live images/temp files on close
         for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
             try:

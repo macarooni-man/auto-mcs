@@ -2,6 +2,7 @@ from PIL.ImageFilter import GaussianBlur
 from datetime import datetime as dt
 from PIL import Image as PILImage
 from ctypes import ArgumentError
+from pypresence import Presence
 from plyer import filechooser
 from random import randrange
 from PIL import ImageEnhance
@@ -91,6 +92,127 @@ from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
 from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
+
+
+
+# Discord rich presence
+class DiscordPresenceManager():
+    def __init__(self):
+        self.presence = None
+        if constants.app_config.discord_presence:
+            self.splash = constants.session_splash.replace(' ', '')
+            self.id = "1293773204552421429"
+            self.presence = Presence(self.id)
+            self.start_time = int(time.time())
+            def presence_thread(*a):
+                self.presence.connect()
+                print("Discord Presence: Connected")
+            threading.Timer(0, presence_thread).start()
+
+    def get_image(self, file_path: str):
+        server_obj = constants.server_manager.current_server
+        try:
+            if 'rich-presence-icon' in server_obj.run_data:
+                return server_obj.run_data['rich-presence-icon']
+        except:
+            pass
+
+        url = 'https://0x0.st'
+        files = {'file': open(file_path, 'rb')}
+        response = constants.requests.post(url, files=files)
+        if response.status_code == 200:
+            url = response.text.strip()
+
+            # Cache icon for later retrieval
+            server_obj.run_data['rich-presence-icon'] = url
+            return url
+        else:
+            print("Upload failed:", response.text)
+            return None
+
+    def update_presence(self, footer_data: str = None):
+        if not self.presence:
+            return False
+        def do_update(*a):
+
+            if footer_data:
+                footer_path = footer_data.replace('$','')
+                overrides = {
+                    'splash': ('Main Menu', self.splash)
+                }
+
+                details = None
+                state = None
+
+                # Override for running server
+                if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
+                    server_obj = constants.server_manager.current_server
+                    details = f"Server Manager - Running '{server_obj.name}'"
+                    state = f'{server_obj.type.title()} {server_obj.version}'
+                    if server_obj._telepath_data:
+                        state += ' (via Telepath)'
+
+                    # Custom arguments for customization
+                    current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
+                    if current:
+                        args = {'party_size': [int(current), int(server_obj.server_properties['max-players'])]}
+                    else:
+                        args = {}
+
+                    # Get server icon
+                    if server_obj.server_icon:
+                        if server_obj._telepath_data:
+                            icon_path = constants.get_server_icon(server_obj.name, server_obj._telepath_data)
+                        else:
+                            icon_path = server_obj.server_icon
+                        args['small_image'] = self.get_image(icon_path)
+                    else:
+                        args['small_image'] = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/big/{server_obj.type}_small.png?raw=true'
+
+                    args['small_text'] = f"{server_obj.name} - {state}"
+                    self.presence.update(state=state, details=details, start=self.start_time, **args)
+
+                    return True
+
+
+
+                elif footer_path in overrides:
+                    details = overrides[footer_path][0]
+                    state = overrides[footer_path][1]
+
+                elif 'amscript IDE' in footer_path:
+                    details, state = footer_path.split(' > ', 1)
+                    image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/amscript-icon.png?raw=true'
+                    self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='amscript IDE')
+
+                    return True
+
+                elif 'Telepath' in footer_path:
+                    if ' > ' in footer_path:
+                        details, state = footer_path.split(' > ', 1)
+                    else:
+                        details, state = 'Telepath', self.splash
+                    image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/telepath.png?raw=true'
+                    self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='Telepath')
+
+                    return True
+
+                elif ' > ' in footer_path:
+                    details, state = footer_path.split(' > ', 1)
+
+                else:
+                    details = footer_path
+                    state = self.splash
+
+                if details and state:
+                    self.presence.update(state=state, details=details, start=self.start_time)
+
+            else:
+                pass
+        threading.Timer(0, do_update).start()
+
+constants.discord_presence = DiscordPresenceManager()
+
 
 
 
@@ -3569,6 +3691,11 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
         constants.footer_path = menu_path.split(", ")[0].split("'")[0] + "Server" + " > ".join(menu_path.split(", ")[1:])
     else:
         constants.footer_path = " > ".join(menu_path.split(", "))
+
+    # Update Discord rich presence
+    constants.discord_presence.update_presence(constants.footer_path)
+
+    # Add time modified
     constants.footer_path += f" @ {constants.format_now()}"
 
 
@@ -16313,6 +16440,9 @@ class PerformancePanel(RelativeLayout):
                 percent = (len(perf_data['current-players']) / total_count)
                 self.player_widget.update_data(perf_data['current-players'])
 
+                # Update Discord rich presence
+                constants.discord_presence.update_presence('Server Manager > Launch')
+
                 # Colors
                 if percent == 0:
                     color = (0.45, 0.45, 0.45, 1)
@@ -17264,6 +17394,10 @@ class ConsolePanel(FloatLayout):
             self.input.disabled = False
             constants.server_manager.current_server.run_data['console-panel'] = self
             constants.server_manager.current_server.run_data['performance-panel'] = screen_manager.current_screen.performance_panel
+
+            # Update Discord rich presence
+            constants.discord_presence.update_presence('Server Manager > Launch')
+
         threading.Timer(0, start_timer).start()
 
 
@@ -17406,6 +17540,9 @@ class ConsolePanel(FloatLayout):
 
                     # View log button
                     self.add_log_button()
+
+                    # Update Discord rich presence
+                    constants.discord_presence.update_presence('Server Manager > Launch')
 
                 Clock.schedule_once(after_anim2, (anim_speed * 1.51))
 
@@ -20988,6 +21125,9 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         telepath_data['headers'] = constants.api_manager._get_headers(telepath_data['host'], True)
         if download:
             script_path = constants.telepath_download(server_obj._telepath_data, script_path, constants.telepathScriptDir)
+
+    # Update Discord rich presence
+    constants.discord_presence.update_presence(f"amscript IDE > Editing '{os.path.basename(script_path)}'")
 
     constants.app_config.load_config()
     data_dict = {

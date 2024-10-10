@@ -238,6 +238,7 @@ def allow_close(allow: bool, banner=''):
     if banner and telepath_banner and app_config.telepath_settings['show-banners']:
         telepath_banner(banner, allow)
 
+discord_presence = None
 
 
 # SSL crap
@@ -5690,6 +5691,7 @@ class ConfigManager():
         defaults.auto_update = True
         defaults.locale = None
         defaults.sponsor_reminder = None
+        defaults.discord_presence = True
         defaults.telepath_settings = {
             'enable-api': False,
             'api-host': "0.0.0.0",
