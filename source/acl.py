@@ -1,4 +1,3 @@
-import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
 from urllib.request import urlopen
@@ -9,6 +8,7 @@ import threading
 import ipaddress
 import constants
 import socket
+import time
 import json
 import re
 import os
@@ -532,7 +532,10 @@ class AclManager():
 
             # Filter player names
             else:
+                is_geyser_user = entry.startswith('.')
                 entry = re.sub('[^a-zA-Z0-9 _]', '', entry).strip()
+                if is_geyser_user:
+                    entry = f'.{entry}'
 
             # Add entries to final_list
             if whitelist and rule_type == "ip":

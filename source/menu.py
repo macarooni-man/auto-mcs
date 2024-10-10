@@ -148,7 +148,7 @@ class DiscordPresenceManager():
                 if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
                     server_obj = constants.server_manager.current_server
                     details = f"Server Manager - Running '{server_obj.name}'"
-                    state = f'{server_obj.type.title()} {server_obj.version}'
+                    state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
                     if server_obj._telepath_data:
                         state += ' (via Telepath)'
 
@@ -15058,7 +15058,7 @@ class ServerButton(HoverButton):
                         for item in glob(os.path.join(constants.gui_assets, 'live', 'blur_icon_*.png')):
                             os.remove(item)
 
-                        return success, message
+                    return success, message
 
                 def loading_screen(*a):
                     screen_manager.current = 'BlurredLoadingScreen'
@@ -18820,7 +18820,7 @@ class ServerBackupScreen(MenuBackground):
         }
 
         for k, v in button_dict.items():
-            print(server_obj.backup._backup_stats['backup-list'])
+            # print(server_obj.backup._backup_stats['backup-list'])
             if k == 'restore' and not server_obj.backup._backup_stats['backup-list']:
                 v.disable(True)
                 if self.download_button:
