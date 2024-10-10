@@ -26054,10 +26054,10 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        if not constants.app_compiled:
-            def open_menu(*a):
-                open_server('Beds Rock')
-            Clock.schedule_once(open_menu, 0.5)
+        # if not constants.app_compiled:
+        #     def open_menu(*a):
+        #         open_server('Beds Rock')
+        #     Clock.schedule_once(open_menu, 0.5)
         #     def open_menu(*a):
         #         screen_manager.current = 'ServerPropertiesEditScreen'
         #     Clock.schedule_once(open_menu, 0.8)

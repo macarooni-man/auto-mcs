@@ -1495,7 +1495,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
     def update_icon(self, *args, **kwargs):
         data = super().update_icon(*args, **kwargs)
-        self.clear_attr_cache()
+        self._clear_attr_cache()
         return data
 
     # Shows taskbar notifications
