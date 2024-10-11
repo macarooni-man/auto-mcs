@@ -100,6 +100,7 @@ class DiscordPresenceManager():
     def __init__(self):
         self.presence = None
         self.connected = False
+        self.updating_presence = False
         if constants.app_config.discord_presence:
             self.splash = constants.session_splash.replace(' ', '')
             self.id = "1293773204552421429"
@@ -140,91 +141,104 @@ class DiscordPresenceManager():
         if not self.presence:
             return False
 
-        if not self.connected:
-            for x in range(10):
-                if self.connected:
-                    break
-                time.sleep(0.2)
-        else:
-            return False
-
         def do_update(*a):
-
-            if footer_data:
-                footer_path = footer_data.replace('$','')
-                overrides = {
-                    'splash': ('Main Menu', self.splash)
-                }
-
-                details = None
-                state = None
-
-                # Override for running server
-                if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
-                    server_obj = constants.server_manager.current_server
-                    details = f"Running '{server_obj.name}'"
-                    state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
-                    if server_obj._telepath_data:
-                        state += ' (via Telepath)'
-
-                    # Custom arguments for customization
-                    current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
-                    if current:
-                        args = {'party_size': [int(current), int(server_obj.server_properties['max-players'])]}
+            self.updating_presence = True
+            def update(*a):
+                if not self.connected:
+                    for x in range(50):
+                        if self.connected:
+                            break
+                        time.sleep(0.2)
                     else:
-                        args = {}
+                        return False
 
-                    # Get server icon
-                    if server_obj.server_icon:
+                if footer_data:
+                    footer_path = footer_data.replace('$','')
+                    overrides = {
+                        'splash': ('Main Menu', self.splash)
+                    }
+
+                    details = None
+                    state = None
+
+                    # Override for running server
+                    if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
+                        server_obj = constants.server_manager.current_server
+                        details = f"Running '{server_obj.name}'"
                         if server_obj._telepath_data:
-                            icon_path = constants.get_server_icon(server_obj.name, server_obj._telepath_data)
+                            details = f"Telepath - running '{server_obj.name}'"
+                        state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
+
+                        # Custom arguments for customization
+                        current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
+                        if current:
+                            args = {'party_size': [int(current), int(server_obj.server_properties['max-players'])]}
                         else:
-                            icon_path = server_obj.server_icon
-                        args['small_image'] = self.get_image(icon_path)
-                    else:
-                        args['small_image'] = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/big/{server_obj.type}_small.png?raw=true'
+                            args = {}
 
-                    args['small_text'] = f"{server_obj.name} - {state}"
-                    self.presence.update(state=state, details=details, start=self.start_time, **args)
+                        # Get server icon
+                        if server_obj.server_icon:
+                            if server_obj._telepath_data:
+                                icon_path = constants.get_server_icon(server_obj.name, server_obj._telepath_data)
+                            else:
+                                icon_path = server_obj.server_icon
+                            args['small_image'] = self.get_image(icon_path)
+                        else:
+                            args['small_image'] = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/big/{server_obj.type}_small.png?raw=true'
 
-                    return True
+                        args['small_text'] = f"{server_obj.name} - {state}"
+                        self.presence.update(state=state, details=details, start=self.start_time, **args)
+
+                        return True
 
 
+                    elif footer_path in overrides:
+                        details = overrides[footer_path][0]
+                        state = overrides[footer_path][1]
 
-                elif footer_path in overrides:
-                    details = overrides[footer_path][0]
-                    state = overrides[footer_path][1]
 
-                elif 'amscript IDE' in footer_path:
-                    details, state = footer_path.split(' > ', 1)
-                    image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/amscript-icon.png?raw=true'
-                    self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='amscript IDE')
-
-                    return True
-
-                elif 'Telepath' in footer_path:
-                    if ' > ' in footer_path:
+                    elif 'amscript IDE' in footer_path:
                         details, state = footer_path.split(' > ', 1)
+                        image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/amscript-icon.png?raw=true'
+                        self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='amscript IDE')
+
+                        return True
+
+
+                    elif 'Telepath' in footer_path:
+                        if ' > ' in footer_path:
+                            details, state = footer_path.split(' > ', 1)
+                        else:
+                            details, state = 'Telepath', self.splash
+                        image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/telepath.png?raw=true'
+                        self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='Telepath')
+
+                        return True
+
+
+                    elif ' > ' in footer_path:
+                        details, state = footer_path.split(' > ', 1)
+                        if constants.server_manager.current_server and details == 'Server Manager':
+                            server_obj = constants.server_manager.current_server
+                            if server_obj._telepath_data:
+                                details = f"Telepath - '{server_obj.name}'"
+                            else:
+                                details = f"Server Manager - '{server_obj.name}'"
+
                     else:
-                        details, state = 'Telepath', self.splash
-                    image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/telepath.png?raw=true'
-                    self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='Telepath')
+                        details = footer_path
+                        state = self.splash
 
-                    return True
 
-                elif ' > ' in footer_path:
-                    details, state = footer_path.split(' > ', 1)
+                    if details and state:
+                        self.presence.update(state=state, details=details, start=self.start_time)
 
                 else:
-                    details = footer_path
-                    state = self.splash
-
-                if details and state:
-                    self.presence.update(state=state, details=details, start=self.start_time)
-
-            else:
-                pass
-        threading.Timer(0, do_update).start()
+                    pass
+            update()
+            self.updating_presence = False
+        if not self.updating_presence:
+            threading.Timer(0, do_update).start()
 
 constants.discord_presence = DiscordPresenceManager()
 

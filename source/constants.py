@@ -4954,6 +4954,19 @@ def server_properties(server_name: str, write_object=None):
                     except IndexError:
                         config[line_object[0].strip()] = ""
 
+
+            # Override invalid values
+            valid = False
+            try:
+                if int(config['max-players']) > 0:
+                    valid = True
+            except:
+                pass
+            if not valid:
+                config['max-players'] = 20
+                config = server_properties(server_name, config)
+
+
         except OSError:
             no_file = True
         except TypeError:
