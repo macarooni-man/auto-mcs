@@ -99,14 +99,20 @@ from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
 class DiscordPresenceManager():
     def __init__(self):
         self.presence = None
+        self.connected = False
         if constants.app_config.discord_presence:
             self.splash = constants.session_splash.replace(' ', '')
             self.id = "1293773204552421429"
             self.presence = Presence(self.id)
             self.start_time = int(time.time())
             def presence_thread(*a):
-                self.presence.connect()
-                print("Discord Presence: Connected")
+                try:
+                    self.presence.connect()
+                    self.connected = True
+                    print("Discord Presence: Connected")
+                except:
+                    self.presence = None
+                    print("Discord Presence: Failed to connect")
             threading.Timer(0, presence_thread).start()
 
     def get_image(self, file_path: str):
@@ -133,6 +139,15 @@ class DiscordPresenceManager():
     def update_presence(self, footer_data: str = None):
         if not self.presence:
             return False
+
+        if not self.connected:
+            for x in range(10):
+                if self.connected:
+                    break
+                time.sleep(0.2)
+        else:
+            return False
+
         def do_update(*a):
 
             if footer_data:

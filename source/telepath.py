@@ -200,6 +200,9 @@ class TelepathManager():
         if 'id' in session:
             session = deepcopy(session)
             del session['id']
+        if 'ip' in session:
+            session = deepcopy(session)
+            del session['ip']
 
         return {
             'access-token': create_access_token(session),

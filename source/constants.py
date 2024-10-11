@@ -3016,8 +3016,6 @@ def install_server(progress_func=None, imported=False):
     # Install Fabric server
     elif jar_type == 'fabric':
 
-        print("test", f'"{java_executable["modern"]}" -jar server.jar nogui')
-
         process = subprocess.Popen(f'"{java_executable["modern"]}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         while True:
