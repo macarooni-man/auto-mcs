@@ -239,9 +239,7 @@ class DiscordPresenceManager():
             self.updating_presence = False
         if not self.updating_presence:
             threading.Timer(0, do_update).start()
-
 constants.discord_presence = DiscordPresenceManager()
-
 
 
 
@@ -959,8 +957,9 @@ class SearchButton(HoverButton):
 
 class SearchInput(BaseInput):
 
-    def __init__(self, return_function, **kwargs):
+    def __init__(self, return_function, allow_empty=False, **kwargs):
         super().__init__(**kwargs)
+        self.allow_empty = allow_empty
         self.id = "search_input"
         self.title_text = ""
         self.hint_text = "enter a query..."
@@ -972,7 +971,7 @@ class SearchInput(BaseInput):
 
 
     def on_enter(self, value):
-        if self.text and self.parent.previous_search != self.text:
+        if (self.text or self.allow_empty) and self.parent.previous_search != self.text:
             self.parent.execute_search(self.text)
 
 
@@ -1009,7 +1008,7 @@ class SearchInput(BaseInput):
         self.cursor_color = (0.55, 0.55, 1, 1)
         self.selection_color = (0.5, 0.5, 1, 0.4)
 
-def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}):
+def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}, allow_empty=False):
     class SearchLayout(FloatLayout):
 
         def __init__(self, **kwargs):
@@ -20653,6 +20652,7 @@ class ServerAddonScreen(MenuBackground):
         self.header = None
         self.scroll_layout = None
         self.blank_label = None
+        self.search_bar = None
         self.page_switcher = None
         self.menu_taskbar = None
         self.update_button = None
@@ -20680,7 +20680,7 @@ class ServerAddonScreen(MenuBackground):
             return
 
         # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
         scroll_anchor = AnchorLayout()
         self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
@@ -20705,14 +20705,14 @@ class ServerAddonScreen(MenuBackground):
 
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.27}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.775}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.25}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         addon_count = len(self.server.addon.return_single_list())
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {constants.translate("items")}')
-        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
+        self.header = HeaderText(header_content, '', (0, 0.9), __translate__ = (False, True), no_line=True)
 
         buttons = []
         float_layout = FloatLayout()
@@ -20729,7 +20729,9 @@ class ServerAddonScreen(MenuBackground):
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
         float_layout.add_widget(self.blank_label)
 
-        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+        search_function = self.server.addon.filter_addons
+        self.search_bar = search_input(return_function=search_function, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.86), self.switch_page)
 
 
         # Append scroll view items
@@ -20738,6 +20740,7 @@ class ServerAddonScreen(MenuBackground):
         float_layout.add_widget(scroll_widget)
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.search_bar)
         float_layout.add_widget(self.page_switcher)
 
         bottom_buttons = RelativeLayout()
@@ -21984,6 +21987,7 @@ class ServerAmscriptScreen(MenuBackground):
         self.header = None
         self.scroll_layout = None
         self.blank_label = None
+        self.search_bar = None
         self.page_switcher = None
         self.menu_taskbar = None
 
@@ -22013,7 +22017,7 @@ class ServerAmscriptScreen(MenuBackground):
 
 
         # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
         scroll_anchor = AnchorLayout()
         self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
@@ -22038,14 +22042,14 @@ class ServerAmscriptScreen(MenuBackground):
 
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.27}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.775}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.25}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         script_count = len(self.server.script_manager.return_single_list())
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Installed Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count}[/font] {constants.translate("items")}')
-        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
+        self.header = HeaderText(header_content, '', (0, 0.9), __translate__ = (False, True), no_line=True)
 
         buttons = []
         float_layout = FloatLayout()
@@ -22062,8 +22066,9 @@ class ServerAmscriptScreen(MenuBackground):
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
         float_layout.add_widget(self.blank_label)
 
-        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
-
+        search_function = self.server.script_manager.filter_scripts
+        self.search_bar = search_input(return_function=search_function, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.86), self.switch_page)
 
         # Append scroll view items
         scroll_anchor.add_widget(self.scroll_layout)
@@ -22071,6 +22076,7 @@ class ServerAmscriptScreen(MenuBackground):
         float_layout.add_widget(scroll_widget)
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.search_bar)
         float_layout.add_widget(self.page_switcher)
 
         bottom_buttons = RelativeLayout()

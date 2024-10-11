@@ -247,7 +247,34 @@ class ScriptManager():
                     final_list.append(script)
 
         return final_list
+    
+    # Filters locally installed AmsFileObjects
+    def filter_scripts(self, query: str, *args):
+        query = query.strip().lower()
+        results = []
 
+        for script in self.return_single_list():
+            script_title = script.title.lower().strip() if script.title else ''
+            script_id = script.file_name.lower().strip() if script.file_name else ''
+            script_author = script.author.lower().strip() if script.author else ''
+            script_description = script.description.lower().strip() if script.description else ''
+            weight = 0
+
+            if query == script_title or query == script_id:
+                weight = 100
+
+            else:
+                weight = constants.similarity(script_title, query)
+                weight += script_title.count(query) * 3
+                weight += script_id.count(query) * 3
+                weight += script_author.count(query)
+                weight += script_description.count(query) * 0.5
+
+            if weight > 1:
+                results.append((script, weight))
+
+        return [a[0] for a in sorted(results, key=lambda w: w[1], reverse=True)]
+    
     # Downloads script and enables it
     def download_script(self, script: AmsWebObject or str):
 

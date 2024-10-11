@@ -173,6 +173,33 @@ class AddonManager():
         else:
             return []
 
+    # Filters locally installed AddonFileObjects
+    def filter_addons(self, query: str, *args):
+        query = query.strip().lower()
+        results = []
+
+        for addon in self.return_single_list():
+            addon_name = addon.name.lower().strip() if addon.name else ''
+            addon_id = addon.id.lower().strip() if addon.id else ''
+            addon_author = addon.author.lower().strip() if addon.author else ''
+            addon_subtitle = addon.subtitle.lower().strip() if addon.subtitle else ''
+            weight = 0
+
+            if query == addon_name or query == addon_id:
+                weight = 100
+
+            else:
+                weight = constants.similarity(addon_name, query)
+                weight += addon_name.count(query) * 3
+                weight += addon_id.count(query) * 3
+                weight += addon_author.count(query)
+                weight += addon_subtitle.count(query) * 0.5
+
+            if weight > 1:
+                results.append((addon, weight))
+
+        return [a[0] for a in sorted(results, key=lambda w: w[1], reverse=True)]
+
     # Downloads addon directly from the closest match of name, or from AddonWebObject
     def download_addon(self, addon: AddonWebObject or str):
         if not self._addons_supported:
