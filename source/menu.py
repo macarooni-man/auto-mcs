@@ -1068,7 +1068,7 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
     final_layout = SearchLayout()
 
     # Input box
-    search_bar = SearchInput(return_function)
+    search_bar = SearchInput(return_function, allow_empty)
     search_bar.pos_hint = pos_hint
 
     # Search icon on the right of box
