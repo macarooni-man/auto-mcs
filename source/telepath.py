@@ -131,6 +131,7 @@ class TelepathManager():
         self.port = self.default_port
         self.sessions = {}
         self.jwt_tokens = {}
+        self.max_retries = REQUEST_MAX_RETRIES
         self.update_config(host=self.host, port=self.port)
         self.client_data = {
             'host': constants.hostname,
@@ -347,6 +348,28 @@ class TelepathManager():
             if not constants.headless:
                 print(f"[INFO] [telepath] Opening session to '{host}'")
         return session
+    def _retry_wrapper(self, host: str, port: int, request: callable, retry=True):
+        # On auth failure, try to log in again and resend
+        try:
+            data = request()
+
+            if data.status_code == 401 and retry:
+                for retry in range(self.max_retries):
+                    self.login(host, port)
+
+                    # Headers are cleared & token reset, so try again
+                    data = request()
+
+                    if data.status_code == 200:
+                        break
+                    time.sleep(0.1)
+
+        except requests.exceptions.ConnectionError:
+            data = None
+        except requests.exceptions.ReadTimeout:
+            data = None
+
+        return data
     def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True):
         # Format endpoint
         if endpoint.startswith('/'):
@@ -366,27 +389,8 @@ class TelepathManager():
 
 
         # Determine POST or GET based on params
-        send_request = lambda *_: session.post(url, headers=self._get_headers(host), json=args, timeout=timeout) if args is not None else session.get(url, headers=self._get_headers(host), timeout=timeout)
-
-        # On auth failure, try to log in again and resend
-        try:
-            data = send_request()
-
-            if data.status_code == 401 and retry:
-                for retry in range(REQUEST_MAX_RETRIES):
-                    self.login(host, port)
-
-                    # Headers are cleared & token reset, so try again
-                    data = send_request()
-
-                    if data.status_code == 200:
-                        break
-                    time.sleep(0.1)
-
-        except requests.exceptions.ConnectionError:
-            data = None
-        except requests.exceptions.ReadTimeout:
-            data = None
+        request = lambda *_: session.post(url, headers=self._get_headers(host), json=args, timeout=timeout) if args is not None else session.get(url, headers=self._get_headers(host), timeout=timeout)
+        data = self._retry_wrapper(host, port, request, retry)
 
 
         # Failure to connect to server for whatever reason
@@ -1553,6 +1557,9 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
         except AttributeError:
             return []
 
+    def filter_scripts(self, query: str):
+        return [RemoteAmsWebObject(self._telepath_data, data) for data in super().filter_scripts(query)]
+
     def search_scripts(self, query: str):
         return [RemoteAmsWebObject(self._telepath_data, data) for data in super().search_scripts(query)]
 
@@ -1592,6 +1599,9 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
             return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
         except AttributeError:
             return []
+
+    def filter_addons(self, query: str, *args):
+        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().filter_addons(query)]
 
     def search_addons(self, query: str, *args):
         return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query)]

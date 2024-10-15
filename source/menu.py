@@ -15071,8 +15071,6 @@ class ServerButton(HoverButton):
                             icon_path = path
                     success, message = self.server_obj.update_icon(icon_path)
 
-                    print(success, message)
-
                     # Reload page
                     if success:
 
@@ -21162,6 +21160,8 @@ def edit_script(edit_button, server_obj, script_path, download=True):
     constants.discord_presence.update_presence(f"amscript IDE > Editing '{os.path.basename(script_path)}'")
 
     constants.app_config.load_config()
+
+    # Passed to child IDE window
     data_dict = {
         '_telepath_data': telepath_data,
         'app_title': constants.app_title,
@@ -21176,9 +21176,16 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         'suggestions': server_obj._retrieve_suggestions(),
         'os_name': constants.os_name,
         'translate': constants.translate,
-        'telepath_script_dir': constants.telepathScriptDir
+        'telepath_script_dir': constants.telepathScriptDir,
     }
-    Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict), 0.1)
+
+    # Passed to parent IPC receiver
+    ipc_functions = {
+        'api_manager': constants.api_manager,
+        'telepath_upload': constants.telepath_upload
+    }
+
+    Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict, ipc_functions), 0.1)
     if edit_button:
         edit_button.on_leave()
         edit_button.on_release()

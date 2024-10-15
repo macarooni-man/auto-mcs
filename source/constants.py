@@ -43,7 +43,7 @@ import amscript
 
 app_version = "2.2.2"
 ams_version = "1.3"
-telepath_version = "1.0.1"
+telepath_version = "1.0.2"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -999,9 +999,17 @@ def telepath_upload(telepath_data: dict, path: str):
             is_dir = True
             path = create_archive(path, tempDir, 'tar')
 
-        url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/upload_file?is_dir={is_dir}"
-        data = requests.post(url, headers=api_manager._get_headers(telepath_data['host'], True), files={'file': open(path, 'rb')})
-        return data.json()
+        host = telepath_data['host']
+        port = telepath_data['port']
+        url = f"http://{host}:{port}/main/upload_file?is_dir={is_dir}"
+        session = api_manager._get_session(host, port)
+        request = lambda *_: session.post(url, headers=api_manager._get_headers(host, True), files={'file': open(path, 'rb')})
+        data = api_manager._retry_wrapper(host, port, request)
+
+        if data:
+            return data.json()
+        else:
+            return None
 
 # Downloads a file to a telepath session --> destination path
 # Whitelist is for restricting downloadable content
@@ -1013,11 +1021,15 @@ def telepath_download(telepath_data: dict, path: str, destination=downDir, renam
     if not api_manager:
         return False
 
-    url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file?file={quote(path)}"
-    data = requests.post(url, headers=api_manager._get_headers(telepath_data['host']), stream=True)
+    host = telepath_data['host']
+    port = telepath_data['port']
+    url = f"http://{host}:{port}/main/download_file?file={quote(path)}"
+    session = api_manager._get_session(host, port)
+    request = lambda *_: session.post(url, headers=api_manager._get_headers(host), stream=True)
+    data = api_manager._retry_wrapper(host, port, request)
 
     # Save if the request was successful
-    if data.status_code == 200:
+    if data and data.status_code == 200:
 
         # File name input validation
         file_name = os.path.basename(rename if rename else path)
@@ -5553,7 +5565,7 @@ def update_server_icon(server_name: str, new_image: str = False) -> [bool, str]:
     icon_path = os.path.join(server_path(server_name), 'server-icon.png')
 
     # Delete if no image was provided
-    if not new_image:
+    if not new_image or new_image == 'False':
         if os.path.isfile(icon_path):
             try:
                 os.remove(icon_path)
@@ -5667,6 +5679,8 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
             return None
 
         folder_check(icon_cache)
+        if os.path.exists(final_path) and overwrite:
+            os.remove(final_path)
         telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
 
         if os.path.exists(final_path):
