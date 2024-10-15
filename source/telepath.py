@@ -348,28 +348,48 @@ class TelepathManager():
             if not constants.headless:
                 print(f"[INFO] [telepath] Opening session to '{host}'")
         return session
-    def _retry_wrapper(self, host: str, port: int, request: callable, retry=True):
-        # On auth failure, try to log in again and resend
+
+    def _retry_wrapper(self, host: str, port: int, request_func, retry=True):
         try:
-            data = request()
-
+            data = request_func()
             if data.status_code == 401 and retry:
-                for retry in range(self.max_retries):
-                    self.login(host, port)
-
-                    # Headers are cleared & token reset, so try again
-                    data = request()
-
-                    if data.status_code == 200:
-                        break
-                    time.sleep(0.1)
-
+                for attempt in range(self.max_retries):
+                    if self.login(host, port):
+                        # Handle force_server logic internally
+                        force_server = self._get_previous_server(host)
+                        if force_server:
+                            self._open_remote_server(force_server, host, port)
+                        # Headers are updated, so try the request again
+                        data = request_func()
+                        if data.status_code != 401:
+                            break
+                        time.sleep(0.1)
+                    else:
+                        break  # Exit if login fails
         except requests.exceptions.ConnectionError:
             data = None
         except requests.exceptions.ReadTimeout:
             data = None
 
         return data
+
+    def _open_remote_server(self, server_name, host, port):
+        url = f"http://{host}:{port}/main/open_remote_server?name={constants.quote(server_name)}"
+        session = self._get_session(host, port)
+        headers = self._get_headers(host)
+        response = session.post(url, headers=headers, json={'none': None}, timeout=120)
+        # Wait until the remote ServerObject is fully initialized
+        for _ in range(25):
+            if constants.server_manager.current_server._check_object_init():
+                break
+            time.sleep(0.2)
+        else:
+            return None
+    def _get_previous_server(self, host: str):
+        server_obj = constants.server_manager.current_server
+        if server_obj:
+            if server_obj._telepath_data and server_obj._telepath_data['host'] == host:
+                return server_obj.name
     def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True):
         # Format endpoint
         if endpoint.startswith('/'):
@@ -382,14 +402,13 @@ class TelepathManager():
             port = self.port
 
 
-
         # Check if session exists
         url = f"http://{host}:{port}/{endpoint}"
         session = self._get_session(host, port)
 
 
         # Determine POST or GET based on params
-        request = lambda *_: session.post(url, headers=self._get_headers(host), json=args, timeout=timeout) if args is not None else session.get(url, headers=self._get_headers(host), timeout=timeout)
+        request = lambda: session.post(url, headers=self._get_headers(host), json=args, timeout=timeout) if args is not None else session.get(url, headers=self._get_headers(host), timeout=timeout)
         data = self._retry_wrapper(host, port, request, retry)
 
 

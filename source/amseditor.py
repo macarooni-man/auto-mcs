@@ -3726,7 +3726,7 @@ def ipc_save_script(script_path: str, script_contents: str, ipc_functions: dict,
         # If the file was uploaded, import the script
         if 'path' in data:
             session = ipc_functions['api_manager']._get_session(host, port)
-            request = lambda *_: session.post(f'{url}/ScriptManager/import_script', headers=ipc_functions['api_manager']._get_headers(host), json={'script': data['path']})
+            request = lambda: session.post(f'{url}/ScriptManager/import_script', headers=ipc_functions['api_manager']._get_headers(host), json={'script': data['path']})
             data = ipc_functions['api_manager']._retry_wrapper(host, port, request)
 
 

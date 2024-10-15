@@ -1003,7 +1003,7 @@ def telepath_upload(telepath_data: dict, path: str):
         port = telepath_data['port']
         url = f"http://{host}:{port}/main/upload_file?is_dir={is_dir}"
         session = api_manager._get_session(host, port)
-        request = lambda *_: session.post(url, headers=api_manager._get_headers(host, True), files={'file': open(path, 'rb')})
+        request = lambda: session.post(url, headers=api_manager._get_headers(host, True), files={'file': open(path, 'rb')})
         data = api_manager._retry_wrapper(host, port, request)
 
         if data:
@@ -1025,7 +1025,7 @@ def telepath_download(telepath_data: dict, path: str, destination=downDir, renam
     port = telepath_data['port']
     url = f"http://{host}:{port}/main/download_file?file={quote(path)}"
     session = api_manager._get_session(host, port)
-    request = lambda *_: session.post(url, headers=api_manager._get_headers(host), stream=True)
+    request = lambda: session.post(url, headers=api_manager._get_headers(host), stream=True)
     data = api_manager._retry_wrapper(host, port, request)
 
     # Save if the request was successful
