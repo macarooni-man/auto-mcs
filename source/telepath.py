@@ -348,43 +348,43 @@ class TelepathManager():
             if not constants.headless:
                 print(f"[INFO] [telepath] Opening session to '{host}'")
         return session
-
     def _retry_wrapper(self, host: str, port: int, request_func, retry=True):
         try:
             data = request_func()
             if data.status_code == 401 and retry:
                 for attempt in range(self.max_retries):
+
+                    # On 401, try to re-authenticate and open the previous server
                     if self.login(host, port):
-                        # Handle force_server logic internally
                         force_server = self._get_previous_server(host)
                         if force_server:
                             self._open_remote_server(force_server, host, port)
+
                         # Headers are updated, so try the request again
                         data = request_func()
                         if data.status_code != 401:
                             break
                         time.sleep(0.1)
+
+                    # Exit if login fails
                     else:
-                        break  # Exit if login fails
+                        break
         except requests.exceptions.ConnectionError:
             data = None
         except requests.exceptions.ReadTimeout:
             data = None
 
         return data
-
     def _open_remote_server(self, server_name, host, port):
         url = f"http://{host}:{port}/main/open_remote_server?name={constants.quote(server_name)}"
         session = self._get_session(host, port)
-        headers = self._get_headers(host)
-        response = session.post(url, headers=headers, json={'none': None}, timeout=120)
-        # Wait until the remote ServerObject is fully initialized
+        session.post(url, headers=self._get_headers(host), json={'none': None}, timeout=120)
+
+        # Wait until the remote ServerObject is fully initialized (5s max)
         for _ in range(25):
             if constants.server_manager.current_server._check_object_init():
                 break
             time.sleep(0.2)
-        else:
-            return None
     def _get_previous_server(self, host: str):
         server_obj = constants.server_manager.current_server
         if server_obj:

@@ -310,6 +310,7 @@ frame_background = '#121223'
 faded_text = '#4A4A70' # '#444477'
 color_search = None
 error_icon = None
+telepath_icon = None
 replace_shown = False
 
 
@@ -2132,6 +2133,7 @@ def launch_window(path: str, data: dict, *a):
                         print(e)
                 else:
                     window.root.tab(root, image='')
+                    check_telepath()
                     self.error_label.place_forget()
                     self.error_label.configure(text="")
                 self._line_numbers.redraw()
@@ -3635,6 +3637,15 @@ def launch_window(path: str, data: dict, *a):
             if not code_editor._line_numbers.allow_highlight:
                 root.focus_force()
         window.root.bind("<<NotebookTabChanged>>", lambda *_: check_focus(), add=True)
+
+        def check_telepath(*_):
+            global telepath_icon
+
+            if data['_telepath_data'] and path.startswith(data['telepath_script_dir']):
+                if not telepath_icon:
+                    telepath_icon = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'telepath-icon.png')))
+
+                window.root.tab(root, image=telepath_icon, compound='left')
 
 
         # Add tab to window
