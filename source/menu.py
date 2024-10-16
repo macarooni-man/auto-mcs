@@ -21150,11 +21150,12 @@ def edit_script(edit_button, server_obj, script_path, download=True):
 
     # Override to download locally
     telepath_data = None
+    telepath_script_dir = constants.telepathScriptDir
     if server_obj._telepath_data:
         telepath_data = constants.deepcopy(server_obj._telepath_data)
         telepath_data['headers'] = constants.api_manager._get_headers(telepath_data['host'], True)
         if download:
-            script_path = constants.telepath_download(server_obj._telepath_data, script_path, constants.telepathScriptDir)
+            script_path = constants.telepath_download(server_obj._telepath_data, script_path, os.path.join(constants.telepathScriptDir, server_obj._telepath_data['host']))
 
     # Update Discord rich presence
     constants.discord_presence.update_presence(f"amscript IDE > Editing '{os.path.basename(script_path)}'")
@@ -21176,7 +21177,7 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         'suggestions': server_obj._retrieve_suggestions(),
         'os_name': constants.os_name,
         'translate': constants.translate,
-        'telepath_script_dir': constants.telepathScriptDir,
+        'telepath_script_dir': telepath_script_dir,
     }
 
     # Passed to parent IPC receiver

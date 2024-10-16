@@ -18,8 +18,8 @@ import pygments.lexer
 import webbrowser
 import functools
 import pygments
-import requests
 import time
+import json
 import os
 import re
 
@@ -304,6 +304,7 @@ window = None
 process = None
 close_window = False
 currently_open = []
+telepath_map = {}
 open_frames = {}
 background_color = '#040415'
 frame_background = '#121223'
@@ -327,7 +328,7 @@ def save_window_pos(*args):
 
 # Saves script to disk
 def save_script(data, script_path, *a):
-    global ipc, open_frames, currently_open
+    global ipc, open_frames, currently_open, telepath_map
 
     script_name = os.path.basename(script_path)
     if script_path in currently_open:
@@ -346,7 +347,7 @@ def save_script(data, script_path, *a):
                     'script_path': script_path,
                     'script_contents': script_contents,
                     'telepath_script_dir': data['telepath_script_dir'],
-                    'telepath_data': data['_telepath_data']
+                    'telepath_data': telepath_map[script_path]
                 }
             }
             ipc.send(message)
@@ -379,8 +380,9 @@ def change_font_size(direction):
 
 
 # Init Tk window
+# wdata for 'window_list', tdata for 'telepath_map'
 ipc = None
-def create_root(data, wdata, name='', connection: multiprocessing.connection.Connection = None):
+def create_root(data, wdata, tdata, connection: multiprocessing.connection.Connection = None):
     global ipc, window, close_window, currently_open, font_size, default_font_size, start_size, control
 
     if not window:
@@ -696,12 +698,13 @@ proc ::tabdrag::move {win x y} {
             window.attributes('-topmost', 0)
 
         def check_new():
-            global close_window, currently_open, open_frames
+            global close_window, currently_open, telepath_map, open_frames
             if close_window:
                 return
 
             try:
                 script_path = wdata.value
+                telepath_map[script_path] = json.loads(tdata.value) if tdata.value else None
             except BrokenPipeError:
                 return
 
@@ -709,10 +712,12 @@ proc ::tabdrag::move {win x y} {
                 launch_window(script_path, data)
                 currently_open.append(script_path)
                 wdata.value = ''
+                tdata.value = ''
                 bring_to_front()
             elif script_path and script_path in currently_open:
                 window.root.select(open_frames[os.path.basename(script_path)])
                 wdata.value = ''
+                tdata.value = ''
                 bring_to_front()
 
             save_window_pos()
@@ -3641,7 +3646,7 @@ def launch_window(path: str, data: dict, *a):
         def check_telepath(*_):
             global telepath_icon
 
-            if data['_telepath_data'] and path.startswith(data['telepath_script_dir']):
+            if telepath_map[path] and path.startswith(data['telepath_script_dir']):
                 if not telepath_icon:
                     telepath_icon = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'telepath-icon.png')))
 
@@ -3655,8 +3660,9 @@ def launch_window(path: str, data: dict, *a):
 
 
 wlist = None
+tmdata = None
 def edit_script(script_path: str, data: dict, ipc_functions: dict, *args):
-    global process, wlist
+    global process, wlist, tmdata
 
     if script_path:
 
@@ -3676,14 +3682,16 @@ def edit_script(script_path: str, data: dict, ipc_functions: dict, *args):
             # Initialize process
             mgr = multiprocessing.Manager()
             wlist = mgr.Value('window_list', '')
+            tmdata = mgr.Value('telepath_map_data', '')
             process = multiprocessing.Process(
                 target=functools.partial(create_root, data),
-                args=(wlist, 'window_list', child_conn),
+                args=(wlist, tmdata, child_conn),
                 daemon=True
             )
             process.start()
 
         wlist.value = script_path
+        tmdata.value = json.dumps(data['_telepath_data'])
 
 
 # IPC functions (these run in the context of the main process, and "data" is passed in)
