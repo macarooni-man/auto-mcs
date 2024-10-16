@@ -2467,7 +2467,7 @@ class ConsolePanel():
         return self
 
     def build_layout(self):
-        title_text = urwid.Text(('title', "auto-mcs v2.2.1 (headless)"), align='center')
+        title_text = urwid.Text(('title', f"auto-mcs v{constants.app_version} (headless)"), align='center')
         top_content = urwid.Pile([
             urwid.AttrMap(urwid.Filler(urwid.Padding(title_text, left=0, right=0), valign='top'), 'title'),
             urwid.AttrMap(urwid.Filler(urwid.Padding(urwid.Text(''), left=0, right=0), valign='top'), '')
