@@ -131,6 +131,7 @@ class TelepathManager():
         self.port = self.default_port
         self.sessions = {}
         self.jwt_tokens = {}
+        self.max_retries = REQUEST_MAX_RETRIES
         self.update_config(host=self.host, port=self.port)
         self.client_data = {
             'host': constants.hostname,
@@ -200,6 +201,9 @@ class TelepathManager():
         if 'id' in session:
             session = deepcopy(session)
             del session['id']
+        if 'ip' in session:
+            session = deepcopy(session)
+            del session['ip']
 
         return {
             'access-token': create_access_token(session),
@@ -344,6 +348,48 @@ class TelepathManager():
             if not constants.headless:
                 print(f"[INFO] [telepath] Opening session to '{host}'")
         return session
+    def _retry_wrapper(self, host: str, port: int, request_func, retry=True):
+        try:
+            data = request_func()
+            if data.status_code == 401 and retry:
+                for attempt in range(self.max_retries):
+
+                    # On 401, try to re-authenticate and open the previous server
+                    if self.login(host, port):
+                        force_server = self._get_previous_server(host)
+                        if force_server:
+                            self._open_remote_server(force_server, host, port)
+
+                        # Headers are updated, so try the request again
+                        data = request_func()
+                        if data.status_code != 401:
+                            break
+                        time.sleep(0.1)
+
+                    # Exit if login fails
+                    else:
+                        break
+        except requests.exceptions.ConnectionError:
+            data = None
+        except requests.exceptions.ReadTimeout:
+            data = None
+
+        return data
+    def _open_remote_server(self, server_name, host, port):
+        url = f"http://{host}:{port}/main/open_remote_server?name={constants.quote(server_name)}"
+        session = self._get_session(host, port)
+        session.post(url, headers=self._get_headers(host), json={'none': None}, timeout=120)
+
+        # Wait until the remote ServerObject is fully initialized (5s max)
+        for _ in range(25):
+            if constants.server_manager.current_server._check_object_init():
+                break
+            time.sleep(0.2)
+    def _get_previous_server(self, host: str):
+        server_obj = constants.server_manager.current_server
+        if server_obj:
+            if server_obj._telepath_data and server_obj._telepath_data['host'] == host:
+                return server_obj.name
     def request(self, endpoint: str, host=None, port=None, args=None, timeout=120, retry=True):
         # Format endpoint
         if endpoint.startswith('/'):
@@ -356,34 +402,14 @@ class TelepathManager():
             port = self.port
 
 
-
         # Check if session exists
         url = f"http://{host}:{port}/{endpoint}"
         session = self._get_session(host, port)
 
 
         # Determine POST or GET based on params
-        send_request = lambda *_: session.post(url, headers=self._get_headers(host), json=args, timeout=timeout) if args is not None else session.get(url, headers=self._get_headers(host), timeout=timeout)
-
-        # On auth failure, try to log in again and resend
-        try:
-            data = send_request()
-
-            if data.status_code == 401 and retry:
-                for retry in range(REQUEST_MAX_RETRIES):
-                    self.login(host, port)
-
-                    # Headers are cleared & token reset, so try again
-                    data = send_request()
-
-                    if data.status_code == 200:
-                        break
-                    time.sleep(0.1)
-
-        except requests.exceptions.ConnectionError:
-            data = None
-        except requests.exceptions.ReadTimeout:
-            data = None
+        request = lambda: session.post(url, headers=self._get_headers(host), json=args, timeout=timeout) if args is not None else session.get(url, headers=self._get_headers(host), timeout=timeout)
+        data = self._retry_wrapper(host, port, request, retry)
 
 
         # Failure to connect to server for whatever reason
@@ -1493,6 +1519,11 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self._clear_attr_cache()
         return data
 
+    def update_icon(self, *args, **kwargs):
+        data = super().update_icon(*args, **kwargs)
+        self._clear_attr_cache()
+        return data
+
     # Shows taskbar notifications
     def _view_notif(self, name, add=True, viewed=''):
         if name and add:
@@ -1545,6 +1576,9 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
         except AttributeError:
             return []
 
+    def filter_scripts(self, query: str):
+        return [RemoteAmsWebObject(self._telepath_data, data) for data in super().filter_scripts(query)]
+
     def search_scripts(self, query: str):
         return [RemoteAmsWebObject(self._telepath_data, data) for data in super().search_scripts(query)]
 
@@ -1584,6 +1618,9 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
             return [RemoteAddonFileObject(self._telepath_data, data) for data in super().return_single_list()]
         except AttributeError:
             return []
+
+    def filter_addons(self, query: str, *args):
+        return [RemoteAddonWebObject(self._telepath_data, data) for data in super().filter_addons(query)]
 
     def search_addons(self, query: str, *args):
         return [RemoteAddonWebObject(self._telepath_data, data) for data in super().search_addons(query)]

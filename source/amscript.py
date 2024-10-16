@@ -1,4 +1,5 @@
 import distutils.sysconfig as sysconfig
+from datetime import datetime as dt
 from difflib import SequenceMatcher
 from threading import Timer
 from textwrap import indent
@@ -246,7 +247,34 @@ class ScriptManager():
                     final_list.append(script)
 
         return final_list
+    
+    # Filters locally installed AmsFileObjects
+    def filter_scripts(self, query: str, *args):
+        query = query.strip().lower()
+        results = []
 
+        for script in self.return_single_list():
+            script_title = script.title.lower().strip() if script.title else ''
+            script_id = script.file_name.lower().strip() if script.file_name else ''
+            script_author = script.author.lower().strip() if script.author else ''
+            script_description = script.description.lower().strip() if script.description else ''
+            weight = 0
+
+            if query == script_title or query == script_id:
+                weight = 100
+
+            else:
+                weight = constants.similarity(script_title, query)
+                weight += script_title.count(query) * 3
+                weight += script_id.count(query) * 3
+                weight += script_author.count(query)
+                weight += script_description.count(query) * 0.5
+
+            if weight > 1:
+                results.append((script, weight))
+
+        return [a[0] for a in sorted(results, key=lambda w: w[1], reverse=True)]
+    
     # Downloads script and enables it
     def download_script(self, script: AmsWebObject or str):
 
@@ -346,10 +374,10 @@ class ScriptObject():
 
         # Yummy stuffs
         self.protected_variables = ["server", "acl", "backup", "addon", "amscript"]
-        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_alias", "@server.on_start", "@server.on_stop", "@server.on_loop"]
-        self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@server.on_start", "@server.on_stop"]
+        self.valid_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop", "@player.on_alias", "@server.on_loop"]
+        self.delay_events = ["@player.on_join", "@player.on_leave", "@player.on_death", "@player.on_message", "@player.on_achieve", "@server.on_start", "@server.on_stop"]
         self.valid_imports = std_libs
-        for library in ['dataclasses', 'itertools', 'requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib']:
+        for library in ['dataclasses', 'itertools', 'requests', 'bs4', 'nbt', 'tkinter', 'simpleaudio', 'webbrowser', 'cloudscraper', 'json', 'difflib', 'shutil', 'concurrent', 'concurrent.futures', 'random', 'platform', 'threading', 'copy', 'glob', 'configparser', 'unicodedata', 'subprocess', 'functools', 'threading', 'requests', 'datetime', 'tarfile', 'zipfile', 'hashlib', 'urllib', 'string', 'psutil', 'socket', 'time', 'json', 'math', 'sys', 'os', 're', 'pathlib', 'ctypes', 'inspect', 'functools', 'PIL', 'base64', 'ast', 'traceback', 'munch', 'textwrap', 'urllib', 'asyncio']:
             if library not in self.valid_imports:
                 self.valid_imports.append(library)
 
@@ -1022,7 +1050,9 @@ class ScriptObject():
 
 
     # Deconstruct loaded .ams files
-    def deconstruct(self):
+    def deconstruct(self, crash_data=None):
+
+        self.shutdown_event({'date': dt.now(), 'crash': crash_data})
 
         # Write persistent data before doing anything
         self.server_script_obj._persistent_config.write_config()
@@ -1257,8 +1287,17 @@ class ScriptObject():
 
             self.call_event('@player.on_death', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), enemy, msg_obj['content']))
 
-            print('player.on_death')
-            print(msg_obj)
+            if constants.debug:
+                print('player.on_death')
+                print(msg_obj)
+
+    # Fires event when a player earns an achievement
+    # {'user': player, 'achievement': title}
+    def achieve_event(self, msg_obj):
+        self.call_event('@player.on_achieve', (PlayerScriptObject(self.server_script_obj, msg_obj['user'], _send_command=False), msg_obj['advancement']))
+
+        if constants.debug:
+            print('player.on_achieve')
 
     # Fires event when player sends a command alias
     # {'user': player, 'content': message}
@@ -1296,6 +1335,7 @@ class ServerScriptObject():
         # Assign callable functions from main server object
         self.execute = server_obj.silent_command
         self.restart = server_obj.restart
+        self.launch = server_obj.launch
         self.stop = server_obj.stop
         self.log = server_obj.send_log
         self.aliases = {}
@@ -1652,6 +1692,20 @@ class PlayerScriptObject():
                 else:
                     log_data = self._execute(f'data get entity {self.name}', log=False, _capture=f"{self.name} has the following entity data: ", _send_twice=self._get_player)
                     nbt_data = log_data.split("following entity data: ")[1].strip()
+
+                    # Remove color escape codes if they exist
+                    try:
+                        # Define the ANSI escape code regex pattern
+                        ansi_escape = re.compile(r'''
+                            \x1B  # ESC character
+                            \[    # literal [
+                            [0-?]*  # zero or more chars between 0 and ?
+                            [ -/]*  # zero or more chars between space and /
+                            [@-~]   # one char between @ and ~
+                        ''', re.VERBOSE)
+                        nbt_data = ansi_escape.sub('', nbt_data)
+                    except:
+                        pass
                     # print(log_data)
 
                     # Make sure that strings are escaped with quotes, and json quotes are escaped with \"

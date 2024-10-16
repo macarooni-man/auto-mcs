@@ -2,9 +2,10 @@ from PIL.ImageFilter import GaussianBlur
 from datetime import datetime as dt
 from PIL import Image as PILImage
 from ctypes import ArgumentError
+from pypresence import Presence
 from plyer import filechooser
-from PIL import ImageEnhance
 from random import randrange
+from PIL import ImageEnhance
 import simpleaudio as sa
 from pathlib import Path
 from glob import glob
@@ -61,6 +62,7 @@ Config.set('kivy', 'exit_on_escape', '0')
 
 # Import kivy elements
 from kivy.clock import Clock
+from kivy.cache import Cache
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 from kivy.animation import Animation
@@ -90,6 +92,154 @@ from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
 from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
+
+
+
+# Discord rich presence
+class DiscordPresenceManager():
+    def __init__(self):
+        self.presence = None
+        self.connected = False
+        self.updating_presence = False
+        if constants.app_config.discord_presence:
+            self.splash = constants.session_splash.replace(' ', '')
+            self.id = "1293773204552421429"
+            self.presence = Presence(self.id)
+            self.start_time = int(time.time())
+            def presence_thread(*a):
+                try:
+                    self.presence.connect()
+                    self.connected = True
+                    print("Discord Presence: Connected")
+                except:
+                    self.presence = None
+                    print("Discord Presence: Failed to connect")
+            threading.Timer(0, presence_thread).start()
+
+    def get_image(self, file_path: str):
+        server_obj = constants.server_manager.current_server
+        try:
+            if 'rich-presence-icon' in server_obj.run_data:
+                return server_obj.run_data['rich-presence-icon']
+        except:
+            pass
+
+        url = 'https://0x0.st'
+        files = {'file': open(file_path, 'rb')}
+        response = constants.requests.post(url, files=files)
+        if response.status_code == 200:
+            url = response.text.strip()
+
+            # Cache icon for later retrieval
+            server_obj.run_data['rich-presence-icon'] = url
+            return url
+        else:
+            print("Upload failed:", response.text)
+            return None
+
+    def update_presence(self, footer_data: str = None):
+        if not self.presence:
+            return False
+
+        def do_update(*a):
+            self.updating_presence = True
+            def update(*a):
+                if not self.connected:
+                    for x in range(50):
+                        if self.connected:
+                            break
+                        time.sleep(0.2)
+                    else:
+                        return False
+
+                if footer_data:
+                    footer_path = footer_data.replace('$','')
+                    overrides = {
+                        'splash': ('Main Menu', self.splash)
+                    }
+
+                    details = None
+                    state = None
+
+                    # Override for running server
+                    if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
+                        server_obj = constants.server_manager.current_server
+                        details = f"Running '{server_obj.name}'"
+                        if server_obj._telepath_data:
+                            details = f"Telepath - running '{server_obj.name}'"
+                        state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
+
+                        # Custom arguments for customization
+                        current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
+                        if current:
+                            args = {'party_size': [int(current), int(server_obj.server_properties['max-players'])]}
+                        else:
+                            args = {}
+
+                        # Get server icon
+                        if server_obj.server_icon:
+                            if server_obj._telepath_data:
+                                icon_path = constants.get_server_icon(server_obj.name, server_obj._telepath_data)
+                            else:
+                                icon_path = server_obj.server_icon
+                            args['small_image'] = self.get_image(icon_path)
+                        else:
+                            args['small_image'] = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/big/{server_obj.type}_small.png?raw=true'
+
+                        args['small_text'] = f"{server_obj.name} - {state}"
+                        self.presence.update(state=state, details=details, start=self.start_time, **args)
+
+                        return True
+
+
+                    elif footer_path in overrides:
+                        details = overrides[footer_path][0]
+                        state = overrides[footer_path][1]
+
+
+                    elif 'amscript IDE' in footer_path:
+                        details, state = footer_path.split(' > ', 1)
+                        image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/amscript-icon.png?raw=true'
+                        self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='amscript IDE')
+
+                        return True
+
+
+                    elif 'Telepath' in footer_path:
+                        if ' > ' in footer_path:
+                            details, state = footer_path.split(' > ', 1)
+                        else:
+                            details, state = 'Telepath', self.splash
+                        image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/telepath.png?raw=true'
+                        self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='Telepath')
+
+                        return True
+
+
+                    elif ' > ' in footer_path:
+                        details, state = footer_path.split(' > ', 1)
+                        if constants.server_manager.current_server and details == 'Server Manager':
+                            server_obj = constants.server_manager.current_server
+                            if server_obj._telepath_data:
+                                details = f"Telepath - '{server_obj.name}'"
+                            else:
+                                details = f"Server Manager - '{server_obj.name}'"
+
+                    else:
+                        details = footer_path
+                        state = self.splash
+
+
+                    if details and state:
+                        self.presence.update(state=state, details=details, start=self.start_time)
+
+                else:
+                    pass
+            update()
+            self.updating_presence = False
+        if not self.updating_presence:
+            threading.Timer(0, do_update).start()
+constants.discord_presence = DiscordPresenceManager()
 
 
 
@@ -807,8 +957,9 @@ class SearchButton(HoverButton):
 
 class SearchInput(BaseInput):
 
-    def __init__(self, return_function, **kwargs):
+    def __init__(self, return_function, allow_empty=False, **kwargs):
         super().__init__(**kwargs)
+        self.allow_empty = allow_empty
         self.id = "search_input"
         self.title_text = ""
         self.hint_text = "enter a query..."
@@ -820,7 +971,7 @@ class SearchInput(BaseInput):
 
 
     def on_enter(self, value):
-        if self.text and self.parent.previous_search != self.text:
+        if (self.text or self.allow_empty) and self.parent.previous_search != self.text:
             self.parent.execute_search(self.text)
 
 
@@ -857,7 +1008,7 @@ class SearchInput(BaseInput):
         self.cursor_color = (0.55, 0.55, 1, 1)
         self.selection_color = (0.5, 0.5, 1, 0.4)
 
-def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}):
+def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.5}, allow_empty=False):
     class SearchLayout(FloatLayout):
 
         def __init__(self, **kwargs):
@@ -917,7 +1068,7 @@ def search_input(return_function=None, server_info=None, pos_hint={"center_x": 0
     final_layout = SearchLayout()
 
     # Input box
-    search_bar = SearchInput(return_function)
+    search_bar = SearchInput(return_function, allow_empty)
     search_bar.pos_hint = pos_hint
 
     # Search icon on the right of box
@@ -3022,7 +3173,7 @@ class AclRuleInput(BaseInput):
             if screen_manager.current_screen.current_list == "bans":
                 reg_exp = '[^a-zA-Z0-9 _.,!/-]'
             else:
-                reg_exp = '[^a-zA-Z0-9 _,!]'
+                reg_exp = '[^a-zA-Z0-9 _.,!]'
 
             if '\n' in substring:
                 substring = substring.splitlines()[0]
@@ -3568,6 +3719,11 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
         constants.footer_path = menu_path.split(", ")[0].split("'")[0] + "Server" + " > ".join(menu_path.split(", ")[1:])
     else:
         constants.footer_path = " > ".join(menu_path.split(", "))
+
+    # Update Discord rich presence
+    constants.discord_presence.update_presence(constants.footer_path)
+
+    # Add time modified
     constants.footer_path += f" @ {constants.format_now()}"
 
 
@@ -5367,6 +5523,8 @@ class TelepathDropButton(DropButton):
 
         if type == 'create':
             name = 'create a server on'
+        elif type == 'install':
+            name = 'install server on'
         else:
             name = 'import server to'
 
@@ -9485,7 +9643,7 @@ class MainMenuScreen(MenuBackground):
 
     def open_donate(self, *a):
         if constants.app_online:
-            url = "https://github.com/sponsors/macarooni-man"
+            url = "https://www.auto-mcs.com/about-us"
             webbrowser.open_new_tab(url)
 
     def generate_menu(self, **kwargs):
@@ -14264,11 +14422,11 @@ class ServerImportModpackScreen(MenuBackground):
         telepath_data = constants.server_manager.check_telepath_servers()
         if telepath_data:
             offset = 0.05
-            self.add_widget(TelepathDropButton(telepath_data, 'import', (0.5, 0.37)))
+            self.add_widget(TelepathDropButton(telepath_data, 'install', (0.5, 0.37)))
 
 
         # Regular menus
-        self.layout.add_widget(HeaderText("Which modpack do you wish to import?", '', (0, 0.81)))
+        self.layout.add_widget(HeaderText("Which modpack do you wish to install?", '', (0, 0.81)))
         def download_modpack(*a):
             screen_manager.current = 'ServerImportModpackSearchScreen'
         buttons.append(MainButton('Download a Modpack', (0.5, 0.576 + offset), 'download-outline.png', width=528, click_func=download_modpack))
@@ -14896,6 +15054,208 @@ class ServerButton(HoverButton):
             self.copyable = True
             self.bind(text=self.ref_text)
 
+    class ChangeIconButton(Button, HoverBehavior):
+
+        # Show menu to replace icon
+        def on_click(self, *a):
+
+            def apply_new_icon(path: str = None, *a):
+                def do_change():
+                    icon_path = False
+
+                    # Upload to remote if Telepath
+                    if path:
+                        if self.server_obj._telepath_data:
+                            icon_path = constants.telepath_upload(self.server_obj._telepath_data, path)['path']
+                        else:
+                            icon_path = path
+                    success, message = self.server_obj.update_icon(icon_path)
+
+                    # Reload page
+                    if success:
+
+                        # Override for Telepath
+                        if self.server_obj._telepath_data:
+                            constants.get_server_icon(self.server_obj.name, self.server_obj._telepath_data, overwrite=True)
+
+                        # Remove the cached image and texture
+                        Cache.remove('kv.image')
+                        Cache.remove('kv.texture')
+                        for item in glob(os.path.join(constants.gui_assets, 'live', 'blur_icon_*.png')):
+                            os.remove(item)
+
+                    return success, message
+
+                def loading_screen(*a):
+                    screen_manager.current = 'BlurredLoadingScreen'
+
+                Clock.schedule_once(loading_screen, 0)
+
+                # Actually rename the server files
+                time.sleep(0.5)
+                success, message = do_change()
+
+                # Change header and footer text to reflect change
+                def reload_page(*a):
+                    def go_back(*a):
+                        screen_manager.current = 'ServerViewScreen'
+
+                    Clock.schedule_once(go_back, 0)
+
+                    # Display banner to show success
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_banner,
+                            (0.553, 0.902, 0.675, 1) if success else (1, 0.5, 0.65, 1),
+                            message,
+                            "checkmark-circle-sharp.png" if success else "close-circle-sharp.png",
+                            3,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0.1
+                    )
+
+                Clock.schedule_once(reload_page, 0)
+
+            # Add icon with left click
+            if self.last_touch.button == 'left':
+                title = "Select an image"
+                selection = file_popup("file", start_dir=constants.userDownloads, ext=constants.valid_image_formats, input_name=None, select_multiple=False, title=title)
+                if selection and selection[0]:
+                    threading.Timer(0, functools.partial(apply_new_icon, selection[0])).start()
+
+            # Delete icon with right click
+            elif self.last_touch.button == 'right' and self.is_custom:
+
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_popup,
+                        "warning_query",
+                        'Remove Icon',
+                        "Do you want to remove this icon?\n\nYou'll need to re-import it again later",
+                        (None, functools.partial(threading.Timer(0, apply_new_icon).start))
+                    ),
+                    0
+                )
+
+        def on_enter(self, *args):
+            Animation.stop_all(self)
+            Animation.stop_all(self.type_image)
+            Animation(opacity=1, duration=self.anim_duration).start(self)
+            Animation(opacity=0, duration=self.anim_duration).start(self.type_image.image)
+            if self.server_obj._telepath_data:
+                Animation(opacity=0, duration=self.anim_duration).start(self.type_image.tp_shadow)
+                Animation(opacity=0, duration=self.anim_duration).start(self.type_image.tp_icon)
+
+        def on_leave(self, *args):
+            Animation.stop_all(self)
+            Animation.stop_all(self.type_image)
+            Animation(opacity=0, duration=self.anim_duration).start(self)
+            Animation(opacity=1, duration=self.anim_duration).start(self.type_image.image)
+            if self.server_obj._telepath_data:
+                Animation(opacity=1, duration=self.anim_duration).start(self.type_image.tp_shadow)
+                Animation(opacity=1, duration=self.anim_duration).start(self.type_image.tp_icon)
+
+        def generate_blur_background(self, *args):
+            def run_in_foreground(*a):
+                self.blur_background.source = image_path
+                self.canvas.ask_update()
+
+            try:
+                # Attempt to remove existing icon temp, who even cares lol
+                for item in glob(os.path.join(constants.gui_assets, 'live', 'blur_icon_*.png')):
+                    if self.server_obj.name in item:
+                        image_path = item
+                        return run_in_foreground()
+                    os.remove(item)
+            except:
+                pass
+            image_path = os.path.join(constants.gui_assets, 'live', f'blur_icon_{self.server_obj.name}_{constants.gen_rstring(4)}.png')
+            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+
+            self.type_image.image.export_to_png(image_path)
+
+            # Convert the image in the background
+            def convert(*a):
+                im = PILImage.open(image_path)
+
+                # Center and resize icon when custom
+                if self.is_custom:
+                    im = im.convert('RGBA')
+                    left = 4
+                    upper = (im.height - 65)
+                    right = left + 65
+                    lower = upper + 65
+                    im = im.crop((left, upper, right, lower))
+
+                # Blur and darken the icon
+                im = ImageEnhance.Brightness(im)
+                im = im.enhance(0.75)
+                im1 = im.filter(GaussianBlur(3))
+
+                im1.save(image_path)
+
+                Clock.schedule_once(run_in_foreground, 0)
+            threading.Timer(0, convert).start()
+
+        def resize_self(self, *a):
+            for child in self.children:
+                child.pos = self.pos
+
+            offset = (self.pos[0] + 17.5, self.pos[1] + 16.5)
+            self.background_ellipse.pos = offset
+            self.blur_background.pos = offset
+            self.background_outline.ellipse = (*offset, 66, 66)
+
+        def __init__(self, type_image, **kwargs):
+            super().__init__(**kwargs)
+            self.type_image = type_image
+            self.size_hint_max = self.type_image.image.size
+            self.is_custom = self.type_image.image.__class__.__name__ == 'CustomServerIcon'
+            self.background_normal = os.path.join(constants.gui_assets, 'empty.png')
+            self.background_down = os.path.join(constants.gui_assets, 'empty.png')
+            self.anim_duration = 0.1
+            self.fg = self.type_image.version_label.color
+            self.bc = constants.brighten_color(constants.background_color, -0.1)
+            self.server_obj = constants.server_manager.current_server
+
+            with self.canvas.before:
+                # Background ellipse (drawn first)
+                Color(self.bc[0], self.bc[1], self.bc[2], 0.3)  # Adjust alpha as needed
+                self.background_ellipse = Ellipse(
+                    size=(66, 66),
+                    angle_start=0,
+                    angle_end=360
+                )
+
+            with self.canvas:
+                # Blur background ellipse (drawn after background ellipse)
+                Color(*self.fg)
+                self.blur_background = Ellipse(
+                    size=(66, 66),
+                    angle_start=0,
+                    angle_end=360
+                )
+
+                # Outline of the ellipse
+                Color(*self.fg[:3], 0.0)
+                self.background_outline = Line(
+                    ellipse=(0, 0, 66, 66),
+                    width=2
+                )
+
+            self.shadow = Image(source=icon_path('shadow.png'), color="#111122")
+            self.shadow.opacity = 0.5
+            self.icon = Image(source=icon_path('pencil-sharp.png'), color=constants.brighten_color(self.fg, 0.15))
+            self.add_widget(self.shadow)
+            self.add_widget(self.icon)
+
+            # Bind and initialize
+            self.bind(size=self.resize_self, pos=self.resize_self)
+            self.bind(on_press=self.on_click)
+            self.generate_blur_background()
+            self.opacity = 0
+
+
     def toggle_favorite(self, favorite, *args):
         self.favorite = favorite
         self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.85, 0.6, 0.9, 1) if self.favorite else (0.65, 0.65, 1, 1), 0.07)]
@@ -14967,6 +15327,13 @@ class ServerButton(HoverButton):
         # Favorite button
         self.favorite_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
         self.favorite_layout.pos = (self.pos[0] - 6, self.pos[1] + 13)
+
+
+        # Change Icon button pos
+        if self.icon_button:
+            half = self.type_image.image.size_hint_max[0] / 4
+            offset = 2.5 if self.type_image.image.__class__.__name__ == 'CustomServerIcon' else -1
+            self.icon_button.pos = (self.type_image.image.x - half + offset, self.type_image.image.y - half)
 
 
         # Highlight border
@@ -15123,24 +15490,24 @@ class ServerButton(HoverButton):
         # Check for custom server icon
         if self.telepath_data:
             self.telepath_data['icon-path'] = server_object.server_icon
-            server_icon = constants.get_server_icon(server_object.name, self.telepath_data)
+            self.server_icon = constants.get_server_icon(server_object.name, self.telepath_data)
         else:
-            server_icon = server_object.server_icon
+            self.server_icon = server_object.server_icon
 
-        if server_icon:
+        if self.server_icon:
             self.custom_icon = True
             class CustomServerIcon(RelativeLayout):
-                def __init__(self, **kwargs):
+                def __init__(self, server_icon, **kwargs):
                     super().__init__(**kwargs)
                     with self.canvas:
                         Color(1, 1, 1, 1)  # Set the color to white
-                        self.shadow = Ellipse(pos=(-13.5, -17.5), size=(100, 100), source=os.path.join(constants.gui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
+                        self.shadow = Ellipse(pos=(-23.5, -27.5), size=(120, 120), source=os.path.join(constants.gui_assets, 'icon_shadow.png'), angle_start=0, angle_end=360)
                         self.ellipse = Ellipse(pos=(4, 0), size=(65, 65), source=server_icon, angle_start=0, angle_end=360)
-            self.type_image.image = CustomServerIcon()
+            self.type_image.image = CustomServerIcon(self.server_icon)
         else:
             self.custom_icon = False
-            server_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
-            self.type_image.image = Image(source=server_icon)
+            self.server_icon = os.path.join(constants.gui_assets, 'icons', 'big', f'{server_object.type.lower()}_small.png')
+            self.type_image.image = Image(source=self.server_icon)
 
         self.type_image.image.allow_stretch = True
         self.type_image.image.size_hint_max = (65, 65)
@@ -15217,10 +15584,15 @@ class ServerButton(HoverButton):
         self.favorite_layout = RelativeLayout()
         favorite = None
         if not view_only:
+            self.icon_button = None
             try:
                 favorite = functools.partial(screen_manager.current_screen.favorite, server_object.name, server_object)
             except AttributeError:
                 pass
+
+        else:
+            self.icon_button = self.ChangeIconButton(self.type_image)
+            self.add_widget(self.icon_button)
 
         if self.favorite:
             self.favorite_button = IconButton('', {}, (0, 0), (None, None), 'heart-sharp.png', clickable=not self.view_only, force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'], anchor='right', click_func=favorite)
@@ -16093,6 +16465,9 @@ class PerformancePanel(RelativeLayout):
                 total_count = int(self.overview_widget.max_players)
                 percent = (len(perf_data['current-players']) / total_count)
                 self.player_widget.update_data(perf_data['current-players'])
+
+                # Update Discord rich presence
+                constants.discord_presence.update_presence('Server Manager > Launch')
 
                 # Colors
                 if percent == 0:
@@ -17045,6 +17420,10 @@ class ConsolePanel(FloatLayout):
             self.input.disabled = False
             constants.server_manager.current_server.run_data['console-panel'] = self
             constants.server_manager.current_server.run_data['performance-panel'] = screen_manager.current_screen.performance_panel
+
+            # Update Discord rich presence
+            constants.discord_presence.update_presence('Server Manager > Launch')
+
         threading.Timer(0, start_timer).start()
 
 
@@ -17187,6 +17566,9 @@ class ConsolePanel(FloatLayout):
 
                     # View log button
                     self.add_log_button()
+
+                    # Update Discord rich presence
+                    constants.discord_presence.update_presence('Server Manager > Launch')
 
                 Clock.schedule_once(after_anim2, (anim_speed * 1.51))
 
@@ -18464,7 +18846,7 @@ class ServerBackupScreen(MenuBackground):
         }
 
         for k, v in button_dict.items():
-            print(server_obj.backup._backup_stats['backup-list'])
+            # print(server_obj.backup._backup_stats['backup-list'])
             if k == 'restore' and not server_obj.backup._backup_stats['backup-list']:
                 v.disable(True)
                 if self.download_button:
@@ -20268,6 +20650,7 @@ class ServerAddonScreen(MenuBackground):
         self.header = None
         self.scroll_layout = None
         self.blank_label = None
+        self.search_bar = None
         self.page_switcher = None
         self.menu_taskbar = None
         self.update_button = None
@@ -20295,7 +20678,7 @@ class ServerAddonScreen(MenuBackground):
             return
 
         # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
         scroll_anchor = AnchorLayout()
         self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
@@ -20320,14 +20703,14 @@ class ServerAddonScreen(MenuBackground):
 
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.27}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.775}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.25}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         addon_count = len(self.server.addon.return_single_list())
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Installed Add-ons')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if addon_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if addon_count == 1 else f'[font={very_bold_font}]{addon_count}[/font] {constants.translate("items")}')
-        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
+        self.header = HeaderText(header_content, '', (0, 0.9), __translate__ = (False, True), no_line=True)
 
         buttons = []
         float_layout = FloatLayout()
@@ -20344,7 +20727,9 @@ class ServerAddonScreen(MenuBackground):
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
         float_layout.add_widget(self.blank_label)
 
-        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+        search_function = self.server.addon.filter_addons
+        self.search_bar = search_input(return_function=search_function, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.86), self.switch_page)
 
 
         # Append scroll view items
@@ -20353,6 +20738,7 @@ class ServerAddonScreen(MenuBackground):
         float_layout.add_widget(scroll_widget)
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.search_bar)
         float_layout.add_widget(self.page_switcher)
 
         bottom_buttons = RelativeLayout()
@@ -20764,13 +21150,19 @@ def edit_script(edit_button, server_obj, script_path, download=True):
 
     # Override to download locally
     telepath_data = None
+    telepath_script_dir = constants.telepathScriptDir
     if server_obj._telepath_data:
         telepath_data = constants.deepcopy(server_obj._telepath_data)
         telepath_data['headers'] = constants.api_manager._get_headers(telepath_data['host'], True)
         if download:
-            script_path = constants.telepath_download(server_obj._telepath_data, script_path, constants.telepathScriptDir)
+            script_path = constants.telepath_download(server_obj._telepath_data, script_path, os.path.join(constants.telepathScriptDir, server_obj._telepath_data['host']))
+
+    # Update Discord rich presence
+    constants.discord_presence.update_presence(f"amscript IDE > Editing '{os.path.basename(script_path)}'")
 
     constants.app_config.load_config()
+
+    # Passed to child IDE window
     data_dict = {
         '_telepath_data': telepath_data,
         'app_title': constants.app_title,
@@ -20782,12 +21174,19 @@ def edit_script(edit_button, server_obj, script_path, download=True):
             'protected': constants.script_obj.protected_variables,
             'events': constants.script_obj.valid_events
         },
-        'suggestions': server_obj.retrieve_suggestions(),
+        'suggestions': server_obj._retrieve_suggestions(),
         'os_name': constants.os_name,
         'translate': constants.translate,
-        'telepath_script_dir': constants.telepathScriptDir
+        'telepath_script_dir': telepath_script_dir,
     }
-    Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict), 0.1)
+
+    # Passed to parent IPC receiver
+    ipc_functions = {
+        'api_manager': constants.api_manager,
+        'telepath_upload': constants.telepath_upload
+    }
+
+    Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict, ipc_functions), 0.1)
     if edit_button:
         edit_button.on_leave()
         edit_button.on_release()
@@ -21596,6 +21995,7 @@ class ServerAmscriptScreen(MenuBackground):
         self.header = None
         self.scroll_layout = None
         self.blank_label = None
+        self.search_bar = None
         self.page_switcher = None
         self.menu_taskbar = None
 
@@ -21625,7 +22025,7 @@ class ServerAmscriptScreen(MenuBackground):
 
 
         # Scroll list
-        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
         scroll_anchor = AnchorLayout()
         self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
 
@@ -21650,14 +22050,14 @@ class ServerAmscriptScreen(MenuBackground):
 
 
         # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.27}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.775}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.25}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60))
 
         # Generate buttons on page load
         script_count = len(self.server.script_manager.return_single_list())
         very_bold_font = os.path.join(constants.gui_assets, 'fonts', constants.fonts["very-bold"])
         header_content = f"{constants.translate('Installed Scripts')}  [color=#494977]-[/color]  " + (f'[color=#6A6ABA]{constants.translate("No items")}[/color]' if script_count == 0 else f'[font={very_bold_font}]1[/font] {constants.translate("item")}' if script_count == 1 else f'[font={very_bold_font}]{script_count}[/font] {constants.translate("items")}')
-        self.header = HeaderText(header_content, '', (0, 0.89), __translate__ = (False, True))
+        self.header = HeaderText(header_content, '', (0, 0.9), __translate__ = (False, True), no_line=True)
 
         buttons = []
         float_layout = FloatLayout()
@@ -21674,8 +22074,9 @@ class ServerAmscriptScreen(MenuBackground):
         self.blank_label.color = (0.6, 0.6, 1, 0.35)
         float_layout.add_widget(self.blank_label)
 
-        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
-
+        search_function = self.server.script_manager.filter_scripts
+        self.search_bar = search_input(return_function=search_function, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.845}, allow_empty=True)
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.86), self.switch_page)
 
         # Append scroll view items
         scroll_anchor.add_widget(self.scroll_layout)
@@ -21683,6 +22084,7 @@ class ServerAmscriptScreen(MenuBackground):
         float_layout.add_widget(scroll_widget)
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.search_bar)
         float_layout.add_widget(self.page_switcher)
 
         bottom_buttons = RelativeLayout()
@@ -25867,7 +26269,7 @@ class MainApp(App):
         # Screen manager override for testing
         # if not constants.app_compiled:
         #     def open_menu(*a):
-        #         open_server('test')
+        #         open_server('Beds Rock')
         #     Clock.schedule_once(open_menu, 0.5)
         #     def open_menu(*a):
         #         screen_manager.current = 'ServerPropertiesEditScreen'

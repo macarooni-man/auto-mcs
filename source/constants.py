@@ -41,9 +41,9 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.2.1"
-ams_version = "1.2.1"
-telepath_version = "1.0.0"
+app_version = "2.2.2"
+ams_version = "1.3"
+telepath_version = "1.0.2"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -238,6 +238,7 @@ def allow_close(allow: bool, banner=''):
     if banner and telepath_banner and app_config.telepath_settings['show-banners']:
         telepath_banner(banner, allow)
 
+discord_presence = None
 
 
 # SSL crap
@@ -926,7 +927,7 @@ def similarity(a, b):
 
 # Cloudscraper requests
 global_scraper = None
-def return_scraper(url_path: str, head=False):
+def return_scraper(url_path: str, head=False, params=None):
     global global_scraper
 
     if not global_scraper:
@@ -936,15 +937,15 @@ def return_scraper(url_path: str, head=False):
             debug=debug
         )
 
-    return global_scraper.head(url_path) if head else global_scraper.get(url_path)
+    return global_scraper.head(url_path) if head else global_scraper.get(url_path, params=params)
 
 # Return html content or status code
-def get_url(url: str, return_code=False, only_head=False, return_response=False):
+def get_url(url: str, return_code=False, only_head=False, return_response=False, params=None):
     global global_scraper
     max_retries = 10
     for retry in range(0, max_retries + 1):
         try:
-            html = return_scraper(url, head=(return_code or only_head))
+            html = return_scraper(url, head=(return_code or only_head), params=params)
             return html.status_code if return_code \
                 else html if (only_head or return_response) \
                 else BeautifulSoup(html.content, 'html.parser')
@@ -998,9 +999,17 @@ def telepath_upload(telepath_data: dict, path: str):
             is_dir = True
             path = create_archive(path, tempDir, 'tar')
 
-        url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/upload_file?is_dir={is_dir}"
-        data = requests.post(url, headers=api_manager._get_headers(telepath_data['host'], True), files={'file': open(path, 'rb')})
-        return data.json()
+        host = telepath_data['host']
+        port = telepath_data['port']
+        url = f"http://{host}:{port}/main/upload_file?is_dir={is_dir}"
+        session = api_manager._get_session(host, port)
+        request = lambda: session.post(url, headers=api_manager._get_headers(host, True), files={'file': open(path, 'rb')})
+        data = api_manager._retry_wrapper(host, port, request)
+
+        if data:
+            return data.json()
+        else:
+            return None
 
 # Downloads a file to a telepath session --> destination path
 # Whitelist is for restricting downloadable content
@@ -1012,11 +1021,15 @@ def telepath_download(telepath_data: dict, path: str, destination=downDir, renam
     if not api_manager:
         return False
 
-    url = f"http://{telepath_data['host']}:{telepath_data['port']}/main/download_file?file={quote(path)}"
-    data = requests.post(url, headers=api_manager._get_headers(telepath_data['host']), stream=True)
+    host = telepath_data['host']
+    port = telepath_data['port']
+    url = f"http://{host}:{port}/main/download_file?file={quote(path)}"
+    session = api_manager._get_session(host, port)
+    request = lambda: session.post(url, headers=api_manager._get_headers(host), stream=True)
+    data = api_manager._retry_wrapper(host, port, request)
 
     # Save if the request was successful
-    if data.status_code == 200:
+    if data and data.status_code == 200:
 
         # File name input validation
         file_name = os.path.basename(rename if rename else path)
@@ -2499,22 +2512,22 @@ def java_check(progress_func=None):
     java_url = {
         'windows': {
             "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_windows-x64_bin.zip",
-            "lts": f"https://download.oracle.com/java/17/latest/jdk-17_windows-x64_bin.zip",
+            "lts": f"https://download.oracle.com/java/17/archive/jdk-17.0.12_windows-x64_bin.zip",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/windows-i586/jre-8u331-windows-x64.tar.gz"
         },
         'linux': {
             "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_linux-x64_bin.tar.gz",
-            "lts": f"https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz",
+            "lts": f"https://download.oracle.com/java/17/archive/jdk-17.0.12_linux-x64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/linux-i586/jre-8u331-linux-x64.tar.gz"
         },
         'linux-arm64': {
             "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_linux-aarch64_bin.tar.gz",
-            "lts": f"https://download.oracle.com/java/17/latest/jdk-17_linux-aarch64_bin.tar.gz",
+            "lts": f"https://download.oracle.com/java/17/archive/jdk-17.0.12_linux-aarch64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_281-b09/89d678f2be164786b292527658ca1605/linux-i586/jdk-8u281-linux-aarch64.tar.gz"
         },
         'macos': {
             "modern": f"https://download.oracle.com/java/{modern_version}/latest/jdk-{modern_version}_macos-x64_bin.tar.gz",
-            "lts": f"https://download.oracle.com/java/17/latest/jdk-17_macos-x64_bin.tar.gz",
+            "lts": f"https://download.oracle.com/java/17/archive/jdk-17.0.12_macos-x64_bin.tar.gz",
             "legacy": "https://javadl.oracle.com/webapps/download/GetFile/1.8.0_331-b09/165374ff4ea84ef0bbd821706e29b123/unix-i586/jre-8u331-macosx-x64.tar.gz"
         }
     }
@@ -3014,8 +3027,6 @@ def install_server(progress_func=None, imported=False):
 
     # Install Fabric server
     elif jar_type == 'fabric':
-
-        print("test", f'"{java_executable["modern"]}" -jar server.jar nogui')
 
         process = subprocess.Popen(f'"{java_executable["modern"]}" -jar server.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -4955,6 +4966,19 @@ def server_properties(server_name: str, write_object=None):
                     except IndexError:
                         config[line_object[0].strip()] = ""
 
+
+            # Override invalid values
+            valid = False
+            try:
+                if int(config['max-players']) > 0:
+                    valid = True
+            except:
+                pass
+            if not valid:
+                config['max-players'] = 20
+                config = server_properties(server_name, config)
+
+
         except OSError:
             no_file = True
         except TypeError:
@@ -4981,7 +5005,7 @@ def write_geyser_config(server_obj: object, reset=False) -> bool:
     final_path = os.path.join(config_path, config_name)
     config_data = f"""# Setup: https://wiki.geysermc.org/geyser/setup/
 bedrock:
-  address: 127.0.0.1
+  address: 0.0.0.0
   port: 19132
   clone-remote-port: true
   motd1: "{server_obj.name}"
@@ -5532,6 +5556,71 @@ def control_backspace(text, index):
     return final_text, new_index
 
 
+# Updates the server icon with a new image
+# Returns: [bool: success, str: reason]
+valid_image_formats = [
+    "*.png", "*.jpg", "*.jpeg", "*.gif", "*.jpe", "*.jfif", "*.tif", "*.tiff", "*.bmp", "*.icns", "*.ico", "*.webp"
+]
+def update_server_icon(server_name: str, new_image: str = False) -> [bool, str]:
+    icon_path = os.path.join(server_path(server_name), 'server-icon.png')
+
+    # Delete if no image was provided
+    if not new_image or new_image == 'False':
+        if os.path.isfile(icon_path):
+            try:
+                os.remove(icon_path)
+            except:
+                pass
+
+        return (True, 'icon removed successfully') if not os.path.exists(icon_path) else (False, 'something went wrong, please try again')
+
+
+    # First, check if the image has a valid extension
+    extension = new_image.rsplit('.')[-1]
+    if f'*.{extension}' not in valid_image_formats:
+        return (False, f'".{extension}" is not a valid extension')
+
+    # Next, try to convert the image
+    try:
+        img = Image.open(new_image)
+        width, height = img.size
+
+        # Handle images with an alpha channel
+        mode = 'RGBA' if img.mode in ['RGBA', 'LA'] else 'RGB'
+        size = 64
+
+        # Calculate new dimensions while maintaining aspect ratio
+        if width > height:
+            # Landscape orientation
+            new_width = size
+            new_height = int(size * height / width)
+        else:
+            # Portrait orientation or square
+            new_width = int(size * width / height)
+            new_height = size
+
+        # Resize the image while maintaining aspect ratio
+        resized_img = img.resize((new_width, new_height), Image.LANCZOS)
+
+        # Create new square image to re-center if needed
+        new_img = Image.new(mode, (size, size))
+        paste_x = (size - new_width) // 2
+        paste_y = (size - new_height) // 2
+        new_img.paste(resized_img, (paste_x, paste_y))
+
+        # Save image to new path
+        if os.path.isfile(icon_path):
+            os.remove(icon_path)
+        new_img.save(icon_path, 'PNG')
+
+    except Exception as e:
+        if debug:
+            print(f"Failed to convert icon: {e}")
+        return (False, 'failed to convert the icon')
+
+    return (True, 'successfully updated the icon')
+
+
 # Get player head to .png: pass player object
 def get_player_head(user: str):
 
@@ -5570,7 +5659,7 @@ def get_player_head(user: str):
 
 
 # Compatibility to cache server icon with telepath
-def get_server_icon(server_name: str, telepath_data: dict):
+def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
     if not (app_online and server_name):
         return None
 
@@ -5579,7 +5668,7 @@ def get_server_icon(server_name: str, telepath_data: dict):
         icon_cache = os.path.join(cacheDir, 'icons')
         final_path = os.path.join(icon_cache, name)
 
-        if os.path.exists(final_path):
+        if os.path.exists(final_path) and not overwrite:
             age = abs(datetime.datetime.today().day - datetime.datetime.fromtimestamp(os.stat(final_path).st_mtime).day)
             if age < 3:
                 return final_path
@@ -5590,6 +5679,8 @@ def get_server_icon(server_name: str, telepath_data: dict):
             return None
 
         folder_check(icon_cache)
+        if os.path.exists(final_path) and overwrite:
+            os.remove(final_path)
         telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
 
         if os.path.exists(final_path):
@@ -5601,7 +5692,6 @@ def get_server_icon(server_name: str, telepath_data: dict):
         if debug:
             print(f"Error retrieving icon for '{server_name}': {e}")
         return None
-
 
 
 # ---------------------------------------------- Global Config Function ------------------------------------------------
@@ -5626,6 +5716,7 @@ class ConfigManager():
         defaults.auto_update = True
         defaults.locale = None
         defaults.sponsor_reminder = None
+        defaults.discord_presence = True
         defaults.telepath_settings = {
             'enable-api': False,
             'api-host': "0.0.0.0",
@@ -6453,7 +6544,7 @@ class SearchManager():
 
     # Generate a list of weighted results from a search
     def execute_search(self, current_screen, query):
-        
+
         match_list = {
             'guide': SearchObject(),
             'setting': [],

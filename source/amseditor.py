@@ -18,8 +18,8 @@ import pygments.lexer
 import webbrowser
 import functools
 import pygments
-import requests
 import time
+import json
 import os
 import re
 
@@ -304,12 +304,14 @@ window = None
 process = None
 close_window = False
 currently_open = []
+telepath_map = {}
 open_frames = {}
 background_color = '#040415'
 frame_background = '#121223'
 faded_text = '#4A4A70' # '#444477'
 color_search = None
 error_icon = None
+telepath_icon = None
 replace_shown = False
 
 
@@ -326,7 +328,8 @@ def save_window_pos(*args):
 
 # Saves script to disk
 def save_script(data, script_path, *a):
-    global open_frames, currently_open
+    global ipc, open_frames, currently_open, telepath_map
+
     script_name = os.path.basename(script_path)
     if script_path in currently_open:
         script_contents = open_frames[script_name].code_editor.get("1.0", 'end-1c')
@@ -336,24 +339,18 @@ def save_script(data, script_path, *a):
             script_contents = script_contents[:-dead_zone]
 
         # print(script_contents)
-        try:
-            with open(script_path, 'w+', encoding='utf-8', errors='ignore') as f:
-                f.write(script_contents)
-        except Exception as e:
-            print(e)
-
-        # If telepath data, upload and import remotely
-        if data['_telepath_data'] and script_path.startswith(data['telepath_script_dir']):
-            telepath_data = data['_telepath_data']
-            url = f"http://{telepath_data['host']}:{telepath_data['port']}"
-            data = requests.post(f'{url}/main/upload_file?is_dir=False', headers=telepath_data['headers'], files={'file': open(script_path, 'rb')}).json()
-
-            # If the file was uploaded, import the script
-            if 'path' in data:
-                requests.post(f'{url}/ScriptManager/import_script', headers=telepath_data['headers'], json={'script': data['path']})
-
-        # Upload data to remote if telepath
-        # create an endpoint to sync script data with host
+        # Send a request to save over IPC to the main process
+        if ipc:
+            message = {
+                'command': 'ipc_save_script',
+                'args': {
+                    'script_path': script_path,
+                    'script_contents': script_contents,
+                    'telepath_script_dir': data['telepath_script_dir'],
+                    'telepath_data': telepath_map[script_path]
+                }
+            }
+            ipc.send(message)
 
 
 # Changes font size in editor
@@ -383,10 +380,13 @@ def change_font_size(direction):
 
 
 # Init Tk window
-def create_root(data, wdata, name=''):
-    global window, close_window, currently_open, font_size, default_font_size, start_size, control
+# wdata for 'window_list', tdata for 'telepath_map'
+ipc = None
+def create_root(data, wdata, tdata, connection: multiprocessing.connection.Connection = None):
+    global ipc, window, close_window, currently_open, font_size, default_font_size, start_size, control
 
     if not window:
+        ipc = connection
 
         # Increase font size on macOS
         if data['os_name'] == 'macos':
@@ -525,7 +525,7 @@ proc ::tabdrag::move {win x y} {
 
         # When window is closed
         def on_closing():
-            global close_window, currently_open
+            global ipc, close_window, currently_open
             close_window = True
             autosave()
 
@@ -537,6 +537,9 @@ proc ::tabdrag::move {win x y} {
                 'font-size': font_size
             }
             window.destroy()
+
+            if ipc:
+                ipc.send({'command': 'ipc_close'})
 
         window.protocol("WM_DELETE_WINDOW", on_closing)
         window.close = on_closing
@@ -695,12 +698,13 @@ proc ::tabdrag::move {win x y} {
             window.attributes('-topmost', 0)
 
         def check_new():
-            global close_window, currently_open, open_frames
+            global close_window, currently_open, telepath_map, open_frames
             if close_window:
                 return
 
             try:
                 script_path = wdata.value
+                telepath_map[script_path] = json.loads(tdata.value) if tdata.value else None
             except BrokenPipeError:
                 return
 
@@ -708,10 +712,12 @@ proc ::tabdrag::move {win x y} {
                 launch_window(script_path, data)
                 currently_open.append(script_path)
                 wdata.value = ''
+                tdata.value = ''
                 bring_to_front()
             elif script_path and script_path in currently_open:
                 window.root.select(open_frames[os.path.basename(script_path)])
                 wdata.value = ''
+                tdata.value = ''
                 bring_to_front()
 
             save_window_pos()
@@ -2132,6 +2138,7 @@ def launch_window(path: str, data: dict, *a):
                         print(e)
                 else:
                     window.root.tab(root, image='')
+                    check_telepath()
                     self.error_label.place_forget()
                     self.error_label.configure(text="")
                 self._line_numbers.redraw()
@@ -3367,6 +3374,9 @@ def launch_window(path: str, data: dict, *a):
                     elif val == "@player.on_death":
                         code_editor.insert(f'{line_num}.0', f"@player.on_death(player, enemy, message):")
 
+                    elif val == "@player.on_achieve":
+                        code_editor.insert(f'{line_num}.0', f"@player.on_achieve(player, advancement):")
+
                     elif val == "@server.on_loop":
                         code_editor.insert(f'{line_num}.0', f"@server.on_loop(interval=1, unit='minute'):")
 
@@ -3375,6 +3385,9 @@ def launch_window(path: str, data: dict, *a):
 
                     elif val == "@server.on_stop":
                         code_editor.insert(f'{line_num}.0', f"@server.on_stop(data, delay=0):")
+
+                    else:
+                        code_editor.insert(f'{line_num}.0', f"{val}():")
 
                     def newline(*a):
                         code_editor.insert(code_editor.index(INSERT), f'\n{tab_str}')
@@ -3630,6 +3643,15 @@ def launch_window(path: str, data: dict, *a):
                 root.focus_force()
         window.root.bind("<<NotebookTabChanged>>", lambda *_: check_focus(), add=True)
 
+        def check_telepath(*_):
+            global telepath_icon
+
+            if telepath_map[path] and path.startswith(data['telepath_script_dir']):
+                if not telepath_icon:
+                    telepath_icon = ImageTk.PhotoImage(Image.open(os.path.join(data['gui_assets'], 'telepath-icon.png')))
+
+                window.root.tab(root, image=telepath_icon, compound='left')
+
 
         # Add tab to window
         window.after(0, lambda *_: window.root.add(root, text=os.path.basename(path)))
@@ -3638,24 +3660,96 @@ def launch_window(path: str, data: dict, *a):
 
 
 wlist = None
-def edit_script(script_path: str, data: dict, *args):
-    global process, wlist
+tmdata = None
+def edit_script(script_path: str, data: dict, ipc_functions: dict, *args):
+    global process, wlist, tmdata
 
     if script_path:
+
+        # Establish if the IDE is running
         try:
             running = process.is_alive()
         except:
             running = False
 
+        # If not, start a new process/IPC pipe
         if not running:
+
+            # Create  and start listener
+            parent_conn, child_conn = multiprocessing.Pipe()
+            ipc_start_listener(parent_conn, ipc_functions)
+
+            # Initialize process
             mgr = multiprocessing.Manager()
             wlist = mgr.Value('window_list', '')
-            process = multiprocessing.Process(target=functools.partial(create_root, data), args=(wlist, 'window_list'), daemon=True)
+            tmdata = mgr.Value('telepath_map_data', '')
+            process = multiprocessing.Process(
+                target=functools.partial(create_root, data),
+                args=(wlist, tmdata, child_conn),
+                daemon=True
+            )
             process.start()
 
         wlist.value = script_path
+        tmdata.value = json.dumps(data['_telepath_data'])
 
 
+# IPC functions (these run in the context of the main process, and "data" is passed in)
+def ipc_start_listener(connection: multiprocessing.connection.Connection, ipc_functions: dict):
+    print("[amscript IDE] IPC connection opened")
+
+    # Process child commands and execute parent functions
+    def process_command(data: dict):
+        command = data['command']
+
+        if command == 'ipc_save_script' and data['args']:
+            ipc_save_script(**data['args'], ipc_functions=ipc_functions)
+
+    # Background thread to listen for IPC commands while the IDE is open
+    def listener():
+        try:
+            while True:
+                if connection.poll():
+                    data = connection.recv()
+
+                    if data['command'] == 'ipc_close':
+                        break
+
+                    process_command(data)
+
+        except EOFError:
+            pass
+
+        # Close the IPC connection, as the child is closed
+        print("[amscript IDE] IPC connection closed")
+        connection.close()
+
+    Timer(0, listener).start()
+def ipc_save_script(script_path: str, script_contents: str, ipc_functions: dict, telepath_script_dir: str = None, telepath_data: dict = None):
+
+    # Write to disk
+    try:
+        with open(script_path, 'w+', encoding='utf-8', errors='ignore') as f:
+            f.write(script_contents)
+    except Exception as e:
+        print(e)
+
+
+    # If telepath data, upload and import remotely
+    if telepath_data and script_path.startswith(telepath_script_dir):
+        host = telepath_data['host']
+        port = telepath_data['port']
+        url = f"http://{host}:{port}"
+        data = ipc_functions['telepath_upload'](telepath_data, script_path)
+
+        # If the file was uploaded, import the script
+        if 'path' in data:
+            session = ipc_functions['api_manager']._get_session(host, port)
+            request = lambda: session.post(f'{url}/ScriptManager/import_script', headers=ipc_functions['api_manager']._get_headers(host), json={'script': data['path']})
+            data = ipc_functions['api_manager']._retry_wrapper(host, port, request)
+
+
+# Change DPI scaling context on Windows
 if os.name == 'nt':
     from ctypes import windll, c_int64
 

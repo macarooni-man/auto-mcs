@@ -23,6 +23,15 @@ Accessed via the global variable `server`
 
 
 
+### server.launch()
+
+Immediately starts the server if it's not running.
+
+
+<br>
+
+
+
 ### server.stop()
 
 Immediately stops the server.
@@ -1112,6 +1121,23 @@ Fired upon process termination by auto-mcs, not when `/stop` or a crash is logge
     server.log("Server has stopped!")
 ```
 
+This event is also fired when the amscript engine is restarted, either through the UI or `!ams reload`.
+
+Since engine restarts create a new memory space, this is useful when an asyncronous task such as a GUI window or another server is running in the background and that process needs to be closed when scripts are reloaded or the server is stopped. There are no parameters for this event.
+
+This example demonstrates how to implement a Tkinter UI that will close and re-open when the engine is restarted:
+
+```
+import tkinter as tk
+window = tk.Tk()
+
+@server.on_start(data, delay=0):
+    window.mainloop()
+
+@server.on_stop():
+    window.destroy()
+```
+
 <br>
 
 
@@ -1218,6 +1244,27 @@ Fired upon player dying to the environment or another player.
         acl.ban_player(enemy)
     else:
         player.log(f"You should really be more careful {player}!")
+```
+
+<br>
+
+
+
+### @player.on_achieve
+
+Fired upon a player earning an advancement.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
+| `advancement*` | `str` of the advancement title. List of all advancement titles can be found [here](https://minecraft.fandom.com/wiki/Advancement#List_of_advancements) |
+| `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
+
+```
+@player.on_achieve(player, advancement):
+    if advancement == 'Stone Age':
+        player.log_success(f'Seriously {player}?? Pick on someone your own size!')
 ```
 
 <br>

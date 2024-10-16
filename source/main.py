@@ -28,6 +28,10 @@ def mainLoop():
     # Instantiate Server Manager
     constants.server_manager = ServerManager()
 
+    # If no local servers and Telepath connections, attempt to check those first
+    if not constants.server_list_lower and constants.server_manager.telepath_servers:
+        constants.server_manager.check_telepath_servers()
+
 
 
     # Only start the GUI if not headless

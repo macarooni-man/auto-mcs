@@ -602,7 +602,6 @@ class ServerObject():
                         content = message.split('>', 1)[1].strip()
                         event = functools.partial(self.script_object.message_event, {'user': user, 'content': content})
 
-
                 # Server message log
                 elif message.strip().startswith("[Server]"):
                     type_label = "CHAT"
@@ -715,6 +714,16 @@ class ServerObject():
                     type_color = (0.953, 0.929, 0.38, 1)
 
 
+                # Player achievement/advancement log
+                elif " has made the advancement " in message:
+                    #  2:50:17 PM   [INFO] >   KChicken has made the advancement [Hot Stuff]
+                    type_label = "CHAT"
+                    type_color = (0.439, 0.839, 1, 1)
+                    user = message.split(' ', 1)[0].strip()
+                    advancement = message.split(' [')[1].strip(' ]')
+                    event = functools.partial(self.script_object.achieve_event, {'user': user, 'advancement': advancement})
+
+
                 # Other message events
                 elif "WARN" in line:
                     type_label = "WARN"
@@ -775,7 +784,8 @@ class ServerObject():
                             ' died',
                             'impaled by',
                             'was killed',
-                            'left the confines of this world'
+                            'left the confines of this world',
+                            'blew up'
                         ]
                         include = False
 
@@ -1279,13 +1289,11 @@ class ServerObject():
         try:
             if self.script_object.enabled:
 
-                crash_data = ''
+                crash_data = None
                 if self.crash_log:
                     with open(self.crash_log, 'r') as f:
                         crash_data = f.read()
-
-                self.script_object.shutdown_event({'date': dt.now(), 'crash': crash_data})
-                self.script_object.deconstruct()
+                self.script_object.deconstruct(crash_data=crash_data)
             del self.script_object
             self.script_object = None
 
@@ -1518,6 +1526,12 @@ class ServerObject():
         self.config_file.set("general", "customFlags", flags.strip())
         self.custom_flags = flags.strip()
         constants.server_config(self.name, self.config_file)
+
+    # Updates the server icon, deletes if "new_icon" is empty
+    def update_icon(self, new_icon: str or False):
+        data = constants.update_server_icon(self.name, new_icon)
+        self.server_icon = constants.server_path(self.name, 'server-icon.png')
+        return data
 
     # Renames server
     def rename(self, new_name: str):
@@ -1811,7 +1825,7 @@ class ServerObject():
                     return ""
 
     # Retrieves IDE suggestions from internal objects
-    def retrieve_suggestions(self):
+    def _retrieve_suggestions(self):
         script_obj = constants.script_obj
 
         # Gets list of functions and attributes
