@@ -10668,7 +10668,7 @@ class CreateServerTypeScreen(MenuBackground):
         row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('experimental mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_1.add_widget(row_top)
         self.content_layout_1.add_widget(row_bottom)
@@ -10678,14 +10678,19 @@ class CreateServerTypeScreen(MenuBackground):
         self.content_layout_2 = FloatLayout()
         constants.hide_widget(self.content_layout_2)
         row_top = BoxLayout()
-        row_top.pos_hint = {"center_y": 0.52, "center_x": 0.5}
-        row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
+        row_bottom = BoxLayout()
+        row_top.pos_hint = {"center_y": 0.66, "center_x": 0.5}
+        row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
+        row_top.size_hint_max_x = dp(1000)
+        row_bottom.size_hint_max_x = dp(650)
         row_top.orientation = row_bottom.orientation = "horizontal"
+        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
-
+        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_2.add_widget(row_top)
+        self.content_layout_2.add_widget(row_bottom)
 
 
         for button in buttons:
@@ -24513,7 +24518,7 @@ class MigrateServerTypeScreen(MenuBackground):
         row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('experimental mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_1.add_widget(row_top)
         self.content_layout_1.add_widget(row_bottom)
@@ -24523,14 +24528,19 @@ class MigrateServerTypeScreen(MenuBackground):
         self.content_layout_2 = FloatLayout()
         constants.hide_widget(self.content_layout_2)
         row_top = BoxLayout()
-        row_top.pos_hint = {"center_y": 0.52, "center_x": 0.5}
-        row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
+        row_bottom = BoxLayout()
+        row_top.pos_hint = {"center_y": 0.66, "center_x": 0.5}
+        row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
+        row_top.size_hint_max_x = dp(1000)
+        row_bottom.size_hint_max_x = dp(650)
         row_top.orientation = row_bottom.orientation = "horizontal"
+        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
-
+        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_2.add_widget(row_top)
+        self.content_layout_2.add_widget(row_bottom)
 
 
         for button in buttons:
