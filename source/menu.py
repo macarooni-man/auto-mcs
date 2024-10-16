@@ -167,12 +167,14 @@ class DiscordPresenceManager():
                         details = f"Running '{server_obj.name}'"
                         if server_obj._telepath_data:
                             details = f"Telepath - running '{server_obj.name}'"
-                            current = len([p for p in server_obj._telepath_run_data()['player-list'].values() if p['logged-in']])
-                        else:
-                            current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
                         state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
 
                         # Custom arguments for customization
+                        if 'player-list' in server_obj.run_data:
+                            current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
+                        else:
+                            current = 0
+
                         if current:
                             args = {'party_size': [int(current), int(server_obj.server_properties['max-players'])]}
                         else:
