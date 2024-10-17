@@ -446,7 +446,14 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                         # If mcmod.info is absent, check mods.toml/neoforge.mods.toml
                         if not addon_name:
                             try:
-                                jar_file.extract('META-INF/mods.toml', addon_tmp)
+                                try:
+                                    jar_file.extract('META-INF/mods.toml', addon_tmp)
+                                except:
+                                    pass
+                                try:
+                                    jar_file.extract('META-INF/neoforge.mods.toml', addon_tmp)
+                                except:
+                                    pass
                                 for file in glob(os.path.join(addon_tmp, 'META-INF', '*mods.toml')):
                                     with open(file, 'r') as toml:
                                         addon_type = server_type
@@ -1201,9 +1208,9 @@ def dump_config(server_name: str):
 
 # Returns chat reporting addon if it can be found
 def disable_report_addon(server_properties):
-    server_type = server_properties['type'].replace('craft','').replace('purpur', 'paper')
+    server_type = server_properties['type'].replace('craft', '').replace('purpur', 'paper')
 
-    item = None
+    addon = None
 
     if constants.server_type(server_type) == 'bukkit':
         url = "https://modrinth.com/mod/freedomchat"
@@ -1216,31 +1223,27 @@ def disable_report_addon(server_properties):
             html = constants.get_url(f"{url}/versions?l={server_type}")
             item = html.find('div', class_='version-button')
 
+        if item:
+            server_type = constants.server_type(server_properties['type'])
+
+            name = html.find('h1', class_='title').get_text()
+            author = [x.div.p.text for x in html.find_all('a', class_='team-member') if 'owner' in x.get_text().lower()][0]
+            subtitle = html.find('p', class_='description').get_text()
+            link = item.a.get('href')
+            file_name = name.lower().replace(" ", "-")
+
+            item = AddonWebObject(name, server_type, author, subtitle, url, file_name, None)
+            item.download_url = link
+
+            addon = item
+
     else:
-        url = "https://modrinth.com/mod/no-chat-reports"
+        # Geyser
+        results = search_addons('no-chat-reports', server_properties)
+        if results:
+            addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
 
-        # Find addon information
-        html = constants.get_url(f"{url}/versions?g={server_properties['version']}&l={server_type}")
-        item = html.find('div', class_='version-button')
-
-        if not item:
-            html = constants.get_url(f"{url}/versions?l={server_type}")
-            item = html.find('div', class_='version-button')
-
-
-    if item:
-        server_type = constants.server_type(server_properties['type'])
-
-        name = html.find('h1', class_='title').get_text()
-        author = [x.div.p.text for x in html.find_all('a', class_='team-member') if 'owner' in x.get_text().lower()][0]
-        subtitle = html.find('p', class_='description').get_text()
-        link = item.a.get('href')
-        file_name = name.lower().replace(" ", "-")
-
-        item = AddonWebObject(name, server_type, author, subtitle, url, file_name, None)
-        item.download_url = link
-
-    return item
+    return addon
 
 
 # Returns list of AddonWebObjects for Geyser
