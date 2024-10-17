@@ -1,6 +1,6 @@
 build-tools/.DS_Store
 build-tools/dist
-build-tools/venv
+build-tools/venv*
 source/gui-assets/live
 source/__pycache__
 source/*.spec
