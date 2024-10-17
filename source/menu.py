@@ -5167,7 +5167,7 @@ class NextButton(HoverButton):
         for child in self.parent.parent.children:
             if "ServerVersionInput" in child.__class__.__name__:
                 # Reset geyser_selected if version is less than 1.13.2
-                if constants.version_check(child.text, "<", "1.13.2") or constants.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric']:
+                if constants.version_check(child.text, "<", "1.13.2") or constants.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
                     constants.new_server_info['server_settings']['geyser_support'] = False
 
                 # Reset gamerule settings if version is less than 1.4.2
@@ -7114,7 +7114,7 @@ class PopupFile(BigPopupWindow):
 class PopupAddon(BigPopupWindow):
     def body_button_click(self):
         if self.addon_object:
-            if self.addon_object.type in ["forge", "fabric", "modpack"]:
+            if self.addon_object.type in ["forge", "neoforge", "fabric", "quilt", "modpack"]:
                 url = self.addon_object.url
             else:
                 url = "https://dev.bukkit.org" + self.addon_object.url
@@ -12913,7 +12913,7 @@ class CreateServerOptionsScreen(MenuBackground):
 
         # Geyser switch for bedrock support
         if constants.version_check(constants.new_server_info['version'], ">=", "1.13.2")\
-        and constants.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric']:
+        and constants.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="bedrock support (geyser)"))
             sub_layout.add_widget(toggle_button('geyser_support', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['geyser_support']))
@@ -14185,11 +14185,11 @@ class CreateServerProgressScreen(ProgressScreen):
         needs_installed = False
 
         if constants.new_server_info['type'] != 'vanilla':
-            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] == 'fabric')
-            needs_installed = constants.new_server_info['type'] in ['forge', 'fabric']
+            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] in ['fabric', 'quilt'])
+            needs_installed = constants.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
-            function_list.append((f'Installing ${constants.new_server_info["type"].title()}$', functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${constants.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
 
         if download_addons:
             function_list.append(('Add-oning add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
@@ -24149,7 +24149,7 @@ class ServerSettingsScreen(MenuBackground):
 
         # Geyser switch for bedrock support
         sub_layout = ScrollItem()
-        disabled = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric'])
+        disabled = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
         hint_text = "geyser (unsupported server)" if disabled else "bedrock support (geyser)"
         if not constants.app_online:
             disabled = True
@@ -24740,11 +24740,11 @@ class MigrateServerProgressScreen(ProgressScreen):
         needs_installed = False
 
         if constants.new_server_info['type'] != 'vanilla':
-            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] == 'fabric')
-            needs_installed = constants.new_server_info['type'] in ['forge', 'fabric']
+            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] in ['fabric', 'quilt'])
+            needs_installed = constants.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
-            function_list.append((f'Installing {constants.new_server_info["type"].title()}', functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${constants.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
 
         if download_addons:
             function_list.append((f'{desc_text} add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))
