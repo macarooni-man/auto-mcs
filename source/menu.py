@@ -24859,6 +24859,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
 # ============================================= Telepath Utilities =====================================================
 # <editor-fold desc="Telepath Utilities">
 
+# Telepath Instance Manager
 class InstanceButton(HoverButton):
 
     class NameInput(TextInput):
@@ -25388,6 +25389,466 @@ class TelepathInstanceScreen(MenuBackground):
         # Automatically generate results on page load
         self.gen_search_results(constants.server_manager.telepath_servers)
 
+
+
+# Telepath Permission Manager
+# Add custom effects to default groups
+class GroupButton(HoverButton):
+    def animate_addon(self, image, color, **kwargs):
+        image_animate = Animation(duration=0.05)
+
+        def f(w):
+            w.background_normal = image
+
+        Animation(color=color, duration=0.06).start(self.title)
+        Animation(color=color, duration=0.06).start(self.subtitle)
+
+        a = Animation(duration=0.0)
+        a.on_complete = functools.partial(f)
+
+        image_animate += a
+
+        image_animate.start(self)
+
+    def resize_self(self, *args):
+
+        # Title and description
+        padding = 2.17
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - 6, self.y + 31)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 1, self.y)
+        self.hover_text.pos = (self.x + (self.size[0] / padding) - 30, self.y + 15)
+
+        # Type Banner
+        if self.disabled_banner:
+            self.disabled_banner.pos_hint = {"center_x": None, "center_y": None}
+            self.disabled_banner.pos = (self.width + self.x - self.disabled_banner.width - 18, self.y + 38.5)
+
+        # Delete button
+        self.delete_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
+        self.delete_layout.pos = (self.pos[0] + self.width - (self.delete_button.width / 1.33), self.pos[1] + 13)
+
+        # Reposition highlight border
+        self.highlight_layout.pos = self.pos
+
+    def highlight(self):
+        def next_frame(*args):
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        Clock.schedule_once(next_frame, 0)
+
+    def __init__(self, group_data, click_function=None, fade_in=0.0, highlight=False, **kwargs):
+        super().__init__(**kwargs)
+
+        self.group = group_data
+        self.border = (-5, -5, -5, -5)
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)]
+        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+        self.size_hint_max = (580, 80)
+        self.id = "addon_button"
+        self.background_normal = os.path.join(constants.gui_assets, f'{self.id}.png')
+        self.background_down = self.background_normal
+        self.disabled_banner = None
+
+
+        # Delete button
+        def delete_hover(*args):
+            def change_color(*args):
+                if self.hovered:
+                    self.hover_text.text = 'REMOVE GROUP'
+                    self.background_normal = os.path.join(constants.gui_assets, "server_button_favorite_hover.png")
+            Clock.schedule_once(change_color, 0.07)
+            Animation.stop_all(self.delete_button)
+            Animation(opacity=1, duration=0.25).start(self.delete_button)
+        def delete_on_leave(*args):
+            def change_color(*args):
+                self.hover_text.text = 'CONFIGURE'
+                if self.hovered:
+                    self.background_normal = os.path.join(constants.gui_assets, f'{self.id}_hover_enabled.png')
+                    self.background_down = self.background_normal
+            Clock.schedule_once(change_color, 0.07)
+            Animation.stop_all(self.delete_button)
+            Animation(opacity=0.65, duration=0.25).start(self.delete_button)
+        def delete_click(*args):
+            # Delete addon and reload list
+            def reprocess_page(*args):
+                permissions = constants.api_manager.permissions
+                permissions.remove_group(self.group.name)
+                group_screen = screen_manager.current_screen
+                new_list = list(permissions.groups.values())
+                group_screen.gen_search_results(new_list, fade_in=True)
+
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_banner,
+                        (1, 0.5, 0.65, 1),
+                        f"'${self.group.name}$' was removed",
+                        "trash-sharp.png",
+                        2.5,
+                        {"center_x": 0.5, "center_y": 0.965}
+                    ), 0.25
+                )
+
+                # Switch pages if page is empty
+                if (len(group_screen.scroll_layout.children) == 0) and (len(new_list) > 0):
+                    group_screen.switch_page("left")
+
+
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_popup,
+                    "warning_query",
+                    f'Remove ${self.group.name}$',
+                    "Do you want to permanently delete this group?\n\nYou'll need to create it again",
+                    (None, functools.partial(reprocess_page))
+                ),
+                0
+            )
+        self.delete_layout = RelativeLayout(opacity=0)
+        self.delete_button = IconButton('', {}, (0, 0), (None, None), 'trash-sharp.png', clickable=True, force_color=[[(0.05, 0.05, 0.1, 1), (0.01, 0.01, 0.01, 1)], 'pink'], anchor='right', click_func=delete_click)
+        self.delete_button.opacity = 0.65
+        self.delete_button.button.bind(on_enter=delete_hover)
+        self.delete_button.button.bind(on_leave=delete_on_leave)
+        self.delete_layout.add_widget(self.delete_button)
+        self.add_widget(self.delete_layout)
+
+
+        # Hover text
+        self.hover_text = Label()
+        self.hover_text.id = 'hover_text'
+        self.hover_text.size_hint = (None, None)
+        self.hover_text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.hover_text.text = 'CONFIGURE'
+        self.hover_text.font_size = sp(23)
+        self.hover_text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["bold"]}.ttf')
+        self.hover_text.color = (0.1, 0.1, 0.1, 1)
+        self.hover_text.halign = "center"
+        self.hover_text.text_size = (self.size_hint_max[0] * 0.94, self.size_hint_max[1])
+        self.hover_text.opacity = 0
+        self.add_widget(self.hover_text)
+
+
+        # Loading stuffs
+        user_count = len(self.group.users)
+        server_count = len(self.group.servers)
+        self.original_subtitle = f'{user_count} user{"s" if user_count != 1 else ""}'
+        self.original_subtitle += f', {server_count} server{"s" if server_count != 1 else ""}'
+        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Title of Group
+        self.title = Label()
+        self.title.__translate__ = False
+        self.title.id = "title"
+        self.title.halign = "left"
+        self.title.color = self.color_id[1]
+        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_size = sp(25)
+        self.title.text_size = (self.size_hint_max[0] * (0.7), self.size_hint_max[1])
+        self.title.shorten = True
+        self.title.markup = True
+        self.title.shorten_from = "right"
+        self.title.max_lines = 1
+        self.title.text = self.group.name.strip('$').title()
+        self.add_widget(self.title)
+
+
+        # Description of Group
+        self.subtitle = Label()
+        self.subtitle.__translate__ = False
+        self.subtitle.id = "subtitle"
+        self.subtitle.halign = "left"
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.font_name = self.original_font
+        self.subtitle.font_size = sp(21)
+        self.default_subtitle_opacity = 0.56
+        self.subtitle.opacity = self.default_subtitle_opacity
+        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.shorten = True
+        self.subtitle.shorten_from = "right"
+        self.subtitle.max_lines = 1
+        self.subtitle.text = self.original_subtitle
+        self.add_widget(self.subtitle)
+
+
+        # Highlight border
+        self.highlight_layout = RelativeLayout()
+        self.highlight_border = Image()
+        self.highlight_border.keep_ratio = False
+        self.highlight_border.allow_stretch = True
+        self.highlight_border.color = constants.brighten_color(self.color_id[1], 0.1)
+        self.highlight_border.opacity = 0
+        self.highlight_border.source = os.path.join(constants.gui_assets, 'server_button_highlight.png')
+        self.highlight_layout.add_widget(self.highlight_border)
+        self.highlight_layout.width = self.size_hint_max[0]
+        self.highlight_layout.height = self.size_hint_max[1]
+        self.add_widget(self.highlight_layout)
+
+        if highlight:
+            self.highlight()
+
+        self.bind(pos=self.resize_self)
+        self.resize_self()
+
+        # If click_function
+        if click_function:
+            self.bind(on_press=click_function)
+
+        # Animate opacity
+        if fade_in > 0:
+            self.opacity = 0
+            self.title.opacity = 0
+
+            Animation(opacity=1, duration=fade_in).start(self)
+            Animation(opacity=1, duration=fade_in).start(self.title)
+            Animation(opacity=0.56, duration=fade_in).start(self.subtitle)
+
+    def on_enter(self, *args):
+        if not self.ignore_hover:
+
+            # Hide disabled banner if it exists
+            if self.disabled_banner:
+                Animation.stop_all(self.disabled_banner)
+                Animation(opacity=0, duration=0.13).start(self.disabled_banner)
+
+            # Fade button to hover state
+            if not self.delete_button.button.hovered:
+                self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}_hover_enabled.png'), color=self.color_id[0], hover_action=True)
+
+            # Show delete button
+            Animation.stop_all(self.delete_layout)
+            Animation(opacity=1, duration=0.13).start(self.delete_layout)
+
+            # Hide text
+            Animation(opacity=0, duration=0.13).start(self.title)
+            Animation(opacity=0, duration=0.13).start(self.subtitle)
+            Animation(opacity=1, duration=0.13).start(self.hover_text)
+
+    def on_leave(self, *args):
+        if not self.ignore_hover:
+
+            # Hide disabled banner if it exists
+            if self.disabled_banner:
+                Animation.stop_all(self.disabled_banner)
+                Animation(opacity=1, duration=0.13).start(self.disabled_banner)
+
+            # Fade button to default state
+            self.animate_addon(image=os.path.join(constants.gui_assets, f'{self.id}.png'), color=self.color_id[1], hover_action=False)
+
+            # Hide delete button
+            Animation.stop_all(self.delete_layout)
+            Animation(opacity=0, duration=0.13).start(self.delete_layout)
+
+            # Show text
+            Animation(opacity=1, duration=0.13).start(self.title)
+            Animation(opacity=self.default_subtitle_opacity, duration=0.13).start(self.subtitle)
+            Animation(opacity=0, duration=0.13).start(self.hover_text)
+
+class TelepathPermissionScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True, *args):
+        default_scroll = 1
+
+        # Update page counter
+        self.last_results = results
+        self.max_pages = (len(results) / self.page_size).__ceil__()
+        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+        self.scroll_layout.clear_widgets()
+
+
+        # Generate header
+        server_count = len(constants.server_manager.telepath_servers)
+        header_content = "Select a group to manage"
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                break
+
+
+        # Show servers if they exist
+        if server_count != 0:
+
+            # Clear and add all ServerButtons
+            for x, group in enumerate(page_list, 1):
+
+                # Activated when server is clicked
+                def view_group(data, *a):
+                    if data['nickname']:
+                        display_name = f"{data['host']} ({data['nickname']})"
+                    else:
+                        display_name = data['nickname']
+
+                    desc = f"Un-pairing this instance will prevent you from accessing it via $Telepath$ until it's paired again.\n\nAre you sure you want to un-pair from '${display_name}$'?"
+
+                    def unpair(*a):
+                        # Log out if possible
+                        if data['host'] in constants.api_manager.jwt_tokens:
+                            constants.api_manager.logout(data['host'], data['port'])
+
+                        constants.server_manager.remove_telepath_server(data)
+                        self.gen_search_results(constants.server_manager.telepath_servers)
+
+                        telepath_banner(f"Un-paired from '${data['host']}$'", False)
+
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_popup,
+                            "warning_query",
+                            f'Un-pair Instance',
+                            desc,
+                            (None, unpair)
+                        ),
+                        0
+                    )
+
+                # Add-on button click function
+                self.scroll_layout.add_widget(
+                    ScrollItem(
+                        widget = GroupButton(
+                            group_data = group,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            click_function = view_group
+                        )
+                    )
+                )
+
+            self.resize_bind()
+
+        # Go back to main menu if they don't
+        else:
+            screen_manager.current = 'TelepathManagerScreen'
+            constants.screen_tree = ['MainMenuScreen']
+            return
+
+        # Animate scrolling
+        def set_scroll(*args):
+            Animation.stop_all(self.scroll_layout.parent.parent)
+            if animate_scroll:
+                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+            else:
+                self.scroll_layout.parent.parent.scroll_y = default_scroll
+        Clock.schedule_once(set_scroll, 0)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.background_color = constants.brighten_color(constants.background_color, -0.09)
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.page_switcher = None
+
+        self.last_results = []
+        self.page_size = 10
+        self.current_page = 0
+        self.max_pages = 0
+        self.anim_speed = 10
+
+        with self.canvas.before:
+            self.color = Color(*self.background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+
+    def generate_menu(self, **kwargs):
+        constants.server_manager.check_telepath_servers()
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.82
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60), color=self.background_color)
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60), color=self.background_color)
+
+        # Generate buttons on page load
+        header_content = "Select a group to manage"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.page_switcher)
+
+        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = "Permission Manager"
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(f'Telepath, {menu_name}', no_background=True))
+
+        self.add_widget(float_layout)
+
+        # Automatically generate results on page load
+        self.gen_search_results(list(constants.api_manager.permissions.groups.values()))
 
 
 
@@ -26281,13 +26742,10 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        # if not constants.app_compiled:
-        #     def open_menu(*a):
-        #         open_server('Beds Rock')
-        #     Clock.schedule_once(open_menu, 0.5)
-        #     def open_menu(*a):
-        #         screen_manager.current = 'ServerPropertiesEditScreen'
-        #     Clock.schedule_once(open_menu, 0.8)
+        if not constants.app_compiled:
+            def open_menu(*a):
+                screen_manager.current = 'TelepathPermissionScreen'
+            Clock.schedule_once(open_menu, 0.8)
 
 
         # Process --launch flag

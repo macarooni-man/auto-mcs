@@ -17,7 +17,6 @@ from datetime import datetime as dt
 from datetime import timezone as tz
 from jwt import InvalidTokenError
 from operator import itemgetter
-from functools import partial
 from copy import deepcopy
 from munch import Munch
 from glob import glob
@@ -144,6 +143,7 @@ class TelepathManager():
         self.auth = AuthHandler()
         self.secret_file = SecretHandler()
         self.logger = AuditLogger()
+        self.permissions = GroupManager(self.secret_file)
 
         # Server side data
         self.current_user = None
@@ -221,7 +221,7 @@ class TelepathManager():
                 self.authenticated_sessions.remove(session)
 
         self.authenticated_sessions.append(new_session)
-        self.secret_file.write(self.authenticated_sessions)
+        self.secret_file.update_sessions(self.authenticated_sessions)
 
         # Eventually add code here to save and reload this from a file
 
@@ -231,18 +231,18 @@ class TelepathManager():
                 self.authenticated_sessions.remove(session)
                 break
 
-        self.secret_file.write(self.authenticated_sessions)
+        self.secret_file.update_sessions(self.authenticated_sessions)
 
     def _read_session(self):
         self.authenticated_sessions = self.secret_file.read()
 
         # Fix borked file if it's saved as a dict
-        if not self.authenticated_sessions and isinstance(self.authenticated_sessions, dict):
+        if not self.authenticated_sessions['authenticated'] and isinstance(self.authenticated_sessions['authenticated'], dict):
             self.authenticated_sessions = []
-            self.secret_file.write([])
+            self.secret_file.update_sessions()
 
     def _reset_session(self):
-        self.secret_file.write([])
+        self.secret_file.update_sessions()
         self.authenticated_sessions = []
         return []
 
@@ -815,7 +815,15 @@ class SecretHandler():
         key = hashlib.sha256(UNIQUE_ID.encode()).digest()
         self.fernet = Fernet(base64.urlsafe_b64encode(key).decode('utf-8'))
 
+    @staticmethod
+    def _default_structure():
+        return {
+            'authenticated': [],
+            'groups': {'$admin': AdminGroup()._to_json(), '$default': DefaultGroup()._to_json()}
+        }
+
     def _encrypt(self, data: str):
+        print(data)
         return self.fernet.encrypt(data.encode('utf-8'))
 
     def _decrypt(self, data: bytes):
@@ -829,15 +837,26 @@ class SecretHandler():
     def read(self):
         if os.path.exists(self.file):
             with open(self.file, 'rb') as f:
-                content = f.read()
-                decrypted = self._decrypt(content)
+                decrypted = self._decrypt(f.read())
                 try:
-                    return json.loads(decrypted)
+                    data = json.loads(decrypted)
+
+                    # Convert data to new type
+                    if isinstance(data, list):
+                        return_data = self._default_structure()
+                        return_data['authenticated'] = data
+                        return return_data
+
+                    return data
+
                 except:
                     pass
-        return []
+        return self._default_structure()
 
-    def write(self, data: list):
+    def write(self, data: dict = None):
+        if not data:
+            data = self._default_structure()
+
         if not os.path.exists(self.file):
             constants.folder_check(constants.telepathDir)
 
@@ -848,6 +867,116 @@ class SecretHandler():
 
         with open(self.file, 'wb') as f:
             f.write(encrypted)
+
+    def update_sessions(self, sessions: list = None):
+        if not sessions:
+            sessions = self._default_structure()['authenticated']
+
+        current_data = self.read()
+        current_data['authenticated'] = sessions
+        self.write(current_data)
+
+    def update_groups(self, groups: dict = None):
+        if not groups:
+            groups = self._default_structure()['groups']
+
+        current_data = self.read()
+        current_data['groups'] = groups
+        self.write(current_data)
+
+
+# Handles Telepath groups
+class Group():
+    def _to_json(self):
+        return {
+            'name': self.name,
+            'users': self.users,
+            'servers': self.servers
+        }
+
+    def __init__(self, name: str, data: dict = None):
+        self.name = name
+        self.users = []
+        self.servers = []
+
+        if data:
+            if 'users' in data:
+                self.users = data['users']
+            if 'servers' in data:
+                self.servers = data['servers']
+
+    def add_user(self, session: dict):
+        user = session['id']
+        if user not in self.users:
+            self.users.append(user)
+        return user in self.users
+
+    def remove_user(self, session: dict):
+        user = session['id']
+        if user in self.users:
+            self.users.remove(user)
+        return user not in self.users
+
+    def add_server(self, server: str):
+        if server not in self.servers:
+            self.servers.append(server)
+        return server in self.servers
+
+    def remove_server(self, server: str):
+        if server in self.servers:
+            self.servers.remove(server)
+        return server not in self.servers
+class AdminGroup(Group):
+    def _to_json(self):
+        return {
+            'name': self.name,
+            'users': self.users
+        }
+    def __init__(self, data: dict = None):
+        super().__init__('$admin', data)
+        self.servers = constants.generate_server_list()
+class DefaultGroup(Group):
+    def __init__(self, data: dict = None):
+        super().__init__('$default', data)
+
+class GroupManager():
+
+    def __init__(self, secret_file: SecretHandler):
+        self.secret_file = secret_file
+        self.groups = self.secret_file._default_structure()['groups']
+        self._read_groups()
+
+    # Reads groups from secrets file
+    def _read_groups(self):
+        for name, data in self.secret_file.read()['groups'].items():
+
+            if name == '$admin':
+                self.groups['$admin'] = AdminGroup(data)
+
+            elif name == '$default':
+                self.groups['$default'] = DefaultGroup(data)
+
+            else:
+                self.groups[name] = Group(name, data)
+
+        return self.groups
+
+    # Writes groups from secrets file
+    def _write_groups(self):
+        self.secret_file.update_groups({name: group._to_json() for name, group in self.groups.items()})
+
+    # Creates a new group
+    def add_group(self, name: str):
+        self.groups[name] = Group(name)
+        self._write_groups()
+        return self.groups[name]
+
+    # Removes an existing group
+    def remove_group(self, name: str):
+        if name in self.groups and not name.startswith('$'):
+            del self.groups[name]
+            self._write_groups()
+        return name not in self.groups
 
 class AuditLogger():
     def __init__(self):
