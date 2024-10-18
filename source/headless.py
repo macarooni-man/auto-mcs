@@ -168,7 +168,7 @@ def manage_server(name: str, action: str):
         update_console(f"(2/5) Downloading 'server.jar'")
         constants.download_jar()
 
-        update_console(f"(3/5) Installing '{name}'")
+        update_console(f"(3/5) Installing {constants.new_server_info['type'].title().replace('forge','Forge')}")
         constants.install_server()
 
         update_console(f"(4/5) Applying server configuration")
