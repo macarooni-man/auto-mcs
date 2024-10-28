@@ -2936,10 +2936,10 @@ def iter_addons(progress_func=None, update=False, telepath=False):
             all_addons.append(fabric_api)
 
     # Install QSL alongside Quilt
-    if new_server_info['type'] == 'quilt':
-        quilt_api = addons.find_addon('qsl', new_server_info)
-        if quilt_api:
-            all_addons.append(quilt_api)
+    # if new_server_info['type'] == 'quilt':
+    #     quilt_api = addons.find_addon('qsl', new_server_info)
+    #     if quilt_api:
+    #         all_addons.append(quilt_api)
 
 
     addon_count = len(all_addons)
@@ -5125,8 +5125,14 @@ def server_properties(server_name: str, write_object=None):
             file_contents = ""
 
             for key, value in write_object.items():
+
+                # Force boolean values
                 if str(value).lower().strip() in ['true', 'false'] and str(key) not in force_strings:
                     value = str(value).lower().strip()
+
+                # Force strings to be strings
+                elif str(key) in force_strings:
+                    value = str(value).strip()
 
                 file_contents += f"{key}{'' if key.startswith('#') else ('=' + str(value))}\n"
 
@@ -5154,6 +5160,10 @@ def server_properties(server_name: str, write_object=None):
                             config[line_object[0].strip()] = True
                         elif (line_object[1].strip().lower() == 'false') and (line_object[0].strip() not in force_strings):
                             config[line_object[0].strip()] = False
+
+                        # Force strings to be strings
+                        elif line_object[0].strip() in force_strings:
+                            config[line_object[0].strip()] = str(line_object[1].strip())
 
                         # Check for integers
                         else:

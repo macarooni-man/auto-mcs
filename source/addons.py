@@ -350,6 +350,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         # First, check if plugin is cached
         hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
         hash_data = str(hash_data)[:8]
+
         if hash_data in constants.addon_cache.keys():
             cached = constants.addon_cache[hash_data]
             addon_name = cached['name']
@@ -485,8 +486,20 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                     # Check if addon is actually a fabric mod
                     elif server_type in ["fabric", "quilt"]:
                         try:
-                            jar_file.extract(f'{server_type}.mod.json', addon_tmp)
-                            with open(os.path.join(addon_tmp, f'{server_type}.mod.json'), 'r') as mod:
+                            try:
+                                file_path = os.path.join(addon_tmp, 'quilt.mod.json')
+                                jar_file.extract('quilt.mod.json', addon_tmp)
+                            except:
+                                pass
+
+                            try:
+                                if not os.path.isfile(file_path):
+                                    file_path = os.path.join(addon_tmp, 'fabric.mod.json')
+                                    jar_file.extract('fabric.mod.json', addon_tmp)
+                            except:
+                                pass
+
+                            with open(file_path, 'r') as mod:
                                 file_contents = json.loads(mod.read())
 
                                 # Quilt mods
@@ -630,7 +643,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
 def search_addons(query: str, server_properties, *args):
 
     # Manually weighted search results
-    prioritized = ("worldedit for bukkit", "vault", "essentials", "essentialsx", "worldguard", "anticheat", "zombie_striker_dev", "sleakes", "sk89q", "permissionsex", "multiverse-core", "shopkeepers")
+    prioritized = ("fabric-api", "worldedit for bukkit", "vault", "essentials", "essentialsx", "worldguard", "anticheat", "zombie_striker_dev", "sleakes", "sk89q", "permissionsex", "multiverse-core", "shopkeepers")
 
     # filter-sort=5 is filtered by number of downloads
     search_urls = {
@@ -719,6 +732,10 @@ def search_addons(query: str, server_properties, *args):
         url = f'https://api.modrinth.com/v2/search?facets=[["categories:{server_type}"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
         results = []
         page_content = constants.get_url(url, return_response=True).json()
+
+        if server_type == 'quilt':
+            url = f'https://api.modrinth.com/v2/search?facets=[["categories:fabric"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
+            page_content['hits'].extend(constants.get_url(url, return_response=True).json()['hits'])
 
         for mod in page_content['hits']:
             name = mod['title']
@@ -933,6 +950,11 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
         # Iterate through every page until a match is found
         file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
         page_content = constants.get_url(file_link, return_response=True).json()
+
+        # Workaround for Fabric mods on Quilt
+        if not page_content and addon.type == 'quilt':
+            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["fabric"]'
+            page_content = constants.get_url(file_link, return_response=True).json()
 
         for data in page_content:
             files = data['files']
@@ -1242,7 +1264,7 @@ def disable_report_addon(server_properties):
 
             addon = item
 
-    else:
+    elif constants.server_type(server_type) != 'quilt':
         # Geyser
         results = search_addons('no-chat-reports', server_properties)
         if results:
