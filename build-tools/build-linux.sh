@@ -93,9 +93,9 @@ if [ $errorlevel -ne 0 ]; then
 
 
 	# Finally, download and compile Python from source
-    echo Installing Python 3.9
+	echo Installing Python 3.9
 
-    export CPPFLAGS="-I$ssl_path/include"
+	export CPPFLAGS="-I$ssl_path/include"
 	export LDFLAGS="-L$ssl_path/lib"
 
 	cd /tmp/
