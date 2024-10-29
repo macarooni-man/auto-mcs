@@ -65,7 +65,7 @@ if [ $errorlevel -ne 0 ]; then
 	cd openssl-1.1.1g
 
 	mkdir -p $ssl_path/lib
-	./config --prefix=$ssl_path --openssldir=$ssl_path no-ssl2 LDFLAGS="-L $ssl_path/lib -Wl,-rpath,$sslpath/lib"
+	./config --prefix=$ssl_path --openssldir=$ssl_path no-ssl2 LDFLAGS="-L $ssl_path/lib -Wl,-rpath,$ssl_path/lib"
 	make
 	make install
 
@@ -94,6 +94,9 @@ if [ $errorlevel -ne 0 ]; then
 
 	# Finally, download and compile Python from source
     echo Installing Python 3.9
+
+    export CPPFLAGS="-I$ssl_path/include"
+	export LDFLAGS="-L$ssl_path/lib"
 
 	cd /tmp/
 	wget https://www.python.org/ftp/python/3.9.18/Python-3.9.18.tgz
