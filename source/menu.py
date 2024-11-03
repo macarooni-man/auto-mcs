@@ -14884,7 +14884,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
             constants.init_update()
             constants.new_server_info['type'] = server_obj.type
             constants.new_server_info['version'] = constants.latestMC[server_obj.type]
-            if server_obj.type in ['forge', 'paper']:
+            if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
                 constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
             screen_manager.current = 'MigrateServerProgressScreen'
             screen_manager.current_screen.page_contents['launch'] = launch
@@ -14933,16 +14933,57 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
                 1
             )
 
-
     remote_obj = constants.api_manager.request(
         endpoint=f'/main/open_remote_server?name={constants.quote(server_name)}',
         host=instance['host'],
         port=instance['port'],
         args={'none': None}
     )
-    telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
-    constants.server_manager._init_telepathy(telepath_data)
-    Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
+
+    if remote_obj:
+        telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
+        constants.server_manager._init_telepathy(telepath_data)
+        server_obj = constants.server_manager.current_server
+        update_list = constants.get_remote_var('update_list', telepath_data)
+
+        needs_update = False
+        try:
+            if update_list:
+                needs_update = update_list[server_obj.name]['needsUpdate'] == 'true'
+        except:
+            pass
+
+        # Automatically update if available
+        if server_obj.running:
+            ignore_update = True
+        if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space(telepath_data=server_obj._telepath_data):
+            while not server_obj.addon:
+                time.sleep(0.05)
+
+            if server_obj.is_modpack == 'mrpack':
+                if update_list[server_obj.name]['updateUrl']:
+                    constants.import_data = {
+                        'name': server_obj.name,
+                        'url': update_list[server_obj.name]['updateUrl']
+                    }
+                    constants.safe_delete(constants.tempDir)
+                    screen_manager.current = 'UpdateModpackProgressScreen'
+                    screen_manager.current_screen.page_contents['launch'] = launch
+
+            else:
+                constants.new_server_init()
+                constants.init_update()
+                constants.new_server_info['type'] = server_obj.type
+                constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+                if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
+                    constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                screen_manager.current = 'MigrateServerProgressScreen'
+                screen_manager.current_screen.page_contents['launch'] = launch
+
+        else:
+            telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
+            constants.server_manager._init_telepathy(telepath_data)
+            Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
 
     return remote_obj
 
@@ -15886,7 +15927,7 @@ class ServerManagerScreen(MenuBackground):
                         if not selected_button.telepath_data:
                             open_server(server.name, ignore_update=False)
                         else:
-                            open_remote_server(selected_button.telepath_data, server.name)
+                            open_remote_server(selected_button.telepath_data, server.name, ignore_update=False)
 
                     # Favorite
                     elif selected_button.last_touch.button == "middle":
