@@ -1356,7 +1356,7 @@ class ServerObject():
         # Iterate over self and children to find Java process
         try:
             parent = psutil.Process(self.run_data['process'].pid)
-        except KeyError:
+        except:
             return False
         sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
 

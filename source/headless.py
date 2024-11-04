@@ -233,6 +233,13 @@ def manage_server(name: str, action: str):
             func_wrapper(server_obj.stop)
             return return_log([("normal", "Stopped "), ("parameter", name)])
 
+        elif action == 'kill':
+            if not server_obj.running:
+                return [('parameter', name), ('info', ' is not running')], 'fail'
+
+            func_wrapper(server_obj.terminate)
+            return return_log([("normal", "Terminated "), ("parameter", name)])
+
         elif action == 'restart':
             if server_obj.running:
                 func_wrapper(server_obj.restart)
@@ -754,6 +761,11 @@ command_data = {
                 'help': 'stops a server by name',
                 'one-arg': True,
                 'params': {'server name': lambda name: manage_server(name, 'stop')}
+            },
+            'kill': {
+                'help': 'terminates a server by name',
+                'one-arg': True,
+                'params': {'server name': lambda name: manage_server(name, 'kill')}
             },
             'restart': {
                 'help': 'restarts a server by name',
