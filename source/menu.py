@@ -170,7 +170,11 @@ class DiscordPresenceManager():
                         state = f'{server_obj.type.replace("craft", "").title()} {server_obj.version}'
 
                         # Custom arguments for customization
-                        current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
+                        if 'player-list' in server_obj.run_data:
+                            current = len([p for p in server_obj.run_data['player-list'].values() if p['logged-in']])
+                        else:
+                            current = 0
+
                         if current:
                             args = {'party_size': [int(current), int(server_obj.server_properties['max-players'])]}
                         else:
@@ -5163,7 +5167,7 @@ class NextButton(HoverButton):
         for child in self.parent.parent.children:
             if "ServerVersionInput" in child.__class__.__name__:
                 # Reset geyser_selected if version is less than 1.13.2
-                if constants.version_check(child.text, "<", "1.13.2") or constants.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric']:
+                if constants.version_check(child.text, "<", "1.13.2") or constants.new_server_info['type'] not in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
                     constants.new_server_info['server_settings']['geyser_support'] = False
 
                 # Reset gamerule settings if version is less than 1.4.2
@@ -7110,7 +7114,7 @@ class PopupFile(BigPopupWindow):
 class PopupAddon(BigPopupWindow):
     def body_button_click(self):
         if self.addon_object:
-            if self.addon_object.type in ["forge", "fabric", "modpack"]:
+            if self.addon_object.type in ["forge", "neoforge", "fabric", "quilt", "modpack"]:
                 url = self.addon_object.url
             else:
                 url = "https://dev.bukkit.org" + self.addon_object.url
@@ -10664,7 +10668,7 @@ class CreateServerTypeScreen(MenuBackground):
         row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('experimental mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_1.add_widget(row_top)
         self.content_layout_1.add_widget(row_bottom)
@@ -10674,14 +10678,19 @@ class CreateServerTypeScreen(MenuBackground):
         self.content_layout_2 = FloatLayout()
         constants.hide_widget(self.content_layout_2)
         row_top = BoxLayout()
-        row_top.pos_hint = {"center_y": 0.52, "center_x": 0.5}
-        row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
+        row_bottom = BoxLayout()
+        row_top.pos_hint = {"center_y": 0.66, "center_x": 0.5}
+        row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
+        row_top.size_hint_max_x = dp(1000)
+        row_bottom.size_hint_max_x = dp(650)
         row_top.orientation = row_bottom.orientation = "horizontal"
+        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
-
+        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_2.add_widget(row_top)
+        self.content_layout_2.add_widget(row_bottom)
 
 
         for button in buttons:
@@ -12904,7 +12913,7 @@ class CreateServerOptionsScreen(MenuBackground):
 
         # Geyser switch for bedrock support
         if constants.version_check(constants.new_server_info['version'], ">=", "1.13.2")\
-        and constants.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric']:
+        and constants.new_server_info['type'].lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge']:
             sub_layout = ScrollItem()
             sub_layout.add_widget(blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text="bedrock support (geyser)"))
             sub_layout.add_widget(toggle_button('geyser_support', (0.5, 0.5), default_state=constants.new_server_info['server_settings']['geyser_support']))
@@ -14176,11 +14185,11 @@ class CreateServerProgressScreen(ProgressScreen):
         needs_installed = False
 
         if constants.new_server_info['type'] != 'vanilla':
-            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] == 'fabric')
-            needs_installed = constants.new_server_info['type'] in ['forge', 'fabric']
+            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] in ['fabric', 'quilt'])
+            needs_installed = constants.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
-            function_list.append((f'Installing ${constants.new_server_info["type"].title()}$', functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${constants.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
 
         if download_addons:
             function_list.append(('Add-oning add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20)), 0))
@@ -14875,7 +14884,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
             constants.init_update()
             constants.new_server_info['type'] = server_obj.type
             constants.new_server_info['version'] = constants.latestMC[server_obj.type]
-            if server_obj.type in ['forge', 'paper']:
+            if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
                 constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
             screen_manager.current = 'MigrateServerProgressScreen'
             screen_manager.current_screen.page_contents['launch'] = launch
@@ -14924,16 +14933,57 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
                 1
             )
 
-
     remote_obj = constants.api_manager.request(
         endpoint=f'/main/open_remote_server?name={constants.quote(server_name)}',
         host=instance['host'],
         port=instance['port'],
         args={'none': None}
     )
-    telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
-    constants.server_manager._init_telepathy(telepath_data)
-    Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
+
+    if remote_obj:
+        telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
+        constants.server_manager._init_telepathy(telepath_data)
+        server_obj = constants.server_manager.current_server
+        update_list = constants.get_remote_var('update_list', telepath_data)
+
+        needs_update = False
+        try:
+            if update_list:
+                needs_update = update_list[server_obj.name]['needsUpdate'] == 'true'
+        except:
+            pass
+
+        # Automatically update if available
+        if server_obj.running:
+            ignore_update = True
+        if server_obj.auto_update == "true" and needs_update and constants.app_online and not ignore_update and constants.check_free_space(telepath_data=server_obj._telepath_data):
+            while not server_obj.addon:
+                time.sleep(0.05)
+
+            if server_obj.is_modpack == 'mrpack':
+                if update_list[server_obj.name]['updateUrl']:
+                    constants.import_data = {
+                        'name': server_obj.name,
+                        'url': update_list[server_obj.name]['updateUrl']
+                    }
+                    constants.safe_delete(constants.tempDir)
+                    screen_manager.current = 'UpdateModpackProgressScreen'
+                    screen_manager.current_screen.page_contents['launch'] = launch
+
+            else:
+                constants.new_server_init()
+                constants.init_update()
+                constants.new_server_info['type'] = server_obj.type
+                constants.new_server_info['version'] = constants.latestMC[server_obj.type]
+                if server_obj.type in ['forge', 'paper', 'purpur', 'quilt', 'neoforge']:
+                    constants.new_server_info['build'] = constants.latestMC['builds'][server_obj.type]
+                screen_manager.current = 'MigrateServerProgressScreen'
+                screen_manager.current_screen.page_contents['launch'] = launch
+
+        else:
+            telepath_data = {'name': server_name, 'host': instance['host'], 'port': instance['port'], 'nickname': instance['nickname']}
+            constants.server_manager._init_telepathy(telepath_data)
+            Clock.schedule_once(next_screen, 0.8 if wait_page_load else 0)
 
     return remote_obj
 
@@ -15877,7 +15927,7 @@ class ServerManagerScreen(MenuBackground):
                         if not selected_button.telepath_data:
                             open_server(server.name, ignore_update=False)
                         else:
-                            open_remote_server(selected_button.telepath_data, server.name)
+                            open_remote_server(selected_button.telepath_data, server.name, ignore_update=False)
 
                     # Favorite
                     elif selected_button.last_touch.button == "middle":
@@ -24140,7 +24190,7 @@ class ServerSettingsScreen(MenuBackground):
 
         # Geyser switch for bedrock support
         sub_layout = ScrollItem()
-        disabled = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric'])
+        disabled = not (constants.version_check(server_obj.version, ">=", "1.13.2") and server_obj.type.lower() in ['spigot', 'paper', 'purpur', 'fabric', 'quilt', 'neoforge'])
         hint_text = "geyser (unsupported server)" if disabled else "bedrock support (geyser)"
         if not constants.app_online:
             disabled = True
@@ -24509,7 +24559,7 @@ class MigrateServerTypeScreen(MenuBackground):
         row_top.add_widget(big_icon_button('default, stock experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'vanilla', clickable=True, selected=('vanilla' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('modded experience', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'forge', clickable=True, selected=('forge' == constants.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('performant fork of paper', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'purpur', clickable=True, selected=('purpur' == constants.new_server_info['type'])))
-        row_bottom.add_widget(big_icon_button('experimental mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('modern mod platform', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'fabric', clickable=True, selected=('fabric' == constants.new_server_info['type'])))
         row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_1.add_widget(row_top)
         self.content_layout_1.add_widget(row_bottom)
@@ -24519,14 +24569,19 @@ class MigrateServerTypeScreen(MenuBackground):
         self.content_layout_2 = FloatLayout()
         constants.hide_widget(self.content_layout_2)
         row_top = BoxLayout()
-        row_top.pos_hint = {"center_y": 0.52, "center_x": 0.5}
-        row_bottom.size_hint_max_x = row_top.size_hint_max_x = dp(1000)
+        row_bottom = BoxLayout()
+        row_top.pos_hint = {"center_y": 0.66, "center_x": 0.5}
+        row_bottom.pos_hint = {"center_y": 0.405, "center_x": 0.5}
+        row_top.size_hint_max_x = dp(1000)
+        row_bottom.size_hint_max_x = dp(650)
         row_top.orientation = row_bottom.orientation = "horizontal"
+        row_top.add_widget(big_icon_button('modern $Forge$ implementation', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'neoforge', clickable=True, selected=('neoforge' == constants.new_server_info['type'])))
+        row_top.add_widget(big_icon_button('enhanced fork of $Fabric$', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'quilt', clickable=True, selected=('quilt' == constants.new_server_info['type'])))
         row_top.add_widget(big_icon_button('requires tuning, but efficient', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'spigot', clickable=True, selected=('spigot' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
-        row_top.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
-
+        row_bottom.add_widget(big_icon_button('legacy, supports plug-ins', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'craftbukkit', clickable=True, selected=('craftbukkit' == constants.new_server_info['type'])))
+        row_bottom.add_widget(big_icon_button('view more options', {"center_y": 0.5, "center_x": 0.5}, (0, 0), (None, None), 'more', clickable=True, selected=False))
         self.content_layout_2.add_widget(row_top)
+        self.content_layout_2.add_widget(row_bottom)
 
 
         for button in buttons:
@@ -24726,11 +24781,11 @@ class MigrateServerProgressScreen(ProgressScreen):
         needs_installed = False
 
         if constants.new_server_info['type'] != 'vanilla':
-            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] == 'fabric')
-            needs_installed = constants.new_server_info['type'] in ['forge', 'fabric']
+            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] in ['fabric', 'quilt'])
+            needs_installed = constants.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
 
         if needs_installed:
-            function_list.append((f'Installing {constants.new_server_info["type"].title()}', functools.partial(constants.install_server), 10 if download_addons else 20))
+            function_list.append((f'Installing ${constants.new_server_info["type"].title().replace("forge","Forge")}$', functools.partial(constants.install_server), 10 if download_addons else 20))
 
         if download_addons:
             function_list.append((f'{desc_text} add-ons', functools.partial(constants.iter_addons, functools.partial(adjust_percentage, 10 if needs_installed else 20), True), 0))

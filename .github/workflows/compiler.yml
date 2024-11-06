@@ -83,7 +83,7 @@ jobs:
 
   macos:
     name: macOS Build
-    runs-on: macos-12
+    runs-on: macos-13
     needs: [setup-env, test-env]
     steps:
     
@@ -173,6 +173,13 @@ jobs:
           cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
           fc-cache -f
           # python locale-gen.py
+
+          # Patch plyer (pull #822)
+          FILECHOOSER="./venv/lib/python3.9/site-packages/plyer/platforms/linux/filechooser.py"
+          sed -i 's/--confirm-overwrite//g' "$FILECHOOSER"
+          sed -i '/self\.title/d' "$FILECHOOSER"
+          sed -i '/self\.icon/d' "$FILECHOOSER"
+
           echo Compiling auto-mcs
           export KIVY_AUDIO=ffpyplayer
           cd $current
@@ -247,6 +254,13 @@ jobs:
               cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
               fc-cache -f
               # python locale-gen.py
+
+              # Patch plyer (pull #822)
+              FILECHOOSER="./venv/lib/python3.9/site-packages/plyer/platforms/linux/filechooser.py"
+              sed -i 's/--confirm-overwrite//g' "$FILECHOOSER"
+              sed -i '/self\.title/d' "$FILECHOOSER"
+              sed -i '/self\.icon/d' "$FILECHOOSER"
+
               echo Compiling auto-mcs
               export KIVY_AUDIO=ffpyplayer
               cd $current

@@ -65,7 +65,7 @@ if [ $errorlevel -ne 0 ]; then
 	cd openssl-1.1.1g
 
 	mkdir -p $ssl_path/lib
-	./config --prefix=$ssl_path --openssldir=$ssl_path no-ssl2 LDFLAGS="-L $ssl_path/lib -Wl,-rpath,$sslpath/lib"
+	./config --prefix=$ssl_path --openssldir=$ssl_path shared zlib
 	make
 	make install
 
@@ -93,7 +93,7 @@ if [ $errorlevel -ne 0 ]; then
 
 
 	# Finally, download and compile Python from source
-    echo Installing Python 3.9
+	echo Installing Python 3.9
 
 	cd /tmp/
 	wget https://www.python.org/ftp/python/3.9.18/Python-3.9.18.tgz
@@ -101,10 +101,19 @@ if [ $errorlevel -ne 0 ]; then
 	cd Python-3.9.18
 
 	mkdir -p $python_path/lib
-	./configure --prefix=$python_path --enable-optimizations --with-lto --with-computed-gotos --with-system-ffi --with-openssl=$ssl_path --with-tcltk-includes='-I/opt/include' --with-tcltk-libs='-L/opt/lib -ltcl8.6 -ltk8.6' --enable-shared LDFLAGS="-Wl,-rpath $python_path/lib"
-	make -j "$(nproc)"
 
-	# sudo ./python3.9 -m test -j "$(nproc)"
+	# Configure Python with correct OpenSSL paths
+	./configure --prefix=$python_path \
+	            --enable-optimizations \
+	            --with-lto \
+	            --with-computed-gotos \
+	            --with-system-ffi \
+	            --with-openssl=$ssl_path \
+	            --enable-shared \
+	            LDFLAGS="-Wl,-rpath,$python_path/lib -L$ssl_path/lib" \
+	            CPPFLAGS="-I$ssl_path/include"
+
+	make -j "$(nproc)"
 	make altinstall
 	rm /tmp/Python-3.9.18.tgz
 

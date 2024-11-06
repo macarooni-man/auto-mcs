@@ -168,7 +168,7 @@ def manage_server(name: str, action: str):
         update_console(f"(2/5) Downloading 'server.jar'")
         constants.download_jar()
 
-        update_console(f"(3/5) Installing '{name}'")
+        update_console(f"(3/5) Installing {constants.new_server_info['type'].title().replace('forge','Forge')}")
         constants.install_server()
 
         update_console(f"(4/5) Applying server configuration")
@@ -232,6 +232,13 @@ def manage_server(name: str, action: str):
 
             func_wrapper(server_obj.stop)
             return return_log([("normal", "Stopped "), ("parameter", name)])
+
+        elif action == 'kill':
+            if not server_obj.running:
+                return [('parameter', name), ('info', ' is not running')], 'fail'
+
+            func_wrapper(server_obj.kill)
+            return return_log([("normal", "Terminated "), ("parameter", name)])
 
         elif action == 'restart':
             if server_obj.running:
@@ -754,6 +761,11 @@ command_data = {
                 'help': 'stops a server by name',
                 'one-arg': True,
                 'params': {'server name': lambda name: manage_server(name, 'stop')}
+            },
+            'kill': {
+                'help': 'terminates a server by name',
+                'one-arg': True,
+                'params': {'server name': lambda name: manage_server(name, 'kill')}
             },
             'restart': {
                 'help': 'restarts a server by name',
@@ -2467,7 +2479,7 @@ class ConsolePanel():
         return self
 
     def build_layout(self):
-        title_text = urwid.Text(('title', "auto-mcs v2.2.1 (headless)"), align='center')
+        title_text = urwid.Text(('title', f"auto-mcs v{constants.app_version} (headless)"), align='center')
         top_content = urwid.Pile([
             urwid.AttrMap(urwid.Filler(urwid.Padding(title_text, left=0, right=0), valign='top'), 'title'),
             urwid.AttrMap(urwid.Filler(urwid.Padding(urwid.Text(''), left=0, right=0), valign='top'), '')

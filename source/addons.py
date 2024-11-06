@@ -350,6 +350,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
         # First, check if plugin is cached
         hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
         hash_data = str(hash_data)[:8]
+
         if hash_data in constants.addon_cache.keys():
             cached = constants.addon_cache[hash_data]
             addon_name = cached['name']
@@ -414,7 +415,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
 
                     # Check if addon is actually a forge mod
-                    elif server_type == "forge":
+                    elif server_type in ["forge", "neoforge"]:
 
                         # Check if mcmod.info exists
                         try:
@@ -443,58 +444,101 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                         except KeyError:
                             pass
 
-                        # If mcmod.info is absent, check mods.toml
+                        # If mcmod.info is absent, check mods.toml/neoforge.mods.toml
                         if not addon_name:
                             try:
-                                jar_file.extract('META-INF/mods.toml', addon_tmp)
-                                with open(os.path.join(addon_tmp, 'META-INF', 'mods.toml'), 'r') as toml:
-                                    addon_type = server_type
-                                    file_contents = toml.read().split("[[dependencies")[0].replace(' = ', '=')
-                                    for line in file_contents.splitlines():
-                                        if addon_author and addon_name and addon_version and addon_subtitle and addon_id:
-                                            break
-                                        elif line.strip().startswith("displayName="):
-                                            addon_name = line.split("displayName=")[1].replace("\"", "").strip()
-                                        elif line.strip().startswith("modId="):
-                                            addon_id = line.split("modId=")[1].replace("\"", "").replace(",", "").strip().lower()
-                                        elif line.strip().startswith("authors="):
-                                            addon_author = line.split("authors=")[1].replace("\"", "").strip()
-                                            addon_author = addon_author.split(',')[0].strip()
-                                        elif line.strip().startswith("version="):
-                                            addon_version = line.split("version=")[1].replace("\"", "").replace("-", " ").strip()
-                                            if "+" in addon_version:
-                                                addon_version = addon_version.split("+")[0]
-                                            if ";" in addon_version:
-                                                addon_version = addon_version.split(";")[0]
-                                    description = file_contents.split("description=")[1]
-                                    if description:
-                                        addon_subtitle = description.replace("'''", "").replace("\n", " ").strip().replace("- ", " ")
+                                try:
+                                    jar_file.extract('META-INF/mods.toml', addon_tmp)
+                                except:
+                                    pass
+                                try:
+                                    jar_file.extract('META-INF/neoforge.mods.toml', addon_tmp)
+                                except:
+                                    pass
+                                for file in glob(os.path.join(addon_tmp, 'META-INF', '*mods.toml')):
+                                    with open(file, 'r') as toml:
+                                        addon_type = server_type
+                                        file_contents = toml.read().split("[[dependencies")[0].replace(' = ', '=')
+                                        for line in file_contents.splitlines():
+                                            if addon_author and addon_name and addon_version and addon_subtitle and addon_id:
+                                                break
+                                            elif line.strip().startswith("displayName="):
+                                                addon_name = line.split("displayName=")[1].replace("\"", "").strip()
+                                            elif line.strip().startswith("modId="):
+                                                addon_id = line.split("modId=")[1].replace("\"", "").replace(",", "").strip().lower()
+                                            elif line.strip().startswith("authors="):
+                                                addon_author = line.split("authors=")[1].replace("\"", "").strip()
+                                                addon_author = addon_author.split(',')[0].strip()
+                                            elif line.strip().startswith("version="):
+                                                addon_version = line.split("version=")[1].replace("\"", "").replace("-", " ").strip()
+                                                if "+" in addon_version:
+                                                    addon_version = addon_version.split("+")[0]
+                                                if ";" in addon_version:
+                                                    addon_version = addon_version.split(";")[0]
+                                        description = file_contents.split("description=")[1]
+                                        if description:
+                                            addon_subtitle = description.replace("'''", "").replace("\n", " ").strip().replace("- ", " ")
+                                        break
                             except KeyError:
                                 pass
 
 
                     # Check if addon is actually a fabric mod
-                    elif server_type == "fabric":
+                    elif server_type in ["fabric", "quilt"]:
                         try:
-                            jar_file.extract('fabric.mod.json', addon_tmp)
-                            with open(os.path.join(addon_tmp, 'fabric.mod.json'), 'r') as mod:
-                                addon_type = server_type
+                            try:
+                                file_path = os.path.join(addon_tmp, 'quilt.mod.json')
+                                jar_file.extract('quilt.mod.json', addon_tmp)
+                            except:
+                                pass
+
+                            try:
+                                if not os.path.isfile(file_path):
+                                    file_path = os.path.join(addon_tmp, 'fabric.mod.json')
+                                    jar_file.extract('fabric.mod.json', addon_tmp)
+                            except:
+                                pass
+
+                            with open(file_path, 'r') as mod:
                                 file_contents = json.loads(mod.read())
 
-                                if file_contents['name']:
-                                    addon_name = file_contents['name'].strip()
-                                if file_contents['id']:
-                                    addon_id = file_contents['id'].strip()
-                                if file_contents['authors']:
-                                    addon_author = file_contents['authors'][0].strip()
-                                if file_contents['version']:
-                                    addon_version = file_contents['version'].replace("\"", "").replace("-", " ").strip()
-                                    if "+" in addon_version:
-                                        addon_version = addon_version.split("+")[0].strip()
-                                    if ";" in addon_version:
-                                        addon_version = addon_version.split(";")[0].strip()
-                                if file_contents['description']:
-                                    addon_subtitle = file_contents['description'].replace("- ", " ").strip()
+                                # Quilt mods
+                                if 'quilt_loader' in file_contents:
+                                    addon_type = 'quilt'
+                                    data = file_contents['quilt_loader']
+                                    if data['metadata']['name']:
+                                        addon_name = data['metadata']['name'].strip()
+                                    if data['id']:
+                                        addon_id = data['id'].strip()
+                                    if data['metadata']['contributors']:
+                                        addon_author = list(data['metadata']['contributors'].keys())[0].strip()
+                                    if data['version']:
+                                        addon_version = data['version'].replace("\"", "").replace("-", " ").strip()
+                                        if "+" in addon_version:
+                                            addon_version = addon_version.split("+")[0].strip()
+                                        if ";" in addon_version:
+                                            addon_version = addon_version.split(";")[0].strip()
+                                    if data['metadata']['description']:
+                                        addon_subtitle = data['metadata']['description'].replace("- ", " ").strip()
+
+
+                                # Fabric mods
+                                else:
+                                    addon_type = 'fabric'
+                                    if file_contents['name']:
+                                        addon_name = file_contents['name'].strip()
+                                    if file_contents['id']:
+                                        addon_id = file_contents['id'].strip()
+                                    if file_contents['authors']:
+                                        addon_author = file_contents['authors'][0].strip()
+                                    if file_contents['version']:
+                                        addon_version = file_contents['version'].replace("\"", "").replace("-", " ").strip()
+                                        if "+" in addon_version:
+                                            addon_version = addon_version.split("+")[0].strip()
+                                        if ";" in addon_version:
+                                            addon_version = addon_version.split(";")[0].strip()
+                                    if file_contents['description']:
+                                        addon_subtitle = file_contents['description'].replace("- ", " ").strip()
                         except KeyError:
                             pass
 
@@ -599,13 +643,15 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
 def search_addons(query: str, server_properties, *args):
 
     # Manually weighted search results
-    prioritized = ("worldedit for bukkit", "vault", "essentials", "essentialsx", "worldguard", "anticheat", "zombie_striker_dev", "sleakes", "sk89q", "permissionsex", "multiverse-core", "shopkeepers")
+    prioritized = ("fabric-api", "worldedit for bukkit", "vault", "essentials", "essentialsx", "worldguard", "anticheat", "zombie_striker_dev", "sleakes", "sk89q", "permissionsex", "multiverse-core", "shopkeepers")
 
     # filter-sort=5 is filtered by number of downloads
     search_urls = {
         "bukkit": "https://dev.bukkit.org/search?projects-page=1&projects-sort=-project&providerIdent=projects&search=",
         "forge": "https://modrinth.com/mod/",
-        "fabric": "https://modrinth.com/mod/"
+        "fabric": "https://modrinth.com/mod/",
+        "quilt": "https://modrinth.com/mod/",
+        "neoforge": "https://modrinth.com/mod/"
     }
 
     # Determine which addons to search for
@@ -680,12 +726,16 @@ def search_addons(query: str, server_properties, *args):
             pass
 
 
-    # If server_type is forge or fabric
+    # If server_type is forge, fabric, quilt, or neoforged
     else:
         # Grab every addon from search result and return results dict
         url = f'https://api.modrinth.com/v2/search?facets=[["categories:{server_type}"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
         results = []
         page_content = constants.get_url(url, return_response=True).json()
+
+        if server_type == 'quilt':
+            url = f'https://api.modrinth.com/v2/search?facets=[["categories:fabric"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
+            page_content['hits'].extend(constants.get_url(url, return_response=True).json()['hits'])
 
         for mod in page_content['hits']:
             name = mod['title']
@@ -901,6 +951,11 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
         file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
         page_content = constants.get_url(file_link, return_response=True).json()
 
+        # Workaround for Fabric mods on Quilt
+        if not page_content and addon.type == 'quilt':
+            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["fabric"]'
+            page_content = constants.get_url(file_link, return_response=True).json()
+
         for data in page_content:
             files = data['files']
             if files:
@@ -1043,7 +1098,12 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
 # str --> AddonWebObject
 def find_addon(name, server_properties):
     try:
-        new_addon = sorted([[addon, round(SequenceMatcher(None, addon.name.lower(), name.lower()).ratio(), 2)] for addon in search_addons(name, server_properties)], key=lambda x: x[1], reverse=True)[0][0]
+        new_addon = sorted(
+            [
+                [addon, round(SequenceMatcher(None, addon.name.lower(), name.lower()).ratio(), 2) if addon.id.lower() != name else 1000]
+                for addon in search_addons(name, server_properties)
+            ], key=lambda x: x[1], reverse=True)[0][0]
+
     except IndexError:
         return False
 
@@ -1097,6 +1157,7 @@ def enumerate_addons(server_properties, single_list=False):
 
     else:
         return {'enabled': enabled_addons, 'disabled': disabled_addons}
+
 
 
 # Toggles addon state, alternate between normal and disabled folder
@@ -1174,9 +1235,9 @@ def dump_config(server_name: str):
 
 # Returns chat reporting addon if it can be found
 def disable_report_addon(server_properties):
-    server_type = server_properties['type'].replace('craft','').replace('purpur', 'paper')
+    server_type = server_properties['type'].replace('craft', '').replace('purpur', 'paper')
 
-    item = None
+    addon = None
 
     if constants.server_type(server_type) == 'bukkit':
         url = "https://modrinth.com/mod/freedomchat"
@@ -1189,31 +1250,27 @@ def disable_report_addon(server_properties):
             html = constants.get_url(f"{url}/versions?l={server_type}")
             item = html.find('div', class_='version-button')
 
-    else:
-        url = "https://modrinth.com/mod/no-chat-reports"
+        if item:
+            server_type = constants.server_type(server_properties['type'])
 
-        # Find addon information
-        html = constants.get_url(f"{url}/versions?g={server_properties['version']}&l={server_type}")
-        item = html.find('div', class_='version-button')
+            name = html.find('h1', class_='title').get_text()
+            author = [x.div.p.text for x in html.find_all('a', class_='team-member') if 'owner' in x.get_text().lower()][0]
+            subtitle = html.find('p', class_='description').get_text()
+            link = item.a.get('href')
+            file_name = name.lower().replace(" ", "-")
 
-        if not item:
-            html = constants.get_url(f"{url}/versions?l={server_type}")
-            item = html.find('div', class_='version-button')
+            item = AddonWebObject(name, server_type, author, subtitle, url, file_name, None)
+            item.download_url = link
 
+            addon = item
 
-    if item:
-        server_type = constants.server_type(server_properties['type'])
+    elif constants.server_type(server_type) != 'quilt':
+        # Geyser
+        results = search_addons('no-chat-reports', server_properties)
+        if results:
+            addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
 
-        name = html.find('h1', class_='title').get_text()
-        author = [x.div.p.text for x in html.find_all('a', class_='team-member') if 'owner' in x.get_text().lower()][0]
-        subtitle = html.find('p', class_='description').get_text()
-        link = item.a.get('href')
-        file_name = name.lower().replace(" ", "-")
-
-        item = AddonWebObject(name, server_type, author, subtitle, url, file_name, None)
-        item.download_url = link
-
-    return item
+    return addon
 
 
 # Returns list of AddonWebObjects for Geyser
@@ -1245,15 +1302,15 @@ def geyser_addons(server_properties):
             pass
 
 
-    elif server_properties['type'] == 'fabric':
+    elif server_properties['type'] in ['fabric', 'quilt', 'neoforge']:
 
-        # Geyser fabric
+        # Geyser
         results = search_addons('Geyser', server_properties)
         if results:
             addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
             final_list.append(addon)
 
-        # Floodgate fabric
+        # Floodgate
         results = search_addons('Floodgate', server_properties)
         if results:
             addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)

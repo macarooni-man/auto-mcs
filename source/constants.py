@@ -41,9 +41,9 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.2.2"
+app_version = "2.2.3"
 ams_version = "1.3"
-telepath_version = "1.0.2"
+telepath_version = "1.0.3"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -85,11 +85,13 @@ addon_cache = {}
 latestMC = {
     "vanilla": "0.0.0",
     "forge": "0.0.0",
+    "neoforge": "0.0.0",
     "paper": "0.0.0",
     "purpur": "0.0.0",
     "spigot": "0.0.0",
     "craftbukkit": "0.0.0",
     "fabric": "0.0.0",
+    "quilt": "0.0.0",
 
     "builds": {
         "forge": "0",
@@ -1791,17 +1793,28 @@ def find_latest_mc():
                         break
 
 
+        elif name == "neoforge":
+            # Neoforge
+            url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
+            reqs = requests.get(url)
+            for version in reversed(reqs.json()['versions']):
+                if 'beta' not in version:
+                    latestMC['neoforge'] = f'1.{version.rsplit(".", 1)[0]}'
+                    latestMC['builds']['neoforge'] = version.rsplit(".", 1)[-1]
+                    break
+
+
         elif name == "paper":
             # Paper
             reqs = requests.get(url, timeout=timeout)
 
-            jsonObject = json.loads(reqs.text)
+            jsonObject = reqs.json()
             version = jsonObject['versions'][-1]
             latestMC["paper"] = version
 
             build_url = f"{url}/versions/{version}"
             reqs = requests.get(build_url)
-            jsonObject = json.loads(reqs.text)
+            jsonObject = reqs.json()
             latestMC["builds"]["paper"] = jsonObject['builds'][-1]
 
 
@@ -1809,13 +1822,13 @@ def find_latest_mc():
             # Purpur
             reqs = requests.get(url, timeout=timeout)
 
-            jsonObject = json.loads(reqs.text)
+            jsonObject = reqs.json()
             version = jsonObject['versions'][-1]
             latestMC["purpur"] = version
 
             build_url = f"{url}/{version}"
             reqs = requests.get(build_url)
-            jsonObject = json.loads(reqs.text)
+            jsonObject = reqs.json()
             latestMC["builds"]["purpur"] = jsonObject['builds']['latest']
 
 
@@ -1843,7 +1856,7 @@ def find_latest_mc():
 
             # Game version
             reqs = requests.get(version, timeout=timeout)
-            jsonObject = json.loads(reqs.text)
+            jsonObject = reqs.json()
 
             for item in jsonObject:
                 if item['stable']:
@@ -1852,7 +1865,7 @@ def find_latest_mc():
 
             # Loader build
             reqs = requests.get(loader, timeout=timeout)
-            jsonObject = json.loads(reqs.text)
+            jsonObject = reqs.json()
 
             for item in jsonObject:
                 if item['stable']:
@@ -1861,7 +1874,7 @@ def find_latest_mc():
 
             # Installer build
             reqs = requests.get(installer, timeout=timeout)
-            jsonObject = json.loads(reqs.text)
+            jsonObject = reqs.json()
 
             for item in jsonObject:
                 if item['stable']:
@@ -1869,17 +1882,57 @@ def find_latest_mc():
                     break
 
             latestMC["fabric"] = version
-            latestMC["builds"]["fabric"] = f"{loader}/{installer}"
+            latestMC["builds"]["fabric"] = loader
             # URL: https://meta.fabricmc.net/v2/versions/loader/{version}/{build}/server/jar
+
+
+        elif name == "quilt":
+            # Quilt
+            version = "https://meta.quiltmc.org/v3/versions/game"
+            loader = "https://meta.quiltmc.org/v3/versions/loader"
+            installer = "https://meta.quiltmc.org/v3/versions/installer"
+
+            # Game version
+            reqs = requests.get(version, timeout=timeout)
+            jsonObject = reqs.json()
+
+            for item in jsonObject:
+                if item['stable']:
+                    version = item['version']
+                    break
+
+            # Loader build
+            reqs = requests.get(loader, timeout=timeout)
+            jsonObject = reqs.json()
+
+            for item in jsonObject:
+                if 'beta' not in item['version']:
+                    loader = item['version']
+                    break
+
+            # Installer build
+            reqs = requests.get(installer, timeout=timeout)
+            jsonObject = reqs.json()
+
+            for item in jsonObject:
+                if item:
+                    installer = item['version']
+                    break
+
+            latestMC["quilt"] = version
+            latestMC["builds"]["quilt"] = loader
+
 
     version_links = {
         "vanilla": "https://mcversions.net/index.html",
         "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/",
+        "neoforge": "https://fabricmc.net/use/server/",
         "paper": "https://papermc.io/api/v2/projects/paper",
         "purpur": "https://api.purpurmc.org/v2/purpur",
         "spigot": "https://getbukkit.org/download/spigot",
         "craftbukkit": "https://getbukkit.org/download/craftbukkit",
-        "fabric": "https://fabricmc.net/use/server/"
+        "fabric": "https://fabricmc.net/use/server/",
+        "quilt": "https://fabricmc.net/use/server/"
     }
 
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -2138,12 +2191,17 @@ def validate_version(server_info: dict):
     try:
 
         while foundServer is False:
-            if str.lower(mcType) == "forge":
+            # Ignore versions below supported
+            if mcType.lower() == "forge":
                 if version_check(mcVer, '<', '1.6'):
+                    mcVer = ""
+            if mcType.lower() == "neoforge":
+                if version_check(mcVer, '<', '1.20.2'):
                     mcVer = ""
 
 
-            if str.lower(mcType) == "vanilla":
+            # Actually retrieve versions
+            if mcType.lower() == "vanilla":
 
                 # Fix for "no main manifest attribute, in server.jar"
                 if version_check(mcVer, '>=', '1.0') and version_check(mcVer, '<', '1.2'):
@@ -2155,7 +2213,7 @@ def validate_version(server_info: dict):
                     url = f"https://mcversions.net/download/{mcVer}"
 
 
-            elif str.lower(mcType) == "craftbukkit":
+            elif mcType.lower() == "craftbukkit":
                 cb_url = "https://getbukkit.org/download/craftbukkit"
 
                 # Workaround to prevent downloading Java 16 as well
@@ -2177,7 +2235,7 @@ def validate_version(server_info: dict):
                             break
 
 
-            elif str.lower(mcType) == "spigot":
+            elif mcType.lower() == "spigot":
                 cb_url = "https://getbukkit.org/download/spigot"
 
                 # Workaround to prevent downloading Java 16 as well
@@ -2199,7 +2257,7 @@ def validate_version(server_info: dict):
                             break
 
 
-            elif str.lower(mcType) == "paper":
+            elif mcType.lower() == "paper":
 
                 # Workaround to prevent downloading Java 16 as well
                 if mcVer != "1.17":
@@ -2207,7 +2265,7 @@ def validate_version(server_info: dict):
                     try:
                         paper_url = f"https://papermc.io/api/v2/projects/paper/versions/{mcVer}"
                         reqs = requests.get(paper_url)
-                        jsonObject = json.loads(reqs.text)
+                        jsonObject = reqs.json()
                         buildNum = jsonObject['builds'][-1]
 
                         url = f"https://papermc.io/api/v2/projects/paper/versions/{mcVer}/builds/{buildNum}/downloads/paper-{mcVer}-{buildNum}.jar"
@@ -2215,7 +2273,7 @@ def validate_version(server_info: dict):
                         url = ""
 
 
-            elif str.lower(mcType) == "purpur":
+            elif mcType.lower() == "purpur":
 
                 # Workaround to prevent downloading Java 16 as well
                 if mcVer != "1.17":
@@ -2223,7 +2281,7 @@ def validate_version(server_info: dict):
                     try:
                         paper_url = f"https://api.purpurmc.org/v2/purpur/{mcVer}"
                         reqs = requests.get(paper_url)
-                        jsonObject = json.loads(reqs.text)
+                        jsonObject = reqs.json()
                         buildNum = jsonObject['builds']['latest']
 
                         url = f"https://api.purpurmc.org/v2/purpur/{mcVer}/{buildNum}/download"
@@ -2231,7 +2289,7 @@ def validate_version(server_info: dict):
                         url = ""
 
 
-            elif str.lower(mcType) == "forge":
+            elif mcType.lower() == "forge":
 
                 # 1.16.3 is unavailable due to issues with Java
                 # https://www.reddit.com/r/Minecraft/comments/s7ce50/serverhosting_forge_minecraft_keeps_crashing_on/
@@ -2266,23 +2324,35 @@ def validate_version(server_info: dict):
                         url = ''
 
 
-            elif str.lower(mcType) == "fabric":
+            elif mcType.lower() == "neoforge":
+                neoforge_url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
+                reqs = requests.get(neoforge_url)
+                for version in reversed(reqs.json()['versions']):
+                    if 'beta' not in version:
+                        buildNum = version.rsplit(".", 1)[-1]
+                        formatted_version = f'1.{version.rsplit(".", 1)[0]}'
+                        if formatted_version == mcVer:
+                            url = f"https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar"
+                            break
+
+
+            elif mcType.lower() == "fabric":
                 version = "https://meta.fabricmc.net/v2/versions/game"
                 loader = "https://meta.fabricmc.net/v2/versions/loader"
                 installer = "https://meta.fabricmc.net/v2/versions/installer"
 
                 # Game version
                 reqs = requests.get(version)
-                jsonObject = json.loads(reqs.text)
+                jsonObject = reqs.json()
 
                 for item in jsonObject:
-                    if mcType == item['version']:
+                    if mcVer == item['version']:
                         version = item['version']
                         break
 
                 # Loader build
                 reqs = requests.get(loader)
-                jsonObject = json.loads(reqs.text)
+                jsonObject = reqs.json()
 
                 for item in jsonObject:
                     if item['stable']:
@@ -2291,14 +2361,58 @@ def validate_version(server_info: dict):
 
                 # Installer build
                 reqs = requests.get(installer)
-                jsonObject = json.loads(reqs.text)
+                jsonObject = reqs.json()
 
                 for item in jsonObject:
                     if item['stable']:
                         installer = item['version']
                         break
 
+                buildNum = loader
                 url = f"https://meta.fabricmc.net/v2/versions/loader/{mcVer}/{loader}/{installer}/server/jar"
+
+
+            elif mcType.lower() == "quilt":
+
+                # Check if Vanilla version is valid first
+                vanilla_validation = validate_version({'type': 'vanilla', 'version': server_info['version'], 'build': '0'})
+                if vanilla_validation[0]:
+
+                    version = "https://meta.quiltmc.org/v3/versions/game"
+                    loader = "https://meta.quiltmc.org/v3/versions/loader"
+                    installer = "https://meta.quiltmc.org/v3/versions/installer"
+
+                    # Game version
+                    reqs = requests.get(version)
+                    jsonObject = reqs.json()
+
+                    for item in jsonObject:
+                        if mcVer == item['version']:
+                            version = item['version']
+                            break
+
+                    # Loader build
+                    reqs = requests.get(loader)
+                    jsonObject = reqs.json()
+
+                    for item in jsonObject:
+                        if 'beta' not in item['version']:
+                            loader = item['version']
+                            break
+
+                    # Installer build
+                    reqs = requests.get(installer)
+                    jsonObject = reqs.json()
+
+                    for item in jsonObject:
+                        if item:
+                            installer = item['version']
+                            break
+
+                    url = f"https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/{installer}/quilt-installer-{installer}.jar"
+                    vanilla_validation[-1] = url
+                    vanilla_validation[1]['build'] = loader
+                    return vanilla_validation
 
 
             try:
@@ -2738,14 +2852,9 @@ def download_jar(progress_func=None, imported=False):
             if progress_func and fail_count > 0:
                 progress_func(0)
 
-            if imported:
-                jar_name = ('forge' if import_data['type'] == 'forge' else 'server') + '.jar'
-                download_url(import_data['jar_link'], jar_name, downDir, hook)
-
-            else:
-                jar_name = ('forge' if new_server_info['type'] == 'forge' else 'server') + '.jar'
-                download_url(new_server_info['jar_link'], jar_name, downDir, hook)
-
+            server_data = deepcopy(import_data if imported else new_server_info)
+            jar_name = (server_data['type'] if server_data['type'] in ['forge', 'quilt', 'neoforge'] else 'server') + '.jar'
+            download_url(server_data['jar_link'], jar_name, downDir, hook)
             jar_path = os.path.join(downDir, jar_name)
 
             # If successful, copy to tmpsvr
@@ -2825,6 +2934,12 @@ def iter_addons(progress_func=None, update=False, telepath=False):
         fabric_api = addons.find_addon('Fabric API', new_server_info)
         if fabric_api:
             all_addons.append(fabric_api)
+
+    # Install QSL alongside Quilt
+    # if new_server_info['type'] == 'quilt':
+    #     quilt_api = addons.find_addon('qsl', new_server_info)
+    #     if quilt_api:
+    #         all_addons.append(quilt_api)
 
 
     addon_count = len(all_addons)
@@ -3025,6 +3140,20 @@ def install_server(progress_func=None, imported=False):
             os.remove(f)
 
 
+    # Install NeoForge server
+    elif jar_type == 'neoforge':
+        run_proc(f'"{java_executable["modern"]}" -jar neoforge.jar -installServer')
+
+        for f in glob("user_jvm*"):
+            os.remove(f)
+
+        for f in glob("install*.log"):
+            os.remove(f)
+
+        for f in glob("neoforge.jar"):
+            os.remove(f)
+
+
     # Install Fabric server
     elif jar_type == 'fabric':
 
@@ -3045,6 +3174,39 @@ def install_server(progress_func=None, imported=False):
 
         for f in glob("server.properties"):
             os.remove(f)
+
+        # Install Fabric server
+
+
+    # Install Quilt server
+    elif jar_type == 'quilt':
+        run_proc(f'"{java_executable["modern"]}" -jar quilt.jar install server {jar_version} --download-server')
+
+        # Move installed files to root
+        if os.path.exists(os.path.join(tmpsvr, 'server')):
+            os.remove(os.path.join(tmpsvr, 'quilt.jar'))
+            move(os.path.join(tmpsvr, 'server', 'server.jar'), os.path.join(tmpsvr, 'server.jar'))
+            move(os.path.join(tmpsvr, 'server', 'quilt-server-launch.jar'), os.path.join(tmpsvr, 'quilt.jar'))
+            move(os.path.join(tmpsvr, 'server', 'libraries'), os.path.join(tmpsvr, 'libraries'))
+            safe_delete(os.path.join(tmpsvr, 'server'))
+
+            process = subprocess.Popen(f'"{java_executable["modern"]}" -jar quilt.jar nogui', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            while True:
+                time.sleep(1)
+                log = os.path.join(tmpsvr, 'logs', 'latest.log')
+                if os.path.exists(log):
+                    with open(log, 'r') as f:
+                        if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
+                            break
+
+            process.kill()
+
+            for f in glob("eula.txt"):
+                os.remove(f)
+
+            for f in glob("server.properties"):
+                os.remove(f)
 
 
     # Change back to original directory
@@ -3677,9 +3839,16 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             with open(os.path.join(test_server, 'META-INF', 'versions.list'), 'r') as f:
                                 version_output = f.read()
 
+                        # Quilt keywords
+                        if "quiltmc" in output.lower():
+                            import_data['type'] = "quilt"
+
+                        # NeoForge keywords
+                        elif "neoforge" in output.lower():
+                            import_data['type'] = "neoforge"
 
                         # Fabric keywords
-                        if "fabricinstaller" in output.lower() or "net.fabricmc" in output.lower():
+                        elif "fabricinstaller" in output.lower() or "net.fabricmc" in output.lower():
                             import_data['type'] = "fabric"
 
                         # Forge keywords
@@ -3839,6 +4008,25 @@ eula=true"""
                                     run_proc(f"kill -9 {server.pid}")
                                 server.kill()
                                 break
+
+                # NeoForge
+                elif "@libraries/net/neoforged/neoforge/" in output:
+                    start_script = True
+
+                    version = output.split("@libraries/net/neoforged/neoforge/")[1].rsplit(".", 1)[0]
+
+                    version_list = []
+
+                    for forge_file in glob(os.path.join(str(path), 'libraries', 'net', 'neoforged', 'neoforge', f'{version}*')):
+                        version_list.append(os.path.basename(forge_file))
+
+                        if version_list != 0:
+                            print(f"Determined type '{import_data['type']}':  validating version information...")
+
+                            import_data['type'] = "forge"
+                            import_data['version'] = version_list[0].rsplit(".", 1)[0]
+                            import_data['build'] = str(version_list[0].rsplit(".", 1)[-1])
+                            break
 
                 # New versions of forge
                 elif "@libraries/net/minecraftforge/forge/" in output:
@@ -4234,9 +4422,9 @@ def scan_modpack(update=False, progress_func=None):
                 # Reorganize .json for ease of iteration
                 metadata = [
                     {
-                        'url':i['downloads'][0],
-                        'file_name':os.path.basename(i['path']),
-                        'destination':os.path.join(test_server, os.path.dirname(i['path']))
+                        'url': i['downloads'][0],
+                        'file_name': os.path.basename(i['path']),
+                        'destination': os.path.join(test_server, os.path.dirname(i['path']))
                     }
                     for i in json.loads(f.read())["files"]
                 ]
@@ -4277,10 +4465,16 @@ def scan_modpack(update=False, progress_func=None):
                 data['build'] = content['install']['loaderVersion']
                 data['launch_flags'] = content['launch']['javaArgs']
 
-                matches = {'forge': 0, 'fabric': 0}
+                matches = {'forge': 0, 'fabric': 0, 'neoforge': 0, 'quilt': 0}
                 matches['forge'] += len(re.findall(r'\bforge\b', raw_content, re.IGNORECASE))
                 matches['fabric'] += len(re.findall(r'\bfabric\b', raw_content, re.IGNORECASE))
+                matches['neoforge'] += len(re.findall(r'\bneoforge\b', raw_content, re.IGNORECASE))
+                matches['quilt'] += len(re.findall(r'\bquilt\b', raw_content, re.IGNORECASE))
                 data['type'] = 'fabric' if matches['fabric'] > matches['forge'] else 'forge'
+                if data['type'] == 'fabric' and matches['quilt'] > 1:
+                    data['type'] = 'quilt'
+                if data['type'] == 'forge' and matches['neoforge'] > 1:
+                    data['type'] = 'neoforge'
 
                 # Install additional content if required
                 try:
@@ -4429,12 +4623,16 @@ def scan_modpack(update=False, progress_func=None):
         matches = {
             'forge': 0,
             'fabric': 0,
+            'neoforge': 0,
+            'quilt': 0,
             'versions': []
         }
 
         def process_matches(content):
             matches['forge'] += len(re.findall(r'\bforge\b', content, re.IGNORECASE))
             matches['fabric'] += len(re.findall(r'\bfabric\b', content, re.IGNORECASE))
+            matches['neoforge'] += len(re.findall(r'\bneoforge\b', content, re.IGNORECASE))
+            matches['quilt'] += len(re.findall(r'\bquilt\b', content, re.IGNORECASE))
             matches['versions'].extend(re.findall(r'(?<!\d.)1\.\d\d?\.\d\d?(?!\.\d+)\b', content))
 
         # First, search through all the files to find the type, version, and launch flags
@@ -4455,6 +4653,10 @@ def scan_modpack(update=False, progress_func=None):
                 process_matches(os.path.basename(mod))
 
         data['type'] = 'fabric' if matches['fabric'] > matches['forge'] else 'forge'
+        if data['type'] == 'fabric' and matches['quilt'] > 1:
+            data['type'] = 'quilt'
+        if data['type'] == 'forge' and matches['neoforge'] > 1:
+            data['type'] = 'neoforge'
         if matches['versions']:
             data['version'] = max(set(matches['versions']), key=matches['versions'].count)
 
@@ -4923,8 +5125,14 @@ def server_properties(server_name: str, write_object=None):
             file_contents = ""
 
             for key, value in write_object.items():
+
+                # Force boolean values
                 if str(value).lower().strip() in ['true', 'false'] and str(key) not in force_strings:
                     value = str(value).lower().strip()
+
+                # Force strings to be strings
+                elif str(key) in force_strings:
+                    value = str(value).strip()
 
                 file_contents += f"{key}{'' if key.startswith('#') else ('=' + str(value))}\n"
 
@@ -4952,6 +5160,10 @@ def server_properties(server_name: str, write_object=None):
                             config[line_object[0].strip()] = True
                         elif (line_object[1].strip().lower() == 'false') and (line_object[0].strip() not in force_strings):
                             config[line_object[0].strip()] = False
+
+                        # Force strings to be strings
+                        elif line_object[0].strip() in force_strings:
+                            config[line_object[0].strip()] = str(line_object[1].strip())
 
                         # Check for integers
                         else:
@@ -5152,30 +5364,19 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
         start_flags = f' {custom_flags}'
 
 
-    # For every version except Forge
-    if properties['type'] != 'forge':
-
-        # Make sure this works non-spigot versions
+    # Do some schennanies for NeoForge
+    if properties['type'] == 'neoforge':
         if java_override:
             java = java_override
         else:
-            java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
-
-        # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
-        script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
-
-        if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
-            script += ' -DPaper.ignoreJavaVersion=true'
-
-        # Improve performance on Purpur
-        if properties['type'] == 'purpur':
-            script += ' --add-modules=jdk.incubator.vector'
-
-        script += ' -jar server.jar nogui'
+            java = java_executable['modern']
+        version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "neoforged", "neoforge", f"{float(properties['version'][2:])}*")) if os.listdir(file)]
+        arg_file = f"libraries/net/neoforged/neoforge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
+        script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
 
 
     # Do some schennanies for Forge
-    else:
+    elif properties['type'] == 'forge':
 
         # Modern
         if version_check(properties['version'], ">=", "1.17"):
@@ -5194,6 +5395,30 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
             else:
                 java = java_executable["legacy"]
             script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+
+
+    # Everything else
+    else:
+        # Make sure this works non-spigot versions
+        if java_override:
+            java = java_override
+        else:
+            java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
+
+        # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
+        script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
+
+        if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
+            script += ' -DPaper.ignoreJavaVersion=true'
+
+        # Improve performance on Purpur
+        if properties['type'] == 'purpur':
+            script += ' --add-modules=jdk.incubator.vector'
+
+        jar_name = 'quilt.jar' if properties['type'] == 'quilt' else 'server.jar'
+
+        script += f' -jar {jar_name} nogui'
+
 
 
     script_check = ""

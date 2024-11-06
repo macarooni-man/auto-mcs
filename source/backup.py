@@ -44,8 +44,8 @@ class BackupObject():
                 os.remove(cfg)
                 break
 
-        constants.safe_delete(extract_folder)
         os.chdir(cwd)
+        constants.safe_delete(extract_folder)
 
     def __init__(self, server_name: str, backup_info: list, no_fetch=False):
         self.name = server_name
