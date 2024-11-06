@@ -237,7 +237,7 @@ def manage_server(name: str, action: str):
             if not server_obj.running:
                 return [('parameter', name), ('info', ' is not running')], 'fail'
 
-            func_wrapper(server_obj.terminate)
+            func_wrapper(server_obj.kill)
             return return_log([("normal", "Terminated "), ("parameter", name)])
 
         elif action == 'restart':
