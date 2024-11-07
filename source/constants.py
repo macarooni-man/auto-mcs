@@ -3034,7 +3034,7 @@ def pre_addon_update(telepath=False):
     # Generate server info for downloading proper add-on versions
     new_server_init()
     new_server_info = server_obj.properties_dict()
-    init_update(telepath=True)
+    init_update(telepath=telepath)
     new_server_info['addon_objects'] = server_obj.addon.return_single_list()
 def post_addon_update(telepath=False):
     global new_server_info
