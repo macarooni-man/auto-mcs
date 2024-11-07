@@ -41,7 +41,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.2.3"
+app_version = "2.2.4"
 ams_version = "1.3"
 telepath_version = "1.0.3"
 app_title = "auto-mcs"
@@ -3720,8 +3720,6 @@ def scan_import(bkup_file=False, progress_func=None, *args):
     except KeyError:
         pass
 
-    print(telepath_data, import_data)
-
     if telepath_data:
         response = api_manager.request(
             endpoint='/create/scan_import',
@@ -3959,6 +3957,9 @@ eula=true"""
                             f.write(eula)
 
                         # Run legacy version of java
+                        if not file_name.endswith('.jar'):
+                            file_name = f'{file_name}.jar'
+
                         if import_data['type'] == "forge":
                             server = subprocess.Popen(f"\"{java_executable['legacy']}\" -Xmx{ram}G -Xms{int(round(ram/2))}G -jar {file_name} nogui", shell=True)
 
