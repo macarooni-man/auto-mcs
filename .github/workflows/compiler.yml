@@ -120,6 +120,7 @@ jobs:
               --icon "auto-mcs.app" 230 277 \
               --hide-extension "auto-mcs.app" \
               --app-drop-link 593 277 \
+              --skip-jenkins \
               "$root/build-tools/dist/auto-mcs.dmg" \
               "$root/build-tools/dist/auto-mcs.app"
           done
