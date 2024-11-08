@@ -345,7 +345,7 @@ def get_repo_scripts():
 # Parse template file into a Python object
 def parse_template(path):
     try:
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             data = yaml.safe_load(f.read())
             if latestMC[data['server']['type']] == '0.0.0':
                 while latestMC[data['server']['type']] == '0.0.0':
@@ -443,7 +443,7 @@ def get_repo_templates():
 locale_file = os.path.join(executable_folder, 'locales.json')
 locale_data = {}
 if os.path.isfile(locale_file):
-    with open(locale_file, 'r') as f:
+    with open(locale_file, 'r', encoding='utf-8', errors='ignore') as f:
         locale_data = json.load(f)
 available_locales = {
     "English": {"name": 'English', "code": 'en'},
@@ -712,7 +712,7 @@ rm \"{os.path.join(tempDir, script_name)}\""""
             )
 
             shell_file.close()
-            with open(shell_path, 'r') as f:
+            with open(shell_path, 'r', encoding='utf-8', errors='ignore') as f:
                 print(f.read())
             run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
     sys.exit()
@@ -796,7 +796,7 @@ rm \"{os.path.join(tempDir, script_name)}\""""
             )
 
             shell_file.close()
-            with open(shell_path, 'r') as f:
+            with open(shell_path, 'r', encoding='utf-8', errors='ignore') as f:
                 print(f.read())
             run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
 
@@ -829,7 +829,7 @@ rm \"{os.path.join(tempDir, script_name)}\""""
             )
 
             shell_file.close()
-            with open(shell_path, 'r') as f:
+            with open(shell_path, 'r', encoding='utf-8', errors='ignore') as f:
                 print(f.read())
             run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
     sys.exit()
@@ -1208,7 +1208,7 @@ def check_world_version(world_path: str, server_version: str):  # Returns (True,
             # If world has data version
             else:
 
-                with open(cache_file, 'r') as f:
+                with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
                     cache_file = json.load(f)
 
                 try:
@@ -1753,7 +1753,7 @@ def find_latest_mc():
                         latestMC["vanilla"] = div.get('data-version')
                         break
             except:
-                with open(os.path.join(cacheDir, 'data-version-db.json'), 'r') as f:
+                with open(os.path.join(cacheDir, 'data-version-db.json'), 'r', encoding='utf-8', errors='ignore') as f:
                     for key in json.loads(f.read()).keys():
                         for char in key:
                             if char.isalpha():
@@ -2007,7 +2007,7 @@ def check_data_cache():
         renew_cache = True
 
     else:
-        with open(cache_file, 'r') as f:
+        with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
             if latestMC["vanilla"] not in json.load(f):
                 renew_cache = True
 
@@ -2157,7 +2157,7 @@ def load_addon_cache(write=False, telepath=False):
     if not write:
         try:
             if os.path.isfile(file_path):
-                with open(file_path, 'r') as f:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     addon_cache = json.load(f)
         except:
             return
@@ -3163,7 +3163,7 @@ def install_server(progress_func=None, imported=False):
             time.sleep(1)
             log = os.path.join(tmpsvr, 'logs', 'latest.log')
             if os.path.exists(log):
-                with open(log, 'r') as f:
+                with open(log, 'r', encoding='utf-8', errors='ignore') as f:
                     if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
                         break
 
@@ -3196,7 +3196,7 @@ def install_server(progress_func=None, imported=False):
                 time.sleep(1)
                 log = os.path.join(tmpsvr, 'logs', 'latest.log')
                 if os.path.exists(log):
-                    with open(log, 'r') as f:
+                    with open(log, 'r', encoding='utf-8', errors='ignore') as f:
                         if "You need to agree to the EULA in order to run the server. Go to eula.txt for more info" in f.read():
                             break
 
@@ -3811,7 +3811,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
         for file in script_list:
 
             # Find server jar name
-            with open(file, 'r') as f:
+            with open(file, 'r', encoding='utf-8', errors='ignore') as f:
                 output = f.read()
                 raw_output = output
                 f.close()
@@ -3829,12 +3829,12 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                     run_proc(f'"{java_executable["jar"]}" -xf {file_name}.jar META-INF/MANIFEST.MF')
                     run_proc(f'"{java_executable["jar"]}" -xf {file_name}.jar META-INF/versions.list')
 
-                    with open(os.path.join(test_server, 'META-INF', 'MANIFEST.MF'), 'r') as f:
+                    with open(os.path.join(test_server, 'META-INF', 'MANIFEST.MF'), 'r', encoding='utf-8', errors='ignore') as f:
                         output = f.read()
 
                         version_output = ""
                         if os.path.exists(os.path.join(test_server, 'META-INF', 'versions.list')):
-                            with open(os.path.join(test_server, 'META-INF', 'versions.list'), 'r') as f:
+                            with open(os.path.join(test_server, 'META-INF', 'versions.list'), 'r', encoding='utf-8', errors='ignore') as f:
                                 version_output = f.read()
 
                         # Quilt keywords
@@ -3864,7 +3864,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             # Grab build info
                             if os.path.exists(os.path.join(str(path), 'version_history.json')):
                                 try:
-                                    with open(os.path.join(str(path), 'version_history.json'), 'r') as f:
+                                    with open(os.path.join(str(path), 'version_history.json'), 'r', encoding='utf-8', errors='ignore') as f:
                                         import_data['build'] = str(json.load(f)['currentVersion'].lower().split('paper-')[1].split(' ')[0].strip())
                                 except:
                                     pass
@@ -3981,12 +3981,12 @@ eula=true"""
 
                             # Read modern logs
                             if os.path.exists(os.path.join(test_server, 'logs', 'latest.log')):
-                                with open(os.path.join(test_server, 'logs', 'latest.log'), 'r') as f:
+                                with open(os.path.join(test_server, 'logs', 'latest.log'), 'r', encoding='utf-8', errors='ignore') as f:
                                     output = f.read()
 
                             # Read legacy logs
                             elif os.path.exists(os.path.join(test_server, 'server.log')):
-                                with open(os.path.join(test_server, 'server.log'), 'r') as f:
+                                with open(os.path.join(test_server, 'server.log'), 'r', encoding='utf-8', errors='ignore') as f:
                                     output = f.read()
 
                             if "starting minecraft server version" in output.lower():
@@ -4252,7 +4252,7 @@ eula=true"""
 
             if server_path(import_data['name'], 'server.properties'):
                 content = []
-                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'r') as f:
+                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.readlines()
                     edited = False
                     if len(content) >= 1:
@@ -4418,7 +4418,7 @@ def scan_modpack(update=False, progress_func=None):
         data['pack_type'] = 'mrpack'
         mr_index = os.path.join(test_server, 'modrinth.index.json')
         if os.path.isfile(mr_index):
-            with open(mr_index, 'r') as f:
+            with open(mr_index, 'r', encoding='utf-8', errors='ignore') as f:
 
                 # Reorganize .json for ease of iteration
                 metadata = [
@@ -4494,7 +4494,7 @@ def scan_modpack(update=False, progress_func=None):
                             mod_dict = os.path.join(additional_extract, 'manifest.json')
 
                             if os.path.isfile(mod_dict):
-                                with open(mod_dict, 'r') as f:
+                                with open(mod_dict, 'r', encoding='utf-8', errors='ignore') as f:
                                     metadata = json.loads(f.read())
 
                                     def get_mod_url(mod_data):
@@ -4693,7 +4693,7 @@ def scan_modpack(update=False, progress_func=None):
     for file in glob(os.path.join(test_server, '*.*')):
         for key in ['jvm', 'args', 'arguments', 'param']:
             if key in os.path.basename(file):
-                with open(file, 'r') as f:
+                with open(file, 'r', encoding='utf-8', errors='ignore') as f:
                     text = f.read()
                     for match in re.findall(r'(?<= |=|\n)--?\S+', text):
                         process_flags(match)
@@ -4866,7 +4866,7 @@ eula=true"""
 
             if server_path(import_data['name'], 'server.properties'):
                 content = []
-                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'r') as f:
+                with open(os.path.join(server_path(import_data['name']), 'server.properties'), 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.readlines()
                     edited = False
                     if len(content) >= 1:
@@ -5122,7 +5122,7 @@ def server_properties(server_name: str, write_object=None):
     # If write_object, write it to file path
     if write_object:
 
-        with open(properties_file, 'w', encoding='utf-8', errors='ignore') as f:
+        with open(properties_file, 'w') as f:
             file_contents = ""
 
             for key, value in write_object.items():
@@ -5468,7 +5468,7 @@ def get_modrinth_data(name: str):
         if os_name == 'windows':
             run_proc(f"attrib -H \"{index}\"")
 
-        with open(index, 'r') as f:
+        with open(index, 'r', encoding='utf-8', errors='ignore') as f:
             data = json.loads(f.read())
 
             try:
@@ -5580,7 +5580,7 @@ def get_current_ip(name: str, proxy=False):
     lines = []
 
     if server_path(name, "server.properties"):
-        with open(server_path(name, "server.properties"), 'r') as f:
+        with open(server_path(name, "server.properties"), 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.readlines()
             for line in lines:
                 if re.search(r'server-port=', line):
@@ -5991,7 +5991,7 @@ class ConfigManager():
 
     def load_config(self):
         if os.path.exists(self._path):
-            with open(self._path, 'r') as file:
+            with open(self._path, 'r', encoding='utf-8', errors='ignore') as file:
                 try:
                     self._data = json.loads(file.read().replace('ide-settings', 'ide_settings'))
                     return True
@@ -6035,7 +6035,7 @@ class PlayitManager():
 
         def _read_data(self):
             if os.path.exists(self._path):
-                with open(self._path, 'r') as f:
+                with open(self._path, 'r', encoding='utf-8', errors='ignore') as f:
                     self._data = json.loads(f.read())
 
         def _write_data(self):
@@ -6148,7 +6148,7 @@ class PlayitManager():
     # Load playit.toml into an attribute
     def _load_config(self) -> bool:
         if os.path.exists(self.toml_path):
-            with open(self.toml_path, 'r') as toml:
+            with open(self.toml_path, 'r', encoding='utf-8', errors='ignore') as toml:
                 strip_list = "'\" \n"
                 self.config = {
                     k.strip(strip_list): v.strip(strip_list)
@@ -6575,7 +6575,7 @@ class SearchManager():
 
         # If cache file exists, load data from there instead
         if os.path.exists(cache_file):
-            with open(cache_file, 'r') as f:
+            with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
                 self.guide_tree = json.loads(f.read())
                 return True
 
