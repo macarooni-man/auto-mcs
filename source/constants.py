@@ -542,6 +542,7 @@ def translate(text: str):
             new_text = re.sub(r'ESENTATO', 'ESCI', new_text, re.IGNORECASE)
         if app_config.locale == 'fr':
             new_text = re.sub(r'moire \(Go\)', 'moire (GB)', new_text, re.IGNORECASE)
+            new_text = re.sub(r'dos', 'retour', new_text, re.IGNORECASE)
 
 
         # Get the spacing in front and after the text
