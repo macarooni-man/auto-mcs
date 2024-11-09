@@ -460,16 +460,15 @@ jobs:
           curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -X MKCOL "${CLOUD_URL}/${version_folder}" || echo "Directory already exists or creation failed"
 
           find ./artifacts -type f | while read file; do
-
-            # Construct versioned subfolder path and new filename with -beta suffix
+            # Get the top-level directory name (artifact name) without extra path
             dir_name=$(basename $(dirname "$file"))
-
-            # Check if the file has an extension; if not, add ".bin" as a placeholder
+            
+            # Add an extension if the file is missing one
             if [[ "$file" == *.* ]]; then
               extension="${file##*.}"
-              new_filename="${dir_name}-beta.${extension}"
+              new_filename="${dir_name}-${version_folder}.${extension}"
             else
-              new_filename="${dir_name}-beta.bin"
+              new_filename="${dir_name}-${version_folder}.bin"
             fi
 
             echo "Uploading $new_filename to ${CLOUD_URL}/${version_folder}..."

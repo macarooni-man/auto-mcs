@@ -160,6 +160,7 @@ class DiscordPresenceManager():
 
                     details = None
                     state = None
+                    large = 'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/source/gui-assets/big-icon.png'
 
                     # Override for running server
                     if constants.server_manager.current_server and constants.server_manager.current_server.running and screen_manager.current == 'ServerViewScreen':
@@ -191,7 +192,7 @@ class DiscordPresenceManager():
                             args['small_image'] = f'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/big/{server_obj.type}_small.png?raw=true'
 
                         args['small_text'] = f"{server_obj.name} - {state}"
-                        self.presence.update(state=state, details=details, start=self.start_time, **args)
+                        self.presence.update(state=state, details=details, start=self.start_time, large_image=large, **args)
 
                         return True
 
@@ -204,7 +205,7 @@ class DiscordPresenceManager():
                     elif 'amscript IDE' in footer_path:
                         details, state = footer_path.split(' > ', 1)
                         image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/amscript-icon.png?raw=true'
-                        self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='amscript IDE')
+                        self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='amscript IDE', large_image=large)
 
                         return True
 
@@ -215,7 +216,7 @@ class DiscordPresenceManager():
                         else:
                             details, state = 'Telepath', self.splash
                         image = 'https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/icons/telepath.png?raw=true'
-                        self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='Telepath')
+                        self.presence.update(state=state, details=details, start=self.start_time, small_image=image, small_text='Telepath', large_image=large)
 
                         return True
 
@@ -235,7 +236,7 @@ class DiscordPresenceManager():
 
 
                     if details and state:
-                        self.presence.update(state=state, details=details, start=self.start_time)
+                        self.presence.update(state=state, details=details, start=self.start_time, large_image=large)
 
                 else:
                     pass
