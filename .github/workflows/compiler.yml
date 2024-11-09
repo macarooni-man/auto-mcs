@@ -109,7 +109,6 @@ jobs:
           max_attempts=5
           attempt=1
 
-          echo "Creating disk image..."
           while [ $attempt -le $max_attempts ]; do
             # Attempt to create the disk image
             sudo create-dmg \
