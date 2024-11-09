@@ -106,9 +106,12 @@ jobs:
           chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
 
           # Create .dmg from .app
-          while : ; do
-            [[ -f "$root/build-tools/dist/auto-mcs.dmg" ]] && break
-            sleep 1
+          max_attempts=5
+          attempt=1
+
+          echo "Creating disk image..."
+          while [ $attempt -le $max_attempts ]; do
+            # Attempt to create the disk image
             sudo create-dmg \
               --volname "auto-mcs" \
               --volicon "$root/other/macos-dmg/icon.icns" \
@@ -123,6 +126,22 @@ jobs:
               --skip-jenkins \
               "$root/build-tools/dist/auto-mcs.dmg" \
               "$root/build-tools/dist/auto-mcs.app"
+
+            # Check if the .dmg file was created successfully
+            if [[ -f "$root/build-tools/dist/auto-mcs.dmg" ]]; then
+              echo "Disk image created successfully."
+              break
+            else
+              echo "Attempt $attempt failed: Disk image creation resource is busy."
+              attempt=$(( attempt + 1 ))
+              sleep 5  # Wait for a few seconds before retrying
+            fi
+
+            # Fail if max attempts are reached
+            if [ $attempt -gt $max_attempts ]; then
+              echo "Failed to create disk image after $max_attempts attempts."
+              exit 1
+            fi
           done
 
       - name: Upload Binary
