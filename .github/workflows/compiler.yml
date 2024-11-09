@@ -460,15 +460,19 @@ jobs:
           curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -X MKCOL "${CLOUD_URL}/${version_folder}" || echo "Directory already exists or creation failed"
 
           find ./artifacts -type f | while read file; do
-            # Get the top-level directory name (artifact name) without extra path
+
+            # Extract the platform name by removing duplicate version numbers
             dir_name=$(basename $(dirname "$file"))
-            
-            # Add an extension if the file is missing one
-            if [[ "$file" == *.* ]]; then
-              extension="${file##*.}"
-              new_filename="${dir_name}-${version_folder}.${extension}"
+            # Remove the duplicated version numbers
+            platform_name=$(echo "$dir_name" | sed -E 's/(-[0-9]+\.[0-9]+\.[0-9]+)+/-\1/g')
+
+            # Check if the file has an extension; if not, add ".bin" as a placeholder
+            base_filename=$(basename "$file")
+            if [[ "$base_filename" == *.* ]]; then
+              extension="${base_filename##*.}"
+              new_filename="${platform_name}-beta.${extension}"
             else
-              new_filename="${dir_name}-${version_folder}.bin"
+              new_filename="${platform_name}-beta.bin"
             fi
 
             echo "Uploading $new_filename to ${CLOUD_URL}/${version_folder}..."
