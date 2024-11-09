@@ -453,26 +453,27 @@ jobs:
           CLOUD_URL: ${{ secrets.CLOUD_URL }}
           CLOUD_USERNAME: ${{ secrets.CLOUD_USERNAME }}
           CLOUD_PASSWORD: ${{ secrets.CLOUD_PASSWORD }}
+          APP_VERSION: ${{ needs.setup-env.outputs.APP_VERSION }}
         run: |
           # Verify remote folder exists
-          version_folder="${{ needs.setup-env.outputs.APP_VERSION }}-beta"
+          version_folder="${APP_VERSION}-beta"
           echo "Creating directory ${version_folder} if it doesn't exist..."
           curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -X MKCOL "${CLOUD_URL}/${version_folder}" || echo "Directory already exists or creation failed"
 
           find ./artifacts -type f | while read file; do
 
-            # Extract the platform name by removing duplicate version numbers
+            # Extract platform name by removing version numbers and trailing hyphens
             dir_name=$(basename $(dirname "$file"))
-            # Remove the duplicated version numbers
-            platform_name=$(echo "$dir_name" | sed -E 's/(-[0-9]+\.[0-9]+\.[0-9]+)+/-\1/g')
+            platform_name=$(echo "$dir_name" | sed -E 's/-[0-9]+(\.[0-9]+)*(-beta\.[0-9]+)?$//')
+            platform_name="${platform_name%-}"  # Remove any trailing hyphens
 
             # Check if the file has an extension; if not, add ".bin" as a placeholder
             base_filename=$(basename "$file")
             if [[ "$base_filename" == *.* ]]; then
               extension="${base_filename##*.}"
-              new_filename="${platform_name}-beta.${extension}"
+              new_filename="${platform_name}-${APP_VERSION}-beta.${extension}"
             else
-              new_filename="${platform_name}-beta.bin"
+              new_filename="${platform_name}-${APP_VERSION}-beta.bin"
             fi
 
             echo "Uploading $new_filename to ${CLOUD_URL}/${version_folder}..."
