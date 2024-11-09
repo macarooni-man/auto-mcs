@@ -1100,7 +1100,7 @@ def find_addon(name, server_properties):
     try:
         new_addon = sorted(
             [
-                [addon, round(SequenceMatcher(None, addon.name.lower(), name.lower()).ratio(), 2) if addon.id.lower() != name else 1000]
+                [addon, round(SequenceMatcher(None, addon.name.lower(), name.lower()).ratio(), 2) if (not addon.id or addon.id.lower() != name) else 1000]
                 for addon in search_addons(name, server_properties)
             ], key=lambda x: x[1], reverse=True)[0][0]
 

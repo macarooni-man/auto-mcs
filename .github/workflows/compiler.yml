@@ -415,6 +415,29 @@ jobs:
 
 
 
+  # Upload artifacts to auto-mcs cloud 
+  upload-cloud:
+  name: Upload to auto-mcs cloud
+  runs-on: ubuntu-latest
+  needs: [setup-env, windows, macos, linux, linux-arm, alpine, alpine-arm]
+  steps:
+    - name: Download All Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+
+    - name: Upload Artifacts
+      env:
+        CLOUD_URL: ${{ secrets.CLOUD_URL }}
+        CLOUD_USER: ${{ secrets.CLOUD_USERNAME }}
+        CLOUD_PASSWORD: ${{ secrets.CLOUD_PASSWORD }}
+      run: |
+        for file in ./artifacts/*; do
+          curl -u "$CLOUD_USER:$CLOUD_PASSWORD" -T "$file" "$CLOUD_URL"
+        done
+
+
+
   # Publish images to Docker Hub
   publish-docker:
     name: Publish Docker image
