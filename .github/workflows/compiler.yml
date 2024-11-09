@@ -442,7 +442,7 @@ jobs:
             # Construct versioned subfolder path and new filename with -beta suffix
             dir_name=$(basename $(dirname "$file"))
             extension="${file##*.}"
-            version_folder="${APP_VERSION}-beta"
+            version_folder="${{ needs.setup-env.outputs.APP_VERSION }}-beta"
             new_filename="${dir_name}-beta.${extension}"
 
             echo "Uploading $new_filename to ${CLOUD_URL}/${version_folder}..."
