@@ -426,16 +426,22 @@ jobs:
         with:
           path: ./artifacts
 
-      - name: Upload Artifacts
-        env:
-          CLOUD_URL: ${{ secrets.CLOUD_URL }}
-          CLOUD_USER: ${{ secrets.CLOUD_USERNAME }}
-          CLOUD_PASSWORD: ${{ secrets.CLOUD_PASSWORD }}
-        run: |
-          for file in ./artifacts/*; do
-            curl -u "$CLOUD_USER:$CLOUD_PASSWORD" -T "$file" "$CLOUD_URL"
-          done
+    - name: List Downloaded Artifacts (Debugging)
+      run: |
+        echo "Downloaded artifacts:"
+        ls -R ./artifacts
 
+    - name: Upload Artifacts
+      env:
+        CLOUD_URL: ${{ secrets.CLOUD_URL }}
+        CLOUD_USERNAME: ${{ secrets.CLOUD_USERNAME }}
+        CLOUD_PASSWORD: ${{ secrets.CLOUD_PASSWORD }}
+      run: |
+        find ./artifacts -type f | while read file; do
+          filename=$(basename "$file")
+          echo "Uploading $filename..."
+          curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "$file" "$CLOUD_URL"
+        done
 
 
   # Publish images to Docker Hub
