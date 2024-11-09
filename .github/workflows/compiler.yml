@@ -122,7 +122,6 @@ jobs:
               --icon "auto-mcs.app" 230 277 \
               --hide-extension "auto-mcs.app" \
               --app-drop-link 593 277 \
-              --skip-jenkins \
               "$root/build-tools/dist/auto-mcs.dmg" \
               "$root/build-tools/dist/auto-mcs.app"
 
@@ -455,13 +454,23 @@ jobs:
           CLOUD_USERNAME: ${{ secrets.CLOUD_USERNAME }}
           CLOUD_PASSWORD: ${{ secrets.CLOUD_PASSWORD }}
         run: |
+          # Verify remote folder exists
+          version_folder="${{ needs.setup-env.outputs.APP_VERSION }}-beta"
+          echo "Creating directory ${version_folder} if it doesn't exist..."
+          curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -X MKCOL "${CLOUD_URL}/${version_folder}" || echo "Directory already exists or creation failed"
+
           find ./artifacts -type f | while read file; do
 
             # Construct versioned subfolder path and new filename with -beta suffix
             dir_name=$(basename $(dirname "$file"))
-            extension="${file##*.}"
-            version_folder="${{ needs.setup-env.outputs.APP_VERSION }}-beta"
-            new_filename="${dir_name}-beta.${extension}"
+
+            # Check if the file has an extension; if not, add ".bin" as a placeholder
+            if [[ "$file" == *.* ]]; then
+              extension="${file##*.}"
+              new_filename="${dir_name}-beta.${extension}"
+            else
+              new_filename="${dir_name}-beta.bin"
+            fi
 
             echo "Uploading $new_filename to ${CLOUD_URL}/${version_folder}..."
             
