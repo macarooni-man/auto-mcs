@@ -491,14 +491,14 @@ jobs:
           echo "Branch: ${{ github.ref_name }}" >> ./commit-metadata.txt
           echo "Workflow Run: ${{ github.run_id }}" >> ./commit-metadata.txt
           echo "Timestamp: $(date)" >> ./commit-metadata.txt
-          curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "./commit-metadata.txt" "${CLOUD_URL}/${version_folder}"
+          curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "./commit-metadata.txt" "${CLOUD_URL}/${version_folder}/commit-metadata.txt"
 
 
           # Upload source code
           source="auto-mcs-source-${APP_VERSION}-beta.zip"
           curl -L -o ./${source} \
             https://github.com/${{ github.repository }}/archive/refs/heads/${{ github.ref_name }}.zip
-          curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "${source}" "${CLOUD_URL}/${version_folder}"
+          curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "${source}" "${CLOUD_URL}/${version_folder}/${source}"
 
 
   # Publish images to Docker Hub
