@@ -3692,6 +3692,8 @@ def footer_label(path, color, progress_screen=False):
     version = AlignLabel(color=(0.6, 0.6, 1, 0.2), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23), markup=True, size_hint=(1.0, 1.0), halign="right", valign="bottom")
     version.__translate__ = False
     version.text = f"auto-mcs[size={round(sp(18))}]  [/size]v{version_text}"
+    if constants.is_admin() and constants.bypass_admin_warning:
+        version.text = f"[color=#FF8793]{version.text}[/color]"
 
     text_layout.bind(pos=functools.partial(fit_to_window, label, path_list))
     text_layout.bind(size=functools.partial(fit_to_window, label, path_list))
@@ -9591,7 +9593,19 @@ class MainMenuScreen(MenuBackground):
     # Prompt update/show banner when starting up
     def on_enter(self, *args):
         global shown_disk_error
-        if constants.is_admin():
+
+        if constants.is_admin() and constants.bypass_admin_warning:
+            def admin_error(*_):
+                self.show_popup(
+                    "warning",
+                    "Privilege Warning",
+                    f"Running auto-mcs as ${'administrator' if constants.os_name == 'windows' else 'root'}$ can expose your system to security vulnerabilities.\n\nProceed with caution, this configuration is unsupported",
+                    None
+                )
+            Clock.schedule_once(admin_error, 0.5)
+            return
+
+        elif constants.is_admin():
             def admin_error(*_):
                 self.show_popup(
                     "warning",
@@ -9677,7 +9691,8 @@ class MainMenuScreen(MenuBackground):
 
 
         version_text = f"{constants.app_version}{' (dev)' if constants.dev_version else ''}"
-        version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
+        color = "#FF8793" if constants.is_admin() else (0.6, 0.6, 1, 0.5)
+        version = Label(pos=(330, 200), pos_hint={"center_y": 0.77}, color=color, font_name=os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf'), font_size=sp(23))
         version.__translate__ = False
         version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
         splash.add_widget(version)
@@ -26334,7 +26349,7 @@ class MainApp(App):
 
         # Process --launch flag
         if constants.boot_launches:
-            if not constants.is_admin():
+            if not constants.is_admin() or constants.bypass_admin_warning:
 
                 def launch_server(*_):
                     for server in constants.boot_launches:

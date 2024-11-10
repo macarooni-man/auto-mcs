@@ -69,6 +69,7 @@ screen_tree = []
 back_clicked = False
 session_splash = ''
 boot_launches = []
+bypass_admin_warning = False
 
 
 # Global debug mode and app_compiled, set debug to false before release
