@@ -108,6 +108,7 @@ jobs:
           # Create .dmg from .app
           max_attempts=5
           attempt=1
+          set +e
 
           while [ $attempt -le $max_attempts ]; do
             # Attempt to create the disk image
@@ -138,6 +139,7 @@ jobs:
             # Fail if max attempts are reached
             if [ $attempt -gt $max_attempts ]; then
               echo "Failed to create disk image after $max_attempts attempts."
+              set -e
               exit 1
             fi
           done
