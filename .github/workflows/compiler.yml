@@ -487,7 +487,7 @@ jobs:
 
           # Upload metadata
           echo "Commit: ${{ github.sha }}" > ./commit-metadata.txt
-          echo "URL: https://github.com/macarooni-man/auto-mcs/commit/${{ github.sha }}" > ./commit-metadata.txt
+          echo "URL: https://github.com/macarooni-man/auto-mcs/commit/${{ github.sha }}" >> ./commit-metadata.txt
           echo "Author: ${{ github.actor }}" >> ./commit-metadata.txt
           echo "Repository: ${{ github.repository }}" >> ./commit-metadata.txt
           echo "Branch: ${{ github.ref_name }}" >> ./commit-metadata.txt
