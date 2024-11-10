@@ -491,7 +491,7 @@ jobs:
           echo "Branch: ${{ github.ref_name }}" >> ./commit-metadata.txt
           echo "Workflow Run: ${{ github.run_id }}" >> ./commit-metadata.txt
           echo "Timestamp: $(date)" >> ./commit-metadata.txt
-          curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "./commit-metadata" "${CLOUD_URL}/${version_folder}"
+          curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "./commit-metadata.txt" "${CLOUD_URL}/${version_folder}"
 
 
           # Upload source code
