@@ -5804,7 +5804,7 @@ def update_server_icon(server_name: str, new_image: str = False) -> [bool, str]:
 
 
     # First, check if the image has a valid extension
-    extension = new_image.rsplit('.')[-1]
+    extension = new_image.rsplit('.')[-1].lower()
     if f'*.{extension}' not in valid_image_formats:
         return (False, f'".{extension}" is not a valid extension')
 
