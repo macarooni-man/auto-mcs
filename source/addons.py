@@ -372,7 +372,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                     if server_type == "bukkit":
                         try:
                             jar_file.extract('plugin.yml', addon_tmp)
-                            with open(os.path.join(addon_tmp, 'plugin.yml'), 'r') as yml:
+                            with open(os.path.join(addon_tmp, 'plugin.yml'), 'r', encoding='utf-8', errors='ignore') as yml:
                                 addon_type = server_type
                                 next_line_desc = False
                                 for line in yml.readlines():
@@ -420,7 +420,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                         # Check if mcmod.info exists
                         try:
                             jar_file.extract('mcmod.info', addon_tmp)
-                            with open(os.path.join(addon_tmp, 'mcmod.info'), 'r') as info:
+                            with open(os.path.join(addon_tmp, 'mcmod.info'), 'r', encoding='utf-8', errors='ignore') as info:
                                 addon_type = server_type
                                 for line in info.readlines():
                                     if addon_author and addon_name and addon_version and addon_subtitle and addon_id:
@@ -456,7 +456,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                                 except:
                                     pass
                                 for file in glob(os.path.join(addon_tmp, 'META-INF', '*mods.toml')):
-                                    with open(file, 'r') as toml:
+                                    with open(file, 'r', encoding='utf-8', errors='ignore') as toml:
                                         addon_type = server_type
                                         file_contents = toml.read().split("[[dependencies")[0].replace(' = ', '=')
                                         for line in file_contents.splitlines():
@@ -499,7 +499,7 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
                             except:
                                 pass
 
-                            with open(file_path, 'r') as mod:
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as mod:
                                 file_contents = json.loads(mod.read())
 
                                 # Quilt mods
@@ -1100,7 +1100,7 @@ def find_addon(name, server_properties):
     try:
         new_addon = sorted(
             [
-                [addon, round(SequenceMatcher(None, addon.name.lower(), name.lower()).ratio(), 2) if addon.id.lower() != name else 1000]
+                [addon, round(SequenceMatcher(None, addon.name.lower(), name.lower()).ratio(), 2) if (not addon.id or addon.id.lower() != name) else 1000]
                 for addon in search_addons(name, server_properties)
             ], key=lambda x: x[1], reverse=True)[0][0]
 

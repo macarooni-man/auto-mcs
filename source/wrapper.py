@@ -70,6 +70,7 @@ if __name__ == '__main__':
         parser.add_argument('-d', '--debug', default='', help='execute auto-mcs with verbose console logging', action='store_true')
         parser.add_argument('-l', '--launch', type=str, default='', help='specify a server name (or list of server names) to launch automatically', metavar='"Server 1, Server 2"')
         parser.add_argument('--reset', default='', help='reset global configuration file before launch', action='store_true')
+        parser.add_argument('--bypass-admin-warning', default='', help='allow launch as admin/root (not recommended)', action='store_true')
 
         # For now, Windows doesn't support headless when compiled due to the GUI entrypoint from Pyinstaller
         if constants.os_name != 'windows' or not constants.app_compiled:
@@ -81,6 +82,7 @@ if __name__ == '__main__':
         # Assign parsed arguments to global variables
         constants.debug = args.debug
         reset_config = args.reset
+        constants.bypass_admin_warning = args.bypass_admin_warning
         if constants.os_name != 'windows' or not constants.app_compiled:
             constants.headless = args.headless
 
