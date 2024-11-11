@@ -270,7 +270,7 @@ if __name__ == '__main__':
 
                 # Check for network changes in the background
                 connect_counter += 1
-                if (connect_counter == 10 and not constants.app_online) or (connect_counter == 60 and constants.app_online) or connect_counter >= 3600:
+                if (connect_counter == 10 and not constants.app_online) or (connect_counter == 3600 and constants.app_online):
                     try:
                         constants.check_app_updates()
                     except Exception as e:
