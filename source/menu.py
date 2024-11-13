@@ -17493,6 +17493,29 @@ class ConsolePanel(FloatLayout):
         threading.Timer(0, start_timer).start()
 
 
+        # Show pop-up to ask user for initial user feedback
+        try:
+            if constants.app_config.prompt_feedback and constants.app_online:
+                constants.app_config.prompt_feedback = False
+
+                def open_feedback(*a):
+                    url = "https://www.auto-mcs.com/feedback"
+                    webbrowser.open_new_tab(url)
+
+                Clock.schedule_once(
+                    functools.partial(
+                        screen_manager.current_screen.show_popup,
+                        "query",
+                        "Share Your Feedback",
+                        "Thanks for using $auto-mcs$!\n\nWhile your server is launching, please take a moment to leave us your feedback",
+                        (None, threading.Timer(0, open_feedback).start)
+                    ),
+                    1
+                )
+        except:
+            pass
+
+
     # Stop server
     def stop_server(self, *args):
         if self.run_data:

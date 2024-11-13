@@ -5945,6 +5945,7 @@ class ConfigManager():
         defaults.locale = None
         defaults.sponsor_reminder = None
         defaults.discord_presence = True
+        defaults.prompt_feedback = True
         defaults.telepath_settings = {
             'enable-api': False,
             'api-host': "0.0.0.0",
