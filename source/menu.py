@@ -8577,6 +8577,13 @@ class MenuBackground(Screen):
 
     # Show popup; popup_type can be "info", "warning", "query"
     def show_popup(self, popup_type, title, content, callback=None, *args):
+
+        # Ignore if a pop-up is already on-screen
+        if self.popup_widget:
+            return
+
+
+        # If not, process pop-up
         popup_types = (
             "info", "warning", "query", "warning_query", "controls", "addon",
             "script", "file", "error_log"
