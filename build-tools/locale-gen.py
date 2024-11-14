@@ -45,6 +45,9 @@ for script in glob(os.path.join(source_dir, '*.py')):
                 if os.path.basename(script) == 'amseditor.py' and node.lineno < 880:
                     continue
 
+                if "-XX:+UseG1GC" in string or "xbox-achievements-enabled: true" in string:
+                    continue
+
                 if "namespace eval tabdrag" in string or re.match('^\<.*\>$', string) or re.match('[A-Z][a-z]+\.[A-Z][a-z]+', string):
                     continue
 
@@ -128,6 +131,11 @@ for x, string in enumerate(all_terms, 1):
             return
 
         key = string.lower().strip()
+
+        # Remove content between dollar signs for the key
+        if '$' in key:
+            key = re.sub(r'\$[^$]*\$', '$$', key)
+        
         if key not in locale_data:
             locale_data[key] = {}
 
