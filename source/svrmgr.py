@@ -2044,7 +2044,7 @@ class ServerManager():
                 if constants.debug:
                     print(vars(self.remote_server))
 
-                return None
+                return bool(self.remote_server)
 
         except AttributeError:
             pass
