@@ -1,0 +1,12 @@
+title: TP-Ask
+author: Kaleb Efflandt
+version: 1.0
+description: Adds !tpa & !tpaccept
+
+
+Usage:
+
+--------- Request/Accept TP ---------
+>>  !tpa <player>
+
+>>  !tpaccept
