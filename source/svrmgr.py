@@ -789,18 +789,21 @@ class ServerObject():
                         ]
                         include = False
 
-                        for phrase in include_list:
-                            if phrase in main_label.strip():
-                                include = True
-                                break
+                        # Ignore false alarms from named entities
+                        if not ('x=' in message and 'y=' in message and 'z=' in message):
 
-                        if include:
-                            for word in s_msg:
-                                if word.strip() in self.run_data['player-list']:
-                                    type_label = "CHAT"
-                                    type_color = (0.439, 0.839, 1, 1)
-                                    event = functools.partial(self.script_object.death_event, {'user': word.strip(), 'content': main_label.strip()})
+                            for phrase in include_list:
+                                if phrase in main_label.strip():
+                                    include = True
                                     break
+
+                            if include:
+                                for word in s_msg:
+                                    if word.strip() in self.run_data['player-list']:
+                                        type_label = "CHAT"
+                                        type_color = (0.439, 0.839, 1, 1)
+                                        event = functools.partial(self.script_object.death_event, {'user': word.strip(), 'content': main_label.strip()})
+                                        break
 
 
                 if date_label and type_label and main_label and type_color:

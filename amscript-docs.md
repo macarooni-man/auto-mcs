@@ -66,7 +66,7 @@ Sends a custom log event to the console. This output is displayed only while the
 
 
 
-### server.broadcast(*message, log_type*)
+### server.broadcast(*message, color, style*)
 
 Sends a custom chat message to all players and the console. This output is displayed only while the server is running, and is not saved to `latest.log`.
 
@@ -75,8 +75,23 @@ Sends a custom chat message to all players and the console. This output is displ
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `message*` | `str` of log content |
-| `log_type` | `str` can be `'info'`, `'success'`, `'warning'` or `'error'`. Defaults to `'info'` |
+| `message*` | `str` of content to broadcast |
+| `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
+| `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
+
+<br>
+
+
+### server.operator_broadcast(*message, color, style*)
+
+Sends a custom chat message to all operators and the console. This output is displayed only while the server is running, and is not saved to `latest.log`.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `message*` | `str` of content to broadcast |
+| `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
+| `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
 
 <br>
 
@@ -120,6 +135,14 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
 | --- | --- |
 | `selector*` | `str` of username, or a valid Minecraft selector that returns a single value (like @p, @s, @r). Only players will be matched |
 | `reverse` | `bool` selects last match on `True`. Defaults to `False` |
+
+<br>
+
+
+
+### server.get_players()
+
+Returns a generator of [**PlayerScriptObject**](#PlayerScriptObject) for each online player.
 
 <br>
 
@@ -240,6 +263,10 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.is_server
  - `bool`, if current object was created from the console
+ - This will be `True` if the console sends a command to a [**@player.on_alias**](#playeron_alias) event, for example
+
+#### player.is_operator
+ - `bool`, if current object has operator permissions
  - This will be `True` if the console sends a command to a [**@player.on_alias**](#playeron_alias) event, for example
 
 #### player.position

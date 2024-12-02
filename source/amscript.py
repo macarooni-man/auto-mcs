@@ -1411,7 +1411,7 @@ class ServerScriptObject():
         self.log(msg, log_type='success')
 
     # Version compatible message system for every player
-    def broadcast(self, msg, color="gray", style='italic', tag=False):
+    def broadcast(self, msg, color="gray", style="italic", tag=False):
         if not msg:
             return
 
@@ -1475,6 +1475,16 @@ class ServerScriptObject():
     def broadcast_success(self, msg, tag=False):
         self.broadcast(msg, "green", "normal", tag=tag)
 
+    # Sends a broadcast message only to operators
+    def operator_broadcast(self, msg, color="gray", style="italic", tag=False):
+
+        # Send to server console as well
+        self.log(f"(op) {msg}", log_type=('success' if color == 'green' else 'warning' if color == 'gold' else 'error' if color == 'red' else 'info'))
+
+        for player in self.get_players():
+            if player.is_operator:
+                player.log(msg, color, style, tag)
+
     # Version check
     def version_check(self, operand, version):
         return constants.version_check(self.version, operand, version)
@@ -1482,8 +1492,12 @@ class ServerScriptObject():
     # Returns PlayerScriptObject that matches selector
     def get_player(self, tag):
 
+        # Use internal function instead of pulling from the game
+        if tag == '@a':
+            return self.get_players()
+
         # First check if there's a user selector
-        if tag.startswith("@p") or tag.startswith("@r"):
+        if tag.startswith("@p") or tag.startswith("@r") or (tag.startswith("@a[") and 'limit=1' in tag):
             user = None
 
             if self.version_check(">=", "1.13"):
@@ -1514,6 +1528,10 @@ class ServerScriptObject():
 
         return obj
 
+    # Returns a PlayerScriptObject generator for all online players
+    def get_players(self):
+        for player in self.player_list:
+            yield self.get_player(player)
 
 # Reconfigured ServerObject to be passed in as 'player' variable to amscript events
 class PlayerScriptObject():
@@ -1942,6 +1960,15 @@ class PlayerScriptObject():
 
         # Eventually process this to object data
         # print(new_nbt)
+
+    # self.is_operator: True if player is an operator
+    @property
+    def is_operator(self):
+        if self.is_server:
+            return True
+
+        self._server.acl.reload_list('ops')
+        return bool(self._server.acl.rule_in_acl(self.name, 'ops'))
 
     # Set custom player permissions
     def set_permission(self, permission, enable=True):

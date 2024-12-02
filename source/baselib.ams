@@ -89,6 +89,26 @@ def generate_header(text):
 
 
 
+# Stops the server either immediately or with delay
+@player.on_alias(player, command='stop', arguments={'delay': False}, permission='op', description='Stops the server with optional delay (seconds) (auto-mcs provided)'):
+	
+	# Optionally wait for delay specified
+	if arguments['delay']:
+		try:
+			delay = round(float(arguments['delay']))
+			server.broadcast_warning(f"Server will stop in {delay}s", tag=True)
+			sleep(delay)
+
+		except ValueError:
+			player.log_error(f"Invalid syntax: <delay> must be a <float> or <int>")
+	
+	# Restart server
+	server.broadcast_warning(f"Stopping '{server.name}', please wait...", tag=True)
+	sleep(0.5)
+	server.stop()
+
+
+
 # Restarts the server either immediately or with delay
 @player.on_alias(player, command='restart', arguments={'delay': False}, permission='op', description='Stops and restarts with optional delay (seconds) (auto-mcs provided)'):
 	
@@ -96,18 +116,14 @@ def generate_header(text):
 	if arguments['delay']:
 		try:
 			delay = round(float(arguments['delay']))
-			if not player.is_server:
-				player.log_warning(f"Server will restart in {delay}s", tag=True)
-			server.log_warning(f"Server will restart in {delay}s")
+			server.broadcast_warning(f"Server will restart in {delay}s", tag=True)
 			sleep(delay)
 
 		except ValueError:
 			player.log_error(f"Invalid syntax: <delay> must be a <float> or <int>")
 	
 	# Restart server
-	if not player.is_server:
-		player.log_warning(f"Restarting '{server.name}', please wait...", tag=True)
-	server.log_warning(f"Restarting '{server.name}', please wait...")
+	server.broadcast_warning(f"Restarting '{server.name}', please wait...", tag=True)
 	sleep(0.5)
 	server.restart()
 
