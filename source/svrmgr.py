@@ -715,7 +715,7 @@ class ServerObject():
 
 
                 # Player achievement/advancement log
-                elif " has made the advancement " in message:
+                elif " has made the advancement " in message or " has completed the challenge " in message or " has reached the goal " in message:
                     #  2:50:17 PM   [INFO] >   KChicken has made the advancement [Hot Stuff]
                     type_label = "CHAT"
                     type_color = (0.439, 0.839, 1, 1)

@@ -1106,61 +1106,75 @@ class ScriptObject():
                                 nested_func = False
 
                                 # First, grab relative line number from modified code
-                                tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
                                 try:
-                                    line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
-                                except AttributeError:
-                                    line_num = 0
-                                    original_code = "Unknown"
-                                else:
-
-                                    # Try to locate event first
+                                    tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
                                     try:
-                                        # Locate original code from the source
-                                        original_code = self.src_dict[s][event][i].splitlines()[line_num - 1]
-                                        new_i = i
+                                        line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
+                                    except AttributeError:
+                                        line_num = 0
+                                        original_code = "Unknown"
+                                    else:
 
-                                        # If alias, count if statements beforehand instead because it's one function
-                                        if event == "@player.on_alias":
-                                            new_i = ("\n".join(self.src_dict[s]['@player.on_alias'][i].splitlines()[:line_num]).count(f": #__{self.server_id}__")) - 1
+                                        # Try to locate event first
+                                        try:
+                                            # Locate original code from the source
+                                            original_code = self.src_dict[s][event][i].splitlines()[line_num - 1]
+                                            new_i = i
 
-                                        # Use the line to find the original line number from the source
-                                        event_count = 0
-                                        for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
-                                            # print((original_code.strip(), line), (i+1, event_count))
-                                            # print(n, line, event_count, i)
+                                            # If alias, count if statements beforehand instead because it's one function
+                                            if event == "@player.on_alias":
+                                                new_i = ("\n".join(self.src_dict[s]['@player.on_alias'][i].splitlines()[:line_num]).count(f": #__{self.server_id}__")) - 1
 
-                                            if (original_code.strip() in line) and ((new_i + 1) == event_count):
-                                                line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
-                                                break
+                                            # Use the line to find the original line number from the source
+                                            event_count = 0
+                                            for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                                                # print((original_code.strip(), line), (i+1, event_count))
+                                                # print(n, line, event_count, i)
 
-                                            if line.startswith(event):
-                                                event_count += 1
-                                        else:
+                                                if (original_code.strip() in line) and ((new_i + 1) == event_count):
+                                                    line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                                                    break
+
+                                                if line.startswith(event):
+                                                    event_count += 1
+                                            else:
+                                                nested_func = True
+
+                                        # When error is not in an event, but in a nested function or library
+                                        except IndexError:
                                             nested_func = True
 
-                                    # When error is not in an event, but in a nested function or library
-                                    except IndexError:
-                                        nested_func = True
 
+                                        if nested_func:
 
-                                    if nested_func:
+                                            # Locate original code from source
+                                            original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
 
-                                        # Locate original code from source
-                                        original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
+                                            # Use the line to find the original line number from the source
+                                            event_count = 0
+                                            func_name = f'def {tb.split("in ")[1].strip()}('
+                                            for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                                                # print(n, line, event_count, i)
 
-                                        # Use the line to find the original line number from the source
-                                        event_count = 0
-                                        func_name = f'def {tb.split("in ")[1].strip()}('
-                                        for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
-                                            # print(n, line, event_count, i)
+                                                if (original_code.strip() in line) and (event_count > 0):
+                                                    line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                                                    break
 
-                                            if (original_code.strip() in line) and (event_count > 0):
-                                                line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
-                                                break
+                                                if line.startswith(func_name):
+                                                    event_count += 1
 
-                                            if line.startswith(func_name):
-                                                event_count += 1
+                                # Catch exception if invalid parameters are passed to an event
+                                except IndexError:
+                                    tb = traceback.format_exception(ex_type, ex_value, ex_traceback)
+                                    line_num = 0
+                                    original_code = "Unknown"
+
+                                    # Attempt to retrieve the failed event name
+                                    if '__()' in tb[-1]:
+                                        failed_event = [i for i in self.valid_events if tb[-1].split('__')[1] in i][0]
+                                        ex_value = f'Missing or invalid parameters supplied to "{failed_event}()"'
+                                        ex_type = Exception()
+                                        ex_type.__name__ = 'EventError'
 
 
                                 # Generate error dict
@@ -1357,7 +1371,7 @@ class ServerScriptObject():
 
         if server_obj.run_data:
             self._performance = server_obj.run_data['performance']
-            self.player_list = deepcopy(server_obj.run_data['player-list'])
+            self.player_list = {k: v for k, v in deepcopy(server_obj.run_data['player-list']).items() if v['logged-in']}
             self.network = server_obj.run_data['network']['address']
         else:
             self._performance = {}
