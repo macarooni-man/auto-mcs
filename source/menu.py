@@ -8792,16 +8792,20 @@ class MenuBackground(Screen):
 
         # Deletes banner object after duration
         def hide_banner(widget, *args):
+            try:
+                if constants.global_banner.id == widget.id:
 
-            if constants.global_banner.id == widget.id:
+                    if constants.global_banner:
+                        if constants.global_banner.parent:
+                            constants.global_banner.parent.remove_widget(constants.global_banner)
 
-                if constants.global_banner:
-                    if constants.global_banner.parent:
-                        constants.global_banner.parent.remove_widget(constants.global_banner)
+                    constants.global_banner = None
+                    for screen in screen_manager.children:
+                        screen.banner_widget = None
 
-                constants.global_banner = None
-                for screen in screen_manager.children:
-                    screen.banner_widget = None
+            # Ignore crash if screen was rapidly changed
+            except AttributeError:
+                pass
 
         def hide_widgets(shadow, progress_bar, *args):
             Animation(opacity=0, duration=0.5).start(shadow)
