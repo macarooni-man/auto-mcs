@@ -505,7 +505,7 @@ proc ::tabdrag::move {win x y} {
             y = int((height / 2) - (start_size[1] / 2)) - 15
         window.geometry(f"{start_size[0]}x{start_size[1]}+{x}+{y}")
         window.minsize(width=min_size[0], height=min_size[1])
-        window.title(f'{data["app_title"]} - amscript IDE')
+        window.title(f'{data["app_title"]} - amscript IDE (v{data["ams_version"]})')
         if fullscreen:
             if data['os_name'] in ['windows', 'macos']:
                 window.state('zoomed')

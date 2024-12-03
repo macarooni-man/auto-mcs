@@ -265,7 +265,7 @@ def generate_header(text):
 			player.log(', '.join([script.file_name for script in unloaded]), 'dark_red', 'normal')
 
 		if not loaded and not unloaded:
-			player.log("No scripts were detected. If you've installed any, type '!amscript reload' to initialize", 'gray', 'normal')
+			player.log("No scripts were detected. If you've installed any, type '!ams reload' to initialize", 'gray', 'normal')
 
 
 	# Enable/disable scripts

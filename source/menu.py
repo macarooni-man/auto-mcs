@@ -21262,6 +21262,7 @@ def edit_script(edit_button, server_obj, script_path, download=True):
     data_dict = {
         '_telepath_data': telepath_data,
         'app_title': constants.app_title,
+        'ams_version': constants.ams_version,
         'gui_assets': constants.gui_assets,
         'background_color': constants.background_color,
         'app_config': constants.app_config,
