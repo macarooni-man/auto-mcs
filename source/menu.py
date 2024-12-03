@@ -17592,8 +17592,11 @@ class ConsolePanel(FloatLayout):
             # Do things when on server launch screen
             screen_manager.current_screen.set_timer(False)
             screen_manager.current_screen.performance_panel.reset_panel()
-            if 'f' not in self.parent._ignore_keys:
-                self.parent._ignore_keys.append('f')
+            try:
+                if 'f' not in self.parent._ignore_keys:
+                    self.parent._ignore_keys.append('f')
+            except AttributeError:
+                pass
 
 
             # Before deleting run data, save log to a file
