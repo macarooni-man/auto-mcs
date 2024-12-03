@@ -107,6 +107,7 @@ Executes any Minecraft command in the server console.
 | Parameter | Description |
 | --- | --- |
 | `command*` | `str`, any Minecraft command |
+| `log` | `bool`, show execution in the console, `True` by default. Set `False` to prevent lag or clutter in the console with fast loops |
 
 <br>
 
@@ -1171,7 +1172,9 @@ window = tk.Tk()
 
 ### @server.on_loop
 
-Fired after every `interval`. Loops until the server is closed, or manually cancelled with `return`.
+Fired after every `interval`. Loops until the server is closed, or manually cancelled by using `return`.
+
+> Note: The fastest loop supported by this event is 1 tick (50 milliseconds)
 
 **Accepted parameters**:
 | Parameter | Description |
