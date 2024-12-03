@@ -17595,8 +17595,10 @@ class ConsolePanel(FloatLayout):
             try:
                 if 'f' not in self.parent._ignore_keys:
                     self.parent._ignore_keys.append('f')
+
+            # Return if parent is None-type (screen does not exist)
             except AttributeError:
-                pass
+                return
 
 
             # Before deleting run data, save log to a file
