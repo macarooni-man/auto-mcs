@@ -685,6 +685,13 @@ class ServerObject():
                         except KeyError:
                             pass
 
+                    # In case login isn't accurately reflected
+                    try:
+                        if not self.run_data['player-list'][user]['logged-in']:
+                            self.run_data['player-list'][user]['logged-in'] = True
+                    except KeyError:
+                        pass
+
                     type_label = "PLAYER"
                     type_color = (0.953, 0.929, 0.38, 1)
 
@@ -709,6 +716,13 @@ class ServerObject():
                             event = add_to_list()
                         except KeyError:
                             pass
+
+                    # In case logout isn't accurately reflected
+                    try:
+                        if self.run_data['player-list'][user]['logged-in']:
+                            self.run_data['player-list'][user]['logged-in'] = False
+                    except KeyError:
+                        pass
 
                     type_label = "PLAYER"
                     type_color = (0.953, 0.929, 0.38, 1)
@@ -1826,6 +1840,13 @@ class ServerObject():
                 else:
                     self.update_log(line)
                     return ""
+
+
+    # Retrieves updated player list from run_data
+    def get_players(self):
+        if self.run_data:
+            return self.run_data['player-list']
+
 
     # Retrieves IDE suggestions from internal objects
     def _retrieve_suggestions(self):

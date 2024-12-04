@@ -1345,6 +1345,7 @@ class ServerScriptObject():
         self._persistent_config = PersistenceManager(server_obj.name)
         self._app_version = constants.app_version
         self._script_state = server_obj.script_manager.script_state
+        self._get_players = server_obj.get_players
 
         # Assign callable functions from main server object
         self.execute = server_obj.silent_command
@@ -1371,11 +1372,9 @@ class ServerScriptObject():
 
         if server_obj.run_data:
             self._performance = server_obj.run_data['performance']
-            self.player_list = {k: v for k, v in deepcopy(server_obj.run_data['player-list']).items() if v['logged-in']}
             self.network = server_obj.run_data['network']['address']
         else:
             self._performance = {}
-            self.player_list = {}
             self.network = {'ip': None, 'port': None}
 
         # Load usercache
@@ -1401,6 +1400,11 @@ class ServerScriptObject():
     # Overrides comparison to return string instead
     def __eq__(self, comp):
         return self.name == comp
+
+
+    @property
+    def player_list(self):
+        return {k: v for k, v in self._get_players().items() if v['logged-in']}
 
     # Logging functions
     def log_warning(self, msg):

@@ -8501,6 +8501,7 @@ class MenuBackground(Screen):
         self._input_focused = False
         self._keyboard = Window.request_keyboard(None, self, 'text')
         self._keyboard.bind(on_key_down=self._on_keyboard_down)
+        self._keyboard.bind(on_key_up=self._on_keyboard_up)
 
 
     def on_leave(self, *args):
@@ -8829,6 +8830,10 @@ class MenuBackground(Screen):
         self._keyboard.unbind(on_key_down=self._on_keyboard_down)
         self._keyboard = None
 
+    def _reset_shift_counter(self, *args):
+        self._shift_press_count = 0
+        self._shift_timer = None
+
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         # print('The key', keycode, 'have been pressed')
         # print(' - text is %r' % text)
@@ -8880,18 +8885,23 @@ class MenuBackground(Screen):
 
 
         # Trigger for showing search bar
-        elif self._shift_pressed and 'shift' in keycode[1]:
-            self.show_search()
-            self._shift_pressed = False
-            return True
+        elif keycode[1] == 'shift':
+            if not self._shift_held:
+                self._shift_held = True
+                self._shift_press_count += 1
 
-        elif 'shift' in keycode[1]:
-            self._shift_pressed = True
-            def reset(*a):
-                self._shift_pressed = False
-            Clock.schedule_once(reset, 0.25)
-            return True
+                if self._shift_timer:
+                    self._shift_timer.cancel()
 
+                # Check for double tap
+                if self._shift_press_count == 2:
+                    self.show_search()
+                    self._shift_press_count = 0
+
+                # Otherwise, reset the timer
+                else:
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
+            return True
 
 
         # Ignore ESC commands while input focused
@@ -8948,6 +8958,9 @@ class MenuBackground(Screen):
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
+    def _on_keyboard_up(self, window, keycode):
+        if keycode[1] == 'shift':
+            self._shift_held = False  # Mark Shift as released
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -8962,7 +8975,9 @@ class MenuBackground(Screen):
 
         self._input_focused = False
         self._keyboard = None
-        self._shift_pressed = False
+        self._shift_press_count = 0
+        self._shift_timer = None
+        self._shift_held = False
         self.background_color = constants.background_color
 
         # Add keys to override in child windows
@@ -9899,17 +9914,23 @@ class MainMenuScreen(MenuBackground):
 
 
         # Trigger for showing search bar
-        elif self._shift_pressed and 'shift' in keycode[1]:
-            self.show_search()
-            self._shift_pressed = False
-            return
+        elif keycode[1] == 'shift':
+            if not self._shift_held:
+                self._shift_held = True
+                self._shift_press_count += 1
 
-        elif 'shift' in keycode[1]:
-            self._shift_pressed = True
-            def reset(*a):
-                self._shift_pressed = False
-            Clock.schedule_once(reset, 0.25)
-            return
+                if self._shift_timer:
+                    self._shift_timer.cancel()
+
+                # Check for double tap
+                if self._shift_press_count == 2:
+                    self.show_search()
+                    self._shift_press_count = 0
+
+                # Otherwise, reset the timer
+                else:
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
+            return True
 
 
         # Ignore ESC commands while input focused
@@ -18368,12 +18389,12 @@ class ConsolePanel(FloatLayout):
                 self.bind(on_text_validate=self.on_enter)
 
             def tab_player(self, *a):
-                player_list = self.parent.server_obj.run_data['player-list']
+                player_list = [k for k, v in self.parent.server_obj.get_players().items() if v['logged-in']]
 
                 if self.text.strip():
                     key = self.text.split(" ")[-1].lower()
                     if key not in player_list:
-                        for player in player_list.keys():
+                        for player in player_list:
                             if self.text.endswith(" "):
                                 self.text = self.text.strip() + " " + player
                                 break
@@ -18753,16 +18774,22 @@ class ServerViewScreen(MenuBackground):
 
 
         # Trigger for showing search bar
-        elif self._shift_pressed and 'shift' in keycode[1]:
-            self.show_search()
-            self._shift_pressed = False
-            return True
+        elif keycode[1] == 'shift':
+            if not self._shift_held:
+                self._shift_held = True
+                self._shift_press_count += 1
 
-        elif 'shift' in keycode[1]:
-            self._shift_pressed = True
-            def reset(*a):
-                self._shift_pressed = False
-            Clock.schedule_once(reset, 0.25)
+                if self._shift_timer:
+                    self._shift_timer.cancel()
+
+                # Check for double tap
+                if self._shift_press_count == 2:
+                    self.show_search()
+                    self._shift_press_count = 0
+
+                # Otherwise, reset the timer
+                else:
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
             return True
 
 
@@ -23630,16 +23657,22 @@ class ServerPropertiesEditScreen(MenuBackground):
             return False
 
         # Trigger for showing search bar
-        elif self._shift_pressed and 'shift' in keycode[1]:
-            self.show_search()
-            self._shift_pressed = False
-            return True
+        elif keycode[1] == 'shift':
+            if not self._shift_held:
+                self._shift_held = True
+                self._shift_press_count += 1
 
-        elif 'shift' in keycode[1]:
-            self._shift_pressed = True
-            def reset(*a):
-                self._shift_pressed = False
-            Clock.schedule_once(reset, 0.25)
+                if self._shift_timer:
+                    self._shift_timer.cancel()
+
+                # Check for double tap
+                if self._shift_press_count == 2:
+                    self.show_search()
+                    self._shift_press_count = 0
+
+                # Otherwise, reset the timer
+                else:
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
             return True
 
         def return_to_input():
