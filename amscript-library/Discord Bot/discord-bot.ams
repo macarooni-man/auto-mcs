@@ -79,9 +79,12 @@ def get_players():
         
             
             
-    # Send chat messages from in-game to the Discord chat
+    # Send chat messages from the Discord channel to the Minecraft chat
     @bot.event
     async def on_message(message):
+        if not server.player_list:
+            return
+
         if message.author == bot.user:
             return
 
