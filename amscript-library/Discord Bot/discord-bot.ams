@@ -37,8 +37,6 @@ api_key = 'PUT_BOT_API_KEY_HERE'
 # Channel ID for synced chat
 chat_channel = 123456789
 
-# Rich presence text "playing ..."
-playing = server.name
 
 
 
@@ -47,11 +45,22 @@ def get_players():
 
 # Launch bot with the server
 @server.on_start(data, delay=0):
-    global bot, api_key, chat_channel, playing
-    bot = commands.Bot(command_prefix='!', intents=intents)
-    
-    if api_key == 'PUT_BOT_API_KEY_HERE':
-        return server.log_error(f"[discord.py]  API Key is not configured. Please edit the 'Discord Bot' amscript to set up your bot.")
+    global bot, api_key, chat_channel
+
+    # Ignore any functionality while the API key and channel aren't configured
+    if api_key == 'PUT_BOT_API_KEY_HERE' or chat_channel == 123456789:
+        return server.log_error(f"[discord.py]  API Key or chat channel is not configured. Edit the 'Discord Bot' amscript to set up your bot.")
+
+
+    # Overrides for custom functionality
+    class Bot(commands.Bot):
+        
+        # Rich presence text "playing ..."
+        async def update_rich_presence(self):
+            name = f'{server.name} ({get_players()})'
+            await self.change_presence(activity=discord.Game(name=name))
+        
+    bot = Bot(command_prefix='!', intents=intents)
 
     
     # Application commands
@@ -97,8 +106,7 @@ def get_players():
     @bot.event
     async def on_ready():
         print(f'[discord.py]  Logged in as {bot.user.name}')
-        # Set the Rich Presence status
-        await bot.change_presence(activity=discord.Game(name=playing))
+        await bot.update_rich_presence()
     
     # Sync application commands with Discord
     @bot.event
@@ -122,6 +130,7 @@ def coro(func):
     )
     channel = bot.get_channel(chat_channel)
     coro(channel.send(embed=embed))
+    coro(bot.update_rich_presence())
 
 @player.on_leave(player, data):
     embed = discord.Embed(
@@ -130,6 +139,7 @@ def coro(func):
     )
     channel = bot.get_channel(chat_channel)
     coro(channel.send(embed=embed))
+    coro(bot.update_rich_presence())
 
 @player.on_message(player, message):
     channel = bot.get_channel(chat_channel)
