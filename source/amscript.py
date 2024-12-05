@@ -666,8 +666,8 @@ class ScriptObject():
 
 
                 # Tag global functions
-                elif line.startswith("def "):
-                    line = "%" + line
+                elif line.startswith("def ") or line.startswith("async def"):
+                    line = "%__ams_def__%-" + line
 
                 # Find global variables
                 elif not ((line.startswith(' ') or line.startswith('\t'))):
@@ -687,10 +687,10 @@ class ScriptObject():
 
             # Search through script to find global functions
             last_index = 0
-            for num in range(0, script_data.count("%def ")):
+            for num in range(0, script_data.count("%__ams_def__%-")):
 
-                text = script_data[script_data.find("%def ", last_index):]
-                last_index = script_data.find("%def ", last_index) + 1
+                text = script_data[script_data.find("%__ams_def__%-", last_index):]
+                last_index = script_data.find("%__ams_def__%-", last_index) + 1
 
                 function = ''
 
@@ -700,11 +700,12 @@ class ScriptObject():
 
                         # Format string and use exec to return function object
                         for new_line in text.splitlines()[:x]:
-                            if new_line.startswith("%"):
-                                new_line = new_line.replace("%def ", f'def ')
+                            if new_line.startswith("%__ams_def__%-"):
+                                new_line = new_line.replace("%__ams_def__%-", '', 1)
                             function = function + new_line + "\n"
                         global_variables = global_variables + "\n\n" + function.strip()
                         self.src_dict[os.path.basename(script_path)]['other_funcs'].append(function.strip())
+                        # print(function.strip())
                         break
 
             # Load global function calls at the very end
