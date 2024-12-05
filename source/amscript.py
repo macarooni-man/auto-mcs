@@ -1338,6 +1338,7 @@ class ServerScriptObject():
         self._running = True
 
         # Data to be used internally, don't use these in user scripts
+        self._acl = server_obj.acl
         self._server_id = ("#" + server_obj._hash)
         self._ams_log = server_obj.amscript_log
         self._reload_scripts = server_obj.reload_scripts
@@ -1971,8 +1972,8 @@ class PlayerScriptObject():
         if self.is_server:
             return True
 
-        self._server.acl.reload_list('ops')
-        return bool(self._server.acl.rule_in_acl(self.name, 'ops'))
+        self._server._acl.reload_list('ops')
+        return bool(self._server._acl.rule_in_acl(self.name, 'ops'))
 
     # Set custom player permissions
     def set_permission(self, permission, enable=True):
