@@ -1555,7 +1555,7 @@ class PlayerScriptObject():
         self.is_server = (player_name == self._server_id)
 
         if not self.is_server:
-            player_info = server_script_obj.player_list[player_name]
+            player_info = server_script_obj._get_players()[player_name]
             self.uuid = player_info['uuid']
             self.ip_address = player_info['ip'].split(":")[0]
         else:

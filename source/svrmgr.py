@@ -1834,11 +1834,34 @@ class ServerObject():
             else:
                 lines_iterator = iter(self.run_data['process'].stdout.readline, "")
 
+            # Initialize variables
+            accumulating = False
+            accumulated_lines = []
+            brace_count = 0
+
             for line in lines_iterator:
-                if _capture in line.decode('utf-8', errors='ignore'):
-                    return line.decode('utf-8', errors='ignore')
+                line = line.decode('utf-8', errors='ignore')
+
+                if ' has the following entity data: ' in line and not line.strip().endswith('}'):
+                    # Start accumulating lines
+                    accumulating = True
+                    accumulated_lines = [line]
+                    brace_count = line.count('{') - line.count('}')
+                    continue
+                elif accumulating:
+                    accumulated_lines.append(line)
+                    brace_count += line.count('{') - line.count('}')
+                    if brace_count == 0:
+                        # End of entity data detected
+                        line = ''.join(accumulated_lines)
+                        # Send complete_data to the rest of your code as is
+                    else:
+                        continue
+
+                if _capture in line:
+                    return line
                 else:
-                    self.update_log(line)
+                    self.update_log(line.encode('utf-8'))
                     return ""
 
 
