@@ -638,7 +638,7 @@ class ScriptObject():
 
                 # Possible function call
                 try:
-                    func_call = re.search(r'\w+[^\s+(def|async)\s+.+]+\.?\w+\(*.*\)[^\:]*', line).group(0).strip()
+                    func_call = re.search(r'\w+[^\s+(def|async|class)\s+.+]+\.?\w+\(*.*\)[^\:]*', line).group(0).strip()
                 except AttributeError:
                     func_call = None
 
@@ -666,7 +666,7 @@ class ScriptObject():
 
 
                 # Tag global functions
-                elif line.startswith("def ") or line.startswith("async def"):
+                elif line.startswith("def ") or line.startswith("async def ") or line.startswith('class '):
                     line = "%__ams_def__%-" + line
 
                 # Find global variables
@@ -676,7 +676,7 @@ class ScriptObject():
                         func_calls.append(f'{line.strip()}\n')
 
                     elif not (line.strip().startswith('@') and line.strip().endswith(':')): # elif re.match(r"[A-Za-z0-9]+.*=.*", line.strip(), re.IGNORECASE)
-                        global_variables = global_variables + line.strip() + "\n"
+                        func_calls.append(line.strip() + "\n")
 
                 script_data = script_data + line
             script_data += "\n "
@@ -722,6 +722,7 @@ class ScriptObject():
 
             # Attempt to process imports, global variables, and functions
             try:
+                # print(global_variables)
                 exec(global_variables, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
 
             # Handle global variable exceptions
