@@ -105,7 +105,7 @@ def get_players():
     # Rich Presence setup
     @bot.event
     async def on_ready():
-        server.log_success(f'[discord-bot]  Logged in as {bot.user.name}')
+        server.log_success(f"[discord-bot]  Logged in as '{bot.user.name}'")
         await bot.update_rich_presence()
     
     # Sync application commands with Discord
