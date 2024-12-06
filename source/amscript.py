@@ -1497,7 +1497,7 @@ class ServerScriptObject():
         return constants.version_check(self.version, operand, version)
 
     # Returns PlayerScriptObject that matches selector
-    def get_player(self, tag):
+    def get_player(self, tag, offline=False):
 
         # Use internal function instead of pulling from the game
         if tag == '@a':
@@ -1530,6 +1530,9 @@ class ServerScriptObject():
         if tag in self.player_list:
             obj = PlayerScriptObject(self, tag, _get_player=True)
 
+        elif offline:
+            obj = PlayerScriptObject(self, tag, _offline=True, _get_player=True)
+
         else:
             obj = None
 
@@ -1542,7 +1545,7 @@ class ServerScriptObject():
 
 # Reconfigured ServerObject to be passed in as 'player' variable to amscript events
 class PlayerScriptObject():
-    def __init__(self, server_script_obj: ServerScriptObject, player_name: str, _get_player=False, _send_command=True):
+    def __init__(self, server_script_obj: ServerScriptObject, player_name: str, _offline=False, _get_player=False, _send_command=True):
         self._get_player = _get_player
         self._send_command = _send_command
         self._server = server_script_obj
@@ -1550,12 +1553,17 @@ class PlayerScriptObject():
         self._execute = server_script_obj.execute
         self._version_check = server_script_obj.version_check
         self._world_path = os.path.join(server_script_obj.directory, server_script_obj.world)
+        self._offline = _offline
 
 
         # If this object is the console
         self.is_server = (player_name == self._server_id)
 
-        if not self.is_server:
+        if self._offline:
+            self.uuid = server_script_obj._acl.get_uuid(player_name)['uuid']
+            self.ip_address = None
+
+        elif not self.is_server:
             player_info = server_script_obj._get_players()[player_name]
             self.uuid = player_info['uuid']
             self.ip_address = player_info['ip'].split(":")[0]
@@ -1624,8 +1632,9 @@ class PlayerScriptObject():
         log_data = None
         new_nbt = None
 
+
         # If newer version, use "/data get" to gather updated playerdata
-        if self._version_check(">=", "1.13"):
+        if self._version_check(">=", "1.13") and not self._offline:
 
             # Attempt to intercept player's entity data
             try:
@@ -1854,7 +1863,7 @@ class PlayerScriptObject():
         # If pre-1.12, get outdated playerdata from the user's .dat file but updated pos
         else:
             try:
-                if self._version_check(">=", "1.8") and self._version_check("<", "1.13"):
+                if self._version_check(">=", "1.8") and self._version_check("<", "1.13") and not self._offline:
                     if self._send_command:
                         log_data = self._execute(f'execute {self.name} ~ ~ ~ tp {self.name} ~ ~ ~', log=False, _capture=f"Teleported {self.name} to ", _send_twice=self._get_player)
                     try:
@@ -1864,8 +1873,12 @@ class PlayerScriptObject():
 
                 # Pre-1.8, get outdated playerdata from the user's .dat file
                 else:
-                    new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'players', f'{self.name}.dat'), 'rb')
+                    if self._offline and self._version_check(">=", "1.8"):
+                        file_path = os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat')
+                    else:
+                        file_path = os.path.join(self._world_path, 'players', f'{self.name}.dat')
 
+                    new_nbt = nbt.NBTFile(file_path, 'rb')
             except OSError:
                 pass
 
@@ -2696,15 +2709,293 @@ def fmt(obj):
 # Inventory classes for PlayerScriptObject
 class ItemObject(Munch):
     def __init__(self, *args, **kwargs):
+        self['id'] = None
         super().__init__(*args, **kwargs)
         self['$_amsclass'] = self.__class__.__name__
+
+    def __bool__(self):
+        # Return False if item has no ID (empty slot)
+        return self.id is not None
 
     def __str__(self):
         try:
             item_id = str(self['id'])
         except KeyError:
-            item_id = None
+            item_id = ''
         return item_id
+
+class InventorySection(Munch):
+    """
+    Represents a specific section of a player's inventory, such as hotbar, main inventory, or armor.
+    Provides convenient iteration and item lookups.
+
+    Supports:
+        - Iteration over items
+        - Counting occurrences of a given item_id
+        - Finding items by ID
+        - Boolean context to check if empty or not
+        - 'in' operator to check if an item_id is present
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self['$_amsclass'] = self.__class__.__name__
+
+    def __getitem__(self, key):
+        # If key is an integer, support negative indexing like a list
+        if isinstance(key, int):
+            items_list = [i for i in self.values() if i != self.__class__.__name__]
+            if abs(key) > len(items_list):
+                raise IndexError('list index out of range')
+            if key < 0:
+                key = len(items_list) + key
+            return items_list[key]
+        else:
+            # If key is not an integer, handle it normally
+            return super().__getitem__(key)
+
+    def __iter__(self):
+        # Return all ItemObjects
+        return self.items()
+
+    def __bool__(self):
+        # True if there's at least one valid item
+        return any(self.items())
+
+    def __contains__(self, item_id):
+        # Check if any item in this section matches the given item_id
+        return any(item.id == item_id for item in self.items())
+
+    def items(self):
+        # Returns all items in InventorySection
+        return (i for i in self.values() if i != self.__class__.__name__ and i)
+
+    def find(self, item_id):
+        # Returns a list of all items in this section matching the given item_id
+        return [item for item in self.items() if item and item.id == item_id]
+
+    def count(self, item_id):
+        # Count how many total items of the given item_id are in this section
+        return sum(item.count for item in self.find(item_id))
+
+class InventoryObject():
+
+    def __init__(self, item_list, selected_item):
+
+        self._item_list = []
+
+        self.selected_item = ItemObject({'slot': 'slot.weapon.mainhand'})
+        self.offhand = ItemObject({'slot': 'slot.weapon.offhand'})
+        self.hotbar = InventorySection({x: ItemObject({'slot': f'slot.hotbar.{x}'}) for x in range(0, 9)})
+        self.inventory = InventorySection({x: ItemObject({'slot': f'slot.inventory.{x}'}) for x in range(0, 27)})
+        self.armor = InventorySection({'head': ItemObject({'slot': 'slot.armor.head'}), 'chest': ItemObject({'slot': 'slot.armor.chest'}), 'legs': ItemObject({'slot': 'slot.armor.legs'}), 'feet': ItemObject({'slot': 'slot.armor.feet'})})
+
+        if item_list:
+            self._process_items(item_list, selected_item)
+
+    def __iter__(self):
+        # Return all ItemObjects
+        return (i for i in self.items())
+
+    def __bool__(self):
+        # True if there's at least one valid item
+        return any(self.items())
+
+    def __contains__(self, item_id):
+        # Check if any item in this section matches the given item_id
+        return any(item.id == item_id for item in self.items())
+
+    def _process_items(self, i, s):
+
+        # Old items, parsing from playerdata
+        if i.__class__.__name__ == "TAG_List":
+
+            # Converts block/item/enchantment IDs to names
+            def proc_nbt(item):
+
+                # Add all root tags to formatted
+                formatted = {}
+                for x in item:
+
+                    # Add all tag attributes to root.tag
+                    if item[x].name == 'tag':
+                        formatted[item[x].name] = {}
+                        for tag in item[x]:
+                            value = item[x][tag].value
+                            formatted[item[x].name.lower()][item[x][tag].name.lower() if item[x][tag].name != "ench" else "enchantments"] = value if value else {}
+
+                            # Format all enchantments
+                            if item[x][tag].name.lower() in ["ench", "storedenchantments"]:
+                                for e in item[x][tag]:
+                                    formatted[item[x].name.lower()]['enchantments'][id_dict['enchant'].get(e['id'].value, e['id'].value)] = {'id': e['id'].value, 'lvl': e['lvl'].value}
+
+                            # Format all display items
+                            elif item[x][tag].name.lower() == "display":
+                                for d in item[x][tag]:
+                                    if d == "Lore":
+                                        value = '\n'.join([line.value for line in item[x][tag][d]])
+                                    else:
+                                        value = item[x][tag][d].value
+
+                                        if d == "Name":
+                                            # Add to item list for __iter__ function
+                                            if value not in self._item_list:
+                                                self._item_list.append(value)
+
+                                    formatted[item[x].name.lower()][item[x][tag].name][item[x][tag][d].name.lower()] = value
+
+                            # Attributes
+                            elif item[x][tag].name.lower() == "attributemodifiers":
+                                formatted[item[x].name.lower()]['attributemodifiers'] = []
+                                for y in item[x][tag].tags:
+                                    attr_dict = {y[a].name.lower(): y[a].value for a in y}
+                                    formatted[item[x].name.lower()]['attributemodifiers'].append(attr_dict)
+
+                            # Format all book pages
+                            elif item[x][tag].name.lower() == "pages":
+                                formatted[item[x].name.lower()]['pages'] = [y for y in item[x][tag].tags]
+
+
+                    elif item[x].name == 'id':
+                        try:
+                            value = item[x].value.replace('minecraft:','')
+                        except AttributeError:
+                            value = id_dict['items'][item[x].value].replace('minecraft:','')
+
+                        # Add to item list for __iter__ function
+                        if value not in self._item_list:
+                            self._item_list.append(value)
+
+                        formatted[item[x].name.lower()] = value
+
+
+                    elif item[x].name != 'Slot':
+                        formatted[item[x].name.lower()] = item[x].value
+
+
+                return ItemObject(formatted)
+
+            # Iterates over every item in inventory
+            def sort_item(item):
+                slot = fmt(item['Slot'])
+
+                # Hotbar
+                if slot in range(0, 9):
+                    self.hotbar[slot].update(proc_nbt(item))
+
+                # Offhand
+                elif slot == -106:
+                    self.offhand.update(proc_nbt(item))
+
+                # Feet
+                elif slot == 100:
+                    self.armor.feet.update(proc_nbt(item))
+
+                # Legs
+                elif slot == 101:
+                    self.armor.legs.update(proc_nbt(item))
+
+                # Chest
+                elif slot == 102:
+                    self.armor.chest.update(proc_nbt(item))
+
+                # Head
+                elif slot == 103:
+                    self.armor.head.update(proc_nbt(item))
+
+                # Inventory
+                else:
+                    self.inventory[slot-9].update(proc_nbt(item))
+
+            for item in i.tags:
+                sort_item(item)
+
+            if s:
+                self.selected_item.update(proc_nbt(s[0]))
+
+        # /data get formatting
+        else:
+
+            # Converts block/item/enchantment IDs to names
+            def proc_nbt(item):
+                new_item = deepcopy(item)
+
+                # Delete slot attribute, because it already exists in parent
+                try:
+                    del new_item['slot']
+                except KeyError:
+                    pass
+
+                # Add ID's and names to persistent cache
+                if new_item['id'] not in self._item_list:
+                    self._item_list.append(new_item['id'])
+
+                try:
+                    custom_name = ''.join([name for name in re.findall(r'"text":\s*?"([^"]*)"', new_item['tag']['display']['name'])])
+                    if custom_name not in self._item_list:
+                        self._item_list.append(custom_name)
+                except KeyError:
+                    pass
+
+                return ItemObject(new_item)
+
+            # Iterates over every item in inventory
+            def sort_item(item):
+                slot = int(item['slot'])
+
+                # Hotbar
+                if slot in range(0, 9):
+                    self.hotbar[slot].update(proc_nbt(item))
+
+                # Offhand
+                elif slot == -106:
+                    self.offhand.update(proc_nbt(item))
+
+                # Feet
+                elif slot == 100:
+                    self.armor.feet.update(proc_nbt(item))
+
+                # Legs
+                elif slot == 101:
+                    self.armor.legs.update(proc_nbt(item))
+
+                # Chest
+                elif slot == 102:
+                    self.armor.chest.update(proc_nbt(item))
+
+                # Head
+                elif slot == 103:
+                    self.armor.head.update(proc_nbt(item))
+
+                # Inventory
+                else:
+                    self.inventory[slot-9].update(proc_nbt(item))
+
+            for item in i:
+                sort_item(item)
+
+            if s:
+                self.selected_item.update(proc_nbt(s[0]))
+
+    def items(self):
+        # Returns all items in inventory
+        items = []
+        if self.selected_item:
+            items.append(self.selected_item)
+        if self.offhand:
+            items.append(self.offhand)
+        items.extend(self.hotbar.items())
+        items.extend(self.inventory.items())
+        items.extend(self.armor.items())
+        return items
+
+    def find(self, item_id):
+        # Returns a list of all items in this section matching the given item_id
+        return [item for item in self.items() if item and item.id == item_id]
+
+    def count(self, item_id):
+        # Count how many total items of the given item_id are in this section
+        return sum(item.count for item in self.find(item_id))
 
 class EffectObject(Munch):
     def __init__(self, name, *args, **kwargs):
@@ -2790,199 +3081,6 @@ class CoordinateObject(Munch):
     def __pow__(self, power, modulo=None):
         return self.__do_operation__(power, '**')
 
-class InventoryObject():
-
-    def __init__(self, item_list, selected_item):
-
-        self._item_list = []
-
-        self.selected_item = ItemObject({})
-        self.offhand = ItemObject({})
-        self.hotbar = ItemObject({x: ItemObject({}) for x in range(0, 9)})
-        self.inventory = ItemObject({x: ItemObject({}) for x in range(0, 27)})
-        self.armor = ItemObject({'head': ItemObject({}), 'chest': ItemObject({}), 'legs': ItemObject({}), 'feet': ItemObject({})})
-
-        if item_list:
-            self._process_items(item_list, selected_item)
-
-    def __iter__(self):
-        for item in self._item_list:
-            yield item
-
-    def _process_items(self, i, s):
-
-        # Old items, parsing from playerdata
-        if i.__class__.__name__ == "TAG_List":
-
-            # Converts block/item/enchantment IDs to names
-            def proc_nbt(item):
-
-                # Add all root tags to formatted
-                formatted = {}
-                for x in item:
-
-                    # Add all tag attributes to root.tag
-                    if item[x].name == 'tag':
-                        formatted[item[x].name] = {}
-                        for tag in item[x]:
-                            value = item[x][tag].value
-                            formatted[item[x].name.lower()][item[x][tag].name.lower() if item[x][tag].name != "ench" else "enchantments"] = value if value else {}
-
-                            # Format all enchantments
-                            if item[x][tag].name.lower() in ["ench", "storedenchantments"]:
-                                for e in item[x][tag]:
-                                    formatted[item[x].name.lower()]['enchantments'][id_dict['enchant'].get(e['id'].value, e['id'].value)] = {'id': e['id'].value, 'lvl': e['lvl'].value}
-
-                            # Format all display items
-                            elif item[x][tag].name.lower() == "display":
-                                for d in item[x][tag]:
-                                    if d == "Lore":
-                                        value = '\n'.join([line.value for line in item[x][tag][d]])
-                                    else:
-                                        value = item[x][tag][d].value
-
-                                        if d == "Name":
-                                            # Add to item list for __iter__ function
-                                            if value not in self._item_list:
-                                                self._item_list.append(value)
-
-                                    formatted[item[x].name.lower()][item[x][tag].name][item[x][tag][d].name.lower()] = value
-
-                            # Attributes
-                            elif item[x][tag].name.lower() == "attributemodifiers":
-                                formatted[item[x].name.lower()]['attributemodifiers'] = []
-                                for y in item[x][tag].tags:
-                                    attr_dict = {y[a].name.lower(): y[a].value for a in y}
-                                    formatted[item[x].name.lower()]['attributemodifiers'].append(attr_dict)
-
-                            # Format all book pages
-                            elif item[x][tag].name.lower() == "pages":
-                                formatted[item[x].name.lower()]['pages'] = [y for y in item[x][tag].tags]
-
-
-                    elif item[x].name == 'id':
-                        try:
-                            value = item[x].value.replace('minecraft:','')
-                        except AttributeError:
-                            value = id_dict['items'][item[x].value].replace('minecraft:','')
-
-                        # Add to item list for __iter__ function
-                        if value not in self._item_list:
-                            self._item_list.append(value)
-
-                        formatted[item[x].name.lower()] = value
-
-
-                    elif item[x].name != 'Slot':
-                        formatted[item[x].name.lower()] = item[x].value
-
-
-                return ItemObject(formatted)
-
-            # Iterates over every item in inventory
-            def sort_item(item):
-                slot = fmt(item['Slot'])
-
-                # Hotbar
-                if slot in range(0, 9):
-                    self.hotbar[slot] = proc_nbt(item)
-
-                # Offhand
-                elif slot == -106:
-                    self.offhand = proc_nbt(item)
-
-                # Feet
-                elif slot == 100:
-                    self.armor.feet = proc_nbt(item)
-
-                # Legs
-                elif slot == 101:
-                    self.armor.legs = proc_nbt(item)
-
-                # Chest
-                elif slot == 102:
-                    self.armor.chest = proc_nbt(item)
-
-                # Head
-                elif slot == 103:
-                    self.armor.head = proc_nbt(item)
-
-                # Inventory
-                else:
-                    self.inventory[slot-9] = proc_nbt(item)
-
-            for item in i.tags:
-                sort_item(item)
-
-            if s:
-                self.selected_item = proc_nbt(s[0])
-                self.selected_item['slot'] = s[1]
-
-        # /data get formatting
-        else:
-
-            # Converts block/item/enchantment IDs to names
-            def proc_nbt(item):
-                new_item = deepcopy(item)
-
-                # Delete slot attribute, because it already exists in parent
-                try:
-                    del new_item['slot']
-                except KeyError:
-                    pass
-
-                # Add ID's and names to persistent cache
-                if new_item['id'] not in self._item_list:
-                    self._item_list.append(new_item['id'])
-
-                try:
-                    custom_name = ''.join([name for name in re.findall(r'"text":\s*?"([^"]*)"', new_item['tag']['display']['name'])])
-                    if custom_name not in self._item_list:
-                        self._item_list.append(custom_name)
-                except KeyError:
-                    pass
-
-                return ItemObject(new_item)
-
-            # Iterates over every item in inventory
-            def sort_item(item):
-                slot = int(item['slot'])
-
-                # Hotbar
-                if slot in range(0, 9):
-                    self.hotbar[slot] = proc_nbt(item)
-
-                # Offhand
-                elif slot == -106:
-                    self.offhand = proc_nbt(item)
-
-                # Feet
-                elif slot == 100:
-                    self.armor.feet = proc_nbt(item)
-
-                # Legs
-                elif slot == 101:
-                    self.armor.legs = proc_nbt(item)
-
-                # Chest
-                elif slot == 102:
-                    self.armor.chest = proc_nbt(item)
-
-                # Head
-                elif slot == 103:
-                    self.armor.head = proc_nbt(item)
-
-                # Inventory
-                else:
-                    self.inventory[slot-9] = proc_nbt(item)
-
-            for item in i:
-                sort_item(item)
-
-            if s:
-                self.selected_item = proc_nbt(s[0])
-                self.selected_item['slot'] = s[1]
-
 
 # Stores persistent player and server configurations
 class PersistenceManager():
@@ -2995,6 +3093,10 @@ class PersistenceManager():
             if '$_amsclass' in dct:
                 if dct['$_amsclass'] == 'ItemObject':
                     return ItemObject(dct)
+                elif dct['$_amsclass'] == 'InventorySection':
+                    return InventorySection(dct)
+                if dct['$_amsclass'] == 'InventoryObject':
+                    return InventoryObject(dct)
                 elif dct['$_amsclass'] == 'EffectObject':
                     return EffectObject(dct)
                 elif dct['$_amsclass'] == 'CoordinateObject':

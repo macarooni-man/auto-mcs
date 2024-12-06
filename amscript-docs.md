@@ -127,7 +127,7 @@ Compares server version to `version` with the `comparator`, returns `bool`.
 
 
 
-### server.get_player(*selector*)
+### server.get_player(*selector, reverse, offline*)
 
 Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Only returns the first match.
 
@@ -135,7 +135,7 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
 | Parameter | Description |
 | --- | --- |
 | `selector*` | `str` of username, or a valid Minecraft selector that returns a single value (like @p, @s, @r). Only players will be matched |
-| `reverse` | `bool` selects last match on `True`. Defaults to `False` |
+| `offline` | `bool` retrieves playerdata from `.dat` file if the target player isn't connected to the server. Defaults to `False` |
 
 <br>
 
@@ -336,6 +336,13 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
  - `InventoryObject`, organized list of all items in the player's inventory
  - Attributes are `player.inventory.selected_item`, `player.inventory.offhand`, `player.inventory.hotbar`, `player.inventory.armor`, `player.inventory.inventory`
  - Each list is full of `ItemObject`, which can be accessed via lowercase NBT attributes like in game, and with Pythonic logic: `player.inventory.selected_item.tag.display.name` or `if "diamond_sword" in player.inventory`
+ - Methods (these also work in containers as well, i.e. `player.inventory.hotbar`, `player.inventory.armor`, and `player.inventory.inventory`):
+
+   - #### inventory.find(*item_id*)
+     - Returns a `list` of every `ItemObject` which matches `item_id`
+
+   - #### inventory.count(*item_id*)
+     - Returns a total count in `int` of all `item_id` in the inventory
 
 #### player.persistent
  - `dict`, persistent variable storage for saving information between server restarts, or script reloads
@@ -483,6 +490,19 @@ class AclRule():
 
 
 **Methods**: <br><br>
+
+
+
+### acl.get_uuid(*username*)
+
+Returns a `dict` of a player's connection data given their username and other rules. Use `acl.get_uuid('User')['uuid']` to get their UUID.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `username*` | `str` of username |
+
+<br>
 
 
 

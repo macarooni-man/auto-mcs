@@ -90,6 +90,10 @@ class AclManager():
         self.whitelist_enabled = self._server['whitelist']
         self.displayed_rule = None
 
+    # Inherit get_uuid method
+    def get_uuid(self, *args, **kwargs):
+        return get_uuid(*args, **kwargs)
+
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
         return constants.sync_attr(self, name)
