@@ -630,7 +630,7 @@ class ScriptObject():
 
             # Ignore all comments and grab imports/global variables
             script_data = ""
-            global_variables = f"from itertools import zip_longest\nimport importlib\nimport time\nimport sys\nimport os\nsys.path.insert(0, r'{self.script_path}')\n"
+            global_variables = f"from itertools import zip_longest\nimport importlib\nimport time\nimport sys\nimport re\nimport os\nsys.path.insert(0, r'{self.script_path}')\n"
 
             for line in f.readlines():
                 line = line.replace('\t', '    ')
@@ -683,7 +683,11 @@ class ScriptObject():
 
             # Redefine print function to redirect to server console instead of Python console
             print_func = "def print(*args, sep=' ', end=''):\n    for line in sep.join(str(arg) for arg in args).replace('\\r','').splitlines():\n        server._ams_log(line, 'print')"
-            global_variables = global_variables + "\n" + print_func + "\n"
+
+            # Custom command parser class for use in "@player.on_alias()" events
+            command_handler = "class CommandHandler(str):\n    def __init__(self, command: str, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        if ' ' in command:\n            self.base_command, self.arguments = [i.strip() for i in command.split(' ', 1)]\n        else:\n            self.base_command = command.strip()\n            self.arguments = ''\n    def parse(self, maxsplit=-1):\n        pattern = r'''((?:[^\s\"']|\"[^\"]*\"|'[^']*')+)'''\n        matches = re.findall(pattern, self)\n        result = []\n        for match in matches:\n            if (match.startswith('\"') and match.endswith('\"')) or                (match.startswith(\"'\") and match.endswith(\"'\")):\n                result.append(match[1:-1])\n            else:\n                result.append(match)\n        if maxsplit >= 0:\n            return result[:maxsplit] + [' '.join(result[maxsplit:])] if len(result) > maxsplit else result\n        return result\n"
+
+            global_variables = global_variables + "\n" + print_func + "\n" + command_handler + "\n"
 
             # Search through script to find global functions
             last_index = 0
@@ -892,7 +896,8 @@ class ScriptObject():
                 first = True
 
                 func_header = "def __on_alias__(player, command, permission='anyone'):\n"
-                func_header += "    perm_dict = {'anyone': 0, 'op': 1, 'server': 2}\n\n"
+                func_header += "    perm_dict = {'anyone': 0, 'op': 1, 'server': 2}\n"
+                func_header += "    command = CommandHandler(command)\n\n"
                 new_func = ""
 
                 for k, v in alias_functions.items():
@@ -903,7 +908,7 @@ class ScriptObject():
                     req_args_list = list([x for x in self.aliases[k]['arguments'].keys() if self.aliases[k]['arguments'][x]])
                     arguments = {}
 
-                    new_func += f"    {'if' if first else 'elif'} command.strip().split(' ',1)[0].strip() == '{k}': #__{self.server_id}__\n"
+                    new_func += f"    {'if' if first else 'elif'} command.base_command == '{k}': #__{self.server_id}__\n"
                     if self.aliases[k]['permission'] in ['anyone', 'op', 'server']:
                         new_func += f"        if perm_dict[permission] < perm_dict['{self.aliases[k]['permission']}']:\n"
                     else:
@@ -912,13 +917,13 @@ class ScriptObject():
                     # Permission thingy
                     new_func += (f"            player.log_error(\"You do not have permission to use this command\")\n" if not hidden else "            pass\n")
                     new_func += f"        else:\n"
-                    new_func += f"            if len(command.split(' ', len({argument_list}))[1:]) < len({req_args_list}):\n"
+                    new_func += f"            if len(command.parse(len({argument_list}))[1:]) < len({req_args_list}):\n"
 
                     # Syntax thingy
                     new_func += (f"                player.log_error(\"Invalid syntax: {syntax}\")\n" if not hidden else "                pass\n")
                     new_func += f"            else:\n"
-                    new_func += f"                arguments = dict(zip_longest({argument_list}, command.split(' ', len({argument_list}))[1:]))\n"
-                    new_func += f"                command = command.split(' ', 1)[0].strip()\n"
+                    new_func += f"                arguments = dict(zip_longest({argument_list}, command.parse(len({argument_list}))[1:]))\n"
+                    new_func += f"                command = command.base_command\n"
 
                     # Allow 'player' variable to be reassigned if needed
                     if self.aliases[k]['player'] != 'player':
