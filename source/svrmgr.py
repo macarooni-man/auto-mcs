@@ -1869,6 +1869,7 @@ class ServerObject():
     def get_players(self):
         if self.run_data:
             return self.run_data['player-list']
+        return {}
 
 
     # Retrieves IDE suggestions from internal objects
