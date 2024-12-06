@@ -2980,8 +2980,6 @@ class InventoryObject():
     def items(self):
         # Returns all items in inventory
         items = []
-        if self.selected_item:
-            items.append(self.selected_item)
         if self.offhand:
             items.append(self.offhand)
         items.extend(self.hotbar.items())
