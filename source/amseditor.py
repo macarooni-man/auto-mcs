@@ -1114,13 +1114,13 @@ def launch_window(path: str, data: dict, *a):
                 self.allow_highlight = False
 
                 # Stores the currently known foldable blocks
-                self.folded_blocks = {}  # line_num -> {'start': int, 'end': int, 'folded': bool}
+                self.folded_blocks = {}  # line_num -> {'start': int, 'end': int, 'folded': bool, 'searched': bool}
                 self.folding_states = {}
 
-                fold_arrow_path = os.path.join(data['gui_assets'], "ide-fold.png")
-                unfold_arrow_path = os.path.join(data['gui_assets'], "ide-unfold.png")
-                self.fold_arrow = PhotoImage(file=fold_arrow_path)
-                self.unfold_arrow = PhotoImage(file=unfold_arrow_path)
+                self.fold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-fold.png"))
+                self.unfold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold.png"))
+                self.unfold_arrow_error = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold-error.png"))
+                self.unfold_arrow_search = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold-search.png"))
 
                 self.x: int | None = None
                 self.y: int | None = None
@@ -1202,10 +1202,19 @@ def launch_window(path: str, data: dict, *a):
                         # Select the appropriate icon based on the fold state
                         icon = self.unfold_arrow if block['folded'] else self.fold_arrow
 
+                        # Show error icon if the error is in a folded block
+                        if block['folded'] and code_editor.error:
+                            if int(code_editor.error['line'].split(':')[0]) in range(block['start'], block['end']):
+                                icon = self.unfold_arrow_error
+
+                        # Show search icon if a search result is in a folded block
+                        elif block['searched']:
+                            icon = self.unfold_arrow_search
+
                         offset = {
                             'macos': (3, 18),
-                            'windows': (3, 26),
-                            'linux': (3, 26)
+                            'windows': (3, 25),
+                            'linux': (3, 25)
                         }
                         x = int(self["width"]) + offset[data['os_name']][0]
                         y = dlineinfo[1] + offset[data['os_name']][1]
@@ -1436,7 +1445,7 @@ def launch_window(path: str, data: dict, *a):
                 def is_block_start(s: str) -> bool:
                     # A line is a block start if it ends with ':' or starts with @server./@player. and ends with ':'
                     s = s.strip()
-                    return s.endswith(':') or s.startswith('@server.') or s.startswith('@player.')
+                    return s.endswith(':') or s.startswith('@server.') or s.startswith('@player.') and not line.strip().startswith('#')
 
                 def adjust_block_end(start_line: int, end_line: int) -> int:
                     """
@@ -1458,7 +1467,7 @@ def launch_window(path: str, data: dict, *a):
                     # Register the block if it actually covers some lines
                     if end_line > start_line:
                         if start_line not in self.folded_blocks:
-                            self.folded_blocks[start_line] = {'start': start_line, 'end': end_line, 'folded': False}
+                            self.folded_blocks[start_line] = {'start': start_line, 'end': end_line, 'folded': False, 'searched': False}
                     return end_line
 
                 def find_block_end(start_line: int, base_indent: int) -> int:
@@ -1579,7 +1588,7 @@ def launch_window(path: str, data: dict, *a):
                     if v['folded'] and k >= original_line - line_diff:
                         del self.folding_states[k]
                         # print(k, v)
-                        updated_folded_blocks[k + line_diff] = {'start': v['start'] + line_diff, 'end': v['end'] + line_diff, 'folded': True}
+                        updated_folded_blocks[k + line_diff] = {'start': v['start'] + line_diff, 'end': v['end'] + line_diff, 'folded': True, 'searched': v['searched']}
 
                 def update_after():
                     cursor_index = code_editor.index("insert")
@@ -1645,7 +1654,8 @@ def launch_window(path: str, data: dict, *a):
                             self.folded_blocks[header_line] = {
                                 'start': folded_block_start,
                                 'end': folded_block_end,
-                                'folded': True
+                                'folded': True,
+                                'searched': False
                             }
                             self.folding_states[header_line] = True
 
@@ -1666,7 +1676,8 @@ def launch_window(path: str, data: dict, *a):
                     self.folded_blocks[header_line] = {
                         'start': folded_block_start,
                         'end': folded_block_end,
-                        'folded': True
+                        'folded': True,
+                        'searched': False
                     }
                     self.folding_states[header_line] = True
 
@@ -2606,9 +2617,15 @@ def launch_window(path: str, data: dict, *a):
                     is_comment = True
                     indent_list = []
                     lowest_indent = 0
+                    folded_lines = [k for k, v in self._line_numbers.folding_states.items() if v]
 
                     # First, check if any lines start with a comment decorator
                     for line in line_range:
+
+                        # Unfold if block commenting
+                        if line in folded_lines:
+                            self._line_numbers.toggle_fold(line)
+
                         lr, text = self.get_line_text(line)
                         indent_list.append(self.get_indent(text))
 
