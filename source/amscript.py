@@ -810,11 +810,24 @@ class ScriptObject():
                                     except Exception as e:
                                         return enum_error(e, find=src_function_call)
 
-                                    # Only allow last argument to be optional, hence retarded dict comprehension
-                                    alias_keys = alias_values['args'].keys()
+                                    # Only allow last arguments to be optional
+                                    alias_args = alias_values['args']
+                                    alias_keys = alias_args.keys()
+                                    keys_order = list(alias_keys)
+
+                                    # Identify the index of the first True value in alias_args according to keys_order
+                                    first_true_index = next((i for i, k in enumerate(keys_order) if alias_args[k] is True), None)
+                                    arguments = {
+                                        k: (True if first_true_index is not None and i <= first_true_index else
+                                            alias_args[k])
+                                        for i, k in enumerate(keys_order)
+                                    }
+
+                                    print(arguments)
+
                                     alias_dict = {
                                         'command': f"!{alias_values['cmd']}" if bool(re.match('^[a-zA-Z0-9]+$', alias_values['cmd'][:1])) else f"!{alias_values['cmd'][1:]}",
-                                        'arguments': {k: (True if (k != list(alias_keys)[-1]) else v) for (k, v) in alias_values['args'].items()},
+                                        'arguments': arguments,
                                         'syntax': '',
                                         'permission': alias_values['perm'],
                                         'description': alias_values['desc'] if alias_values['desc'] else f"Provided by '{os.path.basename(script_path)}'",
@@ -905,6 +918,7 @@ class ScriptObject():
                     syntax = self.aliases[k]['syntax']
                     hidden = self.aliases[k]['hidden']
                     argument_list = list(self.aliases[k]['arguments'].keys())
+                    req_args_list = list([x for x in self.aliases[k]['arguments'].keys() if self.aliases[k]['arguments'][x]])
                     req_args_list = list([x for x in self.aliases[k]['arguments'].keys() if self.aliases[k]['arguments'][x]])
                     arguments = {}
 
