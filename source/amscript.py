@@ -823,8 +823,6 @@ class ScriptObject():
                                         for i, k in enumerate(keys_order)
                                     }
 
-                                    print(arguments)
-
                                     alias_dict = {
                                         'command': f"!{alias_values['cmd']}" if bool(re.match('^[a-zA-Z0-9]+$', alias_values['cmd'][:1])) else f"!{alias_values['cmd'][1:]}",
                                         'arguments': arguments,
