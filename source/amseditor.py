@@ -1201,8 +1201,14 @@ def launch_window(path: str, data: dict, *a):
 
                         # Select the appropriate icon based on the fold state
                         icon = self.unfold_arrow if block['folded'] else self.fold_arrow
-                        x = int(self["width"]) + 3  # Position the icon appropriately
-                        y = dlineinfo[1] + 18  # Adjust the y-coordinate as needed
+
+                        offset = {
+                            'macos': (3, 18),
+                            'windows': (3, 26),
+                            'linux': (3, 26)
+                        }
+                        x = int(self["width"]) + offset[data['os_name']][0]
+                        y = dlineinfo[1] + offset[data['os_name']][1]
 
                         # Create the fold icon on the canvas
                         self.create_image(
