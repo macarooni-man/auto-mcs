@@ -1549,14 +1549,8 @@ def launch_window(path: str, data: dict, *a):
                 self.redraw()
 
             def handle_text_change(self, change_type: str, num_lines: int):
-                """
-                Adjusts folded_blocks based on text changes.
 
-                :param change_type: 'insert' or 'delete'
-                :param original_line: The line number where the change occurred
-                :param num_lines: Number of lines inserted or deleted
-                """
-                # Find the first folded block after the change line
+                # Method #1 (faster) Use current index and walk backwards from line_diff to find the new position
 
                 # Calculate the line difference based on the change type
                 if change_type == 'insert':
@@ -1572,6 +1566,7 @@ def launch_window(path: str, data: dict, *a):
                 cursor_index = code_editor.index("insert")
                 original_line = int(cursor_index.split('.')[0])
                 # print(self.folding_states)
+                enabled_states_before = [i for i in self.folding_states.values() if i]
 
                 # Get original position and apply transformation after frame update
                 for k, v in self.folded_blocks.items():
@@ -1589,9 +1584,88 @@ def launch_window(path: str, data: dict, *a):
                             # print(k, v)
                             self.toggle_fold(k)
 
+                    # Method #2 (slower) Check that the folding states from before and after are aligned, and if not, force a full redraw
+                    enabled_states_after = [i for i in self.folding_states.values() if i]
+                    # print(len(enabled_states_before), len(enabled_states_after))
+                    if len(enabled_states_before) != len(enabled_states_after):
+                        self.fallback_scan_folds()
+                        # print('Full redraw, would have broke')
+
                     # Redraw to update fold icons and line numbers
                     self.redraw()
                 self.after(0, update_after)
+
+            # Fallback function to scan and reconstruct folded blocks
+            def fallback_scan_folds(self):
+                """
+                Scans through each line in the Text widget (code_editor) to identify folded lines
+                based on the presence of the 'folded' tag. Reconstructs self.folded_blocks and updates
+                self.folding_states accordingly.
+                """
+
+                # Clear existing indexes
+                self.folded_blocks.clear()
+                self.folding_states.clear()
+
+                # Get the total number of lines in the Text widget
+                try:
+                    total_lines = int(code_editor.index('end-1c').split('.')[0])
+                except TclError:
+                    total_lines = 0
+
+                current_fold_start = None
+
+                for line_num in range(1, total_lines + 1):
+                    line_start = f"{line_num}.0"
+                    try:
+                        tags = code_editor.tag_names(line_start)
+                    except TclError:
+                        tags = ()
+
+                    if "folded" in tags:
+                        if current_fold_start is None:
+                            current_fold_start = line_num
+                    else:
+                        if current_fold_start is not None:
+                            folded_block_start = current_fold_start
+                            folded_block_end = line_num - 1
+
+                            # The header line is the line before the folded block starts
+                            header_line = folded_block_start - 1
+                            if header_line < 1:
+                                header_line = 1
+
+                            # Update folded_blocks and folding_states
+                            self.folded_blocks[header_line] = {
+                                'start': folded_block_start,
+                                'end': folded_block_end,
+                                'folded': True
+                            }
+                            self.folding_states[header_line] = True
+
+                            # Reset current_fold_start
+                            current_fold_start = None
+
+                # Handle the case where the last lines are folded
+                if current_fold_start is not None:
+                    folded_block_start = current_fold_start
+                    folded_block_end = total_lines
+
+                    # The header line is the line before the folded block starts
+                    header_line = folded_block_start - 1
+                    if header_line < 1:
+                        header_line = 1
+
+                    # Update folded_blocks and folding_states
+                    self.folded_blocks[header_line] = {
+                        'start': folded_block_start,
+                        'end': folded_block_end,
+                        'folded': True
+                    }
+                    self.folding_states[header_line] = True
+
+                # print(f"Reconstructed folded_blocks: {self.folded_blocks}")
+                # print(f"Updated folding_states: {self.folding_states}")
 
         class CodeView(Text):
             _w: str
