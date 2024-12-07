@@ -1115,8 +1115,6 @@ def launch_window(path: str, data: dict, *a):
 
                 # Stores the currently known foldable blocks
                 self.folded_blocks = {}  # line_num -> {'start': int, 'end': int, 'folded': bool}
-
-                # NEW: Store folded states separately so we can restore them after update_folding_regions()
                 self.folding_states = {}
 
                 fold_arrow_path = os.path.join(data['gui_assets'], "ide-fold.png")
@@ -1550,6 +1548,51 @@ def launch_window(path: str, data: dict, *a):
 
                 self.redraw()
 
+            def handle_text_change(self, change_type: str, num_lines: int):
+                """
+                Adjusts folded_blocks based on text changes.
+
+                :param change_type: 'insert' or 'delete'
+                :param original_line: The line number where the change occurred
+                :param num_lines: Number of lines inserted or deleted
+                """
+                # Find the first folded block after the change line
+
+                # Calculate the line difference based on the change type
+                if change_type == 'insert':
+                    line_diff = num_lines
+                elif change_type == 'delete':
+                    line_diff = -num_lines
+                else:
+                    # Unsupported change type
+                    return
+
+                # Adjust folded_blocks by offsetting folded regions after the first_fold_line
+                updated_folded_blocks = {}
+                cursor_index = code_editor.index("insert")
+                original_line = int(cursor_index.split('.')[0])
+                # print(self.folding_states)
+
+                # Get original position and apply transformation after frame update
+                for k, v in self.folded_blocks.items():
+                    if v['folded'] and k >= original_line - line_diff:
+                        del self.folding_states[k]
+                        # print(k, v)
+                        updated_folded_blocks[k + line_diff] = {'start': v['start'] + line_diff, 'end': v['end'] + line_diff, 'folded': True}
+
+                def update_after():
+                    cursor_index = code_editor.index("insert")
+                    at_line = int(cursor_index.split('.')[0])
+
+                    for k, v in updated_folded_blocks.items():
+                        if int(k) >= at_line:
+                            # print(k, v)
+                            self.toggle_fold(k)
+
+                    # Redraw to update fold icons and line numbers
+                    self.redraw()
+                self.after(0, update_after)
+
         class CodeView(Text):
             _w: str
 
@@ -1577,6 +1620,22 @@ def launch_window(path: str, data: dict, *a):
                     self._frame, self, justify=kwargs.get("justify", "right"), colors=linenums_theme
                 )
 
+                # Initialize TkLineNumbers
+                self._line_numbers = TkLineNumbers(
+                    self._frame, self, justify=kwargs.get("justify", "right"), colors=linenums_theme
+                )
+                self._line_numbers.grid(row=0, column=0, sticky="ns", ipadx=20)
+
+                # Assign the folding_callback
+                self.folding_callback: Optional[Callable[[str, int, int], None]] = self._line_numbers.handle_text_change
+                self._line_numbers.folding_callback = self.folding_callback
+
+                # Initialize line count
+                self.line_count = int(self.index('end').split('.')[0]) - 1  # Total number of lines
+
+                # Bind the <<Modified>> event to the handler
+                self.bind("<<ContentChanged>>", self.on_modified, add=True)
+
                 self._vs = scrollbar(master, width=7, command=self.yview)
 
                 self._line_numbers.grid(row=0, column=0, sticky="ns", ipadx=20)
@@ -1601,6 +1660,40 @@ def launch_window(path: str, data: dict, *a):
 
                 self._set_lexer()
                 self._set_color_scheme(color_scheme)
+
+            def on_modified(self, event):
+                """
+                Handles the <<Modified>> event to detect text changes.
+                """
+                # Reset the modified flag
+                self.edit_modified(False)
+
+                # Get the current line count
+                new_line_count = int(self.index('end').split('.')[0]) - 1
+                line_diff = new_line_count - self.line_count
+
+                if line_diff == 0:
+                    # No change in line count; no action needed
+                    return
+
+                # Determine the nature of the change
+                # Note: Tkinter's Text widget doesn't provide direct info about where the change occurred
+                # To approximate, we'll compare the previous and current content
+                # For simplicity, we'll assume changes occur near the cursor position
+
+                if line_diff > 0:
+                    change_type = 'insert'
+                    num_lines = line_diff
+                else:
+                    change_type = 'delete'
+                    num_lines = -line_diff
+
+                # Trigger the folding_callback
+                if self.folding_callback:
+                    self.folding_callback(change_type, num_lines)
+
+                # Update the line count
+                self.line_count = new_line_count
 
             def _select_all(self, *_) -> str:
                 self.tag_add("sel", "1.0", "end")
@@ -1647,6 +1740,7 @@ def launch_window(path: str, data: dict, *a):
                 return 'break'
 
             def _cmd_proxy(self, command: str, *args) -> Any:
+                # print('help I die')
                 try:
                     if command in {"insert", "delete", "replace"}:
                         start_line = int(str(self.tk.call(self._orig, "index", args[0])).split(".")[0])
