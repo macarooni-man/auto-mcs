@@ -1085,29 +1085,15 @@ def launch_window(path: str, data: dict, *a):
 
         # Configure background text
         class TkLineNumbers(Canvas):
-            """
-            Creates a line number widget for a text widget. Options are the same as a tkinter Canvas widget and add the following:
-                * -textwidget (Text): The text widget to attach the line numbers to. (Required) (Second argument after master)
-                * -justify (str): The justification of the line numbers. Can be "left", "right", or "center". Default is "left".
-
-            Methods to be used outside externally:
-                * .redraw(): Redraws the widget (to be used when the text widget is modified)
-            """
-
             def __init__(
-                self: TkLineNumbers,
-                master: Misc,
-                textwidget: Text,
-                justify: str = "left",
-                # None means take colors from text widget (default).
-                # Otherwise it is a function that takes no arguments and returns (fg, bg) tuple.
-                colors: Callable[[], tuple[str, str]] | tuple[str, str] | None = None,
-                *args,
-                **kwargs,
+                    self: TkLineNumbers,
+                    master: Misc,
+                    textwidget: Text,
+                    justify: str = "left",
+                    colors: Callable[[], tuple[str, str]] | tuple[str, str] | None = None,
+                    *args,
+                    **kwargs,
             ) -> None:
-                """Initializes the widget -- Internal use only"""
-
-                # Initialize the Canvas widget
                 Canvas.__init__(
                     self,
                     master,
@@ -1119,7 +1105,6 @@ def launch_window(path: str, data: dict, *a):
                     **kwargs,
                 )
 
-                # Set variables
                 self.textwidget = textwidget
                 self.master = master
                 self.justify = justify
@@ -1127,56 +1112,120 @@ def launch_window(path: str, data: dict, *a):
                 self.cancellable_after: Optional[str] = None
                 self.click_pos: None = None
                 self.allow_highlight = False
+
+                # Stores the currently known foldable blocks
+                self.folded_blocks = {}  # line_num -> {'start': int, 'end': int, 'folded': bool}
+
+                # NEW: Store folded states separately so we can restore them after update_folding_regions()
+                self.folding_states = {}
+
+                fold_arrow_path = os.path.join(data['gui_assets'], "ide-fold.png")
+                unfold_arrow_path = os.path.join(data['gui_assets'], "ide-unfold.png")
+                self.fold_arrow = PhotoImage(file=fold_arrow_path)
+                self.unfold_arrow = PhotoImage(file=unfold_arrow_path)
+
                 self.x: int | None = None
                 self.y: int | None = None
 
-                # Set style and its binding
                 self.set_colors()
                 self.bind("<<ThemeChanged>>", self.set_colors, add=True)
-
-                # Mouse scroll binding
                 self.bind("<MouseWheel>", self.mouse_scroll, add=True)
                 self.bind("<Button-4>", self.mouse_scroll, add=True)
                 self.bind("<Button-5>", self.mouse_scroll, add=True)
-
-                # Click bindings
                 self.bind("<Button-1>", self.click_see, add=True)
                 self.bind("<ButtonRelease-1>", self.unclick, add=True)
                 self.bind("<Double-Button-1>", self.double_click, add=True)
-
-                # Mouse drag bindings
                 self.bind("<Button1-Motion>", self.in_widget_select_mouse_drag, add=True)
                 self.bind("<Button1-Leave>", self.mouse_off_screen_scroll, add=True)
                 self.bind("<Button1-Enter>", self.stop_mouse_off_screen_scroll, add=True)
-
+                self.bind("<Button-1>", self.check_fold_click, add=True)
                 self.textwidget.bind("<<ContentChanged>>", self.get_cursor, add=True)
 
-                # Set the yscrollcommand of the text widget to redraw the widget
                 textwidget["yscrollcommand"] = self.redraw
-
-                # Redraw the widget
                 self.redraw()
 
             def redraw(self, *_) -> None:
-                """Redraws the widget"""
-
-                # Resize the widget based on the number of lines in the textwidget and set colors
+                """Redraws the widget, updating line numbers and fold icons."""
                 self.resize()
                 self.set_colors()
 
-                # Delete all the old line numbers
+                # Clear existing line numbers and icons
                 self.delete("all")
 
-                # Get the first and last line numbers for the textwidget (all other lines are in between)
+                # Update the folding regions based on current text
+                self.update_folding_regions()
+
+                # Update the folded state of each block based on `folding_states`
+                for line, block in self.folded_blocks.items():
+                    if line in self.folding_states:
+                        block['folded'] = self.folding_states[line]
+                    else:
+                        block['folded'] = False  # Default to unfolded if no state is stored
+
+                # Sort the blocks by their start line in ascending order
+                sorted_blocks = sorted(self.folded_blocks.items(), key=lambda x: x[1]['start'])
+
+                # Initialize an empty list to keep track of folded parent blocks
+                folded_parents = []
+
+                # Iterate through sorted blocks and apply 'folded' tags
+                for line, block in sorted_blocks:
+                    # Check if the current block is inside any folded parent
+                    inside_folded_parent = False
+                    for parent in folded_parents:
+                        if block['start'] > parent['start'] and block['end'] <= parent['end']:
+                            inside_folded_parent = True
+                            break
+
+                    if not inside_folded_parent and block['folded']:
+                        # Apply 'folded' tag to lines within this block (excluding the starting line)
+                        for i in range(block['start'] + 1, block['end'] + 1):
+                            self.textwidget.tag_add("folded", f"{i}.0", f"{i}.0 lineend+1c")
+                        # Ensure the 'folded' tag is configured to elide lines
+                        self.textwidget.tag_configure("folded", elide=True)
+                        # Add this block to folded parents
+                        folded_parents.append(block)
+
+                # Now, draw fold icons only for blocks that are not inside any folded parent
+                for line, block in sorted_blocks:
+                    # Check if the block is inside any folded parent
+                    inside_folded_parent = False
+                    for parent in folded_parents:
+                        if block['start'] > parent['start'] and block['end'] <= parent['end']:
+                            inside_folded_parent = True
+                            break
+
+                    if not inside_folded_parent:
+                        # Retrieve line information
+                        dlineinfo = self.textwidget.dlineinfo(f"{line}.0")
+                        if dlineinfo is None:
+                            continue  # Line is not visible
+
+                        # Select the appropriate icon based on the fold state
+                        icon = self.unfold_arrow if block['folded'] else self.fold_arrow
+                        x = int(self["width"]) + 3  # Position the icon appropriately
+                        y = dlineinfo[1] + 18  # Adjust the y-coordinate as needed
+
+                        # Create the fold icon on the canvas
+                        self.create_image(
+                            x, y,
+                            image=icon,
+                            anchor='center',
+                            tags=("foldicon", f"line_{line}")
+                        )
+
+                # Determine the range of lines currently visible in the widget
                 first_line = int(self.textwidget.index("@0,0").split(".")[0])
                 last_line = int(
-                    self.textwidget.index(f"@0,{self.textwidget.winfo_height()}").split(".")[0]
+                    self.textwidget.index(f"@0,{self.winfo_height()}").split(".")[0]
                 )
 
+                # Handle highlighting (optional, based on your implementation)
                 index = -1
                 if self.allow_highlight:
                     index = int(self.textwidget.index(INSERT).split(".")[0])
 
+                # Handle error highlighting (optional, based on your implementation)
                 err_index = -1
                 try:
                     if code_editor.error:
@@ -1190,43 +1239,31 @@ def launch_window(path: str, data: dict, *a):
 
                 max_lines = int(self.textwidget.index('end').split('.')[0]) - 1
 
-                # Draw the line numbers looping through the lines
+                # Iterate through each visible line to draw line numbers
                 for lineno in range(first_line, last_line + 1):
-
                     if lineno > max_lines - dead_zone:
                         continue
 
-                    # Check if it's searched
+                    tags: tuple[str] = self.textwidget.tag_names(f"{lineno}.0")
+                    elide_values: tuple[str] = (self.textwidget.tag_cget(tag, "elide") for tag in tags)
+                    line_elided: bool = any(getboolean(v or "false") for v in elide_values)
+                    dlineinfo = self.textwidget.dlineinfo(f"{lineno}.0")
+
+                    if dlineinfo is None or line_elided:
+                        continue  # Skip elided or non-visible lines
+
+                    # Determine the color based on search matches or errors
                     search_match = False
                     try:
                         search_match = lineno in code_editor.match_list
                     except:
                         pass
 
-                    # Check if line is elided
-                    tags: tuple[str] = self.textwidget.tag_names(f"{lineno}.0")
-                    elide_values: tuple[str] = (self.textwidget.tag_cget(tag, "elide") for tag in tags)
-
-                    # elide values can be empty
-                    line_elided: bool = any(getboolean(v or "false") for v in elide_values)
-
-                    # If the line is not visible, skip it
-                    dlineinfo: tuple[
-                                   int, int, int, int, int
-                               ] | None = self.textwidget.dlineinfo(f"{lineno}.0")
-                    if dlineinfo is None or line_elided:
-                        continue
-
-
-
-                    # Create the line number
+                    # Create the line number text
                     self.create_text(
-                        0
-                        if self.justify == "left"
-                        else int(self["width"])
-                        if self.justify == "right"
-                        else int(self["width"]) / 2,
-                        dlineinfo[1] + 5.5,
+                        0 if self.justify == "left" else int(self["width"]) if self.justify == "right" else int(
+                            self["width"]) / 2,
+                        dlineinfo[1] + 5.5,  # Adjust y-coordinate as needed
                         text=f" {lineno} " if self.justify != "center" else f"{lineno}",
                         anchor={"left": "nw", "right": "ne", "center": "n"}[self.justify],
                         font=f"{font_name} {font_size}",
@@ -1240,6 +1277,7 @@ def launch_window(path: str, data: dict, *a):
                 if self.textwidget.index_label and self.allow_highlight:
                     def set_label(*a):
                         self.textwidget.index_label.configure(text=self.textwidget.index(INSERT).replace('.', ':'))
+
                     self.after(0, set_label)
 
             def redraw_allow(self):
@@ -1249,9 +1287,6 @@ def launch_window(path: str, data: dict, *a):
                 self.get_cursor()
 
             def mouse_scroll(self, event: Event) -> None:
-                """Scrolls the text widget when the mouse wheel is scrolled -- Internal use only"""
-
-                # Scroll the text widget and then redraw the widget
                 self.textwidget.yview_scroll(
                     int(
                         scroll_fix(
@@ -1264,49 +1299,34 @@ def launch_window(path: str, data: dict, *a):
                 self.redraw()
 
             def click_see(self, event: Event) -> None:
-                """When clicking on a line number it scrolls to that line if not shifting -- Internal use only"""
-
-                # If the shift key is down, redirect to self.shift_click()
                 if event.state == 1:
                     self.shift_click(event)
                     return
 
-                # Remove the selection tag from the text widget
                 self.textwidget.tag_remove("sel", "1.0", "end")
 
                 line: str = self.textwidget.index(f"@{event.x},{event.y}").split(".")[0]
                 click_pos = f"{line}.0"
 
-                # Set the insert position to the line number clicked
                 last_index = int(self.textwidget.index('end').split('.')[0]) - 1 - dead_zone
                 if int(line) > last_index:
                     return 'break'
 
                 self.textwidget.mark_set("insert", click_pos)
-
-                # Scroll to the location of the insert position
                 self.textwidget.see("insert")
 
                 self.click_pos: str = click_pos
                 self.redraw()
 
             def unclick(self, _: Event) -> None:
-                """When the mouse button is released it removes the selection -- Internal use only"""
-
                 self.click_pos = None
 
             def double_click(self, _: Event) -> None:
-                """Selects the line when double clicked -- Internal use only"""
-
-                # Remove the selection tag from the text widget and select the line
                 self.textwidget.tag_remove("sel", "1.0", "end")
                 self.textwidget.tag_add("sel", "insert", "insert + 1 line")
                 self.redraw()
 
             def mouse_off_screen_scroll(self, event: Event) -> None:
-                """Automatically scrolls the text widget when the mouse is near the top or bottom,
-                similar to the in_widget_select_mouse_drag function -- Internal use only"""
-
                 self.x = event.x
                 self.y = event.y
                 self.text_auto_scan(event)
@@ -1315,8 +1335,6 @@ def launch_window(path: str, data: dict, *a):
                 if self.click_pos is None:
                     return
 
-                # Taken from the Text source: https://github.com/tcltk/tk/blob/main/library/text.tcl#L676
-                # Scrolls the widget if the cursor is off of the screen
                 if self.y >= self.winfo_height():
                     self.textwidget.yview_scroll(1 + self.y - self.winfo_height(), "pixels")
                 elif self.y < 0:
@@ -1328,33 +1346,22 @@ def launch_window(path: str, data: dict, *a):
                 else:
                     return
 
-                # Select the text
                 self.select_text(self.x - self.winfo_width(), self.y)
-
-                # After 50ms, call this function again
                 self.cancellable_after = self.after(50, self.text_auto_scan, event)
                 self.redraw()
 
             def stop_mouse_off_screen_scroll(self, _: Event) -> None:
-                """Stops the auto scroll when the cursor re-enters the line numbers -- Internal use only"""
-
-                # If the after has not been cancelled, cancel it
                 if self.cancellable_after is not None:
                     self.after_cancel(self.cancellable_after)
                     self.cancellable_after = None
 
             def check_side_scroll(self, event: Event) -> None:
-                """Detects if the mouse is off the screen to the sides \
-        (a case not covered in mouse_off_screen_scroll) -- Internal use only"""
-
-                # Determine if the mouse is off the sides of the widget
                 off_side = (
-                    event.x < self.winfo_x() or event.x > self.winfo_x() + self.winfo_width()
+                        event.x < self.winfo_x() or event.x > self.winfo_x() + self.winfo_width()
                 )
                 if not off_side:
                     return
 
-                # Determine if its above or below the widget
                 if event.y >= self.winfo_height():
                     self.textwidget.yview_scroll(1, "units")
                 elif event.y < 0:
@@ -1362,29 +1369,18 @@ def launch_window(path: str, data: dict, *a):
                 else:
                     return
 
-                # Select the text
                 self.select_text(event.x - self.winfo_width(), event.y)
-
-                # Redraw the widget
                 self.redraw()
 
             def in_widget_select_mouse_drag(self, event: Event) -> None:
-                """When click in_widget_select_mouse_dragging it selects the text -- Internal use only"""
-
-                # If the click position is None, return
                 if self.click_pos is None:
                     return
-
                 self.x = event.x
                 self.y = event.y
-
-                # Select the text
                 self.select_text(event.x - self.winfo_width(), event.y)
                 self.redraw()
 
             def select_text(self, x, y) -> None:
-                """Selects the text between the start and end positions -- Internal use only"""
-
                 drag_pos = self.textwidget.index(f"@{x}, {y}")
                 if self.textwidget.compare(drag_pos, ">", self.click_pos):
                     start = self.click_pos
@@ -1398,9 +1394,6 @@ def launch_window(path: str, data: dict, *a):
                 self.textwidget.mark_set("insert", drag_pos)
 
             def shift_click(self, event: Event) -> None:
-                """When shift clicking it selects the text between the click and the cursor -- Internal use only"""
-
-                # Add the selection tag to the text between the click and the cursor
                 start_pos: str = self.textwidget.index("insert")
                 end_pos: str = self.textwidget.index(f"@0,{event.y}")
                 self.textwidget.tag_remove("sel", "1.0", "end")
@@ -1410,20 +1403,12 @@ def launch_window(path: str, data: dict, *a):
                 self.redraw()
 
             def resize(self) -> None:
-                """Resizes the widget to fit the text widget -- Internal use only"""
-
-                # Get amount of lines in the text widget
                 end: str = self.textwidget.index("end").split(".")[0]
-
-                # Set the width of the widget to the required width to display the biggest line number
                 temp_font = Font(font=self.textwidget.cget("font"))
                 measure_str = " 1234 " if int(end) <= 1000 else f" {end} "
                 self.config(width=temp_font.measure(measure_str))
 
             def set_colors(self, _: Event | None = None) -> None:
-                """Sets the colors of the widget according to self.colors - Internal use only"""
-
-                # If the color provider is None, set the foreground color to the Text widget's foreground color
                 if self.colors is None:
                     self.foreground_color: str = self.textwidget["fg"]
                     self["bg"]: str = self.textwidget["bg"]
@@ -1434,6 +1419,137 @@ def launch_window(path: str, data: dict, *a):
                     returned_colors: tuple[str, str] = self.colors()
                     self.foreground_color: str = returned_colors[0]
                     self["bg"]: str = returned_colors[1]
+
+            def update_folding_regions(self):
+                self.folded_blocks.clear()
+                lines = int(self.textwidget.index('end').split('.')[0])
+                text = self.textwidget.get("1.0", "end")
+                code_lines = text.split('\n')
+
+                def get_indent_level(line):
+                    return len(line) - len(line.lstrip(' '))
+
+                def is_block_start(s: str) -> bool:
+                    # A line is a block start if it ends with ':' or starts with @server./@player. and ends with ':'
+                    s = s.strip()
+                    return s.endswith(':') or s.startswith('@server.') or s.startswith('@player.')
+
+                def adjust_block_end(start_line: int, end_line: int) -> int:
+                    """
+                    Adjust end_line to exclude trailing comments and leave one blank line if present,
+                    just like before.
+                    """
+                    while end_line > start_line:
+                        prev_line = code_lines[end_line - 1]
+                        if prev_line.strip().startswith('#'):
+                            end_line -= 1
+                        else:
+                            break
+
+                    if end_line > start_line:
+                        prev_line = code_lines[end_line - 1].rstrip()
+                        if prev_line == '':
+                            end_line -= 1
+
+                    # Register the block if it actually covers some lines
+                    if end_line > start_line:
+                        if start_line not in self.folded_blocks:
+                            self.folded_blocks[start_line] = {'start': start_line, 'end': end_line, 'folded': False}
+                    return end_line
+
+                def find_block_end(start_line: int, base_indent: int) -> int:
+                    """
+                    Find the end of a block starting at `start_line` with `base_indent`.
+
+                    Rules:
+                    - Ignore blank/whitespace-only lines for ending logic; they don't end the block even if dedented.
+                    - If we encounter a non-empty line (code/comment) with indentation <= base_indent after the first line,
+                      the block ends at the previous line.
+                    - Nested blocks are handled recursively as before.
+                    """
+                    i = start_line + 1
+                    while i <= lines:
+                        current_line = code_lines[i - 1]
+                        n_indent = get_indent_level(current_line)
+                        n_stripped = current_line.strip()
+
+                        # If this line has code or comment (non-empty after strip)
+                        if n_stripped:
+                            # If indentation returns to <= base_indent and we are beyond the immediate next line
+                            if n_indent <= base_indent and i > start_line + 1:
+                                end_line = i - 1
+                                return adjust_block_end(start_line, end_line)
+
+                            # If we find a nested block at greater indentation, handle it recursively
+                            if n_indent > base_indent and is_block_start(n_stripped):
+                                nested_end = find_block_end(i, n_indent)
+                                i = nested_end + 1
+                                continue
+                        # If the line is empty or whitespace-only, just continue scanning without ending the block.
+                        i += 1
+
+                    # If we reach the end of the file, the block goes until the last line
+                    return adjust_block_end(start_line, lines)
+
+                # Main scanning for top-level foldable blocks
+                i = 1
+                while i <= lines:
+                    line = code_lines[i - 1]
+                    stripped = line.strip()
+
+                    if is_block_start(stripped):
+                        # Found a block start
+                        block_end = find_block_end(i, get_indent_level(line))
+                        i = block_end + 1
+                    else:
+                        i += 1
+
+            def check_fold_click(self, event):
+                x = self.canvasx(event.x)
+                y = self.canvasy(event.y)
+                items = self.find_overlapping(x, y, x, y)
+                if not items:
+                    return
+
+                for elem in items:
+                    tags = self.gettags(elem)
+                    if "foldicon" in tags:
+                        line_num = None
+                        for t in tags:
+                            if t.startswith("line_"):
+                                try:
+                                    line_num = int(t.split("_", 1)[1])
+                                except ValueError:
+                                    pass
+
+                        if line_num is not None:
+                            self.toggle_fold(line_num)
+                            return
+
+            def toggle_fold(self, line):
+                if line not in self.folded_blocks:
+                    return
+                block = self.folded_blocks[line]
+                folded = not block['folded']
+                block['folded'] = folded
+
+                # Also store in folding_states so state persists after redraw/update_folding_regions
+                self.folding_states[line] = folded
+
+                start = block['start'] + 1
+                end = block['end']
+                if folded:
+                    # Hide (elide) lines in the block
+                    for i in range(start, end + 1):
+                        self.textwidget.tag_add("folded", f"{i}.0", f"{i}.0 lineend+1c")
+                        self.textwidget.tag_configure("folded", elide=True)
+                else:
+                    # Show lines
+                    for i in range(start, end + 1):
+                        self.textwidget.tag_remove("folded", f"{i}.0", f"{i}.0 lineend+1c")
+
+                self.redraw()
+
         class CodeView(Text):
             _w: str
 
@@ -3768,44 +3884,46 @@ if os.name == 'nt':
 
 
 # if __name__ == '__main__':
+#     server_name = 'Shop Test'
+#     script_name = 'wiki-search.ams'
+#
+#     import telepath
 #     import constants
 #     import amscript
 #
 #     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
-#     from svrmgr import ServerObject
-#     server_obj = ServerObject('macOS')
+#     from svrmgr import ServerManager
+#     constants.server_manager = ServerManager()
+#     server_obj = constants.server_manager.open_server(server_name)
 #     while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
 #         time.sleep(0.2)
 #
 #     # DELETE ABOVE
 #
-#     script_obj = amscript.ScriptObject()
+#     constants.script_obj = amscript.ScriptObject()
 #     data_dict = {
+#         '_telepath_data': None,
 #         'app_title': constants.app_title,
+#         'ams_version': constants.ams_version,
 #         'gui_assets': constants.gui_assets,
 #         'background_color': constants.background_color,
 #         'app_config': constants.app_config,
 #         'script_obj': {
-#             'syntax_func': script_obj.is_valid,
-#             'protected': script_obj.protected_variables,
-#             'events': script_obj.valid_events
+#             'syntax_func': constants.script_obj.is_valid,
+#             'protected': constants.script_obj.protected_variables,
+#             'events': constants.script_obj.valid_events
 #         },
-#         'suggestions': server_obj.retrieve_suggestions(script_obj),
-#         'os_name': 'macos'
+#         'suggestions': server_obj._retrieve_suggestions(),
+#         'os_name': constants.os_name,
+#         'translate': constants.translate,
+#         'telepath_script_dir': None,
 #     }
 #
-#     path = constants.scriptDir
-#     class Test():
-#         def __init__(self):
-#             self.value = os.path.join(path, 'os-terminal.ams')
-#             # import threading
-#             # def test():
-#             #     self.value = os.path.join(path, 'wiki-search.ams')
-#             # threading.Timer(1, test).start()
-#             # def test():
-#             #     self.value = os.path.join(path, 'test.ams')
-#             # threading.Timer(2, test).start()
-#             # def test():
-#             #     self.value = os.path.join(path, 'test2.ams')
-#             # threading.Timer(3, test).start()
-#     create_root(data_dict, Test())
+#     script_path = os.path.join(constants.scriptDir, script_name)
+#     # Passed to parent IPC receiver
+#     ipc_functions = {
+#         'api_manager': constants.api_manager,
+#         'telepath_upload': constants.telepath_upload
+#     }
+#
+#     edit_script(script_path, data_dict, ipc_functions)
