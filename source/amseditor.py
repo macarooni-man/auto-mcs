@@ -1114,13 +1114,12 @@ def launch_window(path: str, data: dict, *a):
                 self.allow_highlight = False
 
                 # Stores the currently known foldable blocks
-                self.folded_blocks = {}  # line_num -> {'start': int, 'end': int, 'folded': bool, 'searched': bool}
+                self.folded_blocks = {}  # line_num -> {'start': int, 'end': int, 'folded': bool}
                 self.folding_states = {}
 
                 self.fold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-fold.png"))
                 self.unfold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold.png"))
                 self.unfold_arrow_error = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold-error.png"))
-                self.unfold_arrow_search = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold-search.png"))
 
                 self.x: int | None = None
                 self.y: int | None = None
@@ -1206,10 +1205,6 @@ def launch_window(path: str, data: dict, *a):
                         if block['folded'] and code_editor.error:
                             if int(code_editor.error['line'].split(':')[0]) in range(block['start'], block['end']):
                                 icon = self.unfold_arrow_error
-
-                        # Show search icon if a search result is in a folded block
-                        elif block['searched']:
-                            icon = self.unfold_arrow_search
 
                         offset = {
                             'macos': (3, 18),
@@ -1467,7 +1462,7 @@ def launch_window(path: str, data: dict, *a):
                     # Register the block if it actually covers some lines
                     if end_line > start_line:
                         if start_line not in self.folded_blocks:
-                            self.folded_blocks[start_line] = {'start': start_line, 'end': end_line, 'folded': False, 'searched': False}
+                            self.folded_blocks[start_line] = {'start': start_line, 'end': end_line, 'folded': False}
                     return end_line
 
                 def find_block_end(start_line: int, base_indent: int) -> int:
@@ -1563,6 +1558,9 @@ def launch_window(path: str, data: dict, *a):
 
                 self.redraw()
 
+                # After redrawing, re-search
+                update_search()
+
             def handle_text_change(self, change_type: str, num_lines: int):
 
                 # Method #1 (faster) Use current index and walk backwards from line_diff to find the new position
@@ -1588,7 +1586,7 @@ def launch_window(path: str, data: dict, *a):
                     if v['folded'] and k >= original_line - line_diff:
                         del self.folding_states[k]
                         # print(k, v)
-                        updated_folded_blocks[k + line_diff] = {'start': v['start'] + line_diff, 'end': v['end'] + line_diff, 'folded': True, 'searched': v['searched']}
+                        updated_folded_blocks[k + line_diff] = {'start': v['start'] + line_diff, 'end': v['end'] + line_diff, 'folded': True}
 
                 def update_after():
                     cursor_index = code_editor.index("insert")
@@ -1654,8 +1652,7 @@ def launch_window(path: str, data: dict, *a):
                             self.folded_blocks[header_line] = {
                                 'start': folded_block_start,
                                 'end': folded_block_end,
-                                'folded': True,
-                                'searched': False
+                                'folded': True
                             }
                             self.folding_states[header_line] = True
 
@@ -1676,8 +1673,7 @@ def launch_window(path: str, data: dict, *a):
                     self.folded_blocks[header_line] = {
                         'start': folded_block_start,
                         'end': folded_block_end,
-                        'folded': True,
-                        'searched': False
+                        'folded': True
                     }
                     self.folding_states[header_line] = True
 
@@ -3095,6 +3091,23 @@ def launch_window(path: str, data: dict, *a):
 
             # Highlight find text
             def highlight_pattern(self, pattern, tag, start="1.0", end="end", regexp=False):
+                """
+                Highlights all occurrences of 'pattern' in the text widget.
+                """
+                # Check if the pattern is exactly empty
+                if pattern == "" or (pattern == 'search for text' and not search.has_focus):
+                    # Remove previous highlights
+                    self.tag_remove(tag, start, end)
+                    self.match_list = []  # Reset match list
+                    self.match_counter.configure(text='')  # Reset match counter display
+                    self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
+
+                    self._line_numbers.redraw()
+                    return  # Exit the method early
+
+                self.tag_remove(tag, start, end)  # Remove previous highlights
+                self.match_list = []  # Reset match list
+
                 start = self.index(start)
                 end = self.index(end)
                 self.mark_set("matchStart", start)
@@ -3103,60 +3116,63 @@ def launch_window(path: str, data: dict, *a):
 
                 count = IntVar()
                 x = 0
-                if tag == "highlight":
-                    self.match_list = []
+
                 while True:
                     try:
                         index = self.search(pattern, "matchEnd", "searchLimit", count=count, regexp=regexp, nocase=True)
-                    except:
+                    except TclError:
                         break
 
-                    if index == "":
+                    if not index:
                         break
 
                     if tag == "highlight":
-                        if str(search.cget('fg')) == '#4A4A70' and search.get() == data['translate']('search for text'):
-                            break
+                        # Additional checks or actions can be placed here if needed
+                        pass
 
+                    # Check if the match is within a folded block
+                    line_num = int(index.split(".")[0])
+                    for header_line, block in self._line_numbers.folded_blocks.items():
+                        if block['start'] <= line_num <= block['end']:
+                            if block['folded']:
+                                # Mark the block as containing a search result and unfold
+                                self._line_numbers.toggle_fold(header_line)
+                            break  # No need to check other blocks
+
+                    # After ensuring the block remains folded, add the highlight
                     self.mark_set("matchStart", index)
-                    self.mark_set("matchEnd", "%s+%sc" % (index, count.get()))
+                    self.mark_set("matchEnd", f"{index}+{count.get()}c")
                     self.tag_add(tag, "matchStart", "matchEnd")
 
-                    if index == "1.0":
-                        if tag == "highlight":
-                            self.match_list = []
-                        break
-
-                    if x == 0 and tag == 'highlight':
-                        new_search = search.get()
-                        if new_search != self.last_search:
-                            self.see(index)
-                            self.match_list = []
-                        self.last_search = new_search
                     if tag == 'highlight':
-                        index = int(self.index("matchStart").split(".")[0])
-                        if index not in self.match_list:
-                            self.match_list.append(index)
+                        match_line = int(self.index("matchStart").split(".")[0])
+                        if match_line not in self.match_list:
+                            self.match_list.append(match_line)
+
                     x += 1
 
-                    if not pattern:
-                        if tag == "highlight":
-                            self.match_list = []
-                        break
+                # Update match counter display
+                if pattern == '' or (pattern == 'search for text' and not search.has_focus):
+                    x = 0
 
-                if tag != 'highlight':
-                    return
+                if tag == 'highlight':
+                    if search.has_focus or replace.has_focus or x > 0:
+                        self.match_counter.configure(
+                            text=f'{x} result(s)',
+                            fg='#4CFF99' if x > 0 else '#AAAAAA'  # Example colors
+                        )
+                        self.index_label.place_forget()
 
-                if search.has_focus or replace.has_focus or x > 0:
-                    self.match_counter.configure(
-                        text=f'{x} result(s)',
-                        fg = text_color if x > 0 else faded_text
-                    )
-                    self.index_label.place_forget()
-                else:
-                    self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
-                    self.match_counter.configure(text='')
+                        # Scroll to first match
+                        if x > 0:
+                            search.see_index(code_editor.match_list[0] + 10)
+                    else:
+                        self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
+                        self.match_counter.configure(text='')
+
+                # Redraw line numbers to reflect any changes (e.g., searched blocks)
                 self._line_numbers.redraw()
+
         root.code_editor = HighlightText(
             root,
             color_scheme = style,
