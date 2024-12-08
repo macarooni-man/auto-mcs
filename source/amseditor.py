@@ -1145,6 +1145,7 @@ def launch_window(path: str, data: dict, *a):
                 self.folded_blocks = {}  # line_num -> {'start': int, 'end': int, 'folded': bool}
                 if not self.loaded_from_cache:
                     self.folding_states = {}
+                self.eof_length = 0
 
                 self.fold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-fold.png"))
                 self.unfold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold.png"))
@@ -1227,7 +1228,8 @@ def launch_window(path: str, data: dict, *a):
                     if not inside_folded_parent and block['folded']:
                         # Apply 'folded' tag to lines within this block (excluding the starting line)
                         for i in range(block['start'] + 1, block['end'] + 1):
-                            self.textwidget.tag_add("folded", f"{i}.0", f"{i}.0 lineend+1c")
+                            if i <= self.eof_length:
+                                self.textwidget.tag_add("folded", f"{i}.0", f"{i}.0 lineend+1c")
                         # Ensure the 'folded' tag is configured to elide lines
                         self.textwidget.tag_configure("folded", elide=True)
                         # Add this block to folded parents
@@ -1253,7 +1255,7 @@ def launch_window(path: str, data: dict, *a):
 
                         # Show error icon if the error is in a folded block
                         if block['folded'] and code_editor.error:
-                            if int(code_editor.error['line'].split(':')[0]) in range(block['start'], block['end']):
+                            if int(code_editor.error['line'].split(':')[0]) in range(block['start']+1, block['end']+1):
                                 icon = self.unfold_arrow_error
 
                         offset = {
@@ -1278,12 +1280,12 @@ def launch_window(path: str, data: dict, *a):
                     self.textwidget.index(f"@0,{self.winfo_height()}").split(".")[0]
                 )
 
-                # Handle highlighting (optional, based on your implementation)
+                # Handle highlighting
                 index = -1
                 if self.allow_highlight:
                     index = int(self.textwidget.index(INSERT).split(".")[0])
 
-                # Handle error highlighting (optional, based on your implementation)
+                # Handle error highlighting
                 err_index = -1
                 try:
                     if code_editor.error:
@@ -1482,6 +1484,7 @@ def launch_window(path: str, data: dict, *a):
                 self.folded_blocks.clear()
                 lines = int(self.textwidget.index('end').split('.')[0])
                 text = self.textwidget.get("1.0", "end")
+                self.eof_length = len(text.strip().splitlines())
                 code_lines = text.split('\n')
 
                 def get_indent_level(line):
@@ -1490,12 +1493,16 @@ def launch_window(path: str, data: dict, *a):
                 def is_block_start(s: str) -> bool:
                     # A line is a block start if it ends with ':' or starts with @server./@player. and ends with ':'
                     s = s.strip()
-                    return s.endswith(':') or s.startswith('@server.') or s.startswith('@player.') and not line.strip().startswith('#')
+                    return (
+                        (s.endswith(':') and not s.startswith('#'))  # Modified condition
+                    ) or (
+                        ((s.startswith('@server.') or s.startswith('@player.')) and s.endswith(
+                            ':') and not s.startswith('#'))  # Modified condition
+                    )
 
                 def adjust_block_end(start_line: int, end_line: int) -> int:
                     """
-                    Adjust end_line to exclude trailing comments and leave one blank line if present,
-                    just like before.
+                    Adjust end_line to exclude trailing comments and leave one blank line if present
                     """
                     while end_line > start_line:
                         prev_line = code_lines[end_line - 1]
@@ -1504,12 +1511,31 @@ def launch_window(path: str, data: dict, *a):
                         else:
                             break
 
-                    if end_line > start_line:
+                    if start_line < end_line <= self.eof_length:
                         prev_line = code_lines[end_line - 1].rstrip()
                         if prev_line == '':
                             end_line -= 1
 
-                    # Register the block if it actually covers some lines
+                    # <-- Added: Content Check
+                    has_content = False
+                    for i in range(start_line + 1, end_line + 1):
+                        if (i - 1) < len(code_lines):
+                            line_content = code_lines[i - 1].strip()
+                            if line_content and not line_content.startswith('#'):
+                                has_content = True
+                                break
+
+                    if not has_content:
+                        # If no content, do not register this block and remove
+                        if start_line in self.folded_blocks:
+                            del self.folded_blocks[start_line]
+                        return ('skip', end_line)  # Block is skipped
+
+                    # Prevent folding beyond the second-to-last line
+                    if end_line >= lines:
+                        end_line = lines - 1
+
+                    # Register the block if it actually covers some lines and has content
                     if end_line > start_line:
                         if start_line not in self.folded_blocks:
                             self.folded_blocks[start_line] = {'start': start_line, 'end': end_line, 'folded': False}
@@ -1556,11 +1582,32 @@ def launch_window(path: str, data: dict, *a):
                     stripped = line.strip()
 
                     if is_block_start(stripped):
+
                         # Found a block start
                         block_end = find_block_end(i, get_indent_level(line))
-                        i = block_end + 1
+
+                        # Skip over invalid blocks
+                        if isinstance(block_end, tuple):
+                            i = block_end[1] + 1
+                            continue
+
+                        # <-- Added: Check if the block was added to folded_blocks
+                        if i in self.folded_blocks:
+                            # Block was added; skip to the line after the block
+                            i = block_end + 1
+                        else:
+                            # Block was not added (no content); move to the next line
+                            i += 1
                     else:
                         i += 1
+
+                # Clean up invalid folding states
+                self.folding_states = {k: v for k, v in self.folding_states.items() if k in self.folded_blocks}
+
+                # Optional: Print reconstructed folded_blocks and folding_states for debugging
+                # Uncomment the following lines if you need to debug
+                # print(f"Reconstructed folded_blocks: {self.folded_blocks}")
+                # print(f"Updated folding_states: {self.folding_states}")
 
             def check_fold_click(self, event):
                 x = self.canvasx(event.x)
@@ -1585,6 +1632,10 @@ def launch_window(path: str, data: dict, *a):
                             return True
 
             def toggle_fold(self, line, bool_force=None):
+
+                text = self.textwidget.get("1.0", "end")
+                self.eof_length = len(text.strip().splitlines())
+
                 if line not in self.folded_blocks:
                     return
                 block = self.folded_blocks[line]
@@ -1599,8 +1650,9 @@ def launch_window(path: str, data: dict, *a):
                 if folded:
                     # Hide (elide) lines in the block
                     for i in range(start, end + 1):
-                        self.textwidget.tag_add("folded", f"{i}.0", f"{i}.0 lineend+1c")
-                        self.textwidget.tag_configure("folded", elide=True)
+                        if i <= self.eof_length:
+                            self.textwidget.tag_add("folded", f"{i}.0", f"{i}.0 lineend+1c")
+                            self.textwidget.tag_configure("folded", elide=True)
                 else:
                     # Show lines
                     for i in range(start, end + 1):
@@ -1991,6 +2043,15 @@ def launch_window(path: str, data: dict, *a):
                     self._set_color_scheme(color_scheme)
 
                 super().configure(**kwargs)
+
+                line_num = int(current_pos.split('.')[0])
+                return line_num in self._line_numbers.folded_blocks and self._line_numbers.folded_blocks[line_num]['folded']
+
+            def is_cursor_at_line_end(self) -> bool:
+                current_pos = self.index(INSERT)
+                line_num, col_num = map(int, current_pos.split('.'))
+                line_end = self.index(f"{line_num}.end")
+                return self.compare(current_pos, '==', line_end)
 
             config = configure
 
@@ -2914,6 +2975,8 @@ def launch_window(path: str, data: dict, *a):
 
                 # Press return with last indent level
                 if event.keysym == 'Return':
+
+                    # Hide context menu and auto-complete menus
                     if context_menu.visible:
                         context_menu.click()
                         return "break"
@@ -2922,6 +2985,29 @@ def launch_window(path: str, data: dict, *a):
                         ac.click()
                         return "break"
 
+
+                        folded_block = self._line_numbers.folded_blocks[line_num]
+                        end_line = folded_block['end']
+
+                        # Move cursor to the start of the line after the folded region
+                        new_cursor_pos = f"{end_line + 1}.0" if end_line + 1 <= self.line_count else f"{end_line}.end"
+                        self.mark_set(INSERT, new_cursor_pos)
+                        self.see(INSERT)
+
+                        # Determine indentation based on the line after the folded region
+                        new_line_num = end_line + 1
+                        if new_line_num > self.line_count:
+                            # If at the end, maintain the same indentation as the folded line
+                            indent = self.get_indent(last_line)
+                        else:
+                            indent = self.get_indent(new_line_text)
+
+                        self.insert(INSERT, tab_str * indent)
+                        self.recalc_lexer()
+                        return "break"  # Prevent default behavior
+
+
+                    # Default behavior
                     line_num = int(current_pos.split('.')[0])
                     if line_num > 0:
                         last_line = self.get(f"{line_num}.0", f"{line_num}.end")
@@ -3124,8 +3210,16 @@ def launch_window(path: str, data: dict, *a):
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
                 elif event.keysym in ('quoteright', 'apostrophe') and (check_text(right, "'") and check_text(left, "'", True)):
-                    self.insert(INSERT, "''")
-                    self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
+                    current_line = self.index(INSERT)
+                    line = int(current_line.split(".")[0])
+                    lr, text = self.get_line_text(line)
+
+                    # If in a comment, only enter a single apostrophe
+                    if text.strip().startswith("#"):
+                        self.insert(INSERT, "'")
+                    else:
+                        self.insert(INSERT, "''")
+                        self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
                 elif event.keysym == 'quotedbl' and (check_text(right, '"') and check_text(left, '"', True)):
                     self.insert(INSERT, '""')
@@ -3173,17 +3267,9 @@ def launch_window(path: str, data: dict, *a):
                         break
 
                     if tag == "highlight":
-                        # Additional checks or actions can be placed here if needed
-                        pass
 
-                    # Check if the match is within a folded block
-                    line_num = int(index.split(".")[0])
-                    for header_line, block in self._line_numbers.folded_blocks.items():
-                        if block['start'] <= line_num <= block['end']:
-                            if block['folded']:
-                                # Mark the block as containing a search result and unfold
-                                self._line_numbers.toggle_fold(header_line)
-                            break  # No need to check other blocks
+                        # Check if the match is within a folded block
+                        line_num = int(index.split(".")[0])
 
                     # After ensuring the block remains folded, add the highlight
                     self.mark_set("matchStart", index)
@@ -4194,11 +4280,48 @@ if os.name == 'nt':
 #         'telepath_script_dir': None,
 #     }
 #
-#     script_path = os.path.join(constants.scriptDir, script_name)
-#     # Passed to parent IPC receiver
-#     ipc_functions = {
-#         'api_manager': constants.api_manager,
-#         'telepath_upload': constants.telepath_upload
-#     }
-#
-#     edit_script(script_path, data_dict, ipc_functions)
+if __name__ == '__main__':
+    server_name = 'Shop Test'
+    script_name = 'wiki-search.ams'
+
+    import telepath
+    import constants
+    import amscript
+
+    from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
+    from svrmgr import ServerManager
+    constants.server_manager = ServerManager()
+    server_obj = constants.server_manager.open_server(server_name)
+    while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
+        time.sleep(0.2)
+
+    # DELETE ABOVE
+
+    constants.script_obj = amscript.ScriptObject()
+    data_dict = {
+        '_telepath_data': None,
+        'app_title': constants.app_title,
+        'ams_version': constants.ams_version,
+        'gui_assets': constants.gui_assets,
+        'cache_dir': constants.cacheDir,
+        'background_color': constants.background_color,
+        'app_config': constants.app_config,
+        'script_obj': {
+            'syntax_func': constants.script_obj.is_valid,
+            'protected': constants.script_obj.protected_variables,
+            'events': constants.script_obj.valid_events
+        },
+        'suggestions': server_obj._retrieve_suggestions(),
+        'os_name': constants.os_name,
+        'translate': constants.translate,
+        'telepath_script_dir': None,
+    }
+
+    script_path = os.path.join(constants.scriptDir, script_name)
+    # Passed to parent IPC receiver
+    ipc_functions = {
+        'api_manager': constants.api_manager,
+        'telepath_upload': constants.telepath_upload
+    }
+
+    edit_script(script_path, data_dict, ipc_functions)
