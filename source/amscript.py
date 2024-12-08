@@ -2690,7 +2690,7 @@ def json_regex(match):
                 final_str = re.sub(r'[^0-9-]', '', value)
         else:
             # Quote strings
-            final_str = f'"{value}"'
+            final_str = f'"{value}"'.lower()
     else:  # Keys (e.g., unquoted strings before a colon)
         final_str = match.group(1).replace('minecraft:', '')
 
