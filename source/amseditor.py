@@ -1129,13 +1129,25 @@ def launch_window(path: str, data: dict, *a):
                 self.bind("<MouseWheel>", self.mouse_scroll, add=True)
                 self.bind("<Button-4>", self.mouse_scroll, add=True)
                 self.bind("<Button-5>", self.mouse_scroll, add=True)
-                self.bind("<Button-1>", self.click_see, add=True)
                 self.bind("<ButtonRelease-1>", self.unclick, add=True)
-                self.bind("<Double-Button-1>", self.double_click, add=True)
                 self.bind("<Button1-Motion>", self.in_widget_select_mouse_drag, add=True)
                 self.bind("<Button1-Leave>", self.mouse_off_screen_scroll, add=True)
                 self.bind("<Button1-Enter>", self.stop_mouse_off_screen_scroll, add=True)
-                self.bind("<Button-1>", self.check_fold_click, add=True)
+
+                # Fix button click order
+                def single_click(*args, **kwargs):
+                    if not self.check_fold_click(*args, **kwargs):
+                        self.click_see(*args, **kwargs)
+
+                def double_click(*args, **kwargs):
+                    if not self.check_fold_click(*args, **kwargs):
+                        self.double_click(*args, **kwargs)
+
+                self.bind("<Button-1>", single_click, add=True)
+                self.bind("<Double-Button-1>", double_click, add=True)
+
+
+
                 self.textwidget.bind("<<ContentChanged>>", self.get_cursor, add=True)
 
                 textwidget["yscrollcommand"] = self.redraw
@@ -1532,7 +1544,7 @@ def launch_window(path: str, data: dict, *a):
 
                         if line_num is not None:
                             self.toggle_fold(line_num)
-                            return
+                            return True
 
             def toggle_fold(self, line):
                 if line not in self.folded_blocks:
