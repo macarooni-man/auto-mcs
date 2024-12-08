@@ -13,6 +13,9 @@
 
 
 
+import traceback
+
+
 # Toggles custom permission
 @player.on_alias(player, command='pyperm', arguments={'player': True}, permission='server', description='Toggles Python permission for specified player (Python)'):
     target = server.get_player(arguments['player'])
@@ -34,4 +37,4 @@
     try:
         player.log(eval(arguments['code']))
     except Exception as e:
-        player.log_error(e)
+        player.log_error(traceback.format_exc())

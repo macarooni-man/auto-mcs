@@ -1758,9 +1758,8 @@ class PlayerScriptObject():
                     log_data = self._execute(f'data get entity {self.name}', log=False, _capture=f"{self.name} has the following entity data: ", _send_twice=self._get_player)
                     nbt_data = log_data.split("following entity data: ")[1].strip()
 
-                    # Remove color escape codes if they exist
                     try:
-                        # Define the ANSI escape code regex pattern
+                        # Remove ANSI escape codes
                         ansi_escape = re.compile(r'''
                             \x1B  # ESC character
                             \[    # literal [
@@ -1771,11 +1770,23 @@ class PlayerScriptObject():
                         nbt_data = ansi_escape.sub('', nbt_data)
                     except:
                         pass
-                    # print(log_data)
 
                     # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
                     try:
-                        new_nbt = re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: json_regex(x), nbt_data).replace(";",",").replace("'{", '"{').replace("}'", '}"')
+                        # Handle unquoted keys and values
+                        nbt_data = re.sub(
+                            r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)',
+                            lambda x: json_regex(x),
+                            nbt_data
+                        )
+
+                        # Replace semicolons with commas, fix brackets
+                        nbt_data = nbt_data.replace(";", ",").replace("'{", '"{').replace("}'", '}"')
+
+                        # Escape internal JSON quotes
+                        new_nbt = re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), nbt_data)
+
+                        # Attempt to fix any errors that might arise
                         new_nbt = json_repair.loads(re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
                     except json.decoder.JSONDecodeError:
                         if constants.debug:
@@ -2668,20 +2679,19 @@ for lib in list(set(libs)):
 del libs
 
 
-# Gives strings quotes that don't have any, and formats numbers
+# Fix relaxed JSON to standard JSON
 def json_regex(match):
-    if match.group(2):
-        # print(match.group(2), re.match(r'^-?\d+.?\d*(f|L|b|d)?$', match.group(2)))
-
-        if re.match(r'^-?\d+.?\d*(f|L|b|d)?$', match.group(2)):
-            if "." in match.group(2):
-                final_str = str(round(float(re.sub(r'[^0-9.-]', '', match.group(2))), 4))
+    if match.group(2):  # Match unquoted strings or numbers
+        value = match.group(2)
+        if re.match(r'^-?\d+\.?\d*(f|L|b|d)?$', value):  # Handle numbers
+            if "." in value:
+                final_str = str(round(float(re.sub(r'[^0-9.-]', '', value)), 4))
             else:
-                final_str = re.sub(r'[^0-9-]', '', match.group(2))
+                final_str = re.sub(r'[^0-9-]', '', value)
         else:
-            final_str = f'"{match.group(2).lower()}"'
-
-    else:
+            # Quote strings
+            final_str = f'"{value}"'
+    else:  # Keys (e.g., unquoted strings before a colon)
         final_str = match.group(1).replace('minecraft:', '')
 
     return final_str
