@@ -1567,7 +1567,10 @@ def launch_window(path: str, data: dict, *a):
                             # If we find a nested block at greater indentation, handle it recursively
                             if n_indent > base_indent and is_block_start(n_stripped):
                                 nested_end = find_block_end(i, n_indent)
-                                i = nested_end + 1
+                                if isinstance(nested_end, tuple):
+                                    i = nested_end[1] + 1
+                                else:
+                                    i = nested_end + 1
                                 continue
                         # If the line is empty or whitespace-only, just continue scanning without ending the block.
                         i += 1
