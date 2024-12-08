@@ -21299,6 +21299,7 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         'app_title': constants.app_title,
         'ams_version': constants.ams_version,
         'gui_assets': constants.gui_assets,
+        'cache_dir': constants.cacheDir,
         'background_color': constants.background_color,
         'app_config': constants.app_config,
         'script_obj': {

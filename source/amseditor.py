@@ -325,7 +325,6 @@ def save_window_pos(*args):
     if size[0] <= (min_size[0] + 400):
         last_window = new_window
 
-
 # Saves script to disk
 def save_script(data, script_path, *a):
     global ipc, open_frames, currently_open, telepath_map
@@ -347,7 +346,11 @@ def save_script(data, script_path, *a):
                     'script_path': script_path,
                     'script_contents': script_contents,
                     'telepath_script_dir': data['telepath_script_dir'],
-                    'telepath_data': telepath_map[script_path]
+                    'telepath_data': telepath_map[script_path],
+                    'folding_data': {
+                        'folding_states': open_frames[script_name].code_editor._line_numbers.folding_states,
+                        'length': len(script_contents.splitlines())
+                    }
                 }
             }
             ipc.send(message)
@@ -753,7 +756,9 @@ def launch_window(path: str, data: dict, *a):
     if path:
 
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-            ams_data = f.read().replace('\t', tab_str) + ("\n" * dead_zone)
+            raw_data = f.read()
+            start_lines = len(raw_data.splitlines())
+            ams_data = raw_data.replace('\t', tab_str) + ("\n" * dead_zone)
 
         error_bg = convert_color((0.3, 0.1, 0.13))['hex']
         text_color = convert_color((0.6, 0.6, 1))['hex']
@@ -1113,9 +1118,33 @@ def launch_window(path: str, data: dict, *a):
                 self.click_pos: None = None
                 self.allow_highlight = False
 
-                # Stores the currently known foldable blocks
+                # Stores the currently known foldable blocks, and loads from cache if it exists
+                self.loaded_from_cache = False
+                try:
+                    cache_dir = data['cache_dir']
+                    file_name = os.path.basename(path).split('.')[0] + '.json'
+                    if data['telepath_script_dir'] and path.startswith(data['telepath_script_dir']):
+                        json_dir = os.path.join(cache_dir, 'ide', 'fold-regions', 'telepath')
+                    else:
+                        json_dir = os.path.join(cache_dir, 'ide', 'fold-regions', 'local')
+                    json_path = os.path.join(json_dir, file_name)
+
+                    # Attempt to load from cache only if the line count is the same
+                    if os.path.isfile(json_path):
+                        with open(json_path, 'r', errors='ignore') as f:
+                            folding_data = json.loads(f.read())
+                            if start_lines == folding_data['length']:
+                                self.loaded_from_cache = True
+
+                                # Convert keys from strings to integers
+                                self.folding_states = {int(k): v for k, v in folding_data['folding_states'].items()}
+
+                except:
+                    pass
+
                 self.folded_blocks = {}  # line_num -> {'start': int, 'end': int, 'folded': bool}
-                self.folding_states = {}
+                if not self.loaded_from_cache:
+                    self.folding_states = {}
 
                 self.fold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-fold.png"))
                 self.unfold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold.png"))
@@ -1146,8 +1175,6 @@ def launch_window(path: str, data: dict, *a):
                 self.bind("<Button-1>", single_click, add=True)
                 self.bind("<Double-Button-1>", double_click, add=True)
 
-
-
                 self.textwidget.bind("<<ContentChanged>>", self.get_cursor, add=True)
 
                 textwidget["yscrollcommand"] = self.redraw
@@ -1170,6 +1197,17 @@ def launch_window(path: str, data: dict, *a):
                         block['folded'] = self.folding_states[line]
                     else:
                         block['folded'] = False  # Default to unfolded if no state is stored
+
+                # Remove invalid data from cache
+                # if self.loaded_from_cache:
+                #     new_folding_states = {}
+                #     for line, folded in self.folding_states.items():
+                #         print(line, folded, self.folded_blocks)
+                #         if line in self.folded_blocks and folded:
+                #             new_folding_states[line] = folded
+                #     self.folding_states = new_folding_states
+                #     self.loaded_from_cache = False
+
 
                 # Sort the blocks by their start line in ascending order
                 sorted_blocks = sorted(self.folded_blocks.items(), key=lambda x: x[1]['start'])
@@ -1546,7 +1584,7 @@ def launch_window(path: str, data: dict, *a):
                             self.toggle_fold(line_num)
                             return True
 
-            def toggle_fold(self, line):
+            def toggle_fold(self, line, bool_force=None):
                 if line not in self.folded_blocks:
                     return
                 block = self.folded_blocks[line]
@@ -1714,10 +1752,6 @@ def launch_window(path: str, data: dict, *a):
 
                 super().__init__(self._frame, **kwargs)
                 super().grid(row=0, column=1, sticky="nswe")
-
-                self._line_numbers = TkLineNumbers(
-                    self._frame, self, justify=kwargs.get("justify", "right"), colors=linenums_theme
-                )
 
                 # Initialize TkLineNumbers
                 self._line_numbers = TkLineNumbers(
@@ -4012,7 +4046,7 @@ def edit_script(script_path: str, data: dict, ipc_functions: dict, *args):
 
             # Create  and start listener
             parent_conn, child_conn = multiprocessing.Pipe()
-            ipc_start_listener(parent_conn, ipc_functions)
+            ipc_start_listener(parent_conn, data, ipc_functions)
 
             # Initialize process
             mgr = multiprocessing.Manager()
@@ -4030,7 +4064,7 @@ def edit_script(script_path: str, data: dict, ipc_functions: dict, *args):
 
 
 # IPC functions (these run in the context of the main process, and "data" is passed in)
-def ipc_start_listener(connection: multiprocessing.connection.Connection, ipc_functions: dict):
+def ipc_start_listener(connection: multiprocessing.connection.Connection, start_data: dict, ipc_functions: dict):
     print("[amscript IDE] IPC connection opened")
 
     # Process child commands and execute parent functions
@@ -4038,7 +4072,7 @@ def ipc_start_listener(connection: multiprocessing.connection.Connection, ipc_fu
         command = data['command']
 
         if command == 'ipc_save_script' and data['args']:
-            ipc_save_script(**data['args'], ipc_functions=ipc_functions)
+            ipc_save_script(start_data['cache_dir'], **data['args'], ipc_functions=ipc_functions)
 
     # Background thread to listen for IPC commands while the IDE is open
     def listener():
@@ -4060,7 +4094,17 @@ def ipc_start_listener(connection: multiprocessing.connection.Connection, ipc_fu
         connection.close()
 
     Timer(0, listener).start()
-def ipc_save_script(script_path: str, script_contents: str, ipc_functions: dict, telepath_script_dir: str = None, telepath_data: dict = None):
+def ipc_save_script(cache_dir: str, script_path: str, script_contents: str, ipc_functions: dict, telepath_script_dir: str = None, telepath_data: dict = None, folding_data: dict = None):
+    try:
+        # Save folding data to cache dir, so regions persists after reboot
+        if folding_data:
+            if not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
+
+            file_name = os.path.basename(script_path).split('.')[0] + '.json'
+            if telepath_data:
+                json_dir = os.path.join(cache_dir, 'ide', 'fold-regions', 'telepath')
+            else:
 
     # Write to disk
     try:
@@ -4102,13 +4146,6 @@ if os.name == 'nt':
 
 
 
-# if __name__ == '__main__':
-#     server_name = 'Shop Test'
-#     script_name = 'wiki-search.ams'
-#
-#     import telepath
-#     import constants
-#     import amscript
 #
 #     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
 #     from svrmgr import ServerManager
@@ -4146,3 +4183,21 @@ if os.name == 'nt':
 #     }
 #
 #     edit_script(script_path, data_dict, ipc_functions)
+            'syntax_func': constants.script_obj.is_valid,
+            'protected': constants.script_obj.protected_variables,
+            'events': constants.script_obj.valid_events
+        },
+        'suggestions': server_obj._retrieve_suggestions(),
+        'os_name': constants.os_name,
+        'translate': constants.translate,
+        'telepath_script_dir': None,
+    }
+
+    script_path = os.path.join(constants.scriptDir, script_name)
+    # Passed to parent IPC receiver
+    ipc_functions = {
+        'api_manager': constants.api_manager,
+        'telepath_upload': constants.telepath_upload
+    }
+
+    edit_script(script_path, data_dict, ipc_functions)
