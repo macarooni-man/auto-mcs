@@ -1,0 +1,48 @@
+#!
+# title: Welcome Message
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Displays a custom welcome message in chat
+#!
+
+
+
+
+# Custom welcome message, with $server = server.name, and $player = player.name
+banner_title = f'<---  Welcome to $server, $player!  ---> '
+
+# Show a disclaimer, banner, social plugs, etc... (optional)
+banner_message = ''
+
+# Message colors (any Minecraft color ID)
+title_color = "blue"
+message_color = "white"
+
+# Show player count in the welcome message
+show_player_count = True
+
+# Only show this message to players that have not joined before
+first_time_only = False
+
+
+
+
+# Display message when users join
+@player.on_join(player, message):
+    if (player not in server.usercache and first_time_only) or not first_time_only:
+        
+        # Show initial message
+        formatted = banner_title.replace('$server', server.name)
+        formatted = formatted.replace('$player', player.name)
+        player.log(formatted, color=title_color, style='normal')
+        
+        # Show player count if configured
+        if show_player_count:
+            if len(server.player_list) > 1:
+                player.log(f'>  There are {len(server.player_list)} / {server.properties["max-players"]} online')
+            else:
+                player.log('>  You are the only one online')
+                
+        # Show extra info if added
+        if banner_message:
+            player.log(f'\n{banner_message}', color=message_color)
