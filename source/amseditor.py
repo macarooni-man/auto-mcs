@@ -2044,6 +2044,8 @@ def launch_window(path: str, data: dict, *a):
 
                 super().configure(**kwargs)
 
+            def is_current_line_folded(self) -> bool:
+                current_pos = self.index(INSERT)
                 line_num = int(current_pos.split('.')[0])
                 return line_num in self._line_numbers.folded_blocks and self._line_numbers.folded_blocks[line_num]['folded']
 
@@ -2986,6 +2988,8 @@ def launch_window(path: str, data: dict, *a):
                         return "break"
 
 
+                    # If cursor is at the end of a folded line, move it to the end of the block before processing
+                    if self.is_current_line_folded() and self.is_cursor_at_line_end():
                         folded_block = self._line_numbers.folded_blocks[line_num]
                         end_line = folded_block['end']
 
@@ -2994,12 +2998,17 @@ def launch_window(path: str, data: dict, *a):
                         self.mark_set(INSERT, new_cursor_pos)
                         self.see(INSERT)
 
+                        # Insert a new line with proper indentation
+                        self.insert(INSERT, '\n')
+
                         # Determine indentation based on the line after the folded region
                         new_line_num = end_line + 1
                         if new_line_num > self.line_count:
                             # If at the end, maintain the same indentation as the folded line
                             indent = self.get_indent(last_line)
                         else:
+                            # Else, use the indentation of the new line
+                            new_line_text = self.get(f"{new_line_num}.0", f"{new_line_num}.end")
                             indent = self.get_indent(new_line_text)
 
                         self.insert(INSERT, tab_str * indent)
@@ -3270,6 +3279,12 @@ def launch_window(path: str, data: dict, *a):
 
                         # Check if the match is within a folded block
                         line_num = int(index.split(".")[0])
+                        for header_line, block in self._line_numbers.folded_blocks.items():
+                            if block['start'] <= line_num <= block['end']:
+                                if block['folded']:
+                                    # Mark the block as containing a search result and unfold
+                                    self._line_numbers.toggle_fold(header_line)
+                                break  # No need to check other blocks
 
                     # After ensuring the block remains folded, add the highlight
                     self.mark_set("matchStart", index)
@@ -3295,9 +3310,9 @@ def launch_window(path: str, data: dict, *a):
                         )
                         self.index_label.place_forget()
 
-                        # Scroll to first match
-                        if x > 0:
-                            search.see_index(code_editor.match_list[0] + 10)
+                        # Scroll to first match if search/replace have focus
+                        if x > 0 and (search.has_focus or replace.has_focus):
+                            search.see_index(code_editor.match_list[0] + 5)
                     else:
                         self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
                         self.match_counter.configure(text='')
