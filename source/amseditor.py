@@ -1504,7 +1504,7 @@ def launch_window(path: str, data: dict, *a):
                     """
                     Adjust end_line to exclude trailing blank lines,
                     include one trailing comment line if present,
-                    and allow one trailing blank line after the comment.
+                    and ensure that the fold ends correctly.
                     """
                     adjusted_end_line = end_line
 
@@ -1517,30 +1517,26 @@ def launch_window(path: str, data: dict, *a):
                         else:
                             break
 
-                    # Step 2: Check if the last non-blank line is a comment
+                    # Step 2: Include the last comment line if present
                     if adjusted_end_line > start_line:
                         last_line = code_lines[adjusted_end_line - 1].strip()
                         if last_line.startswith('#'):
-                            # Keep the comment line in the fold
-                            pass
+                            pass  # Keep the comment line in the fold
                         else:
-                            # If the last line is code, allow one trailing blank line
+                            # Allow one trailing comment line if the next line is a comment
                             if adjusted_end_line < end_line:
                                 next_line = code_lines[adjusted_end_line].strip()
-                                if next_line == '':
+                                if next_line.startswith('#'):
                                     adjusted_end_line += 1
 
-                    # Step 3: Allow one trailing blank line or comment after the last content line
-                    if adjusted_end_line < end_line:
-                        next_line = code_lines[adjusted_end_line].strip()
-                        if next_line.startswith('#') or next_line == '':
-                            adjusted_end_line += 1
+                    # Step 3: Do NOT allow trailing blank lines
+                    # Removed the previous logic that allowed trailing blank lines
 
-                    # Prevent folding beyond the second-to-last line
+                    # Prevent folding beyond the last line
                     if adjusted_end_line >= lines:
                         adjusted_end_line = lines - 1
 
-                    # Verify that there's at least one content line in the block
+                    # Step 4: Verify there's at least one meaningful content line
                     has_content = False
                     for i in range(start_line + 1, adjusted_end_line + 1):
                         if (i - 1) < len(code_lines):
@@ -1550,16 +1546,19 @@ def launch_window(path: str, data: dict, *a):
                                 break
 
                     if not has_content:
-                        # If no content, do not register this block and remove if exists
+                        # Do not register empty blocks
                         if start_line in self.folded_blocks:
                             del self.folded_blocks[start_line]
-                        return ('skip', adjusted_end_line)  # Block is skipped
+                        return ('skip', adjusted_end_line)  # Indicate to skip this block
 
-                    # Register the block if it covers multiple lines and has content
+                    # Register the block if it has content and spans multiple lines
                     if adjusted_end_line > start_line:
                         if start_line not in self.folded_blocks:
-                            self.folded_blocks[start_line] = {'start': start_line, 'end': adjusted_end_line,
-                                                              'folded': False}
+                            self.folded_blocks[start_line] = {
+                                'start': start_line,
+                                'end': adjusted_end_line,
+                                'folded': False
+                            }
                     return adjusted_end_line
 
                 def find_block_end(start_line: int, base_indent: int) -> int:
@@ -1625,7 +1624,9 @@ def launch_window(path: str, data: dict, *a):
                         i += 1
 
                 # Clean up invalid folding states
-                self.folding_states = {k: v for k, v in self.folding_states.items() if k in self.folded_blocks}
+                if not self.loaded_from_cache:
+                    self.folding_states = {k: v for k, v in self.folding_states.items() if k in self.folded_blocks}
+                self.loaded_from_cache = False
 
                 # Optional: Print reconstructed folded_blocks and folding_states for debugging
                 # Uncomment the following lines if you need to debug
@@ -4330,12 +4331,16 @@ if os.name == 'nt':
 
 
 # if __name__ == '__main__':
-#     server_name = 'Shop Test'
-#     script_name = 'wiki-search.ams'
-#
 #     import telepath
 #     import constants
 #     import amscript
+#
+#
+#     server_name = 'Shop Test'
+#     script_name = 'wiki-search.ams'
+#     script_path = os.path.join(constants.scriptDir, script_name)
+#     # script_path = '/Users/kaleb/Documents/GitHub/auto-mcs/source/baselib.ams'
+#
 #
 #     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
 #     from svrmgr import ServerManager
@@ -4366,7 +4371,6 @@ if os.name == 'nt':
 #         'telepath_script_dir': None,
 #     }
 #
-#     script_path = os.path.join(constants.scriptDir, script_name)
 #     # Passed to parent IPC receiver
 #     ipc_functions = {
 #         'api_manager': constants.api_manager,

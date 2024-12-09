@@ -10,331 +10,348 @@ from time import sleep
 
 # Generates a fixed-width centered header for logging
 def generate_header(text):
-	header_len = 50
-	adjusted = round((header_len - len(text) - 2) / 2)
-	final_str = "-"*adjusted + f" {text} " + "-"*adjusted
-	if len(final_str) < header_len:
-		final_str = final_str + ("-"*(header_len-len(final_str)))
-	return final_str[:50]
+    header_len = 50
+    adjusted = round((header_len - len(text) - 2) / 2)
+    final_str = "-"*adjusted + f" {text} " + "-"*adjusted
+    if len(final_str) < header_len:
+        final_str = final_str + ("-"*(header_len-len(final_str)))
+    return final_str[:50]
+
+
+
+# Display 1 minute & 15s warning for !restart/!stop
+def sleep_timer(delay, sleep_type):
+    if delay > 60:
+        sleep(delay - 60)
+        server.broadcast_warning(f"Server will {sleep_type} in 60s", tag=True)
+        sleep(45)
+        server.broadcast_warning(f"Server will {sleep_type} in 15s", tag=True)
+        sleep(15)
+    elif delay > 15:
+        sleep(delay - 15)
+        server.broadcast_warning(f"Server will {sleep_type} in 15s", tag=True)
+        sleep(15)
+    else:
+        sleep(delay)
 
 
 
 # Displays all amscript commands that the player has access to, with an optional search feature
 @player.on_alias(player, command='help', arguments={'command': False}, permission='anyone', description='View the auto-mcs command directory (auto-mcs provided)'):
-	cmd = arguments['command']
-	match_count = 0
-	
-	if cmd:
-		player.log(generate_header(f'Search for \'{cmd}\''), 'green', 'normal')
-	else:
-		player.log(generate_header('All Auto-MCS Commands'), 'green', 'normal')
+    cmd = arguments['command']
+    match_count = 0
+    
+    if cmd:
+        player.log(generate_header(f'Search for \'{cmd}\''), 'green', 'normal')
+    else:
+        player.log(generate_header('All Auto-MCS Commands'), 'green', 'normal')
 
-	for alias in server.aliases.values():
-		has_permission = False
-		if alias['permission'] in perm_dict:
-			has_permission = perm_dict[permission] >= perm_dict[alias['permission']]
-		else:
-			has_permission = player.check_permission(alias['permission'])
+    for alias in server.aliases.values():
+        has_permission = False
+        if alias['permission'] in perm_dict:
+            has_permission = perm_dict[permission] >= perm_dict[alias['permission']]
+        else:
+            has_permission = player.check_permission(alias['permission'])
 
-		if has_permission:
-			if cmd:
-				if cmd.lower() not in alias['command'].lower() and cmd.lower() not in alias['description'].lower():
-					continue
+        if has_permission:
+            if cmd:
+                if cmd.lower() not in alias['command'].lower() and cmd.lower() not in alias['description'].lower():
+                    continue
 
-			if cmd:
-				player.log(f"{alias['syntax']}", 'white', 'normal')
-			else:
-				player.log(alias['command'], 'white', 'normal')
-			player.log(f'- {alias["description"]}', 'gray', 'normal')
-			match_count += 1
+            if cmd:
+                player.log(f"{alias['syntax']}", 'white', 'normal')
+            else:
+                player.log(alias['command'], 'white', 'normal')
+            player.log(f'- {alias["description"]}', 'gray', 'normal')
+            match_count += 1
 
-	if match_count == 0:
-		player.log(f"No results for '{cmd}'", 'gray', 'normal')
+    if match_count == 0:
+        player.log(f"No results for '{cmd}'", 'gray', 'normal')
 
 
 
 # Displays server information in the chat
 @player.on_alias(player, command='info', permission='op', description='View server information (auto-mcs provided)'):
 
-	def fmt_pct_color(pct, low_white=False):
-		return "red" if pct > 85 else "gold" if pct > 70 else "yellow" if pct > 50 else ("white" if low_white else "green") if pct > (0 if low_white else 5) else "gray"
+    def fmt_pct_color(pct, low_white=False):
+        return "red" if pct > 85 else "gold" if pct > 70 else "yellow" if pct > 50 else ("white" if low_white else "green") if pct > (0 if low_white else 5) else "gray"
 
-	if player.is_server:
-		# General information
-		player.log(generate_header('Server Information'), 'green', 'normal')
-		player.log(f'Auto-MCS v{server._app_version} - Running "{server.name}"', 'dark_green', 'normal')
-		player.log(f'Version:   {server.type.title()} {server.version}', 'white', 'normal')
-		player.log(f'Address:   {server.network["ip"]}:{server.network["port"]}', 'aqua', 'normal')
-		player.log(f'Uptime:    {server._performance["uptime"]}', 'gray', 'normal')
+    if player.is_server:
+        # General information
+        player.log(generate_header('Server Information'), 'green', 'normal')
+        player.log(f'Auto-MCS v{server._app_version} - Running "{server.name}"', 'dark_green', 'normal')
+        player.log(f'Version:   {server.type.title()} {server.version}', 'white', 'normal')
+        player.log(f'Address:   {server.network["ip"]}:{server.network["port"]}', 'aqua', 'normal')
+        player.log(f'Uptime:    {server._performance["uptime"]}', 'gray', 'normal')
 
-		# Format metric colors based on utilization
-		player_pct = len(server.player_list) / int(server.properties["max-players"])*100
-		player.log(f'Players:   {len(server.player_list)} / {server.properties["max-players"]}', fmt_pct_color(player_pct, True), 'normal')
-		player.log(f'CPU:       {server._performance["cpu"]}%', fmt_pct_color(server._performance["cpu"]), 'normal')
-		player.log(f'RAM:       {server._performance["ram"]}%', fmt_pct_color(server._performance["ram"]), 'normal')
+        # Format metric colors based on utilization
+        player_pct = len(server.player_list) / int(server.properties["max-players"])*100
+        player.log(f'Players:   {len(server.player_list)} / {server.properties["max-players"]}', fmt_pct_color(player_pct, True), 'normal')
+        player.log(f'CPU:       {server._performance["cpu"]}%', fmt_pct_color(server._performance["cpu"]), 'normal')
+        player.log(f'RAM:       {server._performance["ram"]}%', fmt_pct_color(server._performance["ram"]), 'normal')
 
-	else:
-		# General information
-		player.log(generate_header('Server Information'), 'green', 'normal')
-		player.log(f'Auto-MCS v{server._app_version} - Running "{server.name}"', 'dark_green', 'normal')
-		player.log(f'Version:    {server.type.title()} {server.version}', 'white', 'normal')
-		player.log(f'Address:   {server.network["ip"]}:{server.network["port"]}', 'aqua', 'normal')
-		player.log(f'Uptime:      {server._performance["uptime"]}', 'gray', 'normal')
+    else:
+        # General information
+        player.log(generate_header('Server Information'), 'green', 'normal')
+        player.log(f'Auto-MCS v{server._app_version} - Running "{server.name}"', 'dark_green', 'normal')
+        player.log(f'Version:    {server.type.title()} {server.version}', 'white', 'normal')
+        player.log(f'Address:   {server.network["ip"]}:{server.network["port"]}', 'aqua', 'normal')
+        player.log(f'Uptime:      {server._performance["uptime"]}', 'gray', 'normal')
 
-		# Format metric colors based on utilization
-		player_pct = len(server.player_list) / int(server.properties["max-players"])*100
-		player.log(f'Players:    {len(server.player_list)} / {server.properties["max-players"]}', fmt_pct_color(player_pct, True), 'normal')
-		player.log(f'CPU:         {server._performance["cpu"]}%', fmt_pct_color(server._performance["cpu"]), 'normal')
-		player.log(f'RAM:         {server._performance["ram"]}%', fmt_pct_color(server._performance["ram"]), 'normal')
+        # Format metric colors based on utilization
+        player_pct = len(server.player_list) / int(server.properties["max-players"])*100
+        player.log(f'Players:    {len(server.player_list)} / {server.properties["max-players"]}', fmt_pct_color(player_pct, True), 'normal')
+        player.log(f'CPU:         {server._performance["cpu"]}%', fmt_pct_color(server._performance["cpu"]), 'normal')
+        player.log(f'RAM:         {server._performance["ram"]}%', fmt_pct_color(server._performance["ram"]), 'normal')
 
 
 
 # Stops the server either immediately or with delay
 @player.on_alias(player, command='stop', arguments={'delay': False}, permission='op', description='Stops the server with optional delay (seconds) (auto-mcs provided)'):
-	
-	# Optionally wait for delay specified
-	if arguments['delay']:
-		try:
-			delay = round(float(arguments['delay']))
-			server.broadcast_warning(f"Server will stop in {delay}s", tag=True)
-			sleep(delay)
+    
+    # Optionally wait for delay specified
+    if arguments['delay']:
+        try:
+            delay = round(float(arguments['delay']))
+            server.broadcast_warning(f"Server will stop in {delay}s", tag=True)
+            sleep_timer(delay, 'stop')
 
-		except ValueError:
-			player.log_error(f"Invalid syntax: <delay> must be a <float> or <int>")
-	
-	# Restart server
-	server.broadcast_warning(f"Stopping '{server.name}', please wait...", tag=True)
-	sleep(0.5)
-	server.stop()
+        except ValueError:
+            return player.log_error(f"Invalid syntax: <delay> must be a <float> or <int>")
+    
+    # Restart server
+    server.broadcast_warning(f"Stopping '{server.name}', please wait...", tag=True)
+    sleep(0.5)
+    server.stop()
 
 
 
 # Restarts the server either immediately or with delay
 @player.on_alias(player, command='restart', arguments={'delay': False}, permission='op', description='Stops and restarts with optional delay (seconds) (auto-mcs provided)'):
-	
-	# Optionally wait for delay specified
-	if arguments['delay']:
-		try:
-			delay = round(float(arguments['delay']))
-			server.broadcast_warning(f"Server will restart in {delay}s", tag=True)
-			sleep(delay)
+    
+    # Optionally wait for delay specified
+    if arguments['delay']:
+        try:
+            delay = round(float(arguments['delay']))
+            server.broadcast_warning(f"Server will restart in {delay}s", tag=True)
+            sleep_timer(delay, 'restart')
 
-		except ValueError:
-			player.log_error(f"Invalid syntax: <delay> must be a <float> or <int>")
-	
-	# Restart server
-	server.broadcast_warning(f"Restarting '{server.name}', please wait...", tag=True)
-	sleep(0.5)
-	server.restart()
+        except ValueError:
+            return player.log_error(f"Invalid syntax: <delay> must be a <float> or <int>")
+    
+    # Restart server
+    server.broadcast_warning(f"Restarting '{server.name}', please wait...", tag=True)
+    sleep(0.5)
+    server.restart()
 
 
 
 # '!backup' command to use the back-up manager in-game
 @player.on_alias(player, command='backup', arguments={'command': False}, permission='op', description='Manage server back-ups in-game (auto-mcs provided)'):
-	cmd = arguments['command']
+    cmd = arguments['command']
 
-	# Shows all back-up sub-commands
-	if cmd == "help" or not cmd:
-		player.log(generate_header('All Back-up Commands'), 'green', 'normal')
-		player.log('!backup help', 'white', 'normal')
-		player.log('- Shows all subcommands (This command)', 'gray', 'normal')
-		player.log('!backup status', 'white', 'normal')
-		player.log('- Shows back-up statistics', 'gray', 'normal')
-		player.log('!backup save', 'white', 'normal')
-		player.log('- Creates a complete back-up immediately', 'gray', 'normal')
-
-
-	# Shows back-up info
-	elif cmd == "status":
-		backup._update_data()
-		player.log(generate_header('Back-up Information'), 'green', 'normal')
-		player.log(f'Latest Back-up:   {backup.latest.date}', 'yellow', 'normal')
-		player.log(f'Total Back-ups:   {len(backup.list)}  ({backup._backup_stats["total-size"]}, limit: {backup.maximum})', 'gold', 'normal')
-		player.log("- Run '!backup save' to create a new back-up", 'gray', 'normal')
+    # Shows all back-up sub-commands
+    if cmd == "help" or not cmd:
+        player.log(generate_header('All Back-up Commands'), 'green', 'normal')
+        player.log('!backup help', 'white', 'normal')
+        player.log('- Shows all subcommands (This command)', 'gray', 'normal')
+        player.log('!backup status', 'white', 'normal')
+        player.log('- Shows back-up statistics', 'gray', 'normal')
+        player.log('!backup save', 'white', 'normal')
+        player.log('- Creates a complete back-up immediately', 'gray', 'normal')
 
 
-	# Saves a back-up
-	elif cmd == "save":
-		if not player.is_server:
-			player.log_warning(f"Saving a back-up of '{server.name}', please wait...", tag=True)
-		server.log_warning(f"Saving a back-up of '{server.name}', please wait...")
-		backup.save()
-		if not player.is_server:
-			player.log_success(f"Back-up complete!", tag=True)
-		server.log_success(f"Back-up complete!")
+    # Shows back-up info
+    elif cmd == "status":
+        backup._update_data()
+        player.log(generate_header('Back-up Information'), 'green', 'normal')
+        player.log(f'Latest Back-up:   {backup.latest.date}', 'yellow', 'normal')
+        player.log(f'Total Back-ups:   {len(backup.list)}  ({backup._backup_stats["total-size"]}, limit: {backup.maximum})', 'gold', 'normal')
+        player.log("- Run '!backup save' to create a new back-up", 'gray', 'normal')
 
-	# Catch all
-	else:
-		player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
+
+    # Saves a back-up
+    elif cmd == "save":
+        if not player.is_server:
+            player.log_warning(f"Saving a back-up of '{server.name}', please wait...", tag=True)
+        server.log_warning(f"Saving a back-up of '{server.name}', please wait...")
+        backup.save()
+        if not player.is_server:
+            player.log_success(f"Back-up complete!", tag=True)
+        server.log_success(f"Back-up complete!")
+
+    # Catch all
+    else:
+        player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
 
 
 
 # '!acl' command to view the access control maanger in-game
 @player.on_alias(player, command='acl', arguments={'command': False}, permission='op', description='View access control configuration in-game (auto-mcs provided)'):
-	cmd = arguments['command']
+    cmd = arguments['command']
 
-	# Shows all access control sub-commands
-	if cmd == "help" or not cmd:
-		player.log(generate_header('All Back-up Commands'), 'green', 'normal')
-		player.log('!acl help', 'white', 'normal')
-		player.log('- Shows all subcommands (This command)', 'gray', 'normal')
-		player.log('!acl ops', 'white', 'normal')
-		player.log('- Shows all operators', 'gray', 'normal')
-		player.log('!acl bans', 'white', 'normal')
-		player.log('- Shows banned players', 'gray', 'normal')
-		player.log('!acl whitelist', 'white', 'normal')
-		player.log('- Shows whitelisted players', 'gray', 'normal')
+    # Shows all access control sub-commands
+    if cmd == "help" or not cmd:
+        player.log(generate_header('All Back-up Commands'), 'green', 'normal')
+        player.log('!acl help', 'white', 'normal')
+        player.log('- Shows all subcommands (This command)', 'gray', 'normal')
+        player.log('!acl ops', 'white', 'normal')
+        player.log('- Shows all operators', 'gray', 'normal')
+        player.log('!acl bans', 'white', 'normal')
+        player.log('- Shows banned players', 'gray', 'normal')
+        player.log('!acl whitelist', 'white', 'normal')
+        player.log('- Shows whitelisted players', 'gray', 'normal')
 
 
-	# View operators
-	elif cmd == "ops":
-		player.log(generate_header('Access Control: Operators'), 'green', 'normal')
-		users = [str(rule) for rule in acl.rules['ops']]
-		if len(users) > 0:
-			player.log(f'{len(users)} user(s) with operator privileges:', 'white', 'normal')
-			player.log(', '.join(users), 'gray', 'normal')
-		else:
-			player.log('There are no users with operator privileges', 'gray', 'normal')
+    # View operators
+    elif cmd == "ops":
+        player.log(generate_header('Access Control: Operators'), 'green', 'normal')
+        users = [str(rule) for rule in acl.rules['ops']]
+        if len(users) > 0:
+            player.log(f'{len(users)} user(s) with operator privileges:', 'white', 'normal')
+            player.log(', '.join(users), 'gray', 'normal')
+        else:
+            player.log('There are no users with operator privileges', 'gray', 'normal')
 
-	# View bans
-	elif cmd == "bans":
-		player.log(generate_header('Access Control: Bans'), 'green', 'normal')
-		users = [str(rule) for rule in acl.rules['bans']]
-		users.extend([str(rule) for rule in acl.rules['subnets']])
-		if len(users) > 0:
-			player.log(f'{len(users)} banned user(s)/IP(s):', 'white', 'normal')
-			player.log(', '.join(users), 'gray', 'normal')
-		else:
-			player.log('There are no banned users or IPs', 'gray', 'normal')
+    # View bans
+    elif cmd == "bans":
+        player.log(generate_header('Access Control: Bans'), 'green', 'normal')
+        users = [str(rule) for rule in acl.rules['bans']]
+        users.extend([str(rule) for rule in acl.rules['subnets']])
+        if len(users) > 0:
+            player.log(f'{len(users)} banned user(s)/IP(s):', 'white', 'normal')
+            player.log(', '.join(users), 'gray', 'normal')
+        else:
+            player.log('There are no banned users or IPs', 'gray', 'normal')
 
-	# View whitelist
-	elif cmd == "whitelist":
-		player.log(generate_header('Access Control: Whitelist'), 'green', 'normal')
-		if acl.whitelist_enabled:
-			player.log("- Whitelist is currently enabled", "dark_green", "normal")
-		else:
-			player.log("- Whitelist is currently disabled", "dark_red", "normal")
+    # View whitelist
+    elif cmd == "whitelist":
+        player.log(generate_header('Access Control: Whitelist'), 'green', 'normal')
+        if acl.whitelist_enabled:
+            player.log("- Whitelist is currently enabled", "dark_green", "normal")
+        else:
+            player.log("- Whitelist is currently disabled", "dark_red", "normal")
 
-		users = [str(rule) for rule in acl.rules['wl']]
-		if len(users) > 0:
-			player.log(f'{len(users)} whitelisted users:', 'white', 'normal')
-			player.log(', '.join(users), 'gray', 'normal')
-		else:
-			player.log('There are no whitelisted users', 'gray', 'normal')
+        users = [str(rule) for rule in acl.rules['wl']]
+        if len(users) > 0:
+            player.log(f'{len(users)} whitelisted users:', 'white', 'normal')
+            player.log(', '.join(users), 'gray', 'normal')
+        else:
+            player.log('There are no whitelisted users', 'gray', 'normal')
 
-	# Catch all
-	else:
-		player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
+    # Catch all
+    else:
+        player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
 
 
 
 # '!ams' command to manage the amscript engine in-game
 @player.on_alias(player, command='ams', arguments={'command': False}, permission='op', description='Manage amscript in-game (auto-mcs provided)'):
-	cmd = arguments['command']
+    cmd = arguments['command']
 
-	# Shows all amscript sub-commands
-	if cmd == "help" or not cmd:
-		player.log(generate_header('All amscript Commands'), 'green', 'normal')
-		player.log('!ams help', 'white', 'normal')
-		player.log('- Shows all subcommands (This command)', 'gray', 'normal')
-		player.log('!ams status', 'white', 'normal')
-		player.log('- Shows amscript version and loaded scripts', 'gray', 'normal')
-		player.log('!ams enable/disable <script>/all', 'white', 'normal')
-		player.log('- Enables/disables script by name, or all', 'gray', 'normal')
-		player.log('!ams clearpst', 'white', 'normal')
-		player.log('- Deletes and resets persistent script configuration', 'gray', 'normal')
-		player.log('!ams reload', 'white', 'normal')
-		player.log('- Recompiles and initializes all enabled scripts', 'gray', 'normal')
-
-
-	# Shows loaded scripts and version info
-	elif cmd == "status":
-		loaded = amscript.installed_scripts['enabled']
-		unloaded = amscript.installed_scripts['disabled']
-
-		player.log(generate_header(f'amscript v{server.ams_version}'), 'green', 'normal')
-		if len(loaded) > 0:
-			player.log(f'{len(loaded)} enabled script(s):', 'white', 'normal')
-			player.log(', '.join([script.file_name for script in loaded]), 'gray', 'normal')
-
-		if loaded and unloaded:
-			player.log(" ")
-
-		if len(unloaded) > 0:
-			player.log(f'{len(unloaded)} disabled script(s):', 'red', 'normal')
-			player.log(', '.join([script.file_name for script in unloaded]), 'dark_red', 'normal')
-
-		if not loaded and not unloaded:
-			player.log("No scripts were detected. If you've installed any, type '!ams reload' to initialize", 'gray', 'normal')
+    # Shows all amscript sub-commands
+    if cmd == "help" or not cmd:
+        player.log(generate_header('All amscript Commands'), 'green', 'normal')
+        player.log('!ams help', 'white', 'normal')
+        player.log('- Shows all subcommands (This command)', 'gray', 'normal')
+        player.log('!ams status', 'white', 'normal')
+        player.log('- Shows amscript version and loaded scripts', 'gray', 'normal')
+        player.log('!ams enable/disable <script>/all', 'white', 'normal')
+        player.log('- Enables/disables script by name, or all', 'gray', 'normal')
+        player.log('!ams clearpst', 'white', 'normal')
+        player.log('- Deletes and resets persistent script configuration', 'gray', 'normal')
+        player.log('!ams reload', 'white', 'normal')
+        player.log('- Recompiles and initializes all enabled scripts', 'gray', 'normal')
 
 
-	# Enable/disable scripts
-	elif cmd.startswith("enable") or cmd.startswith("disable"):
-		if " " in cmd:
-			
-			# Generate valid script list
-			script_list = amscript.return_single_list()
+    # Shows loaded scripts and version info
+    elif cmd == "status":
+        loaded = amscript.installed_scripts['enabled']
+        unloaded = amscript.installed_scripts['disabled']
 
-			# format argument 3 as a script name
-			all = cmd.split(" ", 1)[1].strip().lower() == "all"
-			target = cmd.split(" ", 1)[1].strip().lower().replace(".ams","")
+        player.log(generate_header(f'amscript v{server.ams_version}'), 'green', 'normal')
+        if len(loaded) > 0:
+            player.log(f'{len(loaded)} enabled script(s):', 'white', 'normal')
+            player.log(', '.join([script.file_name for script in loaded]), 'gray', 'normal')
 
-			# If there are no scripts, bypass this
-			if not script_list:
-				player.log_error(f"There are no scripts to modify")
-				return
+        if loaded and unloaded:
+            player.log(" ")
 
-			for script in script_list:
-				if script.file_name.strip().lower().replace(".ams","") == target or all:
-					
-					# Enable script
-					if cmd.startswith("enable"):
-						amscript.script_state(script, enabled=True)
-						if not player.is_server:
-							player.log_success(f"[amscript] '{script.file_name}' is now enabled. Type '!ams reload' for changes to take effect")
-						server._ams_log(f"'{script.file_name}' is now enabled. Type '!ams reload' for changes to take effect", 'success')
-					else:
-						amscript.script_state(script, enabled=False)
-						if not player.is_server:
-							player.log_error(f"[amscript] '{script.file_name}' is now disabled. Type '!ams reload' for changes to take effect")
-						server._ams_log(f"'{script.file_name}' is now disabled. Type '!ams reload' for changes to take effect", 'error')
-					if not all:
-						break
-			else:
-				if not all:
-					player.log_error(f"Script '{target}' does not exist. Type '{command} status' for more info")
-		else:
-			player.log_error(f"Invalid syntax: <script> is unspecified for '{cmd}'. Type '{command} help' for more info")
+        if len(unloaded) > 0:
+            player.log(f'{len(unloaded)} disabled script(s):', 'red', 'normal')
+            player.log(', '.join([script.file_name for script in unloaded]), 'dark_red', 'normal')
+
+        if not loaded and not unloaded:
+            player.log("No scripts were detected. If you've installed any, type '!ams reload' to initialize", 'gray', 'normal')
 
 
-	# Clears persistent configuration
-	elif cmd == "clearpst":
-		server._persistent_config.purge_config()
-		if not player.is_server:
-			player.log_error(f"[amscript] Successfully cleared all persistent data!")
-		server._ams_log(f"Successfully cleared all persistent data!", 'success')
+    # Enable/disable scripts
+    elif cmd.startswith("enable") or cmd.startswith("disable"):
+        if " " in cmd:
+            
+            # Generate valid script list
+            script_list = amscript.return_single_list()
+
+            # format argument 3 as a script name
+            all = cmd.split(" ", 1)[1].strip().lower() == "all"
+            target = cmd.split(" ", 1)[1].strip().lower().replace(".ams","")
+
+            # If there are no scripts, bypass this
+            if not script_list:
+                player.log_error(f"There are no scripts to modify")
+                return
+
+            for script in script_list:
+                if script.file_name.strip().lower().replace(".ams","") == target or all:
+                    
+                    # Enable script
+                    if cmd.startswith("enable"):
+                        amscript.script_state(script, enabled=True)
+                        if not player.is_server:
+                            player.log_success(f"[amscript] '{script.file_name}' is now enabled. Type '!ams reload' for changes to take effect")
+                        server._ams_log(f"'{script.file_name}' is now enabled. Type '!ams reload' for changes to take effect", 'success')
+                    else:
+                        amscript.script_state(script, enabled=False)
+                        if not player.is_server:
+                            player.log_error(f"[amscript] '{script.file_name}' is now disabled. Type '!ams reload' for changes to take effect")
+                        server._ams_log(f"'{script.file_name}' is now disabled. Type '!ams reload' for changes to take effect", 'error')
+                    if not all:
+                        break
+            else:
+                if not all:
+                    player.log_error(f"Script '{target}' does not exist. Type '{command} status' for more info")
+        else:
+            player.log_error(f"Invalid syntax: <script> is unspecified for '{cmd}'. Type '{command} help' for more info")
 
 
-	# Reloads amscript engine
-	elif cmd == "reload":
-		loaded_count, total_count = server._reload_scripts()
-
-		# It's getting output to the console anyway
-		if not player.is_server and total_count > 0:
-
-			if loaded_count < total_count:
-				player.log_warning(f'[amscript] Loaded ({loaded_count}/{total_count}) script(s): check the console for info')
-
-			elif loaded_count == 0:
-				player.log_error('[amscript] No scripts were loaded: check the console for info')
-
-			else:
-				player.log_success(f'[amscript] Loaded ({loaded_count}/{total_count}) script(s) successfully!')
-
-		elif total_count == 0:
-			player.log('[amscript] There are no scripts to load')
+    # Clears persistent configuration
+    elif cmd == "clearpst":
+        server._persistent_config.purge_config()
+        if not player.is_server:
+            player.log_error(f"[amscript] Successfully cleared all persistent data!")
+        server._ams_log(f"Successfully cleared all persistent data!", 'success')
 
 
-	# Catch all
-	else:
-		player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
+    # Reloads amscript engine
+    elif cmd == "reload":
+        loaded_count, total_count = server._reload_scripts()
+
+        # It's getting output to the console anyway
+        if not player.is_server and total_count > 0:
+
+            if loaded_count < total_count:
+                player.log_warning(f'[amscript] Loaded ({loaded_count}/{total_count}) script(s): check the console for info')
+
+            elif loaded_count == 0:
+                player.log_error('[amscript] No scripts were loaded: check the console for info')
+
+            else:
+                player.log_success(f'[amscript] Loaded ({loaded_count}/{total_count}) script(s) successfully!')
+
+        elif total_count == 0:
+            player.log('[amscript] There are no scripts to load')
+
+
+    # Catch all
+    else:
+        player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
