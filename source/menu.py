@@ -18704,7 +18704,7 @@ class ServerViewScreen(MenuBackground):
     def set_timer(self, start=True):
         if start:
             try:
-                if self.server.run_data:
+                if 'launch-time' in self.server.run_data:
                     self.performance_panel.player_clock = 6
                     Clock.schedule_once(self.performance_panel.refresh_data, 0.5)
                     self.perf_timer = Clock.schedule_interval(self.performance_panel.refresh_data, 1)

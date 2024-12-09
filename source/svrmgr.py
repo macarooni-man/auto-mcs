@@ -1479,11 +1479,14 @@ class ServerObject():
             return
 
         # Format up-time
-        delta = (dt.now() - self.run_data['launch-time'])
-        time_str = str(delta).split(',')[-1]
-        if '.' in time_str:
-            time_str = time_str.split('.')[0]
-        formatted_date = f"{str(delta.days)}:{time_str.strip().zfill(8)}".zfill(11)
+        try:
+            delta = (dt.now() - self.run_data['launch-time'])
+            time_str = str(delta).split(',')[-1]
+            if '.' in time_str:
+                time_str = time_str.split('.')[0]
+            formatted_date = f"{str(delta.days)}:{time_str.strip().zfill(8)}".zfill(11)
+        except KeyError:
+            return False
 
         def limit_percent(pct):
             if pct < 0:
