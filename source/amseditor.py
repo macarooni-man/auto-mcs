@@ -1502,23 +1502,47 @@ def launch_window(path: str, data: dict, *a):
 
                 def adjust_block_end(start_line: int, end_line: int) -> int:
                     """
-                    Adjust end_line to exclude trailing comments and leave one blank line if present
+                    Adjust end_line to exclude trailing blank lines,
+                    include one trailing comment line if present,
+                    and allow one trailing blank line after the comment.
                     """
-                    while end_line > start_line:
-                        prev_line = code_lines[end_line - 1]
-                        if prev_line.strip().startswith('#'):
-                            end_line -= 1
+                    adjusted_end_line = end_line
+
+                    # Step 1: Remove trailing blank lines
+                    while adjusted_end_line > start_line:
+                        line = code_lines[adjusted_end_line - 1]
+                        stripped = line.strip()
+                        if stripped == '':
+                            adjusted_end_line -= 1
                         else:
                             break
 
-                    if start_line < end_line <= self.eof_length:
-                        prev_line = code_lines[end_line - 1].rstrip()
-                        if prev_line == '':
-                            end_line -= 1
+                    # Step 2: Check if the last non-blank line is a comment
+                    if adjusted_end_line > start_line:
+                        last_line = code_lines[adjusted_end_line - 1].strip()
+                        if last_line.startswith('#'):
+                            # Keep the comment line in the fold
+                            pass
+                        else:
+                            # If the last line is code, allow one trailing blank line
+                            if adjusted_end_line < end_line:
+                                next_line = code_lines[adjusted_end_line].strip()
+                                if next_line == '':
+                                    adjusted_end_line += 1
 
-                    # <-- Added: Content Check
+                    # Step 3: Allow one trailing blank line or comment after the last content line
+                    if adjusted_end_line < end_line:
+                        next_line = code_lines[adjusted_end_line].strip()
+                        if next_line.startswith('#') or next_line == '':
+                            adjusted_end_line += 1
+
+                    # Prevent folding beyond the second-to-last line
+                    if adjusted_end_line >= lines:
+                        adjusted_end_line = lines - 1
+
+                    # Verify that there's at least one content line in the block
                     has_content = False
-                    for i in range(start_line + 1, end_line + 1):
+                    for i in range(start_line + 1, adjusted_end_line + 1):
                         if (i - 1) < len(code_lines):
                             line_content = code_lines[i - 1].strip()
                             if line_content and not line_content.startswith('#'):
@@ -1526,20 +1550,17 @@ def launch_window(path: str, data: dict, *a):
                                 break
 
                     if not has_content:
-                        # If no content, do not register this block and remove
+                        # If no content, do not register this block and remove if exists
                         if start_line in self.folded_blocks:
                             del self.folded_blocks[start_line]
-                        return ('skip', end_line)  # Block is skipped
+                        return ('skip', adjusted_end_line)  # Block is skipped
 
-                    # Prevent folding beyond the second-to-last line
-                    if end_line >= lines:
-                        end_line = lines - 1
-
-                    # Register the block if it actually covers some lines and has content
-                    if end_line > start_line:
+                    # Register the block if it covers multiple lines and has content
+                    if adjusted_end_line > start_line:
                         if start_line not in self.folded_blocks:
-                            self.folded_blocks[start_line] = {'start': start_line, 'end': end_line, 'folded': False}
-                    return end_line
+                            self.folded_blocks[start_line] = {'start': start_line, 'end': adjusted_end_line,
+                                                              'folded': False}
+                    return adjusted_end_line
 
                 def find_block_end(start_line: int, base_indent: int) -> int:
                     """
@@ -1557,7 +1578,6 @@ def launch_window(path: str, data: dict, *a):
                         n_indent = get_indent_level(current_line)
                         n_stripped = current_line.strip()
 
-                        # If this line has code or comment (non-empty after strip)
                         if n_stripped:
                             # If indentation returns to <= base_indent and we are beyond the immediate next line
                             if n_indent <= base_indent and i > start_line + 1:
@@ -1572,7 +1592,8 @@ def launch_window(path: str, data: dict, *a):
                                 else:
                                     i = nested_end + 1
                                 continue
-                        # If the line is empty or whitespace-only, just continue scanning without ending the block.
+                        # If the line is empty or whitespace-only, do not terminate the block
+                        # Just continue scanning
                         i += 1
 
                     # If we reach the end of the file, the block goes until the last line
@@ -1585,7 +1606,6 @@ def launch_window(path: str, data: dict, *a):
                     stripped = line.strip()
 
                     if is_block_start(stripped):
-
                         # Found a block start
                         block_end = find_block_end(i, get_indent_level(line))
 
@@ -1594,7 +1614,7 @@ def launch_window(path: str, data: dict, *a):
                             i = block_end[1] + 1
                             continue
 
-                        # <-- Added: Check if the block was added to folded_blocks
+                        # Check if the block was added to folded_blocks
                         if i in self.folded_blocks:
                             # Block was added; skip to the line after the block
                             i = block_end + 1
@@ -1641,8 +1661,12 @@ def launch_window(path: str, data: dict, *a):
 
                 if line not in self.folded_blocks:
                     return
+
                 block = self.folded_blocks[line]
-                folded = not block['folded']
+                if bool_force is None:
+                    folded = not block['folded']
+                else:
+                    folded = bool_force
                 block['folded'] = folded
 
                 # Also store in folding_states so state persists after redraw/update_folding_regions
@@ -2636,6 +2660,8 @@ def launch_window(path: str, data: dict, *a):
             # Delete things
             def ctrl_bs(self, event, *_):
                 current_pos = self.index(INSERT)
+                current_line = int(current_pos.split('.', 1)[0])
+                current_col = int(current_pos.split('.', 1)[1])
                 line_start = self.index(f"{current_pos} linestart")
                 line_text = self.get(line_start, current_pos)
 
@@ -2648,6 +2674,13 @@ def launch_window(path: str, data: dict, *a):
                     else:
                         ac.hide()
                 self.after(0, test_at)
+
+
+                # Open previous folded block instead
+                if current_col < 1 and self.is_in_block(current_line, 1 if not self.has_selected_text() else 0):
+                    self.mark_set(INSERT, f'{current_line - 1}.0 lineend')
+                    return 'break'
+
 
                 if line_text.isspace():
                     self.delete(f'{line_start}-1c', current_pos)
@@ -2808,9 +2841,16 @@ def launch_window(path: str, data: dict, *a):
             # Deletes spaces when backspacing
             def delete_spaces(self, *_):
                 current_pos = self.index(INSERT)
+                current_line = int(current_pos.split('.', 1)[0])
+                current_col = int(current_pos.split('.', 1)[1])
                 line_start = self.index(f"{current_pos} linestart")
                 line_text = self.get(line_start, current_pos)
                 self.after(0, self.recalc_lexer)
+
+                # Open previous folded block instead
+                if current_col < 1 and self.is_in_block(current_line, 1 if not self.has_selected_text() else 0):
+                    self.mark_set(INSERT, f'{current_line-1}.0 lineend')
+                    return 'break'
 
 
                 # Check for docstring
@@ -2917,6 +2957,30 @@ def launch_window(path: str, data: dict, *a):
                 comparison_end = self.compare(index, "<=", end)
                 return comparison_start and comparison_end
 
+            def is_in_block(self, line_number, end_offset=0, unfold=True):
+                # Sort the blocks by their start line in ascending order
+                sorted_blocks = sorted(self._line_numbers.folded_blocks.items(), key=lambda x: x[1]['start'])
+
+                # Iterate through sorted blocks to check in
+                for line, block in sorted_blocks:
+                    if line_number in range(block['start'] + 1, block['end'] + 1 + end_offset) and block['folded']:
+                        if unfold:
+                            self._line_numbers.toggle_fold(line, False)
+                            return True
+                        else:
+                            return line
+
+                return False
+
+            def has_selected_text(self):
+                try:
+                    # Check if SEL_FIRST and SEL_LAST exist
+                    selected_text = self.get(SEL_FIRST, SEL_LAST)
+                    return bool(selected_text)
+                except TclError:
+                    # Raised if no selection exists
+                    return False
+
             # Process individual keypress rules
             def process_keys(self, event):
                 sel_start = self.index(SEL_FIRST)
@@ -2951,6 +3015,39 @@ def launch_window(path: str, data: dict, *a):
                         if event.state == 262180:
                             self.scroll_text()
 
+                # Override for doing anything near a folded region
+
+                # If cursor is at the end of a folded line, move it to the end of the block before processing
+                if event.keysym == 'Return' and self.is_current_line_folded() and self.is_cursor_at_line_end():
+                    folded_block = self._line_numbers.folded_blocks[line_num]
+                    end_line = folded_block['end']
+
+                    # Move cursor to the start of the line after the folded region
+                    new_cursor_pos = f"{end_line + 1}.0" if end_line + 1 <= self.line_count else f"{end_line}.end"
+                    self.mark_set(INSERT, new_cursor_pos)
+                    self.see(INSERT)
+
+                    # Insert a new line with proper indentation
+                    self.insert(INSERT, '\n')
+                    self.mark_set(INSERT, new_cursor_pos)
+
+                    # Determine indentation based on the line after the folded region
+                    new_line_num = end_line + 1
+                    if new_line_num > self.line_count:
+                        # If at the end, maintain the same indentation as the folded line
+                        indent = self.get_indent(last_line)
+                    else:
+                        # Else, use the indentation of the new line
+                        new_line_text = self.get(f"{new_line_num}.0", f"{new_line_num}.end")
+                        indent = self.get_indent(new_line_text)
+
+                    self.insert(INSERT, tab_str * indent)
+                    self.recalc_lexer()
+                    return "break"  # Prevent default behavior
+
+                elif event.keysym in ['Tab', 'Delete', 'Return']:
+                    if self.is_in_block(line_num):
+                        return 'break'
 
 
                 # Add docstring
@@ -2990,35 +3087,6 @@ def launch_window(path: str, data: dict, *a):
                         ac.click()
                         return "break"
 
-
-                    # If cursor is at the end of a folded line, move it to the end of the block before processing
-                    if self.is_current_line_folded() and self.is_cursor_at_line_end():
-                        folded_block = self._line_numbers.folded_blocks[line_num]
-                        end_line = folded_block['end']
-
-                        # Move cursor to the start of the line after the folded region
-                        new_cursor_pos = f"{end_line + 1}.0" if end_line + 1 <= self.line_count else f"{end_line}.end"
-                        self.mark_set(INSERT, new_cursor_pos)
-                        self.see(INSERT)
-
-                        # Insert a new line with proper indentation
-                        self.insert(INSERT, '\n')
-
-                        # Determine indentation based on the line after the folded region
-                        new_line_num = end_line + 1
-                        if new_line_num > self.line_count:
-                            # If at the end, maintain the same indentation as the folded line
-                            indent = self.get_indent(last_line)
-                        else:
-                            # Else, use the indentation of the new line
-                            new_line_text = self.get(f"{new_line_num}.0", f"{new_line_num}.end")
-                            indent = self.get_indent(new_line_text)
-
-                        self.insert(INSERT, tab_str * indent)
-                        self.recalc_lexer()
-                        return "break"  # Prevent default behavior
-
-
                     # Default behavior
                     line_num = int(current_pos.split('.')[0])
                     if line_num > 0:
@@ -3027,7 +3095,7 @@ def launch_window(path: str, data: dict, *a):
 
                         # Indent rules
                         test = last_line.strip()
-                        if test.endswith(":"):
+                        if test.endswith(":") and (int(current_pos.split('.')[-1]) >= len(test)):
                             indent += 1
 
                         for kw in ['return', 'continue', 'break', 'yield', 'raise', 'pass']:
@@ -4298,48 +4366,11 @@ if os.name == 'nt':
 #         'telepath_script_dir': None,
 #     }
 #
-if __name__ == '__main__':
-    server_name = 'Shop Test'
-    script_name = 'wiki-search.ams'
-
-    import telepath
-    import constants
-    import amscript
-
-    from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
-    from svrmgr import ServerManager
-    constants.server_manager = ServerManager()
-    server_obj = constants.server_manager.open_server(server_name)
-    while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
-        time.sleep(0.2)
-
-    # DELETE ABOVE
-
-    constants.script_obj = amscript.ScriptObject()
-    data_dict = {
-        '_telepath_data': None,
-        'app_title': constants.app_title,
-        'ams_version': constants.ams_version,
-        'gui_assets': constants.gui_assets,
-        'cache_dir': constants.cacheDir,
-        'background_color': constants.background_color,
-        'app_config': constants.app_config,
-        'script_obj': {
-            'syntax_func': constants.script_obj.is_valid,
-            'protected': constants.script_obj.protected_variables,
-            'events': constants.script_obj.valid_events
-        },
-        'suggestions': server_obj._retrieve_suggestions(),
-        'os_name': constants.os_name,
-        'translate': constants.translate,
-        'telepath_script_dir': None,
-    }
-
-    script_path = os.path.join(constants.scriptDir, script_name)
-    # Passed to parent IPC receiver
-    ipc_functions = {
-        'api_manager': constants.api_manager,
-        'telepath_upload': constants.telepath_upload
-    }
-
-    edit_script(script_path, data_dict, ipc_functions)
+#     script_path = os.path.join(constants.scriptDir, script_name)
+#     # Passed to parent IPC receiver
+#     ipc_functions = {
+#         'api_manager': constants.api_manager,
+#         'telepath_upload': constants.telepath_upload
+#     }
+#
+#     edit_script(script_path, data_dict, ipc_functions)
