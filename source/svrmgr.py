@@ -948,7 +948,7 @@ class ServerObject():
                 self.run_data['playit-tunnel'] = None
             else:
                 self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
-                if self.run_data['console-panel']:
+                if self.run_data['console-panel'] and not constants.headless:
                     self.run_data['console-panel'].toggle_deadlock(False)
 
             if self.custom_flags:

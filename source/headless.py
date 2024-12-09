@@ -2434,6 +2434,9 @@ class ConsolePanel():
             player_counter = 0
 
     def reset_panel(self, show_attach=False, *a):
+        if self.server.restart_flag:
+            return
+
         self.is_visible = False
         screen_manager.current_screen('MainMenuScreen')
 
