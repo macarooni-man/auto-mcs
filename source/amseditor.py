@@ -824,6 +824,7 @@ def launch_window(path: str, data: dict, *a):
                 self.bind('<KeyPress>', self.process_keys)
                 self.bind(f"<{control}-{'H' if data['os_name'] == 'macos' else 'h'}>", lambda *_: replace.toggle_focus(True))
                 self.bind('<Shift-Return>', lambda *_: trigger_replace())
+                self.bind('<Shift-Return>', self.process_keys, add=True)
 
                 self.put_placeholder()
 
@@ -2666,6 +2667,7 @@ def launch_window(path: str, data: dict, *a):
                 line_start = self.index(f"{current_pos} linestart")
                 line_text = self.get(line_start, current_pos)
 
+
                 # Check if @ was deleted to hide menu
                 def test_at(*a):
                     line_num = int(current_pos.split('.')[0])
@@ -2681,6 +2683,16 @@ def launch_window(path: str, data: dict, *a):
                 if current_col < 1 and self.is_in_block(current_line, 1 if not self.has_selected_text() else 0):
                     self.mark_set(INSERT, f'{current_line - 1}.0 lineend')
                     return 'break'
+
+
+                # If a selection is made, delete that first
+                elif self.has_selected_text():
+                    try:
+                        self.delete(SEL_FIRST, SEL_LAST)
+                        self.tag_remove(SEL, "1.0", END)
+                        self.after(0, self.recalc_lexer)
+                    except TclError:
+                        pass
 
 
                 if line_text.isspace():
@@ -2848,9 +2860,21 @@ def launch_window(path: str, data: dict, *a):
                 line_text = self.get(line_start, current_pos)
                 self.after(0, self.recalc_lexer)
 
+
                 # Open previous folded block instead
                 if current_col < 1 and self.is_in_block(current_line, 1 if not self.has_selected_text() else 0):
                     self.mark_set(INSERT, f'{current_line-1}.0 lineend')
+                    return 'break'
+
+
+                # If a selection is made, delete that first
+                elif self.has_selected_text():
+                    try:
+                        self.delete(SEL_FIRST, SEL_LAST)
+                        self.tag_remove(SEL, "1.0", END)
+                        self.after(0, self.recalc_lexer)
+                    except TclError:
+                        pass
                     return 'break'
 
 
@@ -2994,7 +3018,6 @@ def launch_window(path: str, data: dict, *a):
                 last_line = self.get(f"{line_num}.0", f"{line_num}.end")
                 last_index = int(self.index('end').split('.')[0]) - 1 - dead_zone
 
-
                 # Ignore dead_zone
                 if event.keysym == 'Up' and ac.visible:
                     self.check_ac(False)
@@ -3107,6 +3130,11 @@ def launch_window(path: str, data: dict, *a):
                         if indent > 0:
                             self.after(0, lambda *_: self.insert(INSERT, tab_str*indent))
                         self.after(0, lambda *_: self.recalc_lexer())
+
+                        # If holding shift, move cursor back to the original line
+                        if event.state == 1:
+                            self.after(0, lambda *_: self.mark_set(INSERT, current_pos))
+                            
                         return "Return"
 
 
