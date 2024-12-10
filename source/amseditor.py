@@ -1836,6 +1836,8 @@ def launch_window(path: str, data: dict, *a):
                             self.toggle_fold(line, bool_force=not expand)
 
             def toggle_fold(self, line, bool_force=None):
+                if search.has_focus or replace.has_focus:
+                    code_editor.focus_force()
 
                 text = self.textwidget.get("1.0", "end")
                 self.eof_length = len(text.strip().splitlines())
@@ -3226,8 +3228,10 @@ def launch_window(path: str, data: dict, *a):
                         self.index_label.place_forget()
 
                         # Scroll to first match if search/replace have focus
-                        if x > 0 and (search.has_focus or replace.has_focus):
-                            search.see_index(self.match_list[0])
+                        def check_next_frame():
+                            if x > 0 and (search.has_focus or replace.has_focus):
+                                search.see_index(self.match_list[0])
+                        self.after(0, check_next_frame)
                     else:
                         self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
                         self.match_counter.configure(text='')
