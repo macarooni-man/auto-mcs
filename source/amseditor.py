@@ -2386,26 +2386,25 @@ def launch_window(path: str, data: dict, *a):
                 self.bind('<B1-Motion>', self.check_auto_scroll, add=True)
                 self.bind('<ButtonRelease-1>', self.on_button_release, add=True)
                 self.auto_scroll_region = 5  # pixels
-                self.auto_scroll_interval = 50  # milliseconds
+                self.auto_scroll_interval = 20  # milliseconds
                 self.auto_scroll_distance = 1  # pixels
                 self.scroll_direction = None
                 self.scroll_job = None
                 self.selection_anchor = None
 
-            def scroll(self, *args):
-                """
-                Handle scroll commands from the custom Scrollbar.
-                Args can be:
-                    ('scroll', number, 'units'/'pages')
-                    ('moveto', fraction)
-                """
-                if len(args) == 3 and args[0] == 'scroll':
-                    number = int(args[1])
-                    what = args[2]
-                    self.yview_scroll(number, what)
-                elif len(args) == 2 and args[0] == 'moveto':
-                    fraction = float(args[1])
-                    self.yview_moveto(fraction)
+            def scroll(self, direction, *args):
+                if data['os_name'] == 'windows':
+                    # Windows uses <MouseWheel> with delta
+                    delta = (-120 * direction) * self.auto_scroll_distance
+                    self.event_generate('<MouseWheel>', delta=delta)
+                elif data['os_name'] == 'macos':
+                    # macOS uses <MouseWheel> with delta (different scaling)
+                    delta = (-1 * direction) * self.auto_scroll_distance
+                    self.event_generate('<MouseWheel>', delta=delta)
+                else:
+                    # Linux uses <Button-4> for scroll up and <Button-5> for scroll down
+                    for x in range(self.auto_scroll_distance):
+                        self.event_generate('<Button-4>' if direction < 0 else '<Button-5>')
 
             def on_button_press(self, event):
                 # Record the anchor position
@@ -2439,7 +2438,7 @@ def launch_window(path: str, data: dict, *a):
 
             def schedule_auto_scroll(self):
                 if self.scroll_direction is not None:
-                    self.scroll('scroll', self.scroll_direction * self.auto_scroll_distance, "units")
+                    self.scroll(self.scroll_direction * self.auto_scroll_distance)
                     # Re-sample mouse position and update selection
                     self.update_selection()
                     # Schedule the next scroll
