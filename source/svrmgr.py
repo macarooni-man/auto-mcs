@@ -1822,7 +1822,7 @@ class ServerObject():
 
 
     # Sends a command that doesn't show up in the console
-    def silent_command(self, cmd, log=True, _capture=None, _send_twice=False):
+    def silent_command(self, cmd, log=False, _capture=None, _send_twice=False):
 
         self.send_command(cmd, False, log, True)
 

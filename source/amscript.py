@@ -1353,6 +1353,59 @@ class ScriptObject():
 
 # Reconfigured ServerObject to be passed in as 'server' variable to amscripts
 class ServerScriptObject():
+
+    # Custom task scheduler that prevents execution when the server stops
+    class AmsTimer():
+        def __init__(self, server_script_obj, delay: int or float, function: callable, *args, **kwargs):
+            if not isinstance(delay, (int, float)):
+                raise TypeError('delay must be <int> or <float>')
+            if not callable(function):
+                raise TypeError('function must be <callable>')
+
+            self._server = server_script_obj
+            self.delay = delay
+            self.function = function
+            self.arguments = {'args': args, 'kwargs': kwargs}
+
+            self._check_valid_threshold = 5
+            self._canceled = False
+            self._timer = Timer(0, self._internal_wrapper)
+
+            self.start()
+
+        def _internal_wrapper(self):
+            div = divmod(self.delay, self._check_valid_threshold)
+
+            # Check every valid threshold if the specified delay is greater than it
+            if div[0] > 0:
+                for s in range(int(div[0])):
+
+                    if not self.is_valid():
+                        return False
+
+                    time.sleep(self._check_valid_threshold)
+
+            # Also wait the remainder to ensure the delay lines up with the request
+            if div[1]:
+                time.sleep(div[1])
+
+            if not self.is_valid():
+                return False
+
+            # Execute function
+            self.function(*self.arguments['args'], **self.arguments['kwargs'])
+
+        def is_valid(self):
+            return (not self._canceled) and self._server._running
+
+        def cancel(self):
+            self._canceled = True
+            self._timer.cancel()
+
+        def start(self):
+            self._timer.start()
+            return self.is_valid()
+
     def __init__(self, server_obj):
         self._running = True
 
@@ -1427,15 +1480,15 @@ class ServerScriptObject():
         return {k: v for k, v in self._get_players().items() if v['logged-in']}
 
     # Logging functions
-    def log_warning(self, msg):
+    def log_warning(self, msg: str):
         self.log(msg, log_type='warning')
-    def log_error(self, msg):
+    def log_error(self, msg: str):
         self.log(msg, log_type='error')
-    def log_success(self, msg):
+    def log_success(self, msg: str):
         self.log(msg, log_type='success')
 
     # Version compatible message system for every player
-    def broadcast(self, msg, color="gray", style="italic", tag=False):
+    def broadcast(self, msg: str, color: str = "gray", style: str = "italic", tag=False):
         if not msg:
             return
 
@@ -1492,15 +1545,15 @@ class ServerScriptObject():
                 final_code += style_table[style]
             msg = f'/tell @a {final_code}{("§r "+final_code).join(msg.rstrip().split(" "))}§r'
             self.execute(msg, log=False)
-    def broadcast_warning(self, msg, tag=False):
+    def broadcast_warning(self, msg: str, tag=False):
         self.broadcast(msg, "gold", "normal", tag=tag)
-    def broadcast_error(self, msg, tag=False):
+    def broadcast_error(self, msg: str, tag=False):
         self.broadcast(msg, "red", "normal", tag=tag)
-    def broadcast_success(self, msg, tag=False):
+    def broadcast_success(self, msg: str, tag=False):
         self.broadcast(msg, "green", "normal", tag=tag)
 
     # Sends a broadcast message only to operators
-    def operator_broadcast(self, msg, color="gray", style="italic", tag=False):
+    def operator_broadcast(self, msg: str, color: str = "gray", style: str = "italic", tag=False):
 
         # Send to server console as well
         self.log(f"(op) {msg}", log_type=('success' if color == 'green' else 'warning' if color == 'gold' else 'error' if color == 'red' else 'info'))
@@ -1510,11 +1563,15 @@ class ServerScriptObject():
                 player.log(msg, color, style, tag)
 
     # Version check
-    def version_check(self, operand, version):
+    def version_check(self, operand: str, version: str):
         return constants.version_check(self.version, operand, version)
 
+    # Run a delayed function call while checking if the server is running
+    def after(self, delay: int or float, function: callable, *args, **kwargs):
+        return self.AmsTimer(self, delay, function, *args, **kwargs)
+
     # Returns PlayerScriptObject that matches selector
-    def get_player(self, tag, offline=False):
+    def get_player(self, tag: str, offline=False):
 
         # Use internal function instead of pulling from the game
         if tag == '@a':
@@ -2019,7 +2076,7 @@ class PlayerScriptObject():
         return bool(self._server._acl.rule_in_acl(self.name, 'ops'))
 
     # Set custom player permissions
-    def set_permission(self, permission, enable=True):
+    def set_permission(self, permission: str, enable=True):
         try:
             permissions = self.persistent['__permissions__']
         except KeyError:
@@ -2028,7 +2085,7 @@ class PlayerScriptObject():
         self.persistent['__permissions__'][permission] = enable
 
     # Check custom player permissions
-    def check_permission(self, permission):
+    def check_permission(self, permission: str):
         if self.is_server:
             return True
         else:
@@ -2039,7 +2096,7 @@ class PlayerScriptObject():
 
     # Logging functions
     # Version compatible message system for local player object
-    def log(self, msg, color="gray", style='italic', tag=False):
+    def log(self, msg: str, color: str = "gray", style: str = 'italic', tag=False):
         if not msg:
             return
 
@@ -2097,11 +2154,11 @@ class PlayerScriptObject():
                     final_code += style_table[style]
                 msg = f'/tell {self.name} {final_code}{("§r "+final_code).join(msg.rstrip().split(" "))}§r'
                 self._server.execute(msg, log=False)
-    def log_warning(self, msg, tag=False):
+    def log_warning(self, msg: str, tag=False):
         self.log(msg, "gold", "normal", tag=tag)
-    def log_error(self, msg, tag=False):
+    def log_error(self, msg: str, tag=False):
         self.log(msg, "red", "normal", tag=tag)
-    def log_success(self, msg, tag=False):
+    def log_success(self, msg: str, tag=False):
         self.log(msg, "green", "normal", tag=tag)
 
 

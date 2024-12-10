@@ -3158,7 +3158,7 @@ def launch_window(path: str, data: dict, *a):
                     return re.escape(pattern), False
 
             # Highlight find text
-            def highlight_pattern(self, pattern, tag, start="1.0", end="end", regexp=False, max_matches=100):
+            def highlight_pattern(self, pattern, tag, start="1.0", end="end", regexp=False, max_matches=1000):
                 """
                 Highlights all occurrences of 'pattern' in the text widget using Python's regex.
 
