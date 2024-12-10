@@ -24,6 +24,14 @@ import os
 import re
 
 
+# Logging errors
+# import faulthandler, logging
+# faulthandler.enable()
+# logging.basicConfig(
+#     level=logging.DEBUG,
+#     format='%(asctime)s - %(levelname)s - %(message)s',
+# )
+# logger = logging.getLogger(__name__)
 
 LexerType = Union[Type[pygments.lexer.Lexer], pygments.lexer.Lexer]
 
@@ -259,6 +267,37 @@ def _parse_scheme(color_scheme: dict[str, dict[str, str | int]]) -> tuple[dict, 
 
     return editor, tags
 
+
+# Escape/emoji processing
+def is_emoji(char):
+    """Determine if a character is an emoji based on Unicode ranges."""
+    # Define Unicode ranges for emojis
+    emoji_ranges = [
+        (0x1F600, 0x1F64F),  # Emoticons
+        (0x1F300, 0x1F5FF),  # Misc Symbols and Pictographs
+        (0x1F680, 0x1F6FF),  # Transport and Map
+        (0x2600, 0x26FF),    # Misc symbols
+        (0x2700, 0x27BF),    # Dingbats
+        (0xFE00, 0xFE0F),    # Variation Selectors
+        (0x1F900, 0x1F9FF),  # Supplemental Symbols and Pictographs
+        (0x1FA70, 0x1FAFF),  # Symbols and Pictographs Extended-A
+        (0x200D, 0x200D),    # Zero Width Joiner
+    ]
+    codepoint = ord(char)
+    return any(start <= codepoint <= end for start, end in emoji_ranges)
+def escape_emojis(text):
+    """Sanitize input by removing non-printable characters and ensuring valid emoji sequences."""
+    def is_valid_char(char):
+        # Allow printable characters and emojis
+        return char.isprintable() or is_emoji(char)
+
+    # Remove non-printable characters
+    sanitized_text = ''.join(c for c in text if is_valid_char(c))
+    return sanitized_text
+
+
+    # Dirty fix for the meantime to prevent crashing when pasting emojis
+    return ''.join(f"{char}" if is_emoji(char) else char for char in text)
 
 # Checks for string similarity
 def similarity(a, b):
@@ -820,14 +859,88 @@ def launch_window(path: str, data: dict, *a):
 
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
-                self.bind(f"<{control}-BackSpace>", self.ctrl_bs)
                 self.bind('<Escape>', lambda *_: hide_replace(), add=True)
                 self.bind('<KeyPress>', self.process_keys)
                 self.bind(f"<{control}-{'H' if data['os_name'] == 'macos' else 'h'}>", lambda *_: replace.toggle_focus(True))
                 self.bind('<Shift-Return>', lambda *_: trigger_replace())
                 self.bind('<Shift-Return>', self.process_keys, add=True)
+                self.bind(f"<{control}-v>", self._paste)
+                self.bind(f"<{control}-BackSpace>", lambda *args, **kwargs: self._backspace(True, *args, **kwargs))
+                self.bind('<BackSpace>', lambda *args, **kwargs: self._backspace(False, *args, **kwargs))
 
                 self.put_placeholder()
+
+            def _paste(self, *_):
+                with suppress(TclError):
+                    self.delete("sel.first", "sel.last")
+
+                # Get clipboard text and escape emojis
+                raw_text = self.clipboard_get()
+                filtered_text = raw_text.splitlines()
+                if isinstance(filtered_text, list):
+                    filtered_text = filtered_text[0]
+                escaped_text = escape_emojis(filtered_text)
+
+                # Replace tabs and split into lines
+                text = escaped_text.replace('\t', tab_str)
+                self.insert("insert", text.strip())
+                return 'break'
+
+            def _backspace(self, control=False, event=None, *_):
+                """Custom backspace handler to delete entire emojis."""
+
+                if control:
+                    end_idx = self.index(INSERT)
+                    start_idx = self.get().rfind(" ", None, end_idx)
+                    self.selection_range(start_idx, end_idx)
+
+                # Check for deleting a selection
+                select_deleted = False
+                try:
+                    self.delete("sel.first", "sel.last")
+                    select_deleted = True
+                except TclError:
+                    pass  # No selection to delete
+
+                if select_deleted:
+                    update_search()
+                    return 'break'
+
+                cursor_pos = self.index(INSERT)  # Get the cursor position as integer
+
+                if cursor_pos == 0:
+                    return 'break'  # Nothing to delete
+
+                # Get the text up to the cursor
+                text_before = self.get()[:cursor_pos]
+
+                # Initialize deletion indices
+                index = len(text_before)
+
+                # Iterate backwards to find the start of an emoji
+                while index > 0:
+                    char = text_before[index - 1]
+                    if is_emoji(char):
+                        index -= 1
+                    else:
+                        break
+
+                # Determine how many characters to delete
+                chars_to_delete = len(text_before) - index
+
+                if chars_to_delete == 0:
+                    # If no emojis detected, delete one character
+                    start = str(cursor_pos - 1)
+                    end = str(cursor_pos)
+                    self.delete(start, end)
+                else:
+                    # Delete all characters to prevent crash
+                    self.delete(0, 'end')
+
+                # Update search after deletion
+                update_search()
+
+                return 'break'
 
             def toggle_focus(self, fs=True):
 
@@ -872,7 +985,7 @@ def launch_window(path: str, data: dict, *a):
 
             def process_keys(self, event):
                 if event.keysym == "Return":
-                    if event.state == 33:
+                    if event.state in [1, 33]:
                         self.iterate_selection(False)
                     else:
                         self.iterate_selection(True)
@@ -891,12 +1004,6 @@ def launch_window(path: str, data: dict, *a):
                 if not self.get():
                     self.put_placeholder()
                 self.has_focus = False
-
-            def ctrl_bs(self, event, *_):
-                ent = event.widget
-                end_idx = ent.index(INSERT)
-                start_idx = ent.get().rfind(" ", None, end_idx)
-                ent.selection_range(start_idx, end_idx)
 
         search_frame = Frame(root, height=1)
         search_frame.configure(bg=frame_background, borderwidth=0, highlightthickness=0)
@@ -1411,7 +1518,7 @@ def launch_window(path: str, data: dict, *a):
                 self.redraw()
 
             def click_see(self, event: Event) -> None:
-                if event.state == 1:
+                if event.state in [1, 33]:
                     self.shift_click(event)
                     return
 
@@ -2018,6 +2125,7 @@ def launch_window(path: str, data: dict, *a):
                         end_line = start_line
                         if len(args) == 3:
                             end_line = int(str(self.tk.call(self._orig, "index", args[1])).split(".")[0]) - 1
+                    # print(self._orig, command, *args)
                     result = self.tk.call(self._orig, command, *args)
                 except TclError as e:
                     error = str(e)
@@ -2240,8 +2348,8 @@ def launch_window(path: str, data: dict, *a):
                 self.save_lock = False
                 self.first_run = True
 
-                self.bind(f"<{control}-c>", self._copy, add=True)
-                self.bind(f"<{control}-v>", self._paste, add=True)
+                self.bind(f"<{control}-c>", self._copy)
+                self.bind(f"<{control}-v>", self._paste)
 
                 self.bind("<ButtonPress-1>", self.on_press)
                 self.bind("<B1-Motion>", self.on_drag)
@@ -2593,47 +2701,53 @@ def launch_window(path: str, data: dict, *a):
                     # Update error label
                     self.error_label.place(in_=search, relwidth=0.7, relx=0.295, rely=0, y=8)
                     text = f"[Line {self.error['line']}] {self.error['message']}"
-                    max_size = round((root.winfo_width() // self.font_size)*0.65)
+                    max_size = round((root.winfo_width() // self.font_size) * 0.65)
                     if len(text) > max_size:
                         text = text[:max_size] + "..."
                     self.error_label.configure(text=text)
 
                     # Configure text highlighting
-                    # print(self.error)
                     try:
                         pattern = self.error['object'].args[1][-1].rstrip()
                     except:
                         pattern = self.error['code']
+
                     regex = False
                     if pattern == 'Unknown':
                         pattern = ''
                     try:
-                        # print(self.error)
+                        # Split 'line' into line number and character
+                        # Ensure that 'line' is in 'line:char' format
                         line, char = self.error['line'].split(':')
+                        line = int(line)
+                        char = int(char)
 
-                        # Reformat line to start at the beginning
-                        if int(char) == 1:
+                        # Adjust character position if necessary
+                        if char == 1:
                             char = 0
-
-                        # Reformat pattern if it goes to the next line
-                        elif int(char) > len(pattern):
+                        elif char > len(pattern):
                             pattern = r"( +)?\n"
                             regex = True
-
-                        # Reformat index if pattern is in the middle of the line
-                        elif int(char) > 1 and pattern:
-                            test = pattern.startswith((int(char)) * ' ')
-                            if test:
+                        elif char > 1 and pattern:
+                            if pattern.startswith(' ' * char):
                                 pattern = pattern.strip()
                             else:
-                                char = int(char) - 1
-                                pattern = pattern[int(char):]
+                                char = char - 1
+                                pattern = pattern[char:]
 
-                        # print(pattern)
-                        # print(f"{line}.{char}", f"{int(line) + 1}.0")
-                        code_editor.highlight_pattern(pattern, "error", start=f"{line}.{char}", end=f"{int(line) + 1}.0", regexp=regex)
+                        # Sanitize and escape the pattern
+                        sanitized_pattern, is_regex = self.sanitize_pattern(pattern, regex=regex)
+
+                        # Call highlight_pattern with sanitized pattern
+                        code_editor.highlight_pattern(
+                            sanitized_pattern,
+                            "error",
+                            start=f"{line}.{char}",
+                            end=f"{line + 1}.0",
+                            regexp=is_regex
+                        )
                     except Exception as e:
-                        print(e)
+                        pass
                 else:
                     window.root.tab(root, image='')
                     check_telepath()
@@ -2671,7 +2785,13 @@ def launch_window(path: str, data: dict, *a):
                     line_num = int(self.index(INSERT).split('.')[0])
                     last_line = self.get(f"{line_num}.0", f"{line_num}.end")
                     indent = self.get_indent(last_line)
-                    text = self.clipboard_get().replace('\t', tab_str).splitlines()
+
+                    # Get clipboard text and escape emojis
+                    raw_text = self.clipboard_get()
+                    escaped_text = escape_emojis(raw_text)
+
+                    # Replace tabs and split into lines
+                    text = escaped_text.replace('\t', tab_str).splitlines()
 
                     if len(text) == 1:
                         self.insert("insert", text[0].strip())
@@ -2945,71 +3065,143 @@ def launch_window(path: str, data: dict, *a):
                     # Raised if no selection exists
                     return False
 
-            # Highlight find text
-            def highlight_pattern(self, pattern, tag, start="1.0", end="end", regexp=False):
+            # Sanitizes input to regex to prevent crashes with emojis
+            @staticmethod
+            def sanitize_pattern(pattern, regex=False, max_emojis=10, max_length=100):
                 """
-                Highlights all occurrences of 'pattern' in the text widget.
+                Sanitize the input pattern to prevent crashes.
+
+                Parameters:
+                    pattern (str): The search or error pattern.
+                    regex (bool): Whether the pattern is a regex.
+                    max_emojis (int): Maximum number of emojis allowed in the pattern.
+                    max_length (int): Maximum total length of the pattern.
+
+                Returns:
+                    tuple: (sanitized_pattern, is_regex)
                 """
-                # Check if the pattern is exactly empty
-                if pattern == "" or (pattern == 'search for text' and not search.has_focus):
-                    # Remove previous highlights
-                    self.tag_remove(tag, start, end)
-                    self.match_list = []  # Reset match list
-                    self.match_counter.configure(text='')  # Reset match counter display
-                    self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
+                if not pattern:
+                    return '', False
 
-                    self._line_numbers.redraw()
-                    return  # Exit the method early
+                # Strip surrounding quotes if present
+                pattern = pattern.strip("'\"")
 
-                self.tag_remove(tag, start, end)  # Remove previous highlights
-                self.match_list = []  # Reset match list
+                # Remove non-printable characters
+                pattern = ''.join(c for c in pattern if c.isprintable())
 
-                start = self.index(start)
-                end = self.index(end)
-                self.mark_set("matchStart", start)
-                self.mark_set("matchEnd", start)
-                self.mark_set("searchLimit", end)
+                # Limit the total length
+                if len(pattern) > max_length:
+                    pattern = pattern[:max_length]
 
-                count = IntVar()
-                x = 0
+                # Define emoji regex pattern
+                emoji_regex = re.compile(
+                    "["
+                    "\U0001F600-\U0001F64F"  # Emoticons
+                    "\U0001F300-\U0001F5FF"  # Symbols & Pictographs
+                    "\U0001F680-\U0001F6FF"  # Transport & Map Symbols
+                    "\U0001F1E0-\U0001F1FF"  # Flags
+                    "\U00002702-\U000027B0"  # Dingbats
+                    "\U000024C2-\U0001F251"  # Enclosed characters
+                    "]+",
+                    flags=re.UNICODE
+                )
 
-                while True:
+                # Count emojis
+                emojis = emoji_regex.findall(pattern)
+                if len(emojis) > max_emojis:
+
+                    # Keep only the first max_emojis emojis
+                    new_pattern = ''
+                    emoji_count = 0
+                    for c in pattern:
+                        if emoji_regex.match(c):
+                            if emoji_count < max_emojis:
+                                new_pattern += c
+                                emoji_count += 1
+                            else:
+                                # Skip extra emojis
+                                continue
+                        else:
+                            new_pattern += c
+                    pattern = new_pattern
+
+                # After trimming, remove any control characters again
+                pattern = ''.join(c for c in pattern if c.isprintable())
+
+                if regex:
                     try:
-                        index = self.search(pattern, "matchEnd", "searchLimit", count=count, regexp=regexp, nocase=True)
-                    except TclError:
+                        compiled = re.compile(pattern, re.IGNORECASE)
+                        return pattern, True
+                    except re.error as e:
+                        # Fallback to escaped pattern to treat it as literal
+                        return re.escape(pattern), False
+                else:
+                    # Escape the pattern to treat it as a literal string
+                    return re.escape(pattern), False
+
+            # Highlight find text
+            def highlight_pattern(self, pattern, tag, start="1.0", end="end", regexp=False, max_matches=100):
+                """
+                Highlights all occurrences of 'pattern' in the text widget using Python's regex.
+
+                Parameters:
+                    pattern (str): The pattern to search for.
+                    tag (str): The tag to apply to the matched text.
+                    start (str): The starting index for the search.
+                    end (str): The ending index for the search.
+                    regexp (bool): Whether 'pattern' is a regex.
+                    max_matches (int): Maximum number of matches to highlight.
+                """
+
+                # Sanitize the pattern
+                sanitized_pattern, is_regex = self.sanitize_pattern(pattern, regex=regexp)
+
+                if not sanitized_pattern:
+                    # If pattern is empty, remove existing highlights
+                    self.tag_remove(tag, start, end)
+                    self.match_list = []
+                    self.match_counter.configure(text='')
+                    self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
+                    self._line_numbers.redraw()
+                    return
+
+                # Remove previous highlights
+                self.tag_remove(tag, start, end)
+                self.match_list = []
+
+                # Get the text in the specified range
+                text = self.get(start, end)
+
+                # Compile the regex pattern
+                try:
+                    if is_regex:
+                        compiled_pattern = re.compile(sanitized_pattern, re.IGNORECASE)
+                    else:
+                        compiled_pattern = re.compile(sanitized_pattern, re.IGNORECASE)
+                except re.error as e:
+                    # Inform the user about the invalid pattern
+                    self.error_label.configure(text=f"Invalid search pattern: {e}")
+                    return
+
+                # Iterate over all matches and apply the tag
+                matches_found = 0
+                for match in compiled_pattern.finditer(text):
+                    if matches_found >= max_matches:
                         break
-
-                    if not index:
-                        break
-
-                    if tag == "highlight":
-
-                        # Check if the match is within a folded block
-                        line_num = int(index.split(".")[0])
-                        for header_line, block in self._line_numbers.folded_blocks.items():
-                            if block['start'] <= line_num <= block['end']:
-                                if block['folded']:
-                                    # Mark the block as containing a search result and unfold
-                                    self._line_numbers.toggle_fold(header_line)
-                                break  # No need to check other blocks
-
-                    # After ensuring the block remains folded, add the highlight
-                    self.mark_set("matchStart", index)
-                    self.mark_set("matchEnd", f"{index}+{count.get()}c")
-                    self.tag_add(tag, "matchStart", "matchEnd")
+                    match_start = f"{start} + {match.start()} chars"
+                    match_end = f"{start} + {match.end()} chars"
+                    self.tag_add(tag, match_start, match_end)
 
                     if tag == 'highlight':
-                        match_line = int(self.index("matchStart").split(".")[0])
+                        match_line = int(self.index(match_start).split(".")[0])
                         if match_line not in self.match_list:
                             self.match_list.append(match_line)
 
-                    x += 1
+                    matches_found += 1
 
                 # Update match counter display
-                if pattern == '' or (pattern == 'search for text' and not search.has_focus):
-                    x = 0
-
                 if tag == 'highlight':
+                    x = len(self.match_list)
                     if search.has_focus or replace.has_focus or x > 0:
                         self.match_counter.configure(
                             text=f'{x} result(s)',
@@ -3019,15 +3211,16 @@ def launch_window(path: str, data: dict, *a):
 
                         # Scroll to first match if search/replace have focus
                         if x > 0 and (search.has_focus or replace.has_focus):
-                            search.see_index(code_editor.match_list[0])
+                            search.see_index(self.match_list[0])
                     else:
                         self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
                         self.match_counter.configure(text='')
 
-                # Redraw line numbers to reflect any changes (e.g., searched blocks)
-                self._line_numbers.redraw()
-
-
+                # Redraw line numbers to reflect any changes
+                try:
+                    self._line_numbers.redraw()
+                except Exception as e:
+                    pass
 
             # Handle all "Delete/Backspace" functionality
             def delete_spaces(self, *_):
@@ -3160,7 +3353,7 @@ def launch_window(path: str, data: dict, *a):
                 current_line = int(current_pos.split(".")[0])
                 current_char = int(current_pos.split(".")[-1])
                 last_line = self.get(f"{current_line}.0", f"{current_line}.end")
-                shift_return = event.state == 1
+                shift_return = event.state in [1, 33]
 
                 self._line_numbers.ignore_redraw = True
 
@@ -3536,13 +3729,87 @@ def launch_window(path: str, data: dict, *a):
 
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
-                self.bind(f"<{control}-BackSpace>", self.ctrl_bs)
                 self.bind('<Escape>', lambda *_: self.toggle_focus(False))
                 self.bind('<KeyPress>', self.process_keys)
                 self.bind(f"<{control}-{'H' if data['os_name'] == 'macos' else 'h'}>", lambda *_: self.toggle_focus(False))
                 self.bind('<Shift-Return>', lambda *_: trigger_replace())
+                self.bind(f"<{control}-v>", self._paste)
+                self.bind(f"<{control}-BackSpace>", lambda *args, **kwargs: self._backspace(True, *args, **kwargs))
+                self.bind('<BackSpace>', lambda *args, **kwargs: self._backspace(False, *args, **kwargs))
 
                 self.put_placeholder()
+
+            def _paste(self, *_):
+                with suppress(TclError):
+                    self.delete("sel.first", "sel.last")
+
+                # Get clipboard text and escape emojis
+                raw_text = self.clipboard_get()
+                filtered_text = raw_text.splitlines()
+                if isinstance(filtered_text, list):
+                    filtered_text = filtered_text[0]
+                escaped_text = escape_emojis(filtered_text)
+
+                # Replace tabs and split into lines
+                text = escaped_text.replace('\t', tab_str)
+                self.insert("insert", text.strip())
+                return 'break'
+
+            def _backspace(self, control=False, event=None, *_):
+                """Custom backspace handler to delete entire emojis."""
+
+                if control:
+                    end_idx = self.index(INSERT)
+                    start_idx = self.get().rfind(" ", None, end_idx)
+                    self.selection_range(start_idx, end_idx)
+
+                # Check for deleting a selection
+                select_deleted = False
+                try:
+                    self.delete("sel.first", "sel.last")
+                    select_deleted = True
+                except TclError:
+                    pass  # No selection to delete
+
+                if select_deleted:
+                    update_search()
+                    return 'break'
+
+                cursor_pos = self.index(INSERT)  # Get the cursor position as integer
+
+                if cursor_pos == 0:
+                    return 'break'  # Nothing to delete
+
+                # Get the text up to the cursor
+                text_before = self.get()[:cursor_pos]
+
+                # Initialize deletion indices
+                index = len(text_before)
+
+                # Iterate backwards to find the start of an emoji
+                while index > 0:
+                    char = text_before[index - 1]
+                    if is_emoji(char):
+                        index -= 1
+                    else:
+                        break
+
+                # Determine how many characters to delete
+                chars_to_delete = len(text_before) - index
+
+                if chars_to_delete == 0:
+                    # If no emojis detected, delete one character
+                    start = str(cursor_pos - 1)
+                    end = str(cursor_pos)
+                    self.delete(start, end)
+                else:
+                    # Delete all characters to prevent crash
+                    self.delete(0, 'end')
+
+                # Update search after deletion
+                update_search()
+
+                return 'break'
 
             def toggle_focus(self, fs=True, r=0, anim=True):
                 global replace_shown
@@ -3672,7 +3939,7 @@ def launch_window(path: str, data: dict, *a):
 
             def process_keys(self, event):
                 if event.keysym == "Return":
-                    if event.state == 33:
+                    if event.state in [1, 33]:
                         self.iterate_selection(False)
                     else:
                         self.iterate_selection(True)
@@ -3691,12 +3958,6 @@ def launch_window(path: str, data: dict, *a):
                 if not self.get():
                     self.put_placeholder()
                 self.has_focus = False
-
-            def ctrl_bs(self, event, *_):
-                ent = event.widget
-                end_idx = ent.index(INSERT)
-                start_idx = ent.get().rfind(" ", None, end_idx)
-                ent.selection_range(start_idx, end_idx)
         class HoverButton(Button):
 
             def click_func(self, *a):
@@ -3770,24 +4031,58 @@ def launch_window(path: str, data: dict, *a):
         if replace_shown:
             replace.toggle_focus(True, r=1, anim=False)
 
-
         def update_search(search_text=None):
             if not search_text:
                 search_text = search.get()
 
+            # Check if the search text is the placeholder and reset if necessary
             if str(search.cget('fg')) == '#4A4A70' and search_text == data['translate']('search for text'):
                 search_text = ''
 
+            # Enforce maximum pattern length
+            MAX_SEARCH_PATTERN_LENGTH = 100  # Define as appropriate
+            if len(search_text) > MAX_SEARCH_PATTERN_LENGTH:
+                search_text = search_text[:MAX_SEARCH_PATTERN_LENGTH]
+
+            # Reset search state
             search.last_index = 0
             code_editor.content_changed = False
-            sel_start = code_editor.index(SEL_FIRST)
-            sel_end = code_editor.index(SEL_LAST)
+
+            # Get selection indices
+            try:
+                sel_start = code_editor.index(SEL_FIRST)
+                sel_end = code_editor.index(SEL_LAST)
+            except TclError:
+                sel_start = sel_end = None
+
+            # Remove previous highlights
             code_editor.tag_remove("highlight", "1.0", "end")
+
+            # Sanitize the search pattern
+            sanitized_pattern, is_regex = code_editor.sanitize_pattern(search_text, regex=False)
+
+            # Apply highlighting within selection or entire text
             if sel_start and sel_end:
-                code_editor.highlight_pattern(search.get(), "highlight", start=sel_start, end=sel_end, regexp=False)
+                # Highlight within the selected range
+                code_editor.highlight_pattern(
+                    sanitized_pattern,
+                    "highlight",
+                    start=sel_start,
+                    end=sel_end,
+                    regexp=is_regex
+                )
             else:
-                code_editor.highlight_pattern(search.get(), "highlight", regexp=False)
+                # Highlight throughout the entire text
+                code_editor.highlight_pattern(
+                    sanitized_pattern,
+                    "highlight",
+                    regexp=is_regex
+                )
+
+            # Update last search
             code_editor.last_search = search_text
+
+            # Redraw line numbers
             code_editor._line_numbers.redraw()
 
         def highlight_search():
