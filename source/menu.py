@@ -17516,7 +17516,7 @@ class ConsolePanel(FloatLayout):
 
             self.input.disabled = False
             constants.server_manager.current_server.run_data['console-panel'] = self
-            constants.server_manager.current_server.run_data['performance-panel'] = screen_manager.current_screen.performance_panel
+            constants.server_manager.current_server.run_data['performance-panel'] = self.performance_panel
 
             # Update Discord rich presence
             constants.discord_presence.update_presence('Server Manager > Launch')
@@ -18126,8 +18126,10 @@ class ConsolePanel(FloatLayout):
         return super().on_touch_move(touch)
 
 
-    def __init__(self, server_name, server_button=None, start_launched=False, **kwargs):
+    def __init__(self, server_name, server_button=None, start_launched=False, performance_panel: PerformancePanel = None, **kwargs):
         super().__init__(**kwargs)
+
+        self.performance_panel = performance_panel
 
         self.server_name = server_name
         self.server_obj = None
@@ -18942,7 +18944,7 @@ class ServerViewScreen(MenuBackground):
             self.console_panel.scroll_layout.data = []
             Clock.schedule_once(functools.partial(self.console_panel.update_text, self.server.run_data['log'], True, False), 0)
         else:
-            self.console_panel = ConsolePanel(self.server.name, self.server_button, start_launched=self.server.running)
+            self.console_panel = ConsolePanel(self.server.name, self.server_button, start_launched=self.server.running, performance_panel=self.performance_panel)
 
         self.add_widget(self.console_panel)
         self.console_panel.server_obj = self.server

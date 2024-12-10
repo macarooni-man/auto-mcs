@@ -1822,11 +1822,18 @@ def launch_window(path: str, data: dict, *a):
                             self.toggle_fold(line_num)
                             return True
 
-            def fold_all(self, expand=False):
+            def fold_all(self, expand=False, max_depth=2):
+
                 for line, data in self.folded_blocks.items():
                     folded = data['folded']
-                    if (folded and expand) or (not folded and not expand):
-                        self.toggle_fold(line, bool_force=not expand)
+
+                    # Check indent to limit recursion depth
+                    lr, text = code_editor.get_line_text(line)
+                    indent = code_editor.get_indent(text)
+                    if indent < max_depth:
+
+                        if (folded and expand) or (not folded and not expand):
+                            self.toggle_fold(line, bool_force=not expand)
 
             def toggle_fold(self, line, bool_force=None):
 
