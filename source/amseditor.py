@@ -285,14 +285,14 @@ def is_emoji(char):
     ]
     codepoint = ord(char)
     return any(start <= codepoint <= end for start, end in emoji_ranges)
-def escape_emojis(text):
+def escape_emojis(text, allow_breaks=False):
     """Sanitize input by removing non-printable characters and ensuring valid emoji sequences."""
     def is_valid_char(char):
         # Allow printable characters and emojis
         return char.isprintable() or is_emoji(char)
 
     # Remove non-printable characters
-    sanitized_text = ''.join(c for c in text if is_valid_char(c))
+    sanitized_text = ''.join(c for c in text if is_valid_char(c) or (allow_breaks and c == '\n'))
     return sanitized_text
 
 
@@ -2910,7 +2910,7 @@ def launch_window(path: str, data: dict, *a):
 
                     # Get clipboard text and escape emojis
                     raw_text = self.clipboard_get()
-                    escaped_text = escape_emojis(raw_text)
+                    escaped_text = escape_emojis(raw_text, allow_breaks=True)
 
                     # Replace tabs and split into lines
                     text = escaped_text.replace('\t', tab_str).splitlines()
