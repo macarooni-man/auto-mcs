@@ -1263,7 +1263,8 @@ def launch_window(path: str, data: dict, *a):
 
                 self.fold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-fold.png"))
                 self.unfold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold.png"))
-                self.unfold_arrow_error = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold-error.png"))
+                self.unfold_error = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold-error.png"))
+                self.unfold_search = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold-search.png"))
 
                 self.x: int | None = None
                 self.y: int | None = None
@@ -1416,7 +1417,14 @@ def launch_window(path: str, data: dict, *a):
                         # Show error icon if the error is in a folded block
                         if block['folded'] and code_editor.error:
                             if int(code_editor.error['line'].split(':')[0]) in range(block['start']+1, block['end']+1):
-                                icon = self.unfold_arrow_error
+                                icon = self.unfold_error
+
+                        # Mark the block as containing a search result
+                        elif block['folded']:
+                            for match in code_editor.match_list:
+                                if block['start'] <= match <= block['end']:
+                                    icon = self.unfold_search
+                                    break
 
                         offset = {
                             'macos': (3, 18),
