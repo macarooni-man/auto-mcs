@@ -3100,7 +3100,7 @@ def launch_window(path: str, data: dict, *a):
                     return '', False
 
                 # Strip surrounding quotes if present
-                pattern = pattern.strip("'\"")
+                # pattern = pattern.strip("'\"")
 
                 # Remove non-printable characters
                 pattern = ''.join(c for c in pattern if c.isprintable())
@@ -3885,7 +3885,7 @@ def launch_window(path: str, data: dict, *a):
 
             def see_index(self, index):
                 code_editor.see(f"{index + 5}.0")
-                code_editor.see(f"{index}.0")
+                self.after(0, lambda *_: code_editor.see(f"{index}.0"))
                 self.last_index = index
                 search.last_index = index
                 current_line = index
@@ -4075,7 +4075,14 @@ def launch_window(path: str, data: dict, *a):
             code_editor.tag_remove("highlight", "1.0", "end")
 
             # Sanitize the search pattern
-            sanitized_pattern, is_regex = code_editor.sanitize_pattern(search_text, regex=False)
+            # sanitized_pattern, is_regex = code_editor.sanitize_pattern(search_text, regex=False)
+            sanitized_pattern = search_text
+            is_regex = False
+
+            # If search starts with "re:" enable regex (replace doesn't work though, kind of a hidden feature)
+            if search_text.startswith("re:"):
+                sanitized_pattern = search_text[3:]
+                is_regex = True
 
             # Apply highlighting within selection or entire text
             if sel_start and sel_end:
