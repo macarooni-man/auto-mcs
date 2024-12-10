@@ -1887,7 +1887,8 @@ def launch_window(path: str, data: dict, *a):
                 # Get original position and apply transformation after frame update
                 for k, v in self.folded_blocks.items():
                     if v['folded'] and k >= original_line - line_diff:
-                        del self.folding_states[k]
+                        if k in self.folding_states:
+                            del self.folding_states[k]
                         # print(k, v)
                         updated_folded_blocks[k + line_diff] = {'start': v['start'] + line_diff, 'end': v['end'] + line_diff, 'folded': True}
 
