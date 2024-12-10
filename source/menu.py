@@ -21705,6 +21705,7 @@ class AmscriptListButton(HoverButton):
                 def reprocess_page(*args):
                     script_manager = constants.server_manager.current_server.script_manager
                     script_manager.delete_script(self.properties)
+                    constants.clear_script_cache(self.properties.path)
                     script_screen = screen_manager.current_screen
                     new_list = script_manager.return_single_list()
                     script_screen.gen_search_results(new_list, fade_in=True)
@@ -22415,6 +22416,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
                             for installed_script in script_manager.return_single_list():
                                 if installed_script.title == script.title:
                                     script_manager.delete_script(installed_script)
+                                    constants.clear_script_cache(installed_script.path)
 
                                     # Show banner if server is running
                                     if script_manager._hash_changed():

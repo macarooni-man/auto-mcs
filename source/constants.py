@@ -5922,6 +5922,31 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
         return None
 
 
+# Clean-up amscript IDE cache
+def clear_script_cache(script_path):
+    json_path = None
+
+    # Ignore if the script isn't in the app directory
+    if not script_path.startswith(applicationFolder):
+        return
+
+    # Attempt to delete the file
+    try:
+        file_name = os.path.basename(script_path).split('.')[0] + '.json'
+        if script_path.startswith(telepathScriptDir):
+            json_dir = os.path.join(cacheDir, 'ide', 'fold-regions', 'telepath')
+        else:
+            json_dir = os.path.join(cacheDir, 'ide', 'fold-regions', 'local')
+        json_path = os.path.join(json_dir, file_name)
+        if os.path.isfile(json_path):
+            os.remove(json_path)
+
+    # Log on failure
+    except:
+        if debug:
+            print(f'Failed to remove script cache: "{json_path}"')
+
+
 # ---------------------------------------------- Global Config Function ------------------------------------------------
 
 # Handles all operations when writing/reading from global config. Adding attributes changes the config file

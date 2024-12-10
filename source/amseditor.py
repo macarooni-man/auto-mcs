@@ -1196,7 +1196,6 @@ def launch_window(path: str, data: dict, *a):
 
                 root.after(10, lambda *_: reduce_opacity(1))
 
-
         # Configure background text
         class TkLineNumbers(Canvas):
             def __init__(
@@ -2382,6 +2381,112 @@ def launch_window(path: str, data: dict, *a):
                 self.drag_data = {}
                 self.selection = False
 
+                # Auto-scroll functionality when dragging a selection
+                self.bind('<ButtonPress-1>', self.on_button_press, add=True)
+                self.bind('<B1-Motion>', self.check_auto_scroll, add=True)
+                self.bind('<ButtonRelease-1>', self.on_button_release, add=True)
+                self.auto_scroll_region = 5  # pixels
+                self.auto_scroll_interval = 50  # milliseconds
+                self.auto_scroll_distance = 1  # pixels
+                self.scroll_direction = None
+                self.scroll_job = None
+                self.selection_anchor = None
+
+            def scroll(self, *args):
+                """
+                Handle scroll commands from the custom Scrollbar.
+                Args can be:
+                    ('scroll', number, 'units'/'pages')
+                    ('moveto', fraction)
+                """
+                if len(args) == 3 and args[0] == 'scroll':
+                    number = int(args[1])
+                    what = args[2]
+                    self.yview_scroll(number, what)
+                elif len(args) == 2 and args[0] == 'moveto':
+                    fraction = float(args[1])
+                    self.yview_moveto(fraction)
+
+            def on_button_press(self, event):
+                # Record the anchor position
+                self.selection_anchor = self.index("@%d,%d" % (event.x, event.y))
+                # Stop any ongoing auto-scroll
+                self.stop_auto_scroll()
+
+            def on_button_release(self, event):
+                self.stop_auto_scroll()
+
+            def check_auto_scroll(self, event):
+                # Get widget height
+                height = self.winfo_height()
+                y = event.y
+
+                # Define the scroll zones (e.g., 20 pixels from top/bottom)
+                if y < self.auto_scroll_region:
+                    # Mouse is near the top edge, scroll up
+                    self.start_auto_scroll(-1)
+                elif y > height - self.auto_scroll_region:
+                    # Mouse is near the bottom edge, scroll down
+                    self.start_auto_scroll(1)
+                else:
+                    # Mouse is within bounds, stop auto-scrolling
+                    self.stop_auto_scroll()
+
+            def start_auto_scroll(self, direction):
+                if self.scroll_direction != direction:
+                    self.scroll_direction = direction
+                    self.schedule_auto_scroll()
+
+            def schedule_auto_scroll(self):
+                if self.scroll_direction is not None:
+                    self.scroll('scroll', self.scroll_direction * self.auto_scroll_distance, "units")
+                    # Re-sample mouse position and update selection
+                    self.update_selection()
+                    # Schedule the next scroll
+                    self.scroll_job = self.after(self.auto_scroll_interval, self.schedule_auto_scroll)
+
+            def stop_auto_scroll(self):
+                if self.scroll_job is not None:
+                    self.after_cancel(self.scroll_job)
+                    self.scroll_job = None
+                self.scroll_direction = None
+
+            def update_selection(self):
+                """
+                Re-sample the mouse position and update the selection region.
+                """
+                # Get global mouse position
+                mouse_x, mouse_y = self.winfo_pointerxy()
+                # Get widget's position
+                widget_x = self.winfo_rootx()
+                widget_y = self.winfo_rooty()
+                widget_width = self.winfo_width()
+                widget_height = self.winfo_height()
+
+                # Calculate the relative position
+                relative_x = mouse_x - widget_x
+                relative_y = mouse_y - widget_y
+
+                # Check if mouse is within the widget's horizontal bounds
+                if 0 <= relative_x <= widget_width:
+                    # Translate global mouse position to widget's local coordinates
+                    local_x = relative_x
+                    local_y = relative_y
+                    # Clamp local_y to widget's height
+                    local_y = max(0, min(local_y, widget_height))
+                    # Get the index corresponding to the mouse position
+                    index = self.index(f"@{local_x},{local_y}")
+                    # Update the selection
+                    self.tag_remove("sel", "1.0", "end")
+
+                    if self.scroll_direction == 1:
+                        self.tag_add("sel", self.selection_anchor, index)
+                    else:
+                        self.tag_add("sel", index, self.selection_anchor)
+                else:
+                    # Mouse is outside horizontally; do not update selection
+                    pass
+
             def on_press(self, event):
                 index = self.index(CURRENT)
                 self.drag_data['start'] = index
@@ -3433,6 +3538,7 @@ def launch_window(path: str, data: dict, *a):
 
                 # Indent rules
                 test = last_line.strip()
+
                 if test.endswith(":") and (current_char >= len(test)):
                     indent += 1
 
@@ -3443,6 +3549,13 @@ def launch_window(path: str, data: dict, *a):
 
                 # Insert indentation
                 self.insert("insert", tab_str * indent)
+
+
+                # Try to not make multi-line dictionaries a pain
+                if test[current_char - 1:] in ['{}', '()', '[]']:
+                    self.insert("insert", "\n")
+                    self.insert(f'{current_line + 1}.0', tab_str * (indent + 1))
+                    self.mark_set(INSERT, f'{current_line + 1}.0 lineend')
 
 
                 # If holding shift, move cursor back to the original line
