@@ -127,15 +127,16 @@ Compares server version to `version` with the `comparator`, returns `bool`.
 
 
 
-### server.after(*delay, function*)
+### server.after(*delay, function, params*)
 
-Runs a delayed background (non-blocking) task. Exits before execution if the server stops, or if scripts are reloaded. Returns `ServerScriptObject.AmsTimer()` of the background task, which has a method `AmsTimer.cancel()` to end prematurely. Accepts `*args` and `**kwargs` after `function`.
+Runs a delayed background (non-blocking) task. Exits before execution if the server stops, or if scripts are reloaded. Returns `ServerScriptObject.AmsTimer()` of the background task, which has a method `AmsTimer.cancel()` to end prematurely.
 
 **Accepted parameters**:
 | Parameter | Description | 
 | --- | --- |
 | `delay*` | `int`, delay in seconds |
 | `function*` | `callable`, any Python callable function or method |
+| `params` | accepts `*args` and `**kwargs` which are passed to `function` |
 
 <br>
 
