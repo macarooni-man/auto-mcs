@@ -3538,7 +3538,11 @@ def launch_window(path: str, data: dict, *a):
                 # Indent rules
                 test = last_line.strip()
 
-                if test.endswith(":") and (current_char >= len(test)):
+                # Allow indent if there's an in-line comment
+                if not test.startswith('#') and '#' in test:
+                    test = test.split('#', 1)[0].strip()
+
+                if test.endswith(":") and (current_char >= len(last_line)) and not test.startswith('#'):
                     indent += 1
 
                 for kw in ['return', 'continue', 'break', 'yield', 'raise', 'pass']:
@@ -3823,6 +3827,9 @@ def launch_window(path: str, data: dict, *a):
                 elif event.keysym == 'Tab':
                     self.insert(INSERT, tab_str)
                     return 'break'  # Prevent default behavior of the Tab key
+
+                if in_header:
+                    self.recalc_lexer()
 
         root.code_editor = HighlightText(
             root,
