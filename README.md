@@ -29,6 +29,8 @@ To get started, download the latest version of auto-mcs [from the website](https
 
 If you'd like to compile auto-mcs yourself, take a peek at the [build documentation](https://github.com/macarooni-man/auto-mcs/blob/main/build-tools/README.md)!
 
+If you're using our Docker implementation, please take a look at our documentation on [Docker Hub](https://hub.docker.com/r/macarooniman/auto-mcs)!
+
 <br>
 To start, you can either import a server you've made on your own or create a new one from scratch:
 
