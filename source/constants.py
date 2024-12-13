@@ -153,6 +153,9 @@ sub_processes = []
 # For '*.bat' or '*.sh' respectively
 start_script_name = "Start"
 
+# Oldest version that supports files like "ops.json" format
+json_format_floor = "1.7.6"
+
 
 # Paths
 os_name = 'windows' if os.name == 'nt' else 'macos' if system().lower() == 'darwin' else 'linux' if os.name == 'posix' else os.name
@@ -1100,92 +1103,44 @@ def format_nickname(nickname):
     return formatted
 
 # Comparison tool for Minecraft version strings
-def version_check(version_a: str, comparator: str, version_b: str): # Comparator can be '>', '>=', '<', '<=', '=='
+def version_check(version_a: str, comparator: str, version_b: str):
+    def parse_version(version):
+        version = version.lower()
+        parts = version.split(".")
+        parsed = []
+        for part in parts:
+            # Handle pre-release identifiers (e.g., "a" or "b")
+            if "a" in part:
+                parsed.append(-2)  # 'a' is less than 'b'
+                part = part.replace("a", "")
+            elif "b" in part:
+                parsed.append(-1)  # 'b' is less than normal numbers
+                part = part.replace("b", "")
+            if part.isdigit():
+                parsed.append(int(part))
+            elif part:  # Handle cases like "a1.7" or "b1.8"
+                parsed.append(int(part))
+        return tuple(parsed)
+
     try:
+        # Parse both versions into comparable tuples
+        parsed_a = parse_version(version_a)
+        parsed_b = parse_version(version_b)
 
-        # A greater than B
-        if ">" in comparator:
-
-            if "b" in version_a and "a" in version_b:
-                return True
-
-            elif "a" in version_a:
-                if "a" in version_b:
-                    version_a = float(version_a.replace("a1.", "", 1))
-                    version_b = float(version_b.replace("a1.", "", 1))
-                    if "=" in comparator:
-                        return version_a >= version_b
-                    else:
-                        return version_a > version_b
-                else:
-                    return False
-
-            elif "b" in version_a:
-                if "b" in version_b:
-                    version_a = float(version_a.replace("b1.", "", 1))
-                    version_b = float(version_b.replace("b1.", "", 1))
-                    if "=" in comparator:
-                        return version_a >= version_b
-                    else:
-                        return version_a > version_b
-                else:
-                    return False
-
-            else:
-                if ("a" not in version_a and "a" in version_b) or ("b" not in version_a and "b" in version_b):
-                    return True
-
-                version_a = float(version_a.replace("1.", "", 1))
-                version_b = float(version_b.replace("1.", "", 1))
-                if "=" in comparator:
-                    return version_a >= version_b
-                else:
-                    return version_a > version_b
-
-        # A less than B
-        elif "<" in comparator:
-
-            if "b" in version_b and "a" in version_a:
-                return True
-
-            elif "a" in version_b:
-                if "a" in version_a:
-                    version_a = float(version_a.replace("a1.", "", 1))
-                    version_b = float(version_b.replace("a1.", "", 1))
-                    if "=" in comparator:
-                        return version_a <= version_b
-                    else:
-                        return version_a < version_b
-                else:
-                    return False
-
-            elif "b" in version_b:
-                if "b" in version_a:
-                    version_a = float(version_a.replace("b1.", "", 1))
-                    version_b = float(version_b.replace("b1.", "", 1))
-                    if "=" in comparator:
-                        return version_a <= version_b
-                    else:
-                        return version_a < version_b
-                else:
-                    return False
-
-            else:
-                if ("a" not in version_b and "a" in version_a) or ("b" not in version_b and "b" in version_a):
-                    return True
-
-                version_a = float(version_a.replace("1.", "", 1))
-                version_b = float(version_b.replace("1.", "", 1))
-                if "=" in comparator:
-                    return version_a <= version_b
-                else:
-                    return version_a < version_b
-
-        # A equal to B
+        # Perform the comparison
+        if comparator == ">":
+            return parsed_a > parsed_b
+        elif comparator == ">=":
+            return parsed_a >= parsed_b
+        elif comparator == "<":
+            return parsed_a < parsed_b
+        elif comparator == "<=":
+            return parsed_a <= parsed_b
         elif comparator == "==":
-            return version_a == version_b
-
-    except ValueError:
+            return parsed_a == parsed_b
+        else:
+            raise ValueError(f"Invalid comparator: {comparator}")
+    except Exception as e:
         return False
 
 
@@ -3268,6 +3223,8 @@ def generate_server_files(progress_func=None):
             file = f"gamerule keepInventory {str(new_server_info['server_settings']['keep_inventory']).lower()}\n"
             if version_check(new_server_info['version'], '>=', '1.8'):
                 file += f"gamerule randomTickSpeed {str(new_server_info['server_settings']['random_tick_speed']).lower()}\n"
+                if version_check(new_server_info['version'], '<', '1.13'):
+                    file += f"gamerule sendCommandFeedback false\n"
             if version_check(new_server_info['version'], '>=', '1.6.1'):
                 file += f"gamerule doDaylightCycle {str(new_server_info['server_settings']['daylight_weather_cycle']).lower()}\n"
                 if version_check(new_server_info['version'], '>=', '1.11'):

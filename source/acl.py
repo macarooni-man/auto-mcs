@@ -158,7 +158,7 @@ class AclManager():
 
 
         # Check cached world playerdata for old versions
-        if constants.version_check(version, "<", "1.8"):
+        if constants.version_check(version, "<", constants.json_format_floor):
             data_path = os.path.join(server_path, server_world, 'players')
 
             with ThreadPoolExecutor(max_workers=15) as pool:
@@ -718,7 +718,7 @@ class AclManager():
                 if not self._new_server and self.rules['subnets'] and bool(
                     glob(os.path.join(self._server['path'], '*banned-ips*'))):
 
-                    if constants.version_check(self._server['version'], '<', '1.8'):
+                    if constants.version_check(self._server['version'], '<', constants.json_format_floor):
                         with open(os.path.join(self._server['path'], 'banned-ips.txt'), 'r') as f:
                             # Make sure this will replace line breaks on Linux IP lists as well
                             banned_ips = [ip.replace('\n', '') for ip in f.readlines() if ip.replace('\n', '')]
@@ -1713,7 +1713,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                     pass
 
     # Convert old .txt lists ---------------------------------------------------------------------------------------
-    if constants.version_check(version, "<", "1.8"):
+    if constants.version_check(version, "<", constants.json_format_floor):
 
         # Check for OPs
         if (list_type == "ops") or not list_type:
@@ -2088,7 +2088,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
         if write_file:
 
             # Edit old .txt files
-            if constants.version_check(version, "<", "1.8"):
+            if constants.version_check(version, "<", constants.json_format_floor):
                 final_list = ""
 
                 # write final_list to file
@@ -2377,7 +2377,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
         if write_file:
 
             # Edit old .txt files
-            if constants.version_check(version, "<", "1.8"):
+            if constants.version_check(version, "<", constants.json_format_floor):
 
                 # Add banned users ---------------------------------------------------------------------------------
                 final_list = ""
@@ -2561,7 +2561,7 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
         if write_file:
 
             # Edit old .txt files
-            if constants.version_check(version, "<", "1.8"):
+            if constants.version_check(version, "<", constants.json_format_floor):
                 final_list = ""
 
                 # write final_list to file

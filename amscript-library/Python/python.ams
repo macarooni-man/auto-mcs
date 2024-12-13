@@ -3,8 +3,8 @@
 # author: Kaleb Efflandt
 # version: 1.0
 # description: Use the chat as a REPL for the amscript Python environment
-# 
-# 
+#
+#
 # Usage:
 # ------- Run Python Code -------
 # >>  !py <code>
@@ -35,6 +35,9 @@ import traceback
 # Runs Python code from !py command for players with 'pyperm'
 @player.on_alias(player, command='py', arguments={'code': True}, permission='pyperm', description='Run Python code in the amscript environment (Python)'):
     try:
-        player.log(eval(arguments['code']))
+        gbl = globals()
+        lcl = locals()
+        lcl['player'] = player
+        player.log(eval(arguments['code'], gbl, lcl))
     except Exception as e:
-        player.log_error(traceback.format_exc())
+        player.log_error(traceback.format_exc().strip())

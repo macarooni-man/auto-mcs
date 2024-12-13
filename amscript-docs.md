@@ -146,6 +146,8 @@ Runs a delayed background (non-blocking) task. Exits before execution if the ser
 
 Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Only returns the first match.
 
+> Note: In versions prior to 1.13, `selector` can only be a username
+
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
@@ -265,7 +267,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 **Attributes**:
 > Note: All attributes are read-only, and thus will not change playerdata when modified
 
-> Note: Versions prior to 1.13 load NBT from playerdata.dat, which is only updated every couple of minutes or so. Any version between 1.8-1.13, though, will have updated position data. 1.13 and later retrieves *all* of the most recent NBT data.
+> Note: Versions prior to 1.13 load NBT from playerdata.dat, which is only updated every couple of minutes or so. Any version between 1.8-1.13 will execute `save-all` to force updated data. 1.13 and later retrieves *all* of the most recent NBT data.
 
 
 #### player.name
@@ -349,15 +351,72 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.inventory
  - `InventoryObject`, organized list of all items in the player's inventory
- - Attributes are `player.inventory.selected_item`, `player.inventory.offhand`, `player.inventory.hotbar`, `player.inventory.armor`, `player.inventory.inventory`
- - Each list is full of `ItemObject`, which can be accessed via lowercase NBT attributes like in game, and with Pythonic logic: `player.inventory.selected_item.tag.display.name` or `if "diamond_sword" in player.inventory`
- - Methods (these also work in containers as well, i.e. `player.inventory.hotbar`, `player.inventory.armor`, and `player.inventory.inventory`):
+ - Each list is full of `ItemObject`, which can be accessed via lowercase NBT attributes like in game, and with Pythonic logic: `player.inventory.selected_item.tag.display.name` or `if "diamond_sword" in player.inventory` or `player.inventory.hotbar.count("cobblestone")`
+ - An `InventoryObject` is structured in the following format:
+```python
+class InventoryObject():
+    # The attributes below are supported and abracted in a consistent way via amscript, regardless of the game version
+
+    # The selected item in the inventory
+    self.selected_item <ItemObject>
+
+    # The item in the offhand slot
+    self.offhand <ItemObject>
+
+    # Items in the hotbar slots with index 0-8
+    self.hotbar <list of ItemObject>
+
+    # The items in the main inventory with index 0-26
+    self.inventory <list of ItemObject>
+
+    # The items in the armor slot
+    # Keys: "head", "chest", "legs", "feet"
+    self.armor <dict of ItemObject>
+```
+
+> Note: all methods below can also be used on `player.inventory.hotbar`, `player.inventory.armor`, and `player.inventory.inventory` as well
+
+   - #### inventory.items()
+     - Returns a `list` of every `ItemObject` in the inventory
 
    - #### inventory.find(*item_id*)
      - Returns a `list` of every `ItemObject` which matches `item_id`
 
    - #### inventory.count(*item_id*)
-     - Returns a total count in `int` of all `item_id` in the inventory
+     - Returns a total count in `int` of all `item_id` in the inventory.
+     - If `item_id` is a list, it will return the count of all items in the list.
+     - If `item_id` is not provided, it will return the count of all items in the inventory.
+
+
+ - An `ItemObject` is structured in the following format:
+```python
+class ItemObject():
+    # The attributes below are supported and abracted in a consistent way via amscript, regardless of the game version
+
+    # ID of the item
+    self.id <str>
+
+    # Quantity of the item
+    self.count <int>
+
+    # e.g. durability of a tool
+    self.damage <int>
+
+    # Custom name of the item, or None
+    self.custom_name <str or None>
+
+    # List of strings, each string is a line of lore
+    self.lore <list>
+
+    # Dictionary of dictionaries, each dictionary is an enchantment
+    self.enchantments <dict>
+
+    # List of dictionaries, each dictionary is an attribute modifier
+    self.attribute_modifiers <list>
+
+    # Many items have extra attributes such as a book (normal NBT format: self.pages)
+```
+
 
 #### player.persistent
  - `dict`, persistent variable storage for saving information between server restarts, or script reloads

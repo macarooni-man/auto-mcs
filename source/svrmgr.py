@@ -759,8 +759,8 @@ class ServerObject():
                     type_color = (0.439, 0.839, 1, 1)
                 else:
                     # Ignore NBT data updates
-                    if " has the following entity data: {" in main_label or ("Teleported " in main_label and " to " in main_label):
-                        return
+                    if " has the following entity data: {" in main_label or ((not line.startswith('[')) and (main_label.endswith('}'))) or main_label in ['Saved the world', 'Saving...']:
+                        return None, None
 
                     type_label = "INFO"
                     type_color = (0.6, 0.6, 1, 1)
@@ -819,7 +819,6 @@ class ServerObject():
                                         event = functools.partial(self.script_object.death_event, {'user': word.strip(), 'content': main_label.strip()})
                                         break
 
-
                 if date_label and type_label and main_label and type_color:
                     return (date_label, type_label, main_label, type_color), event
 
@@ -829,7 +828,8 @@ class ServerObject():
                 try:
                     log_line, event = format_log(log_line)
                 except Exception as e:
-                    print(e)
+                    if constants.debug:
+                        print(e)
                     continue
             if text and log_line:
 
@@ -914,9 +914,15 @@ class ServerObject():
                 # Send to server if it doesn't start with !
                 if not cmd.startswith("!"):
                     try:
-                        self.run_data['process'].stdin.write(f"{cmd}\r\n".encode('utf-8', errors='ignore').replace(b'\xc2\xa7', b'\xa7'))
+                        # Format encoding per OS
+                        if constants.os_name == 'windows':
+                            command = f"{cmd}\r\n".encode('utf-8', errors='ignore').replace(b'\xc2\xa7', b'\xa7')
+                        else:
+                            command = f"{cmd}\r\n".encode('utf-8', errors='ignore')
+
+                        self.run_data['process'].stdin.write(command)
                         self.run_data['process'].stdin.flush()
-                    except OSError:
+                    except:
                         if constants.debug:
                             print("Error: Command sent after process shutdown")
 
@@ -946,6 +952,7 @@ class ServerObject():
                 self.run_data['performance-panel'] = None
                 self.run_data['command-history'] = []
                 self.run_data['playit-tunnel'] = None
+                self.run_data['entitydata-cache'] = {}
             else:
                 self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
                 if self.run_data['console-panel'] and not constants.headless:
@@ -1025,12 +1032,55 @@ class ServerObject():
                     lines_iterator = iter(self.run_data['process'].stdout.readline, "")
                     log_file = os.path.join(self.server_path, 'logs', 'latest.log')
 
+                # Initialize variables
                 fail_counter = 0
                 close = False
                 crash_info = None
                 error_list = []
 
+                accumulating = False
+                accumulated_lines = []
+                brace_count = 0
+
+                def is_entity_data_start(string):
+                    return ' has the following entity data: ' in string and not string.strip().endswith('}')
+
+                def is_complete_entity_data(string):
+                    string = string.decode(errors='ignore')
+                    return ' has the following entity data: ' in string and string.strip().endswith('}')
+
+
                 for line in lines_iterator:
+                    decoded_line = line.decode(errors='ignore')
+
+                    # Combine playerdata that spans multiple lines
+                    if is_entity_data_start(decoded_line):
+                        accumulating = True
+                        accumulated_lines = [decoded_line]
+                        brace_count = decoded_line.count('{') - decoded_line.count('}')
+                        continue
+
+                    # Append next line
+                    elif accumulating:
+                        accumulated_lines.append(decoded_line)
+                        brace_count += decoded_line.count('{') - decoded_line.count('}')
+
+                        # Completed data
+                        if brace_count == 0:
+                            line = ''.join(accumulated_lines).encode()
+                            accumulating = False
+                            accumulated_lines = []
+                            brace_count = 0
+                        else:
+                            continue
+
+                    # Add to list
+                    if is_complete_entity_data(line):
+                        data = line.decode().strip()
+                        player = re.findall(r'(?<=\: )(.*)(?= has the following entity data)', data)[0]
+                        self.run_data['entitydata-cache'][player] = data
+                        self.run_data['entitydata-cache']['$newest'] = data
+                        continue
 
                     try:
                         # Append legacy errors to error list
@@ -1821,51 +1871,49 @@ class ServerObject():
             hook(self.run_data['log'])
 
 
+    # Retrieves cached entity player data
+    def get_entity_data(self, player, newest=False):
+        original_data = None
+
+        if player in self.run_data['entitydata-cache']:
+            original_data = deepcopy(self.run_data['entitydata-cache'][player])
+
+        # Format command to server based on version
+        if constants.version_check(self.version, '>=', '1.13'):
+            command = f'data get entity {player}'
+        else:
+            return ""
+
+        # If newest, use the newest tag
+        if newest:
+            player = '$newest'
+            if '$newest' in self.run_data['entitydata-cache']:
+                original_data = deepcopy(self.run_data['entitydata-cache'][player])
+
+        self.silent_command(command)
+
+        # Wait for data to get updated/sent from the server
+        for timeout in range(20):
+            if player in self.run_data['entitydata-cache'] and self.run_data['entitydata-cache'][player] != original_data:
+                return self.run_data['entitydata-cache'][player]
+            time.sleep(0.001)
+
+        # If nothing, return the last tag
+        if player in self.run_data['entitydata-cache']:
+            return self.run_data['entitydata-cache'][player]
+        return ""
+
+
+    # Returns a username from a player selector
+    def parse_tag(self, selector: str):
+        data = self.get_entity_data(selector, True)
+        player = re.findall(r'(?<=\: )(.*)(?= has the following entity data)', data)[0]
+        return player
+
+
     # Sends a command that doesn't show up in the console
-    def silent_command(self, cmd, log=False, _capture=None, _send_twice=False):
-
+    def silent_command(self, cmd, log=False):
         self.send_command(cmd, False, log, True)
-
-        # Dirty fix: repeat command if get_player() is used
-        if _send_twice and _capture:
-            self.send_command(cmd, False, False, True)
-
-        # Wait for response and return data as string
-        if _capture:
-            if constants.version_check(self.version, '<', '1.7'):
-                lines_iterator = iter(self.run_data['process'].stderr.readline, "")
-            else:
-                lines_iterator = iter(self.run_data['process'].stdout.readline, "")
-
-            # Initialize variables
-            accumulating = False
-            accumulated_lines = []
-            brace_count = 0
-
-            for line in lines_iterator:
-                line = line.decode('utf-8', errors='ignore')
-
-                if ' has the following entity data: ' in line and not line.strip().endswith('}'):
-                    # Start accumulating lines
-                    accumulating = True
-                    accumulated_lines = [line]
-                    brace_count = line.count('{') - line.count('}')
-                    continue
-                elif accumulating:
-                    accumulated_lines.append(line)
-                    brace_count += line.count('{') - line.count('}')
-                    if brace_count == 0:
-                        # End of entity data detected
-                        line = ''.join(accumulated_lines)
-                        # Send complete_data to the rest of your code as is
-                    else:
-                        continue
-
-                if _capture in line:
-                    return line
-                else:
-                    self.update_log(line.encode('utf-8'))
-                    return ""
 
 
     # Retrieves updated player list from run_data
