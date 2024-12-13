@@ -1931,7 +1931,7 @@ class ServerObject():
         def iter_attr(obj, a_start=''):
             final_list = []
             for attr in dir(obj):
-                if not attr.startswith('_'):
+                if not attr.startswith('_') and not attr[0].isupper():
                     if callable(getattr(obj, attr)):
                         final_list.append(a_start + attr + '()')
                     else:

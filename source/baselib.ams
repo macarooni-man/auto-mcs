@@ -17,8 +17,6 @@ def generate_header(text):
         final_str = final_str + ("-"*(header_len-len(final_str)))
     return final_str[:50]
 
-
-
 # Display 1 minute & 15s warning for !restart/!stop
 def sleep_timer(delay, sleep_type):
     if delay > 60:
@@ -38,15 +36,40 @@ def sleep_timer(delay, sleep_type):
 
 # Displays all amscript commands that the player has access to, with an optional search feature
 @player.on_alias(player, command='help', arguments={'command': False}, permission='anyone', description='View the auto-mcs command directory (auto-mcs provided)'):
+    
+    # Format arguments
     cmd = arguments['command']
+    page_size = 6
+    page = None
+    start = None
+    end = None
+    try:
+        page = int(cmd)
+        cmd = None
+    except:
+        pass
+    
     match_count = 0
     
-    if cmd:
+    if cmd and not page:
         player.log(generate_header(f'Search for \'{cmd}\''), 'green', 'normal')
+        
     else:
-        player.log(generate_header('All Auto-MCS Commands'), 'green', 'normal')
-
-    for alias in server.aliases.values():
+        player.log(generate_header('all auto-mcs commands'), 'green', 'normal')
+    
+        # Check if the page is valid
+        total_pages = (len(server.aliases) + page_size - 1) // page_size  # Total pages
+        if not page or page < 1:
+            page = 1
+        if page > total_pages:
+            page = total_pages
+    
+        # Slice and process items for the current page
+        start = (page - 1) * page_size
+        end = page * page_size
+        
+    
+    for alias in list(server.aliases.values())[start:end]:
         has_permission = False
         if alias['permission'] in perm_dict:
             has_permission = perm_dict[permission] >= perm_dict[alias['permission']]
@@ -57,16 +80,19 @@ def sleep_timer(delay, sleep_type):
             if cmd:
                 if cmd.lower() not in alias['command'].lower() and cmd.lower() not in alias['description'].lower():
                     continue
-
             if cmd:
                 player.log(f"{alias['syntax']}", 'white', 'normal')
             else:
                 player.log(alias['command'], 'white', 'normal')
-            player.log(f'- {alias["description"]}', 'gray', 'normal')
+            player.log(f'>  {alias["description"]}', 'gray', 'italic')
             match_count += 1
 
     if match_count == 0:
         player.log(f"No results for '{cmd}'", 'gray', 'normal')
+        
+    elif page:
+        player.log(" ")
+        player.log_success(f"Page {page}/{total_pages}. Type '!help <page>' to see more")
 
 
 
@@ -79,7 +105,7 @@ def sleep_timer(delay, sleep_type):
     if player.is_server:
         # General information
         player.log(generate_header('Server Information'), 'green', 'normal')
-        player.log(f'Auto-MCS v{server._app_version} - Running "{server.name}"', 'dark_green', 'normal')
+        player.log(f'auto-mcs v{server._app_version} - running "{server.name}"', 'dark_green', 'normal')
         player.log(f'Version:   {server.type.title()} {server.version}', 'white', 'normal')
         player.log(f'Address:   {server.network["ip"]}:{server.network["port"]}', 'aqua', 'normal')
         player.log(f'Uptime:    {server._performance["uptime"]}', 'gray', 'normal')
@@ -93,7 +119,7 @@ def sleep_timer(delay, sleep_type):
     else:
         # General information
         player.log(generate_header('Server Information'), 'green', 'normal')
-        player.log(f'Auto-MCS v{server._app_version} - Running "{server.name}"', 'dark_green', 'normal')
+        player.log(f'auto-mcs v{server._app_version} - running "{server.name}"', 'dark_green', 'normal')
         player.log(f'Version:    {server.type.title()} {server.version}', 'white', 'normal')
         player.log(f'Address:   {server.network["ip"]}:{server.network["port"]}', 'aqua', 'normal')
         player.log(f'Uptime:      {server._performance["uptime"]}', 'gray', 'normal')

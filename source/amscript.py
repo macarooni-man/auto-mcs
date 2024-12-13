@@ -1971,7 +1971,7 @@ class PlayerScriptObject():
                 # Dirty little trick to force a save to retrieve updated playerdata
                 if self._version_check(">=", "1.8"):
                     self._execute('save-all', log=False)
-                    time.sleep(0.01)
+                    time.sleep(0.05)
 
                 # Get the right file
                 if self._version_check(">=", constants.json_format_floor):
