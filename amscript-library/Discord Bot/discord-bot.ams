@@ -16,7 +16,7 @@
 #
 # 4. This bot will automatically start and stop with your server. Additionally, it requires the "read messages" intent to function properly
 #
-# 5. To extend the functionality of your bot, put normal discord.py functionality inside of the '@server.on_start()' event
+# 5. To extend the functionality of your bot, put standard 'discord.py' functionality inside of the '@server.on_start()' event
 #!
 
 
@@ -68,7 +68,7 @@ def get_players():
     async def info(interaction: discord.Interaction):
         embed = discord.Embed(
                 title='Server Information',
-                description=f'Auto-MCS v{server._app_version} - Running "{server.name}"',
+                description=f'auto-mcs v{server._app_version} - running "{server.name}"',
                 color=discord.Color.green()
             )
             
