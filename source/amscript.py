@@ -1895,11 +1895,13 @@ class PlayerScriptObject():
 
                     # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
                     try:
+                        print(nbt_data)
+
                         # Handle unquoted keys and values
                         nbt_data = re.sub(
                             r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)',
                             lambda x: json_regex(x),
-                            nbt_data
+                            nbt_data.replace('I;', '"I;",')  # remove invalid UUID tags for parsing
                         )
 
                         # Replace semicolons with commas, fix brackets
@@ -2892,46 +2894,93 @@ class ItemObject(Munch):
 
             # Data from entitydata
             elif self.format == 'entitydata':
+                try:
+                    if 'tag' in self:
+                        self.update(self.tag)
+                        del self.tag
+                        self.format = 'legacy_entitydata'
+
+                        # Format display attributes
+                        if 'display' in self:
+                            if 'name' in self.display:
+                                self.custom_name = self.display['name']
+                            if 'lore' in self.display:
+                                self.lore = self.display['lore']
+                            del self.display
+
+                        # Format enchantments
+                        if self.enchantments:
+                            reformatted = {}
+                            for enchantment in self.enchantments:
+                                reformatted[enchantment['id']] = {'id': enchantment['id'], 'lvl': int(enchantment['lvl'].strip('s'))}
+                            self.enchantments = reformatted
+
+
+                        # Save raw NBT data for commands and stuff
+                        data = {}
+                        if self.lore or self.custom_name:
+                            data['display'] = {}
+                            if self.lore:
+                                data['display']['Lore'] = self.lore
+                            if self.custom_name:
+                                data['display']['Name'] = self.custom_name
+
+                        if self.enchantments:
+                            data['Enchantments'] = list(self.enchantments.values())
+
+                        if self.attribute_modifiers:
+                            data['AttributeModifiers'] = self.attribute_modifiers
+
+                        for k, v in self.items():
+                            if v and k not in ['format', '$_amsclass', 'id', 'count', 'enchantments', 'custom_name', 'lore', 'attribute_modifiers']:
+                                data[k.lower()] = v
+
+                        self.nbt = data
+
+                except Exception as e:
+                    print(e)
+
 
                 if 'components' in self:
                     self.update(self.components)
                     del self.components
+                    self.format = 'modern_entitydata'
 
-                # Save raw NBT data for commands and stuff
-                self.nbt = {k: v for k, v in deepcopy(self).items() if k not in ['format', '$_amsclass', 'id', 'count'] and v}
-
-
-                # Format display
-                if self.custom_name:
-                    self.custom_name = InventoryObject.quote_format(self.custom_name)
-
-                if self.lore:
-                    self.lore = [InventoryObject.quote_format(l) for l in self.lore]
-
-                # Format enchantments
-                if 'levels' in self.enchantments:
-                    reformatted = {}
-                    for name, lvl in self.enchantments['levels'].items():
-                        enchant_id = name if ':' not in name else f'minecraft:{name}'
-                        reformatted[name] = {'id': enchant_id, 'lvl': lvl}
-                    self.enchantments = reformatted
-
-                # Format attributes
-                if 'modifiers' in self.attribute_modifiers:
-                    self.attribute_modifiers = self.attribute_modifiers['modifiers']
+                    # Save raw NBT data for commands and stuff
+                    self.nbt = {k: v for k, v in deepcopy(self).items() if k not in ['format', '$_amsclass', 'id', 'count'] and v}
 
 
-                delete_keys = []
-                add_keys = {}
+                    # Format display
+                    if self.custom_name:
+                        self.custom_name = InventoryObject.quote_format(self.custom_name)
 
-                for i in self.keys():
-                    if 'book_content' in i:
-                        add_keys['pages'] = [p['raw'] for p in self[i]['pages']]
-                        delete_keys.append(i)
+                    if self.lore:
+                        self.lore = [InventoryObject.quote_format(l) for l in self.lore]
 
-                for i in delete_keys:
-                    del self[i]
-                self.update(add_keys)
+                    # Format enchantments
+                    if 'levels' in self.enchantments:
+                        reformatted = {}
+                        for name, lvl in self.enchantments['levels'].items():
+                            enchant_id = name if ':' not in name else f'minecraft:{name}'
+                            reformatted[name] = {'id': enchant_id, 'lvl': lvl}
+                        self.enchantments = reformatted
+
+                    # Format attributes
+                    if 'modifiers' in self.attribute_modifiers:
+                        self.attribute_modifiers = self.attribute_modifiers['modifiers']
+
+
+                    delete_keys = []
+                    add_keys = {}
+
+                    for i in self.keys():
+                        if 'book_content' in i:
+                            add_keys['pages'] = [p['raw'] for p in self[i]['pages']]
+                            delete_keys.append(i)
+
+                    for i in delete_keys:
+                        del self[i]
+                    self.update(add_keys)
 
         # print(self.items())
 
