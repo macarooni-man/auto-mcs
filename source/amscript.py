@@ -1377,6 +1377,56 @@ class ScriptObject():
 # Reconfigured ServerObject to be passed in as 'server' variable to amscripts
 class ServerScriptObject():
 
+    # Custom version object that can do arithmetic on Minecraft version strings
+    class AmsVersion():
+        def __init__(self, version: str):
+            self._version = version.lower().strip()
+
+            if 'w' in self._version:
+                self.type = 'snapshot'
+                self.major = None
+                self.minor = None
+
+            else:
+                self.type = 'alpha' if self._version.startswith('a') else 'beta' if self._version.startswith('b') else 'release'
+
+                if self._version.count('.') == 2:
+                    data = version.replace('1.', '', 1).lstrip('ab').split('.')
+                    self.major = int(data[0])
+                    self.minor = int(data[1])
+                else:
+                    self.major = int(version.replace('1.', '', 1))
+                    self.minor = 0
+
+        def __repr__(self):
+            return f"AmsVersion('{self._version}')"
+
+        def __str__(self):
+            return self._version
+
+        def _compare(self, other, comparator):
+            # Convert `other` to a string if it's an AmsVersion
+            other_version = str(other) if isinstance(other, type(self)) else other
+            return constants.version_check(self._version, comparator, other_version)
+
+        def __eq__(self, other):
+            return self._compare(other, "==")
+
+        def __ne__(self, other):
+            return self._compare(other, "!=")
+
+        def __lt__(self, other):
+            return self._compare(other, "<")
+
+        def __le__(self, other):
+            return self._compare(other, "<=")
+
+        def __gt__(self, other):
+            return self._compare(other, ">")
+
+        def __ge__(self, other):
+            return self._compare(other, ">=")
+
     # Custom task scheduler that prevents execution when the server stops
     class AmsTimer():
         def __init__(self, server_script_obj, delay: int or float, function: callable, *args, **kwargs):
@@ -1460,7 +1510,7 @@ class ServerScriptObject():
 
         # Properties
         self.name = server_obj.name
-        self.version = server_obj.version
+        self.version = self.AmsVersion(server_obj.version)
         self.build = server_obj.build
         self.type = server_obj.type
         self.world = server_obj.world if server_obj.world else 'world'
@@ -1527,7 +1577,7 @@ class ServerScriptObject():
         style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
 
         # Use /tellraw if it's supported, else /tell
-        if constants.version_check(str(self.version), '>=', '1.7.2'):
+        if self.version >= '1.7.2':
             msg = f'/tellraw @a {{"text": {json.dumps(msg)}, "color": "{color}"}}'
             if style != 'normal':
                 msg = msg[:-1] + f', "{style}": true}}'
@@ -1587,10 +1637,6 @@ class ServerScriptObject():
             if player.is_operator:
                 player.log(msg, color, style, tag)
 
-    # Version check
-    def version_check(self, operand: str, version: str):
-        return constants.version_check(self.version, operand, version)
-
     # Run a delayed function call while checking if the server is running
     def after(self, delay: int or float, function: callable, *args, **kwargs):
         return self.AmsTimer(self, delay, function, *args, **kwargs)
@@ -1599,7 +1645,7 @@ class ServerScriptObject():
     def get_player(self, tag: str, offline=False):
 
         # Ignore tags if lower than 1.13
-        if '@' in tag and self.version_check('<', '1.13'):
+        if '@' in tag and self.version < '1.13':
             return None
 
         # Use internal function instead of pulling from the game
@@ -1644,7 +1690,6 @@ class PlayerScriptObject():
         self._server = server_script_obj
         self._server_id = server_script_obj._server_id
         self._execute = server_script_obj.execute
-        self._version_check = server_script_obj.version_check
         self._world_path = os.path.join(server_script_obj.directory, server_script_obj.world)
 
         self._offline = _offline
@@ -1728,7 +1773,7 @@ class PlayerScriptObject():
 
 
         # If newer version, use "/data get" to gather updated playerdata
-        if self._version_check(">=", "1.13") and not self._offline:
+        if self._server.version >= '1.13' and not self._offline:
 
             # Attempt to intercept player's entity data
             try:
@@ -1969,12 +2014,12 @@ class PlayerScriptObject():
         else:
             try:
                 # Dirty little trick to force a save to retrieve updated playerdata
-                if self._version_check(">=", "1.8"):
+                if self._server.version >= '1.8':
                     self._execute('save-all', log=False)
                     time.sleep(0.05)
 
                 # Get the right file
-                if self._version_check(">=", constants.json_format_floor):
+                if self._server.version >= constants.json_format_floor:
                     file_path = os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat')
                 else:
                     file_path = os.path.join(self._world_path, 'players', f'{self.name}.dat')
@@ -2116,7 +2161,7 @@ class PlayerScriptObject():
         style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
 
         # Use /tellraw if it's supported, else /tell
-        if constants.version_check(str(self._server.version), '>=', '1.7.2') and not self.is_server:
+        if self._server.version >= '1.7.2' and not self.is_server:
             msg = f'/tellraw {self.name} {{"text": {json.dumps(msg)}, "color": "{color}"}}'
             if style != 'normal':
                 msg = msg[:-1] + f', "{style}": true}}'
@@ -2809,6 +2854,7 @@ class ItemObject(Munch):
         self['lore'] = []
         self['enchantments'] = []
         self['attribute_modifiers'] = []
+        self['nbt'] = {}
 
         super().__init__(*args, **kwargs)
         self['$_amsclass'] = self.__class__.__name__
@@ -2821,11 +2867,39 @@ class ItemObject(Munch):
                 self.update(self.data)
                 del self.data
 
+
+                # Save raw NBT data for commands and stuff
+                data = {}
+                if self.lore or self.custom_name:
+                    data['display'] = {}
+                    if self.lore:
+                        data['display']['Lore'] = self.lore
+                    if self.custom_name:
+                        data['display']['Name'] = self.custom_name
+
+                if self.enchantments:
+                    data['ench'] = list(self.enchantments.values())
+
+                if self.attribute_modifiers:
+                    data['AttributeModifiers'] = self.attribute_modifiers
+
+                for k, v in self.items():
+                    if v and k not in ['format', '$_amsclass', 'id', 'count', 'enchantments', 'custom_name', 'lore', 'attribute_modifiers']:
+                        data[k.lower()] = v
+
+                self.nbt = data
+
+
             # Data from entitydata
             elif self.format == 'entitydata':
+
                 if 'components' in self:
                     self.update(self.components)
                     del self.components
+
+                # Save raw NBT data for commands and stuff
+                self.nbt = {k: v for k, v in deepcopy(self).items() if k not in ['format', '$_amsclass', 'id', 'count'] and v}
+
 
                 # Format display
                 if self.custom_name:

@@ -113,20 +113,6 @@ Executes any Minecraft command in the server console.
 
 
 
-### server.version_check(*comparator, version*)
-
-Compares server version to `version` with the `comparator`, returns `bool`.
-
-**Accepted parameters**:
-| Parameter | Description |
-| --- | --- |
-| `comparator*` | `str`, can be `'='`, `'<'`, `'<='`, `'>'`, or `'>='` |
-| `version*` | `str`, any Minecraft version, i.e. `'1.17.1'` |
-
-<br>
-
-
-
 ### server.after(*delay, function, params*)
 
 Runs a delayed background (non-blocking) task. Exits before execution if the server stops, or if scripts are reloaded. Returns `ServerScriptObject.AmsTimer()` of the background task, which has a method `AmsTimer.cancel()` to end prematurely.
@@ -174,7 +160,13 @@ Returns a generator of [**PlayerScriptObject**](#PlayerScriptObject) for each on
  - `str`, server's current filename
 
 #### server.version
- - `str`, Minecraft version of the server, i.e. `'1.16.3'`
+ - `AmsVersion`, Minecraft version of the server, i.e. `'1.16.3'`
+ - When used in a string, it will be formatted as `'1.16.3'`
+ - Can be used in mathematical comparisons with another version string, returns `bool`.
+```python
+if server.version >= '1.8':
+    server.log("Server is 1.8 or newer")
+```
 
 #### server.build
  - `str`, Only applicable for Paper/Forge, contains build number. Else will be `None`
@@ -391,7 +383,7 @@ class InventoryObject():
  - An `ItemObject` is structured in the following format:
 ```python
 class ItemObject():
-    # The attributes below are supported and abracted in a consistent way via amscript, regardless of the game version
+    # The attributes below (except for self.nbt) are supported and abstracted in a consistent way via amscript, regardless of the game version
 
     # ID of the item
     self.id <str>
@@ -414,7 +406,9 @@ class ItemObject():
     # List of dictionaries, each dictionary is an attribute modifier
     self.attribute_modifiers <list>
 
-    # Many items have extra attributes such as a book (normal NBT format: self.pages)
+    # Many items have extra attributes such as a book (normal NBT format: self.pages).
+    # This is the raw NBT data, and is formatted differently depending on the game version
+    self.nbt <dict>
 ```
 
 

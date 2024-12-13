@@ -1106,19 +1106,28 @@ def format_nickname(nickname):
 def version_check(version_a: str, comparator: str, version_b: str):
     def parse_version(version):
         version = version.lower()
-        parts = version.split(".")
+        # Split the version into parts, including handling pre-release (-preX)
+        if "-pre" in version:
+            main_version, pre_release = version.split("-pre", 1)
+            parts = main_version.split(".") + [f"-{pre_release}"]
+        else:
+            parts = version.split(".")
+
         parsed = []
         for part in parts:
-            # Handle pre-release identifiers (e.g., "a" or "b")
-            if "a" in part:
+            # Handle pre-release identifiers
+            if part.startswith("-pre"):
+                parsed.append(-1000)  # Pre-release marker, always less than normal versions
+                part = part.replace("-pre", "")
+                if part.isdigit():
+                    parsed.append(int(part))
+            elif "a" in part:
                 parsed.append(-2)  # 'a' is less than 'b'
                 part = part.replace("a", "")
             elif "b" in part:
                 parsed.append(-1)  # 'b' is less than normal numbers
                 part = part.replace("b", "")
             if part.isdigit():
-                parsed.append(int(part))
-            elif part:  # Handle cases like "a1.7" or "b1.8"
                 parsed.append(int(part))
         return tuple(parsed)
 
