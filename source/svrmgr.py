@@ -1893,7 +1893,7 @@ class ServerObject():
         self.silent_command(command)
 
         # Wait for data to get updated/sent from the server
-        for timeout in range(20):
+        for timeout in range(50):
             if player in self.run_data['entitydata-cache'] and self.run_data['entitydata-cache'][player] != original_data:
                 return self.run_data['entitydata-cache'][player]
             time.sleep(0.001)

@@ -1,4 +1,5 @@
 import distutils.sysconfig as sysconfig
+import random
 from datetime import datetime as dt
 from difflib import SequenceMatcher
 from threading import Timer
@@ -1730,7 +1731,7 @@ class PlayerScriptObject():
         self.death_time = 0
         self.dimension = "None"
         self.active_effects = {}
-        self.inventory = InventoryObject(None, None)
+        self.inventory = InventoryObject(self, None, None)
 
         # Persistent config
         if self.is_server:
@@ -1863,17 +1864,20 @@ class PlayerScriptObject():
                         pass
 
                     try:
-                        self.active_effects = {
-                            id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): EffectObject({'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)}, name=id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', '')) for item in new_nbt['ActiveEffects'].tags}
+                        self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['active_effects'].tags}
                     except:
-                        pass
+                        try:
+                            self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['ActiveEffects'].tags}
+                        except:
+                            pass
+
 
                     try:
                         try:
                             selected_item = (new_nbt['SelectedItem'], int(new_nbt['SelectedItemSlot'].value))
                         except KeyError:
                             selected_item = None
-                        self.inventory = InventoryObject(new_nbt['Inventory'], selected_item)
+                        self.inventory = InventoryObject(self, new_nbt['Inventory'], selected_item)
                     except:
                         pass
                 else:
@@ -1895,13 +1899,12 @@ class PlayerScriptObject():
 
                     # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
                     try:
-                        print(nbt_data)
 
                         # Handle unquoted keys and values
                         nbt_data = re.sub(
                             r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)',
                             lambda x: json_regex(x),
-                            nbt_data.replace('I;', '"I;",')  # remove invalid UUID tags for parsing
+                            nbt_data.replace('I;', '"I",')  # remove invalid UUID tags for parsing
                         )
 
                         # Replace semicolons with commas, fix brackets
@@ -1998,7 +2001,10 @@ class PlayerScriptObject():
                     pass
 
                 try:
-                    self.active_effects = {id_dict['effect'].get(item['id'], item['id']).replace('minecraft:',''): EffectObject(item, name=id_dict['effect'].get(item['id'], item['id']).replace('minecraft:','')) for item in new_nbt['activeeffects']}
+                    if 'activeeffects' in new_nbt:
+                        self.active_effects = {id_dict['effect'].get(effect['id'], effect['id']).replace('minecraft:',''): {k.replace("show","show_"): bool(v) if "show" in k else v for k, v in effect.items()}for effect in new_nbt['activeeffects']}
+                    elif 'active_effects' in new_nbt:
+                        self.active_effects = {effect['id']: {k.replace("show","show_"): bool(v) if "show" in k else v for k, v in effect.items()} for effect in new_nbt['active_effects']}
                 except:
                     pass
 
@@ -2007,7 +2013,7 @@ class PlayerScriptObject():
                         selected_item = (new_nbt['selecteditem'], int(new_nbt['selecteditemslot']))
                     except KeyError:
                         selected_item = None
-                    self.inventory = InventoryObject(new_nbt['inventory'], selected_item)
+                    self.inventory = InventoryObject(self, new_nbt['inventory'], selected_item)
                 except:
                     pass
 
@@ -2105,16 +2111,32 @@ class PlayerScriptObject():
                     pass
 
                 try:
-                    self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:',''): EffectObject({'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)}, name=id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:','')) for item in new_nbt['ActiveEffects'].tags}
-                except:
-                    pass
+                    if 'active_effects' in new_nbt:
+
+                        # Iterate over active effects in the TAG_List
+                        for effect in new_nbt['active_effects']:
+                            if isinstance(effect, nbt.TAG_Compound):
+                                effect_data = {}
+
+                                # Extract data from the compound
+                                for key, value in effect.items():
+                                    effect_data[key] = value.value if hasattr(value, 'value') else None
+
+                                self.active_effects[effect_data['id'].replace("minecraft:","")] = effect_data
+
+                    else:
+                        self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['ActiveEffects']}
+
+
+                except Exception as e:
+                    self.active_effects = {}
 
                 try:
                     try:
                         selected_item = (new_nbt['SelectedItem'], int(new_nbt['SelectedItemSlot'].value))
                     except KeyError:
                         selected_item = None
-                    self.inventory = InventoryObject(new_nbt['Inventory'], selected_item)
+                    self.inventory = InventoryObject(self, new_nbt['Inventory'], selected_item)
                 except:
                     pass
 
@@ -2846,6 +2868,22 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
 def fmt(obj):
     return round(float(obj.value), 4)
 
+def fix_escaped_string(s):
+    if s is None:
+        return s
+    try:
+        decoded = s.encode('utf-8').decode('unicode_escape')
+        return decoded
+    except UnicodeDecodeError as e:
+        print(f"Decoding error: {e}")
+        return s
+
+def get_json_content(s):
+    try:
+        return json.loads(s.encode('utf-8').decode('unicode_escape'))['text']
+    except:
+        return s
+
 # Inventory classes for PlayerScriptObject
 class ItemObject(Munch):
     def __init__(self, *args, **kwargs):
@@ -2860,6 +2898,7 @@ class ItemObject(Munch):
 
         super().__init__(*args, **kwargs)
         self['$_amsclass'] = self.__class__.__name__
+        self['$_inventory'] = None
 
         # Force attributes to a consistent format
         if 'format' in self and self['format'] is not None:
@@ -2869,27 +2908,34 @@ class ItemObject(Munch):
                 self.update(self.data)
                 del self.data
 
+                try:
+                    # Save raw NBT data for commands and stuff
+                    data = {}
+                    if self.lore or self.custom_name:
+                        data['display'] = {}
+                        if self.lore:
+                            data['display']['Lore'] = self.lore
+                            self.lore = [get_json_content(s) for s in self.lore]
+                        if self.custom_name:
+                            data['display']['Name'] = self.custom_name
+                            self.custom_name = get_json_content(self.custom_name)
 
-                # Save raw NBT data for commands and stuff
-                data = {}
-                if self.lore or self.custom_name:
-                    data['display'] = {}
-                    if self.lore:
-                        data['display']['Lore'] = self.lore
-                    if self.custom_name:
-                        data['display']['Name'] = self.custom_name
+                    if self.enchantments:
+                        data['ench'] = list(self.enchantments.values())
 
-                if self.enchantments:
-                    data['ench'] = list(self.enchantments.values())
+                    if self.attribute_modifiers:
+                        for item in self.attribute_modifiers:
+                            data['AttributeModifiers'] = self.attribute_modifiers
 
-                if self.attribute_modifiers:
-                    data['AttributeModifiers'] = self.attribute_modifiers
+                    for k, v in self.items():
+                        if v and k not in ['format', '$_amsclass', '$_inventory', 'id', 'count', 'enchantments', 'custom_name', 'lore', 'attribute_modifiers']:
+                            data[k.lower()] = v
 
-                for k, v in self.items():
-                    if v and k not in ['format', '$_amsclass', 'id', 'count', 'enchantments', 'custom_name', 'lore', 'attribute_modifiers']:
-                        data[k.lower()] = v
+                    self.nbt = data
 
-                self.nbt = data
+                except Exception as e:
+                    if constants.debug:
+                        print(e)
 
 
             # Data from entitydata
@@ -2900,12 +2946,16 @@ class ItemObject(Munch):
                         del self.tag
                         self.format = 'legacy_entitydata'
 
-                        # Format display attributes
+                        custom_name = None
+                        lore = None
+
                         if 'display' in self:
                             if 'name' in self.display:
-                                self.custom_name = self.display['name']
+                                custom_name = fix_escaped_string(self.display['name'])
+                                self.custom_name = get_json_content(custom_name)
                             if 'lore' in self.display:
-                                self.lore = self.display['lore']
+                                lore = [fix_escaped_string(s) for s in self.display['lore']]
+                                self.lore = [get_json_content(s) for s in lore]
                             del self.display
 
                         # Format enchantments
@@ -2915,15 +2965,29 @@ class ItemObject(Munch):
                                 reformatted[enchantment['id']] = {'id': enchantment['id'], 'lvl': int(enchantment['lvl'].strip('s'))}
                             self.enchantments = reformatted
 
+                        if "attributemodifiers" in self:
+                            reformatted = []
+                            for attribute in self['attributemodifiers']:
+                                new_attr = {
+                                    'AttributeName': attribute['attributename'],
+                                    'Operation': attribute['operation'],
+                                    'UUID': ['I', random.randint(-10000, 10000), random.randint(-10000, 10000), random.randint(-10000, 10000), random.randint(-10000, 10000)],
+                                    'Amount': list(attribute.keys())[-1],
+                                    'Name': attribute['attributename']
+                                }
+                                reformatted.append(new_attr)
+                            self.attribute_modifiers = reformatted
+                            del self['attributemodifiers']
+
 
                         # Save raw NBT data for commands and stuff
                         data = {}
                         if self.lore or self.custom_name:
                             data['display'] = {}
                             if self.lore:
-                                data['display']['Lore'] = self.lore
+                                data['display']['Lore'] = lore
                             if self.custom_name:
-                                data['display']['Name'] = self.custom_name
+                                data['display']['Name'] = custom_name
 
                         if self.enchantments:
                             data['Enchantments'] = list(self.enchantments.values())
@@ -2932,58 +2996,57 @@ class ItemObject(Munch):
                             data['AttributeModifiers'] = self.attribute_modifiers
 
                         for k, v in self.items():
-                            if v and k not in ['format', '$_amsclass', 'id', 'count', 'enchantments', 'custom_name', 'lore', 'attribute_modifiers']:
+                            if v and k not in ['format', '$_amsclass', '$_inventory', 'id', 'count', 'enchantments', 'custom_name', 'lore', 'attribute_modifiers']:
                                 data[k.lower()] = v
 
                         self.nbt = data
 
+                    elif 'components' in self:
+                        self.update(self.components)
+                        del self.components
+                        self.format = 'modern_entitydata'
+
+                        # Save raw NBT data for commands and stuff
+                        self.nbt = {k: v for k, v in deepcopy(self).items() if k not in ['format', '$_amsclass', '$_inventory', 'id', 'count'] and v}
+
+
+                        # Format display
+                        if self.custom_name:
+                            self.custom_name = InventoryObject._quote_format(self.custom_name)
+
+                        if self.lore:
+                            self.lore = [InventoryObject._quote_format(l) for l in self.lore]
+
+                        # Format enchantments
+                        if 'levels' in self.enchantments:
+                            reformatted = {}
+                            for name, lvl in self.enchantments['levels'].items():
+                                enchant_id = name if ':' not in name else f'minecraft:{name}'
+                                reformatted[name] = {'id': enchant_id, 'lvl': lvl}
+                            self.enchantments = reformatted
+
+                        # Format attributes
+                        if 'modifiers' in self.attribute_modifiers:
+                            self.attribute_modifiers = self.attribute_modifiers['modifiers']
+
+
+                        delete_keys = []
+                        add_keys = {}
+
+                        for i in self.keys():
+                            if 'book_content' in i:
+                                add_keys['pages'] = [p['raw'] for p in self[i]['pages']]
+                                delete_keys.append(i)
+
+                        for i in delete_keys:
+                            del self[i]
+                        self.update(add_keys)
+
                 except Exception as e:
-                    print(e)
-
-
-                if 'components' in self:
-                    self.update(self.components)
-                    del self.components
-                    self.format = 'modern_entitydata'
-
-                    # Save raw NBT data for commands and stuff
-                    self.nbt = {k: v for k, v in deepcopy(self).items() if k not in ['format', '$_amsclass', 'id', 'count'] and v}
-
-
-                    # Format display
-                    if self.custom_name:
-                        self.custom_name = InventoryObject.quote_format(self.custom_name)
-
-                    if self.lore:
-                        self.lore = [InventoryObject.quote_format(l) for l in self.lore]
-
-                    # Format enchantments
-                    if 'levels' in self.enchantments:
-                        reformatted = {}
-                        for name, lvl in self.enchantments['levels'].items():
-                            enchant_id = name if ':' not in name else f'minecraft:{name}'
-                            reformatted[name] = {'id': enchant_id, 'lvl': lvl}
-                        self.enchantments = reformatted
-
-                    # Format attributes
-                    if 'modifiers' in self.attribute_modifiers:
-                        self.attribute_modifiers = self.attribute_modifiers['modifiers']
-
-
-                    delete_keys = []
-                    add_keys = {}
-
-                    for i in self.keys():
-                        if 'book_content' in i:
-                            add_keys['pages'] = [p['raw'] for p in self[i]['pages']]
-                            delete_keys.append(i)
-
-                    for i in delete_keys:
-                        del self[i]
-                    self.update(add_keys)
+                    if constants.debug:
+                        print(e)
 
         # print(self.items())
-
 
 
     def __bool__(self):
@@ -2996,6 +3059,25 @@ class ItemObject(Munch):
         except KeyError:
             item_id = ''
         return item_id
+
+    def take(self):
+        target = self['$_inventory']._player
+        server = target._server
+
+        if server.version >= '1.17':
+            command = f'item replace entity {target} {self.slot} with air'
+
+        elif server.version >= '1.8':
+            command = f'replaceitem entity {target} slot.{self.slot} air'
+
+        elif server.version >= '1.4.2':
+            command = f'clear {target} {self.id} {self.count}'
+
+        else:
+            raise Exception("This method is unsupported below version 1.4.2")
+
+        server.execute(command)
+        return self
 
 class InventorySection(Munch):
     """
@@ -3062,24 +3144,23 @@ class InventorySection(Munch):
 
 class InventoryObject():
 
-    def __init__(self, item_list, selected_item):
+    def __init__(self, player_obj, item_list, selected_item):
 
+        self._player = player_obj
         self._item_list = []
 
-        self.selected_item = ItemObject({'slot': 'slot.weapon.mainhand'})
-        self.offhand = ItemObject({'slot': 'slot.weapon.offhand'})
-        self.hotbar = InventorySection({x: ItemObject({'slot': f'slot.hotbar.{x}'}) for x in range(0, 9)})
-        self.inventory = InventorySection({x: ItemObject({'slot': f'slot.inventory.{x}'}) for x in range(0, 27)})
-        self.armor = InventorySection({'head': ItemObject({'slot': 'slot.armor.head'}), 'chest': ItemObject({'slot': 'slot.armor.chest'}), 'legs': ItemObject({'slot': 'slot.armor.legs'}), 'feet': ItemObject({'slot': 'slot.armor.feet'})})
+        self.selected_item = ItemObject({'slot': 'weapon.mainhand'})
+        self.offhand = ItemObject({'slot': 'weapon.offhand'})
+        self.hotbar = InventorySection({x: ItemObject({'slot': f'hotbar.{x}'}) for x in range(0, 9)})
+        self.inventory = InventorySection({x: ItemObject({'slot': f'inventory.{x}'}) for x in range(0, 27)})
+        self.armor = InventorySection({'head': ItemObject({'slot': 'armor.head'}), 'chest': ItemObject({'slot': 'armor.chest'}), 'legs': ItemObject({'slot': 'armor.legs'}), 'feet': ItemObject({'slot': 'armor.feet'})})
 
         if item_list:
-            self._process_items(item_list, selected_item)
-
-    @staticmethod
-    def quote_format(string):
-        if string.startswith('"') and string.endswith('"'):
-            string = string[1:-1]
-        return string
+            try:
+                self._process_items(item_list, selected_item)
+            except Exception as e:
+                if constants.debug:
+                    print(e)
 
     def __iter__(self):
         # Return all ItemObjects
@@ -3139,7 +3220,7 @@ class InventoryObject():
                             elif item[x][tag].name.lower() == "attributemodifiers":
                                 formatted[data_tag]['attribute_modifiers'] = []
                                 for y in item[x][tag].tags:
-                                    attr_dict = {y[a].name.lower(): y[a].value for a in y}
+                                    attr_dict = {y[a].name: y[a].value for a in y}
                                     formatted[data_tag]['attribute_modifiers'].append(attr_dict)
 
                             # Format all book pages
@@ -3156,23 +3237,26 @@ class InventoryObject():
                                 formatted[data_tag][name] = value if value else {}
 
                             # Format all enchantments
-                            if name == "enchantments":
-                                for e in item[x].values():
-                                    for data in e.values():
-                                        for k, v in data.items():
-                                            # Extract enchantment details
-                                            enchant_name = k.replace('minecraft:', '')
-                                            enchant = {'id': k, 'lvl': v.value}
+                                if name == "enchantments":
+                                    for e in item[x].values():
+                                        try:
+                                            for data in e.values():
+                                                for k, v in data.items():
+                                                    # Extract enchantment details
+                                                    enchant_name = k.replace('minecraft:', '')
+                                                    enchant = {'id': k, 'lvl': v.value}
 
-                                            # Add the enchantment to the formatted data
-                                            formatted[data_tag]['enchantments'][enchant_name] = enchant
+                                                    # Add the enchantment to the formatted data
+                                                    formatted[data_tag]['enchantments'][enchant_name] = enchant
+                                        except AttributeError:
+                                            pass
 
                             # Format all display items
-                            elif name in ['custom_name', 'lore']:
+                            if name in ['custom_name', 'lore']:
                                 if name == "lore":
-                                    value = [self.quote_format(str(line.value)) for line in item[x][tag]]
+                                    value = [self._quote_format(str(line.value)) for line in item[x][tag]]
                                 else:
-                                    value = self.quote_format(value)
+                                    value = self._quote_format(value)
 
                                     if name == "custom_name":
 
@@ -3220,7 +3304,14 @@ class InventoryObject():
                         except:
                             pass
 
-                return ItemObject(formatted)
+                    elif item[x].name.lower() == 'slot':
+                        value = int(item[x].value)
+                        if value < 9:
+                            formatted[data_tag]['slot'] = f'hotbar.{value}'
+
+                item_obj = ItemObject(formatted)
+                item_obj['$_inventory'] = self
+                return item_obj
 
             # Iterates over every item in inventory
             def sort_item(item):
@@ -3259,6 +3350,11 @@ class InventoryObject():
 
             if s:
                 self.selected_item.update(proc_nbt(s[0]))
+                try:
+                    if self._player._server.version < '1.9':
+                        self.selected_item['slot'] = f'hotbar.{s[1]}'
+                except:
+                    self.selected_item['slot'] = 'weapon'
 
         # /data get formatting
         else:
@@ -3285,7 +3381,9 @@ class InventoryObject():
                 except KeyError:
                     pass
 
-                return ItemObject(new_item)
+                item_obj = ItemObject(new_item)
+                item_obj['$_inventory'] = self
+                return item_obj
 
             # Iterates over every item in inventory
             def sort_item(item):
@@ -3325,6 +3423,45 @@ class InventoryObject():
             if s:
                 self.selected_item.update(proc_nbt(s[0]))
 
+    @staticmethod
+    def _quote_format(string):
+        if string.startswith('"') and string.endswith('"'):
+            string = string[1:-1]
+        return string
+
+    @staticmethod
+    def _to_lax_json(json_data):
+        def convert_item(item):
+            if isinstance(item, str):
+                # Keep strings quoted
+                return f'"{item}"'
+            elif isinstance(item, list):
+                # Recursively handle lists
+                return f"[{', '.join(convert_item(i) for i in item)}]"
+            elif isinstance(item, dict):
+                # Recursively handle dictionaries, omitting quotes for keys
+                return f"{{{', '.join(f'{k}: {convert_item(v)}' for k, v in item.items())}}}"
+            else:
+                # Numbers, booleans, and None (null) remain unquoted
+                if item is None:
+                    return "null"  # Handle Python None as JSON null
+                return str(item).lower() if isinstance(item, bool) else str(item)
+
+        # If the input is not a list or dict, wrap it in a list to make it valid lax JSON
+        if not isinstance(json_data, (list, dict)):
+            raise TypeError("Input must be a JSON list or dictionary.")
+
+        return convert_item(json_data)
+
+    @staticmethod
+    def _escape_cmd(command):
+        new_command = command
+        if '\\\\' not in command:
+            new_command = command.replace('\\', '\\\\')
+        return new_command
+
+
+    # Valid API methods
     def items(self):
         # Returns all items in inventory
         items = []
@@ -3352,14 +3489,41 @@ class InventoryObject():
         else:
             return sum(item.count for item in self.items())
 
-class EffectObject(Munch):
-    def __init__(self, name, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self['$_amsclass'] = self.__class__.__name__
-        self.effect_name = name
+    def give(self, item: ItemObject):
+        target = self._player
+        server = target._server
 
-    def __str__(self):
-        return str(self.effect_name)
+        if not item:
+            return
+
+        # Modern format
+        if server.version >= '1.20.5':
+            data = ", ".join([str(k) + "=" + str(v) for k, v in item.nbt.items()])
+            command = f'give {target} {item.id}[{data}]'
+            command = self._escape_cmd(command)
+
+        # 1.13 - 1.20.2
+        elif server.version >= '1.13':
+            # Attribute Modifiers are kind of broken
+            data = self._to_lax_json(item.nbt).replace('"I", ', 'I; ')
+            command = f'give {target} {item.id}{data if data else ""} {item.count}'
+
+        # 1.7.2 - 1.12.2
+        elif server.version >= '1.7.2':
+            data = self._to_lax_json(item.nbt)
+            command = f'give {target} {item.id} {item.count} {item.damage} {data if data else ""}'
+            command = self._escape_cmd(command)
+
+        # 1.5 - 1.7.1
+        elif server.version >= '1.5':
+            command = f'give {target} {item.id} {item.count} {item.damage}'
+            command = self._escape_cmd(command)
+
+        # All legacy versions
+        else:
+            command = f'give {target} {item.id}:{item.damage} {item.count}'
+
+        server.execute(command)
 
 class CoordinateObject(Munch):
     def __init__(self, *args, **kwargs):
@@ -3451,9 +3615,7 @@ class PersistenceManager():
                 elif dct['$_amsclass'] == 'InventorySection':
                     return InventorySection(dct)
                 if dct['$_amsclass'] == 'InventoryObject':
-                    return InventoryObject(dct)
-                elif dct['$_amsclass'] == 'EffectObject':
-                    return EffectObject(dct)
+                    return InventoryObject(dct['_player_obj'], dct, None)
                 elif dct['$_amsclass'] == 'CoordinateObject':
                     return CoordinateObject(dct)
             return dct

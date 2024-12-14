@@ -332,7 +332,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.death_time
  - `int`, how long since the player died *(in ticks)*
-
+ 
 #### player.dimension
  - `str`, the dimension that the player is currently in
  - Value of `'overworld'`, `'the_nether'`, or `'the_end'`
@@ -379,11 +379,20 @@ class InventoryObject():
      - If `item_id` is a list, it will return the count of all items in the list.
      - If `item_id` is not provided, it will return the count of all items in the inventory.
 
+   - #### inventory.give(*ItemObject*)
+     - Gives the player the specified `ItemObject`. This can be helpful for transferring items between players, even with NBT data like enchantments, names, etc.
+     > Note: This method is compatible with every version of Minecraft
+     - Compliments `ItemObject.take()`
+
 
  - An `ItemObject` is structured in the following format:
 ```python
 class ItemObject():
     # The attributes below (except for self.nbt) are supported and abstracted in a consistent way via amscript, regardless of the game version
+
+    # The slot in the inventory that contains the item
+    # Follows the standard Minecraft slot format, e.g. "slot.hotbar.0", "slot.armor.head", "slot.inventory.0", etc.
+    self.slot <str>
 
     # ID of the item
     self.id <str>
@@ -410,7 +419,18 @@ class ItemObject():
     # This is the raw NBT data, and is formatted differently depending on the game version
     self.nbt <dict>
 ```
+   - #### ItemObject.take()
+     - Takes the specified `ItemObject` from the player it originated from, and returns the `ItemObject` that was taken. This can be helpful for transferring items between players, even with NBT data like enchantments, names, etc.
+     > Note: This method is only compatible with Minecraft 1.4.2 and later
 
+```python
+# Example of transferring all items from one player to another
+player1 = server.get_player("player1")
+player2 = server.get_player("player2")
+
+for item in player1.inventory:
+    player2.inventory.give(item.take())
+```
 
 #### player.persistent
  - `dict`, persistent variable storage for saving information between server restarts, or script reloads
