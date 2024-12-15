@@ -2909,6 +2909,9 @@ class ItemObject(Munch):
         self['nbt'] = {}
 
         super().__init__(*args, **kwargs)
+        if '$_amsclass' in self:
+            return
+
         self['$_amsclass'] = self.__class__.__name__
         self['$_inventory'] = None
 
@@ -3060,7 +3063,6 @@ class ItemObject(Munch):
 
         # print(self.items())
 
-
     def __bool__(self):
         # Return False if item has no ID (empty slot)
         return self.id is not None
@@ -3071,6 +3073,20 @@ class ItemObject(Munch):
         except KeyError:
             item_id = ''
         return item_id
+
+    def items(self):
+        # Return all items except '$_inventory'
+        return ((k, v) for k, v in super().items() if k != '$_inventory')
+
+    def keys(self):
+        # Return all keys except '$_inventory'
+        return (k for k in super().keys() if k != '$_inventory')
+
+    def __contains__(self, key):
+        # If JSON tries to check membership, it won't find '$_inventory'
+        if key == '$_inventory':
+            return False
+        return super().__contains__(key)
 
     def take(self):
         target = self['$_inventory']._player
@@ -3090,6 +3106,7 @@ class ItemObject(Munch):
 
         server.execute(command)
         return self
+
 
 class InventorySection(Munch):
     """
@@ -3650,7 +3667,7 @@ class PersistenceManager():
                 elif dct['$_amsclass'] == 'InventorySection':
                     return InventorySection(dct)
                 if dct['$_amsclass'] == 'InventoryObject':
-                    return InventoryObject(dct['_player_obj'], dct, None)
+                    return InventoryObject(None, dct, None)
                 elif dct['$_amsclass'] == 'CoordinateObject':
                     return CoordinateObject(dct)
             return dct
