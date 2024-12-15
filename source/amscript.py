@@ -3577,6 +3577,9 @@ class InventoryObject(Munch):
 
         server.execute(command)
 
+    def clear(self):
+        self._player._execute(f'clear {self._player}')
+
 class CoordinateObject(Munch):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

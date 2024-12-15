@@ -385,6 +385,9 @@ class InventoryObject():
      > Note: This method is compatible with every version of Minecraft
      - Compliments `ItemObject.take()`
 
+   - #### inventory.clear()
+     - Clears the player's inventory of all items.
+
 
  - An `ItemObject` is structured in the following format:
 ```python
