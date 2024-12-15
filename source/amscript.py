@@ -918,7 +918,6 @@ class ScriptObject():
                     hidden = self.aliases[k]['hidden']
                     argument_list = list(self.aliases[k]['arguments'].keys())
                     req_args_list = list([x for x in self.aliases[k]['arguments'].keys() if self.aliases[k]['arguments'][x]])
-                    req_args_list = list([x for x in self.aliases[k]['arguments'].keys() if self.aliases[k]['arguments'][x]])
                     arguments = {}
 
                     new_func += f"    {'if' if first else 'elif'} command.base_command == '{k}': #__{self.server_id}__\n"

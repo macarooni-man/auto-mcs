@@ -525,17 +525,6 @@ class ServerObject():
                     date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # Format string as needed
-
-                # Shorten coordinates
-                addrs = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', message)
-                for float_str in re.findall(r"(?<=[ |\]|\(]|,)[-+]?(?:\d+\.\d+)", message):
-                    if len(float_str) > 5 and "." in float_str:
-                        for addr in addrs:
-                            if float_str in addr:
-                                break
-                        else:
-                            message = message.replace(float_str, str(round(float(float_str), 2)))
-
                 if message.endswith("[m"):
                     message = message.replace("[m", "").strip()
 
@@ -564,6 +553,17 @@ class ServerObject():
                 except:
                     pass
 
+                # Shorten coordinates, but don't pass this to amscript
+                original_message = message.strip().replace('[Not Secure]', '').strip()
+                addrs = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', message)
+                for float_str in re.findall(r"(?<=[ |\]|\(]|,)[-+]?(?:\d+\.\d+)", message):
+                    if len(float_str) > 5 and "." in float_str:
+                        for addr in addrs:
+                            if float_str in addr:
+                                break
+                        else:
+                            message = message.replace(float_str, str(round(float(float_str), 2)))
+
 
                 main_label = message.strip()
                 message = message.replace('[Not Secure]', '').strip()
@@ -586,7 +586,7 @@ class ServerObject():
                     type_color = (1, 0.298, 0.6, 1)
                     user = message.split('>', 1)[0].replace('<', '', 1).strip()
                     user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
-                    content = message.split('>', 1)[1].strip()
+                    content = original_message.split('>', 1)[1].strip()
                     main_label = f"{user} issued server command: {content}"
                     event = functools.partial(self.script_object.message_event, {'user': user, 'content': content})
 
@@ -599,7 +599,7 @@ class ServerObject():
                     if self.script_object.enabled:
                         user = message.split('>', 1)[0].replace('<', '', 1).strip()
                         user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
-                        content = message.split('>', 1)[1].strip()
+                        content = original_message.split('>', 1)[1].strip()
                         event = functools.partial(self.script_object.message_event, {'user': user, 'content': content})
 
                 # Server message log
