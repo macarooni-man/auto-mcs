@@ -59,7 +59,7 @@ def generate_header(text):
             # Save player's current inventory to their persistent configuration
             if cmd.startswith("save"):
                 player.persistent['loadout'][name] = player.inventory.items()
-                player.log_success(f"Save loadout '{name}' successfully!")
+                player.log_success(f"Saved loadout '{name}' successfully!")
             
             # Deletes loadout by name
             elif name in player.persistent['loadout']:
