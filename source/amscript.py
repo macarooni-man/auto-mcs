@@ -686,7 +686,7 @@ class ScriptObject():
             print_func = "def print(*args, sep=' ', end=''):\n    for line in sep.join(str(arg) for arg in args).replace('\\r','').splitlines():\n        server._ams_log(line, 'print')"
 
             # Custom command parser class for use in "@player.on_alias()" events
-            command_handler = "class CommandHandler(str):\n    def __init__(self, command: str, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        if ' ' in command:\n            self.base_command, self.arguments = [i.strip() for i in command.split(' ', 1)]\n        else:\n            self.base_command = command.strip()\n            self.arguments = ''\n    def parse(self, maxsplit=-1):\n        pattern = r'''((?:[^\s\"']|\"[^\"]*\"|'[^']*')+)'''\n        matches = re.findall(pattern, self)\n        result = []\n        for match in matches:\n            if (match.startswith('\"') and match.endswith('\"')) or                (match.startswith(\"'\") and match.endswith(\"'\")):\n                result.append(match[1:-1])\n            else:\n                result.append(match)\n        if maxsplit >= 0:\n            return result[:maxsplit] + [' '.join(result[maxsplit:])] if len(result) > maxsplit else result\n        return result\n"
+            command_handler = "class CommandHandler(str):\n    def __init__(self, command: str, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        if ' ' in command:\n            self.base_command, self.arguments = [i.strip() for i in command.split(' ', 1)]\n        else:\n            self.base_command = command.strip()\n            self.arguments = ''\n    def parse(self, maxsplit=-1):\n        if maxsplit <= 1:\n            return ['', self.arguments]\n        pattern = r'''((?:[^\s\"']|\"[^\"]*\"|'[^']*')+)'''\n        matches = re.findall(pattern, self)\n        result = []\n        for match in matches:\n            if (match.startswith('\"') and match.endswith('\"')) or                (match.startswith(\"'\") and match.endswith(\"'\")):\n                result.append(match[1:-1])\n            else:\n                result.append(match)\n        if maxsplit >= 0:\n            return result[:maxsplit] + [' '.join(result[maxsplit:])] if len(result) > maxsplit else result\n        return result\n"
 
             global_variables = global_variables + "\n" + print_func + "\n" + command_handler + "\n"
 
@@ -1693,6 +1693,7 @@ class PlayerScriptObject():
         self._world_path = os.path.join(server_script_obj.directory, server_script_obj.world)
 
         self._offline = _offline
+        self._initialized = False
 
 
         # If this object is the console
@@ -1750,6 +1751,78 @@ class PlayerScriptObject():
 
         if not self.is_server:
             self._get_nbt()
+
+        self._initialized = True
+
+    # Override attributes to actually modify some of the player's properties
+    def __setattr__(self, name, value):
+        if getattr(self, "_initialized", False):  # Check if initialization is complete
+            if name == "gamemode":
+                self._change_gamemode(value)
+            elif name == "dimension":
+                self._change_dimension(value)
+            else:
+                raise ServerError(f"'player.{name}' is read-only")
+        super().__setattr__(name, value)  # Always set the value
+
+    # Sets player gamemode internally
+    def _change_gamemode(self, value):
+        if not self.is_online:
+            raise ServerError(f"'{self}' is not connected to the server")
+
+        elif self._server.version >= '1.8':
+            gamemodes = ["survival", "creative", "adventure", "spectator"]
+            if value not in gamemodes:
+                raise ServerError(f"Invalid gamemode: {value}")
+            command = f'gamemode {value} {self}'
+
+        elif self._server.version >= '1.3.1':
+            gamemodes = ["survival", "creative", "adventure"]
+            if value not in gamemodes:
+                raise ServerError(f"Invalid gamemode: {value}")
+            command = f'gamemode {gamemodes.index(value)} {self}'
+
+        elif self._server.version >= 'b1.8':
+            gamemodes = {"survival": 3, "creative": 1}
+            if value not in gamemodes:
+                raise ServerError(f"Invalid gamemode: {value}")
+            command = f'gamemode {self} {gamemodes[value]}'
+
+        else:
+            raise ServerError(f"You can only set the gamemode in Minecraft Beta 1.8 or later")
+
+        self._server.execute(command)
+
+    # Sets player dimension internally
+    def _change_dimension(self, value):
+        if not self.is_online:
+            raise ServerError(f"'{self}' is not connected to the server")
+
+        elif self._server.version >= '1.13':
+            value = value.replace("minecraft:","")
+            dimensions = ["the_nether", "overworld", "the_end"]
+
+            if value not in dimensions and constants.server_type(self._server.type) in ['vanilla', 'bukkit']:
+                raise ServerError(f"Invalid dimension: {value}")
+
+            if value == 'the_nether' and self.dimension == 'overworld':
+                new_pos = self.position / 8
+                new_pos.y = self.position.y
+
+            elif value == 'overworld' and self.dimension == 'the_nether':
+                new_pos = self.position * 8
+                new_pos.y = self.position.y
+
+            else:
+                new_pos = self.position
+
+            command = f'execute in {value} as {self} run tp {new_pos}'
+
+        else:
+            raise ServerError(f"You can only set the dimension in Minecraft 1.13 or later")
+
+        self._server.execute(command)
+
 
     def __hash__(self):
         return hash(self.name)
@@ -1914,7 +1987,7 @@ class PlayerScriptObject():
 
                         # Attempt to fix any errors that might arise
                         new_nbt = json_repair.loads(re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
-                    except json.decoder.JSONDecodeError:
+                    except:
                         if constants.debug:
                             print('Failed to process NBT data')
 
@@ -2003,7 +2076,7 @@ class PlayerScriptObject():
                     if 'activeeffects' in new_nbt:
                         self.active_effects = {id_dict['effect'].get(effect['id'], effect['id']).replace('minecraft:',''): {k.replace("show","show_"): bool(v) if "show" in k else v for k, v in effect.items()}for effect in new_nbt['activeeffects']}
                     elif 'active_effects' in new_nbt:
-                        self.active_effects = {effect['id']: {k.replace("show","show_"): bool(v) if "show" in k else v for k, v in effect.items()} for effect in new_nbt['active_effects']}
+                        self.active_effects = {effect['id']: {(k.replace("show","show_") if "_" not in k else k): bool(v) if "show" in k else v for k, v in effect.items()} for effect in new_nbt['active_effects']}
                 except:
                     pass
 
@@ -2142,6 +2215,11 @@ class PlayerScriptObject():
 
         # Eventually process this to object data
         # print(new_nbt)
+
+    # self.is_online: True if player is currently connected
+    @property
+    def is_online(self):
+        return (self.name in self._server.player_list) and (not self.is_server)
 
     # self.is_operator: True if player is an operator
     @property
@@ -3088,6 +3166,12 @@ class ItemObject(Munch):
         return super().__contains__(key)
 
     def take(self):
+        if not self['$_inventory']:
+            raise ServerError("This item is no longer attached to an inventory")
+        if not self['$_inventory']._player.is_online:
+            raise ServerError(f"'{self['$_inventory']._player.name}' is not connected to the server")
+
+
         target = self['$_inventory']._player
         server = target._server
 
@@ -3519,6 +3603,9 @@ class InventoryObject(Munch):
             return sum(item.count for item in self.items())
 
     def give(self, item: ItemObject, preserve_slot: bool = False):
+        if not self._player.is_online:
+            raise ServerError(f"'{self._player.name}' is not connected to the server")
+
         target = self._player
         server = target._server
 
@@ -3577,6 +3664,9 @@ class InventoryObject(Munch):
         server.execute(command)
 
     def clear(self):
+        if not self._player.is_online:
+            raise ServerError(f"'{self._player.name}' is not connected to the server")
+
         self._player._execute(f'clear {self._player}')
 
 class CoordinateObject(Munch):

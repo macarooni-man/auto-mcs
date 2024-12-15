@@ -257,7 +257,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 
 **Attributes**:
-> Note: All attributes are read-only, and thus will not change playerdata when modified
+> Note: Most attributes are read-only, and thus will not change playerdata when modified.
 
 > Note: Versions prior to 1.13 load NBT from playerdata.dat, which is only updated every couple of minutes or so. Any version between 1.8-1.13 will execute `save-all` to force updated data. 1.13 and later retrieves *all* of the most recent NBT data.
 
@@ -274,6 +274,10 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 #### player.is_server
  - `bool`, if current object was created from the console
  - This will be `True` if the console sends a command to a [**@player.on_alias**](#playeron_alias) event, for example
+
+#### player.is_online
+ - `bool`, if current object is connected to the server
+ - This will be `False` if the console sends a command to a [**@player.on_alias**](#playeron_alias) event, for example
 
 #### player.is_operator
  - `bool`, if current object has operator permissions
@@ -309,6 +313,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.gamemode
  - `str`, player's current gamemode
+ - Settable with `player.gamemode = 'survival'`
  - Value of `'survival'`, `'creative'`, `'adventure'`, or `'spectator'`
 
 #### player.xp
@@ -335,6 +340,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
  
 #### player.dimension
  - `str`, the dimension that the player is currently in
+ - Settable with `player.dimension = 'overworld'`
  - Value of `'overworld'`, `'the_nether'`, or `'the_end'`
 
 #### player.active_effects
