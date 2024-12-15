@@ -2884,6 +2884,18 @@ def get_json_content(s):
     except:
         return s
 
+def format_int(s):
+    if isinstance(s, int):
+        return s
+    elif str(s).isnumeric():
+        return int(s)
+    elif 's' in s:
+        return int(s.strip('s'))
+    return s
+
+class ServerError(Exception):
+    pass
+
 # Inventory classes for PlayerScriptObject
 class ItemObject(Munch):
     def __init__(self, *args, **kwargs):
@@ -2962,7 +2974,7 @@ class ItemObject(Munch):
                         if self.enchantments:
                             reformatted = {}
                             for enchantment in self.enchantments:
-                                reformatted[enchantment['id']] = {'id': enchantment['id'], 'lvl': int(enchantment['lvl'].strip('s'))}
+                                reformatted[enchantment['id']] = {'id': enchantment['id'], 'lvl': format_int(enchantment['lvl'])}
                             self.enchantments = reformatted
 
                         if "attributemodifiers" in self:
@@ -3074,7 +3086,7 @@ class ItemObject(Munch):
             command = f'clear {target} {self.id} {self.count}'
 
         else:
-            raise Exception("This method is unsupported below version 1.4.2")
+            raise ServerError("This method is only available on Minecraft 1.4.2 or later.")
 
         server.execute(command)
         return self
@@ -3142,9 +3154,10 @@ class InventorySection(Munch):
         else:
             return sum(item.count for item in self.items())
 
-class InventoryObject():
+class InventoryObject(Munch):
 
-    def __init__(self, player_obj, item_list, selected_item):
+    def __init__(self, player_obj, item_list, selected_item, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._player = player_obj
         self._item_list = []
@@ -3197,7 +3210,7 @@ class InventoryObject():
                                 formatted['data'][name if item[x][tag].name != "ench" else "enchantments"] = value if value else {}
 
                             # Format all enchantments
-                            if name in ["ench", "storedenchantments"]:
+                            if name in ["ench", "storedenchantments", "enchantments"]:
                                 for e in item[x][tag]:
                                     formatted[data_tag]['enchantments'][id_dict['enchant'].get(e['id'].value, e['id'].value)] = {'id': e['id'].value, 'lvl': e['lvl'].value}
 
@@ -3489,17 +3502,39 @@ class InventoryObject():
         else:
             return sum(item.count for item in self.items())
 
-    def give(self, item: ItemObject):
+    def give(self, item: ItemObject, preserve_slot: bool = False):
         target = self._player
         server = target._server
 
         if not item:
             return
 
+
+        # Preserve slot with replace commands
+        if server.version >= '1.17' and preserve_slot:
+            if server.version >= '1.20.5':
+                data = '[' + ", ".join([str(k) + "=" + str(v) for k, v in item.nbt.items()]) + ']'
+            else:
+                data = self._to_lax_json(item.nbt).replace('"I", ', 'I; ')
+            command = f'item replace entity {target} {item.slot} with {item.id}{data} {item.count}'
+
+        elif server.version >= '1.13' and preserve_slot:
+            data = self._to_lax_json(item.nbt).replace('"I", ', 'I; ')
+            command = f'replaceitem entity {target} slot.{item.slot} {item.id}{data if data else ""} {item.count}'
+
+        elif server.version >= '1.8' and preserve_slot:
+            data = self._to_lax_json(item.nbt)
+            command = f'replaceitem entity {target} slot.{item.slot} {item.id} {item.count} {item.damage} {data if data else ""}'
+
+        elif preserve_slot:
+            raise ServerError("This method is only available on Minecraft 1.8 or later.")
+
+
+
         # Modern format
-        if server.version >= '1.20.5':
+        elif server.version >= '1.20.5':
             data = ", ".join([str(k) + "=" + str(v) for k, v in item.nbt.items()])
-            command = f'give {target} {item.id}[{data}]'
+            command = f'give {target} {item.id}[{data}] {item.count}'
             command = self._escape_cmd(command)
 
         # 1.13 - 1.20.2

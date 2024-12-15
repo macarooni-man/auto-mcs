@@ -379,8 +379,9 @@ class InventoryObject():
      - If `item_id` is a list, it will return the count of all items in the list.
      - If `item_id` is not provided, it will return the count of all items in the inventory.
 
-   - #### inventory.give(*ItemObject*)
+   - #### inventory.give(*ItemObject, preserve_slot*)
      - Gives the player the specified `ItemObject`. This can be helpful for transferring items between players, even with NBT data like enchantments, names, etc.
+     - If `preserve_slot` is `True`, the item will be given to the player in the same slot it originated from. Defaults to `False`. This parameter is only compatible with Minecraft 1.8 and later.
      > Note: This method is compatible with every version of Minecraft
      - Compliments `ItemObject.take()`
 

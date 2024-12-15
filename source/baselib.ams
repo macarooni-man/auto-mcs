@@ -180,11 +180,11 @@ def sleep_timer(delay, sleep_type):
     if cmd == "help" or not cmd:
         player.log(generate_header('All Back-up Commands'), 'green', 'normal')
         player.log('!backup help', 'white', 'normal')
-        player.log('- Shows all subcommands (This command)', 'gray', 'normal')
+        player.log('>  Shows all subcommands (This command)', 'gray', 'normal')
         player.log('!backup status', 'white', 'normal')
-        player.log('- Shows back-up statistics', 'gray', 'normal')
+        player.log('>  Shows back-up statistics', 'gray', 'normal')
         player.log('!backup save', 'white', 'normal')
-        player.log('- Creates a complete back-up immediately', 'gray', 'normal')
+        player.log('>  Creates a complete back-up immediately', 'gray', 'normal')
 
 
     # Shows back-up info
@@ -193,7 +193,7 @@ def sleep_timer(delay, sleep_type):
         player.log(generate_header('Back-up Information'), 'green', 'normal')
         player.log(f'Latest Back-up:   {backup.latest.date}', 'yellow', 'normal')
         player.log(f'Total Back-ups:   {len(backup.list)}  ({backup._backup_stats["total-size"]}, limit: {backup.maximum})', 'gold', 'normal')
-        player.log("- Run '!backup save' to create a new back-up", 'gray', 'normal')
+        player.log(">  Run '!backup save' to create a new back-up", 'gray', 'normal')
 
 
     # Saves a back-up
@@ -220,13 +220,13 @@ def sleep_timer(delay, sleep_type):
     if cmd == "help" or not cmd:
         player.log(generate_header('All Back-up Commands'), 'green', 'normal')
         player.log('!acl help', 'white', 'normal')
-        player.log('- Shows all subcommands (This command)', 'gray', 'normal')
+        player.log('>  Shows all subcommands (This command)', 'gray', 'normal')
         player.log('!acl ops', 'white', 'normal')
-        player.log('- Shows all operators', 'gray', 'normal')
+        player.log('>  Shows all operators', 'gray', 'normal')
         player.log('!acl bans', 'white', 'normal')
-        player.log('- Shows banned players', 'gray', 'normal')
+        player.log('>  Shows banned players', 'gray', 'normal')
         player.log('!acl whitelist', 'white', 'normal')
-        player.log('- Shows whitelisted players', 'gray', 'normal')
+        player.log('>  Shows whitelisted players', 'gray', 'normal')
 
 
     # View operators
@@ -254,9 +254,9 @@ def sleep_timer(delay, sleep_type):
     elif cmd == "whitelist":
         player.log(generate_header('Access Control: Whitelist'), 'green', 'normal')
         if acl.whitelist_enabled:
-            player.log("- Whitelist is currently enabled", "dark_green", "normal")
+            player.log(">  Whitelist is currently enabled", "dark_green", "normal")
         else:
-            player.log("- Whitelist is currently disabled", "dark_red", "normal")
+            player.log(">  Whitelist is currently disabled", "dark_red", "normal")
 
         users = [str(rule) for rule in acl.rules['wl']]
         if len(users) > 0:
@@ -279,15 +279,15 @@ def sleep_timer(delay, sleep_type):
     if cmd == "help" or not cmd:
         player.log(generate_header('All amscript Commands'), 'green', 'normal')
         player.log('!ams help', 'white', 'normal')
-        player.log('- Shows all subcommands (This command)', 'gray', 'normal')
+        player.log('>  Shows all subcommands (This command)', 'gray', 'normal')
         player.log('!ams status', 'white', 'normal')
-        player.log('- Shows amscript version and loaded scripts', 'gray', 'normal')
+        player.log('>  Shows amscript version and loaded scripts', 'gray', 'normal')
         player.log('!ams enable/disable <script>/all', 'white', 'normal')
-        player.log('- Enables/disables script by name, or all', 'gray', 'normal')
+        player.log('>  Enables/disables script by name, or all', 'gray', 'normal')
         player.log('!ams clearpst', 'white', 'normal')
-        player.log('- Deletes and resets persistent script configuration', 'gray', 'normal')
+        player.log('>  Deletes and resets persistent script configuration', 'gray', 'normal')
         player.log('!ams reload', 'white', 'normal')
-        player.log('- Recompiles and initializes all enabled scripts', 'gray', 'normal')
+        player.log('>  Recompiles and initializes all enabled scripts', 'gray', 'normal')
 
 
     # Shows loaded scripts and version info
