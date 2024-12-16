@@ -17884,8 +17884,12 @@ class ConsolePanel(FloatLayout):
             self.deselect_all()
             self.scroll_layout.data = []
             def change_later(*a):
-                with open(file_path, 'r') as f:
-                    self.scroll_layout.data = constants.json.loads(f.read())
+                try:
+                    with open(file_path, 'r') as f:
+                        self.scroll_layout.data = constants.json.loads(f.read())
+                except:
+                    if constants.debug:
+                        print('Failed to load "latest.log"')
             Clock.schedule_once(change_later, 0)
 
             self.controls.remove_widget(self.controls.view_button)

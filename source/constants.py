@@ -3153,6 +3153,8 @@ def install_server(progress_func=None, imported=False):
             os.remove(os.path.join(tmpsvr, 'quilt.jar'))
             move(os.path.join(tmpsvr, 'server', 'server.jar'), os.path.join(tmpsvr, 'server.jar'))
             move(os.path.join(tmpsvr, 'server', 'quilt-server-launch.jar'), os.path.join(tmpsvr, 'quilt.jar'))
+            if os.path.exists(os.path.join(tmpsvr, 'libraries')):
+                safe_delete(os.path.join(tmpsvr, 'libraries'))
             move(os.path.join(tmpsvr, 'server', 'libraries'), os.path.join(tmpsvr, 'libraries'))
             safe_delete(os.path.join(tmpsvr, 'server'))
 
