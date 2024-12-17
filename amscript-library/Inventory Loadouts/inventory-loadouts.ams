@@ -3,7 +3,19 @@
 # author: Kaleb Efflandt
 # version: 1.0
 # description: Capture and restore states of your inventory
+#
+#
+# Usage:
+#
+# --------- Loadout Commands ---------
+# >>  !loadout list
+# >>  !loadout save <name>
+# >>  !loadout remove <name>
+# >>  !loadout <name>
+#
 #!
+
+
 
 
 # Generates a fixed-width centered header for logging

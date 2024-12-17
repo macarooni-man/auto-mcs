@@ -1,0 +1,894 @@
+#!
+# title: Dynamic Shop
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Economy framework to buy & sell items
+# 
+# 
+# Usage:
+#
+# --------- Interaction Commands ---------
+# >>  !sell <item_id/name> <quantity>
+# >>  !buy <item_id/name> <quantity>
+# 
+# >>  !market <optional:search>
+# >>  !price
+# >>  !wallet
+# 
+#!
+
+
+
+
+from bs4 import BeautifulSoup
+import requests
+import math
+import json
+import re
+
+
+
+#  Dynamic Shop Features:
+#   - Supply & demand system to dynamically adjust market value
+#   - Market adjusment is dynamic based on the item and its relative value in the market
+#   - First time market cache
+
+
+
+
+# ------------------ Configuration ------------------
+
+# Adjusts the relative value of all currency
+# (to change these, the persistent configuration needs to be clear with "!ams clearpst")
+inflation_multiplier = 100.0
+lowest_price = 0.25
+
+# Enables dynamic economy scaling per item based on supply & demand
+# Note:  since this market is based on Diamonds, they won't fluctuate for general market stability
+enable_fluctuation = True
+
+# Lowest possible fluctuation rate per item
+base_fluctuation_rate = 0.07
+
+# Lower scale factor amplifies the fluctuation decrease the more items the server has
+fluctuation_scale_factor = 10.0
+
+# Create market objects
+market = Market()
+vault = Vault()
+
+# Item price overrides/removals (can also add custom items from mods for example)
+# Parameters --> market.add_override(name: str, id: str, price: int, fluctuation_rate: float)
+# market.add_override('Flint', 'flint', 5)
+# market.add_override('Emerald', 'emerald', 200)
+# market.add_override('Block of Quartz', 'quartz_block', 50, 0.05)
+# market.remove('gold_ingot')
+# market.remove('stone')
+
+
+
+
+# Object to house the market and related functionality
+class Market():
+    
+    def __init__(self):
+        global inflation_multiplier, lowest_price, enable_fluctuation, base_fluctuation_rate, fluctuation_scale_factor
+        self.inflation_multiplier = inflation_multiplier
+        self.enable_fluctuation = enable_fluctuation
+        self.base_fluctuation_rate = base_fluctuation_rate
+        self.fluctuation_scale_factor = fluctuation_scale_factor
+        self.lowest_price = lowest_price
+        
+        self.name = f'{server.name} Global Market'
+        
+        # Stored list of all items with their respective prices and fluctuation rates
+        if 'market' not in server.persistent:
+            server.persistent['market'] = {'database': {}, 'inventory': {}}
+        self.database = server.persistent['market']['database']
+        self.overrides = {}
+        self.removals = []
+        
+        # Server's inventory of items that have been sold, and are purchaseable from others
+        # self.inventory = {'flint': {'id': 'flint', 'name': 'Flint', 'count': 5026}}
+        self.inventory = server.persistent['market']['inventory']
+        
+        # For use in the !market command, updates every minute
+        self.display_data = {}
+    
+    def __str__(self):
+        return self.name
+    
+    # Determines if an item is stackable or not
+    @staticmethod
+    def get_stack_size(item_id: str):
+        unstackable_list = ['sword', 'pickaxe', 'shovel', 'axe', 'hoe', 'helmet', 'chestplate', 'leggings', 'boots', 'armor', 'bow', 'steel', 'water_bucket', 'lava_bucket', 'milk_bucket', 'soup', 'potion', 'boat', 'minecart']
+    
+        quarter_list = ['egg', 'snowball', 'bucket', 'sign', 'honey_bottle', 'banner', 'ender_pearl']
+    
+        for item in unstackable_list:
+            if item in item_id:
+                return 1
+    
+        for item in quarter_list:
+            if item in item_id:
+                return 16
+    
+        return 64
+    
+    
+    # Add an override to the market when generated
+    def add_override(self, item_name: str, item_id: str, price: int = 1, fluctuation_rate: float = None):
+        if fluctuation_rate is None:
+            fluctuation_rate = self.base_fluctuation_rate
+        self.overrides[item_id] = {'name': item_name, 'id': item_id, 'price': price, 'fluctuation_rate': fluctuation_rate}
+    
+    
+    # Remove an item from the market
+    def remove(self, item_id: str):
+        if item_id not in self.removals:
+            self.removals.append(item_id)
+    
+    
+    # Retrieves an item from local inventory
+    def check_inventory(self, item_id):
+        if item_id in self.inventory:
+            return self.inventory[item_id]
+        else:
+            return {'id': item_id, 'name': None, 'count': 0, 'purchased': 0, 'sold': 0}
+    
+        
+    # Uses database to apply a fluctuation for server quantity
+    def calculate_price(self, item_id: str, quantity: int, fluctuate_before=False):
+        try:
+            item_data = self.database[item_id]
+            
+            # Scale economy based on market inventory if enabled
+            if self.enable_fluctuation:
+                effective_fluctuation_rate = 1 - math.exp(-(item_data['fluctuation_rate'] / (self.fluctuation_scale_factor * 100)) * (self.check_inventory(item_id)['count'] + (quantity if fluctuate_before else 0)))
+                total_price = item_data['price'] * quantity * (1 - effective_fluctuation_rate)
+                
+            else:
+                total_price = item_data['price'] * quantity
+                
+            return self.round_price(total_price)
+                
+        except:
+            pass
+
+        return 0
+
+
+    # Converts market index into a parsable .json list
+    def generate(self):
+        
+        if not self.database:
+        
+            # Initialize database
+            self.database = {'diamond': {'name': 'Diamond', 'id': 'diamond', 'price': inflation_multiplier, 'fluctuation_rate': 0}}
+
+            # Iterate through table on the website to get the market data
+            market_index = 'https://togethercraft.online/price-index/'
+            html = BeautifulSoup(requests.get(market_index).content, features='html.parser')
+
+            for row in html.find_all('tr'):
+                cols = [col.text for col in row.find_all('td')]
+                item_name = None
+                item_id = None
+                base_price = 0
+                price = 0
+                fluctuation_rate = 0
+
+                # Ignore blank rows
+                if len(cols) < 2:
+                    continue
+
+                # Ignore "Fully Enchanted" items in the list
+                if '(Fully Enchanted)' in cols[0]:
+                    continue
+
+
+                # Retrieve item ID and initial cost
+                item_name = re.sub(r'\(\w+\)', '', cols[0]).strip()
+                item_id = item_name.lower().strip().replace(' ','_')
+            
+                # Item ID overrides
+                if item_id == 'redstone_dust':
+                    item_id = 'redstone'
+            
+                # Ignore item if removed
+                if item_id in self.removals:
+                    continue
+            
+
+                # Calculate cost based on Diamonds per stack
+                try:
+                    base_price = eval('/'.join(re.findall(r'\b\d+\b', cols[1])), {}, {})
+                    price = self.round_price(base_price * self.inflation_multiplier)
+                except:
+                    continue
+
+
+                # Calculate bulk fluctuation rate with price per shulker
+                try:
+                    if len(cols) >= 3:
+                        shulker_count = 27 * self.get_stack_size(item_id)
+                        shulker_fluctuation = (int(re.sub(r'[^0-9]', '', cols[2])) / shulker_count)
+                        fluctuation_rate = round(1 - (shulker_fluctuation / base_price), 2)
+                except:
+                    pass
+
+                # If fluctuation rate is too low, floor it with the base
+                if fluctuation_rate < self.base_fluctuation_rate:
+                    fluctuation_rate = self.base_fluctuation_rate
+
+
+                # Add item to database
+                self.database[item_id] = {
+                    'name': item_name,
+                    'id': item_id,
+                    'price': price,
+                    'fluctuation_rate': fluctuation_rate
+                }
+
+                # print(item_name, item_id, cost, fluctuation_rate, re.findall(r'\b\d+\b', cols[1]))
+    
+    
+            # Market overrides
+            # Existing item and muliplier add a market entry that bases the data off of that item
+            def add_item(item_id, item_name, existing_item, multiplier):
+                item_data = self.get(existing_item)
+                self.database[item_id] = {
+                    'name' : item_name,
+                    'id': item_id,
+                    'price': self.round_price(item_data['price'] * multiplier),
+                    'fluctuation_rate': round(item_data['fluctuation_rate'] * multiplier, 2)
+                }
+    
+            # Add items based off of other items
+            add_item('quartz', 'Nether Quartz', 'lapis_lazuli', 1.5)
+            add_item('slime_ball', 'Slimeball', 'slimeball', 1)
+            add_item('arrow', 'Arrow', 'flint', 1.25)
+    
+            # Add blocks
+            add_item('coal_block', 'Block of Coal', 'coal', 9)
+            add_item('redstone_block', 'Block of Redstone', 'redstone', 9)
+            add_item('lapis_block', 'Block of Lapis Lazuli', 'lapis_lazuli', 9)
+            add_item('quartz_block', 'Block of Quartz', 'quartz', 9)
+            add_item('iron_block', 'Block of Iron', 'iron_ingot', 9)
+            add_item('gold_block', 'Block of Gold', 'gold_ingot', 9)
+            add_item('copper_block', 'Block of Copper', 'copper_ingot', 9)
+            add_item('diamond_block', 'Block of Diamond', 'diamond', 9)
+            add_item('emerald_block', 'Block of Emerald', 'emerald', 9)
+            add_item('netherite_block', 'Block of Netherite', 'netherite_ingot', 9)
+    
+        # Add user overrides
+        self.database.update(self.overrides)
+        server.persistent['market']['database'] = self.database
+        server.log_success('[dynamic-shop]  Market generation complete')
+    
+    
+    # Retrives an item from the database
+    def get(self, query: str):
+        query = query.lower().strip()
+        for item_id, data in self.database.items():
+            if (query == data['id']) or (query == data['name'].lower()) or (query.replace(' ','_') == data['id']):
+                return data
+    
+    
+    # Generates market display data
+    def refresh_display_data(self):
+        
+        # Get everything needed for display
+        data_list = {}
+        demand_ranges  = {'purchased': [], 'sold': [], 'fluctuation': []}
+        
+        for item, market_data in self.database.items():
+            data = self.check_inventory(item)
+            in_inventory = bool(data['name'])
+            
+            original_price = market_data["price"]
+            price = self.calculate_price(item, 1)
+            data_list[item] = {
+                'id': item,
+                'in_inventory': in_inventory,
+                'name': market_data['name'],
+                'count': data['count'],
+                'purchased': data['purchased'],
+                'sold': data['sold'],
+                'demand': None,
+                'volatility': None,
+                'economy': {
+                    'original_price': original_price,
+                    'price': price,
+                    'value': math.floor((1 - (original_price/price))*100),
+                    'fluctuation_rate': market_data['fluctuation_rate']
+                }
+            }
+            if data['purchased']:
+                demand_ranges['purchased'].append(data['purchased'])
+            if data['sold']:
+                demand_ranges['sold'].append(data['sold'])
+            if market_data['fluctuation_rate']:
+                demand_ranges['fluctuation'].append(market_data['fluctuation_rate'])
+                
+                
+        # Calculate demand per item in inventory
+        try:
+            purchased_range = (min(demand_ranges['purchased']), max(demand_ranges['purchased']))
+        except:
+            purchasted_range = (None, None)
+        try:
+            sold_range = (min(demand_ranges['sold']), max(demand_ranges['sold']))
+        except:
+            sold_range = (None, None)
+        try:
+            fluctuation_range = (0, math.ceil(max(demand_ranges['fluctuation']) * 100))
+        except:
+            fluctuation_range = (None, None)
+            
+        
+        def score_percentage(x, y, z):
+            if x is None or y is None:
+                return None
+            return 100 * (z - x) / (y - x) if x != y else 100 if z == x else 0
+        
+        for item, data in data_list.items():
+            
+            # Calculate relative demand in the market
+            if sold_range and data['sold']:
+                data_list[item]['demand'] = round(score_percentage(sold_range[0], sold_range[1], data['sold']))
+            else:
+                data_list[item]['demand'] = 0
+                
+            # Calculate the relative affect of inflation
+            if fluctuation_range and 'fluctuation_rate' in data['economy']:
+                data_list[item]['volatility'] = math.ceil(score_percentage(fluctuation_range[0], fluctuation_range[1], math.ceil(data['economy']['fluctuation_rate'] * 100)))
+            else:
+                data_list[item]['volatility'] = 0
+            
+        self.display_data = data_list
+            
+    
+    # Rounding function for currency
+    def round_price(self, amount: float or int):
+        if amount < self.lowest_price:
+            return float(self.lowest_price)
+        else:
+            return float(round(amount, 2))
+        
+        
+# Object for interfacing and handling player transactions and wallets
+class Vault():
+    
+    # Transaction types are currently:
+    # ['buy', 'sell', 'auction', 'trade', 'pay']    
+    def __init__(self):
+        
+        # Temporary storage for pending transactions from commands
+        self.pending_transactions = {'buy': {}, 'sell': {}, 'auction': {}, 'trade': {}, 'pay': {}}
+        self._removal_timers = {'buy': {}, 'sell': {}, 'auction': {}, 'trade': {}, 'pay': {}}
+   
+
+    # Shows display of what the player is requesting, and prompt them for confirmation
+    def show_receipt(self, player, transaction_type: str):
+        transaction = self.check_transaction(player, transaction_type)
+        name = transaction["name"]
+        price = transaction["price"]
+        quantity = transaction["quantity"]
+        recipient = transaction["recipient"]
+        original_price = transaction["original_price"]
+        
+        verb = {'buy':'from','sell':'to','auction':'to','trade':'with','pay':''}[transaction_type]
+        action = f"\n> {transaction_type.title()}ing {verb} {recipient}"
+        
+        # Give player a checkout confirmation
+        player.log_success(f'-------- Dynamic Shop: {transaction_type.title()} --------')
+        player.log('      Checkout Confirmation')
+        player.log(' ')
+        player.log_success(f'{quantity:,}x {name}  -  ${price:,.2f}')
+        if original_price != price:
+            player.log(f'Fluctuation from ${original_price:,.2f} ({math.floor((1 - (original_price/price))*100)}% value)')
+        player.log(action, color='white', style='normal')
+        player.log(' ')
+        player.log_warning(f"Type '!{transaction_type} confirm' to proceed, or '!{transaction_type} cancel' to abort")
+    
+    # Adds a transaction to cache for command confirmation
+    def add_transaction(self, player, transaction_type: str, data: dict):
+        self.pending_transactions[transaction_type][player.name] = data
+    
+    # Clears transaction cache for a specified player
+    # Delay defers cancel from happening until later, alert sends a message to the player
+    def remove_transaction(self, player, transaction_type: str, delay=0, alert=True):
+        
+        # Defer removal after a delay
+        if delay > 0:
+            timer = server.after(delay, self.remove_transaction, player, transaction_type)
+            self._removal_timers[transaction_type][player.name] = timer
+        
+        # Otherwise, remove immediately
+        else:
+            if player.name in self.pending_transactions[transaction_type]:
+                del self.pending_transactions[transaction_type][player.name]
+            if player.name in self._removal_timers[transaction_type]:
+                self._removal_timers[transaction_type][player.name].cancel()
+                del self._removal_timers[transaction_type][player.name]
+            
+            if alert:
+                player.log_warning(f'{transaction_type.title()} transaction cancelled')
+        
+    # Check if a player has a pending transaction
+    def check_transaction(self, player, transaction_type: str):
+        if player.name in self.pending_transactions[transaction_type]:
+            return self.pending_transactions[transaction_type][player.name]
+    
+    # Confirm a pending transaction
+    def confirm_transaction(self, player, transaction_type: str):
+        transaction = self.check_transaction(player, transaction_type)
+        
+        # Buy
+        if transaction_type == 'buy':
+            
+            # Check if the server still has the same items from the transaction
+            if market.inventory[transaction['id']]['count'] < transaction['quantity']:
+                player.log_error(f'{market} no longer has the items, transaction cancelled')
+            
+            # Check if player still has the funds
+            elif self.get_wallet(player)['balance'] < transaction['price']:
+                player.log_error('Insufficient funds, transaction cancelled')
+                
+            else:
+                wallet = self.charge_player(player, transaction)
+                self.charge_server(transaction)
+                self.give_player_item(player, transaction)
+                player.log_success('Transaction successful')
+                player.log(f'> Your new balance is  -  ${wallet["balance"]:,.2f}')
+            
+
+        # Sell
+        if transaction_type == 'sell':
+            
+            # Check if player still has the same items from the transaction
+            if transaction['quantity'] > player.inventory.count(transaction['id']):
+                player.log_error('Insufficient items, transaction cancelled')
+            
+            else:
+                self.pay_server(player, transaction)
+                self.remove_player_item(player, transaction)
+                wallet = self.pay_player(player, transaction)
+                player.log_success('Transaction successful')
+                player.log(f'Your new balance is  -  ${wallet["balance"]:,.2f}')
+                
+            
+        # if transaction_type == 'sell':
+        #    do things...
+        #    check if player has the same items from the transaction, and is online...
+        #    move player.log() here...
+        
+        self.remove_transaction(player, transaction_type, alert=False)
+    
+    
+    # Helper commands to abstract transactions
+    
+    # Retrieve wallet data from a player
+    def get_wallet(self, player):
+        if 'wallet' not in player.persistent:
+            player.persistent['wallet'] = {'balance': 0}
+        return player.persistent['wallet']
+    
+    # Pay the server's inventory
+    # 'flint': {'id': 'flint', 'name': 'Flint', 'count': 5026}
+    def pay_server(self, player, transaction: dict):
+        item_id = transaction['id']
+        quantity = transaction['quantity']
+        item_name = transaction['name']
+        
+        # Add item to server's inventory
+        if item_id in market.inventory:
+            existing_data = market.inventory[item_id]
+            if 'count' not in existing_data:
+                exiting_data['count'] = quantity
+            else:
+                existing_data['count'] += quantity
+            if 'purchased' not in existing_data:
+                existing_data['purchased'] = quantity
+            else:
+                existing_data['purchased'] += quantity
+        else:
+            market.inventory[item_id] = {'id': item_id, 'name': item_name, 'count': quantity, 'purchased': quantity, 'sold': 0}
+    
+    # Removes items from the server's inventory
+    def charge_server(self, transaction: dict):
+        if transaction['id'] in market.inventory:
+            existing_data = market.inventory[transaction['id']]
+            existing_data['count'] -= transaction['quantity']
+            if 'sold' not in existing_data:
+                existing_data['sold'] = transaction['quantity']
+            else:
+                existing_data['sold'] += transaction['quantity']
+            
+    # Pay a player
+    def pay_player(self, player, transaction: dict):
+        wallet_data = self.get_wallet(player)
+        wallet_data['balance'] += transaction['price']
+        return wallet_data
+    
+    # Charge a player
+    def charge_player(self, player, transaction: dict):
+        wallet_data = self.get_wallet(player)
+        wallet_data['balance'] -= transaction['price']
+        return wallet_data
+    
+    # Pay a player items
+    def give_player_item(self, player, transaction: dict):
+        server.execute(f'give {player} {transaction["id"]} {transaction["quantity"]}')
+    
+    # Removes items from a player
+    def remove_player_item(self, player, transaction: dict):
+        if server.version >= '1.13':
+            server.execute(f'clear {player} {transaction["id"]} {transaction["quantity"]}')
+        else:
+            server.execute(f'clear {player} {transaction["id"]} 0 {transaction["quantity"]}')
+
+  
+# Compile market data when the server launches
+@server.on_start(data, delay=0):
+    market.generate()
+    market.refresh_display_data()
+
+@server.on_loop(interval=5, unit='second'):
+    market.refresh_display_data()
+
+# ------------ Player Status Commands -------------
+
+# Check the value of the currently held item(s) from the market
+@player.on_alias(player, command='price', description='Get the monetary value of the item(s) in your hand (Dynamic Shop)'):
+    
+    # Fail if player isn't holding an item    
+    try:
+        item_id = player.inventory.selected_item.id
+        quantity = player.inventory.selected_item.count
+    except:
+        player.log_error('Please hold an item to check the value')
+        return False
+    
+    # Fail if the item doesn't exist
+    if item_id not in market.database:
+        player.log_error(f'"{item_id}" is not available in the market')
+        return False
+    
+    
+    # If the item exists, tell the player
+    item_data = market.get(item_id)
+    price = market.calculate_price(item_id, quantity)
+    original_price = market.round_price(item_data["price"] * quantity)
+    
+    # server.log_success(f'{player} wants to sell {quantity:,}x {item_data["name"]} for ${price:,.2f}')
+    player.log_success(f'{quantity:,}x {item_data["name"]}  -  ${price:,.2f}')
+    if original_price != price:
+        player.log(f'Fluctuation from ${original_price:,.2f} ({math.floor((1 - (original_price/price))*100)}% value)')      
+
+
+# Checks player's wallet
+@player.on_alias(player, command='wallet', description='View your current balance (Dynamic Shop)'):
+    wallet = vault.get_wallet(player)
+    
+    # Give player a checkout confirmation
+    player.log_success(f'-------- Dynamic Shop: Wallet --------')
+    player.log_warning(f'\n> Your balance  -  ${wallet["balance"]:,.2f}')
+
+
+@player.on_alias(player, command='market', arguments={'item/page': False}, description='Reference market prices & availability (Dynamic Shop)'):
+    header = '-------- Dynamic Shop: Market --------'
+    
+    # Format arguments
+    command = arguments['item/page']
+    if command:
+        command = ('page', int(round(float(command)))) if command.isnumeric() else ('item', command)
+    else:
+        command = ('page', 1)
+        
+    # Generates tellraw data for output
+    def generate_tellraw(item, data):
+        
+        # Use custom tellraw if >=1.7.2
+        if server.version >= '1.7.2':
+            
+            sep = {'text': '  |  ', 'color': 'dark_gray'}
+            
+            # Format count colors and data
+            cnt = data["count"]
+            cnt_color_1 = ('dark_green' if cnt >= 256 else 'gold' if cnt >= 64 else 'dark_red')
+            cnt_color_2 = ('green' if cnt >= 256 else 'yellow' if cnt >= 64 else 'red')
+            cnt_data = [
+                {'text': 'x', 'color': cnt_color_1}, {'text': f'{cnt:,}', 'color': cnt_color_2}
+            ] if cnt > 0 else [
+                {'text': 'Out of stock', 'color': 'dark_gray', 'italic': True}
+            ]
+            
+            # Format price and colors
+            prc = data["economy"]["price"]
+            val = data["economy"]["value"]
+            val_str = f' ({data["economy"]["value"]}% value)' if abs(val) >= 10 else ''
+            prc_color = ('green' if abs(val) <= 25 else 'yellow' if abs(val) <= 70 else 'red')
+            prc_data = [
+                {'text': '\n> ', 'color': 'dark_gray'},
+                {'text': f'${data["economy"]["price"]:,.2f}', 'italic': True, 'color': prc_color},
+                {'text': val_str.ljust(14), 'color': 'gray', 'italic': True}
+            ]
+            
+            # Format demand/title and color
+            demand = data["demand"]
+            title = [{'text': data['name'].ljust(20)}]
+            if demand >= 65:
+                title.insert(0, {'text': '🔥 ', 'color': 'gold'})
+                demand_text = {'text': 'high demand', 'color': 'aqua'}
+            elif demand >= 10:
+                demand_text = {'text': 'low demand', 'color': 'blue'}
+            else:
+                demand_text = {'text': 'no demand', 'color': 'dark_gray'}
+            
+            # Compile formatted block
+            return [
+                *title, sep,
+                *cnt_data,
+                *prc_data, sep,
+                demand_text,
+                {'text': '\n'}
+            ]
+        
+    # If there's no data to display
+    if not market.display_data and (command[0] == 'page'):
+        player.log_success(header)
+        player.log_error(f'\n> There is no market data to display')
+        
+        
+        
+    # If there's market data and page is requested
+    elif command[0] == 'page':
+        page_size = 5
+        page = command[1]
+        formatted_data = []
+        
+        for item_id, data in market.display_data.items():
+            
+            if not data['in_inventory']:
+                continue
+            
+            tellraw_data = generate_tellraw(item_id, data)
+                
+            # Add to list, and add demand for sorting later
+            formatted_data.append((data["demand"], tellraw_data))
+        
+        
+        # Display formatted content to the player
+        player.log_success(header)
+        player.log(f'name  |  available  //  price  |  demand\n')
+        
+        # Sort by demand
+        sorted_data = sorted(formatted_data, key=lambda x: x[0], reverse=True)
+        
+        # Check if the page is valid
+        total_pages = (len(sorted_data) + page_size - 1) // page_size  # Total pages
+        if page < 1:
+            page = 1
+        if page > total_pages:
+            page = total_pages
+
+        # Slice and process items for the current page
+        start = (page - 1) * page_size
+        end = page * page_size
+        for item in sorted_data[start:end]:
+            server.execute(f'tellraw {player} {json.dumps(item[1])}')
+        
+        player.log_success(f"\nPage {page}/{total_pages}. Type '!market <page>' to see more")
+    
+    
+    # If player requested a specific item
+    elif command[0] == 'item':
+        item = command[1].strip().lower()
+        data = None
+        tellraw_data = None
+        
+        for item_id, data in market.display_data.items():
+            
+            # If name or ID isn't a match, continue looking
+            if not ((item == item_id) or (item == data['name'].lower()) or (item.replace(' ','_') == item_id)):
+                continue
+            
+            item = item_id
+            data = data
+            tellraw_data = generate_tellraw(item_id, data)
+            break
+        
+        # Display error if no data was found
+        if not tellraw_data:
+            player.log_success(header)
+            return player.log_error(f'\n> There is no market data for "{command[1].strip()}"')
+        
+        # Format stack amount as well
+        market_data = market.get(item)
+        max_stack = market.get_stack_size(item)
+        original_price = market_data["price"] * max_stack
+        price = market.calculate_price(item, max_stack)
+        fluctuation = math.floor((1 - (original_price/price))*100)
+        name = market_data['name']
+        vtl = data["volatility"]
+        if vtl > 60:
+            vtl_text = '> High volatility'
+            vtl_color = 'yellow'
+        elif vtl > 0:
+            vtl_text = '> Low volatility'
+            vtl_color = 'gray'
+        else:
+            vtl_text = '> No volatility'
+            vtl_color = 'dark_gray'
+        
+        
+        # Display formatted content to the player
+        player.log_success(header)
+        player.log(f'name  |  available  //  price  |  demand\n')
+        server.execute(f'tellraw {player} {json.dumps(tellraw_data)}')
+        player.log_success(f'{max_stack:,}x  -  ${price:,.2f}')
+        
+        if fluctuation > 0:
+            player.log(f'Fluctuation from ${original_price:,.2f} ({fluctuation}% value)')
+            
+        if market.enable_fluctuation:
+            player.log(f'\n{vtl_text}', color=vtl_color)
+            
+        player.log_success(f"\nType '!market <id/name>' to see any item")
+
+
+
+# ---------- Market Interaction Commands ----------
+
+# Buy item from the market
+@player.on_alias(player, command='buy', arguments={'item': False, 'quantity': False}, description='Buy specified item(s) from the global market (Dynamic Shop)'):
+    
+    # Parse arguments
+    selected_item = player.inventory.selected_item
+    
+    item = arguments['item']
+    if not item and selected_item:
+        item = selected_item.id
+    
+    quantity = arguments['quantity']
+    if not quantity and selected_item:
+        quantity = str(selected_item.count)
+    
+    
+    # Sell cancel
+    if vault.check_transaction(player, 'buy'):
+        if item == 'cancel':
+            return vault.remove_transaction(player, 'buy')
+    
+        elif item == 'confirm':
+            return vault.confirm_transaction(player, 'buy')
+        
+        else:
+            vault.remove_transaction(player, 'buy')
+    
+    # Fail if item wasn't provided
+    if not item:
+        return player.log_error('You must provide <item_id/name>, or hold the item in your hand')
+    
+    
+    # Initialize sale
+    item_data = market.get(item)
+    
+    # Fail if item doesn't exist
+    if not item_data:
+        return player.log_error(f"Unable to buy '{item}'. Auction or trade it instead")
+    
+    # Fail if the server doesn't have the item
+    if item_data['id'] not in market.inventory or market.inventory[item_data['id']]['count'] == 0:
+        return player.log_error(f"Unable to buy '{item_data['name']}' as the {market} is out of stock")
+    
+    # Fail if the player can't afford it
+    if vault.get_wallet(player)['balance'] < item_data['price']:
+        return player.log_error(f"You don't have enough funds for x{quantity} '{item_data['name']}'")
+    
+    # If item is valid
+    if item_data:
+        max_quantity = market.inventory[item_data['id']]['count']
+        
+        # If quantity isn't provided or "all", default to all
+        if quantity == "all":
+            quantity = str(max_quantity)
+            
+        if quantity is None:
+            quantity = '1'
+        
+        # Input validation of a positive integer for manual quantity
+        elif not quantity.isnumeric() or '.' in quantity or '-' in quantity:
+            return player.log_error('You must provide an integer for <quantity>')
+
+        quantity = int(quantity)
+            
+        # Check quantity bounds to ensure the server has what the player is requesting to buy
+        if quantity < 1 or quantity > max_quantity:
+            return player.log_error(f'Invalid value for <quantity>, choose between 1-{max_quantity:,}')
+        
+        
+        
+        # After pre-requisites are checked, allow sale
+        price = market.calculate_price(item_data['id'], quantity)
+        original_price = market.round_price(item_data['price'] * quantity)
+        
+        # Add transaction to the vault's pending transactions
+        vault.add_transaction(player, 'buy', {'id': item_data['id'], 'name': item_data['name'], 'quantity': quantity, 'price': price, 'original_price': original_price, 'recipient': market})
+        vault.remove_transaction(player, 'buy', 30)
+        vault.show_receipt(player, 'buy')
+
+    
+# Sell item to the market
+@player.on_alias(player, command='sell', arguments={'item': False, 'quantity': False}, description='Sell specified item(s) in your inventory to the global market (Dynamic Shop)'):
+
+    # Parse arguments
+    selected_item = player.inventory.selected_item
+    
+    item = arguments['item']
+    if not item and selected_item:
+        item = selected_item.id
+    
+    quantity = arguments['quantity']
+    if not quantity and selected_item:
+        quantity = str(selected_item.count)
+    
+    
+    # Sell cancel
+    if vault.check_transaction(player, 'sell'):
+        if item == 'cancel':
+            return vault.remove_transaction(player, 'sell')
+    
+        elif item == 'confirm':
+            return vault.confirm_transaction(player, 'sell')
+        
+        else:
+            vault.remove_transaction(player, 'sell')
+    
+    # Fail if item wasn't provided
+    if not item:
+        return player.log_error('You must provide <item_id/name>, or hold the item in your hand')
+    
+    
+    # Initialize sale
+    item_data = market.get(item)
+    
+    # Fail if item doesn't exist
+    if not item_data:
+        return player.log_error(f"Unable to sell '{item}'. Auction or trade it instead")
+    
+    # If item is valid
+    if item_data:
+        max_quantity = player.inventory.count(item)
+        
+        # Error if the player doesn't actually have the item
+        if max_quantity < 1:
+            return player.log_error(f"'{item_data['name']}' is not in your inventory")
+        
+        # If quantity isn't provided or "all", default to all
+        if quantity is None or quantity == "all":
+            quantity = max_quantity
+        
+        # Input validation of a positive integer for manual quantity
+        elif not quantity.isnumeric() or '.' in quantity or '-' in quantity:
+            return player.log_error('You must provide an integer for <quantity>')
+        
+        else:
+            quantity = int(quantity)
+            
+        # Check quantity bounds to ensure player has what they are requesting to sell
+        if quantity < 1 or quantity > max_quantity:
+            return player.log_error(f'Invalid value for <quantity>, choose between 1-{max_quantity:,}')
+        
+        
+        
+        # After pre-requisites are checked, allow sale
+        price = market.calculate_price(item_data['id'], quantity, True)
+        original_price = market.round_price(item_data['price'] * quantity)
+        
+        # Add transaction to the vault's pending transactions
+        vault.add_transaction(player, 'sell', {'id': item_data['id'], 'name': item_data['name'], 'quantity': quantity, 'price': price, 'original_price': original_price, 'recipient': market})
+        vault.remove_transaction(player, 'sell', 30)
+        vault.show_receipt(player, 'sell')
