@@ -22705,6 +22705,7 @@ class ServerPropertiesEditScreen(MenuBackground):
                 self.line_number.text = f'[color=#4CFF99]{self.line}[/color]'
                 self.line_number.opacity = 1
 
+                self.on_resize()
                 Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
                 Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
                 self.value_label.foreground_color = (0, 0, 0, 0)
