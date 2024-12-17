@@ -72,7 +72,7 @@ def generate_log(exception, error_info=None):
 
     exception_summary = trimmed_exception[-1].strip() + f'\n    ({last_line.strip()})'
     exception_code = trimmed_exception[-1].strip() + f' ({last_line.split(",", 1)[0].strip()} - {last_line.split(",")[-1].strip()})'
-    print(exception_code)
+    # print(exception_code)
     trimmed_exception = "\n".join(trimmed_exception)
 
 

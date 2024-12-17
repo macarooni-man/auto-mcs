@@ -1,6 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
+from dateutil.relativedelta import relativedelta
 from datetime import datetime as dt
 from urllib.request import urlopen
+from datetime import timedelta
 from copy import deepcopy
 from glob import glob
 import json_repair
@@ -88,6 +90,10 @@ class AclManager():
         self.whitelist_enabled = self._server['whitelist']
         self.displayed_rule = None
 
+    # Inherit get_uuid method
+    def get_uuid(self, *args, **kwargs):
+        return get_uuid(*args, **kwargs)
+
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
         return constants.sync_attr(self, name)
@@ -152,7 +158,7 @@ class AclManager():
 
 
         # Check cached world playerdata for old versions
-        if constants.version_check(version, "<", "1.8"):
+        if constants.version_check(version, "<", constants.json_format_floor):
             data_path = os.path.join(server_path, server_world, 'players')
 
             with ThreadPoolExecutor(max_workers=15) as pool:
@@ -712,7 +718,7 @@ class AclManager():
                 if not self._new_server and self.rules['subnets'] and bool(
                     glob(os.path.join(self._server['path'], '*banned-ips*'))):
 
-                    if constants.version_check(self._server['version'], '<', '1.8'):
+                    if constants.version_check(self._server['version'], '<', constants.json_format_floor):
                         with open(os.path.join(self._server['path'], 'banned-ips.txt'), 'r') as f:
                             # Make sure this will replace line breaks on Linux IP lists as well
                             banned_ips = [ip.replace('\n', '') for ip in f.readlines() if ip.replace('\n', '')]
@@ -872,7 +878,7 @@ class AclManager():
 
     # ban_player("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.0-37")
     # "Rule1, Rule2" --> [AclObject1, AclObject2]
-    def ban_player(self, rule_list: str or list or PlayerScriptObject, remove=False, reason=None, force_version=None, temp_server=False):
+    def ban_player(self, rule_list: str or list or PlayerScriptObject, remove=False, reason=None, length='forever', force_version=None, temp_server=False):
         rule_list = convert_obj_to_str(rule_list)
 
         # Format ban reason
@@ -892,7 +898,7 @@ class AclManager():
 
         # Normal behavior
         else:
-            ban_list, subnet_list = ban_user(self._server['name'], rule_list, remove, force_version, True, temp_server, reason)
+            ban_list, subnet_list = ban_user(self._server['name'], rule_list, remove, force_version, True, temp_server, reason, length)
             self.rules['bans'] = ban_list
             self.rules['subnets'] = subnet_list
 
@@ -1707,7 +1713,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
                     pass
 
     # Convert old .txt lists ---------------------------------------------------------------------------------------
-    if constants.version_check(version, "<", "1.8"):
+    if constants.version_check(version, "<", constants.json_format_floor):
 
         # Check for OPs
         if (list_type == "ops") or not list_type:
@@ -2082,7 +2088,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
         if write_file:
 
             # Edit old .txt files
-            if constants.version_check(version, "<", "1.8"):
+            if constants.version_check(version, "<", constants.json_format_floor):
                 final_list = ""
 
                 # write final_list to file
@@ -2127,7 +2133,7 @@ def op_user(server_name: str, rule_list: str or list, remove=False, force_versio
 # ban_player("KChicken, 192.168.1.2, 192.168.0.0/24, !w 192.168.0.69, !w 192.168.0.128/28, 10.1.1.0-37")
 # "Rule1, Rule2" --> [AclObject1, AclObject2]
 # Returns: ban_list, subnet_list
-def ban_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False, reason=None):
+def ban_user(server_name: str, rule_list: str or list, remove=False, force_version=None, write_file=True, temp_server=False, reason=None, length='forever'):
 
     server_properties = dump_config(server_name)
     server_name = server_properties['name']
@@ -2150,6 +2156,60 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
     else:
         new_rules = [rule.strip() for rule in rule_list]
     date = dt.now().strftime("%Y-%m-%d %H:%M:%S +0000")
+
+
+    # Parse length parameter
+    if length != 'forever':
+        try:
+            # Extract number and text from the input
+            number = float(re.sub(r'[^0-9.]', '', length).strip())
+            text = str(re.sub(r'[^a-zA-Z]', '', length).strip().lower())
+            delta = None
+
+            # Current time
+            now = dt.now()
+
+            # Seconds
+            if text.startswith('s'):
+                delta = timedelta(seconds=number)
+
+            # Minutes
+            elif text.startswith('m') and 'mo' not in text:
+                delta = timedelta(minutes=number)
+
+            # Hours
+            elif text.startswith('h'):
+                delta = timedelta(hours=number)
+
+            # Days
+            elif text.startswith('d'):
+                delta = timedelta(days=number)
+
+            # Weeks
+            elif text.startswith('w'):
+                delta = timedelta(weeks=number)
+
+            # Months
+            elif text.startswith('mo'):
+                delta = relativedelta(months=int(number))
+
+            # Years
+            elif text.startswith('y'):
+                delta = relativedelta(years=int(number))
+
+            else:
+                length = "forever"
+
+            # Calculate future date
+            if delta:
+                future_date = now + delta
+
+                # Convert to desired format: YYYY-MM-DD HH:MM:SS +TZ
+                length = future_date.strftime('%Y-%m-%d %H:%M:%S %z')
+
+        except (TypeError, ValueError) as e:
+            length = 'forever'
+
 
     # Iterate over new_rules if they exist
     if new_rules:
@@ -2194,7 +2254,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                             acl_object.extra_data['uuid'] = user['uuid']
                             acl_object.extra_data['created'] = date
                             acl_object.extra_data['source'] = "Server"
-                            acl_object.extra_data['expires'] = "forever"
+                            acl_object.extra_data['expires'] = length
                             acl_object.extra_data['reason'] = reason if reason else "Banned by an operator."
 
                         ban_list.append(acl_object)
@@ -2204,7 +2264,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
                         if server_name in constants.server_manager.running_servers:
                             server_obj = constants.server_manager.running_servers[server_name]
                             if server_obj.running:
-                                server_obj.silent_command(f'ban {user["name"]}{reason}', log=False)
+                                server_obj.silent_command(f'ban {user["name"]} {reason}', log=False)
 
 
             # If rule is an IP or a subnet
@@ -2301,7 +2361,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
 
                         acl_object.extra_data['created'] = date
                         acl_object.extra_data['source'] = "Server"
-                        acl_object.extra_data['expires'] = "forever"
+                        acl_object.extra_data['expires'] = length
                         acl_object.extra_data['reason'] = reason if reason else "Banned by an operator."
 
                         subnet_list.append(acl_object)
@@ -2317,7 +2377,7 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
         if write_file:
 
             # Edit old .txt files
-            if constants.version_check(version, "<", "1.8"):
+            if constants.version_check(version, "<", constants.json_format_floor):
 
                 # Add banned users ---------------------------------------------------------------------------------
                 final_list = ""
@@ -2501,7 +2561,7 @@ def wl_user(server_name: str, rule_list: str or list, remove=False, force_versio
         if write_file:
 
             # Edit old .txt files
-            if constants.version_check(version, "<", "1.8"):
+            if constants.version_check(version, "<", constants.json_format_floor):
                 final_list = ""
 
                 # write final_list to file

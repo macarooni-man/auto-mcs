@@ -1,0 +1,171 @@
+#!
+# title: Discord Bot
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Connects a Discord channel to the in-game chat
+#
+#
+# Usage:
+#
+# 1. Read this guide to set up a Discord application:
+#    https://discordpy.readthedocs.io/en/stable/discord.html
+#
+# 2. Copy the API key (client secret) to the 'api_key' below as a string
+#
+# 3. Add the application to your Discord server, and copy the channel ID of the channel for the shared chat to 'chat_channel' below
+#
+# 4. This bot will automatically start and stop with your server. Additionally, it requires the "read messages" intent to function properly
+#
+# 5. To extend the functionality of your bot, put standard 'discord.py' functionality inside of the '@server.on_start()' event
+#!
+
+
+
+
+from discord.ext import commands
+import discord
+import asyncio
+
+
+# Initialize the bot with a command prefix and intents
+bot = None
+intents = discord.Intents.all()
+
+# Put your Discord application token here
+api_key = 'PUT_BOT_API_KEY_HERE'
+
+# Channel ID for synced chat
+chat_channel = 123456789
+
+
+
+
+def get_players():
+    return f'{len(server.player_list)} / {server.properties["max-players"]}'
+
+# Launch bot with the server
+@server.on_start(data, delay=0):
+    global bot, api_key, chat_channel
+
+    # Ignore any functionality while the API key and channel aren't configured
+    if api_key == 'PUT_BOT_API_KEY_HERE' or chat_channel == 123456789:
+        return server.log_error(f"[discord.py]  API Key or chat channel is not configured. Edit the 'Discord Bot' amscript to set up your bot.")
+
+
+    # Overrides for custom functionality
+    class Bot(commands.Bot):
+        
+        # Rich presence text "playing ..."
+        async def update_rich_presence(self):
+            name = f'{server.name} ({get_players()})'
+            await self.change_presence(activity=discord.Game(name=name))
+        
+    bot = Bot(command_prefix='!', intents=intents)
+
+    
+    # Application commands
+    @bot.tree.command(name="info", description="Retrieves general server info")
+    async def info(interaction: discord.Interaction):
+        embed = discord.Embed(
+                title='Server Information',
+                description=f'auto-mcs v{server._app_version} - running "{server.name}"',
+                color=discord.Color.green()
+            )
+            
+        # Set the custom icon as the thumbnail
+        embed.set_thumbnail(url='https://images.squarespace-cdn.com/content/v1/6525da8272c3ad522c663487/9d1b295a-6883-47c8-bad2-08d14eef0b2c/favicon.ico?format=30w')
+            
+        # Add fields for each piece of information
+        embed.add_field(name='Version', value=f'{server.type.title()} {server.version}', inline=False)
+        embed.add_field(name='Address', value=f'{server.network["ip"]}:{server.network["port"]}', inline=False)
+        embed.add_field(name='Uptime', value=server._performance["uptime"], inline=False)
+        embed.add_field(name='Players', value=get_players(), inline=False)
+        embed.add_field(name='CPU Usage', value=f'{server._performance["cpu"]}%', inline=True)
+        embed.add_field(name='RAM Usage', value=f'{server._performance["ram"]}%', inline=True)
+            
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+        
+            
+            
+    # Send chat messages from the Discord channel to the Minecraft chat
+    @bot.event
+    async def on_message(message):
+        if not server.player_list:
+            return
+
+        if message.author == bot.user:
+            return
+
+        if message.channel.id == chat_channel:
+            server.broadcast(f'<Discord: @{message.author.display_name}> {message.content}', color='blue', style='normal')
+    
+    
+    
+    # Rich Presence setup
+    @bot.event
+    async def on_ready():
+        server.log_success(f"[discord-bot]  Logged in as '{bot.user.name}'")
+        await bot.update_rich_presence()
+    
+    # Sync application commands with Discord
+    @bot.event
+    async def on_connect():
+        await bot.tree.sync()
+    
+    bot.run(api_key)
+
+# Runs a coroutine
+def coro(func):
+    global bot
+    asyncio.run_coroutine_threadsafe(
+        func,
+        bot.loop
+    )
+
+@player.on_join(player, data):
+    embed = discord.Embed(
+        description=f"**{player}** joined the game",
+        color=discord.Color.yellow()
+    )
+    channel = bot.get_channel(chat_channel)
+    coro(channel.send(embed=embed))
+    coro(bot.update_rich_presence())
+
+@player.on_leave(player, data):
+    embed = discord.Embed(
+        description=f"**{player}** left the game",
+        color=discord.Color.yellow()
+    )
+    channel = bot.get_channel(chat_channel)
+    coro(channel.send(embed=embed))
+    coro(bot.update_rich_presence())
+
+@player.on_message(player, message):
+    channel = bot.get_channel(chat_channel)
+    coro(channel.send(f'**<{player}>** {message}'))
+
+@player.on_achieve(player, advancement):
+    channel = bot.get_channel(chat_channel)
+    embed = discord.Embed(
+        description=f'**{player}** earned the achievement **{advancement}**',
+        color=discord.Color.blue()
+    )
+    coro(channel.send(embed=embed))
+    
+@player.on_death(player, enemy, message):
+    if player.name in message:
+        message = message.replace(player.name,f'**{player}**')
+    if enemy and enemy.name in message:
+        message = message.replace(enemy.name,f'**{enemy}**')
+    
+    embed = discord.Embed(
+        description=message,
+        color=discord.Color.red()
+    )
+    channel = bot.get_channel(chat_channel)
+    coro(channel.send(embed=embed))
+    
+# Close bot when the server stops, or amscript restarts
+@server.on_stop(data, delay=0):
+    coro(bot.close())

@@ -66,7 +66,7 @@ Sends a custom log event to the console. This output is displayed only while the
 
 
 
-### server.broadcast(*message, log_type*)
+### server.broadcast(*message, color, style*)
 
 Sends a custom chat message to all players and the console. This output is displayed only while the server is running, and is not saved to `latest.log`.
 
@@ -75,8 +75,23 @@ Sends a custom chat message to all players and the console. This output is displ
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `message*` | `str` of log content |
-| `log_type` | `str` can be `'info'`, `'success'`, `'warning'` or `'error'`. Defaults to `'info'` |
+| `message*` | `str` of content to broadcast |
+| `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
+| `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
+
+<br>
+
+
+### server.operator_broadcast(*message, color, style*)
+
+Sends a custom chat message to all operators and the console. This output is displayed only while the server is running, and is not saved to `latest.log`.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `message*` | `str` of content to broadcast |
+| `color` | `str` of Minecraft color ID, all values for `/tellraw` are accepted. List of IDs can be found [here](https://minecraft.fandom.com/wiki/Formatting_codes#Color_codes) |
+| `style` | `str`, can be `'normal'`, `'italic'`, `'bold'`, `'strikethrough'`, `'underlined'`, and `'obfuscated'`. Defaults to `'italic'` |
 
 <br>
 
@@ -92,34 +107,46 @@ Executes any Minecraft command in the server console.
 | Parameter | Description |
 | --- | --- |
 | `command*` | `str`, any Minecraft command |
+| `log` | `bool`, show execution in the console, `False` by default to prevent lag or clutter in the console with fast loops |
 
 <br>
 
 
 
-### server.version_check(*comparator, version*)
+### server.after(*delay, function, params*)
 
-Compares server version to `version` with the `comparator`, returns `bool`.
+Runs a delayed background (non-blocking) task. Exits before execution if the server stops, or if scripts are reloaded. Returns `ServerScriptObject.AmsTimer()` of the background task, which has a method `AmsTimer.cancel()` to end prematurely.
 
 **Accepted parameters**:
-| Parameter | Description |
+| Parameter | Description | 
 | --- | --- |
-| `comparator*` | `str`, can be `'='`, `'<'`, `'<='`, `'>'`, or `'>='` |
-| `version*` | `str`, any Minecraft version, i.e. `'1.17.1'` |
+| `delay*` | `int`, delay in seconds |
+| `function*` | `callable`, any Python callable function or method |
+| `params` | accepts `*args` and `**kwargs` which are passed to `function` |
 
 <br>
 
 
 
-### server.get_player(*selector*)
+### server.get_player(*selector, reverse, offline*)
 
 Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Only returns the first match.
+
+> Note: In versions prior to 1.13, `selector` can only be a username
 
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `selector*` | `str` of username, or a valid Minecraft selector that returns a single value (like @p, @s, @r). Only players will be matched |
-| `reverse` | `bool` selects last match on `True`. Defaults to `False` |
+| `offline` | `bool` retrieves playerdata from `.dat` file if the target player isn't connected to the server. Defaults to `False` |
+
+<br>
+
+
+
+### server.get_players()
+
+Returns a generator of [**PlayerScriptObject**](#PlayerScriptObject) for each online player.
 
 <br>
 
@@ -133,7 +160,13 @@ Returns [**PlayerScriptObject**](#PlayerScriptObject) on match, else `None`. Onl
  - `str`, server's current filename
 
 #### server.version
- - `str`, Minecraft version of the server, i.e. `'1.16.3'`
+ - `AmsVersion`, Minecraft version of the server, i.e. `'1.16.3'`
+ - When used in a string, it will be formatted as `'1.16.3'`
+ - Can be used in mathematical comparisons with another version string, returns `bool`.
+```python
+if server.version >= '1.8':
+    server.log("Server is 1.8 or newer")
+```
 
 #### server.build
  - `str`, Only applicable for Paper/Forge, contains build number. Else will be `None`
@@ -224,9 +257,9 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 
 **Attributes**:
-> Note: All attributes are read-only, and thus will not change playerdata when modified
+> Note: Most attributes are read-only, and thus will not change playerdata when modified.
 
-> Note: Versions prior to 1.13 load NBT from playerdata.dat, which is only updated every couple of minutes or so. Any version between 1.8-1.13, though, will have updated position data. 1.13 and later retrieves *all* of the most recent NBT data.
+> Note: Versions prior to 1.13 load NBT from playerdata.dat, which is only updated every couple of minutes or so. Any version between 1.8-1.13 will execute `save-all` to force updated data. 1.13 and later retrieves *all* of the most recent NBT data.
 
 
 #### player.name
@@ -240,6 +273,14 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.is_server
  - `bool`, if current object was created from the console
+ - This will be `True` if the console sends a command to a [**@player.on_alias**](#playeron_alias) event, for example
+
+#### player.is_online
+ - `bool`, if current object is connected to the server
+ - This will be `False` if the console sends a command to a [**@player.on_alias**](#playeron_alias) event, for example
+
+#### player.is_operator
+ - `bool`, if current object has operator permissions
  - This will be `True` if the console sends a command to a [**@player.on_alias**](#playeron_alias) event, for example
 
 #### player.position
@@ -272,6 +313,7 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.gamemode
  - `str`, player's current gamemode
+ - Settable with `player.gamemode = 'survival'`
  - Value of `'survival'`, `'creative'`, `'adventure'`, or `'spectator'`
 
 #### player.xp
@@ -295,9 +337,10 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.death_time
  - `int`, how long since the player died *(in ticks)*
-
+ 
 #### player.dimension
  - `str`, the dimension that the player is currently in
+ - Settable with `player.dimension = 'overworld'`
  - Value of `'overworld'`, `'the_nether'`, or `'the_end'`
 
 #### player.active_effects
@@ -306,8 +349,98 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.inventory
  - `InventoryObject`, organized list of all items in the player's inventory
- - Attributes are `player.inventory.selected_item`, `player.inventory.offhand`, `player.inventory.hotbar`, `player.inventory.armor`, `player.inventory.inventory`
- - Each list is full of `ItemObject`, which can be accessed via lowercase NBT attributes like in game, and with Pythonic logic: `player.inventory.selected_item.tag.display.name` or `if "diamond_sword" in player.inventory`
+ - Each list is full of `ItemObject`, which can be accessed via lowercase NBT attributes like in game, and with Pythonic logic: `player.inventory.selected_item.tag.display.name` or `if "diamond_sword" in player.inventory` or `player.inventory.hotbar.count("cobblestone")`
+ - An `InventoryObject` is structured in the following format:
+```python
+class InventoryObject():
+    # The attributes below are supported and abracted in a consistent way via amscript, regardless of the game version
+
+    # The selected item in the inventory
+    self.selected_item <ItemObject>
+
+    # The item in the offhand slot
+    self.offhand <ItemObject>
+
+    # Items in the hotbar slots with index 0-8
+    self.hotbar <list of ItemObject>
+
+    # The items in the main inventory with index 0-26
+    self.inventory <list of ItemObject>
+
+    # The items in the armor slot
+    # Keys: "head", "chest", "legs", "feet"
+    self.armor <dict of ItemObject>
+```
+
+> Note: all methods below can also be used on `player.inventory.hotbar`, `player.inventory.armor`, and `player.inventory.inventory` as well
+
+   - #### inventory.items()
+     - Returns a `list` of every `ItemObject` in the inventory
+
+   - #### inventory.find(*item_id*)
+     - Returns a `list` of every `ItemObject` which matches `item_id`
+
+   - #### inventory.count(*item_id*)
+     - Returns a total count in `int` of all `item_id` in the inventory.
+     - If `item_id` is a list, it will return the count of all items in the list.
+     - If `item_id` is not provided, it will return the count of all items in the inventory.
+
+   - #### inventory.give(*ItemObject, preserve_slot*)
+     - Gives the player the specified `ItemObject`. This can be helpful for transferring items between players, even with NBT data like enchantments, names, etc.
+     - If `preserve_slot` is `True`, the item will be given to the player in the same slot it originated from. Defaults to `False`. This parameter is only compatible with Minecraft 1.8 and later.
+     > Note: This method is compatible with every version of Minecraft
+     - Compliments `ItemObject.take()`
+
+   - #### inventory.clear()
+     - Clears the player's inventory of all items.
+
+
+ - An `ItemObject` is structured in the following format:
+```python
+class ItemObject():
+    # The attributes below (except for self.nbt) are supported and abstracted in a consistent way via amscript, regardless of the game version
+
+    # The slot in the inventory that contains the item
+    # Follows the standard Minecraft slot format, e.g. "slot.hotbar.0", "slot.armor.head", "slot.inventory.0", etc.
+    self.slot <str>
+
+    # ID of the item
+    self.id <str>
+
+    # Quantity of the item
+    self.count <int>
+
+    # e.g. durability of a tool
+    self.damage <int>
+
+    # Custom name of the item, or None
+    self.custom_name <str or None>
+
+    # List of strings, each string is a line of lore
+    self.lore <list>
+
+    # Dictionary of dictionaries, each dictionary is an enchantment
+    self.enchantments <dict>
+
+    # List of dictionaries, each dictionary is an attribute modifier
+    self.attribute_modifiers <list>
+
+    # Many items have extra attributes such as a book (normal NBT format: self.pages).
+    # This is the raw NBT data, and is formatted differently depending on the game version
+    self.nbt <dict>
+```
+   - #### ItemObject.take()
+     - Takes the specified `ItemObject` from the player it originated from, and returns the `ItemObject` that was taken. This can be helpful for transferring items between players, even with NBT data like enchantments, names, etc.
+     > Note: This method is only compatible with Minecraft 1.4.2 and later
+
+```python
+# Example of transferring all items from one player to another
+player1 = server.get_player("player1")
+player2 = server.get_player("player2")
+
+for item in player1.inventory:
+    player2.inventory.give(item.take())
+```
 
 #### player.persistent
  - `dict`, persistent variable storage for saving information between server restarts, or script reloads
@@ -455,6 +588,19 @@ class AclRule():
 
 
 **Methods**: <br><br>
+
+
+
+### acl.get_uuid(*username*)
+
+Returns a `dict` of a player's connection data given their username and other rules. Use `acl.get_uuid('User')['uuid']` to get their UUID.
+
+**Accepted parameters**:
+| Parameter | Description |
+| --- | --- |
+| `username*` | `str` of username |
+
+<br>
 
 
 
@@ -1144,7 +1290,9 @@ window = tk.Tk()
 
 ### @server.on_loop
 
-Fired after every `interval`. Loops until the server is closed, or manually cancelled with `return`.
+Fired after every `interval`. Loops until the server is closed, or manually cancelled by using `return`.
+
+> Note: The fastest loop supported by this event is 1 tick (50 milliseconds)
 
 **Accepted parameters**:
 | Parameter | Description |
@@ -1282,7 +1430,7 @@ Used for registering custom commands and augmenting existing ones.
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
 | `command*` | `str` to specify the command verb |
-| `arguments` | `dict` specifying requirement for execution `{'arg1': True}` where `True` denotes a required argument. Only the last argument can be optional |
+| `arguments` | `dict` specifying requirement for execution `{'arg1': True}` where `True` denotes a required argument. Only the last arguments can be optional |
 | `permission`| `str`, used to restrict execution to privileged users. Can be `'anyone'`, `'op'`, `'server'`, or a [**custom player permission**](#playerset_permissionpermission-enabled). Defaults to `'anyone'`|
 | `description` | `str` for `!help` menu. Command will be shown to users which meet the minimum permission level |
 | `hidden` | `bool`, defaults to `False`. Hides command from all users (they can still be executed) and disables the wrapper functionality described below. Useful for augmenting existing commands |

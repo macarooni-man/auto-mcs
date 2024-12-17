@@ -1,0 +1,48 @@
+#!
+# title: Python
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Use the chat as a REPL for the amscript Python environment
+#
+#
+# Usage:
+# ------- Run Python Code -------
+# >>  !py <code>
+#!
+
+
+
+
+import traceback
+gbl = globals()
+lcl = locals()
+
+
+# Toggles custom permission
+@player.on_alias(player, command='pyperm', arguments={'player': True}, permission='server', description='Toggles Python permission for specified player (Python)'):
+    target = server.get_player(arguments['player'])
+    if target:
+        if not target.check_permission('pyperm'):
+            target.set_permission('pyperm', True)
+            player.log_success(f"[python] '{target}' now has permission to execute Python code")
+        else:
+            target.set_permission('pyperm', False)
+            player.log_error(f"[python] '{target}' no longer has permission to execute Python code")
+    else:
+        player.log_error(f"[python] '{arguments['player']}' is not a valid player")
+
+
+
+
+# Runs Python code from !py command for players with 'pyperm'
+@player.on_alias(player, command='py', arguments={'code': True}, permission='pyperm', description='Run Python code in the amscript environment (Python)'):
+    try:
+        lcl['player'] = player
+        code = arguments['code']
+        
+        if 'import ' in code or ' = ' in code:
+            player.log(exec(arguments['code'], gbl, lcl))
+        else:
+            player.log(eval(arguments['code'], gbl, lcl))
+    except Exception as e:
+        player.log_error(traceback.format_exc().strip())

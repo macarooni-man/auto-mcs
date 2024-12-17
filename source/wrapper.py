@@ -182,8 +182,9 @@ if __name__ == '__main__':
     crash = None
 
 
-    # Delete configuration if flag is set
+    # Delete configuration/cache if flag is set
     if reset_config:
+        constants.safe_delete(constants.cacheDir)
         constants.app_config.reset()
 
 

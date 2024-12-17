@@ -24,6 +24,14 @@ import os
 import re
 
 
+# Logging errors
+# import faulthandler, logging
+# faulthandler.enable()
+# logging.basicConfig(
+#     level=logging.DEBUG,
+#     format='%(asctime)s - %(levelname)s - %(message)s',
+# )
+# logger = logging.getLogger(__name__)
 
 LexerType = Union[Type[pygments.lexer.Lexer], pygments.lexer.Lexer]
 
@@ -260,6 +268,37 @@ def _parse_scheme(color_scheme: dict[str, dict[str, str | int]]) -> tuple[dict, 
     return editor, tags
 
 
+# Escape/emoji processing
+def is_emoji(char):
+    """Determine if a character is an emoji based on Unicode ranges."""
+    # Define Unicode ranges for emojis
+    emoji_ranges = [
+        (0x1F600, 0x1F64F),  # Emoticons
+        (0x1F300, 0x1F5FF),  # Misc Symbols and Pictographs
+        (0x1F680, 0x1F6FF),  # Transport and Map
+        (0x2600, 0x26FF),    # Misc symbols
+        (0x2700, 0x27BF),    # Dingbats
+        (0xFE00, 0xFE0F),    # Variation Selectors
+        (0x1F900, 0x1F9FF),  # Supplemental Symbols and Pictographs
+        (0x1FA70, 0x1FAFF),  # Symbols and Pictographs Extended-A
+        (0x200D, 0x200D),    # Zero Width Joiner
+    ]
+    codepoint = ord(char)
+    return any(start <= codepoint <= end for start, end in emoji_ranges)
+def escape_emojis(text, allow_breaks=False):
+    """Sanitize input by removing non-printable characters and ensuring valid emoji sequences."""
+    def is_valid_char(char):
+        # Allow printable characters and emojis
+        return char.isprintable() or is_emoji(char)
+
+    # Remove non-printable characters
+    sanitized_text = ''.join(c for c in text if is_valid_char(c) or (allow_breaks and c == '\n'))
+    return sanitized_text
+
+
+    # Dirty fix for the meantime to prevent crashing when pasting emojis
+    return ''.join(f"{char}" if is_emoji(char) else char for char in text)
+
 # Checks for string similarity
 def similarity(a, b):
     return round(SequenceMatcher(None, a, b).ratio(), 2)
@@ -325,7 +364,6 @@ def save_window_pos(*args):
     if size[0] <= (min_size[0] + 400):
         last_window = new_window
 
-
 # Saves script to disk
 def save_script(data, script_path, *a):
     global ipc, open_frames, currently_open, telepath_map
@@ -347,7 +385,12 @@ def save_script(data, script_path, *a):
                     'script_path': script_path,
                     'script_contents': script_contents,
                     'telepath_script_dir': data['telepath_script_dir'],
-                    'telepath_data': telepath_map[script_path]
+                    'telepath_data': telepath_map[script_path],
+                    'folding_data': {
+                        'folding_states': open_frames[script_name].code_editor._line_numbers.folding_states,
+                        'length': len(script_contents.splitlines()),
+                        'cursor_pos': open_frames[script_name].code_editor.index(INSERT)
+                    }
                 }
             }
             ipc.send(message)
@@ -505,7 +548,7 @@ proc ::tabdrag::move {win x y} {
             y = int((height / 2) - (start_size[1] / 2)) - 15
         window.geometry(f"{start_size[0]}x{start_size[1]}+{x}+{y}")
         window.minsize(width=min_size[0], height=min_size[1])
-        window.title(f'{data["app_title"]} - amscript IDE')
+        window.title(f'{data["app_title"]} - amscript IDE (v{data["ams_version"]})')
         if fullscreen:
             if data['os_name'] in ['windows', 'macos']:
                 window.state('zoomed')
@@ -753,7 +796,9 @@ def launch_window(path: str, data: dict, *a):
     if path:
 
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-            ams_data = f.read().replace('\t', tab_str) + ("\n" * dead_zone)
+            raw_data = f.read()
+            start_lines = len(raw_data.splitlines())
+            ams_data = raw_data.replace('\t', tab_str) + ("\n" * dead_zone)
 
         error_bg = convert_color((0.3, 0.1, 0.13))['hex']
         text_color = convert_color((0.6, 0.6, 1))['hex']
@@ -814,13 +859,88 @@ def launch_window(path: str, data: dict, *a):
 
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
-                self.bind(f"<{control}-BackSpace>", self.ctrl_bs)
                 self.bind('<Escape>', lambda *_: hide_replace(), add=True)
                 self.bind('<KeyPress>', self.process_keys)
                 self.bind(f"<{control}-{'H' if data['os_name'] == 'macos' else 'h'}>", lambda *_: replace.toggle_focus(True))
                 self.bind('<Shift-Return>', lambda *_: trigger_replace())
+                self.bind('<Shift-Return>', self.process_keys, add=True)
+                self.bind(f"<{control}-v>", self._paste)
+                self.bind(f"<{control}-BackSpace>", lambda *args, **kwargs: self._backspace(True, *args, **kwargs))
+                self.bind('<BackSpace>', lambda *args, **kwargs: self._backspace(False, *args, **kwargs))
 
                 self.put_placeholder()
+
+            def _paste(self, *_):
+                with suppress(TclError):
+                    self.delete("sel.first", "sel.last")
+
+                # Get clipboard text and escape emojis
+                raw_text = self.clipboard_get()
+                filtered_text = raw_text.splitlines()
+                if isinstance(filtered_text, list):
+                    filtered_text = filtered_text[0]
+                escaped_text = escape_emojis(filtered_text)
+
+                # Replace tabs and split into lines
+                text = escaped_text.replace('\t', tab_str)
+                self.insert("insert", text.strip())
+                return 'break'
+
+            def _backspace(self, control=False, event=None, *_):
+                """Custom backspace handler to delete entire emojis."""
+
+                if control:
+                    end_idx = self.index(INSERT)
+                    start_idx = self.get().rfind(" ", None, end_idx)
+                    self.selection_range(start_idx, end_idx)
+
+                # Check for deleting a selection
+                select_deleted = False
+                try:
+                    self.delete("sel.first", "sel.last")
+                    select_deleted = True
+                except TclError:
+                    pass  # No selection to delete
+
+                if select_deleted:
+                    update_search()
+                    return 'break'
+
+                cursor_pos = self.index(INSERT)  # Get the cursor position as integer
+
+                if cursor_pos == 0:
+                    return 'break'  # Nothing to delete
+
+                # Get the text up to the cursor
+                text_before = self.get()[:cursor_pos]
+
+                # Initialize deletion indices
+                index = len(text_before)
+
+                # Iterate backwards to find the start of an emoji
+                while index > 0:
+                    char = text_before[index - 1]
+                    if is_emoji(char):
+                        index -= 1
+                    else:
+                        break
+
+                # Determine how many characters to delete
+                chars_to_delete = len(text_before) - index
+
+                if chars_to_delete == 0:
+                    # If no emojis detected, delete one character
+                    start = str(cursor_pos - 1)
+                    end = str(cursor_pos)
+                    self.delete(start, end)
+                else:
+                    # Delete all characters to prevent crash
+                    self.delete(0, 'end')
+
+                # Update search after deletion
+                update_search()
+
+                return 'break'
 
             def toggle_focus(self, fs=True):
 
@@ -865,7 +985,7 @@ def launch_window(path: str, data: dict, *a):
 
             def process_keys(self, event):
                 if event.keysym == "Return":
-                    if event.state == 33:
+                    if event.state in [1, 33]:
                         self.iterate_selection(False)
                     else:
                         self.iterate_selection(True)
@@ -884,12 +1004,6 @@ def launch_window(path: str, data: dict, *a):
                 if not self.get():
                     self.put_placeholder()
                 self.has_focus = False
-
-            def ctrl_bs(self, event, *_):
-                ent = event.widget
-                end_idx = ent.index(INSERT)
-                start_idx = ent.get().rfind(" ", None, end_idx)
-                ent.selection_range(start_idx, end_idx)
 
         search_frame = Frame(root, height=1)
         search_frame.configure(bg=frame_background, borderwidth=0, highlightthickness=0)
@@ -1082,32 +1196,17 @@ def launch_window(path: str, data: dict, *a):
 
                 root.after(10, lambda *_: reduce_opacity(1))
 
-
         # Configure background text
         class TkLineNumbers(Canvas):
-            """
-            Creates a line number widget for a text widget. Options are the same as a tkinter Canvas widget and add the following:
-                * -textwidget (Text): The text widget to attach the line numbers to. (Required) (Second argument after master)
-                * -justify (str): The justification of the line numbers. Can be "left", "right", or "center". Default is "left".
-
-            Methods to be used outside externally:
-                * .redraw(): Redraws the widget (to be used when the text widget is modified)
-            """
-
             def __init__(
-                self: TkLineNumbers,
-                master: Misc,
-                textwidget: Text,
-                justify: str = "left",
-                # None means take colors from text widget (default).
-                # Otherwise it is a function that takes no arguments and returns (fg, bg) tuple.
-                colors: Callable[[], tuple[str, str]] | tuple[str, str] | None = None,
-                *args,
-                **kwargs,
+                    self: TkLineNumbers,
+                    master: Misc,
+                    textwidget: Text,
+                    justify: str = "left",
+                    colors: Callable[[], tuple[str, str]] | tuple[str, str] | None = None,
+                    *args,
+                    **kwargs,
             ) -> None:
-                """Initializes the widget -- Internal use only"""
-
-                # Initialize the Canvas widget
                 Canvas.__init__(
                     self,
                     master,
@@ -1119,7 +1218,6 @@ def launch_window(path: str, data: dict, *a):
                     **kwargs,
                 )
 
-                # Set variables
                 self.textwidget = textwidget
                 self.master = master
                 self.justify = justify
@@ -1127,56 +1225,234 @@ def launch_window(path: str, data: dict, *a):
                 self.cancellable_after: Optional[str] = None
                 self.click_pos: None = None
                 self.allow_highlight = False
+
+                # Stores the currently known foldable blocks, and loads from cache if it exists
+                self.loaded_from_cache = False
+                self.cached_data = None
+                try:
+                    cache_dir = data['cache_dir']
+                    file_name = os.path.basename(path).split('.')[0] + '.json'
+                    if data['telepath_script_dir'] and path.startswith(data['telepath_script_dir']):
+                        json_dir = os.path.join(cache_dir, 'ide', 'fold-regions', 'telepath')
+                    else:
+                        json_dir = os.path.join(cache_dir, 'ide', 'fold-regions', 'local')
+                    json_path = os.path.join(json_dir, file_name)
+
+                    # Attempt to load from cache only if the line count is the same
+                    if os.path.isfile(json_path):
+                        with open(json_path, 'r', errors='ignore') as f:
+                            folding_data = json.loads(f.read())
+                            if start_lines == folding_data['length']:
+                                self.loaded_from_cache = True
+
+                                # Convert keys from strings to integers
+                                self.folding_states = {int(k): v for k, v in folding_data['folding_states'].items()}
+
+                                # Defer to scroll after content is loaded
+                                if 'cursor_pos' in folding_data:
+                                    self.restore_cursor_pos(folding_data['cursor_pos'])
+
+                except:
+                    pass
+
+                self.folded_blocks = {}  # line_num -> {'start': int, 'end': int, 'folded': bool}
+                if not self.loaded_from_cache:
+                    self.folding_states = {}
+                self.eof_length = 0
+
+                self.fold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-fold.png"))
+                self.unfold_arrow = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold.png"))
+                self.unfold_error = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold-error.png"))
+                self.unfold_search = PhotoImage(file=os.path.join(data['gui_assets'], "ide-unfold-search.png"))
+
                 self.x: int | None = None
                 self.y: int | None = None
 
-                # Set style and its binding
                 self.set_colors()
                 self.bind("<<ThemeChanged>>", self.set_colors, add=True)
-
-                # Mouse scroll binding
                 self.bind("<MouseWheel>", self.mouse_scroll, add=True)
                 self.bind("<Button-4>", self.mouse_scroll, add=True)
                 self.bind("<Button-5>", self.mouse_scroll, add=True)
-
-                # Click bindings
-                self.bind("<Button-1>", self.click_see, add=True)
                 self.bind("<ButtonRelease-1>", self.unclick, add=True)
-                self.bind("<Double-Button-1>", self.double_click, add=True)
-
-                # Mouse drag bindings
                 self.bind("<Button1-Motion>", self.in_widget_select_mouse_drag, add=True)
                 self.bind("<Button1-Leave>", self.mouse_off_screen_scroll, add=True)
                 self.bind("<Button1-Enter>", self.stop_mouse_off_screen_scroll, add=True)
 
+                # Fix button click order
+                def single_click(*args, **kwargs):
+                    if not self.check_fold_click(*args, **kwargs):
+                        self.click_see(*args, **kwargs)
+
+                def double_click(*args, **kwargs):
+                    if not self.check_fold_click(*args, **kwargs):
+                        self.double_click(*args, **kwargs)
+
+                self.bind("<Button-1>", single_click, add=True)
+                self.bind("<Double-Button-1>", double_click, add=True)
+
                 self.textwidget.bind("<<ContentChanged>>", self.get_cursor, add=True)
 
-                # Set the yscrollcommand of the text widget to redraw the widget
                 textwidget["yscrollcommand"] = self.redraw
 
-                # Redraw the widget
+                # Redraw parameters
+                self.last_redraw = 0
+                self.redraw_limit = 0.005  # in ms
+                self.ignore_redraw = False
                 self.redraw()
 
-            def redraw(self, *_) -> None:
-                """Redraws the widget"""
+            def restore_cursor_pos(self, desired_pos: str, attempts: int = 0, max_attempts: int = 10, delay: int = 10):
+                """
+                Attempts to restore the cursor position. Retries if the Text widget isn't ready.
+                """
+                try:
+                    # Set cursor position
+                    view_pos = desired_pos.split('.')
+                    view_pos = f'{int(desired_pos[0]) + 5}.0'
+                    def align_after():
+                        self.textwidget.focus_force()
+                        self.textwidget.see(view_pos)
+                        self.textwidget.see(desired_pos)
+                        self.textwidget.focus_force()
+                        self.textwidget.mark_set("insert", desired_pos)
+                    self.textwidget.after(10, align_after)
 
-                # Resize the widget based on the number of lines in the textwidget and set colors
+                    # Verify if the cursor is set correctly
+                    current_pos = self.textwidget.index("insert")
+                    if current_pos != desired_pos and attempts < max_attempts:
+                        # Schedule another attempt
+                        self.textwidget.after(delay, lambda: self.restore_cursor_pos(desired_pos, attempts + 1, max_attempts, delay))
+                    else:
+                        # Finalize restoration
+                        self.redraw_allow()
+                        self.redraw()
+                except TclError as e:
+                    # If setting fails, retry
+                    if attempts < max_attempts:
+                        self.textwidget.after(delay, lambda: self.restore_cursor_pos(desired_pos, attempts + 1, max_attempts, delay))
+                    else:
+                        print(f"Failed to restore cursor position after {max_attempts} attempts. Error: {e}")
+
+            def redraw(self, *_) -> None:
+
+                # Throttle redraw to 200 times per second
+                current_time = time.time()
+                if (current_time - self.last_redraw > self.redraw_limit) and not self.ignore_redraw:
+                    self.last_redraw = current_time
+                else:
+                    return
+
+
+                """Redraws the widget, updating line numbers and fold icons."""
                 self.resize()
                 self.set_colors()
 
-                # Delete all the old line numbers
+                # Clear existing line numbers and icons
                 self.delete("all")
 
-                # Get the first and last line numbers for the textwidget (all other lines are in between)
+                # Update the folding regions based on current text
+                self.update_folding_regions()
+
+                # Update the folded state of each block based on `folding_states`
+                for line, block in self.folded_blocks.items():
+                    if line in self.folding_states:
+                        block['folded'] = self.folding_states[line]
+                    else:
+                        block['folded'] = False  # Default to unfolded if no state is stored
+
+                # Remove invalid data from cache
+                # if self.loaded_from_cache:
+                #     new_folding_states = {}
+                #     for line, folded in self.folding_states.items():
+                #         print(line, folded, self.folded_blocks)
+                #         if line in self.folded_blocks and folded:
+                #             new_folding_states[line] = folded
+                #     self.folding_states = new_folding_states
+                #     self.loaded_from_cache = False
+
+
+                # Sort the blocks by their start line in ascending order
+                sorted_blocks = sorted(self.folded_blocks.items(), key=lambda x: x[1]['start'])
+
+                # Initialize an empty list to keep track of folded parent blocks
+                folded_parents = []
+
+                # Iterate through sorted blocks and apply 'folded' tags
+                for line, block in sorted_blocks:
+                    # Check if the current block is inside any folded parent
+                    inside_folded_parent = False
+                    for parent in folded_parents:
+                        if block['start'] > parent['start'] and block['end'] <= parent['end']:
+                            inside_folded_parent = True
+                            break
+
+                    if not inside_folded_parent and block['folded']:
+                        # Apply 'folded' tag to lines within this block (excluding the starting line)
+                        for i in range(block['start'] + 1, block['end'] + 1):
+                            if i <= self.eof_length:
+                                self.textwidget.tag_add("folded", f"{i}.0", f"{i}.0 lineend+1c")
+                        # Ensure the 'folded' tag is configured to elide lines
+                        self.textwidget.tag_configure("folded", elide=True)
+                        # Add this block to folded parents
+                        folded_parents.append(block)
+
+                # Now, draw fold icons only for blocks that are not inside any folded parent
+                for line, block in sorted_blocks:
+                    # Check if the block is inside any folded parent
+                    inside_folded_parent = False
+                    for parent in folded_parents:
+                        if block['start'] > parent['start'] and block['end'] <= parent['end']:
+                            inside_folded_parent = True
+                            break
+
+                    if not inside_folded_parent:
+                        # Retrieve line information
+                        dlineinfo = self.textwidget.dlineinfo(f"{line}.0")
+                        if dlineinfo is None:
+                            continue  # Line is not visible
+
+                        # Select the appropriate icon based on the fold state
+                        icon = self.unfold_arrow if block['folded'] else self.fold_arrow
+
+                        # Show error icon if the error is in a folded block
+                        if block['folded'] and code_editor.error:
+                            if int(code_editor.error['line'].split(':')[0]) in range(block['start']+1, block['end']+1):
+                                icon = self.unfold_error
+
+                        # Mark the block as containing a search result
+                        elif block['folded']:
+                            for match in code_editor.match_list:
+                                if block['start'] <= match <= block['end']:
+                                    icon = self.unfold_search
+                                    break
+
+                        offset = {
+                            'macos': (3, 18),
+                            'windows': (3, 25),
+                            'linux': (3, 25)
+                        }
+                        x = int(self["width"]) + offset[data['os_name']][0]
+                        y = dlineinfo[1] + offset[data['os_name']][1]
+
+                        # Create the fold icon on the canvas
+                        self.create_image(
+                            x, y,
+                            image=icon,
+                            anchor='center',
+                            tags=("foldicon", f"line_{line}")
+                        )
+
+                # Determine the range of lines currently visible in the widget
                 first_line = int(self.textwidget.index("@0,0").split(".")[0])
                 last_line = int(
-                    self.textwidget.index(f"@0,{self.textwidget.winfo_height()}").split(".")[0]
+                    self.textwidget.index(f"@0,{self.winfo_height()}").split(".")[0]
                 )
 
+                # Handle highlighting
                 index = -1
                 if self.allow_highlight:
                     index = int(self.textwidget.index(INSERT).split(".")[0])
 
+                # Handle error highlighting
                 err_index = -1
                 try:
                     if code_editor.error:
@@ -1190,43 +1466,30 @@ def launch_window(path: str, data: dict, *a):
 
                 max_lines = int(self.textwidget.index('end').split('.')[0]) - 1
 
-                # Draw the line numbers looping through the lines
+                # Iterate through each visible line to draw line numbers
                 for lineno in range(first_line, last_line + 1):
-
                     if lineno > max_lines - dead_zone:
                         continue
 
-                    # Check if it's searched
+                    tags: tuple[str] = self.textwidget.tag_names(f"{lineno}.0")
+                    elide_values: tuple[str] = (self.textwidget.tag_cget(tag, "elide") for tag in tags)
+                    line_elided: bool = any(getboolean(v or "false") for v in elide_values)
+                    dlineinfo = self.textwidget.dlineinfo(f"{lineno}.0")
+
+                    if dlineinfo is None or line_elided:
+                        continue  # Skip elided or non-visible lines
+
+                    # Determine the color based on search matches or errors
                     search_match = False
                     try:
                         search_match = lineno in code_editor.match_list
                     except:
                         pass
 
-                    # Check if line is elided
-                    tags: tuple[str] = self.textwidget.tag_names(f"{lineno}.0")
-                    elide_values: tuple[str] = (self.textwidget.tag_cget(tag, "elide") for tag in tags)
-
-                    # elide values can be empty
-                    line_elided: bool = any(getboolean(v or "false") for v in elide_values)
-
-                    # If the line is not visible, skip it
-                    dlineinfo: tuple[
-                                   int, int, int, int, int
-                               ] | None = self.textwidget.dlineinfo(f"{lineno}.0")
-                    if dlineinfo is None or line_elided:
-                        continue
-
-
-
-                    # Create the line number
+                    # Create the line number text
                     self.create_text(
-                        0
-                        if self.justify == "left"
-                        else int(self["width"])
-                        if self.justify == "right"
-                        else int(self["width"]) / 2,
-                        dlineinfo[1] + 5.5,
+                        0 if self.justify == "left" else int(self["width"]) if self.justify == "right" else int(self["width"]) / 2,
+                        dlineinfo[1] + 5.5,  # Adjust y-coordinate as needed
                         text=f" {lineno} " if self.justify != "center" else f"{lineno}",
                         anchor={"left": "nw", "right": "ne", "center": "n"}[self.justify],
                         font=f"{font_name} {font_size}",
@@ -1240,6 +1503,7 @@ def launch_window(path: str, data: dict, *a):
                 if self.textwidget.index_label and self.allow_highlight:
                     def set_label(*a):
                         self.textwidget.index_label.configure(text=self.textwidget.index(INSERT).replace('.', ':'))
+
                     self.after(0, set_label)
 
             def redraw_allow(self):
@@ -1249,9 +1513,6 @@ def launch_window(path: str, data: dict, *a):
                 self.get_cursor()
 
             def mouse_scroll(self, event: Event) -> None:
-                """Scrolls the text widget when the mouse wheel is scrolled -- Internal use only"""
-
-                # Scroll the text widget and then redraw the widget
                 self.textwidget.yview_scroll(
                     int(
                         scroll_fix(
@@ -1264,49 +1525,34 @@ def launch_window(path: str, data: dict, *a):
                 self.redraw()
 
             def click_see(self, event: Event) -> None:
-                """When clicking on a line number it scrolls to that line if not shifting -- Internal use only"""
-
-                # If the shift key is down, redirect to self.shift_click()
-                if event.state == 1:
+                if event.state in [1, 33]:
                     self.shift_click(event)
                     return
 
-                # Remove the selection tag from the text widget
                 self.textwidget.tag_remove("sel", "1.0", "end")
 
                 line: str = self.textwidget.index(f"@{event.x},{event.y}").split(".")[0]
                 click_pos = f"{line}.0"
 
-                # Set the insert position to the line number clicked
                 last_index = int(self.textwidget.index('end').split('.')[0]) - 1 - dead_zone
                 if int(line) > last_index:
                     return 'break'
 
                 self.textwidget.mark_set("insert", click_pos)
-
-                # Scroll to the location of the insert position
                 self.textwidget.see("insert")
 
                 self.click_pos: str = click_pos
                 self.redraw()
 
             def unclick(self, _: Event) -> None:
-                """When the mouse button is released it removes the selection -- Internal use only"""
-
                 self.click_pos = None
 
             def double_click(self, _: Event) -> None:
-                """Selects the line when double clicked -- Internal use only"""
-
-                # Remove the selection tag from the text widget and select the line
                 self.textwidget.tag_remove("sel", "1.0", "end")
                 self.textwidget.tag_add("sel", "insert", "insert + 1 line")
                 self.redraw()
 
             def mouse_off_screen_scroll(self, event: Event) -> None:
-                """Automatically scrolls the text widget when the mouse is near the top or bottom,
-                similar to the in_widget_select_mouse_drag function -- Internal use only"""
-
                 self.x = event.x
                 self.y = event.y
                 self.text_auto_scan(event)
@@ -1315,8 +1561,6 @@ def launch_window(path: str, data: dict, *a):
                 if self.click_pos is None:
                     return
 
-                # Taken from the Text source: https://github.com/tcltk/tk/blob/main/library/text.tcl#L676
-                # Scrolls the widget if the cursor is off of the screen
                 if self.y >= self.winfo_height():
                     self.textwidget.yview_scroll(1 + self.y - self.winfo_height(), "pixels")
                 elif self.y < 0:
@@ -1328,33 +1572,22 @@ def launch_window(path: str, data: dict, *a):
                 else:
                     return
 
-                # Select the text
                 self.select_text(self.x - self.winfo_width(), self.y)
-
-                # After 50ms, call this function again
                 self.cancellable_after = self.after(50, self.text_auto_scan, event)
                 self.redraw()
 
             def stop_mouse_off_screen_scroll(self, _: Event) -> None:
-                """Stops the auto scroll when the cursor re-enters the line numbers -- Internal use only"""
-
-                # If the after has not been cancelled, cancel it
                 if self.cancellable_after is not None:
                     self.after_cancel(self.cancellable_after)
                     self.cancellable_after = None
 
             def check_side_scroll(self, event: Event) -> None:
-                """Detects if the mouse is off the screen to the sides \
-        (a case not covered in mouse_off_screen_scroll) -- Internal use only"""
-
-                # Determine if the mouse is off the sides of the widget
                 off_side = (
-                    event.x < self.winfo_x() or event.x > self.winfo_x() + self.winfo_width()
+                        event.x < self.winfo_x() or event.x > self.winfo_x() + self.winfo_width()
                 )
                 if not off_side:
                     return
 
-                # Determine if its above or below the widget
                 if event.y >= self.winfo_height():
                     self.textwidget.yview_scroll(1, "units")
                 elif event.y < 0:
@@ -1362,29 +1595,18 @@ def launch_window(path: str, data: dict, *a):
                 else:
                     return
 
-                # Select the text
                 self.select_text(event.x - self.winfo_width(), event.y)
-
-                # Redraw the widget
                 self.redraw()
 
             def in_widget_select_mouse_drag(self, event: Event) -> None:
-                """When click in_widget_select_mouse_dragging it selects the text -- Internal use only"""
-
-                # If the click position is None, return
                 if self.click_pos is None:
                     return
-
                 self.x = event.x
                 self.y = event.y
-
-                # Select the text
                 self.select_text(event.x - self.winfo_width(), event.y)
                 self.redraw()
 
             def select_text(self, x, y) -> None:
-                """Selects the text between the start and end positions -- Internal use only"""
-
                 drag_pos = self.textwidget.index(f"@{x}, {y}")
                 if self.textwidget.compare(drag_pos, ">", self.click_pos):
                     start = self.click_pos
@@ -1398,9 +1620,6 @@ def launch_window(path: str, data: dict, *a):
                 self.textwidget.mark_set("insert", drag_pos)
 
             def shift_click(self, event: Event) -> None:
-                """When shift clicking it selects the text between the click and the cursor -- Internal use only"""
-
-                # Add the selection tag to the text between the click and the cursor
                 start_pos: str = self.textwidget.index("insert")
                 end_pos: str = self.textwidget.index(f"@0,{event.y}")
                 self.textwidget.tag_remove("sel", "1.0", "end")
@@ -1410,20 +1629,12 @@ def launch_window(path: str, data: dict, *a):
                 self.redraw()
 
             def resize(self) -> None:
-                """Resizes the widget to fit the text widget -- Internal use only"""
-
-                # Get amount of lines in the text widget
                 end: str = self.textwidget.index("end").split(".")[0]
-
-                # Set the width of the widget to the required width to display the biggest line number
                 temp_font = Font(font=self.textwidget.cget("font"))
                 measure_str = " 1234 " if int(end) <= 1000 else f" {end} "
                 self.config(width=temp_font.measure(measure_str))
 
             def set_colors(self, _: Event | None = None) -> None:
-                """Sets the colors of the widget according to self.colors - Internal use only"""
-
-                # If the color provider is None, set the foreground color to the Text widget's foreground color
                 if self.colors is None:
                     self.foreground_color: str = self.textwidget["fg"]
                     self["bg"]: str = self.textwidget["bg"]
@@ -1434,6 +1645,353 @@ def launch_window(path: str, data: dict, *a):
                     returned_colors: tuple[str, str] = self.colors()
                     self.foreground_color: str = returned_colors[0]
                     self["bg"]: str = returned_colors[1]
+
+            def update_folding_regions(self):
+                self.folded_blocks.clear()
+                lines = int(self.textwidget.index('end').split('.')[0])
+                text = self.textwidget.get("1.0", "end")
+                self.eof_length = len(text.strip().splitlines())
+                code_lines = text.split('\n')
+
+                def get_indent_level(line):
+                    return len(line) - len(line.lstrip(' '))
+
+                def is_block_start(s: str) -> bool:
+                    # A line is a block start if it ends with ':' or starts with @server./@player. and ends with ':'
+                    s = s.strip()
+                    return (
+                        (s.endswith(':') and not s.startswith('#'))  # Modified condition
+                    ) or (
+                        ((s.startswith('@server.') or s.startswith('@player.')) and s.endswith(
+                            ':') and not s.startswith('#'))  # Modified condition
+                    )
+
+                def adjust_block_end(start_line: int, end_line: int) -> int:
+                    """
+                    Adjust end_line to exclude trailing blank lines,
+                    include one trailing comment line if present,
+                    and ensure that the fold ends correctly.
+                    """
+                    adjusted_end_line = end_line
+
+                    # Step 1: Remove trailing blank lines
+                    while adjusted_end_line > start_line:
+                        line = code_lines[adjusted_end_line - 1]
+                        stripped = line.strip()
+                        if stripped == '':
+                            adjusted_end_line -= 1
+                        else:
+                            break
+
+                    # Step 2: Include the last comment line if present
+                    if adjusted_end_line > start_line:
+                        last_line = code_lines[adjusted_end_line - 1].strip()
+                        if last_line.startswith('#'):
+                            pass  # Keep the comment line in the fold
+                        else:
+                            # Allow one trailing comment line if the next line is a comment
+                            if adjusted_end_line < end_line:
+                                next_line = code_lines[adjusted_end_line].strip()
+                                if next_line.startswith('#'):
+                                    adjusted_end_line += 1
+
+                    # Step 3: Do NOT allow trailing blank lines
+                    # Removed the previous logic that allowed trailing blank lines
+
+                    # Prevent folding beyond the last line
+                    if adjusted_end_line >= lines:
+                        adjusted_end_line = lines - 1
+
+                    # Step 4: Verify there's at least one meaningful content line
+                    has_content = False
+                    for i in range(start_line + 1, adjusted_end_line + 1):
+                        if (i - 1) < len(code_lines):
+                            line_content = code_lines[i - 1].strip()
+                            if line_content and not line_content.startswith('#'):
+                                has_content = True
+                                break
+
+                    if not has_content:
+                        # Do not register empty blocks
+                        if start_line in self.folded_blocks:
+                            del self.folded_blocks[start_line]
+                        return ('skip', adjusted_end_line)  # Indicate to skip this block
+
+                    # Register the block if it has content and spans multiple lines
+                    if adjusted_end_line > start_line:
+                        if start_line not in self.folded_blocks:
+                            self.folded_blocks[start_line] = {
+                                'start': start_line,
+                                'end': adjusted_end_line,
+                                'folded': False
+                            }
+                    return adjusted_end_line
+
+                def find_block_end(start_line: int, base_indent: int) -> int:
+                    """
+                    Find the end of a block starting at `start_line` with `base_indent`.
+
+                    Rules:
+                    - Ignore blank/whitespace-only lines for ending logic; they don't end the block even if dedented.
+                    - If we encounter a non-empty line (code/comment) with indentation <= base_indent after the first line,
+                      the block ends at the previous line.
+                    - Nested blocks are handled recursively as before.
+                    """
+                    i = start_line + 1
+                    while i <= lines:
+                        current_line = code_lines[i - 1]
+                        n_indent = get_indent_level(current_line)
+                        n_stripped = current_line.strip()
+
+                        if n_stripped:
+                            # If indentation returns to <= base_indent and we are beyond the immediate next line
+                            if n_indent <= base_indent and i > start_line + 1:
+                                end_line = i - 1
+                                return adjust_block_end(start_line, end_line)
+
+                            # If we find a nested block at greater indentation, handle it recursively
+                            if n_indent > base_indent and is_block_start(n_stripped):
+                                nested_end = find_block_end(i, n_indent)
+                                if isinstance(nested_end, tuple):
+                                    i = nested_end[1] + 1
+                                else:
+                                    i = nested_end + 1
+                                continue
+                        # If the line is empty or whitespace-only, do not terminate the block
+                        # Just continue scanning
+                        i += 1
+
+                    # If we reach the end of the file, the block goes until the last line
+                    return adjust_block_end(start_line, lines)
+
+                # Main scanning for top-level foldable blocks
+                i = 1
+                while i <= lines:
+                    line = code_lines[i - 1]
+                    stripped = line.strip()
+
+                    if is_block_start(stripped):
+                        # Found a block start
+                        block_end = find_block_end(i, get_indent_level(line))
+
+                        # Skip over invalid blocks
+                        if isinstance(block_end, tuple):
+                            i = block_end[1] + 1
+                            continue
+
+                        # Check if the block was added to folded_blocks
+                        if i in self.folded_blocks:
+                            # Block was added; skip to the line after the block
+                            i = block_end + 1
+                        else:
+                            # Block was not added (no content); move to the next line
+                            i += 1
+                    else:
+                        i += 1
+
+                # Clean up invalid folding states
+                if not self.loaded_from_cache:
+                    self.folding_states = {k: v for k, v in self.folding_states.items() if k in self.folded_blocks}
+                self.loaded_from_cache = False
+
+                # Optional: Print reconstructed folded_blocks and folding_states for debugging
+                # Uncomment the following lines if you need to debug
+                # print(f"Reconstructed folded_blocks: {self.folded_blocks}")
+                # print(f"Updated folding_states: {self.folding_states}")
+
+            def check_fold_click(self, event):
+                x = self.canvasx(event.x)
+                y = self.canvasy(event.y)
+                items = self.find_overlapping(x, y, x, y)
+                if not items:
+                    return
+
+                for elem in items:
+                    tags = self.gettags(elem)
+                    if "foldicon" in tags:
+                        line_num = None
+                        for t in tags:
+                            if t.startswith("line_"):
+                                try:
+                                    line_num = int(t.split("_", 1)[1])
+                                except ValueError:
+                                    pass
+
+                        if line_num is not None:
+                            self.toggle_fold(line_num)
+                            return True
+
+            def fold_all(self, expand=False, max_depth=2):
+
+                for line, data in self.folded_blocks.items():
+                    folded = data['folded']
+
+                    # Check indent to limit recursion depth
+                    lr, text = code_editor.get_line_text(line)
+                    indent = code_editor.get_indent(text)
+                    if indent < max_depth:
+
+                        if (folded and expand) or (not folded and not expand):
+                            self.toggle_fold(line, bool_force=not expand)
+
+            def toggle_fold(self, line, bool_force=None):
+                if search.has_focus or replace.has_focus:
+                    code_editor.focus_force()
+
+                text = self.textwidget.get("1.0", "end")
+                self.eof_length = len(text.strip().splitlines())
+
+                if line not in self.folded_blocks:
+                    return
+
+                block = self.folded_blocks[line]
+                if bool_force is None:
+                    folded = not block['folded']
+                else:
+                    folded = bool_force
+                block['folded'] = folded
+
+                # Also store in folding_states so state persists after redraw/update_folding_regions
+                self.folding_states[line] = folded
+
+                start = block['start'] + 1
+                end = block['end']
+                if folded:
+                    # Hide (elide) lines in the block
+                    for i in range(start, end + 1):
+                        if i <= self.eof_length:
+                            self.textwidget.tag_add("folded", f"{i}.0", f"{i}.0 lineend+1c")
+                            self.textwidget.tag_configure("folded", elide=True)
+                else:
+                    # Show lines
+                    for i in range(start, end + 1):
+                        self.textwidget.tag_remove("folded", f"{i}.0", f"{i}.0 lineend+1c")
+
+                self.redraw()
+
+                # After redrawing, re-search
+                update_search()
+
+            def handle_text_change(self, change_type: str, num_lines: int):
+
+                # Method #1 (faster) Use current index and walk backwards from line_diff to find the new position
+
+                # Calculate the line difference based on the change type
+                if change_type == 'insert':
+                    line_diff = num_lines
+                elif change_type == 'delete':
+                    line_diff = -num_lines
+                else:
+                    # Unsupported change type
+                    return
+
+                # Adjust folded_blocks by offsetting folded regions after the first_fold_line
+                updated_folded_blocks = {}
+                cursor_index = code_editor.index("insert")
+                original_line = int(cursor_index.split('.')[0])
+                # print(self.folding_states)
+                enabled_states_before = [i for i in self.folding_states.values() if i]
+
+                # Get original position and apply transformation after frame update
+                for k, v in self.folded_blocks.items():
+                    if v['folded'] and k >= original_line - line_diff:
+                        if k in self.folding_states:
+                            del self.folding_states[k]
+                        # print(k, v)
+                        updated_folded_blocks[k + line_diff] = {'start': v['start'] + line_diff, 'end': v['end'] + line_diff, 'folded': True}
+
+                def update_after():
+                    cursor_index = code_editor.index("insert")
+                    at_line = int(cursor_index.split('.')[0])
+
+                    for k, v in updated_folded_blocks.items():
+                        if int(k) >= at_line:
+                            # print(k, v)
+                            self.toggle_fold(k)
+
+                    # Method #2 (slower) Check that the folding states from before and after are aligned, and if not, force a full redraw
+                    enabled_states_after = [i for i in self.folding_states.values() if i]
+                    # print(len(enabled_states_before), len(enabled_states_after))
+                    if len(enabled_states_before) != len(enabled_states_after):
+                        self.fallback_scan_folds()
+                        # print('Full redraw, would have broke')
+
+                    # Redraw to update fold icons and line numbers
+                    self.redraw()
+                self.after(0, update_after)
+
+            # Fallback function to scan and reconstruct folded blocks
+            def fallback_scan_folds(self):
+                """
+                Scans through each line in the Text widget (code_editor) to identify folded lines
+                based on the presence of the 'folded' tag. Reconstructs self.folded_blocks and updates
+                self.folding_states accordingly.
+                """
+
+                # Clear existing indexes
+                self.folded_blocks.clear()
+                self.folding_states.clear()
+
+                # Get the total number of lines in the Text widget
+                try:
+                    total_lines = int(code_editor.index('end-1c').split('.')[0])
+                except TclError:
+                    total_lines = 0
+
+                current_fold_start = None
+
+                for line_num in range(1, total_lines + 1):
+                    line_start = f"{line_num}.0"
+                    try:
+                        tags = code_editor.tag_names(line_start)
+                    except TclError:
+                        tags = ()
+
+                    if "folded" in tags:
+                        if current_fold_start is None:
+                            current_fold_start = line_num
+                    else:
+                        if current_fold_start is not None:
+                            folded_block_start = current_fold_start
+                            folded_block_end = line_num - 1
+
+                            # The header line is the line before the folded block starts
+                            header_line = folded_block_start - 1
+                            if header_line < 1:
+                                header_line = 1
+
+                            # Update folded_blocks and folding_states
+                            self.folded_blocks[header_line] = {
+                                'start': folded_block_start,
+                                'end': folded_block_end,
+                                'folded': True
+                            }
+                            self.folding_states[header_line] = True
+
+                            # Reset current_fold_start
+                            current_fold_start = None
+
+                # Handle the case where the last lines are folded
+                if current_fold_start is not None:
+                    folded_block_start = current_fold_start
+                    folded_block_end = total_lines
+
+                    # The header line is the line before the folded block starts
+                    header_line = folded_block_start - 1
+                    if header_line < 1:
+                        header_line = 1
+
+                    # Update folded_blocks and folding_states
+                    self.folded_blocks[header_line] = {
+                        'start': folded_block_start,
+                        'end': folded_block_end,
+                        'folded': True
+                    }
+                    self.folding_states[header_line] = True
+
+                # print(f"Reconstructed folded_blocks: {self.folded_blocks}")
+                # print(f"Updated folding_states: {self.folding_states}")
+
         class CodeView(Text):
             _w: str
 
@@ -1457,9 +2015,21 @@ def launch_window(path: str, data: dict, *a):
                 super().__init__(self._frame, **kwargs)
                 super().grid(row=0, column=1, sticky="nswe")
 
+                # Initialize TkLineNumbers
                 self._line_numbers = TkLineNumbers(
                     self._frame, self, justify=kwargs.get("justify", "right"), colors=linenums_theme
                 )
+                self._line_numbers.grid(row=0, column=0, sticky="ns", ipadx=20)
+
+                # Assign the folding_callback
+                self.folding_callback: Optional[Callable[[str, int, int], None]] = self._line_numbers.handle_text_change
+                self._line_numbers.folding_callback = self.folding_callback
+
+                # Initialize line count
+                self.line_count = int(self.index('end').split('.')[0]) - 1  # Total number of lines
+
+                # Bind the <<Modified>> event to the handler
+                self.bind("<<ContentChanged>>", self.on_modified, add=True)
 
                 self._vs = scrollbar(master, width=7, command=self.yview)
 
@@ -1485,6 +2055,40 @@ def launch_window(path: str, data: dict, *a):
 
                 self._set_lexer()
                 self._set_color_scheme(color_scheme)
+
+            def on_modified(self, event):
+                """
+                Handles the <<Modified>> event to detect text changes.
+                """
+                # Reset the modified flag
+                self.edit_modified(False)
+
+                # Get the current line count
+                new_line_count = int(self.index('end').split('.')[0]) - 1
+                line_diff = new_line_count - self.line_count
+
+                if line_diff == 0:
+                    # No change in line count; no action needed
+                    return
+
+                # Determine the nature of the change
+                # Note: Tkinter's Text widget doesn't provide direct info about where the change occurred
+                # To approximate, we'll compare the previous and current content
+                # For simplicity, we'll assume changes occur near the cursor position
+
+                if line_diff > 0:
+                    change_type = 'insert'
+                    num_lines = line_diff
+                else:
+                    change_type = 'delete'
+                    num_lines = -line_diff
+
+                # Trigger the folding_callback
+                if self.folding_callback:
+                    self.folding_callback(change_type, num_lines)
+
+                # Update the line count
+                self.line_count = new_line_count
 
             def _select_all(self, *_) -> str:
                 self.tag_add("sel", "1.0", "end")
@@ -1531,12 +2135,14 @@ def launch_window(path: str, data: dict, *a):
                 return 'break'
 
             def _cmd_proxy(self, command: str, *args) -> Any:
+                # print('help I die')
                 try:
                     if command in {"insert", "delete", "replace"}:
                         start_line = int(str(self.tk.call(self._orig, "index", args[0])).split(".")[0])
                         end_line = start_line
                         if len(args) == 3:
                             end_line = int(str(self.tk.call(self._orig, "index", args[1])).split(".")[0]) - 1
+                    # print(self._orig, command, *args)
                     result = self.tk.call(self._orig, command, *args)
                 except TclError as e:
                     error = str(e)
@@ -1649,6 +2255,17 @@ def launch_window(path: str, data: dict, *a):
 
                 super().configure(**kwargs)
 
+            def is_current_line_folded(self) -> bool:
+                current_pos = self.index(INSERT)
+                line_num = int(current_pos.split('.')[0])
+                return line_num in self._line_numbers.folded_blocks and self._line_numbers.folded_blocks[line_num]['folded']
+
+            def is_cursor_at_line_end(self) -> bool:
+                current_pos = self.index(INSERT)
+                line_num, col_num = map(int, current_pos.split('.'))
+                line_end = self.index(f"{line_num}.end")
+                return self.compare(current_pos, '==', line_end)
+
             config = configure
 
             def pack(self, *args, **kwargs) -> None:
@@ -1725,6 +2342,8 @@ def launch_window(path: str, data: dict, *a):
                 # Redraw lineno
                 self.bind(f"<{control}-{'H' if data['os_name'] == 'macos' else 'h'}>", lambda *_: replace.toggle_focus(True))
                 self.bind(f"<{control}-k>", lambda *_: "break")
+                self.bind(f"<{control}-Shift-plus>", lambda *_: self._line_numbers.fold_all(expand=True))
+                self.bind(f"<{control}-underscore>", lambda *_: self._line_numbers.fold_all(expand=False))
                 self.bind("<<ContentChanged>>", self.check_syntax, add=True)
                 self.bind("<<ContentChanged>>", self.autosave, add=True)
                 self.bind("<<Selection>>", lambda *_: self.after(0, self.highlight_matching_parentheses))
@@ -1746,8 +2365,8 @@ def launch_window(path: str, data: dict, *a):
                 self.save_lock = False
                 self.first_run = True
 
-                self.bind(f"<{control}-c>", self._copy, add=True)
-                self.bind(f"<{control}-v>", self._paste, add=True)
+                self.bind(f"<{control}-c>", self._copy)
+                self.bind(f"<{control}-v>", self._paste)
 
                 self.bind("<ButtonPress-1>", self.on_press)
                 self.bind("<B1-Motion>", self.on_drag)
@@ -1755,8 +2374,117 @@ def launch_window(path: str, data: dict, *a):
 
                 self.bind("<Button-1>", lambda *_: self.after(0, self._line_numbers.redraw_allow), add=True)
                 self.bind("<Button-1>", lambda *_: self.after(0, self.highlight_matching_parentheses), add=True)
+
+                # Bind the Return key to the dedicated handler
+                self.bind("<Return>", self.handle_return_key)
+
                 self.drag_data = {}
                 self.selection = False
+
+                # Auto-scroll functionality when dragging a selection
+                self.bind('<ButtonPress-1>', self.on_button_press, add=True)
+                self.bind('<B1-Motion>', self.check_auto_scroll, add=True)
+                self.bind('<ButtonRelease-1>', self.on_button_release, add=True)
+                self.auto_scroll_region = 5  # pixels
+                self.auto_scroll_interval = 20  # milliseconds
+                self.auto_scroll_distance = 1  # pixels
+                self.scroll_direction = None
+                self.scroll_job = None
+                self.selection_anchor = None
+
+            def scroll(self, direction, *args):
+                if data['os_name'] == 'windows':
+                    # Windows uses <MouseWheel> with delta
+                    delta = (-120 * direction) * self.auto_scroll_distance
+                    self.event_generate('<MouseWheel>', delta=delta)
+                elif data['os_name'] == 'macos':
+                    # macOS uses <MouseWheel> with delta (different scaling)
+                    delta = (-1 * direction) * self.auto_scroll_distance
+                    self.event_generate('<MouseWheel>', delta=delta)
+                else:
+                    # Linux uses <Button-4> for scroll up and <Button-5> for scroll down
+                    for x in range(self.auto_scroll_distance):
+                        self.event_generate('<Button-4>' if direction < 0 else '<Button-5>')
+
+            def on_button_press(self, event):
+                # Record the anchor position
+                self.selection_anchor = self.index("@%d,%d" % (event.x, event.y))
+                # Stop any ongoing auto-scroll
+                self.stop_auto_scroll()
+
+            def on_button_release(self, event):
+                self.stop_auto_scroll()
+
+            def check_auto_scroll(self, event):
+                # Get widget height
+                height = self.winfo_height()
+                y = event.y
+
+                # Define the scroll zones (e.g., 20 pixels from top/bottom)
+                if y < self.auto_scroll_region:
+                    # Mouse is near the top edge, scroll up
+                    self.start_auto_scroll(-1)
+                elif y > height - self.auto_scroll_region:
+                    # Mouse is near the bottom edge, scroll down
+                    self.start_auto_scroll(1)
+                else:
+                    # Mouse is within bounds, stop auto-scrolling
+                    self.stop_auto_scroll()
+
+            def start_auto_scroll(self, direction):
+                if self.scroll_direction != direction:
+                    self.scroll_direction = direction
+                    self.schedule_auto_scroll()
+
+            def schedule_auto_scroll(self):
+                if self.scroll_direction is not None:
+                    self.scroll(self.scroll_direction * self.auto_scroll_distance)
+                    # Re-sample mouse position and update selection
+                    self.update_selection()
+                    # Schedule the next scroll
+                    self.scroll_job = self.after(self.auto_scroll_interval, self.schedule_auto_scroll)
+
+            def stop_auto_scroll(self):
+                if self.scroll_job is not None:
+                    self.after_cancel(self.scroll_job)
+                    self.scroll_job = None
+                self.scroll_direction = None
+
+            def update_selection(self):
+                """
+                Re-sample the mouse position and update the selection region.
+                """
+                # Get global mouse position
+                mouse_x, mouse_y = self.winfo_pointerxy()
+                # Get widget's position
+                widget_x = self.winfo_rootx()
+                widget_y = self.winfo_rooty()
+                widget_width = self.winfo_width()
+                widget_height = self.winfo_height()
+
+                # Calculate the relative position
+                relative_x = mouse_x - widget_x
+                relative_y = mouse_y - widget_y
+
+                # Check if mouse is within the widget's horizontal bounds
+                if 0 <= relative_x <= widget_width:
+                    # Translate global mouse position to widget's local coordinates
+                    local_x = relative_x
+                    local_y = relative_y
+                    # Clamp local_y to widget's height
+                    local_y = max(0, min(local_y, widget_height))
+                    # Get the index corresponding to the mouse position
+                    index = self.index(f"@{local_x},{local_y}")
+                    # Update the selection
+                    self.tag_remove("sel", "1.0", "end")
+
+                    if self.scroll_direction == 1:
+                        self.tag_add("sel", self.selection_anchor, index)
+                    else:
+                        self.tag_add("sel", index, self.selection_anchor)
+                else:
+                    # Mouse is outside horizontally; do not update selection
+                    pass
 
             def on_press(self, event):
                 index = self.index(CURRENT)
@@ -2095,47 +2823,53 @@ def launch_window(path: str, data: dict, *a):
                     # Update error label
                     self.error_label.place(in_=search, relwidth=0.7, relx=0.295, rely=0, y=8)
                     text = f"[Line {self.error['line']}] {self.error['message']}"
-                    max_size = round((root.winfo_width() // self.font_size)*0.65)
+                    max_size = round((root.winfo_width() // self.font_size) * 0.65)
                     if len(text) > max_size:
                         text = text[:max_size] + "..."
                     self.error_label.configure(text=text)
 
                     # Configure text highlighting
-                    # print(self.error)
                     try:
                         pattern = self.error['object'].args[1][-1].rstrip()
                     except:
                         pattern = self.error['code']
+
                     regex = False
                     if pattern == 'Unknown':
                         pattern = ''
                     try:
-                        # print(self.error)
+                        # Split 'line' into line number and character
+                        # Ensure that 'line' is in 'line:char' format
                         line, char = self.error['line'].split(':')
+                        line = int(line)
+                        char = int(char)
 
-                        # Reformat line to start at the beginning
-                        if int(char) == 1:
+                        # Adjust character position if necessary
+                        if char == 1:
                             char = 0
-
-                        # Reformat pattern if it goes to the next line
-                        elif int(char) > len(pattern):
+                        elif char > len(pattern):
                             pattern = r"( +)?\n"
                             regex = True
-
-                        # Reformat index if pattern is in the middle of the line
-                        elif int(char) > 1 and pattern:
-                            test = pattern.startswith((int(char)) * ' ')
-                            if test:
+                        elif char > 1 and pattern:
+                            if pattern.startswith(' ' * char):
                                 pattern = pattern.strip()
                             else:
-                                char = int(char) - 1
-                                pattern = pattern[int(char):]
+                                char = char - 1
+                                pattern = pattern[char:]
 
-                        # print(pattern)
-                        # print(f"{line}.{char}", f"{int(line) + 1}.0")
-                        code_editor.highlight_pattern(pattern, "error", start=f"{line}.{char}", end=f"{int(line) + 1}.0", regexp=regex)
+                        # Sanitize and escape the pattern
+                        sanitized_pattern, is_regex = self.sanitize_pattern(pattern, regex=regex)
+
+                        # Call highlight_pattern with sanitized pattern
+                        code_editor.highlight_pattern(
+                            sanitized_pattern,
+                            "error",
+                            start=f"{line}.{char}",
+                            end=f"{line + 1}.0",
+                            regexp=is_regex
+                        )
                     except Exception as e:
-                        print(e)
+                        pass
                 else:
                     window.root.tab(root, image='')
                     check_telepath()
@@ -2173,7 +2907,13 @@ def launch_window(path: str, data: dict, *a):
                     line_num = int(self.index(INSERT).split('.')[0])
                     last_line = self.get(f"{line_num}.0", f"{line_num}.end")
                     indent = self.get_indent(last_line)
-                    text = self.clipboard_get().replace('\t', tab_str).splitlines()
+
+                    # Get clipboard text and escape emojis
+                    raw_text = self.clipboard_get()
+                    escaped_text = escape_emojis(raw_text, allow_breaks=True)
+
+                    # Replace tabs and split into lines
+                    text = escaped_text.replace('\t', tab_str).splitlines()
 
                     if len(text) == 1:
                         self.insert("insert", text[0].strip())
@@ -2222,32 +2962,6 @@ def launch_window(path: str, data: dict, *a):
                 root.clipboard_append(text)
                 root.update()
 
-                return "break"
-
-            # Delete things
-            def ctrl_bs(self, event, *_):
-                current_pos = self.index(INSERT)
-                line_start = self.index(f"{current_pos} linestart")
-                line_text = self.get(line_start, current_pos)
-
-                # Check if @ was deleted to hide menu
-                def test_at(*a):
-                    line_num = int(current_pos.split('.')[0])
-                    last_line = self.get(f"{line_num}.0", f"{line_num}.end")
-                    if last_line.startswith("@"):
-                        ac.update_results(last_line)
-                    else:
-                        ac.hide()
-                self.after(0, test_at)
-
-                if line_text.isspace():
-                    self.delete(f'{line_start}-1c', current_pos)
-
-                else:
-                    if not self.delete_spaces():
-                        self.delete("insert-1c wordstart", "insert")
-
-                self.recalc_lexer()
                 return "break"
 
             # Gets text and range of line
@@ -2316,9 +3030,15 @@ def launch_window(path: str, data: dict, *a):
                     is_comment = True
                     indent_list = []
                     lowest_indent = 0
+                    folded_lines = [k for k, v in self._line_numbers.folding_states.items() if v]
 
                     # First, check if any lines start with a comment decorator
                     for line in line_range:
+
+                        # Unfold if block commenting
+                        if line in folded_lines:
+                            self._line_numbers.toggle_fold(line)
+
                         lr, text = self.get_line_text(line)
                         indent_list.append(self.get_indent(text))
 
@@ -2390,65 +3110,6 @@ def launch_window(path: str, data: dict, *a):
                     self.insert(start, replacement)
                     start = f"{start}+1c"
 
-            # Deletes spaces when backspacing
-            def delete_spaces(self, *_):
-                current_pos = self.index(INSERT)
-                line_start = self.index(f"{current_pos} linestart")
-                line_text = self.get(line_start, current_pos)
-                self.after(0, self.recalc_lexer)
-
-
-                # Check for docstring
-                indexes = self.get(self.index(f'{current_pos}-3c'), self.index(f'{current_pos}+3c'))
-                in_docstring = indexes in ('""""""', "''''''")
-                if in_docstring:
-                    self.delete(self.index(f'{current_pos}-3c'), self.index(f'{current_pos}+3c'))
-                    return 'break'
-
-                if len(line_text) >= 4:
-                    compare = line_text[-4:]
-                    length = 4
-                else:
-                    compare = line_text
-                    length = len(line_text)
-
-                if compare == (' '*length) and line_text:
-                    self.delete(f"{current_pos}-{length}c", current_pos)
-                    return 'break'
-
-                else:
-                    next_pos = self.index(f"{current_pos}+1c")
-                    left = line_text[-1:]
-                    right = self.get(current_pos, next_pos)
-
-                    # Delete symbol pairs
-                    if left == '(' and right == ')':
-                        self.delete(current_pos, next_pos)
-
-                    elif left == '{' and right == '}':
-                        self.delete(current_pos, next_pos)
-
-                    elif left == '[' and right == ']':
-                        self.delete(current_pos, next_pos)
-
-                    elif left == "'" and right == "'":
-                        self.delete(current_pos, next_pos)
-
-                    elif left == '"' and right == '"':
-                        self.delete(current_pos, next_pos)
-
-                # Check if @ was deleted to hide menu
-                def check_suggestions(*a):
-                    line_num = int(current_pos.split('.')[0])
-                    text = self.get_event(line_num)
-                    for k, v in ac.suggestions.items():
-                        if text.startswith(k):
-                            ac.update_results(text)
-                            break
-                    else:
-                        ac.hide()
-                self.after(0, check_suggestions)
-
             def in_docstring(self):
                 current_pos = self.index(INSERT)
                 after = self.tag_nextrange(f'Token.Literal.String.Doc', current_pos)
@@ -2502,6 +3163,415 @@ def launch_window(path: str, data: dict, *a):
                 comparison_end = self.compare(index, "<=", end)
                 return comparison_start and comparison_end
 
+            def is_in_block(self, line_number, end_offset=0, unfold=True):
+                # Sort the blocks by their start line in ascending order
+                sorted_blocks = sorted(self._line_numbers.folded_blocks.items(), key=lambda x: x[1]['start'])
+
+                # Iterate through sorted blocks to check in
+                for line, block in sorted_blocks:
+                    if line_number in range(block['start'] + 1, block['end'] + 1 + end_offset) and block['folded']:
+                        if unfold:
+                            self._line_numbers.toggle_fold(line, False)
+                            return True
+                        else:
+                            return line
+
+                return False
+
+            def has_selected_text(self):
+                try:
+                    # Check if SEL_FIRST and SEL_LAST exist
+                    selected_text = self.get(SEL_FIRST, SEL_LAST)
+                    return bool(selected_text)
+                except TclError:
+                    # Raised if no selection exists
+                    return False
+
+            # Sanitizes input to regex to prevent crashes with emojis
+            @staticmethod
+            def sanitize_pattern(pattern, regex=False, max_emojis=10, max_length=100):
+                """
+                Sanitize the input pattern to prevent crashes.
+
+                Parameters:
+                    pattern (str): The search or error pattern.
+                    regex (bool): Whether the pattern is a regex.
+                    max_emojis (int): Maximum number of emojis allowed in the pattern.
+                    max_length (int): Maximum total length of the pattern.
+
+                Returns:
+                    tuple: (sanitized_pattern, is_regex)
+                """
+                if not pattern:
+                    return '', False
+
+                # Strip surrounding quotes if present
+                # pattern = pattern.strip("'\"")
+
+                # Remove non-printable characters
+                pattern = ''.join(c for c in pattern if c.isprintable())
+
+                # Limit the total length
+                if len(pattern) > max_length:
+                    pattern = pattern[:max_length]
+
+                # Define emoji regex pattern
+                emoji_regex = re.compile(
+                    "["
+                    "\U0001F600-\U0001F64F"  # Emoticons
+                    "\U0001F300-\U0001F5FF"  # Symbols & Pictographs
+                    "\U0001F680-\U0001F6FF"  # Transport & Map Symbols
+                    "\U0001F1E0-\U0001F1FF"  # Flags
+                    "\U00002702-\U000027B0"  # Dingbats
+                    "\U000024C2-\U0001F251"  # Enclosed characters
+                    "]+",
+                    flags=re.UNICODE
+                )
+
+                # Count emojis
+                emojis = emoji_regex.findall(pattern)
+                if len(emojis) > max_emojis:
+
+                    # Keep only the first max_emojis emojis
+                    new_pattern = ''
+                    emoji_count = 0
+                    for c in pattern:
+                        if emoji_regex.match(c):
+                            if emoji_count < max_emojis:
+                                new_pattern += c
+                                emoji_count += 1
+                            else:
+                                # Skip extra emojis
+                                continue
+                        else:
+                            new_pattern += c
+                    pattern = new_pattern
+
+                # After trimming, remove any control characters again
+                pattern = ''.join(c for c in pattern if c.isprintable())
+
+                if regex:
+                    try:
+                        compiled = re.compile(pattern, re.IGNORECASE)
+                        return pattern, True
+                    except re.error as e:
+                        # Fallback to escaped pattern to treat it as literal
+                        return re.escape(pattern), False
+                else:
+                    # Escape the pattern to treat it as a literal string
+                    return re.escape(pattern), False
+
+            # Highlight find text
+            def highlight_pattern(self, pattern, tag, start="1.0", end="end", regexp=False, max_matches=1000):
+                """
+                Highlights all occurrences of 'pattern' in the text widget using Python's regex.
+
+                Parameters:
+                    pattern (str): The pattern to search for.
+                    tag (str): The tag to apply to the matched text.
+                    start (str): The starting index for the search.
+                    end (str): The ending index for the search.
+                    regexp (bool): Whether 'pattern' is a regex.
+                    max_matches (int): Maximum number of matches to highlight.
+                """
+
+                # Sanitize the pattern
+                sanitized_pattern, is_regex = self.sanitize_pattern(pattern, regex=regexp)
+
+                if not sanitized_pattern:
+                    # If pattern is empty, remove existing highlights
+                    self.tag_remove(tag, start, end)
+                    self.match_list = []
+                    self.match_counter.configure(text='')
+                    self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
+                    self._line_numbers.redraw()
+                    return
+
+                # Remove previous highlights
+                self.tag_remove(tag, start, end)
+                self.match_list = []
+
+                # Get the text in the specified range
+                text = self.get(start, end)
+
+                # Compile the regex pattern
+                try:
+                    if is_regex:
+                        compiled_pattern = re.compile(sanitized_pattern, re.IGNORECASE)
+                    else:
+                        compiled_pattern = re.compile(sanitized_pattern, re.IGNORECASE)
+                except re.error as e:
+                    # Inform the user about the invalid pattern
+                    self.error_label.configure(text=f"Invalid search pattern: {e}")
+                    return
+
+                # Iterate over all matches and apply the tag
+                matches_found = 0
+                for match in compiled_pattern.finditer(text):
+                    if matches_found >= max_matches:
+                        break
+                    match_start = f"{start} + {match.start()} chars"
+                    match_end = f"{start} + {match.end()} chars"
+                    self.tag_add(tag, match_start, match_end)
+
+                    if tag == 'highlight':
+                        match_line = int(self.index(match_start).split(".")[0])
+                        if match_line not in self.match_list:
+                            self.match_list.append(match_line)
+
+                    matches_found += 1
+
+                # Update match counter display
+                if tag == 'highlight':
+                    x = len(self.match_list)
+                    if search.has_focus or replace.has_focus or x > 0:
+                        self.match_counter.configure(
+                            text=f'{x} result(s)',
+                            fg='#4CFF99' if x > 0 else '#AAAAAA'  # Example colors
+                        )
+                        self.index_label.place_forget()
+
+                        # Scroll to first match if search/replace have focus
+                        def check_next_frame():
+                            if x > 0 and (search.has_focus or replace.has_focus):
+                                search.see_index(self.match_list[0])
+                        self.after(0, check_next_frame)
+                    else:
+                        self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
+                        self.match_counter.configure(text='')
+
+                # Redraw line numbers to reflect any changes
+                try:
+                    self._line_numbers.redraw()
+                except Exception as e:
+                    pass
+
+            # Handle all "Delete/Backspace" functionality
+            def delete_spaces(self, *_):
+                current_pos = self.index(INSERT)
+                current_line = int(current_pos.split('.', 1)[0])
+                current_col = int(current_pos.split('.', 1)[1])
+                line_start = self.index(f"{current_pos} linestart")
+                line_text = self.get(line_start, current_pos)
+                self.after(0, self.recalc_lexer)
+
+
+                # Open previous folded block instead
+                if current_col < 1 and self.is_in_block(current_line, 1 if not self.has_selected_text() else 0):
+                    self.mark_set(INSERT, f'{current_line-1}.0 lineend')
+                    return 'break'
+
+
+                # If a selection is made, delete that first
+                elif self.has_selected_text():
+                    try:
+                        self.delete(SEL_FIRST, SEL_LAST)
+                        self.tag_remove(SEL, "1.0", END)
+                        self.after(0, self.recalc_lexer)
+                    except TclError:
+                        pass
+                    return 'break'
+
+
+                # Check for docstring
+                indexes = self.get(self.index(f'{current_pos}-3c'), self.index(f'{current_pos}+3c'))
+                in_docstring = indexes in ('""""""', "''''''")
+                if in_docstring:
+                    self.delete(self.index(f'{current_pos}-3c'), self.index(f'{current_pos}+3c'))
+                    return 'break'
+
+                if len(line_text) >= 4:
+                    compare = line_text[-4:]
+                    length = 4
+                else:
+                    compare = line_text
+                    length = len(line_text)
+
+                if compare == (' '*length) and line_text:
+                    self.delete(f"{current_pos}-{length}c", current_pos)
+                    return 'break'
+
+                else:
+                    next_pos = self.index(f"{current_pos}+1c")
+                    left = line_text[-1:]
+                    right = self.get(current_pos, next_pos)
+
+                    # Delete symbol pairs
+                    if left == '(' and right == ')':
+                        self.delete(current_pos, next_pos)
+
+                    elif left == '{' and right == '}':
+                        self.delete(current_pos, next_pos)
+
+                    elif left == '[' and right == ']':
+                        self.delete(current_pos, next_pos)
+
+                    elif left == "'" and right == "'":
+                        self.delete(current_pos, next_pos)
+
+                    elif left == '"' and right == '"':
+                        self.delete(current_pos, next_pos)
+
+                # Check if @ was deleted to hide menu
+                def check_suggestions(*a):
+                    line_num = int(current_pos.split('.')[0])
+                    text = self.get_event(line_num)
+                    for k, v in ac.suggestions.items():
+                        if text.startswith(k):
+                            ac.update_results(text)
+                            break
+                    else:
+                        ac.hide()
+                self.after(0, check_suggestions)
+
+            # Delete more things
+            def ctrl_bs(self, event, *_):
+                current_pos = self.index(INSERT)
+                current_line = int(current_pos.split('.', 1)[0])
+                current_col = int(current_pos.split('.', 1)[1])
+                line_start = self.index(f"{current_pos} linestart")
+                line_text = self.get(line_start, current_pos)
+
+
+                # Check if @ was deleted to hide menu
+                def test_at(*a):
+                    line_num = int(current_pos.split('.')[0])
+                    last_line = self.get(f"{line_num}.0", f"{line_num}.end")
+                    if last_line.startswith("@"):
+                        ac.update_results(last_line)
+                    else:
+                        ac.hide()
+                self.after(0, test_at)
+
+
+                # Open previous folded block instead
+                if current_col < 1 and self.is_in_block(current_line, 1 if not self.has_selected_text() else 0):
+                    self.mark_set(INSERT, f'{current_line - 1}.0 lineend')
+                    return 'break'
+
+
+                # If a selection is made, delete that first
+                elif self.has_selected_text():
+                    try:
+                        self.delete(SEL_FIRST, SEL_LAST)
+                        self.tag_remove(SEL, "1.0", END)
+                        self.after(0, self.recalc_lexer)
+                    except TclError:
+                        pass
+
+
+                if line_text.isspace():
+                    self.delete(f'{line_start}-1c', current_pos)
+
+                else:
+                    if not self.delete_spaces():
+                        self.delete("insert-1c wordstart", "insert")
+
+                self.recalc_lexer()
+                return "break"
+
+            # Handle all "Enter/Return" functionality
+            def handle_return_key(self, event):
+                # Determine the current line number
+                current_pos = self.index(INSERT)
+                current_line = int(current_pos.split(".")[0])
+                current_char = int(current_pos.split(".")[-1])
+                last_line = self.get(f"{current_line}.0", f"{current_line}.end")
+                shift_return = event.state in [1, 33]
+
+                self._line_numbers.ignore_redraw = True
+
+                # Hide context menu and auto-complete menus
+                if context_menu.visible:
+                    context_menu.click()
+                    return "break"
+
+                if ac.visible:
+                    ac.click()
+                    return "break"
+
+
+                # Add docstring
+                in_header = self.in_header()
+                if self.in_docstring() or in_header:
+                    if event.keysym == 'Return' and in_header:
+                        self.insert(current_pos, '\n# ')
+                        self.recalc_lexer()
+                        return 'break'
+                    self.recalc_lexer()
+
+
+                # If cursor is at the end of a folded line, move it to the end of the block before processing
+                if self.is_current_line_folded() and self.is_cursor_at_line_end():
+                    folded_block = self._line_numbers.folded_blocks[current_line]
+                    end_line = folded_block['end']
+
+                    # Move cursor to the start of the line after the folded region
+                    new_cursor_pos = f"{end_line + 1}.0" if end_line + 1 <= self.line_count else f"{end_line}.end"
+                    self.mark_set(INSERT, new_cursor_pos)
+                    self.see(INSERT)
+
+                    # Insert a new line with proper indentation
+                    self.insert(INSERT, '\n')
+                    self.mark_set(INSERT, new_cursor_pos)
+
+                    # Determine indentation based on the line after the folded region
+                    indent = self.get_indent(last_line)
+
+                    self.insert(INSERT, tab_str * indent)
+                    self.recalc_lexer()
+                    return "break"  # Prevent default behavior
+
+                # Open folded block if pressed inside
+                elif self.is_in_block(current_line):
+                    return 'break'
+
+
+                # Prevent default behavior
+                self.mark_set("insert", "insert")
+                self.insert("insert", "\n")
+
+
+                # Determine indentation
+                indent = self.get_indent(last_line)
+
+                # Indent rules
+                test = last_line.strip()
+
+                # Allow indent if there's an in-line comment
+                if not test.startswith('#') and '#' in test:
+                    test = test.split('#', 1)[0].strip()
+
+                if test.endswith(":") and (current_char >= len(last_line)) and not test.startswith('#'):
+                    indent += 1
+
+                for kw in ['return', 'continue', 'break', 'yield', 'raise', 'pass']:
+                    if test.startswith(f"{kw} ") or test.endswith(kw):
+                        indent -= 1
+                        break
+
+                # Insert indentation
+                self.insert("insert", tab_str * indent)
+
+
+                # Try to not make multi-line dictionaries a pain
+                if test[current_char - 1:] in ['{}', '()', '[]']:
+                    self.insert("insert", "\n")
+                    self.insert(f'{current_line + 1}.0', tab_str * (indent + 1))
+                    self.mark_set(INSERT, f'{current_line + 1}.0 lineend')
+
+
+                # If holding shift, move cursor back to the original line
+                if shift_return:
+                    self.mark_set(INSERT, current_pos)
+
+
+                # Schedule syntax highlighting
+                self._line_numbers.ignore_redraw = False
+                self.after_idle(self.recalc_lexer)
+
+                return "break"
+
             # Process individual keypress rules
             def process_keys(self, event):
                 sel_start = self.index(SEL_FIRST)
@@ -2513,7 +3583,6 @@ def launch_window(path: str, data: dict, *a):
                 line_num = int(current_pos.split('.')[0])
                 last_line = self.get(f"{line_num}.0", f"{line_num}.end")
                 last_index = int(self.index('end').split('.')[0]) - 1 - dead_zone
-
 
                 # Ignore dead_zone
                 if event.keysym == 'Up' and ac.visible:
@@ -2536,17 +3605,15 @@ def launch_window(path: str, data: dict, *a):
                         if event.state == 262180:
                             self.scroll_text()
 
+                # Override for doing anything near a folded region
+                if event.keysym in ['Tab', 'Delete']:
+                    if self.is_in_block(line_num):
+                        return 'break'
 
 
                 # Add docstring
                 in_header = self.in_header()
-                if self.in_docstring() or in_header:
-                    if event.keysym == 'Return' and in_header:
-                        self.insert(current_pos, '\n# ')
-                        self.recalc_lexer()
-                        return 'break'
-                    self.recalc_lexer()
-                else:
+                if not (self.in_docstring() or in_header):
                     if last_line.strip().startswith('""') and event.keysym == 'quotedbl':
                         current = self.get(f'{current_pos}-2c') + left
                         if current == '""':
@@ -2560,39 +3627,6 @@ def launch_window(path: str, data: dict, *a):
                             self.insert(current_pos, "'''")
                             self.mark_set(INSERT, current_pos)
                             self.recalc_lexer()
-
-
-
-                # Press return with last indent level
-                if event.keysym == 'Return':
-                    if context_menu.visible:
-                        context_menu.click()
-                        return "break"
-
-                    if ac.visible:
-                        ac.click()
-                        return "break"
-
-                    line_num = int(current_pos.split('.')[0])
-                    if line_num > 0:
-                        last_line = self.get(f"{line_num}.0", f"{line_num}.end")
-                        indent = self.get_indent(last_line)
-
-                        # Indent rules
-                        test = last_line.strip()
-                        if test.endswith(":"):
-                            indent += 1
-
-                        for kw in ['return', 'continue', 'break', 'yield', 'raise', 'pass']:
-                            if test.startswith(f"{kw} ") or test.endswith(kw):
-                                indent -= 1
-                                break
-
-                        if indent > 0:
-                            self.after(0, lambda *_: self.insert(INSERT, tab_str*indent))
-                        self.after(0, lambda *_: self.recalc_lexer())
-                        return "Return"
-
 
 
                 # Hide auto-complete menu
@@ -2775,8 +3809,16 @@ def launch_window(path: str, data: dict, *a):
                     self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
                 elif event.keysym in ('quoteright', 'apostrophe') and (check_text(right, "'") and check_text(left, "'", True)):
-                    self.insert(INSERT, "''")
-                    self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
+                    current_line = self.index(INSERT)
+                    line = int(current_line.split(".")[0])
+                    lr, text = self.get_line_text(line)
+
+                    # If in a comment, only enter a single apostrophe
+                    if text.strip().startswith("#"):
+                        self.insert(INSERT, "'")
+                    else:
+                        self.insert(INSERT, "''")
+                        self.mark_set(INSERT, self.index(f"{current_pos}+1c"))
                     return 'break'
                 elif event.keysym == 'quotedbl' and (check_text(right, '"') and check_text(left, '"', True)):
                     self.insert(INSERT, '""')
@@ -2786,70 +3828,9 @@ def launch_window(path: str, data: dict, *a):
                     self.insert(INSERT, tab_str)
                     return 'break'  # Prevent default behavior of the Tab key
 
-            # Highlight find text
-            def highlight_pattern(self, pattern, tag, start="1.0", end="end", regexp=False):
-                start = self.index(start)
-                end = self.index(end)
-                self.mark_set("matchStart", start)
-                self.mark_set("matchEnd", start)
-                self.mark_set("searchLimit", end)
+                if in_header:
+                    self.recalc_lexer()
 
-                count = IntVar()
-                x = 0
-                if tag == "highlight":
-                    self.match_list = []
-                while True:
-                    try:
-                        index = self.search(pattern, "matchEnd", "searchLimit", count=count, regexp=regexp, nocase=True)
-                    except:
-                        break
-
-                    if index == "":
-                        break
-
-                    if tag == "highlight":
-                        if str(search.cget('fg')) == '#4A4A70' and search.get() == data['translate']('search for text'):
-                            break
-
-                    self.mark_set("matchStart", index)
-                    self.mark_set("matchEnd", "%s+%sc" % (index, count.get()))
-                    self.tag_add(tag, "matchStart", "matchEnd")
-
-                    if index == "1.0":
-                        if tag == "highlight":
-                            self.match_list = []
-                        break
-
-                    if x == 0 and tag == 'highlight':
-                        new_search = search.get()
-                        if new_search != self.last_search:
-                            self.see(index)
-                            self.match_list = []
-                        self.last_search = new_search
-                    if tag == 'highlight':
-                        index = int(self.index("matchStart").split(".")[0])
-                        if index not in self.match_list:
-                            self.match_list.append(index)
-                    x += 1
-
-                    if not pattern:
-                        if tag == "highlight":
-                            self.match_list = []
-                        break
-
-                if tag != 'highlight':
-                    return
-
-                if search.has_focus or replace.has_focus or x > 0:
-                    self.match_counter.configure(
-                        text=f'{x} result(s)',
-                        fg = text_color if x > 0 else faded_text
-                    )
-                    self.index_label.place_forget()
-                else:
-                    self.index_label.place(in_=search, relwidth=0.2, relx=0.795, rely=0, y=8)
-                    self.match_counter.configure(text='')
-                self._line_numbers.redraw()
         root.code_editor = HighlightText(
             root,
             color_scheme = style,
@@ -2887,13 +3868,87 @@ def launch_window(path: str, data: dict, *a):
 
                 self.bind("<FocusIn>", self.foc_in)
                 self.bind("<FocusOut>", self.foc_out)
-                self.bind(f"<{control}-BackSpace>", self.ctrl_bs)
                 self.bind('<Escape>', lambda *_: self.toggle_focus(False))
                 self.bind('<KeyPress>', self.process_keys)
                 self.bind(f"<{control}-{'H' if data['os_name'] == 'macos' else 'h'}>", lambda *_: self.toggle_focus(False))
                 self.bind('<Shift-Return>', lambda *_: trigger_replace())
+                self.bind(f"<{control}-v>", self._paste)
+                self.bind(f"<{control}-BackSpace>", lambda *args, **kwargs: self._backspace(True, *args, **kwargs))
+                self.bind('<BackSpace>', lambda *args, **kwargs: self._backspace(False, *args, **kwargs))
 
                 self.put_placeholder()
+
+            def _paste(self, *_):
+                with suppress(TclError):
+                    self.delete("sel.first", "sel.last")
+
+                # Get clipboard text and escape emojis
+                raw_text = self.clipboard_get()
+                filtered_text = raw_text.splitlines()
+                if isinstance(filtered_text, list):
+                    filtered_text = filtered_text[0]
+                escaped_text = escape_emojis(filtered_text)
+
+                # Replace tabs and split into lines
+                text = escaped_text.replace('\t', tab_str)
+                self.insert("insert", text.strip())
+                return 'break'
+
+            def _backspace(self, control=False, event=None, *_):
+                """Custom backspace handler to delete entire emojis."""
+
+                if control:
+                    end_idx = self.index(INSERT)
+                    start_idx = self.get().rfind(" ", None, end_idx)
+                    self.selection_range(start_idx, end_idx)
+
+                # Check for deleting a selection
+                select_deleted = False
+                try:
+                    self.delete("sel.first", "sel.last")
+                    select_deleted = True
+                except TclError:
+                    pass  # No selection to delete
+
+                if select_deleted:
+                    update_search()
+                    return 'break'
+
+                cursor_pos = self.index(INSERT)  # Get the cursor position as integer
+
+                if cursor_pos == 0:
+                    return 'break'  # Nothing to delete
+
+                # Get the text up to the cursor
+                text_before = self.get()[:cursor_pos]
+
+                # Initialize deletion indices
+                index = len(text_before)
+
+                # Iterate backwards to find the start of an emoji
+                while index > 0:
+                    char = text_before[index - 1]
+                    if is_emoji(char):
+                        index -= 1
+                    else:
+                        break
+
+                # Determine how many characters to delete
+                chars_to_delete = len(text_before) - index
+
+                if chars_to_delete == 0:
+                    # If no emojis detected, delete one character
+                    start = str(cursor_pos - 1)
+                    end = str(cursor_pos)
+                    self.delete(start, end)
+                else:
+                    # Delete all characters to prevent crash
+                    self.delete(0, 'end')
+
+                # Update search after deletion
+                update_search()
+
+                return 'break'
 
             def toggle_focus(self, fs=True, r=0, anim=True):
                 global replace_shown
@@ -2952,7 +4007,8 @@ def launch_window(path: str, data: dict, *a):
                 return 'break'
 
             def see_index(self, index):
-                code_editor.see(f"{index}.0")
+                code_editor.see(f"{index + 5}.0")
+                self.after(0, lambda *_: code_editor.see(f"{index}.0"))
                 self.last_index = index
                 search.last_index = index
                 current_line = index
@@ -3022,7 +4078,7 @@ def launch_window(path: str, data: dict, *a):
 
             def process_keys(self, event):
                 if event.keysym == "Return":
-                    if event.state == 33:
+                    if event.state in [1, 33]:
                         self.iterate_selection(False)
                     else:
                         self.iterate_selection(True)
@@ -3041,12 +4097,6 @@ def launch_window(path: str, data: dict, *a):
                 if not self.get():
                     self.put_placeholder()
                 self.has_focus = False
-
-            def ctrl_bs(self, event, *_):
-                ent = event.widget
-                end_idx = ent.index(INSERT)
-                start_idx = ent.get().rfind(" ", None, end_idx)
-                ent.selection_range(start_idx, end_idx)
         class HoverButton(Button):
 
             def click_func(self, *a):
@@ -3120,24 +4170,65 @@ def launch_window(path: str, data: dict, *a):
         if replace_shown:
             replace.toggle_focus(True, r=1, anim=False)
 
-
         def update_search(search_text=None):
             if not search_text:
                 search_text = search.get()
 
+            # Check if the search text is the placeholder and reset if necessary
             if str(search.cget('fg')) == '#4A4A70' and search_text == data['translate']('search for text'):
                 search_text = ''
 
+            # Enforce maximum pattern length
+            MAX_SEARCH_PATTERN_LENGTH = 100  # Define as appropriate
+            if len(search_text) > MAX_SEARCH_PATTERN_LENGTH:
+                search_text = search_text[:MAX_SEARCH_PATTERN_LENGTH]
+
+            # Reset search state
             search.last_index = 0
             code_editor.content_changed = False
-            sel_start = code_editor.index(SEL_FIRST)
-            sel_end = code_editor.index(SEL_LAST)
+
+            # Get selection indices
+            try:
+                sel_start = code_editor.index(SEL_FIRST)
+                sel_end = code_editor.index(SEL_LAST)
+            except TclError:
+                sel_start = sel_end = None
+
+            # Remove previous highlights
             code_editor.tag_remove("highlight", "1.0", "end")
+
+            # Sanitize the search pattern
+            # sanitized_pattern, is_regex = code_editor.sanitize_pattern(search_text, regex=False)
+            sanitized_pattern = search_text
+            is_regex = False
+
+            # If search starts with "re:" enable regex (replace doesn't work though, kind of a hidden feature)
+            if search_text.startswith("re:"):
+                sanitized_pattern = search_text[3:]
+                is_regex = True
+
+            # Apply highlighting within selection or entire text
             if sel_start and sel_end:
-                code_editor.highlight_pattern(search.get(), "highlight", start=sel_start, end=sel_end, regexp=False)
+                # Highlight within the selected range
+                code_editor.highlight_pattern(
+                    sanitized_pattern,
+                    "highlight",
+                    start=sel_start,
+                    end=sel_end,
+                    regexp=is_regex
+                )
             else:
-                code_editor.highlight_pattern(search.get(), "highlight", regexp=False)
+                # Highlight throughout the entire text
+                code_editor.highlight_pattern(
+                    sanitized_pattern,
+                    "highlight",
+                    regexp=is_regex
+                )
+
+            # Update last search
             code_editor.last_search = search_text
+
+            # Redraw line numbers
             code_editor._line_numbers.redraw()
 
         def highlight_search():
@@ -3677,7 +4768,7 @@ def edit_script(script_path: str, data: dict, ipc_functions: dict, *args):
 
             # Create  and start listener
             parent_conn, child_conn = multiprocessing.Pipe()
-            ipc_start_listener(parent_conn, ipc_functions)
+            ipc_start_listener(parent_conn, data, ipc_functions)
 
             # Initialize process
             mgr = multiprocessing.Manager()
@@ -3695,7 +4786,7 @@ def edit_script(script_path: str, data: dict, ipc_functions: dict, *args):
 
 
 # IPC functions (these run in the context of the main process, and "data" is passed in)
-def ipc_start_listener(connection: multiprocessing.connection.Connection, ipc_functions: dict):
+def ipc_start_listener(connection: multiprocessing.connection.Connection, start_data: dict, ipc_functions: dict):
     print("[amscript IDE] IPC connection opened")
 
     # Process child commands and execute parent functions
@@ -3703,7 +4794,7 @@ def ipc_start_listener(connection: multiprocessing.connection.Connection, ipc_fu
         command = data['command']
 
         if command == 'ipc_save_script' and data['args']:
-            ipc_save_script(**data['args'], ipc_functions=ipc_functions)
+            ipc_save_script(start_data['cache_dir'], **data['args'], ipc_functions=ipc_functions)
 
     # Background thread to listen for IPC commands while the IDE is open
     def listener():
@@ -3725,7 +4816,28 @@ def ipc_start_listener(connection: multiprocessing.connection.Connection, ipc_fu
         connection.close()
 
     Timer(0, listener).start()
-def ipc_save_script(script_path: str, script_contents: str, ipc_functions: dict, telepath_script_dir: str = None, telepath_data: dict = None):
+def ipc_save_script(cache_dir: str, script_path: str, script_contents: str, ipc_functions: dict, telepath_script_dir: str = None, telepath_data: dict = None, folding_data: dict = None):
+    try:
+        # Save folding data to cache dir, so regions persists after reboot
+        if folding_data:
+            if not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
+
+            file_name = os.path.basename(script_path).split('.')[0] + '.json'
+            if telepath_data:
+                json_dir = os.path.join(cache_dir, 'ide', 'fold-regions', 'telepath')
+            else:
+                json_dir = os.path.join(cache_dir, 'ide', 'fold-regions', 'local')
+
+            if not os.path.exists(json_dir):
+                os.makedirs(json_dir)
+
+            with open(os.path.join(json_dir, file_name), 'w+', errors='ignore') as f:
+                f.write(json.dumps(folding_data))
+
+    except FileExistsError:
+        pass
+
 
     # Write to disk
     try:
@@ -3768,44 +4880,50 @@ if os.name == 'nt':
 
 
 # if __name__ == '__main__':
+#     import telepath
 #     import constants
 #     import amscript
 #
+#
+#     server_name = 'Shop Test'
+#     script_name = 'wiki-search.ams'
+#     script_path = os.path.join(constants.scriptDir, script_name)
+#     # script_path = '/Users/kaleb/Documents/GitHub/auto-mcs/source/baselib.ams'
+#
+#
 #     from amscript import ScriptManager, ServerScriptObject, PlayerScriptObject
-#     from svrmgr import ServerObject
-#     server_obj = ServerObject('macOS')
+#     from svrmgr import ServerManager
+#     constants.server_manager = ServerManager()
+#     server_obj = constants.server_manager.open_server(server_name)
 #     while not (server_obj.addon and server_obj.acl and server_obj.backup and server_obj.script_manager):
 #         time.sleep(0.2)
 #
 #     # DELETE ABOVE
 #
-#     script_obj = amscript.ScriptObject()
+#     constants.script_obj = amscript.ScriptObject()
 #     data_dict = {
+#         '_telepath_data': None,
 #         'app_title': constants.app_title,
+#         'ams_version': constants.ams_version,
 #         'gui_assets': constants.gui_assets,
+#         'cache_dir': constants.cacheDir,
 #         'background_color': constants.background_color,
 #         'app_config': constants.app_config,
 #         'script_obj': {
-#             'syntax_func': script_obj.is_valid,
-#             'protected': script_obj.protected_variables,
-#             'events': script_obj.valid_events
+#             'syntax_func': constants.script_obj.is_valid,
+#             'protected': constants.script_obj.protected_variables,
+#             'events': constants.script_obj.valid_events
 #         },
-#         'suggestions': server_obj.retrieve_suggestions(script_obj),
-#         'os_name': 'macos'
+#         'suggestions': server_obj._retrieve_suggestions(),
+#         'os_name': constants.os_name,
+#         'translate': constants.translate,
+#         'telepath_script_dir': None,
 #     }
 #
-#     path = constants.scriptDir
-#     class Test():
-#         def __init__(self):
-#             self.value = os.path.join(path, 'os-terminal.ams')
-#             # import threading
-#             # def test():
-#             #     self.value = os.path.join(path, 'wiki-search.ams')
-#             # threading.Timer(1, test).start()
-#             # def test():
-#             #     self.value = os.path.join(path, 'test.ams')
-#             # threading.Timer(2, test).start()
-#             # def test():
-#             #     self.value = os.path.join(path, 'test2.ams')
-#             # threading.Timer(3, test).start()
-#     create_root(data_dict, Test())
+#     # Passed to parent IPC receiver
+#     ipc_functions = {
+#         'api_manager': constants.api_manager,
+#         'telepath_upload': constants.telepath_upload
+#     }
+#
+#     edit_script(script_path, data_dict, ipc_functions)

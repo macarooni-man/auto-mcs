@@ -1,0 +1,103 @@
+#!
+# title: Inventory Loadouts
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Capture and restore states of your inventory
+#
+#
+# Usage:
+#
+# --------- Loadout Commands ---------
+# >>  !loadout list
+# >>  !loadout save <name>
+# >>  !loadout remove <name>
+# >>  !loadout <name>
+#
+#!
+
+
+
+
+# Generates a fixed-width centered header for logging
+def generate_header(text):
+    header_len = 50
+    adjusted = round((header_len - len(text) - 2) / 2)
+    final_str = "-"*adjusted + f" {text} " + "-"*adjusted
+    if len(final_str) < header_len:
+        final_str = final_str + ("-"*(header_len-len(final_str)))
+    return final_str[:50]
+
+
+
+
+# '!loadout' command to manage loadouts
+@player.on_alias(player, command='loadout', arguments={'command': False}, description='Manage loadouts (Inventory Loadouts)'):
+    cmd = arguments['command']
+    
+    if 'loadout' not in player.persistent:
+        player.persistent['loadout'] = {}
+    
+    # Shows all loadout sub-commands
+    if cmd == "help" or not cmd:
+        player.log(generate_header('All Loadout Commands'), 'green', 'normal')
+        player.log('!loadout help', 'white', 'normal')
+        player.log('>  Shows all subcommands (This command)', 'gray', 'normal')
+        player.log('!loadout list', 'white', 'normal')
+        player.log('>  Shows all available loadouts', 'gray', 'normal')
+        player.log('!loatout save <name>', 'white', 'normal')
+        player.log('>  Saves loadout <name> from your current inventory', 'gray', 'normal')
+        player.log('!loadout remove <name>', 'white', 'normal')
+        player.log('>  Deletes loadout <name>', 'gray', 'normal')
+        player.log('!loadout <name>', 'white', 'normal')
+        player.log('>  Switches current inventory to saved loadout <name>', 'gray', 'normal')
+
+
+    # Shows all player defined loadouts
+    elif cmd == "list":
+        loadouts = player.persistent['loadout']
+        player.log(generate_header('Available Loadouts'), 'green', 'normal')
+        if len(loadouts) > 0:
+            player.log(', '.join(list(loadouts.keys())), 'gray', 'normal')
+        else:
+            player.log("No loadouts were detected. Type '!loadout save <name>' to create one", 'gray', 'normal')
+
+
+    # Manages a loadout by name
+    elif cmd.startswith("save") or cmd.startswith("remove"):
+        if " " in cmd:
+            # Specifies 3rd argument
+            name = cmd.split(" ", 1)[1].strip().lower()
+            
+            # Save player's current inventory to their persistent configuration
+            if cmd.startswith("save"):
+                player.persistent['loadout'][name] = player.inventory.items()
+                player.log_success(f"Saved loadout '{name}' successfully!")
+            
+            # Deletes loadout by name
+            elif name in player.persistent['loadout']:
+                del player.persistent['loadout'][name]
+                player.log_success(f"Removed loadout '{name}' successfully!")
+                
+            else:
+                player.log_error(f"Loadout '{name}' does not exist. Type '!loadout save {name}' to create it")
+            
+        else:
+            player.log_error(f"Invalid syntax: <name> is unspecified for '{cmd}'. Type '{command} help' for more info")
+    
+    
+    # Restore a loadout by name
+    elif cmd.strip() in player.persistent['loadout']:
+        name = cmd.strip()
+        loadout = player.persistent['loadout'][name]
+        
+        player.inventory.clear()
+        
+        [player.inventory.give(item, preserve_slot=True) for item in loadout]
+            
+        player.log_success(f"Restored from loadout '{name}'")
+    
+    
+    # Catch all
+    else:
+        player.log_error(f"Invalid command '{cmd}'. Type '{command} help' for more info")
+        

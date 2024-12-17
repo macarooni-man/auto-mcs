@@ -1,7 +1,7 @@
 #!
 # title: ChatGPT
 # author: Kaleb Efflandt
-# version: 1.0
+# version: 1.1
 # description: Talk to ChatGPT with the in-game chat
 #
 #
@@ -28,7 +28,9 @@ client = None
 # Query gradio client with command
 @player.on_alias(player, command='gpt', arguments={'prompt': True}, permission='anyone', description='Talk to ChatGPT in-game (ChatGPT)'):
     global client
-    response = client.predict(arguments['prompt'], 1, 1, 1, None, fn_index=5)
-    with open(response[0], 'r+', encoding='utf-8', errors='ignore') as f:
-        response = json.loads(f.read())[-1][-1].replace("<br>","\n").replace("\u2019", "'")
-        player.log(f'[ChatGPT] {response}', color='blue')
+    response = client.predict(
+        inputs=arguments['prompt'],
+        api_name="/predict"
+    )
+    response = response[0][-1][-1].replace("<br>", "\n").replace("\u2019", "'")
+    player.log(f'[ChatGPT] {response}', color='blue')

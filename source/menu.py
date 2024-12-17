@@ -8501,6 +8501,7 @@ class MenuBackground(Screen):
         self._input_focused = False
         self._keyboard = Window.request_keyboard(None, self, 'text')
         self._keyboard.bind(on_key_down=self._on_keyboard_down)
+        self._keyboard.bind(on_key_up=self._on_keyboard_up)
 
 
     def on_leave(self, *args):
@@ -8792,16 +8793,20 @@ class MenuBackground(Screen):
 
         # Deletes banner object after duration
         def hide_banner(widget, *args):
+            try:
+                if constants.global_banner.id == widget.id:
 
-            if constants.global_banner.id == widget.id:
+                    if constants.global_banner:
+                        if constants.global_banner.parent:
+                            constants.global_banner.parent.remove_widget(constants.global_banner)
 
-                if constants.global_banner:
-                    if constants.global_banner.parent:
-                        constants.global_banner.parent.remove_widget(constants.global_banner)
+                    constants.global_banner = None
+                    for screen in screen_manager.children:
+                        screen.banner_widget = None
 
-                constants.global_banner = None
-                for screen in screen_manager.children:
-                    screen.banner_widget = None
+            # Ignore crash if screen was rapidly changed
+            except AttributeError:
+                pass
 
         def hide_widgets(shadow, progress_bar, *args):
             Animation(opacity=0, duration=0.5).start(shadow)
@@ -8824,6 +8829,10 @@ class MenuBackground(Screen):
         # print('Keyboard has been closed')
         self._keyboard.unbind(on_key_down=self._on_keyboard_down)
         self._keyboard = None
+
+    def _reset_shift_counter(self, *args):
+        self._shift_press_count = 0
+        self._shift_timer = None
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
         # print('The key', keycode, 'have been pressed')
@@ -8876,18 +8885,23 @@ class MenuBackground(Screen):
 
 
         # Trigger for showing search bar
-        elif self._shift_pressed and 'shift' in keycode[1]:
-            self.show_search()
-            self._shift_pressed = False
-            return True
+        elif keycode[1] == 'shift':
+            if not self._shift_held:
+                self._shift_held = True
+                self._shift_press_count += 1
 
-        elif 'shift' in keycode[1]:
-            self._shift_pressed = True
-            def reset(*a):
-                self._shift_pressed = False
-            Clock.schedule_once(reset, 0.25)
-            return True
+                if self._shift_timer:
+                    self._shift_timer.cancel()
 
+                # Check for double tap
+                if self._shift_press_count == 2:
+                    self.show_search()
+                    self._shift_press_count = 0
+
+                # Otherwise, reset the timer
+                else:
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
+            return True
 
 
         # Ignore ESC commands while input focused
@@ -8944,6 +8958,9 @@ class MenuBackground(Screen):
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
+    def _on_keyboard_up(self, window, keycode):
+        if keycode[1] == 'shift':
+            self._shift_held = False  # Mark Shift as released
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -8958,7 +8975,9 @@ class MenuBackground(Screen):
 
         self._input_focused = False
         self._keyboard = None
-        self._shift_pressed = False
+        self._shift_press_count = 0
+        self._shift_timer = None
+        self._shift_held = False
         self.background_color = constants.background_color
 
         # Add keys to override in child windows
@@ -9895,17 +9914,23 @@ class MainMenuScreen(MenuBackground):
 
 
         # Trigger for showing search bar
-        elif self._shift_pressed and 'shift' in keycode[1]:
-            self.show_search()
-            self._shift_pressed = False
-            return
+        elif keycode[1] == 'shift':
+            if not self._shift_held:
+                self._shift_held = True
+                self._shift_press_count += 1
 
-        elif 'shift' in keycode[1]:
-            self._shift_pressed = True
-            def reset(*a):
-                self._shift_pressed = False
-            Clock.schedule_once(reset, 0.25)
-            return
+                if self._shift_timer:
+                    self._shift_timer.cancel()
+
+                # Check for double tap
+                if self._shift_press_count == 2:
+                    self.show_search()
+                    self._shift_press_count = 0
+
+                # Otherwise, reset the timer
+                else:
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
+            return True
 
 
         # Ignore ESC commands while input focused
@@ -15634,11 +15659,10 @@ class ServerButton(HoverButton):
 
         else:
             self.type_image.version_label = TemplateLabel()
-            self.type_image.version_label.color = self.color_id[1]
             self.type_image.version_label.text = server_object.version.lower()
             self.type_image.version_label.opacity = 0.6
 
-
+        self.type_image.version_label.color = self.color_id[1]
         self.type_image.type_label = TemplateLabel()
 
         # Say modpack if such
@@ -17492,7 +17516,7 @@ class ConsolePanel(FloatLayout):
 
             self.input.disabled = False
             constants.server_manager.current_server.run_data['console-panel'] = self
-            constants.server_manager.current_server.run_data['performance-panel'] = screen_manager.current_screen.performance_panel
+            constants.server_manager.current_server.run_data['performance-panel'] = self.performance_panel
 
             # Update Discord rich presence
             constants.discord_presence.update_presence('Server Manager > Launch')
@@ -17589,8 +17613,13 @@ class ConsolePanel(FloatLayout):
             # Do things when on server launch screen
             screen_manager.current_screen.set_timer(False)
             screen_manager.current_screen.performance_panel.reset_panel()
-            if 'f' not in self.parent._ignore_keys:
-                self.parent._ignore_keys.append('f')
+            try:
+                if 'f' not in self.parent._ignore_keys:
+                    self.parent._ignore_keys.append('f')
+
+            # Return if parent is None-type (screen does not exist)
+            except AttributeError:
+                return
 
 
             # Before deleting run data, save log to a file
@@ -17855,8 +17884,12 @@ class ConsolePanel(FloatLayout):
             self.deselect_all()
             self.scroll_layout.data = []
             def change_later(*a):
-                with open(file_path, 'r') as f:
-                    self.scroll_layout.data = constants.json.loads(f.read())
+                try:
+                    with open(file_path, 'r') as f:
+                        self.scroll_layout.data = constants.json.loads(f.read())
+                except:
+                    if constants.debug:
+                        print('Failed to load "latest.log"')
             Clock.schedule_once(change_later, 0)
 
             self.controls.remove_widget(self.controls.view_button)
@@ -18097,8 +18130,10 @@ class ConsolePanel(FloatLayout):
         return super().on_touch_move(touch)
 
 
-    def __init__(self, server_name, server_button=None, start_launched=False, **kwargs):
+    def __init__(self, server_name, server_button=None, start_launched=False, performance_panel: PerformancePanel = None, **kwargs):
         super().__init__(**kwargs)
+
+        self.performance_panel = performance_panel
 
         self.server_name = server_name
         self.server_obj = None
@@ -18360,12 +18395,12 @@ class ConsolePanel(FloatLayout):
                 self.bind(on_text_validate=self.on_enter)
 
             def tab_player(self, *a):
-                player_list = self.parent.server_obj.run_data['player-list']
+                player_list = [k for k, v in self.parent.server_obj.get_players().items() if v['logged-in']]
 
                 if self.text.strip():
                     key = self.text.split(" ")[-1].lower()
                     if key not in player_list:
-                        for player in player_list.keys():
+                        for player in player_list:
                             if self.text.endswith(" "):
                                 self.text = self.text.strip() + " " + player
                                 break
@@ -18675,7 +18710,7 @@ class ServerViewScreen(MenuBackground):
     def set_timer(self, start=True):
         if start:
             try:
-                if self.server.run_data:
+                if 'launch-time' in self.server.run_data:
                     self.performance_panel.player_clock = 6
                     Clock.schedule_once(self.performance_panel.refresh_data, 0.5)
                     self.perf_timer = Clock.schedule_interval(self.performance_panel.refresh_data, 1)
@@ -18745,16 +18780,22 @@ class ServerViewScreen(MenuBackground):
 
 
         # Trigger for showing search bar
-        elif self._shift_pressed and 'shift' in keycode[1]:
-            self.show_search()
-            self._shift_pressed = False
-            return True
+        elif keycode[1] == 'shift':
+            if not self._shift_held:
+                self._shift_held = True
+                self._shift_press_count += 1
 
-        elif 'shift' in keycode[1]:
-            self._shift_pressed = True
-            def reset(*a):
-                self._shift_pressed = False
-            Clock.schedule_once(reset, 0.25)
+                if self._shift_timer:
+                    self._shift_timer.cancel()
+
+                # Check for double tap
+                if self._shift_press_count == 2:
+                    self.show_search()
+                    self._shift_press_count = 0
+
+                # Otherwise, reset the timer
+                else:
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
             return True
 
 
@@ -18907,7 +18948,7 @@ class ServerViewScreen(MenuBackground):
             self.console_panel.scroll_layout.data = []
             Clock.schedule_once(functools.partial(self.console_panel.update_text, self.server.run_data['log'], True, False), 0)
         else:
-            self.console_panel = ConsolePanel(self.server.name, self.server_button, start_launched=self.server.running)
+            self.console_panel = ConsolePanel(self.server.name, self.server_button, start_launched=self.server.running, performance_panel=self.performance_panel)
 
         self.add_widget(self.console_panel)
         self.console_panel.server_obj = self.server
@@ -21262,7 +21303,9 @@ def edit_script(edit_button, server_obj, script_path, download=True):
     data_dict = {
         '_telepath_data': telepath_data,
         'app_title': constants.app_title,
+        'ams_version': constants.ams_version,
         'gui_assets': constants.gui_assets,
+        'cache_dir': constants.cacheDir,
         'background_color': constants.background_color,
         'app_config': constants.app_config,
         'script_obj': {
@@ -21666,6 +21709,7 @@ class AmscriptListButton(HoverButton):
                 def reprocess_page(*args):
                     script_manager = constants.server_manager.current_server.script_manager
                     script_manager.delete_script(self.properties)
+                    constants.clear_script_cache(self.properties.path)
                     script_screen = screen_manager.current_screen
                     new_list = script_manager.return_single_list()
                     script_screen.gen_search_results(new_list, fade_in=True)
@@ -22376,6 +22420,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
                             for installed_script in script_manager.return_single_list():
                                 if installed_script.title == script.title:
                                     script_manager.delete_script(installed_script)
+                                    constants.clear_script_cache(installed_script.path)
 
                                     # Show banner if server is running
                                     if script_manager._hash_changed():
@@ -23621,16 +23666,22 @@ class ServerPropertiesEditScreen(MenuBackground):
             return False
 
         # Trigger for showing search bar
-        elif self._shift_pressed and 'shift' in keycode[1]:
-            self.show_search()
-            self._shift_pressed = False
-            return True
+        elif keycode[1] == 'shift':
+            if not self._shift_held:
+                self._shift_held = True
+                self._shift_press_count += 1
 
-        elif 'shift' in keycode[1]:
-            self._shift_pressed = True
-            def reset(*a):
-                self._shift_pressed = False
-            Clock.schedule_once(reset, 0.25)
+                if self._shift_timer:
+                    self._shift_timer.cancel()
+
+                # Check for double tap
+                if self._shift_press_count == 2:
+                    self.show_search()
+                    self._shift_press_count = 0
+
+                # Otherwise, reset the timer
+                else:
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
             return True
 
         def return_to_input():

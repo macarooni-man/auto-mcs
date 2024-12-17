@@ -1,0 +1,84 @@
+#!
+# title: TP-Ask
+# author: Kaleb Efflandt
+# version: 1.0
+# description: Adds !tpa & !tpaccept
+# 
+# 
+# Usage:
+# 
+# --------- Request/Accept TP ---------
+# >>  !tpa <player>
+#
+# >>  !tpaccept
+#!
+
+
+
+
+import time
+
+current_requests = {}
+timeout = 30
+
+# Request TP command
+@player.on_alias(player, command='tpa', arguments={'player': True}, permission='anyone', description='Asks a player to TP (TP-Ask)'):
+    global current_requests
+    tp_player = arguments['player']
+    
+    # Ignore request if they've already made one, it's themself, the player is taking damange, or the player doesn't exist
+    if player.name in current_requests:
+        return player.log_error(f'Please wait before requesting again')
+    
+    if player.name == tp_player:
+        return player.log_error("You can't teleport to yourself")
+    
+    if player.hurt_time > 0 or player.on_fire:
+        return player.log_error("You can't teleport in combat")
+    
+    if tp_player not in server.player_list:
+        return player.log_error(f"{tp_player} is not currently connected")
+    
+    
+    # Request was successful
+    tp_player = server.get_player(tp_player)
+    player.log(f"Requesting to teleport to '{tp_player}'...")
+    
+    # Run on a thread with a timeout (non-blocking)
+    def tpa():
+        current_requests[player.name] = tp_player.name
+        tp_player.log_warning(f"{player} wants to teleport to you. Type '!tpaccept' to teleport them")
+        
+        # Cleanup on timeout
+        time.sleep(timeout)
+        if player.name in current_requests:
+            del current_requests[player.name]
+            player.log(f"{tp_player} didn't respond to your teleport request")
+            
+    server.after(0, tpa)
+        
+
+# Accept TP request command
+@player.on_alias(player, command='tpaccept', arguments={}, permission='anyone', description='Accepts the most recent TP request (TP-Ask)'):
+    global current_requests
+    
+    for key, value in current_requests.items():
+        
+        # Request was successful
+        if value == player.name:
+            tp_player = server.get_player(key)
+            
+            # Make sure player isn't in combat
+            if tp_player.hurt_time > 0 or tp_player.on_fire:
+                return player.log_error(f"You can't accept {tp_player}'s request while they're in combat")
+            
+            server.execute(f'tp {tp_player} {player}')
+            tp_player.log_success(f"{player} accepted your teleport request")
+            player.log_success(f"Accepted {tp_player}'s teleport request")
+            
+            del current_requests[tp_player.name]
+            break
+            
+    # Request was unsuccessful   
+    else:
+        player.log_error(f'No one has requested to teleport to you')

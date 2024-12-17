@@ -1,0 +1,19 @@
+!
+title: Discord Bot
+author: Kaleb Efflandt
+version: 1.0
+description: Connects a Discord channel to the in-game chat
+
+
+Usage:
+
+1. Read this guide to set up a Discord application:
+    https://discordpy.readthedocs.io/en/stable/discord.html
+
+2. Copy the API key (client secret) to the 'api_key' below as a string
+
+3. Add the application to your Discord server, and copy the channel ID of the channel for the shared chat to 'chat_channel' below
+
+4. This bot will automatically start and stop with your server. Additionally, it requires the "read messages" intent to function properly
+
+5. To extend the functionality of your bot, put normal discord.py functionality inside of the '@server.on_start()' event

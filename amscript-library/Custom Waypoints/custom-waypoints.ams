@@ -1,7 +1,7 @@
 #!
 # title: Custom Waypoints
 # author: Kaleb Efflandt
-# version: 2.0
+# version: 2.1
 # description: A utility to create and teleport to waypoints
 #
 #
@@ -33,7 +33,7 @@ def generate_header(text):
 
 
 # '!waypoint' command to manage waypoints
-@player.on_alias(player, command='waypoint', arguments={'command': False}, permission='op', description='Manage waypoints (Custom Waypoints)'):
+@player.on_alias(player, command='waypoint', arguments={'command': False}, description='Manage waypoints (Custom Waypoints)'):
     cmd = arguments['command']
     
     if 'waypoint' not in player.persistent:
@@ -43,15 +43,15 @@ def generate_header(text):
     if cmd == "help" or not cmd:
         player.log(generate_header('All Waypoint Commands'), 'green', 'normal')
         player.log('!waypoint help', 'white', 'normal')
-        player.log('- Shows all subcommands (This command)', 'gray', 'normal')
+        player.log('>  Shows all subcommands (This command)', 'gray', 'normal')
         player.log('!waypoint list', 'white', 'normal')
-        player.log('- Shows all available waypoints', 'gray', 'normal')
+        player.log('>  Shows all available waypoints', 'gray', 'normal')
         player.log('!waypoint set <name>', 'white', 'normal')
-        player.log('- Creates waypoint <name> at current position', 'gray', 'normal')
+        player.log('>  Creates waypoint <name> at current position', 'gray', 'normal')
         player.log('!waypoint remove <name>', 'white', 'normal')
-        player.log('- Deletes waypoint <name>', 'gray', 'normal')
+        player.log('>  Deletes waypoint <name>', 'gray', 'normal')
         player.log('!warp <name>', 'white', 'normal')
-        player.log('- Teleports to waypoint <name>', 'gray', 'normal')
+        player.log('>  Teleports to waypoint <name>', 'gray', 'normal')
 
 
     # Shows all player defined waypoints

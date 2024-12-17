@@ -26,7 +26,7 @@ server:
     playit: true
 
     # List of Modrinth/Bukkit.org ID's to install
-    addons: [lithium, lmd, mcoptimizer, mpalladium, toadlib, modernfix]
+    addons: [lithium, lmd, mcoptimizer, palladium, toadlib, almanac]
 
     # Enables Bedrock compatibility on supported types
     geyser_support: false

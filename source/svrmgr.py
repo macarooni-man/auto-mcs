@@ -525,17 +525,6 @@ class ServerObject():
                     date_label = message_date_obj.strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
 
                 # Format string as needed
-
-                # Shorten coordinates
-                addrs = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', message)
-                for float_str in re.findall(r"(?<=[ |\]|\(]|,)[-+]?(?:\d+\.\d+)", message):
-                    if len(float_str) > 5 and "." in float_str:
-                        for addr in addrs:
-                            if float_str in addr:
-                                break
-                        else:
-                            message = message.replace(float_str, str(round(float(float_str), 2)))
-
                 if message.endswith("[m"):
                     message = message.replace("[m", "").strip()
 
@@ -564,6 +553,17 @@ class ServerObject():
                 except:
                     pass
 
+                # Shorten coordinates, but don't pass this to amscript
+                original_message = message.strip().replace('[Not Secure]', '').strip()
+                addrs = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', message)
+                for float_str in re.findall(r"(?<=[ |\]|\(]|,)[-+]?(?:\d+\.\d+)", message):
+                    if len(float_str) > 5 and "." in float_str:
+                        for addr in addrs:
+                            if float_str in addr:
+                                break
+                        else:
+                            message = message.replace(float_str, str(round(float(float_str), 2)))
+
 
                 main_label = message.strip()
                 message = message.replace('[Not Secure]', '').strip()
@@ -586,7 +586,7 @@ class ServerObject():
                     type_color = (1, 0.298, 0.6, 1)
                     user = message.split('>', 1)[0].replace('<', '', 1).strip()
                     user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
-                    content = message.split('>', 1)[1].strip()
+                    content = original_message.split('>', 1)[1].strip()
                     main_label = f"{user} issued server command: {content}"
                     event = functools.partial(self.script_object.message_event, {'user': user, 'content': content})
 
@@ -599,7 +599,7 @@ class ServerObject():
                     if self.script_object.enabled:
                         user = message.split('>', 1)[0].replace('<', '', 1).strip()
                         user = re.sub(r'\[(\/color|color=#?\w*).+?\]?', '', user)
-                        content = message.split('>', 1)[1].strip()
+                        content = original_message.split('>', 1)[1].strip()
                         event = functools.partial(self.script_object.message_event, {'user': user, 'content': content})
 
                 # Server message log
@@ -685,6 +685,13 @@ class ServerObject():
                         except KeyError:
                             pass
 
+                    # In case login isn't accurately reflected
+                    try:
+                        if not self.run_data['player-list'][user]['logged-in']:
+                            self.run_data['player-list'][user]['logged-in'] = True
+                    except KeyError:
+                        pass
+
                     type_label = "PLAYER"
                     type_color = (0.953, 0.929, 0.38, 1)
 
@@ -710,12 +717,19 @@ class ServerObject():
                         except KeyError:
                             pass
 
+                    # In case logout isn't accurately reflected
+                    try:
+                        if self.run_data['player-list'][user]['logged-in']:
+                            self.run_data['player-list'][user]['logged-in'] = False
+                    except KeyError:
+                        pass
+
                     type_label = "PLAYER"
                     type_color = (0.953, 0.929, 0.38, 1)
 
 
                 # Player achievement/advancement log
-                elif " has made the advancement " in message:
+                elif " has made the advancement " in message or " has completed the challenge " in message or " has reached the goal " in message:
                     #  2:50:17 PM   [INFO] >   KChicken has made the advancement [Hot Stuff]
                     type_label = "CHAT"
                     type_color = (0.439, 0.839, 1, 1)
@@ -745,8 +759,8 @@ class ServerObject():
                     type_color = (0.439, 0.839, 1, 1)
                 else:
                     # Ignore NBT data updates
-                    if " has the following entity data: {" in main_label or ("Teleported " in main_label and " to " in main_label):
-                        return
+                    if " has the following entity data: {" in main_label or ((not line.startswith('[')) and (main_label.endswith('}'))) or main_label in ['Saved the world', 'Saving...']:
+                        return None, None
 
                     type_label = "INFO"
                     type_color = (0.6, 0.6, 1, 1)
@@ -789,19 +803,21 @@ class ServerObject():
                         ]
                         include = False
 
-                        for phrase in include_list:
-                            if phrase in main_label.strip():
-                                include = True
-                                break
+                        # Ignore false alarms from named entities
+                        if not ('x=' in message and 'y=' in message and 'z=' in message):
 
-                        if include:
-                            for word in s_msg:
-                                if word.strip() in self.run_data['player-list']:
-                                    type_label = "CHAT"
-                                    type_color = (0.439, 0.839, 1, 1)
-                                    event = functools.partial(self.script_object.death_event, {'user': word.strip(), 'content': main_label.strip()})
+                            for phrase in include_list:
+                                if phrase in main_label.strip():
+                                    include = True
                                     break
 
+                            if include:
+                                for word in s_msg:
+                                    if word.strip() in self.run_data['player-list']:
+                                        type_label = "CHAT"
+                                        type_color = (0.439, 0.839, 1, 1)
+                                        event = functools.partial(self.script_object.death_event, {'user': word.strip(), 'content': main_label.strip()})
+                                        break
 
                 if date_label and type_label and main_label and type_color:
                     return (date_label, type_label, main_label, type_color), event
@@ -812,7 +828,8 @@ class ServerObject():
                 try:
                     log_line, event = format_log(log_line)
                 except Exception as e:
-                    print(e)
+                    if constants.debug:
+                        print(e)
                     continue
             if text and log_line:
 
@@ -897,9 +914,15 @@ class ServerObject():
                 # Send to server if it doesn't start with !
                 if not cmd.startswith("!"):
                     try:
-                        self.run_data['process'].stdin.write(f"{cmd}\r\n".encode('utf-8', errors='ignore').replace(b'\xc2\xa7', b'\xa7'))
+                        # Format encoding per OS
+                        if constants.os_name == 'windows':
+                            command = f"{cmd}\r\n".encode('utf-8', errors='ignore').replace(b'\xc2\xa7', b'\xa7')
+                        else:
+                            command = f"{cmd}\r\n".encode('utf-8', errors='ignore')
+
+                        self.run_data['process'].stdin.write(command)
                         self.run_data['process'].stdin.flush()
-                    except OSError:
+                    except:
                         if constants.debug:
                             print("Error: Command sent after process shutdown")
 
@@ -929,9 +952,10 @@ class ServerObject():
                 self.run_data['performance-panel'] = None
                 self.run_data['command-history'] = []
                 self.run_data['playit-tunnel'] = None
+                self.run_data['entitydata-cache'] = {}
             else:
                 self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', f"Restarting '{self.name}', please wait...", (0.7, 0.7, 0.7, 1))})
-                if self.run_data['console-panel']:
+                if self.run_data['console-panel'] and not constants.headless:
                     self.run_data['console-panel'].toggle_deadlock(False)
 
             if self.custom_flags:
@@ -1008,12 +1032,55 @@ class ServerObject():
                     lines_iterator = iter(self.run_data['process'].stdout.readline, "")
                     log_file = os.path.join(self.server_path, 'logs', 'latest.log')
 
+                # Initialize variables
                 fail_counter = 0
                 close = False
                 crash_info = None
                 error_list = []
 
+                accumulating = False
+                accumulated_lines = []
+                brace_count = 0
+
+                def is_entity_data_start(string):
+                    return ' has the following entity data: ' in string and not string.strip().endswith('}')
+
+                def is_complete_entity_data(string):
+                    string = string.decode(errors='ignore')
+                    return ' has the following entity data: ' in string and string.strip().endswith('}')
+
+
                 for line in lines_iterator:
+                    decoded_line = line.decode(errors='ignore')
+
+                    # Combine playerdata that spans multiple lines
+                    if is_entity_data_start(decoded_line):
+                        accumulating = True
+                        accumulated_lines = [decoded_line]
+                        brace_count = decoded_line.count('{') - decoded_line.count('}')
+                        continue
+
+                    # Append next line
+                    elif accumulating:
+                        accumulated_lines.append(decoded_line)
+                        brace_count += decoded_line.count('{') - decoded_line.count('}')
+
+                        # Completed data
+                        if brace_count == 0:
+                            line = ''.join(accumulated_lines).encode()
+                            accumulating = False
+                            accumulated_lines = []
+                            brace_count = 0
+                        else:
+                            continue
+
+                    # Add to list
+                    if is_complete_entity_data(line):
+                        data = line.decode().strip()
+                        player = re.findall(r'(?<=\: )(.*)(?= has the following entity data)', data)[0]
+                        self.run_data['entitydata-cache'][player] = data
+                        self.run_data['entitydata-cache']['$newest'] = data
+                        continue
 
                     try:
                         # Append legacy errors to error list
@@ -1462,11 +1529,14 @@ class ServerObject():
             return
 
         # Format up-time
-        delta = (dt.now() - self.run_data['launch-time'])
-        time_str = str(delta).split(',')[-1]
-        if '.' in time_str:
-            time_str = time_str.split('.')[0]
-        formatted_date = f"{str(delta.days)}:{time_str.strip().zfill(8)}".zfill(11)
+        try:
+            delta = (dt.now() - self.run_data['launch-time'])
+            time_str = str(delta).split(',')[-1]
+            if '.' in time_str:
+                time_str = time_str.split('.')[0]
+            formatted_date = f"{str(delta.days)}:{time_str.strip().zfill(8)}".zfill(11)
+        except KeyError:
+            return False
 
         def limit_percent(pct):
             if pct < 0:
@@ -1801,28 +1871,57 @@ class ServerObject():
             hook(self.run_data['log'])
 
 
-    # Sends a command that doesn't show up in the console
-    def silent_command(self, cmd, log=True, _capture=None, _send_twice=False):
+    # Retrieves cached entity player data
+    def get_entity_data(self, player, newest=False):
+        original_data = None
 
+        if player in self.run_data['entitydata-cache']:
+            original_data = deepcopy(self.run_data['entitydata-cache'][player])
+
+        # Format command to server based on version
+        if constants.version_check(self.version, '>=', '1.13'):
+            command = f'data get entity {player}'
+        else:
+            return ""
+
+        # If newest, use the newest tag
+        if newest:
+            player = '$newest'
+            if '$newest' in self.run_data['entitydata-cache']:
+                original_data = deepcopy(self.run_data['entitydata-cache'][player])
+
+        self.silent_command(command)
+
+        # Wait for data to get updated/sent from the server
+        for timeout in range(50):
+            if player in self.run_data['entitydata-cache'] and self.run_data['entitydata-cache'][player] != original_data:
+                return self.run_data['entitydata-cache'][player]
+            time.sleep(0.001)
+
+        # If nothing, return the last tag
+        if player in self.run_data['entitydata-cache']:
+            return self.run_data['entitydata-cache'][player]
+        return ""
+
+
+    # Returns a username from a player selector
+    def parse_tag(self, selector: str):
+        data = self.get_entity_data(selector, True)
+        player = re.findall(r'(?<=\: )(.*)(?= has the following entity data)', data)[0]
+        return player
+
+
+    # Sends a command that doesn't show up in the console
+    def silent_command(self, cmd, log=False):
         self.send_command(cmd, False, log, True)
 
-        # Dirty fix: repeat command if get_player() is used
-        if _send_twice and _capture:
-            self.send_command(cmd, False, False, True)
 
-        # Wait for response and return data as string
-        if _capture:
-            if constants.version_check(self.version, '<', '1.7'):
-                lines_iterator = iter(self.run_data['process'].stderr.readline, "")
-            else:
-                lines_iterator = iter(self.run_data['process'].stdout.readline, "")
+    # Retrieves updated player list from run_data
+    def get_players(self):
+        if self.run_data:
+            return self.run_data['player-list']
+        return {}
 
-            for line in lines_iterator:
-                if _capture in line.decode('utf-8', errors='ignore'):
-                    return line.decode('utf-8', errors='ignore')
-                else:
-                    self.update_log(line)
-                    return ""
 
     # Retrieves IDE suggestions from internal objects
     def _retrieve_suggestions(self):
@@ -1832,7 +1931,7 @@ class ServerObject():
         def iter_attr(obj, a_start=''):
             final_list = []
             for attr in dir(obj):
-                if not attr.startswith('_'):
+                if not attr.startswith('_') and not attr[0].isupper():
                     if callable(getattr(obj, attr)):
                         final_list.append(a_start + attr + '()')
                     else:

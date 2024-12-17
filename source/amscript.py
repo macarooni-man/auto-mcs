@@ -1,4 +1,5 @@
 import distutils.sysconfig as sysconfig
+import random
 from datetime import datetime as dt
 from difflib import SequenceMatcher
 from threading import Timer
@@ -630,7 +631,7 @@ class ScriptObject():
 
             # Ignore all comments and grab imports/global variables
             script_data = ""
-            global_variables = f"from itertools import zip_longest\nimport importlib\nimport time\nimport sys\nimport os\nsys.path.insert(0, r'{self.script_path}')\n"
+            global_variables = f"from itertools import zip_longest\nimport importlib\nimport time\nimport sys\nimport re\nimport os\nsys.path.insert(0, r'{self.script_path}')\n"
 
             for line in f.readlines():
                 line = line.replace('\t', '    ')
@@ -638,7 +639,7 @@ class ScriptObject():
 
                 # Possible function call
                 try:
-                    func_call = re.search(r'\w+[^\s+(def|async)\s+.+]+\.?\w+\(*.*\)[^\:]*', line).group(0).strip()
+                    func_call = re.search(r'\w+[^\s+(def|async|class)\s+.+]+\.?\w+\(*.*\)[^\:]*', line).group(0).strip()
                 except AttributeError:
                     func_call = None
 
@@ -666,8 +667,8 @@ class ScriptObject():
 
 
                 # Tag global functions
-                elif line.startswith("def "):
-                    line = "%" + line
+                elif line.startswith("def ") or line.startswith("async def ") or line.startswith('class '):
+                    line = "%__ams_def__%-" + line
 
                 # Find global variables
                 elif not ((line.startswith(' ') or line.startswith('\t'))):
@@ -676,21 +677,25 @@ class ScriptObject():
                         func_calls.append(f'{line.strip()}\n')
 
                     elif not (line.strip().startswith('@') and line.strip().endswith(':')): # elif re.match(r"[A-Za-z0-9]+.*=.*", line.strip(), re.IGNORECASE)
-                        global_variables = global_variables + line.strip() + "\n"
+                        func_calls.append(line.strip() + "\n")
 
                 script_data = script_data + line
             script_data += "\n "
 
             # Redefine print function to redirect to server console instead of Python console
             print_func = "def print(*args, sep=' ', end=''):\n    for line in sep.join(str(arg) for arg in args).replace('\\r','').splitlines():\n        server._ams_log(line, 'print')"
-            global_variables = global_variables + "\n" + print_func + "\n"
+
+            # Custom command parser class for use in "@player.on_alias()" events
+            command_handler = "class CommandHandler(str):\n    def __init__(self, command: str, *args, **kwargs):\n        super().__init__(*args, **kwargs)\n        if ' ' in command:\n            self.base_command, self.arguments = [i.strip() for i in command.split(' ', 1)]\n        else:\n            self.base_command = command.strip()\n            self.arguments = ''\n    def parse(self, maxsplit=-1):\n        pattern = r'''((?:[^\s\"']|\"[^\"]*\"|'[^']*')+)'''\n        matches = re.findall(pattern, self)\n        result = []\n        for match in matches:\n            if (match.startswith('\"') and match.endswith('\"')) or                (match.startswith(\"'\") and match.endswith(\"'\")):\n                result.append(match[1:-1])\n            else:\n                result.append(match)\n        if maxsplit >= 0:\n            return result[:maxsplit] + [' '.join(result[maxsplit:])] if len(result) > maxsplit else result\n        return result\n"
+
+            global_variables = global_variables + "\n" + print_func + "\n" + command_handler + "\n"
 
             # Search through script to find global functions
             last_index = 0
-            for num in range(0, script_data.count("%def ")):
+            for num in range(0, script_data.count("%__ams_def__%-")):
 
-                text = script_data[script_data.find("%def ", last_index):]
-                last_index = script_data.find("%def ", last_index) + 1
+                text = script_data[script_data.find("%__ams_def__%-", last_index):]
+                last_index = script_data.find("%__ams_def__%-", last_index) + 1
 
                 function = ''
 
@@ -700,11 +705,12 @@ class ScriptObject():
 
                         # Format string and use exec to return function object
                         for new_line in text.splitlines()[:x]:
-                            if new_line.startswith("%"):
-                                new_line = new_line.replace("%def ", f'def ')
+                            if new_line.startswith("%__ams_def__%-"):
+                                new_line = new_line.replace("%__ams_def__%-", '', 1)
                             function = function + new_line + "\n"
                         global_variables = global_variables + "\n\n" + function.strip()
                         self.src_dict[os.path.basename(script_path)]['other_funcs'].append(function.strip())
+                        # print(function.strip())
                         break
 
             # Load global function calls at the very end
@@ -721,6 +727,7 @@ class ScriptObject():
 
             # Attempt to process imports, global variables, and functions
             try:
+                # print(global_variables)
                 exec(global_variables, self.function_dict[os.path.basename(script_path)]['values'], self.function_dict[os.path.basename(script_path)]['values'])
 
             # Handle global variable exceptions
@@ -804,11 +811,22 @@ class ScriptObject():
                                     except Exception as e:
                                         return enum_error(e, find=src_function_call)
 
-                                    # Only allow last argument to be optional, hence retarded dict comprehension
-                                    alias_keys = alias_values['args'].keys()
+                                    # Only allow last arguments to be optional
+                                    alias_args = alias_values['args']
+                                    alias_keys = alias_args.keys()
+                                    keys_order = list(alias_keys)
+
+                                    # Identify the index of the first True value in alias_args according to keys_order
+                                    first_true_index = next((i for i, k in enumerate(keys_order) if alias_args[k] is True), None)
+                                    arguments = {
+                                        k: (True if first_true_index is not None and i <= first_true_index else
+                                            alias_args[k])
+                                        for i, k in enumerate(keys_order)
+                                    }
+
                                     alias_dict = {
                                         'command': f"!{alias_values['cmd']}" if bool(re.match('^[a-zA-Z0-9]+$', alias_values['cmd'][:1])) else f"!{alias_values['cmd'][1:]}",
-                                        'arguments': {k: (True if (k != list(alias_keys)[-1]) else v) for (k, v) in alias_values['args'].items()},
+                                        'arguments': arguments,
                                         'syntax': '',
                                         'permission': alias_values['perm'],
                                         'description': alias_values['desc'] if alias_values['desc'] else f"Provided by '{os.path.basename(script_path)}'",
@@ -890,7 +908,8 @@ class ScriptObject():
                 first = True
 
                 func_header = "def __on_alias__(player, command, permission='anyone'):\n"
-                func_header += "    perm_dict = {'anyone': 0, 'op': 1, 'server': 2}\n\n"
+                func_header += "    perm_dict = {'anyone': 0, 'op': 1, 'server': 2}\n"
+                func_header += "    command = CommandHandler(command)\n\n"
                 new_func = ""
 
                 for k, v in alias_functions.items():
@@ -901,7 +920,7 @@ class ScriptObject():
                     req_args_list = list([x for x in self.aliases[k]['arguments'].keys() if self.aliases[k]['arguments'][x]])
                     arguments = {}
 
-                    new_func += f"    {'if' if first else 'elif'} command.strip().split(' ',1)[0].strip() == '{k}': #__{self.server_id}__\n"
+                    new_func += f"    {'if' if first else 'elif'} command.base_command == '{k}': #__{self.server_id}__\n"
                     if self.aliases[k]['permission'] in ['anyone', 'op', 'server']:
                         new_func += f"        if perm_dict[permission] < perm_dict['{self.aliases[k]['permission']}']:\n"
                     else:
@@ -910,13 +929,13 @@ class ScriptObject():
                     # Permission thingy
                     new_func += (f"            player.log_error(\"You do not have permission to use this command\")\n" if not hidden else "            pass\n")
                     new_func += f"        else:\n"
-                    new_func += f"            if len(command.split(' ', len({argument_list}))[1:]) < len({req_args_list}):\n"
+                    new_func += f"            if len(command.parse(len({argument_list}))[1:]) < len({req_args_list}):\n"
 
                     # Syntax thingy
                     new_func += (f"                player.log_error(\"Invalid syntax: {syntax}\")\n" if not hidden else "                pass\n")
                     new_func += f"            else:\n"
-                    new_func += f"                arguments = dict(zip_longest({argument_list}, command.split(' ', len({argument_list}))[1:]))\n"
-                    new_func += f"                command = command.split(' ', 1)[0].strip()\n"
+                    new_func += f"                arguments = dict(zip_longest({argument_list}, command.parse(len({argument_list}))[1:]))\n"
+                    new_func += f"                command = command.base_command\n"
 
                     # Allow 'player' variable to be reassigned if needed
                     if self.aliases[k]['player'] != 'player':
@@ -1106,61 +1125,75 @@ class ScriptObject():
                                 nested_func = False
 
                                 # First, grab relative line number from modified code
-                                tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
                                 try:
-                                    line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
-                                except AttributeError:
-                                    line_num = 0
-                                    original_code = "Unknown"
-                                else:
-
-                                    # Try to locate event first
+                                    tb = [item for item in traceback.format_exception(ex_type, ex_value, ex_traceback) if 'File "<string>"' in item][-1].strip()
                                     try:
-                                        # Locate original code from the source
-                                        original_code = self.src_dict[s][event][i].splitlines()[line_num - 1]
-                                        new_i = i
+                                        line_num = int(re.search(r'(?<=,\sline\s)(.*)(?=,\sin)', tb).group(0))
+                                    except AttributeError:
+                                        line_num = 0
+                                        original_code = "Unknown"
+                                    else:
 
-                                        # If alias, count if statements beforehand instead because it's one function
-                                        if event == "@player.on_alias":
-                                            new_i = ("\n".join(self.src_dict[s]['@player.on_alias'][i].splitlines()[:line_num]).count(f": #__{self.server_id}__")) - 1
+                                        # Try to locate event first
+                                        try:
+                                            # Locate original code from the source
+                                            original_code = self.src_dict[s][event][i].splitlines()[line_num - 1]
+                                            new_i = i
 
-                                        # Use the line to find the original line number from the source
-                                        event_count = 0
-                                        for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
-                                            # print((original_code.strip(), line), (i+1, event_count))
-                                            # print(n, line, event_count, i)
+                                            # If alias, count if statements beforehand instead because it's one function
+                                            if event == "@player.on_alias":
+                                                new_i = ("\n".join(self.src_dict[s]['@player.on_alias'][i].splitlines()[:line_num]).count(f": #__{self.server_id}__")) - 1
 
-                                            if (original_code.strip() in line) and ((new_i + 1) == event_count):
-                                                line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
-                                                break
+                                            # Use the line to find the original line number from the source
+                                            event_count = 0
+                                            for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                                                # print((original_code.strip(), line), (i+1, event_count))
+                                                # print(n, line, event_count, i)
 
-                                            if line.startswith(event):
-                                                event_count += 1
-                                        else:
+                                                if (original_code.strip() in line) and ((new_i + 1) == event_count):
+                                                    line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                                                    break
+
+                                                if line.startswith(event):
+                                                    event_count += 1
+                                            else:
+                                                nested_func = True
+
+                                        # When error is not in an event, but in a nested function or library
+                                        except IndexError:
                                             nested_func = True
 
-                                    # When error is not in an event, but in a nested function or library
-                                    except IndexError:
-                                        nested_func = True
 
+                                        if nested_func:
 
-                                    if nested_func:
+                                            # Locate original code from source
+                                            original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
 
-                                        # Locate original code from source
-                                        original_code = self.src_dict[s]['gbl'].splitlines()[line_num - 1]
+                                            # Use the line to find the original line number from the source
+                                            event_count = 0
+                                            func_name = f'def {tb.split("in ")[1].strip()}('
+                                            for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
+                                                # print(n, line, event_count, i)
 
-                                        # Use the line to find the original line number from the source
-                                        event_count = 0
-                                        func_name = f'def {tb.split("in ")[1].strip()}('
-                                        for n, line in enumerate(self.src_dict[s]['src'].splitlines(), 1):
-                                            # print(n, line, event_count, i)
+                                                if (original_code.strip() in line) and (event_count > 0):
+                                                    line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
+                                                    break
 
-                                            if (original_code.strip() in line) and (event_count > 0):
-                                                line_num = f'{n}:{len(line) - len(line.lstrip()) + 1}'
-                                                break
+                                                if line.startswith(func_name):
+                                                    event_count += 1
 
-                                            if line.startswith(func_name):
-                                                event_count += 1
+                                # Catch exception if invalid parameters are passed to an event
+                                except IndexError:
+                                    tb = traceback.format_exception(ex_type, ex_value, ex_traceback)
+                                    line_num = 0
+                                    original_code = "Unknown"
+
+                                    # Attempt to retrieve the failed event name
+                                    if '__()' in tb[-1]:
+                                        failed_event = [i for i in self.valid_events if tb[-1].split('__')[1] in i][0]
+                                        ex_value = f'Missing or invalid parameters supplied to "{failed_event}()"'
+                                        ex_type = Exception()
+                                        ex_type.__name__ = 'EventError'
 
 
                                 # Generate error dict
@@ -1218,112 +1251,239 @@ class ScriptObject():
     # Fires event when player joins the game
     # {'user': user, 'uuid': uuid, 'ip': ip_addr, 'date': date, 'logged-in': True}
     def join_event(self, player_obj):
-        if player_obj['user'] not in self.server_script_obj.player_list:
-            self.server_script_obj.player_list[player_obj['user']] = player_obj
-            # print(self.server_script_obj.player_list)
-            # print(self.server.run_data['player-list'])
+        def thread():
 
-        self.call_event('@player.on_join', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
+            if player_obj['user'] not in self.server_script_obj.player_list:
+                self.server_script_obj.player_list[player_obj['user']] = player_obj
+                # print(self.server_script_obj.player_list)
+                # print(self.server.run_data['player-list'])
 
-        if player_obj['user'] not in self.server_script_obj.usercache:
-            try:
-                self.server_script_obj.usercache[player_obj['user']] = player_obj['uuid']
-            except KeyError:
-                self.server_script_obj.usercache[player_obj['user']] = None
+            self.call_event('@player.on_join', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
 
-        if constants.debug:
-            print('player.on_join')
-            print(player_obj)
+            if player_obj['user'] not in self.server_script_obj.usercache:
+                try:
+                    self.server_script_obj.usercache[player_obj['user']] = player_obj['uuid']
+                except KeyError:
+                    self.server_script_obj.usercache[player_obj['user']] = None
+
+            if constants.debug:
+                print('player.on_join')
+                print(player_obj)
+
+        Timer(0, thread).start()
 
     # Fires when player leaves the game
     # {'user': user, 'uuid': uuid, 'ip': ip_addr, 'date': date, 'logged-in': False}
     def leave_event(self, player_obj):
+        def thread():
 
-        # Wait to process event to receive updated playerdata
-        time.sleep(0.05)
+            # Wait to process event to receive updated playerdata
+            time.sleep(0.05)
 
-        self.call_event('@player.on_leave', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
+            self.call_event('@player.on_leave', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
 
-        if player_obj['user'] in self.server_script_obj.player_list:
-            del self.server_script_obj.player_list[player_obj['user']]
-            # print(self.server_script_obj.player_list)
-            # print(self.server.run_data['player-list'])
+            if player_obj['user'] in self.server_script_obj.player_list:
+                del self.server_script_obj.player_list[player_obj['user']]
+                # print(self.server_script_obj.player_list)
+                # print(self.server.run_data['player-list'])
 
-        if constants.debug:
-            print('player.on_leave')
-            print(player_obj)
+            if constants.debug:
+                print('player.on_leave')
+                print(player_obj)
+
+        Timer(0, thread).start()
 
     # Fires event when message/cmd is sent
     # {'user': player, 'content': message}
     def message_event(self, msg_obj):
-        msg_obj['content'] = msg_obj['content'].replace("&bl;", "[").replace("&br;", "]")
-        if msg_obj['content'].strip().split(" ",1)[0].strip() in self.aliases.keys():
-            self.alias_event(msg_obj)
-        elif msg_obj['content'].startswith('!'):
-            player = PlayerScriptObject(self.server_script_obj, msg_obj['user'])
-            message = 'Unknown command. Type "!help" for a list of commands.'
-            if player.is_server:
-                self.server_script_obj.log(message)
-            else:
-                player.log_error(message)
-        elif msg_obj['user'] != self.server_id:
-            self.call_event('@player.on_message', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), msg_obj['content']))
+        def thread():
 
-            if constants.debug:
-                print('player.on_message')
-                print(msg_obj)
+            msg_obj['content'] = msg_obj['content'].replace("&bl;", "[").replace("&br;", "]")
+            if msg_obj['content'].strip().split(" ",1)[0].strip() in self.aliases.keys():
+                self.alias_event(msg_obj)
+            elif msg_obj['content'].startswith('!'):
+                player = PlayerScriptObject(self.server_script_obj, msg_obj['user'])
+                message = 'Unknown command. Type "!help" for a list of commands.'
+                if player.is_server:
+                    self.server_script_obj.log(message)
+                else:
+                    player.log_error(message)
+            elif msg_obj['user'] != self.server_id:
+                self.call_event('@player.on_message', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), msg_obj['content']))
+
+                if constants.debug:
+                    print('player.on_message')
+                    print(msg_obj)
+
+        Timer(0, thread).start()
 
     # Fires event when a player dies
     # {'user': player, 'content': message}
     def death_event(self, msg_obj):
-        if msg_obj['user'] != self.server_id:
-            enemy = None
+        def thread():
 
-            # Attempt to find attacker if player was killed by another player
-            for word in reversed(msg_obj['content'].split(' ')):
-                if word.strip() != msg_obj['user'] and word.strip() in self.server.run_data['player-list']:
-                    enemy = PlayerScriptObject(self.server_script_obj, word.strip())
-                    break
+            if msg_obj['user'] != self.server_id:
+                enemy = None
 
-            self.call_event('@player.on_death', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), enemy, msg_obj['content']))
+                # Attempt to find attacker if player was killed by another player
+                for word in reversed(msg_obj['content'].split(' ')):
+                    if word.strip() != msg_obj['user'] and word.strip() in self.server.run_data['player-list']:
+                        enemy = PlayerScriptObject(self.server_script_obj, word.strip())
+                        break
 
-            if constants.debug:
-                print('player.on_death')
-                print(msg_obj)
+                self.call_event('@player.on_death', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), enemy, msg_obj['content']))
+
+                if constants.debug:
+                    print('player.on_death')
+                    print(msg_obj)
+
+        Timer(0, thread).start()
 
     # Fires event when a player earns an achievement
     # {'user': player, 'achievement': title}
     def achieve_event(self, msg_obj):
-        self.call_event('@player.on_achieve', (PlayerScriptObject(self.server_script_obj, msg_obj['user'], _send_command=False), msg_obj['advancement']))
+        def thread():
 
-        if constants.debug:
-            print('player.on_achieve')
+            self.call_event('@player.on_achieve', (PlayerScriptObject(self.server_script_obj, msg_obj['user'], _send_command=False), msg_obj['advancement']))
+
+            if constants.debug:
+                print('player.on_achieve')
+
+        Timer(0, thread).start()
 
     # Fires event when player sends a command alias
     # {'user': player, 'content': message}
     def alias_event(self, player_obj):
-        self.server.acl.reload_list('ops')
-        # print([rule.rule for rule in self.server.acl.rules['ops']])
-        if player_obj['user'] == self.server_id:
-            permission = 'server'
-        elif self.server.acl.rule_in_acl(player_obj['user'], 'ops'):
-            permission = 'op'
-        else:
-            permission = 'anyone'
+        def thread():
 
-        self.call_event('@player.on_alias', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj['content'], permission))
+            self.server.acl.reload_list('ops')
+            # print([rule.rule for rule in self.server.acl.rules['ops']])
+            if player_obj['user'] == self.server_id:
+                permission = 'server'
+            elif self.server.acl.rule_in_acl(player_obj['user'], 'ops'):
+                permission = 'op'
+            else:
+                permission = 'anyone'
 
-        if constants.debug:
-            print('player.on_alias')
-            print(player_obj)
+            self.call_event('@player.on_alias', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj['content'], permission))
+
+            if constants.debug:
+                print('player.on_alias')
+                print(player_obj)
+
+        Timer(0, thread).start()
 
 
 # Reconfigured ServerObject to be passed in as 'server' variable to amscripts
 class ServerScriptObject():
+
+    # Custom version object that can do arithmetic on Minecraft version strings
+    class AmsVersion():
+        def __init__(self, version: str):
+            self._version = version.lower().strip()
+
+            if 'w' in self._version:
+                self.type = 'snapshot'
+                self.major = None
+                self.minor = None
+
+            else:
+                self.type = 'alpha' if self._version.startswith('a') else 'beta' if self._version.startswith('b') else 'release'
+
+                if self._version.count('.') == 2:
+                    data = version.replace('1.', '', 1).lstrip('ab').split('.')
+                    self.major = int(data[0])
+                    self.minor = int(data[1])
+                else:
+                    self.major = int(version.replace('1.', '', 1))
+                    self.minor = 0
+
+        def __repr__(self):
+            return f"AmsVersion('{self._version}')"
+
+        def __str__(self):
+            return self._version
+
+        def _compare(self, other, comparator):
+            # Convert `other` to a string if it's an AmsVersion
+            other_version = str(other) if isinstance(other, type(self)) else other
+            return constants.version_check(self._version, comparator, other_version)
+
+        def __eq__(self, other):
+            return self._compare(other, "==")
+
+        def __ne__(self, other):
+            return self._compare(other, "!=")
+
+        def __lt__(self, other):
+            return self._compare(other, "<")
+
+        def __le__(self, other):
+            return self._compare(other, "<=")
+
+        def __gt__(self, other):
+            return self._compare(other, ">")
+
+        def __ge__(self, other):
+            return self._compare(other, ">=")
+
+    # Custom task scheduler that prevents execution when the server stops
+    class AmsTimer():
+        def __init__(self, server_script_obj, delay: int or float, function: callable, *args, **kwargs):
+            if not isinstance(delay, (int, float)):
+                raise TypeError('delay must be <int> or <float>')
+            if not callable(function):
+                raise TypeError('function must be <callable>')
+
+            self._server = server_script_obj
+            self.delay = delay
+            self.function = function
+            self.arguments = {'args': args, 'kwargs': kwargs}
+
+            self._check_valid_threshold = 5
+            self._canceled = False
+            self._timer = Timer(0, self._internal_wrapper)
+
+            self.start()
+
+        def _internal_wrapper(self):
+            div = divmod(self.delay, self._check_valid_threshold)
+
+            # Check every valid threshold if the specified delay is greater than it
+            if div[0] > 0:
+                for s in range(int(div[0])):
+
+                    if not self.is_valid():
+                        return False
+
+                    time.sleep(self._check_valid_threshold)
+
+            # Also wait the remainder to ensure the delay lines up with the request
+            if div[1]:
+                time.sleep(div[1])
+
+            if not self.is_valid():
+                return False
+
+            # Execute function
+            self.function(*self.arguments['args'], **self.arguments['kwargs'])
+
+        def is_valid(self):
+            return (not self._canceled) and self._server._running
+
+        def cancel(self):
+            self._canceled = True
+            self._timer.cancel()
+
+        def start(self):
+            self._timer.start()
+            return self.is_valid()
+
     def __init__(self, server_obj):
         self._running = True
 
         # Data to be used internally, don't use these in user scripts
+        self._acl = server_obj.acl
         self._server_id = ("#" + server_obj._hash)
         self._ams_log = server_obj.amscript_log
         self._reload_scripts = server_obj.reload_scripts
@@ -1331,6 +1491,9 @@ class ServerScriptObject():
         self._persistent_config = PersistenceManager(server_obj.name)
         self._app_version = constants.app_version
         self._script_state = server_obj.script_manager.script_state
+        self._get_players = server_obj.get_players
+        self._get_entity_data = server_obj.get_entity_data
+        self._parse_tag = server_obj.parse_tag
 
         # Assign callable functions from main server object
         self.execute = server_obj.silent_command
@@ -1347,7 +1510,7 @@ class ServerScriptObject():
 
         # Properties
         self.name = server_obj.name
-        self.version = server_obj.version
+        self.version = self.AmsVersion(server_obj.version)
         self.build = server_obj.build
         self.type = server_obj.type
         self.world = server_obj.world if server_obj.world else 'world'
@@ -1357,11 +1520,9 @@ class ServerScriptObject():
 
         if server_obj.run_data:
             self._performance = server_obj.run_data['performance']
-            self.player_list = deepcopy(server_obj.run_data['player-list'])
             self.network = server_obj.run_data['network']['address']
         else:
             self._performance = {}
-            self.player_list = {}
             self.network = {'ip': None, 'port': None}
 
         # Load usercache
@@ -1388,16 +1549,21 @@ class ServerScriptObject():
     def __eq__(self, comp):
         return self.name == comp
 
+
+    @property
+    def player_list(self):
+        return {k: v for k, v in self._get_players().items() if v['logged-in']}
+
     # Logging functions
-    def log_warning(self, msg):
+    def log_warning(self, msg: str):
         self.log(msg, log_type='warning')
-    def log_error(self, msg):
+    def log_error(self, msg: str):
         self.log(msg, log_type='error')
-    def log_success(self, msg):
+    def log_success(self, msg: str):
         self.log(msg, log_type='success')
 
     # Version compatible message system for every player
-    def broadcast(self, msg, color="gray", style='italic', tag=False):
+    def broadcast(self, msg: str, color: str = "gray", style: str = "italic", tag=False):
         if not msg:
             return
 
@@ -1411,7 +1577,7 @@ class ServerScriptObject():
         style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
 
         # Use /tellraw if it's supported, else /tell
-        if constants.version_check(str(self.version), '>=', '1.7.2'):
+        if self.version >= '1.7.2':
             msg = f'/tellraw @a {{"text": {json.dumps(msg)}, "color": "{color}"}}'
             if style != 'normal':
                 msg = msg[:-1] + f', "{style}": true}}'
@@ -1454,38 +1620,45 @@ class ServerScriptObject():
                 final_code += style_table[style]
             msg = f'/tell @a {final_code}{("§r "+final_code).join(msg.rstrip().split(" "))}§r'
             self.execute(msg, log=False)
-    def broadcast_warning(self, msg, tag=False):
+    def broadcast_warning(self, msg: str, tag=False):
         self.broadcast(msg, "gold", "normal", tag=tag)
-    def broadcast_error(self, msg, tag=False):
+    def broadcast_error(self, msg: str, tag=False):
         self.broadcast(msg, "red", "normal", tag=tag)
-    def broadcast_success(self, msg, tag=False):
+    def broadcast_success(self, msg: str, tag=False):
         self.broadcast(msg, "green", "normal", tag=tag)
 
-    # Version check
-    def version_check(self, operand, version):
-        return constants.version_check(self.version, operand, version)
+    # Sends a broadcast message only to operators
+    def operator_broadcast(self, msg: str, color: str = "gray", style: str = "italic", tag=False):
+
+        # Send to server console as well
+        self.log(f"(op) {msg}", log_type=('success' if color == 'green' else 'warning' if color == 'gold' else 'error' if color == 'red' else 'info'))
+
+        for player in self.get_players():
+            if player.is_operator:
+                player.log(msg, color, style, tag)
+
+    # Run a delayed function call while checking if the server is running
+    def after(self, delay: int or float, function: callable, *args, **kwargs):
+        return self.AmsTimer(self, delay, function, *args, **kwargs)
 
     # Returns PlayerScriptObject that matches selector
-    def get_player(self, tag):
+    def get_player(self, tag: str, offline=False):
+
+        # Ignore tags if lower than 1.13
+        if '@' in tag and self.version < '1.13':
+            return None
+
+        # Use internal function instead of pulling from the game
+        if tag == '@a':
+            return self.get_players()
+
+        # Ignore entity selectors
+        if tag.startswith('@e'):
+            return None
 
         # First check if there's a user selector
-        if tag.startswith("@p") or tag.startswith("@r"):
-            user = None
-
-            if self.version_check(">=", "1.13"):
-                try:
-                    log_data = self.execute(f'data get entity {tag}', log=False, _capture=f" has the following entity data: ", _send_twice=True)
-                    user = log_data.split(" has the following entity data: ")[0].rsplit(":",1)[1].strip()
-                except:
-                    user = None
-
-            elif self.version_check(">=", "1.8") and self.version_check("<", "1.13"):
-                try:
-                    log_data = self.execute(f'execute {tag} ~ ~ ~ tp @p ~ ~ ~', log=False, _capture=f"Teleported ", _send_twice=True)
-                    user = log_data.split("Teleported ")[1].split(" to")[0].strip()
-                except:
-                    user = None
-
+        if tag.startswith("@p") or tag.startswith("@r") or (tag.startswith("@a[") and 'limit=1' in tag):
+            user = self._parse_tag(tag)
             if user:
                 tag = user
             else:
@@ -1495,29 +1668,43 @@ class ServerScriptObject():
         if tag in self.player_list:
             obj = PlayerScriptObject(self, tag, _get_player=True)
 
+        elif offline:
+            obj = PlayerScriptObject(self, tag, _offline=True, _get_player=True)
+
         else:
             obj = None
 
         return obj
 
+    # Returns a PlayerScriptObject generator for all online players
+    def get_players(self):
+        for player in self.player_list:
+            yield self.get_player(player)
 
 # Reconfigured ServerObject to be passed in as 'player' variable to amscript events
 class PlayerScriptObject():
-    def __init__(self, server_script_obj: ServerScriptObject, player_name: str, _get_player=False, _send_command=True):
+    def __init__(self, server_script_obj: ServerScriptObject, player_name: str, _offline=False, _get_player=False, _send_command=True):
         self._get_player = _get_player
         self._send_command = _send_command
+        self._get_entity_data = server_script_obj._get_entity_data
         self._server = server_script_obj
         self._server_id = server_script_obj._server_id
         self._execute = server_script_obj.execute
-        self._version_check = server_script_obj.version_check
         self._world_path = os.path.join(server_script_obj.directory, server_script_obj.world)
+
+        self._offline = _offline
+        self._initialized = False
 
 
         # If this object is the console
         self.is_server = (player_name == self._server_id)
 
-        if not self.is_server:
-            player_info = server_script_obj.player_list[player_name]
+        if self._offline:
+            self.uuid = server_script_obj._acl.get_uuid(player_name)['uuid']
+            self.ip_address = None
+
+        elif not self.is_server:
+            player_info = server_script_obj._get_players()[player_name]
             self.uuid = player_info['uuid']
             self.ip_address = player_info['ip'].split(":")[0]
         else:
@@ -1544,7 +1731,7 @@ class PlayerScriptObject():
         self.death_time = 0
         self.dimension = "None"
         self.active_effects = {}
-        self.inventory = InventoryObject(None, None)
+        self.inventory = InventoryObject(self, None, None)
 
         # Persistent config
         if self.is_server:
@@ -1564,6 +1751,78 @@ class PlayerScriptObject():
 
         if not self.is_server:
             self._get_nbt()
+
+        self._initialized = True
+
+    # Override attributes to actually modify some of the player's properties
+    def __setattr__(self, name, value):
+        if getattr(self, "_initialized", False):  # Check if initialization is complete
+            if name == "gamemode":
+                self._change_gamemode(value)
+            elif name == "dimension":
+                self._change_dimension(value)
+            else:
+                raise ServerError(f"'player.{name}' is read-only")
+        super().__setattr__(name, value)  # Always set the value
+
+    # Sets player gamemode internally
+    def _change_gamemode(self, value):
+        if not self.is_online:
+            raise ServerError(f"'{self}' is not connected to the server")
+
+        elif self._server.version >= '1.8':
+            gamemodes = ["survival", "creative", "adventure", "spectator"]
+            if value not in gamemodes:
+                raise ServerError(f"Invalid gamemode: {value}")
+            command = f'gamemode {value} {self}'
+
+        elif self._server.version >= '1.3.1':
+            gamemodes = ["survival", "creative", "adventure"]
+            if value not in gamemodes:
+                raise ServerError(f"Invalid gamemode: {value}")
+            command = f'gamemode {gamemodes.index(value)} {self}'
+
+        elif self._server.version >= 'b1.8':
+            gamemodes = {"survival": 3, "creative": 1}
+            if value not in gamemodes:
+                raise ServerError(f"Invalid gamemode: {value}")
+            command = f'gamemode {self} {gamemodes[value]}'
+
+        else:
+            raise ServerError(f"You can only set the gamemode in Minecraft Beta 1.8 or later")
+
+        self._server.execute(command)
+
+    # Sets player dimension internally
+    def _change_dimension(self, value):
+        if not self.is_online:
+            raise ServerError(f"'{self}' is not connected to the server")
+
+        elif self._server.version >= '1.13':
+            value = value.replace("minecraft:","")
+            dimensions = ["the_nether", "overworld", "the_end"]
+
+            if value not in dimensions and constants.server_type(self._server.type) in ['vanilla', 'bukkit']:
+                raise ServerError(f"Invalid dimension: {value}")
+
+            if value == 'the_nether' and self.dimension == 'overworld':
+                new_pos = self.position / 8
+                new_pos.y = self.position.y
+
+            elif value == 'overworld' and self.dimension == 'the_nether':
+                new_pos = self.position * 8
+                new_pos.y = self.position.y
+
+            else:
+                new_pos = self.position
+
+            command = f'execute in {value} as {self} run tp {new_pos}'
+
+        else:
+            raise ServerError(f"You can only set the dimension in Minecraft 1.13 or later")
+
+        self._server.execute(command)
+
 
     def __hash__(self):
         return hash(self.name)
@@ -1585,8 +1844,9 @@ class PlayerScriptObject():
         log_data = None
         new_nbt = None
 
+
         # If newer version, use "/data get" to gather updated playerdata
-        if self._version_check(">=", "1.13"):
+        if self._server.version >= '1.13' and not self._offline:
 
             # Attempt to intercept player's entity data
             try:
@@ -1676,26 +1936,28 @@ class PlayerScriptObject():
                         pass
 
                     try:
-                        self.active_effects = {
-                            id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): EffectObject({'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)}, name=id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', '')) for item in new_nbt['ActiveEffects'].tags}
+                        self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['active_effects'].tags}
                     except:
-                        pass
+                        try:
+                            self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['ActiveEffects'].tags}
+                        except:
+                            pass
+
 
                     try:
                         try:
                             selected_item = (new_nbt['SelectedItem'], int(new_nbt['SelectedItemSlot'].value))
                         except KeyError:
                             selected_item = None
-                        self.inventory = InventoryObject(new_nbt['Inventory'], selected_item)
+                        self.inventory = InventoryObject(self, new_nbt['Inventory'], selected_item)
                     except:
                         pass
                 else:
-                    log_data = self._execute(f'data get entity {self.name}', log=False, _capture=f"{self.name} has the following entity data: ", _send_twice=self._get_player)
+                    log_data = self._get_entity_data(self.name)
                     nbt_data = log_data.split("following entity data: ")[1].strip()
 
-                    # Remove color escape codes if they exist
                     try:
-                        # Define the ANSI escape code regex pattern
+                        # Remove ANSI escape codes
                         ansi_escape = re.compile(r'''
                             \x1B  # ESC character
                             \[    # literal [
@@ -1706,13 +1968,26 @@ class PlayerScriptObject():
                         nbt_data = ansi_escape.sub('', nbt_data)
                     except:
                         pass
-                    # print(log_data)
 
                     # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
                     try:
-                        new_nbt = re.sub(r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)', lambda x: json_regex(x), nbt_data).replace(";",",").replace("'{", '"{').replace("}'", '}"')
+
+                        # Handle unquoted keys and values
+                        nbt_data = re.sub(
+                            r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)',
+                            lambda x: json_regex(x),
+                            nbt_data.replace('I;', '"I",')  # remove invalid UUID tags for parsing
+                        )
+
+                        # Replace semicolons with commas, fix brackets
+                        nbt_data = nbt_data.replace(";", ",").replace("'{", '"{').replace("}'", '}"')
+
+                        # Escape internal JSON quotes
+                        new_nbt = re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), nbt_data)
+
+                        # Attempt to fix any errors that might arise
                         new_nbt = json_repair.loads(re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
-                    except json.decoder.JSONDecodeError:
+                    except:
                         if constants.debug:
                             print('Failed to process NBT data')
 
@@ -1798,7 +2073,10 @@ class PlayerScriptObject():
                     pass
 
                 try:
-                    self.active_effects = {id_dict['effect'].get(item['id'], item['id']).replace('minecraft:',''): EffectObject(item, name=id_dict['effect'].get(item['id'], item['id']).replace('minecraft:','')) for item in new_nbt['activeeffects']}
+                    if 'activeeffects' in new_nbt:
+                        self.active_effects = {id_dict['effect'].get(effect['id'], effect['id']).replace('minecraft:',''): {k.replace("show","show_"): bool(v) if "show" in k else v for k, v in effect.items()}for effect in new_nbt['activeeffects']}
+                    elif 'active_effects' in new_nbt:
+                        self.active_effects = {effect['id']: {(k.replace("show","show_") if "_" not in k else k): bool(v) if "show" in k else v for k, v in effect.items()} for effect in new_nbt['active_effects']}
                 except:
                     pass
 
@@ -1807,54 +2085,47 @@ class PlayerScriptObject():
                         selected_item = (new_nbt['selecteditem'], int(new_nbt['selecteditemslot']))
                     except KeyError:
                         selected_item = None
-                    self.inventory = InventoryObject(new_nbt['inventory'], selected_item)
+                    self.inventory = InventoryObject(self, new_nbt['inventory'], selected_item)
                 except:
                     pass
 
 
-        # If pre-1.12, get outdated playerdata from the user's .dat file but updated pos
+        # If pre-1.13, get updated playerdata from disk
         else:
             try:
-                if self._version_check(">=", "1.8") and self._version_check("<", "1.13"):
-                    if self._send_command:
-                        log_data = self._execute(f'execute {self.name} ~ ~ ~ tp {self.name} ~ ~ ~', log=False, _capture=f"Teleported {self.name} to ", _send_twice=self._get_player)
-                    try:
-                        new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
-                    except FileNotFoundError:
-                        return None
+                # Dirty little trick to force a save to retrieve updated playerdata
+                if self._server.version >= '1.8':
+                    self._execute('save-all', log=False)
+                    time.sleep(0.05)
 
-                # Pre-1.8, get outdated playerdata from the user's .dat file
+                # Get the right file
+                if self._server.version >= constants.json_format_floor:
+                    file_path = os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat')
                 else:
-                    new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'players', f'{self.name}.dat'), 'rb')
+                    file_path = os.path.join(self._world_path, 'players', f'{self.name}.dat')
 
-            except OSError:
+                new_nbt = nbt.NBTFile(file_path, 'rb')
+            except OSError as e:
                 pass
 
             # Process NBT if there's no error
             else:
                 try:
-                    if log_data:
-                        coords = [round(float(pos.strip()), 4) for pos in log_data.split(f"Teleported {self.name} to ")[1].split(",")]
-                        self.position = CoordinateObject({'x': coords[0], 'y': coords[1], 'z': coords[2]})
-                    else:
-                        self.position = CoordinateObject({'x': fmt(new_nbt['Pos'][0]), 'y': fmt(new_nbt['Pos'][1]), 'z': fmt(new_nbt['Pos'][2])})
-                except:
-                    pass
-
-                try:
                     self.rotation = CoordinateObject({'x': fmt(new_nbt['Rotation'][0]), 'y': fmt(new_nbt['Rotation'][1])})
-                except:
-                    pass
-
-                try:
                     self.motion = CoordinateObject({'x': fmt(new_nbt['Motion'][0]), 'y': fmt(new_nbt['Motion'][1]), 'z': fmt(new_nbt['Motion'][2])})
+                    self.position = CoordinateObject({'x': fmt(new_nbt['Pos'][0]), 'y': fmt(new_nbt['Pos'][1]), 'z': fmt(new_nbt['Pos'][2])})
+                    if 'SpawnX' in new_nbt and 'SpawnY' in new_nbt and 'SpawnZ' in new_nbt:
+                        self.spawn_position = CoordinateObject({'x': fmt(new_nbt['SpawnX']), 'y': fmt(new_nbt['SpawnY']), 'z': fmt(new_nbt['SpawnZ'])})
                 except:
                     pass
 
-                try:
-                    self.spawn_position = CoordinateObject({'x': fmt(new_nbt['SpawnX']), 'y': fmt(new_nbt['SpawnY']), 'z': fmt(new_nbt['SpawnZ'])})
-                except:
-                    pass
+                if self.rotation['x'] is None:
+                    try:
+                        self.rotation = CoordinateObject({'x': fmt(new_nbt['Rotation'][0]), 'y': fmt(new_nbt['Rotation'][1])})
+                        self.motion = CoordinateObject({'x': fmt(new_nbt['Motion'][0]), 'y': fmt(new_nbt['Motion'][1]), 'z': fmt(new_nbt['Motion'][2])})
+                        self.spawn_position = CoordinateObject({'x': fmt(new_nbt['SpawnX']), 'y': fmt(new_nbt['SpawnY']), 'z': fmt(new_nbt['SpawnZ'])})
+                    except:
+                        pass
 
                 try:
                     self.health = int(new_nbt['Health'].value)
@@ -1912,16 +2183,32 @@ class PlayerScriptObject():
                     pass
 
                 try:
-                    self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:',''): EffectObject({'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)}, name=id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:','')) for item in new_nbt['ActiveEffects'].tags}
-                except:
-                    pass
+                    if 'active_effects' in new_nbt:
+
+                        # Iterate over active effects in the TAG_List
+                        for effect in new_nbt['active_effects']:
+                            if isinstance(effect, nbt.TAG_Compound):
+                                effect_data = {}
+
+                                # Extract data from the compound
+                                for key, value in effect.items():
+                                    effect_data[key] = value.value if hasattr(value, 'value') else None
+
+                                self.active_effects[effect_data['id'].replace("minecraft:","")] = effect_data
+
+                    else:
+                        self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['ActiveEffects']}
+
+
+                except Exception as e:
+                    self.active_effects = {}
 
                 try:
                     try:
                         selected_item = (new_nbt['SelectedItem'], int(new_nbt['SelectedItemSlot'].value))
                     except KeyError:
                         selected_item = None
-                    self.inventory = InventoryObject(new_nbt['Inventory'], selected_item)
+                    self.inventory = InventoryObject(self, new_nbt['Inventory'], selected_item)
                 except:
                     pass
 
@@ -1929,8 +2216,22 @@ class PlayerScriptObject():
         # Eventually process this to object data
         # print(new_nbt)
 
+    # self.is_online: True if player is currently connected
+    @property
+    def is_online(self):
+        return (self.name in self._server.player_list) and (not self.is_server)
+
+    # self.is_operator: True if player is an operator
+    @property
+    def is_operator(self):
+        if self.is_server:
+            return True
+
+        self._server._acl.reload_list('ops')
+        return bool(self._server._acl.rule_in_acl(self.name, 'ops'))
+
     # Set custom player permissions
-    def set_permission(self, permission, enable=True):
+    def set_permission(self, permission: str, enable=True):
         try:
             permissions = self.persistent['__permissions__']
         except KeyError:
@@ -1939,7 +2240,7 @@ class PlayerScriptObject():
         self.persistent['__permissions__'][permission] = enable
 
     # Check custom player permissions
-    def check_permission(self, permission):
+    def check_permission(self, permission: str):
         if self.is_server:
             return True
         else:
@@ -1950,7 +2251,7 @@ class PlayerScriptObject():
 
     # Logging functions
     # Version compatible message system for local player object
-    def log(self, msg, color="gray", style='italic', tag=False):
+    def log(self, msg: str, color: str = "gray", style: str = 'italic', tag=False):
         if not msg:
             return
 
@@ -1961,7 +2262,7 @@ class PlayerScriptObject():
         style = 'normal' if style not in ('normal', 'italic', 'bold', 'strikethrough', 'obfuscated', 'underlined') else style
 
         # Use /tellraw if it's supported, else /tell
-        if constants.version_check(str(self._server.version), '>=', '1.7.2') and not self.is_server:
+        if self._server.version >= '1.7.2' and not self.is_server:
             msg = f'/tellraw {self.name} {{"text": {json.dumps(msg)}, "color": "{color}"}}'
             if style != 'normal':
                 msg = msg[:-1] + f', "{style}": true}}'
@@ -2008,11 +2309,11 @@ class PlayerScriptObject():
                     final_code += style_table[style]
                 msg = f'/tell {self.name} {final_code}{("§r "+final_code).join(msg.rstrip().split(" "))}§r'
                 self._server.execute(msg, log=False)
-    def log_warning(self, msg, tag=False):
+    def log_warning(self, msg: str, tag=False):
         self.log(msg, "gold", "normal", tag=tag)
-    def log_error(self, msg, tag=False):
+    def log_error(self, msg: str, tag=False):
         self.log(msg, "red", "normal", tag=tag)
-    def log_success(self, msg, tag=False):
+    def log_success(self, msg: str, tag=False):
         self.log(msg, "green", "normal", tag=tag)
 
 
@@ -2590,20 +2891,19 @@ for lib in list(set(libs)):
 del libs
 
 
-# Gives strings quotes that don't have any, and formats numbers
+# Fix relaxed JSON to standard JSON
 def json_regex(match):
-    if match.group(2):
-        # print(match.group(2), re.match(r'^-?\d+.?\d*(f|L|b|d)?$', match.group(2)))
-
-        if re.match(r'^-?\d+.?\d*(f|L|b|d)?$', match.group(2)):
-            if "." in match.group(2):
-                final_str = str(round(float(re.sub(r'[^0-9.-]', '', match.group(2))), 4))
+    if match.group(2):  # Match unquoted strings or numbers
+        value = match.group(2)
+        if re.match(r'^-?\d+\.?\d*(f|L|b|d)?$', value):  # Handle numbers
+            if "." in value:
+                final_str = str(round(float(re.sub(r'[^0-9.-]', '', value)), 4))
             else:
-                final_str = re.sub(r'[^0-9-]', '', match.group(2))
+                final_str = re.sub(r'[^0-9-]', '', value)
         else:
-            final_str = f'"{match.group(2).lower()}"'
-
-    else:
+            # Quote strings
+            final_str = f'"{value}"'.lower()
+    else:  # Keys (e.g., unquoted strings before a colon)
         final_str = match.group(1).replace('minecraft:', '')
 
     return final_str
@@ -2645,27 +2945,729 @@ def script_state(server_name: str, script: AmsFileObject, enabled=True):
 def fmt(obj):
     return round(float(obj.value), 4)
 
+def fix_escaped_string(s):
+    if s is None:
+        return s
+    try:
+        decoded = s.encode('utf-8').decode('unicode_escape')
+        return decoded
+    except UnicodeDecodeError as e:
+        print(f"Decoding error: {e}")
+        return s
+
+def get_json_content(s):
+    try:
+        return json.loads(s.encode('utf-8').decode('unicode_escape'))['text']
+    except:
+        return s
+
+def format_int(s):
+    if isinstance(s, int):
+        return s
+    elif str(s).isnumeric():
+        return int(s)
+    elif 's' in s:
+        return int(s.strip('s'))
+    return s
+
+class ServerError(Exception):
+    pass
+
 # Inventory classes for PlayerScriptObject
 class ItemObject(Munch):
     def __init__(self, *args, **kwargs):
+        self['id'] = None
+        self['count'] = 0
+        self['damage'] = 0
+        self['custom_name'] = None
+        self['lore'] = []
+        self['enchantments'] = []
+        self['attribute_modifiers'] = []
+        self['nbt'] = {}
+
         super().__init__(*args, **kwargs)
+        if '$_amsclass' in self:
+            return
+
         self['$_amsclass'] = self.__class__.__name__
+        self['$_inventory'] = None
+
+        # Force attributes to a consistent format
+        if 'format' in self and self['format'] is not None:
+
+            # Data from playerdata file
+            if self.format.endswith('_nbt'):
+                self.update(self.data)
+                del self.data
+
+                try:
+                    # Save raw NBT data for commands and stuff
+                    data = {}
+                    if self.lore or self.custom_name:
+                        data['display'] = {}
+                        if self.lore:
+                            data['display']['Lore'] = self.lore
+                            self.lore = [get_json_content(s) for s in self.lore]
+                        if self.custom_name:
+                            data['display']['Name'] = self.custom_name
+                            self.custom_name = get_json_content(self.custom_name)
+
+                    if self.enchantments:
+                        data['ench'] = list(self.enchantments.values())
+
+                    if self.attribute_modifiers:
+                        for item in self.attribute_modifiers:
+                            data['AttributeModifiers'] = self.attribute_modifiers
+
+                    for k, v in self.items():
+                        if v and k not in ['format', '$_amsclass', '$_inventory', 'id', 'count', 'enchantments', 'custom_name', 'lore', 'attribute_modifiers']:
+                            data[k.lower()] = v
+
+                    self.nbt = data
+
+                except Exception as e:
+                    if constants.debug:
+                        print(e)
+
+
+            # Data from entitydata
+            elif self.format == 'entitydata':
+                try:
+                    if 'tag' in self:
+                        self.update(self.tag)
+                        del self.tag
+                        self.format = 'legacy_entitydata'
+
+                        custom_name = None
+                        lore = None
+
+                        if 'display' in self:
+                            if 'name' in self.display:
+                                custom_name = fix_escaped_string(self.display['name'])
+                                self.custom_name = get_json_content(custom_name)
+                            if 'lore' in self.display:
+                                lore = [fix_escaped_string(s) for s in self.display['lore']]
+                                self.lore = [get_json_content(s) for s in lore]
+                            del self.display
+
+                        # Format enchantments
+                        if self.enchantments:
+                            reformatted = {}
+                            for enchantment in self.enchantments:
+                                reformatted[enchantment['id']] = {'id': enchantment['id'], 'lvl': format_int(enchantment['lvl'])}
+                            self.enchantments = reformatted
+
+                        if "attributemodifiers" in self:
+                            reformatted = []
+                            for attribute in self['attributemodifiers']:
+                                new_attr = {
+                                    'AttributeName': attribute['attributename'],
+                                    'Operation': attribute['operation'],
+                                    'UUID': ['I', random.randint(-10000, 10000), random.randint(-10000, 10000), random.randint(-10000, 10000), random.randint(-10000, 10000)],
+                                    'Amount': list(attribute.keys())[-1],
+                                    'Name': attribute['attributename']
+                                }
+                                reformatted.append(new_attr)
+                            self.attribute_modifiers = reformatted
+                            del self['attributemodifiers']
+
+
+                        # Save raw NBT data for commands and stuff
+                        data = {}
+                        if self.lore or self.custom_name:
+                            data['display'] = {}
+                            if self.lore:
+                                data['display']['Lore'] = lore
+                            if self.custom_name:
+                                data['display']['Name'] = custom_name
+
+                        if self.enchantments:
+                            data['Enchantments'] = list(self.enchantments.values())
+
+                        if self.attribute_modifiers:
+                            data['AttributeModifiers'] = self.attribute_modifiers
+
+                        for k, v in self.items():
+                            if v and k not in ['format', '$_amsclass', '$_inventory', 'id', 'count', 'enchantments', 'custom_name', 'lore', 'attribute_modifiers']:
+                                data[k.lower()] = v
+
+                        self.nbt = data
+
+                    elif 'components' in self:
+                        self.update(self.components)
+                        del self.components
+                        self.format = 'modern_entitydata'
+
+                        # Save raw NBT data for commands and stuff
+                        self.nbt = {k: v for k, v in deepcopy(self).items() if k not in ['format', '$_amsclass', '$_inventory', 'id', 'count'] and v}
+
+
+                        # Format display
+                        if self.custom_name:
+                            self.custom_name = InventoryObject._quote_format(self.custom_name)
+
+                        if self.lore:
+                            self.lore = [InventoryObject._quote_format(l) for l in self.lore]
+
+                        # Format enchantments
+                        if 'levels' in self.enchantments:
+                            reformatted = {}
+                            for name, lvl in self.enchantments['levels'].items():
+                                enchant_id = name if ':' not in name else f'minecraft:{name}'
+                                reformatted[name] = {'id': enchant_id, 'lvl': lvl}
+                            self.enchantments = reformatted
+
+                        # Format attributes
+                        if 'modifiers' in self.attribute_modifiers:
+                            self.attribute_modifiers = self.attribute_modifiers['modifiers']
+
+
+                        delete_keys = []
+                        add_keys = {}
+
+                        for i in self.keys():
+                            if 'book_content' in i:
+                                add_keys['pages'] = [p['raw'] for p in self[i]['pages']]
+                                delete_keys.append(i)
+
+                        for i in delete_keys:
+                            del self[i]
+                        self.update(add_keys)
+
+                except Exception as e:
+                    if constants.debug:
+                        print(e)
+
+        # print(self.items())
+
+    def __bool__(self):
+        # Return False if item has no ID (empty slot)
+        return self.id is not None
 
     def __str__(self):
         try:
             item_id = str(self['id'])
         except KeyError:
-            item_id = None
+            item_id = ''
         return item_id
 
-class EffectObject(Munch):
-    def __init__(self, name, *args, **kwargs):
+    def items(self):
+        # Return all items except '$_inventory'
+        return ((k, v) for k, v in super().items() if k != '$_inventory')
+
+    def keys(self):
+        # Return all keys except '$_inventory'
+        return (k for k in super().keys() if k != '$_inventory')
+
+    def __contains__(self, key):
+        # If JSON tries to check membership, it won't find '$_inventory'
+        if key == '$_inventory':
+            return False
+        return super().__contains__(key)
+
+    def take(self):
+        if not self['$_inventory']:
+            raise ServerError("This item is no longer attached to an inventory")
+        if not self['$_inventory']._player.is_online:
+            raise ServerError(f"'{self['$_inventory']._player.name}' is not connected to the server")
+
+
+        target = self['$_inventory']._player
+        server = target._server
+
+        if server.version >= '1.17':
+            command = f'item replace entity {target} {self.slot} with air'
+
+        elif server.version >= '1.8':
+            command = f'replaceitem entity {target} slot.{self.slot} air'
+
+        elif server.version >= '1.4.2':
+            command = f'clear {target} {self.id} {self.count}'
+
+        else:
+            raise ServerError("This method is only available on Minecraft 1.4.2 or later.")
+
+        server.execute(command)
+        return self
+
+
+class InventorySection(Munch):
+    """
+    Represents a specific section of a player's inventory, such as hotbar, main inventory, or armor.
+    Provides convenient iteration and item lookups.
+
+    Supports:
+        - Iteration over items
+        - Counting occurrences of a given item_id
+        - Finding items by ID
+        - Boolean context to check if empty or not
+        - 'in' operator to check if an item_id is present
+    """
+
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self['$_amsclass'] = self.__class__.__name__
-        self.effect_name = name
 
-    def __str__(self):
-        return str(self.effect_name)
+    def __getitem__(self, key):
+        # If key is an integer, support negative indexing like a list
+        if isinstance(key, int):
+            items_list = [i for i in self.values() if i != self.__class__.__name__]
+            if abs(key) > len(items_list):
+                raise IndexError('list index out of range')
+            if key < 0:
+                key = len(items_list) + key
+            return items_list[key]
+        else:
+            # If key is not an integer, handle it normally
+            return super().__getitem__(key)
+
+    def __iter__(self):
+        # Return all ItemObjects
+        return self.items()
+
+    def __bool__(self):
+        # True if there's at least one valid item
+        return any(self.items())
+
+    def __contains__(self, item_id):
+        # Check if any item in this section matches the given item_id
+        return any(item.id == item_id for item in self.items())
+
+    def items(self):
+        # Returns all items in InventorySection
+        return (i for i in self.values() if i != self.__class__.__name__ and i)
+
+    def find(self, item_id):
+        # Returns a list of all items in this section matching the given item_id
+        return [item for item in self.items() if item and item.id == item_id]
+
+    def count(self, item_id: str = None):
+        # Count how many total items of the given item_id are in the inventory
+        if isinstance(item_id, str):
+            return sum(item.count for item in self.find(item_id))
+
+        # Count how many total items given in a list are in the inventory
+        elif isinstance(item_id, (list, tuple)):
+            return sum(item.count for item in self.items() if item.id in item_id)
+
+        # Count all items in the inventory
+        else:
+            return sum(item.count for item in self.items())
+
+class InventoryObject(Munch):
+
+    def __init__(self, player_obj, item_list, selected_item, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._player = player_obj
+        self._item_list = []
+
+        self.selected_item = ItemObject({'slot': 'weapon.mainhand'})
+        self.offhand = ItemObject({'slot': 'weapon.offhand'})
+        self.hotbar = InventorySection({x: ItemObject({'slot': f'hotbar.{x}'}) for x in range(0, 9)})
+        self.inventory = InventorySection({x: ItemObject({'slot': f'inventory.{x}'}) for x in range(0, 27)})
+        self.armor = InventorySection({'head': ItemObject({'slot': 'armor.head'}), 'chest': ItemObject({'slot': 'armor.chest'}), 'legs': ItemObject({'slot': 'armor.legs'}), 'feet': ItemObject({'slot': 'armor.feet'})})
+
+        if item_list:
+            try:
+                self._process_items(item_list, selected_item)
+            except Exception as e:
+                if constants.debug:
+                    print(e)
+
+    def __iter__(self):
+        # Return all ItemObjects
+        return (i for i in self.items())
+
+    def __bool__(self):
+        # True if there's at least one valid item
+        return any(self.items())
+
+    def __contains__(self, item_id):
+        # Check if any item in this section matches the given item_id
+        return any(item.id == item_id for item in self.items())
+
+    def _process_items(self, i, s):
+
+        # Old items, parsing from playerdata files directly
+        if i.__class__.__name__ == "TAG_List":
+
+            # Converts block/item/enchantment IDs to names
+            def proc_nbt(item):
+
+                # Add all root tags to formatted
+                data_tag = 'data'
+                formatted = {'format': None, data_tag: {}}
+                for x in item:
+
+                    # Add all tag attributes to root.data (legacy_nbt)
+                    if item[x].name == 'tag':
+                        formatted['format'] = 'legacy_nbt'
+                        for tag in item[x]:
+                            name = item[x][tag].name.lower()
+                            value = item[x][tag].value
+                            if name not in ["display", "attributemodifiers"]:
+                                formatted['data'][name if item[x][tag].name != "ench" else "enchantments"] = value if value else {}
+
+                            # Format all enchantments
+                            if name in ["ench", "storedenchantments", "enchantments"]:
+                                for e in item[x][tag]:
+                                    formatted[data_tag]['enchantments'][id_dict['enchant'].get(e['id'].value, e['id'].value)] = {'id': e['id'].value, 'lvl': e['lvl'].value}
+
+                            # Format all display items
+                            elif name == "display":
+                                for d in item[x][tag]:
+                                    if d == "Lore":
+                                        value = [str(line.value) for line in item[x][tag][d]]
+                                    else:
+                                        value = str(item[x][tag][d].value)
+
+                                        if d == "Name":
+                                            # Add to item list for __iter__ function
+                                            if value not in self._item_list:
+                                                self._item_list.append(value)
+
+                                    formatted[data_tag][item[x][tag][d].name.lower().replace('name','custom_name')] = value
+
+                            # Attributes
+                            elif item[x][tag].name.lower() == "attributemodifiers":
+                                formatted[data_tag]['attribute_modifiers'] = []
+                                for y in item[x][tag].tags:
+                                    attr_dict = {y[a].name: y[a].value for a in y}
+                                    formatted[data_tag]['attribute_modifiers'].append(attr_dict)
+
+                            # Format all book pages
+                            elif item[x][tag].name.lower() == "pages":
+                                formatted[data_tag]['pages'] = [y.value for y in item[x][tag].tags]
+
+                    # Add all tag attributes to root.data (modern_nbt)
+                    elif item[x].name == 'components':
+                        formatted['format'] = 'modern_nbt'
+                        for tag in item[x]:
+                            name = item[x][tag].name.lower().replace('minecraft:', '')
+                            value = item[x][tag].value
+                            if "book_content" not in name:
+                                formatted[data_tag][name] = value if value else {}
+
+                            # Format all enchantments
+                                if name == "enchantments":
+                                    for e in item[x].values():
+                                        try:
+                                            for data in e.values():
+                                                for k, v in data.items():
+                                                    # Extract enchantment details
+                                                    enchant_name = k.replace('minecraft:', '')
+                                                    enchant = {'id': k, 'lvl': v.value}
+
+                                                    # Add the enchantment to the formatted data
+                                                    formatted[data_tag]['enchantments'][enchant_name] = enchant
+                                        except AttributeError:
+                                            pass
+
+                            # Format all display items
+                            if name in ['custom_name', 'lore']:
+                                if name == "lore":
+                                    value = [self._quote_format(str(line.value)) for line in item[x][tag]]
+                                else:
+                                    value = self._quote_format(value)
+
+                                    if name == "custom_name":
+
+                                        # Add to item list for __iter__ function
+                                        if value not in self._item_list:
+                                            self._item_list.append(value)
+
+                                formatted[data_tag][name] = value
+
+                            # Attributes
+                            elif name == "attribute_modifiers":
+                                formatted[data_tag]['attribute_modifiers'] = []
+                                for modifier in item[x][tag].tags:
+                                    attr_dict = {}
+                                    for key, value in modifier[0].items():
+                                        attr_dict[key.lower()] = value.value if hasattr(value, 'value') else None
+                                    formatted[data_tag]['attribute_modifiers'].append(attr_dict)
+
+                            # Format all book pages
+                            elif "book_content" in name:
+                                formatted[data_tag]['pages'] = []
+                                book_content = item[x].tags[0]
+                                pages = book_content['pages']
+                                for page in pages:
+                                    for key, value in page.items():
+                                        formatted[data_tag]['pages'].append(value.value)
+
+
+                    elif item[x].name == 'id':
+                        try:
+                            value = item[x].value.replace('minecraft:','')
+                        except AttributeError:
+                            value = id_dict['items'][item[x].value].replace('minecraft:','')
+
+                        # Add to item list for __iter__ function
+                        if value not in self._item_list:
+                            self._item_list.append(value)
+
+                        formatted[item[x].name.lower()] = value
+
+
+                    elif item[x].name.lower() in ['count', 'damage']:
+                        try:
+                            formatted[item[x].name.lower()] = int(item[x].value)
+                        except:
+                            pass
+
+                    elif item[x].name.lower() == 'slot':
+                        value = int(item[x].value)
+                        if value < 9:
+                            formatted[data_tag]['slot'] = f'hotbar.{value}'
+
+                item_obj = ItemObject(formatted)
+                item_obj['$_inventory'] = self
+                return item_obj
+
+            # Iterates over every item in inventory
+            def sort_item(item):
+                slot = fmt(item['Slot'])
+
+                # Hotbar
+                if slot in range(0, 9):
+                    self.hotbar[slot].update(proc_nbt(item))
+
+                # Offhand
+                elif slot == -106:
+                    self.offhand.update(proc_nbt(item))
+
+                # Feet
+                elif slot == 100:
+                    self.armor.feet.update(proc_nbt(item))
+
+                # Legs
+                elif slot == 101:
+                    self.armor.legs.update(proc_nbt(item))
+
+                # Chest
+                elif slot == 102:
+                    self.armor.chest.update(proc_nbt(item))
+
+                # Head
+                elif slot == 103:
+                    self.armor.head.update(proc_nbt(item))
+
+                # Inventory
+                else:
+                    self.inventory[slot-9].update(proc_nbt(item))
+
+            for item in i.tags:
+                sort_item(item)
+
+            if s:
+                self.selected_item.update(proc_nbt(s[0]))
+                try:
+                    if self._player._server.version < '1.9':
+                        self.selected_item['slot'] = f'hotbar.{s[1]}'
+                except:
+                    self.selected_item['slot'] = 'weapon'
+
+        # /data get formatting
+        else:
+
+            # Converts block/item/enchantment IDs to names
+            def proc_nbt(item):
+                new_item = deepcopy(item)
+                new_item['format'] = 'entitydata'
+
+                # Delete slot attribute, because it already exists in parent
+                try:
+                    del new_item['slot']
+                except KeyError:
+                    pass
+
+                # Add ID's and names to persistent cache
+                if new_item['id'] not in self._item_list:
+                    self._item_list.append(new_item['id'])
+
+                try:
+                    custom_name = ''.join([name for name in re.findall(r'"text":\s*?"([^"]*)"', new_item['tag']['display']['name'])])
+                    if custom_name not in self._item_list:
+                        self._item_list.append(custom_name)
+                except KeyError:
+                    pass
+
+                item_obj = ItemObject(new_item)
+                item_obj['$_inventory'] = self
+                return item_obj
+
+            # Iterates over every item in inventory
+            def sort_item(item):
+                slot = int(item['slot'])
+
+                # Hotbar
+                if slot in range(0, 9):
+                    self.hotbar[slot].update(proc_nbt(item))
+
+                # Offhand
+                elif slot == -106:
+                    self.offhand.update(proc_nbt(item))
+
+                # Feet
+                elif slot == 100:
+                    self.armor.feet.update(proc_nbt(item))
+
+                # Legs
+                elif slot == 101:
+                    self.armor.legs.update(proc_nbt(item))
+
+                # Chest
+                elif slot == 102:
+                    self.armor.chest.update(proc_nbt(item))
+
+                # Head
+                elif slot == 103:
+                    self.armor.head.update(proc_nbt(item))
+
+                # Inventory
+                else:
+                    self.inventory[slot-9].update(proc_nbt(item))
+
+            for item in i:
+                sort_item(item)
+
+            if s:
+                self.selected_item.update(proc_nbt(s[0]))
+
+    @staticmethod
+    def _quote_format(string):
+        if string.startswith('"') and string.endswith('"'):
+            string = string[1:-1]
+        return string
+
+    @staticmethod
+    def _to_lax_json(json_data):
+        def convert_item(item):
+            if isinstance(item, str):
+                # Keep strings quoted
+                return f'"{item}"'
+            elif isinstance(item, list):
+                # Recursively handle lists
+                return f"[{', '.join(convert_item(i) for i in item)}]"
+            elif isinstance(item, dict):
+                # Recursively handle dictionaries, omitting quotes for keys
+                return f"{{{', '.join(f'{k}: {convert_item(v)}' for k, v in item.items())}}}"
+            else:
+                # Numbers, booleans, and None (null) remain unquoted
+                if item is None:
+                    return "null"  # Handle Python None as JSON null
+                return str(item).lower() if isinstance(item, bool) else str(item)
+
+        # If the input is not a list or dict, wrap it in a list to make it valid lax JSON
+        if not isinstance(json_data, (list, dict)):
+            raise TypeError("Input must be a JSON list or dictionary.")
+
+        return convert_item(json_data)
+
+    @staticmethod
+    def _escape_cmd(command):
+        new_command = command
+        if '\\\\' not in command:
+            new_command = command.replace('\\', '\\\\')
+        return new_command
+
+
+    # Valid API methods
+    def items(self):
+        # Returns all items in inventory
+        items = []
+        if self.offhand:
+            items.append(self.offhand)
+        items.extend(self.hotbar.items())
+        items.extend(self.inventory.items())
+        items.extend(self.armor.items())
+        return items
+
+    def find(self, item_id):
+        # Returns a list of all items in this section matching the given item_id
+        return [item for item in self.items() if item and item.id == item_id]
+
+    def count(self, item_id: str = None):
+        # Count how many total items of the given item_id are in this section
+        if isinstance(item_id, str):
+            return sum(item.count for item in self.find(item_id))
+
+        # Count how many total items given in a list are in this section
+        elif isinstance(item_id, (list, tuple)):
+            return sum(item.count for item in self.items() if item.id in item_id)
+
+        # Count all items in this section
+        else:
+            return sum(item.count for item in self.items())
+
+    def give(self, item: ItemObject, preserve_slot: bool = False):
+        if not self._player.is_online:
+            raise ServerError(f"'{self._player.name}' is not connected to the server")
+
+        target = self._player
+        server = target._server
+
+        if not item:
+            return
+
+
+        # Preserve slot with replace commands
+        if server.version >= '1.17' and preserve_slot:
+            if server.version >= '1.20.5':
+                data = '[' + ", ".join([str(k) + "=" + str(v) for k, v in item.nbt.items()]) + ']'
+            else:
+                data = self._to_lax_json(item.nbt).replace('"I", ', 'I; ')
+            command = f'item replace entity {target} {item.slot} with {item.id}{data} {item.count}'
+
+        elif server.version >= '1.13' and preserve_slot:
+            data = self._to_lax_json(item.nbt).replace('"I", ', 'I; ')
+            command = f'replaceitem entity {target} slot.{item.slot} {item.id}{data if data else ""} {item.count}'
+
+        elif server.version >= '1.8' and preserve_slot:
+            data = self._to_lax_json(item.nbt)
+            command = f'replaceitem entity {target} slot.{item.slot} {item.id} {item.count} {item.damage} {data if data else ""}'
+
+        elif preserve_slot:
+            raise ServerError("This method is only available on Minecraft 1.8 or later.")
+
+
+
+        # Modern format
+        elif server.version >= '1.20.5':
+            data = ", ".join([str(k) + "=" + str(v) for k, v in item.nbt.items()])
+            command = f'give {target} {item.id}[{data}] {item.count}'
+            command = self._escape_cmd(command)
+
+        # 1.13 - 1.20.2
+        elif server.version >= '1.13':
+            # Attribute Modifiers are kind of broken
+            data = self._to_lax_json(item.nbt).replace('"I", ', 'I; ')
+            command = f'give {target} {item.id}{data if data else ""} {item.count}'
+
+        # 1.7.2 - 1.12.2
+        elif server.version >= '1.7.2':
+            data = self._to_lax_json(item.nbt)
+            command = f'give {target} {item.id} {item.count} {item.damage} {data if data else ""}'
+            command = self._escape_cmd(command)
+
+        # 1.5 - 1.7.1
+        elif server.version >= '1.5':
+            command = f'give {target} {item.id} {item.count} {item.damage}'
+            command = self._escape_cmd(command)
+
+        # All legacy versions
+        else:
+            command = f'give {target} {item.id}:{item.damage} {item.count}'
+
+        server.execute(command)
+
+    def clear(self):
+        if not self._player.is_online:
+            raise ServerError(f"'{self._player.name}' is not connected to the server")
+
+        self._player._execute(f'clear {self._player}')
 
 class CoordinateObject(Munch):
     def __init__(self, *args, **kwargs):
@@ -2742,199 +3744,6 @@ class CoordinateObject(Munch):
     def __pow__(self, power, modulo=None):
         return self.__do_operation__(power, '**')
 
-class InventoryObject():
-
-    def __init__(self, item_list, selected_item):
-
-        self._item_list = []
-
-        self.selected_item = ItemObject({})
-        self.offhand = ItemObject({})
-        self.hotbar = ItemObject({x: ItemObject({}) for x in range(0, 9)})
-        self.inventory = ItemObject({x: ItemObject({}) for x in range(0, 27)})
-        self.armor = ItemObject({'head': ItemObject({}), 'chest': ItemObject({}), 'legs': ItemObject({}), 'feet': ItemObject({})})
-
-        if item_list:
-            self._process_items(item_list, selected_item)
-
-    def __iter__(self):
-        for item in self._item_list:
-            yield item
-
-    def _process_items(self, i, s):
-
-        # Old items, parsing from playerdata
-        if i.__class__.__name__ == "TAG_List":
-
-            # Converts block/item/enchantment IDs to names
-            def proc_nbt(item):
-
-                # Add all root tags to formatted
-                formatted = {}
-                for x in item:
-
-                    # Add all tag attributes to root.tag
-                    if item[x].name == 'tag':
-                        formatted[item[x].name] = {}
-                        for tag in item[x]:
-                            value = item[x][tag].value
-                            formatted[item[x].name.lower()][item[x][tag].name.lower() if item[x][tag].name != "ench" else "enchantments"] = value if value else {}
-
-                            # Format all enchantments
-                            if item[x][tag].name.lower() in ["ench", "storedenchantments"]:
-                                for e in item[x][tag]:
-                                    formatted[item[x].name.lower()]['enchantments'][id_dict['enchant'].get(e['id'].value, e['id'].value)] = {'id': e['id'].value, 'lvl': e['lvl'].value}
-
-                            # Format all display items
-                            elif item[x][tag].name.lower() == "display":
-                                for d in item[x][tag]:
-                                    if d == "Lore":
-                                        value = '\n'.join([line.value for line in item[x][tag][d]])
-                                    else:
-                                        value = item[x][tag][d].value
-
-                                        if d == "Name":
-                                            # Add to item list for __iter__ function
-                                            if value not in self._item_list:
-                                                self._item_list.append(value)
-
-                                    formatted[item[x].name.lower()][item[x][tag].name][item[x][tag][d].name.lower()] = value
-
-                            # Attributes
-                            elif item[x][tag].name.lower() == "attributemodifiers":
-                                formatted[item[x].name.lower()]['attributemodifiers'] = []
-                                for y in item[x][tag].tags:
-                                    attr_dict = {y[a].name.lower(): y[a].value for a in y}
-                                    formatted[item[x].name.lower()]['attributemodifiers'].append(attr_dict)
-
-                            # Format all book pages
-                            elif item[x][tag].name.lower() == "pages":
-                                formatted[item[x].name.lower()]['pages'] = [y for y in item[x][tag].tags]
-
-
-                    elif item[x].name == 'id':
-                        try:
-                            value = item[x].value.replace('minecraft:','')
-                        except AttributeError:
-                            value = id_dict['items'][item[x].value].replace('minecraft:','')
-
-                        # Add to item list for __iter__ function
-                        if value not in self._item_list:
-                            self._item_list.append(value)
-
-                        formatted[item[x].name.lower()] = value
-
-
-                    elif item[x].name != 'Slot':
-                        formatted[item[x].name.lower()] = item[x].value
-
-
-                return ItemObject(formatted)
-
-            # Iterates over every item in inventory
-            def sort_item(item):
-                slot = fmt(item['Slot'])
-
-                # Hotbar
-                if slot in range(0, 9):
-                    self.hotbar[slot] = proc_nbt(item)
-
-                # Offhand
-                elif slot == -106:
-                    self.offhand = proc_nbt(item)
-
-                # Feet
-                elif slot == 100:
-                    self.armor.feet = proc_nbt(item)
-
-                # Legs
-                elif slot == 101:
-                    self.armor.legs = proc_nbt(item)
-
-                # Chest
-                elif slot == 102:
-                    self.armor.chest = proc_nbt(item)
-
-                # Head
-                elif slot == 103:
-                    self.armor.head = proc_nbt(item)
-
-                # Inventory
-                else:
-                    self.inventory[slot-9] = proc_nbt(item)
-
-            for item in i.tags:
-                sort_item(item)
-
-            if s:
-                self.selected_item = proc_nbt(s[0])
-                self.selected_item['slot'] = s[1]
-
-        # /data get formatting
-        else:
-
-            # Converts block/item/enchantment IDs to names
-            def proc_nbt(item):
-                new_item = deepcopy(item)
-
-                # Delete slot attribute, because it already exists in parent
-                try:
-                    del new_item['slot']
-                except KeyError:
-                    pass
-
-                # Add ID's and names to persistent cache
-                if new_item['id'] not in self._item_list:
-                    self._item_list.append(new_item['id'])
-
-                try:
-                    custom_name = ''.join([name for name in re.findall(r'"text":\s*?"([^"]*)"', new_item['tag']['display']['name'])])
-                    if custom_name not in self._item_list:
-                        self._item_list.append(custom_name)
-                except KeyError:
-                    pass
-
-                return ItemObject(new_item)
-
-            # Iterates over every item in inventory
-            def sort_item(item):
-                slot = int(item['slot'])
-
-                # Hotbar
-                if slot in range(0, 9):
-                    self.hotbar[slot] = proc_nbt(item)
-
-                # Offhand
-                elif slot == -106:
-                    self.offhand = proc_nbt(item)
-
-                # Feet
-                elif slot == 100:
-                    self.armor.feet = proc_nbt(item)
-
-                # Legs
-                elif slot == 101:
-                    self.armor.legs = proc_nbt(item)
-
-                # Chest
-                elif slot == 102:
-                    self.armor.chest = proc_nbt(item)
-
-                # Head
-                elif slot == 103:
-                    self.armor.head = proc_nbt(item)
-
-                # Inventory
-                else:
-                    self.inventory[slot-9] = proc_nbt(item)
-
-            for item in i:
-                sort_item(item)
-
-            if s:
-                self.selected_item = proc_nbt(s[0])
-                self.selected_item['slot'] = s[1]
-
 
 # Stores persistent player and server configurations
 class PersistenceManager():
@@ -2947,8 +3756,10 @@ class PersistenceManager():
             if '$_amsclass' in dct:
                 if dct['$_amsclass'] == 'ItemObject':
                     return ItemObject(dct)
-                elif dct['$_amsclass'] == 'EffectObject':
-                    return EffectObject(dct)
+                elif dct['$_amsclass'] == 'InventorySection':
+                    return InventorySection(dct)
+                if dct['$_amsclass'] == 'InventoryObject':
+                    return InventoryObject(None, dct, None)
                 elif dct['$_amsclass'] == 'CoordinateObject':
                     return CoordinateObject(dct)
             return dct

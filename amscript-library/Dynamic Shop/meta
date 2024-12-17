@@ -1,0 +1,15 @@
+title: Dynamic Shop
+author: Kaleb Efflandt
+version: 1.0
+description: Economy framework to buy & sell items
+
+
+Usage:
+
+--------- Interaction Commands ---------
+>>  !sell <item_id/name> <quantity>
+>>  !buy <item_id/name> <quantity>
+
+>>  !market <optional:search>
+>>  !price
+>>  !wallet

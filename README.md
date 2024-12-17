@@ -6,17 +6,21 @@ Welcome to auto-mcs! This software provides a simple and easy-to-digest experien
 
 Some notable features include:
  - Create a server in less than a minute
- - Full support for Paper, Purpur, Fabric, Forge, Spigot, CraftBukkit, and Vanilla
+ - No port forwarding required with our [playit.gg integration](https://playit.gg)
+ - Mod & plug-in manager with Modrinth integration for search, installation, and updates
+ - Import any modpack or existing server
+ - Switch worlds, versions, or modloaders/distributions on the fly
  - Automatic server installation & updates
- - Ability to import any existing server, including modpacks
- - Switch worlds, versions, and distributions on the fly
- - Automatic backup management
- - Custom console with a [universal scripting API](https://auto-mcs.com/guides/amscript) (Compatible with Vanilla) and built-in IDE
- - Detailed crash detection with an easily viewable report
- - Internal mod & plug-in browser/installer (auto-mcs can update plugins as well)
- - Firewall-like Access Control menu to manage bans, the whitelist, and operators from a single page
+ - Automatic back-up management
+ - Custom console with a [universal scripting API](https://auto-mcs.com/guides/amscript) (compatible with Vanilla) and a built-in IDE
+ - Firewall-like Access Control menu to manage operators, bans, and the whitelist from a single page
+ - Custom [remote access solution](https://www.auto-mcs.com/guides/telepath) for management on the go
+ - Detailed crash detection with an accessible report
  - Built-in `server.properties` editor for ease of use
- - And much more...
+ - And so much more...
+
+ auto-mcs completely supports, updates, and manages:
+ Paper - Purpur - Fabric - Quilt - NeoForge - Forge - Spigot - CraftBukkit - Vanilla
 
 <br><br>
 # Installation & Setup
@@ -25,16 +29,20 @@ To get started, download the latest version of auto-mcs [from the website](https
 
 If you'd like to compile auto-mcs yourself, take a peek at the [build documentation](https://github.com/macarooni-man/auto-mcs/blob/main/build-tools/README.md)!
 
+If you're using our Docker implementation, please take a look at our documentation on [Docker Hub](https://hub.docker.com/r/macarooniman/auto-mcs)!
+
 <br>
 To start, you can either import a server you've made on your own or create a new one from scratch:
 
 ### Create a New Server
-- For the vast majority of users, auto-mcs is preconfigured to provide optimal settings. Choose a name, and click next a few times to get started!
-- For a more advanced setup you can choose a different distribution with mods, an older version, or even choose to set up a whitelist. There are a lot of options if you wish to configure it manually.
+- For the vast majority of users, auto-mcs is preconfigured to provide optimal settings. Check out our instant server templates to start playing immediately!
+
+- For a customized experience, you can choose a different distribution with mods, an older version, or even choose to set up a whitelist. There are a plethora of options to configure manually.
+
+- You can also use a modpack from the built-in Modrinth browser, or by importing a `.zip`/`.mrpack` file. 
 
 ### Import a Server
 - auto-mcs can detect and manage a wide variety of servers that you have made yourself. Select the root folder of the server and click import to use all of auto-mcs's features!
-- Since v2.1, it's possible to import a modpack from the built-in browser, or by importing a `.zip`/`.mrpack` file. 
 > Note: Importing will copy your server to a different directory and create a backup. The original directory will be untouched
 
 <br>
