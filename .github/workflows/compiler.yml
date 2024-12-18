@@ -98,7 +98,7 @@ jobs:
 
       - name: Install create-dmg
         run: |
-          brew install create-dmg
+          brew install create-dmg tcl-tk
 
       - name: Compile auto-mcs
         run: |
