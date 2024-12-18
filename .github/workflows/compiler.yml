@@ -102,9 +102,6 @@ jobs:
 
       - name: Compile auto-mcs
         run: |
-          export TCL_LIBRARY="$(brew --prefix tcl-tk)/lib/tcl8.6"
-          export TK_LIBRARY="$(brew --prefix tcl-tk)/lib/tk8.6"
-
           root=$(pwd)
           cd build-tools
           mkdir -p /Users/runner/Library/Fonts
@@ -147,7 +144,11 @@ jobs:
           rm -rf build/ dist/
 
           # Remove UPX-related arguments (not supported on macOS ARM)
-          pyinstaller "$spec_file" --clean
+          pyinstaller "$spec_file" --clean \
+            --add-binary "$(brew --prefix tcl-tk)/lib/libtcl8.6.dylib:." \
+            --add-binary "$(brew --prefix tcl-tk)/lib/libtk8.6.dylib:." \
+            --add-data "$(brew --prefix tcl-tk)/lib/tcl8.6:lib/tcl8.6" \
+            --add-data "$(brew --prefix tcl-tk)/lib/tk8.6:lib/tk8.6"
 
           cd "$current"
           rm -rf ../source/$spec_file
