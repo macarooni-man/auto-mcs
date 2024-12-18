@@ -381,6 +381,11 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Setup Ubuntu
+        run: |
+          sudo apt update -y
+          sudo apt install -y binfmt-support
+
       - name: Setup Alpine Linux
         uses: jirutka/setup-alpine@v1
         with:
@@ -389,7 +394,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          apk add xvfb fluxbox python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev binfmt-support
+          apk add xvfb fluxbox python3 py3-pip gcc pangomm-dev pkgconfig python3-dev zlib-dev libffi-dev musl-dev linux-headers mtdev-dev mtdev
           export DISPLAY=:0.0
           Xvfb :0 -screen 0 1280x720x24 > /dev/null 2>&1 &
           sleep 1
