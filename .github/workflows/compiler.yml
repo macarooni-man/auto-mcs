@@ -102,6 +102,9 @@ jobs:
 
       - name: Compile auto-mcs
         run: |
+          export TCL_LIBRARY="$(brew --prefix tcl-tk)/lib/tcl8.6"
+          export TK_LIBRARY="$(brew --prefix tcl-tk)/lib/tk8.6"
+
           root=$(pwd)
           cd build-tools
           mkdir -p /Users/runner/Library/Fonts
