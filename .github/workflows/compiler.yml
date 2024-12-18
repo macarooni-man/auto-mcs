@@ -86,84 +86,23 @@ jobs:
     runs-on: macos-13
     needs: [setup-env, test-env]
     steps:
+    
       - name: Clone Repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
-
-      - name: Install create-dmg
+      - name: Install Dependencies
         run: |
-          brew install create-dmg tcl-tk
-
+          brew install python@3.9 python-tk@3.9 create-dmg
+      
       - name: Compile auto-mcs
         run: |
           root=$(pwd)
           cd build-tools
           mkdir -p /Users/runner/Library/Fonts
-
-          # Set python variable from the PATH provided by setup-python
-          python="python3"
-          venv_path="./venv"
-          spec_file="auto-mcs.macos.spec"
-
-          current=$(pwd)
-
-          error () {
-              { printf '\E[31m'; echo "$@"; printf '\E[0m'; } >&2
-              cd "$current"
-              exit 1
-          }
-
-          # Check Python version
-          echo "Using $($python --version)"
-
-          # Upgrade base tooling
-          $python -m pip install --upgrade pip setuptools wheel
-
-          # Create and activate a virtual environment
-          $python -m venv "$venv_path"
-          source "$venv_path/bin/activate"
-
-          # Install packages
-          pip install --upgrade pip setuptools wheel
-          pip install --upgrade -r ./reqs-macos.txt
-
-          # Remove Kivy icons to prevent dock flickering
-          rm -rf "$venv_path/lib/python3.9/site-packages/kivy/data/logo/*"
-
-          # Build with PyInstaller
-          echo "Compiling auto-mcs"
-          export KIVY_AUDIO=ffpyplayer
-          cp $spec_file ../source
-          cd ../source
-          rm -rf build/ dist/
-
-          # Remove UPX-related arguments (not supported on macOS ARM)
-          pyinstaller "$spec_file" --clean \
-            --add-binary "$(brew --prefix tcl-tk)/lib/libtcl8.6.dylib:." \
-            --add-binary "$(brew --prefix tcl-tk)/lib/libtk8.6.dylib:." \
-            --add-data "$(brew --prefix tcl-tk)/lib/tcl8.6:lib/tcl8.6" \
-            --add-data "$(brew --prefix tcl-tk)/lib/tk8.6:lib/tk8.6"
-
-          cd "$current"
-          rm -rf ../source/$spec_file
-          rm -rf ../source/dist/auto-mcs
-          rm -rf ./dist
-          mv -f ../source/dist .
-          deactivate
-
-          # Check if compiled successfully
-          if ! [ -d "$current/dist/auto-mcs.app" ]; then
-            error "[FAIL] Something went wrong during compilation"
-          else
-            chmod +x "$current/dist/auto-mcs.app/Contents/MacOS/auto-mcs"
-            echo "[SUCCESS] Compiled binary: \"$current/dist/auto-mcs.app\""
-          fi
+          chmod +x build-macos.sh
+          sudo ./build-macos.sh
           chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
 
           # Create .dmg from .app
@@ -172,6 +111,7 @@ jobs:
           set +e
 
           while [ $attempt -le $max_attempts ]; do
+            # Attempt to create the disk image
             sudo create-dmg \
               --volname "auto-mcs" \
               --volicon "$root/other/macos-dmg/icon.icns" \
@@ -186,15 +126,17 @@ jobs:
               "$root/build-tools/dist/auto-mcs.dmg" \
               "$root/build-tools/dist/auto-mcs.app"
 
+            # Check if the .dmg file was created successfully
             if [[ -f "$root/build-tools/dist/auto-mcs.dmg" ]]; then
               echo "Disk image created successfully."
               break
             else
               echo "Attempt $attempt failed: Disk image creation resource is busy."
               attempt=$(( attempt + 1 ))
-              sleep 5
+              sleep 5  # Wait for a few seconds before retrying
             fi
 
+            # Fail if max attempts are reached
             if [ $attempt -gt $max_attempts ]; then
               echo "Failed to create disk image after $max_attempts attempts."
               set -e
