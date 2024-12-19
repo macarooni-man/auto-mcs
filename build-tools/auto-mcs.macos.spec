@@ -53,7 +53,7 @@ for item in data_list:
 a.datas = tuple(data_list)
 
 # Convert modified list back to a tuple
-a.datas += Tree('./gui-assets', prefix='gui-assets', excludes=exclude_list)
+a.datas += tuple(Tree('./gui-assets', prefix='gui-assets', excludes=exclude_list))
 from constants import app_version
 
 # Remove binaries
@@ -104,7 +104,7 @@ coll = COLLECT(
           a.zipfiles,
           a.datas,
           strip=False,
-          upx=True,
+          upx=False,
           upx_exclude=[],
           name='auto-mcs',
 )

@@ -381,6 +381,11 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Setup Ubuntu
+        run: |
+          sudo apt update -y
+          sudo apt install -y binfmt-support
+
       - name: Setup Alpine Linux
         uses: jirutka/setup-alpine@v1
         with:
