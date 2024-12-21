@@ -308,9 +308,6 @@ class AddonManager():
 
     # Returns single list of all addons
     def return_single_list(self):
-        if not self._addons_supported:
-            return self.installed_addons
-
         return enumerate_addons(self._server, True)
 
     # Returns bool of geyser installation
@@ -1121,7 +1118,7 @@ def find_addon(name, server_properties):
 # }
 def enumerate_addons(server_properties, single_list=False):
     if server_properties['type'].lower() == 'vanilla':
-        return {'enabled': [], 'disabled': []}
+        return [] if single_list else {'enabled': [], 'disabled': []}
 
     # Define folder paths based on server info
     addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'

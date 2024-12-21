@@ -41,7 +41,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.2.5"
+app_version = "2.2.6"
 ams_version = "1.4"
 telepath_version = "1.0.3"
 app_title = "auto-mcs"
@@ -2848,7 +2848,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     global hook_lock
 
     # If telepath, update addons remotely
-    if not telepath:
+    if telepath:
         telepath_data = None
         if server_manager.current_server:
             telepath_data = server_manager.current_server._telepath_data
