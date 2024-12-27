@@ -6505,7 +6505,7 @@ class PopupWarningQuery(PopupWindow):
     def __init__(self, **kwargs):
         self.window_color = (1, 0.56, 0.6, 1)
         self.window_text_color = (0.2, 0.1, 0.1, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'question-circle.png')
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'alert-circle-sharp.png')
         super().__init__(**kwargs)
 
         # Modal specific settings
