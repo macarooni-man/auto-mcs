@@ -153,6 +153,13 @@ if __name__ == '__main__':
 
 
 
+    # Delete configuration/cache if flag is set
+    if reset_config:
+        constants.safe_delete(constants.cacheDir)
+        constants.app_config.reset()
+
+
+
     # Get default system language
     try:
         if constants.os_name == 'macos':
@@ -180,12 +187,6 @@ if __name__ == '__main__':
     # Variables
     exitApp = False
     crash = None
-
-
-    # Delete configuration/cache if flag is set
-    if reset_config:
-        constants.safe_delete(constants.cacheDir)
-        constants.app_config.reset()
 
 
     # Functions
