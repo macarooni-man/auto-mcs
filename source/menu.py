@@ -21714,7 +21714,7 @@ class AmscriptListButton(HoverButton):
                     script_screen = screen_manager.current_screen
                     new_list = script_manager.return_single_list()
                     script_screen.gen_search_results(new_list, fade_in=True)
-                    Clock.schedule_once(functools.partial(script_screen.search_bar.execute_search,script_screen.search_bar.previous_search), 0)
+                    Clock.schedule_once(functools.partial(script_screen.search_bar.execute_search, script_screen.search_bar.previous_search), 0)
 
                     # Show banner if server is running
                     if script_manager._hash_changed():
