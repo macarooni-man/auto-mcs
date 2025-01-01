@@ -1083,7 +1083,7 @@ def sanitize_name(value, addon=False):
     if value == 'WorldEdit for Bukkit':
         return 'WorldEdit'
 
-    value = value.split(":")[0]
+    value = '-'.join([v.strip() for v in value.split(":")])
     value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
     value = re.sub(r'[^\'\w\s-]', '', value)
     return re.sub(r'[-\s]+', '-', value).strip('-_')
