@@ -1893,7 +1893,7 @@ def find_latest_mc():
         "vanilla": "https://mcversions.net/index.html",
         "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/",
         "neoforge": "https://fabricmc.net/use/server/",
-        "paper": "https://papermc.io/api/v2/projects/paper",
+        "paper": "https://api.papermc.io/v2/projects/paper",
         "purpur": "https://api.purpurmc.org/v2/purpur",
         "spigot": "https://getbukkit.org/download/spigot",
         "craftbukkit": "https://getbukkit.org/download/craftbukkit",
@@ -2229,12 +2229,12 @@ def validate_version(server_info: dict):
                 if mcVer != "1.17":
 
                     try:
-                        paper_url = f"https://papermc.io/api/v2/projects/paper/versions/{mcVer}"
+                        paper_url = f"https://api.papermc.io/v2/projects/paper/versions/{mcVer}"
                         reqs = requests.get(paper_url)
                         jsonObject = reqs.json()
                         buildNum = jsonObject['builds'][-1]
 
-                        url = f"https://papermc.io/api/v2/projects/paper/versions/{mcVer}/builds/{buildNum}/downloads/paper-{mcVer}-{buildNum}.jar"
+                        url = f"https://api.papermc.io/v2/projects/paper/versions/{mcVer}/builds/{buildNum}/downloads/paper-{mcVer}-{buildNum}.jar"
                     except:
                         url = ""
 
