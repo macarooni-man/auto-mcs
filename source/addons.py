@@ -735,16 +735,17 @@ def search_addons(query: str, server_properties, *args):
             page_content['hits'].extend(constants.get_url(url, return_response=True).json()['hits'])
 
         for mod in page_content['hits']:
-            name = mod['title']
-            author = mod['author']
-            subtitle = mod['description'].split("\n", 1)[0]
-            link = search_urls[server_type] + mod['slug']
-            file_name = mod['slug']
+            if 'project_type' in mod and mod['project_type'] == 'mod':
+                name = mod['title']
+                author = mod['author']
+                subtitle = mod['description'].split("\n", 1)[0]
+                link = search_urls[server_type] + mod['slug']
+                file_name = mod['slug']
 
-            if link:
-                addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
-                addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
-                results.append(addon_obj)
+                if link:
+                    addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
+                    addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                    results.append(addon_obj)
 
 
     return results
