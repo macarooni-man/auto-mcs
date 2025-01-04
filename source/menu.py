@@ -2743,7 +2743,10 @@ class CreateServerPortInput(BaseInput):
         # print("ip: " + constants.new_server_info['ip'], "port: " + constants.new_server_info['port'])
 
         # Input validation
-        port_check = ((int(constants.new_server_info['port']) < 1024) or (int(constants.new_server_info['port']) > 65535))
+        try:
+            port_check = ((int(constants.new_server_info['port']) < 1024) or (int(constants.new_server_info['port']) > 65535))
+        except ValueError:
+            port_check = False
         ip_check = (constants.check_ip(constants.new_server_info['ip']) and '.' in typed_info)
         self.stinky_text = ''
 
@@ -2801,7 +2804,10 @@ class ServerPortInput(CreateServerPortInput):
             new_port = default_port
 
         # Input validation
-        port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        try:
+            port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        except ValueError:
+            port_check = False
         ip_check = (constants.check_ip(new_ip) and '.' in typed_info)
         self.stinky_text = ''
         fail = False
@@ -10944,7 +10950,7 @@ class CreateServerNetworkScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget()
         scroll_anchor = AnchorLayout()
-        scroll_layout = GridLayout(cols=1, spacing=30, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
+        scroll_layout = GridLayout(cols=1, spacing=30, size_hint_max_x=1050, size_hint_y=None, padding=[0, 50, 0, 30])
 
 
         # Bind / cleanup height on resize
@@ -10975,6 +10981,7 @@ class CreateServerNetworkScreen(MenuBackground):
         float_layout.id = 'content'
 
         sub_layout = ScrollItem()
+        sub_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.1}))
         sub_layout.add_widget(CreateServerPortInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=process_ip_text()))
         scroll_layout.add_widget(sub_layout)
 
@@ -11001,8 +11008,6 @@ class CreateServerNetworkScreen(MenuBackground):
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
 
-
-        float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.685}))
         float_layout.add_widget(HeaderText("Do you wish to configure network information?", '', (0, 0.83)))
 
 
