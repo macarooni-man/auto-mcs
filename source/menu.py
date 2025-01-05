@@ -10003,6 +10003,7 @@ class UpdateAppProgressScreen(ProgressScreen):
         def before_func(*args):
 
             # First, clean out any existing files in temp or downloads
+            os.chdir(constants.get_cwd())
             constants.safe_delete(constants.tempDir)
             constants.safe_delete(constants.downDir)
 
@@ -14347,6 +14348,7 @@ class ServerImportScreen(MenuBackground):
 
         # Reset import path
         constants.import_data = {'name': None, 'path': None}
+        os.chdir(constants.get_cwd())
         constants.safe_delete(constants.tempDir)
 
         # Generate buttons on page load
@@ -14472,6 +14474,7 @@ class ServerImportModpackScreen(MenuBackground):
 
         # Reset import path
         constants.import_data = {'name': None, 'path': None}
+        os.chdir(constants.get_cwd())
         constants.safe_delete(constants.tempDir)
 
         # Generate buttons on page load
@@ -14928,6 +14931,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
                     'name': server_obj.name,
                     'url': constants.update_list[server_obj.name]['updateUrl']
                 }
+                os.chdir(constants.get_cwd())
                 constants.safe_delete(constants.tempDir)
                 screen_manager.current = 'UpdateModpackProgressScreen'
                 screen_manager.current_screen.page_contents['launch'] = launch
@@ -15019,6 +15023,7 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
                         'name': server_obj.name,
                         'url': update_list[server_obj.name]['updateUrl']
                     }
+                    os.chdir(constants.get_cwd())
                     constants.safe_delete(constants.tempDir)
                     screen_manager.current = 'UpdateModpackProgressScreen'
                     screen_manager.current_screen.page_contents['launch'] = launch
@@ -19864,6 +19869,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         def before_func(*args):
 
             # First, clean out any existing server in temp folder
+            os.chdir(constants.get_cwd())
             constants.safe_delete(constants.tempDir)
             constants.folder_check(constants.tmpsvr)
 
@@ -24347,12 +24353,12 @@ class ServerSettingsScreen(MenuBackground):
                         pass
                 else:
                     update_url = constants.update_list[server_obj.name]['updateUrl']
-                print(update_url)
                 if update_url:
                     constants.import_data = {
                         'name': server_obj.name,
                         'url': update_url
                     }
+                    os.chdir(constants.get_cwd())
                     constants.safe_delete(constants.tempDir)
                     screen_manager.current = 'UpdateModpackProgressScreen'
 
@@ -24397,6 +24403,7 @@ class ServerSettingsScreen(MenuBackground):
                             'name': server_obj.name,
                             'path': os.path.abspath(zip_file)
                         }
+                        os.chdir(constants.get_cwd())
                         constants.safe_delete(constants.tempDir)
                         screen_manager.current = 'UpdateModpackProgressScreen'
                     else:
@@ -24913,6 +24920,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
         def before_func(*args):
 
             # First, clean out any existing server in temp folder
+            os.chdir(constants.get_cwd())
             constants.safe_delete(constants.tempDir)
 
             if not constants.app_online:
