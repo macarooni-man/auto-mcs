@@ -1294,10 +1294,11 @@ def open_folder(directory: str):
 
 # Get current directory, and revert to exec path if it doesn't exist
 def get_cwd():
-    try:
-        return os.path.abspath(os.curdir)
-    except:
-        return executable_folder
+    # try:
+    #     new_dir = os.path.abspath(os.curdir)
+    # except:
+    #     pass
+    return executable_folder
 
 
 # Extract archive
