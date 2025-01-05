@@ -1521,6 +1521,7 @@ def cleanup_old_files():
     safe_delete(os.path.join(os_temp, '.kivy'))
 
     # Delete temporary files
+    os.chdir(get_cwd())
     safe_delete(downDir)
     safe_delete(uploadDir)
     safe_delete(tempDir)
@@ -2994,6 +2995,7 @@ def pre_addon_update(telepath=False):
 
 
     # Clear folders beforehand
+    os.chdir(get_cwd())
     safe_delete(tmpsvr)
     safe_delete(tempDir)
     safe_delete(downDir)
@@ -3033,6 +3035,7 @@ def post_addon_update(telepath=False):
 
     # Copy folder to server path and delete tmpsvr
     new_path = os.path.join(serverDir, new_server_info['name'])
+    os.chdir(get_cwd())
     copytree(tmpsvr, new_path, dirs_exist_ok=True)
     safe_delete(tempDir)
     safe_delete(downDir)
@@ -3344,6 +3347,7 @@ max-world-size=29999984"""
 
         # Copy folder to server path and delete tmpsvr
         new_path = os.path.join(serverDir, new_server_info['name'])
+        os.chdir(get_cwd())
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
@@ -3519,6 +3523,7 @@ def update_server_files(progress_func=None):
         # Replace server path with tmpsvr
         new_path = os.path.join(serverDir, new_server_info['name'])
         safe_delete(new_path)
+        os.chdir(get_cwd())
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
@@ -4193,6 +4198,7 @@ def finalize_import(progress_func=None, *args):
 
         # Copy folder to server path and delete tmpsvr
         new_path = os.path.join(serverDir, import_data['name'])
+        os.chdir(get_cwd())
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
@@ -4261,6 +4267,7 @@ eula=true"""
 
 
         if server_path(import_data['name'], server_ini):
+            os.chdir(get_cwd())
             safe_delete(tempDir)
             safe_delete(downDir)
             make_update_list()
@@ -4671,7 +4678,7 @@ def scan_modpack(update=False, progress_func=None):
                         process_flags(match)
                     break
 
-
+    os.chdir(cwd)
     if data['type'] and data['version'] and data['name']:
         import_data = {
             'name': data['name'],
@@ -4806,6 +4813,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
         # Copy folder to server path and delete tmpsvr
         folder_check(new_path)
+        os.chdir(get_cwd())
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
@@ -4856,6 +4864,7 @@ eula=true"""
 
 
         if server_path(import_data['name'], server_ini):
+            os.chdir(get_cwd())
             safe_delete(tempDir)
             safe_delete(downDir)
             make_update_list()
