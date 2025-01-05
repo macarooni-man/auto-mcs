@@ -4575,11 +4575,12 @@ def scan_modpack(update=False, progress_func=None):
             # Reformat variables set in config files (Fabric)
             for match in glob(os.path.join(test_server, 'fabric-*.jar')):
                 split_match = os.path.basename(match).split('-')
+                data['type'] = 'fabric'
                 if len(split_match) >= 3:
-                    data['version'] = split_match[2].replace('mc.', '')
-                    data['type'] = 'fabric'
-                    data['build'] = split_match[3].replace('loader.', '')
-                    break
+                    if split_match[2] != 'installer.jar':
+                        data['version'] = split_match[2].replace('mc.', '')
+                        data['build'] = split_match[3].replace('loader.', '')
+                        break
 
     # Approach #3: inspect server files
     if not data['version'] or not data['type']:
