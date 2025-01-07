@@ -137,12 +137,16 @@ def manage_server(name: str, action: str):
 
     name = name.strip()
 
-    # Create a new stock Vanilla server
+    # Create a new server
     if action == 'create':
 
         # Ignore if offline
         if not constants.app_online:
             return [("info", "Server creation requires an internet connection")], 'fail'
+
+        # Ignore if disk is full
+        if not constants.check_free_space():
+            return [("info", "There isn't enough disk space to create a server")], 'fail'
 
         # Name input validation
         if len(name) < 25:
@@ -183,6 +187,50 @@ def manage_server(name: str, action: str):
             ("normal", "Successfully created "),
             ("parameter", name),
             ("info", f" ({constants.new_server_info['type'].replace('craft','').title()} {constants.new_server_info['version']})\n\n"),
+            ("info", " - to modify this server, run "),
+            ("command", "telepath "),
+            ("sub_command", "pair "),
+            ("info", "to connect from a remote instance of auto-mcs"),
+            ("info", "\n\n - to launch this server, run "),
+            ("command", "server "),
+            ("sub_command", "launch "),
+            ("parameter", name),
+        ]
+
+
+    # Create a new server
+    elif action == 'import':
+
+        # Ignore if disk is full
+        if not constants.check_free_space():
+            return [("info", "There isn't enough disk space to import this server")], 'fail'
+
+        # Run things and stuff
+        constants.pre_server_create()
+        is_backup_file = ((constants.import_data['path'].endswith(".tgz") or constants.import_data['path'].endswith(".amb")) and os.path.isfile(constants.import_data['path']))
+
+        try:
+            verb = 'Validating' if os.path.exists(constants.javaDir) else 'Installing'
+            update_console(f'(1/4) {verb} Java')
+            constants.java_check()
+
+            update_console(f"(2/4) Importing server")
+            constants.scan_import(is_backup_file)
+
+            update_console(f"(3/4) Validating configuration")
+            constants.finalize_import()
+
+            update_console(f"(4/4) Creating initial back-up")
+            constants.create_backup(True)
+
+            constants.generate_server_list()
+        except:
+            return f"Failed to import '{name}'", 'fail'
+
+        return [
+            ("normal", "Successfully imported "),
+            ("parameter", name),
+            ("info", f" ({constants.new_server_info['type'].replace('craft', '').title()} {constants.new_server_info['version']})\n\n"),
             ("info", " - to modify this server, run "),
             ("command", "telepath "),
             ("sub_command", "pair "),
@@ -353,6 +401,87 @@ def init_create_server(data):
         constants.new_server_info['jar_link'] = version_data[3]
 
         return manage_server(name, 'create')
+
+def init_import_server(path):
+
+    # Input validation
+    if isinstance(path, tuple):
+        path = ''.join(path).replace('\\ ', ' ')
+
+    # If the path is a server directory
+    if os.path.isdir(path):
+        selected_server = os.path.abspath(path)
+
+        # Check if the selected server is invalid
+        if not (os.path.isfile(os.path.join(selected_server, 'server.properties'))):
+            return 'Invalid server', 'fail'
+
+        # Don't allow import of already imported servers
+        elif os.path.join(constants.applicationFolder, 'Servers') in selected_server and os.path.basename(selected_server).lower() in constants.server_list_lower:
+            return 'This server already exists', 'fail'
+
+        # If server is valid, do this
+        else:
+            constants.import_data = {
+                'name': re.sub('[^a-zA-Z0-9 _().-]', '', os.path.basename(selected_server).splitlines()[0])[:25],
+                'path': selected_server
+            }
+
+    # If the path is an auto-mcs back-up
+    elif os.path.isfile(path) and (path.endswith('.amb') or path.endswith(".tgz")):
+        selected_server = os.path.abspath(path)
+
+        # Extract auto-mcs.ini and server.properties
+        file_failure = True
+        server_name = None
+        new_path = None
+        test_path = constants.tempDir
+        cwd = constants.get_cwd()
+
+        constants.folder_check(test_path)
+        os.chdir(test_path)
+        constants.run_proc(f'tar -xf "{selected_server}" auto-mcs.ini')
+        constants.run_proc(f'tar -xf "{selected_server}" .auto-mcs.ini')
+        constants.run_proc(f'tar -xf "{selected_server}" server.properties')
+        if (os.path.exists(os.path.join(test_path, "auto-mcs.ini")) or os.path.exists(os.path.join(test_path, ".auto-mcs.ini"))) and os.path.exists(os.path.join(test_path, "server.properties")):
+            if os.path.exists(os.path.join(test_path, "auto-mcs.ini")):
+                new_path = os.path.join(test_path, "auto-mcs.ini")
+            elif os.path.exists(os.path.join(test_path, ".auto-mcs.ini")):
+                new_path = os.path.join(test_path, ".auto-mcs.ini")
+            if new_path:
+                try:
+                    config_file = constants.server_config(server_name=None, config_path=new_path)
+                    server_name = config_file.get('general', 'serverName')
+                    constants.new_server_info['type'] = config_file.get('general', 'serverType')
+                    constants.new_server_info['version'] = config_file.get('general', 'serverVersion')
+                except:
+                    pass
+                file_failure = False
+
+        os.chdir(cwd)
+        constants.safe_delete(test_path)
+
+        # Check if the selected server is invalid
+        if file_failure:
+            return 'Invalid back-up', 'fail'
+
+
+        # Don't allow import of already imported servers
+        elif server_name.lower() in constants.server_list_lower:
+            return 'This server already exists', 'fail'
+
+        # If server is valid, do this
+        else:
+            constants.import_data = {
+                'name': re.sub('[^a-zA-Z0-9 _().-]', '', server_name.splitlines()[0])[:25],
+                'path': selected_server
+            }
+
+    else:
+        return 'Invalid server, or back-up', 'fail'
+
+    # Valid server/back-up file
+    return manage_server(constants.import_data['name'], 'import')
 
 def list_servers():
     if constants.server_list:
@@ -791,6 +920,12 @@ command_data = {
                 'params': {
                     'type:version': lambda data: init_create_server(data),
                     'server name': lambda data: init_create_server(data)
+                }
+            },
+            'import': {
+                'help': 'imports an existing server from a folder or auto-mcs back-up',
+                'params': {
+                    'path': lambda path: init_import_server(path)
                 }
             },
             'delete': {

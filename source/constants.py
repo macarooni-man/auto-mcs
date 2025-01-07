@@ -41,7 +41,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.2.5"
+app_version = "2.2.6"
 ams_version = "1.4"
 telepath_version = "1.0.3"
 app_title = "auto-mcs"
@@ -1083,7 +1083,7 @@ def sanitize_name(value, addon=False):
     if value == 'WorldEdit for Bukkit':
         return 'WorldEdit'
 
-    value = value.split(":")[0]
+    value = '-'.join([v.strip() for v in value.split(":")])
     value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
     value = re.sub(r'[^\'\w\s-]', '', value)
     return re.sub(r'[-\s]+', '-', value).strip('-_')
@@ -1294,10 +1294,11 @@ def open_folder(directory: str):
 
 # Get current directory, and revert to exec path if it doesn't exist
 def get_cwd():
-    try:
-        return os.path.abspath(os.curdir)
-    except:
-        return executable_folder
+    # try:
+    #     new_dir = os.path.abspath(os.curdir)
+    # except:
+    #     pass
+    return executable_folder
 
 
 # Extract archive
@@ -1520,6 +1521,7 @@ def cleanup_old_files():
     safe_delete(os.path.join(os_temp, '.kivy'))
 
     # Delete temporary files
+    os.chdir(get_cwd())
     safe_delete(downDir)
     safe_delete(uploadDir)
     safe_delete(tempDir)
@@ -1893,7 +1895,7 @@ def find_latest_mc():
         "vanilla": "https://mcversions.net/index.html",
         "forge": "https://files.minecraftforge.net/net/minecraftforge/forge/",
         "neoforge": "https://fabricmc.net/use/server/",
-        "paper": "https://papermc.io/api/v2/projects/paper",
+        "paper": "https://api.papermc.io/v2/projects/paper",
         "purpur": "https://api.purpurmc.org/v2/purpur",
         "spigot": "https://getbukkit.org/download/spigot",
         "craftbukkit": "https://getbukkit.org/download/craftbukkit",
@@ -2229,12 +2231,12 @@ def validate_version(server_info: dict):
                 if mcVer != "1.17":
 
                     try:
-                        paper_url = f"https://papermc.io/api/v2/projects/paper/versions/{mcVer}"
+                        paper_url = f"https://api.papermc.io/v2/projects/paper/versions/{mcVer}"
                         reqs = requests.get(paper_url)
                         jsonObject = reqs.json()
                         buildNum = jsonObject['builds'][-1]
 
-                        url = f"https://papermc.io/api/v2/projects/paper/versions/{mcVer}/builds/{buildNum}/downloads/paper-{mcVer}-{buildNum}.jar"
+                        url = f"https://api.papermc.io/v2/projects/paper/versions/{mcVer}/builds/{buildNum}/downloads/paper-{mcVer}-{buildNum}.jar"
                     except:
                         url = ""
 
@@ -2848,7 +2850,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     global hook_lock
 
     # If telepath, update addons remotely
-    if not telepath:
+    if telepath:
         telepath_data = None
         if server_manager.current_server:
             telepath_data = server_manager.current_server._telepath_data
@@ -2993,6 +2995,7 @@ def pre_addon_update(telepath=False):
 
 
     # Clear folders beforehand
+    os.chdir(get_cwd())
     safe_delete(tmpsvr)
     safe_delete(tempDir)
     safe_delete(downDir)
@@ -3032,6 +3035,7 @@ def post_addon_update(telepath=False):
 
     # Copy folder to server path and delete tmpsvr
     new_path = os.path.join(serverDir, new_server_info['name'])
+    os.chdir(get_cwd())
     copytree(tmpsvr, new_path, dirs_exist_ok=True)
     safe_delete(tempDir)
     safe_delete(downDir)
@@ -3343,6 +3347,7 @@ max-world-size=29999984"""
 
         # Copy folder to server path and delete tmpsvr
         new_path = os.path.join(serverDir, new_server_info['name'])
+        os.chdir(get_cwd())
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
@@ -3518,6 +3523,7 @@ def update_server_files(progress_func=None):
         # Replace server path with tmpsvr
         new_path = os.path.join(serverDir, new_server_info['name'])
         safe_delete(new_path)
+        os.chdir(get_cwd())
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
@@ -4039,7 +4045,7 @@ eula=true"""
                             # Ignore flags with invalid data
                             if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                                 continue
-                            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version']:
+                            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft']:
                                 if exclude in flag:
                                     break
 
@@ -4192,6 +4198,7 @@ def finalize_import(progress_func=None, *args):
 
         # Copy folder to server path and delete tmpsvr
         new_path = os.path.join(serverDir, import_data['name'])
+        os.chdir(get_cwd())
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
@@ -4260,6 +4267,7 @@ eula=true"""
 
 
         if server_path(import_data['name'], server_ini):
+            os.chdir(get_cwd())
             safe_delete(tempDir)
             safe_delete(downDir)
             make_update_list()
@@ -4360,7 +4368,7 @@ def scan_modpack(update=False, progress_func=None):
             # Ignore flags with invalid data
             if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                 continue
-            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version']:
+            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft']:
                 if exclude in flag:
                     break
 
@@ -4575,11 +4583,12 @@ def scan_modpack(update=False, progress_func=None):
             # Reformat variables set in config files (Fabric)
             for match in glob(os.path.join(test_server, 'fabric-*.jar')):
                 split_match = os.path.basename(match).split('-')
+                data['type'] = 'fabric'
                 if len(split_match) >= 3:
-                    data['version'] = split_match[2].replace('mc.', '')
-                    data['type'] = 'fabric'
-                    data['build'] = split_match[3].replace('loader.', '')
-                    break
+                    if split_match[2] != 'installer.jar':
+                        data['version'] = split_match[2].replace('mc.', '')
+                        data['build'] = split_match[3].replace('loader.', '')
+                        break
 
     # Approach #3: inspect server files
     if not data['version'] or not data['type']:
@@ -4669,7 +4678,7 @@ def scan_modpack(update=False, progress_func=None):
                         process_flags(match)
                     break
 
-
+    os.chdir(cwd)
     if data['type'] and data['version'] and data['name']:
         import_data = {
             'name': data['name'],
@@ -4804,6 +4813,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
         # Copy folder to server path and delete tmpsvr
         folder_check(new_path)
+        os.chdir(get_cwd())
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
         safe_delete(downDir)
@@ -4854,6 +4864,7 @@ eula=true"""
 
 
         if server_path(import_data['name'], server_ini):
+            os.chdir(get_cwd())
             safe_delete(tempDir)
             safe_delete(downDir)
             make_update_list()

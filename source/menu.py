@@ -2743,7 +2743,10 @@ class CreateServerPortInput(BaseInput):
         # print("ip: " + constants.new_server_info['ip'], "port: " + constants.new_server_info['port'])
 
         # Input validation
-        port_check = ((int(constants.new_server_info['port']) < 1024) or (int(constants.new_server_info['port']) > 65535))
+        try:
+            port_check = ((int(constants.new_server_info['port']) < 1024) or (int(constants.new_server_info['port']) > 65535))
+        except ValueError:
+            port_check = False
         ip_check = (constants.check_ip(constants.new_server_info['ip']) and '.' in typed_info)
         self.stinky_text = ''
 
@@ -2801,7 +2804,10 @@ class ServerPortInput(CreateServerPortInput):
             new_port = default_port
 
         # Input validation
-        port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        try:
+            port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
+        except ValueError:
+            port_check = False
         ip_check = (constants.check_ip(new_ip) and '.' in typed_info)
         self.stinky_text = ''
         fail = False
@@ -6505,7 +6511,7 @@ class PopupWarningQuery(PopupWindow):
     def __init__(self, **kwargs):
         self.window_color = (1, 0.56, 0.6, 1)
         self.window_text_color = (0.2, 0.1, 0.1, 1)
-        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'question-circle.png')
+        self.window_icon_path = os.path.join(constants.gui_assets, 'icons', 'alert-circle-sharp.png')
         super().__init__(**kwargs)
 
         # Modal specific settings
@@ -9997,6 +10003,7 @@ class UpdateAppProgressScreen(ProgressScreen):
         def before_func(*args):
 
             # First, clean out any existing files in temp or downloads
+            os.chdir(constants.get_cwd())
             constants.safe_delete(constants.tempDir)
             constants.safe_delete(constants.downDir)
 
@@ -10944,7 +10951,7 @@ class CreateServerNetworkScreen(MenuBackground):
         # Scroll list
         scroll_widget = ScrollViewWidget()
         scroll_anchor = AnchorLayout()
-        scroll_layout = GridLayout(cols=1, spacing=30, size_hint_max_x=1050, size_hint_y=None, padding=[0, 16, 0, 30])
+        scroll_layout = GridLayout(cols=1, spacing=30, size_hint_max_x=1050, size_hint_y=None, padding=[0, 50, 0, 30])
 
 
         # Bind / cleanup height on resize
@@ -10975,6 +10982,7 @@ class CreateServerNetworkScreen(MenuBackground):
         float_layout.id = 'content'
 
         sub_layout = ScrollItem()
+        sub_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.1}))
         sub_layout.add_widget(CreateServerPortInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=process_ip_text()))
         scroll_layout.add_widget(sub_layout)
 
@@ -11001,8 +11009,6 @@ class CreateServerNetworkScreen(MenuBackground):
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
 
-
-        float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.685}))
         float_layout.add_widget(HeaderText("Do you wish to configure network information?", '', (0, 0.83)))
 
 
@@ -13545,17 +13551,31 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
                     # Function to download addon info
                     def load_addon(addon, index):
-                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+                        try:
+                            selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
 
-                        # Cache updated addon info into button, or skip if it's already cached
-                        if selected_button.properties:
-                            if not selected_button.properties.versions or not selected_button.properties.description:
-                                new_addon_info = addons.get_addon_info(addon, constants.new_server_info)
-                                selected_button.properties = new_addon_info
+                            # Cache updated addon info into button, or skip if it's already cached
+                            if selected_button.properties:
+                                if not selected_button.properties.versions or not selected_button.properties.description:
+                                    new_addon_info = addons.get_addon_info(addon, constants.new_server_info)
+                                    selected_button.properties = new_addon_info
 
-                        Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
+                            Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
 
-                        return selected_button.properties, selected_button.installed
+                            return selected_button.properties, selected_button.installed
+
+                        # Don't crash if add-on failed to load
+                        except:
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (1, 0.5, 0.65, 1),
+                                    f"Failed to load add-on",
+                                    "close-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0
+                            )
 
 
                     # Function to install addon
@@ -14342,6 +14362,7 @@ class ServerImportScreen(MenuBackground):
 
         # Reset import path
         constants.import_data = {'name': None, 'path': None}
+        os.chdir(constants.get_cwd())
         constants.safe_delete(constants.tempDir)
 
         # Generate buttons on page load
@@ -14467,6 +14488,7 @@ class ServerImportModpackScreen(MenuBackground):
 
         # Reset import path
         constants.import_data = {'name': None, 'path': None}
+        os.chdir(constants.get_cwd())
         constants.safe_delete(constants.tempDir)
 
         # Generate buttons on page load
@@ -14672,17 +14694,31 @@ class ServerImportModpackSearchScreen(MenuBackground):
 
                     # Function to download addon info
                     def load_addon(addon, index):
-                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+                        try:
+                            selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
 
-                        # Cache updated addon info into button, or skip if it's already cached
-                        if selected_button.properties:
-                            if not selected_button.properties.description:
-                                new_addon_info = addons.get_modpack_info(addon)
-                                selected_button.properties = new_addon_info
+                            # Cache updated addon info into button, or skip if it's already cached
+                            if selected_button.properties:
+                                if not selected_button.properties.description:
+                                    new_addon_info = addons.get_modpack_info(addon)
+                                    selected_button.properties = new_addon_info
 
-                        Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
+                            Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
 
-                        return selected_button.properties, selected_button.installed
+                            return selected_button.properties, selected_button.installed
+
+                        # Don't crash if add-on failed to load
+                        except:
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (1, 0.5, 0.65, 1),
+                                    f"Failed to load modpack",
+                                    "close-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0
+                            )
 
 
                     # Function to install addon
@@ -14923,6 +14959,7 @@ def open_server(server_name, wait_page_load=False, show_banner='', ignore_update
                     'name': server_obj.name,
                     'url': constants.update_list[server_obj.name]['updateUrl']
                 }
+                os.chdir(constants.get_cwd())
                 constants.safe_delete(constants.tempDir)
                 screen_manager.current = 'UpdateModpackProgressScreen'
                 screen_manager.current_screen.page_contents['launch'] = launch
@@ -15014,6 +15051,7 @@ def open_remote_server(instance, server_name, wait_page_load=False, show_banner=
                         'name': server_obj.name,
                         'url': update_list[server_obj.name]['updateUrl']
                     }
+                    os.chdir(constants.get_cwd())
                     constants.safe_delete(constants.tempDir)
                     screen_manager.current = 'UpdateModpackProgressScreen'
                     screen_manager.current_screen.page_contents['launch'] = launch
@@ -19859,6 +19897,7 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         def before_func(*args):
 
             # First, clean out any existing server in temp folder
+            os.chdir(constants.get_cwd())
             constants.safe_delete(constants.tempDir)
             constants.folder_check(constants.tmpsvr)
 
@@ -20304,6 +20343,7 @@ class AddonListButton(HoverButton):
                 addon_screen = screen_manager.current_screen
                 new_list = [addon for addon in addon_manager.return_single_list() if not addons.is_geyser_addon(addon)]
                 addon_screen.gen_search_results(new_list, fade_in=True)
+                Clock.schedule_once(functools.partial(addon_screen.search_bar.execute_search, addon_screen.search_bar.previous_search), 0)
 
                 # Show banner if server is running
                 if addon_manager._hash_changed():
@@ -21032,17 +21072,31 @@ class ServerAddonSearchScreen(MenuBackground):
 
                     # Function to download addon info
                     def load_addon(addon, index):
-                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+                        try:
+                            selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
 
-                        # Cache updated addon info into button, or skip if it's already cached
-                        if selected_button.properties:
-                            if not selected_button.properties.versions or not selected_button.properties.description:
-                                new_addon_info = addons.get_addon_info(addon, constants.server_manager.current_server.properties_dict())
-                                selected_button.properties = new_addon_info
+                            # Cache updated addon info into button, or skip if it's already cached
+                            if selected_button.properties:
+                                if not selected_button.properties.versions or not selected_button.properties.description:
+                                    new_addon_info = addons.get_addon_info(addon, constants.server_manager.current_server.properties_dict())
+                                    selected_button.properties = new_addon_info
 
-                        Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
+                            Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
 
-                        return selected_button.properties, selected_button.installed
+                            return selected_button.properties, selected_button.installed
+
+                        # Don't crash if add-on failed to load
+                        except:
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (1, 0.5, 0.65, 1),
+                                    f"Failed to load add-on",
+                                    "close-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0
+                            )
 
 
                     # Function to install addon
@@ -21713,6 +21767,7 @@ class AmscriptListButton(HoverButton):
                     script_screen = screen_manager.current_screen
                     new_list = script_manager.return_single_list()
                     script_screen.gen_search_results(new_list, fade_in=True)
+                    Clock.schedule_once(functools.partial(script_screen.search_bar.execute_search, script_screen.search_bar.previous_search), 0)
 
                     # Show banner if server is running
                     if script_manager._hash_changed():
@@ -24340,12 +24395,12 @@ class ServerSettingsScreen(MenuBackground):
                         pass
                 else:
                     update_url = constants.update_list[server_obj.name]['updateUrl']
-                print(update_url)
                 if update_url:
                     constants.import_data = {
                         'name': server_obj.name,
                         'url': update_url
                     }
+                    os.chdir(constants.get_cwd())
                     constants.safe_delete(constants.tempDir)
                     screen_manager.current = 'UpdateModpackProgressScreen'
 
@@ -24390,6 +24445,7 @@ class ServerSettingsScreen(MenuBackground):
                             'name': server_obj.name,
                             'path': os.path.abspath(zip_file)
                         }
+                        os.chdir(constants.get_cwd())
                         constants.safe_delete(constants.tempDir)
                         screen_manager.current = 'UpdateModpackProgressScreen'
                     else:
@@ -24423,8 +24479,11 @@ class ServerSettingsScreen(MenuBackground):
             self.update_button.icon.opacity = 0.5
 
         sub_layout.add_widget(self.update_button)
-        if self.update_label:
-            sub_layout.add_widget(self.update_label)
+        try:
+            if self.update_label:
+                sub_layout.add_widget(self.update_label)
+        except:
+            pass
         update_layout.add_widget(sub_layout)
 
 
@@ -24906,6 +24965,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
         def before_func(*args):
 
             # First, clean out any existing server in temp folder
+            os.chdir(constants.get_cwd())
             constants.safe_delete(constants.tempDir)
 
             if not constants.app_online:

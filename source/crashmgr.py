@@ -122,8 +122,9 @@ def generate_log(exception, error_info=None):
         Version:           {constants.app_version} - {formatted_os_name} ({"Docker, " if constants.is_docker else ""}{platform()})
         Online:            {constants.app_online}
         UI Language:       {constants.get_locale_string(True)}
-        Sub-servers:       {', '.join([f"{x}: {y.type} {y.version}" for x, y in enumerate(constants.server_manager.running_servers.values(), 1)]) if constants.server_manager.running_servers else "None"}
-        Proxy (playit):    {"Active" if constants.playit.session else "Inactive"}
+        Headless:          {constants.headless}
+        Active servers:    {', '.join([f"{x}: {y.type} {y.version}" for x, y in enumerate(constants.server_manager.running_servers.values(), 1)]) if constants.server_manager.running_servers else "None"}
+        Proxy (playit):    {"Active" if constants.playit._tunnels_in_use() else "Inactive"}
         Telepath client:   {"Active" if is_telepath else "Inactive"}
         Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}
 

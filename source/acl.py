@@ -1721,7 +1721,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
 
             if os.path.exists(final_path):
                 with open(final_path, "r") as f:
-                    file = f.read().splitlines()
+                    file = [line for line in f.read().splitlines() if not line.startswith("#") and line.strip()]
 
                     # Check that global rules are applied
                     for rule in global_acl['ops']:
@@ -1754,7 +1754,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
 
             if os.path.exists(final_path):
                 with open(final_path, "r") as f:
-                    file = f.read().splitlines()
+                    file = [line for line in f.read().splitlines() if not line.startswith("#") and line.strip()]
 
                     # Check that global rules are applied
                     for rule in global_acl['bans']:
@@ -1785,7 +1785,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
 
             if os.path.exists(final_path):
                 with open(final_path, "r") as f:
-                    file = f.read().splitlines()
+                    file = [line for line in f.read().splitlines() if not line.startswith("#") and line.strip()]
 
                     # Check that global rules are applied
                     for rule in global_acl['wl']:
@@ -1816,7 +1816,7 @@ def load_acl(server_name: str, list_type=None, force_version=None, temp_server=F
 
             if os.path.exists(final_path):
                 with open(final_path, "r") as f:
-                    file = f.read().splitlines()
+                    file = [line for line in f.read().splitlines() if not line.startswith("#") and line.strip()]
 
                     for user in file:
 
