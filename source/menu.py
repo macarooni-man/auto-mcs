@@ -13551,17 +13551,31 @@ class CreateServerAddonSearchScreen(MenuBackground):
 
                     # Function to download addon info
                     def load_addon(addon, index):
-                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+                        try:
+                            selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
 
-                        # Cache updated addon info into button, or skip if it's already cached
-                        if selected_button.properties:
-                            if not selected_button.properties.versions or not selected_button.properties.description:
-                                new_addon_info = addons.get_addon_info(addon, constants.new_server_info)
-                                selected_button.properties = new_addon_info
+                            # Cache updated addon info into button, or skip if it's already cached
+                            if selected_button.properties:
+                                if not selected_button.properties.versions or not selected_button.properties.description:
+                                    new_addon_info = addons.get_addon_info(addon, constants.new_server_info)
+                                    selected_button.properties = new_addon_info
 
-                        Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
+                            Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
 
-                        return selected_button.properties, selected_button.installed
+                            return selected_button.properties, selected_button.installed
+
+                        # Don't crash if add-on failed to load
+                        except:
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (1, 0.5, 0.65, 1),
+                                    f"Failed to load add-on",
+                                    "close-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0
+                            )
 
 
                     # Function to install addon
@@ -14680,17 +14694,31 @@ class ServerImportModpackSearchScreen(MenuBackground):
 
                     # Function to download addon info
                     def load_addon(addon, index):
-                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+                        try:
+                            selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
 
-                        # Cache updated addon info into button, or skip if it's already cached
-                        if selected_button.properties:
-                            if not selected_button.properties.description:
-                                new_addon_info = addons.get_modpack_info(addon)
-                                selected_button.properties = new_addon_info
+                            # Cache updated addon info into button, or skip if it's already cached
+                            if selected_button.properties:
+                                if not selected_button.properties.description:
+                                    new_addon_info = addons.get_modpack_info(addon)
+                                    selected_button.properties = new_addon_info
 
-                        Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
+                            Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
 
-                        return selected_button.properties, selected_button.installed
+                            return selected_button.properties, selected_button.installed
+
+                        # Don't crash if add-on failed to load
+                        except:
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (1, 0.5, 0.65, 1),
+                                    f"Failed to load modpack",
+                                    "close-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0
+                            )
 
 
                     # Function to install addon
@@ -21044,17 +21072,31 @@ class ServerAddonSearchScreen(MenuBackground):
 
                     # Function to download addon info
                     def load_addon(addon, index):
-                        selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
+                        try:
+                            selected_button = [item for item in self.scroll_layout.walk() if item.__class__.__name__ == "AddonButton"][index-1]
 
-                        # Cache updated addon info into button, or skip if it's already cached
-                        if selected_button.properties:
-                            if not selected_button.properties.versions or not selected_button.properties.description:
-                                new_addon_info = addons.get_addon_info(addon, constants.server_manager.current_server.properties_dict())
-                                selected_button.properties = new_addon_info
+                            # Cache updated addon info into button, or skip if it's already cached
+                            if selected_button.properties:
+                                if not selected_button.properties.versions or not selected_button.properties.description:
+                                    new_addon_info = addons.get_addon_info(addon, constants.server_manager.current_server.properties_dict())
+                                    selected_button.properties = new_addon_info
 
-                        Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
+                            Clock.schedule_once(functools.partial(selected_button.loading, False), 1)
 
-                        return selected_button.properties, selected_button.installed
+                            return selected_button.properties, selected_button.installed
+
+                        # Don't crash if add-on failed to load
+                        except:
+                            Clock.schedule_once(
+                                functools.partial(
+                                    screen_manager.current_screen.show_banner,
+                                    (1, 0.5, 0.65, 1),
+                                    f"Failed to load add-on",
+                                    "close-circle-sharp.png",
+                                    2.5,
+                                    {"center_x": 0.5, "center_y": 0.965}
+                                ), 0
+                            )
 
 
                     # Function to install addon
@@ -24437,8 +24479,11 @@ class ServerSettingsScreen(MenuBackground):
             self.update_button.icon.opacity = 0.5
 
         sub_layout.add_widget(self.update_button)
-        if self.update_label:
-            sub_layout.add_widget(self.update_label)
+        try:
+            if self.update_label:
+                sub_layout.add_widget(self.update_label)
+        except:
+            pass
         update_layout.add_widget(sub_layout)
 
 
