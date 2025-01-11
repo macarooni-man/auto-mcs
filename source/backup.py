@@ -136,7 +136,7 @@ class BackupManager():
 
     # Moves backup directory to new_path
     def set_directory(self, new_directory: str):
-        path = set_backup_directory(self._server['name'], new_directory)
+        path = set_backup_directory(self._server['name'], new_directory, self.maximum)
         self._update_data()
         return path
 
@@ -435,7 +435,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 
 
 # Migrate backup directory and backups
-def set_backup_directory(name: str, new_dir: str):
+def set_backup_directory(name: str, new_dir: str, new_amount: str):
 
     cwd = constants.get_cwd()
     config_file = constants.server_config(name)
@@ -491,6 +491,7 @@ def set_backup_directory(name: str, new_dir: str):
                 os.chdir(cwd)
                 constants.safe_delete(constants.tempDir)
                 config_file.set('bkup', 'bkupDir', new_dir)
+                config_file.set('bkup', 'bkupMax', str(new_amount))
                 constants.server_config(name, config_file)
 
                 set_lock(name, False)

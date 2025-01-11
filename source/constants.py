@@ -41,7 +41,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.2.6"
+app_version = "2.2.7"
 ams_version = "1.4"
 telepath_version = "1.0.3"
 app_title = "auto-mcs"
@@ -3665,10 +3665,9 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
             for path, dir_count, file_count in os.walk(server_path(server_name)):
                 current_count += len(file_count)
 
-            percent = round((current_count/total_files) * 100)
-            progress_func(percent)
-
-        print("Done!")
+            if not proc_complete:
+                percent = round((current_count/total_files) * 100)
+                progress_func(percent)
 
     thread_check = threading.Timer(0, thread_checker)
     thread_check.daemon = True

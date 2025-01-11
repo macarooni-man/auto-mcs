@@ -26394,7 +26394,7 @@ class MainApp(App):
         constants.last_window = constants.app_config.geometry
         pos = constants.app_config.geometry['pos']
         size = constants.app_config.geometry['size']
-        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50):
+        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50) and (pos[0] > -5000 and pos[1] > -5000):
             Window.size = size
             Window.left = pos[0]
             Window.top = pos[1]
