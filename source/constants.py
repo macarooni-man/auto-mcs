@@ -43,7 +43,7 @@ import amscript
 
 app_version = "2.2.7"
 ams_version = "1.4"
-telepath_version = "1.0.3"
+telepath_version = "1.0.4"
 app_title = "auto-mcs"
 
 dev_version = False
