@@ -4119,6 +4119,16 @@ eula=true"""
                 pass
 
             try:
+                config_file.set('general', 'enableGeyser', str(import_data['config_file'].get('general', 'enableGeyser')).lower())
+            except configparser.NoOptionError:
+                pass
+
+            try:
+                config_file.set('general', 'enableProxy', str(import_data['config_file'].get('general', 'enableProxy')).lower())
+            except configparser.NoOptionError:
+                pass
+
+            try:
                 config_file.set('bkup', 'bkupAuto', str(import_data['config_file'].get('bkup', 'bkupAuto')).lower())
             except configparser.NoOptionError:
                 pass
