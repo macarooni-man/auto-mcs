@@ -4153,7 +4153,7 @@ eula=true"""
         # Find command temp if it exists
         for item in glob(os.path.join(tmpsvr, "*start-cmd.tmp")):
             try:
-                os.rename(item, command_tmp)
+                os.rename(item, os.path.join(tmpsvr, command_tmp))
             except FileExistsError:
                 pass
 
@@ -4944,6 +4944,159 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
 
     server_obj.write_config()
     server_obj.reload_config()
+
+
+# Clones a server with support for Telepath
+def clone_server(server_obj: object or str, progress_func=None, *args):
+    source_data = server_obj._telepath_data
+    destination_data = new_server_info['_telepath_data']
+
+    if server_obj == '$remote':
+        source_data = None
+        destination_data = None
+        server_obj = server_manager.remote_server
+
+
+
+    # Mode 4: remote a -> remote a
+    if (source_data and destination_data) and (source_data['host'] == destination_data['host']):
+
+        # Register clone_server function as an endpoint, and run this function remotely as local -> local
+        response = api_manager.request(
+            endpoint='/create/clone_server',
+            host=source_data['host'],
+            port=source_data['port'],
+            args={'server_obj': '$remote'}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
+
+    # Mode 3: remote a -> remote b
+    elif source_data and destination_data:
+
+        # Download back-up from server_obj
+        folder_check(downDir)
+        file = telepath_download(source_data, server_obj.backup.latest['path'], downDir)
+        if progress_func:
+            progress_func(25)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        if progress_func:
+            progress_func(50)
+
+        # Upload back-up to new server
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = telepath_upload(destination_data, file)['path']
+        import_data['_telepath_data'] = None
+        api_manager.request(
+            endpoint='/create/push_new_server',
+            host=destination_data['host'],
+            port=destination_data['port'],
+            args={'server_info': new_server_info, 'import_info': import_data}
+        )
+        import_data['_telepath_data'] = destination_data
+        if progress_func:
+            progress_func(75)
+
+        # Import back-up to new server
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            return True
+
+
+
+    # Mode 2: local -> remote
+    elif not source_data and destination_data:
+
+        # Copy back-up to tempDir
+        folder_check(tempDir)
+        file = copy(server_obj.backup.latest.path, tempDir)
+        if progress_func:
+            progress_func(25)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        if progress_func:
+            progress_func(50)
+
+        # Upload back-up to new server
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = telepath_upload(destination_data, file)['path']
+        import_data['_telepath_data'] = None
+        api_manager.request(
+            endpoint='/create/push_new_server',
+            host=destination_data['host'],
+            port=destination_data['port'],
+            args={'server_info': new_server_info, 'import_info': import_data}
+        )
+        import_data['_telepath_data'] = destination_data
+        if progress_func:
+            progress_func(75)
+
+        # Import back-up to new server
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            return True
+
+
+
+    # Mode 1: remote -> local
+    elif source_data and not destination_data:
+
+        # Download back-up from server_obj
+        folder_check(downDir)
+        file = telepath_download(source_data, server_obj.backup.latest['path'], downDir)
+        if progress_func:
+            progress_func(33)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = file
+        import_data['_telepath_data'] = None
+        if progress_func:
+            progress_func(66)
+
+        # Import back-up
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            return True
+
+
+
+    # Mode 0: local -> local
+    else:
+
+        # Copy back-up to tempDir
+        folder_check(tempDir)
+        file = copy(server_obj.backup.latest.path, tempDir)
+        if progress_func:
+            progress_func(33)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = file
+        import_data['_telepath_data'] = None
+        if progress_func:
+            progress_func(66)
+
+        # Import back-up
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            return True
 
 
 

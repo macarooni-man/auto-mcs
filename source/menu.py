@@ -1124,7 +1124,7 @@ class ServerNameInput(BaseInput):
         self.get_server_list()
 
 
-    def on_enter(self, value):
+    def on_enter(self, value, click_next=True, *args):
 
         constants.new_server_info['name'] = (self.text).strip()
 
@@ -1136,7 +1136,7 @@ class ServerNameInput(BaseInput):
             self.valid(False)
 
     # Valid input
-        else:
+        elif click_next:
             break_loop = False
             for child in self.parent.children:
                 if break_loop:
@@ -1202,7 +1202,9 @@ class ServerNameInput(BaseInput):
                 substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
-            self.valid((self.text + s).lower().strip() not in self.server_list, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            is_valid = (self.text + s).lower().strip() not in self.server_list
+            if is_valid != self.is_valid:
+                self.valid(is_valid, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             # Add name to current config
             def get_text(*a):
@@ -1210,6 +1212,31 @@ class ServerNameInput(BaseInput):
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
+
+
+
+    def update_server(self, force_ignore=False, hide_popup=False):
+
+        def disable_next(disable=False):
+            for item in screen_manager.current_screen.next_button.children:
+                try:
+                    if item.id == "next_button":
+                        item.disable(disable)
+                        break
+                except AttributeError:
+                    pass
+
+        self.scroll_x = 0
+
+        if self.text:
+            if self.text.lower().strip() in self.server_list:
+                self.valid(False)
+                disable_next(True)
+
+            # If server is valid, do this
+            else:
+                self.valid(True)
+                disable_next(False)
 
 
 class ServerRenameInput(BaseInput):
@@ -5538,6 +5565,8 @@ class TelepathDropButton(DropButton):
             name = 'create a server on'
         elif type == 'install':
             name = 'install server on'
+        elif type == 'clone':
+            name = 'clone server to'
         else:
             name = 'import server to'
 
@@ -5659,7 +5688,7 @@ class TelepathDropButton(DropButton):
             for k, v in self.options_list.items():
                 if (k == 'this machine' == result) or (v and (('.' in result and result == k) or (result == v['nickname']))):
                     constants.new_server_info['_telepath_data'] = v
-                    if type == 'import':
+                    if type in ['import', 'clone']:
                         constants.import_data['_telepath_data'] = v
 
                     # Change icon color
@@ -9198,6 +9227,11 @@ class ProgressScreen(MenuBackground):
                 self.execute_error('A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later', reset_close=False)
                 return True
 
+            elif self._telepath_override == '$local':
+                self.telepath = None
+            elif self._telepath_override:
+                self.telepath = self._telepath_override
+
             elif server_obj and server_obj._telepath_data:
                 self.telepath = server_obj._telepath_data
 
@@ -9331,6 +9365,9 @@ class ProgressScreen(MenuBackground):
         def function(*args):
             self.timer.cancel()
 
+            if self._error_callback:
+                self._error_callback()
+
             if log_data:
                 print(log_data)
                 title = f'Error: {log_data[0]}'
@@ -9352,6 +9389,8 @@ class ProgressScreen(MenuBackground):
         self.menu = 'init'
 
         self._ignore_tree = True
+        self._error_callback = None
+        self._telepath_override = None
         self.telepath = None
 
         self.title = None
@@ -19007,6 +19046,7 @@ class ServerBackupScreen(MenuBackground):
         self.open_path_button = None
         self.migrate_path_button = None
         self.download_button = None
+        self.clone_button = None
 
         self.header = None
         self.menu_taskbar = None
@@ -19029,7 +19069,6 @@ class ServerBackupScreen(MenuBackground):
                 continue
 
             if k == 'migrate' and server_obj._telepath_data:
-                v.disable(True)
                 continue
 
             if k == button_name:
@@ -19187,65 +19226,73 @@ class ServerBackupScreen(MenuBackground):
             scroll_layout.add_widget(sub_layout)
 
 
+        # Only apply these buttons on a local server
         else:
-
             # Open back-up directory
             def open_backup_dir(*args):
                 backup_stats = server_obj.backup._backup_stats
                 constants.open_folder(backup_stats['backup-path'])
                 Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
+            self.open_path_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_backup_dir, text_offset=(10, 0))
+            float_layout.add_widget(self.open_path_button)
+
+
+            # Migrate back-up directory
+            def change_backup_dir(*args):
+                backup_stats = server_obj.backup._backup_stats
+                current_path = backup_stats['backup-path']
+                new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else constants.backupFolder), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
+                Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+                def run_migrate(*args):
+                    Clock.schedule_once(functools.partial(self.solo_button, 'migrate', True), 0)
+                    final_path = server_obj.backup.set_directory(new_path)
+
+                    # Show banner and update button
+                    Clock.schedule_once(functools.partial(self.solo_button, 'migrate', False), 0)
+
+                    if final_path:
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_banner,
+                                (0.553, 0.902, 0.675, 1),
+                                "Migrated back-up directory successfully",
+                                "checkmark-circle-sharp.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+                    else:
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_banner,
+                                (1, 0.53, 0.58, 1),
+                                "Failed to migrate back-up directory",
+                                "close-circle.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+
+
+                # If path was selected, migrate folder
+                if new_path:
+                    threading.Timer(0, run_migrate).start()
+
             sub_layout = ScrollItem()
-            self.open_path_button = WaitButton('Open Back-up Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_backup_dir)
-            sub_layout.add_widget(self.open_path_button)
+            self.migrate_path_button = WaitButton('Migrate Back-up Directory', (0.5, 0.5), 'migrate.png', click_func=change_backup_dir)
+            sub_layout.add_widget(self.migrate_path_button)
             scroll_layout.add_widget(sub_layout)
 
 
-        # Migrate back-up directory
-        def change_backup_dir(*args):
-            backup_stats = server_obj.backup._backup_stats
-            current_path = backup_stats['backup-path']
-            new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else constants.backupFolder), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
-            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
-
-            def run_migrate(*args):
-                Clock.schedule_once(functools.partial(self.solo_button, 'migrate', True), 0)
-                final_path = server_obj.backup.set_directory(new_path)
-
-                # Show banner and update button
-                Clock.schedule_once(functools.partial(self.solo_button, 'migrate', False), 0)
-
-                if final_path:
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_banner,
-                            (0.553, 0.902, 0.675, 1),
-                            "Migrated back-up directory successfully",
-                            "checkmark-circle-sharp.png",
-                            2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0
-                    )
-                else:
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_banner,
-                            (1, 0.53, 0.58, 1),
-                            "Failed to migrate back-up directory",
-                            "close-circle.png",
-                            2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0
-                    )
-
-
-            # If path was selected, migrate folder
-            if new_path:
-                threading.Timer(0, run_migrate).start()
+        # Clone server button
+        def clone_server(*args):
+            screen_manager.current = 'ServerCloneScreen'
 
         sub_layout = ScrollItem()
-        self.migrate_path_button = WaitButton('Migrate Back-up Directory', (0.5, 0.5), 'migrate.png', click_func=change_backup_dir)
-        sub_layout.add_widget(self.migrate_path_button)
+        self.clone_button = WaitButton('Clone this server', (0.5, 0.5), 'duplicate-outline.png', click_func=clone_server)
+        sub_layout.add_widget(self.clone_button)
         scroll_layout.add_widget(sub_layout)
 
 
@@ -19673,7 +19720,7 @@ class ServerBackupRestoreScreen(MenuBackground):
             float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups, Restore"))
 
         self.add_widget(float_layout)
 
@@ -19880,7 +19927,7 @@ class ServerBackupDownloadScreen(MenuBackground):
             float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups, Download"))
 
         self.add_widget(float_layout)
 
@@ -19952,6 +19999,148 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
 
         self.page_contents['function_list'] = tuple(function_list)
 
+class ServerCloneScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.name_input = None
+
+    def generate_menu(self, **kwargs):
+
+        # Return if no free space or telepath is busy
+        if disk_popup():
+            return
+        if telepath_popup():
+            return
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        constants.new_server_init()
+        constants.import_data = {'name': None, 'path': None}
+        server_obj = constants.server_manager.current_server
+
+        # Regular menu
+        float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
+        float_layout.add_widget(HeaderText("What would you like to name the copy?", '', (0, 0.76)))
+        self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=server_obj.name)
+        float_layout.add_widget(self.name_input)
+        def start_clone(*a):
+            screen_manager.current = 'ServerCloneProgressScreen'
+        buttons.append(next_button('Clone', (0.5, 0.24), False, click_func=start_clone))
+        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
+        float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+
+        # Add telepath button if servers are connected
+        telepath_data = constants.server_manager.check_telepath_servers()
+        if telepath_data:
+            float_layout.add_widget(TelepathDropButton(telepath_data, 'clone', (0.5, 0.4)))
+
+        float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups, Clone"))
+
+        self.add_widget(float_layout)
+        self.name_input.grab_focus()
+        Clock.schedule_once(functools.partial(self.name_input.on_enter, self.name_input.text, False), 0)
+
+        # Requires opening the server again, since loading "TelepathDropButton" logs in, and logging in clears the ServerObject.remote_server parameter locally on the remote system
+        # Refer to this server-side behavior in TelepathManager._login()
+        if server_obj._telepath_data:
+            constants.api_manager.request(
+                endpoint=f'/main/open_remote_server?name={constants.quote(server_obj.name)}',
+                host=server_obj._telepath_data['host'],
+                port=server_obj._telepath_data['port'],
+                args={'none': None}
+            )
+
+class ServerCloneProgressScreen(ProgressScreen):
+
+    # Only replace this function when making a child screen
+    # Set fail message in child functions to trigger an error
+    def contents(self):
+        server_name = constants.new_server_info['name']
+        open_after = functools.partial(self.open_server, server_name, True, f"'${server_name}$' was created successfully")
+
+        def before_func(*args):
+
+            if not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
+                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+
+            else:
+                constants.pre_server_create()
+
+        def after_func(*args):
+            constants.post_server_create()
+            open_after()
+
+
+        # Original is percentage before this function, adjusted is a percent of hooked value
+        def adjust_percentage(*args):
+            original = self.last_progress
+            adjusted = args[0]
+            total = args[1] * 0.01
+            final = original + round(adjusted * total)
+            if final < 0:
+                final = original
+            self.progress_bar.update_progress(final)
+
+        self.page_contents = {
+
+            # Page name
+            'title': f"Creating '{server_name}'",
+
+            # Header text
+            'header': "Sit back and relax, it's automation time...",
+
+            # Tuple of tuples for steps (label, function, percent)
+            # Percent of all functions must total 100
+            # Functions must return True, or default error will be executed
+            'default_error': 'There was an issue, please try again later',
+
+            'function_list': (),
+
+            # Function to run before steps (like checking for an internet connection)
+            'before_function': before_func,
+
+            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
+            'after_function': after_func,
+
+            # Screen to go to after complete
+            'next_screen': None
+        }
+
+
+        # Create function list
+        server_obj = constants.server_manager.current_server
+        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
+
+        # If remote data, open remote server after
+        print(constants.new_server_info)
+        if constants.new_server_info['_telepath_data']:
+            self._telepath_override = constants.new_server_info['_telepath_data']
+
+        # If not remote data, restore server manager open server on error
+        else:
+            self._telepath_override = '$local'
+            def restore_server():
+                constants.server_manager.current_server = server_obj
+            self._error_callback = restore_server
+
+        function_list = [
+            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            ('Saving a back-up', server_obj.backup.save, 10),
+            ('Cloning server', functools.partial(constants.clone_server, server_obj, functools.partial(adjust_percentage, 50)), 0),
+            ('Creating initial back-up', functools.partial(constants.create_backup, True), 10)
+        ]
+
+        self.page_contents['function_list'] = tuple(function_list)
 
 
 # Server Access Control ------------------------------------------------------------------------------------------------
@@ -20939,12 +21128,20 @@ class ServerAddonScreen(MenuBackground):
             screen_manager.current = 'ServerAddonUpdateScreen'
 
         if addon_count > 0:
+            position = (70 if self.server._telepath_data else 125, 110)
+            vertical_offset = 0 if self.server._telepath_data else 50
             if not self.server.addon.update_required:
                 self.server._view_notif('add-ons', False)
-                float_layout.add_widget(IconButton('up to date', {}, (70, 110), (None, None), 'checkmark-sharp.png', clickable=False, anchor='right', click_func=update_addons))
+                float_layout.add_widget(IconButton('up to date', {}, position, (None, None), 'checkmark-sharp.png', clickable=False, anchor='right', click_func=update_addons, text_offset=(0, vertical_offset)))
             else:
                 self.server._view_notif('add-ons', viewed='update')
-                float_layout.add_widget(IconButton('update add-ons', {}, (70, 110), (None, None), 'arrow-update.png', clickable=True, anchor='right', click_func=update_addons, force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green'], text_offset=(12, 0)))
+                float_layout.add_widget(IconButton('update add-ons', {}, position, (None, None), 'arrow-update.png', clickable=True, anchor='right', click_func=update_addons, force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green'], text_offset=(12, vertical_offset)))
+
+        if not self.server._telepath_data:
+            def open_dir(*a):
+                constants.folder_check(self.server.addon.addon_path)
+                constants.open_folder(self.server.addon.addon_path)
+            float_layout.add_widget(IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_dir, text_offset=(10, 0)))
 
 
         self.add_widget(float_layout)
@@ -22202,6 +22399,7 @@ class ServerAmscriptScreen(MenuBackground):
 
         self.server = None
         self.reload_button = None
+        self.directory_button = None
         self.path_button = None
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
@@ -22307,29 +22505,30 @@ class ServerAmscriptScreen(MenuBackground):
 
 
         # Buttons in the top right corner
-        def reload_scripts(*a):
-            def timer():
-                self.server.reload_scripts()
-                Clock.schedule_once(
-                    functools.partial(
-                        self.show_banner,
-                        (0.553, 0.902, 0.675, 1),
-                        f"amscript engine was restarted successfully",
-                        "checkmark-circle-sharp.png",
-                        2.5,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ), 0
-                )
-                Clock.schedule_once(functools.partial(self.gen_search_results, self.server.script_manager.return_single_list()), 0)
-            threading.Timer(0, timer).start()
-        self.reload_button = IconButton('reload scripts', {}, (70, 110), (None, None), 'reload-sharp.png', clickable=self.server.running, anchor='right', click_func=reload_scripts)
-        float_layout.add_widget(self.reload_button)
-
         def open_dir(*a):
             constants.folder_check(constants.scriptDir)
             constants.open_folder(constants.scriptDir)
-        self.reload_button = IconButton('open directory', {}, (125, 110), (None, None), 'folder.png', clickable=True, anchor='right', click_func=open_dir, text_offset=(10, 50))
-        float_layout.add_widget(self.reload_button)
+        self.directory_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_dir, text_offset=(10, 0))
+        float_layout.add_widget(self.directory_button)
+
+        if self.server.running:
+            def reload_scripts(*a):
+                def timer():
+                    self.server.reload_scripts()
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_banner,
+                            (0.553, 0.902, 0.675, 1),
+                            f"amscript engine was restarted successfully",
+                            "checkmark-circle-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
+                    Clock.schedule_once(functools.partial(self.gen_search_results, self.server.script_manager.return_single_list()), 0)
+                threading.Timer(0, timer).start()
+            self.reload_button = IconButton('reload scripts', {}, (125, 110), (None, None), 'reload-sharp.png', clickable=self.server.running, anchor='right', click_func=reload_scripts, text_offset=(10, 50))
+            float_layout.add_widget(self.reload_button)
 
 
         # Automatically generate results (installed scripts) on page load

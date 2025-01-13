@@ -134,7 +134,7 @@ class TelepathManager():
         self.max_retries = REQUEST_MAX_RETRIES
         self.update_config(host=self.host, port=self.port)
         self.client_data = {
-            'host': constants.hostname if constants.hostname else 'telepath',
+            'host': constants.hostname if constants.hostname else constants.os_name,
             'user': constants.username,
             'session_id': SESSION_ID,
             'telepath-version': self.version
@@ -207,7 +207,7 @@ class TelepathManager():
 
         return {
             'access-token': create_access_token(session),
-            'hostname': constants.hostname if constants.hostname else 'telepath',
+            'hostname': constants.hostname if constants.hostname else constants.os_name,
             'os': constants.os_name,
             'app-version': constants.app_version,
             'telepath-version': self.version
@@ -1992,3 +1992,5 @@ create_endpoint(constants.scan_import, 'create', True)
 create_endpoint(constants.finalize_import, 'create', True)
 create_endpoint(constants.scan_modpack, 'create', True)
 create_endpoint(constants.finalize_modpack, 'create', True)
+
+create_endpoint(constants.clone_server, 'create', True)
