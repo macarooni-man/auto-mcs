@@ -4948,13 +4948,15 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
 
 # Clones a server with support for Telepath
 def clone_server(server_obj: object or str, progress_func=None, *args):
-    source_data = server_obj._telepath_data
-    destination_data = new_server_info['_telepath_data']
 
     if server_obj == '$remote':
         source_data = None
         destination_data = None
         server_obj = server_manager.remote_server
+
+    else:
+        source_data = server_obj._telepath_data
+        destination_data = new_server_info['_telepath_data']
 
 
 
