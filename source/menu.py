@@ -8171,7 +8171,7 @@ def button_action(button_name, button, specific_screen=''):
 
         if button_name.lower() == "quit":
             if not main_app.exit_check():
-                sys.exit(0)
+                exit_app()
         elif button_name.lower() == "back":
             constants.back_clicked = True
             previous_screen()
@@ -8937,6 +8937,12 @@ class MenuBackground(Screen):
                 else:
                     self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
             return True
+
+
+        # Quit on macOS
+        elif constants.os_name == 'macos' and (keycode[1] == 'q' and control in modifiers):
+            if not main_app.exit_check():
+                exit_app()
 
 
         # Ignore ESC commands while input focused
@@ -9976,6 +9982,12 @@ class MainMenuScreen(MenuBackground):
                 else:
                     self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
             return True
+
+
+        # Quit on macOS
+        elif constants.os_name == 'macos' and (keycode[1] == 'q' and control in modifiers):
+            if not main_app.exit_check():
+                exit_app()
 
 
         # Ignore ESC commands while input focused
@@ -18945,6 +18957,11 @@ class ServerViewScreen(MenuBackground):
                 if stop_button.opacity == 1:
                     stop_button.button.trigger_action(0.1)
 
+            # Quit on macOS
+            elif constants.os_name == 'macos' and (keycode[1] == 'q' and control in modifiers):
+                if not main_app.exit_check():
+                    exit_app()
+
             # Restart the server if it's currently running
             if ((keycode[1] == 'r' and (control in modifiers and 'shift' in modifiers)) and ('r' not in self._ignore_keys)) and self.server.run_data:
                 restart_button = self.console_panel.controls.restart_button
@@ -26580,6 +26597,10 @@ def check_running(final_func):
     elif final_func:
         final_func()
 
+def exit_app():
+    amseditor.quit_ipc = True
+    sys.exit(0)
+
 class MainApp(App):
 
     # Disable F1 menu when compiled
@@ -26640,7 +26661,12 @@ class MainApp(App):
             Window.close()
             return False
 
-    Window.bind(on_request_close=exit_check)
+    def _close_window_wrapper(self):
+        data = main_app.exit_check()
+        if not data:
+            exit_app()
+        return data
+    Window.bind(on_request_close=_close_window_wrapper)
     Window.bind(on_cursor_enter=save_window_pos, on_cursor_leave=save_window_pos)
     dropped_files = []
     processing_drops = False
