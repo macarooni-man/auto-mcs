@@ -459,6 +459,7 @@ available_locales = {
     "Portuguese": {"name": 'Português', "code": 'pt'},
     "Swedish": {"name": 'Suédois', "code": 'sv'},
     "Finnish": {"name": 'Suomi', "code": 'fi'},
+    "English 2": {"name": 'English 2', "code": 'e2'}
 
     # Requires special fonts:
 
