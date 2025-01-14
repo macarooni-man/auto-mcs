@@ -5460,7 +5460,7 @@ def calculate_ram(properties):
             ram = 2
             pass
 
-        if properties['type'].lower() == "forge":
+        if properties['type'].lower() in ["forge", "neoforge", "fabric", "quilt"]:
             ram = ram + 2
 
     else:

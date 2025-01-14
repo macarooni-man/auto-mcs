@@ -673,7 +673,7 @@ class InputLabel(RelativeLayout):
             def reset_color(item, *args):
                 item.color = (1, 0.53, 0.58, 0)
 
-            Clock.schedule_once(functools.partial(reset_color, child), 0.2)
+            Clock.schedule_once(functools.partial(reset_color, child), 0.12)
 
 
 class BaseInput(TextInput):
@@ -1203,8 +1203,7 @@ class ServerNameInput(BaseInput):
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
             is_valid = (self.text + s).lower().strip() not in self.server_list
-            if is_valid != self.is_valid:
-                self.valid(is_valid, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            self.valid(is_valid, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             # Add name to current config
             def get_text(*a):
