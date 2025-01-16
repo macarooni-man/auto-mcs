@@ -7865,7 +7865,20 @@ class PopupSearch(RelativeLayout):
 
     def resize(self):
         self.window.size = self.window_background.size
-        self.window.pos = (Window.size[0]/2 - self.window_background.width/2, Window.size[1]/2 - self.window_background.height/2)
+
+        # Shift the popup upward at smaller window heights
+        offset_y = 0
+        if Window.size[1] < 900:
+            offset_y = 75
+        if Window.size[1] < 800:
+            offset_y = 100
+
+        # Add offset_y to the original y-position
+        self.window.pos = (
+            Window.size[0] / 2 - self.window_background.width / 2,
+            Window.size[1] / 2 - self.window_background.height / 2 + offset_y
+        )
+
         if self.shown:
             Clock.schedule_once(self.generate_blur_background, 0.1)
 
