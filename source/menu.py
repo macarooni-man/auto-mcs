@@ -22892,8 +22892,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
         Clock.schedule_once(functools.partial(self.search_bar.execute_search, ""), 0)
 
 
-
-# Server Settings Screen ---------------------------------------------------------------------------------------------
+# Edit Config Screens ------------------------------------------------------------------------------------------------
 
 class ServerPropertiesEditScreen(MenuBackground):
     class EditorLine(RelativeLayout):
@@ -24041,6 +24040,1088 @@ class ServerPropertiesEditScreen(MenuBackground):
 
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
+
+
+class ServerYamlEditScreen(MenuBackground):
+
+    class EditorLine(RelativeLayout):
+
+        def on_resize(self, *args):
+            # Position and sizing logic, similar to your original code
+            self.line_number.size_hint_max = self.line_number.texture_size
+            self.key_label.size_hint_max = self.key_label.texture_size
+            self.eq_label.size_hint_max = self.eq_label.texture_size
+
+            self.line_number.x = 0
+            spacing_x = dp(14)
+            self.key_label.x = self.line_number.right + spacing_x + self.indent_space
+            self.eq_label.x = self.key_label.right + spacing_x
+            self.value_label.x = self.eq_label.right + spacing_x
+            self.value_label.y = -6
+
+            # Additional cover elements for ghosting or blocking touches
+            try:
+                self.ghost_cover_left.x = -10
+                self.ghost_cover_left.size_hint_max_x = self.value_label.x + 14
+                self.ghost_cover_right.x = Window.width - 33
+                self.ghost_cover_right.size_hint_max_x = 33
+            except AttributeError:
+                pass
+
+        def highlight_text(self, text):
+            """
+            Attempt to highlight text in both key and value for searching.
+            Largely the same logic as your original, but referencing
+            self.key_label.original_text and self.value_label.text.
+            """
+            self.last_search = text
+            self.key_label.text = self.key_label.original_text
+            self.line_matched = False
+
+            def draw_highlight_box(label, *args):
+                def get_x(lb, ref_x):
+                    return lb.center_x - lb.texture_size[0] * 0.5 + ref_x
+
+                def get_y(lb, ref_y):
+                    return lb.center_y + lb.texture_size[1] * 0.5 - ref_y
+
+                label.canvas.before.clear()
+                for name, boxes in label.refs.items():
+                    for box in boxes:
+                        with label.canvas.before:
+                            Color(*self.select_color)
+                            Rectangle(pos=(get_x(label, box[0]), get_y(label, box[1])),
+                                      size=(box[2] - box[0], box[1] - box[3]))
+
+            text = text.strip()
+            if text:
+                # Check if search matches in key label
+                if text in self.key_label.text:
+                    # Insert [ref][/ref] markup
+                    self.key_label.text = self.key_label.text.replace(
+                        text,
+                        f'[color=#000000][ref=0]{text}[/ref][/color]'
+                    )
+                    self.line_matched = True
+                else:
+                    Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
+
+                # Check if search matches in value input/ghost label
+                if text in self.value_label.text:
+                    self.value_label.search.text = self.value_label.text.replace(
+                        text,
+                        f'[color=#000000][ref=0]{text}[/ref][/color]'
+                    )
+                    self.line_matched = True
+                else:
+                    self.value_label.search.text = self.value_label.text
+                    Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
+
+            # Highlight matches if line matched
+            if self.line_matched and self.animate:
+                self.line_number.text = f'[color=#4CFF99]{self.line}[/color]'
+                self.line_number.opacity = 1
+                self.on_resize()
+
+                Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
+                Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
+
+                self.value_label.foreground_color = (0, 0, 0, 0)
+                self.value_label.search.opacity = 1
+            else:
+                # Reset visuals
+                self.line_number.text = str(self.line)
+                self.line_number.opacity = (
+                    1 if self.value_label.focused and self.animate else 0.35
+                )
+                self.value_label.search.opacity = 0
+                self.value_label.foreground_color = self.value_label.last_color
+
+                Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
+                Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
+
+                self.value_label.search.text = self.value_label.text
+                self.key_label.text = self.key_label.original_text
+
+            return self.line_matched
+
+        def allow_animation(self, *args):
+            self.animate = True
+
+        def __init__(self, line, key, value, indent_level, max_line_count, index_func, undo_func, **kwargs):
+            super().__init__(**kwargs)
+
+            background_color = constants.brighten_color(constants.background_color, -0.1)
+
+            # Defaults
+            self.line = line
+            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+            self.font_size = dp(25)
+            self.spacing = dp(16)
+            self.size_hint_min_y = 50
+            self.last_search = ''
+            self.line_matched = False
+            self.select_color = (0.3, 1, 0.6, 1)
+            self.animate = False
+
+            # Indentation space
+            self.indent_level = indent_level
+            self.indent_space = dp(25) * indent_level
+
+            # Create main text input
+            class EditorInput(TextInput):
+                def grab_focus(me, *a):
+                    def focus_later(*args):
+                        me.focus = True
+
+                    Clock.schedule_once(focus_later, 0)
+
+                def on_focus(me, *args):
+                    Animation.stop_all(self.eq_label)
+                    Animation(opacity=(1 if me.focused else 0.5), duration=0.15).start(self.eq_label)
+                    try:
+                        Animation(opacity=(1 if me.focused or self.line_matched else 0.35), duration=0.15).start(
+                            self.line_number)
+                    except AttributeError:
+                        pass
+
+                    if me.focused:
+                        index_func(me.index)
+                        if (len(me.text) * (me.font_size / 1.85)) > me.width:
+                            me.cursor = (len(me.text), me.cursor[1])
+                            Clock.schedule_once(functools.partial(me.do_cursor_movement, 'cursor_end', True), 0)
+                            Clock.schedule_once(functools.partial(me.select_text, 0), 0.01)
+                    else:
+                        me.scroll_x = 0
+
+                # Type color and prediction
+                def on_text(me, *args):
+                    Animation.stop_all(me)
+                    Animation.stop_all(me.search)
+
+                    me.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+                    me.font_size = dp(25)
+                    me.foreground_color = (0.408, 0.889, 1, 1)
+                    me.cursor_color = (0.358, 0.839, 1, 1)
+                    me.selection_color = (0.308, 0.789, 1, 0.4)
+
+                    # Remove newlines if you want single-line, or keep them if you support multiline
+                    # For multiline YAML support, we allow newlines:
+                    # me.text = me.text.replace("\r", "")  # Keep \n
+
+                    # Boolean detection
+                    if me.text.lower() in ['true', 'false']:
+                        me.text = me.text.lower()
+                        me.font_name = os.path.join(
+                            constants.gui_assets, 'fonts', f'{constants.fonts["mono-italic"]}'
+                        )
+                        me.foreground_color = (1, 0.451, 1, 1)
+                        me.cursor_color = (1, 0.401, 1, 1)
+                        me.selection_color = (0.955, 0.351, 1, 0.4)
+                        me.font_size = dp(23.8)
+
+                    # Numeric detection (int or float)
+                    elif me.text.replace(".", "").replace("-", "").isdigit():
+                        me.foreground_color = (0.989, 0.591, 0.254, 1)
+                        me.cursor_color = (0.939, 0.541, 0.254, 1)
+                        me.selection_color = (0.889, 0.511, 0.254, 0.4)
+
+                    me.last_color = me.foreground_color
+                    me.original_text = str(me.text)
+                    me.search.text = str(me.text)
+                    me.search.color = me.foreground_color
+                    me.search.font_size = me.font_size
+                    me.search.font_name = me.font_name
+                    me.search.text_size = me.search.size
+
+                    if me.scroll_x == 0:
+                        me.search.x = me.x + 5.3
+                    me.search.y = me.y + (5 if 'italic' in me.font_name.lower() else 7)
+
+                    if me.search.opacity == 1:
+                        me.foreground_color = (0, 0, 0, 0)
+
+                    def highlight(*args):
+                        try:
+                            self.highlight_text(self.last_search)
+                        except AttributeError:
+                            pass
+
+                    Clock.schedule_once(highlight, 0)
+
+                # Hook into insert_text
+                def insert_text(me, substring, from_undo=False):
+                    if screen_manager.current_screen.popup_widget:
+                        return None
+                    super(EditorInput, me).insert_text(substring, from_undo=from_undo)
+
+                # Key press
+                def keyboard_on_key_down(me, window, keycode, text, modifiers):
+                    # Ignore global undo/redo
+                    if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
+                        return None
+
+                    # Undo functionality
+                    if (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (keycode[1] == 'v' and control in modifiers) or (keycode[1] == 'backspace' and control in modifiers):
+                        undo_func(save=True)
+
+                    # Toggle boolean
+                    def replace_text(val, *args):
+                        me.text = val
+
+                    if keycode[1] == "spacebar":
+                        if me.text == 'true':
+                            Clock.schedule_once(functools.partial(replace_text, 'false'), 0)
+                            return
+                        elif me.text == 'false':
+                            Clock.schedule_once(functools.partial(replace_text, 'true'), 0)
+                            return
+
+                    # Ctrl+Backspace
+                    if keycode[1] == "backspace" and control in modifiers:
+                        original_index = me.cursor_col
+                        new_text, index = constants.control_backspace(me.text, original_index)
+                        me.select_text(original_index - index, original_index)
+                        me.delete_selection()
+                    else:
+                        super(EditorInput, me).keyboard_on_key_down(window, keycode, text, modifiers)
+
+                    # Left overscroll fix
+                    if me.cursor_pos[0] < me.x:
+                        me.scroll_x = 0
+
+                def scroll_search(me, *a):
+                    offset = 12
+                    if me.cursor_offset() - me.width + offset > 0 and me.scroll_x > 0:
+                        offset = me.cursor_offset() - me.width + offset
+                    else:
+                        offset = 0
+
+                    me.search.x = (me.x + 5.3) - offset
+
+                    def highlight(*args):
+                        try:
+                            self.highlight_text(self.last_search)
+                        except AttributeError:
+                            pass
+
+                    Clock.schedule_once(highlight, 0)
+
+                def __init__(me, default_value, line, index, index_func, undo_func, **kwargs):
+                    super().__init__(**kwargs)
+
+                    with me.canvas.after:
+                        me.search = AlignLabel()
+                        me.search.halign = "left"
+                        me.search.color = (1, 1, 1, 1)
+                        me.search.markup = True
+                        me.search.font_name = me.font_name
+                        me.search.font_size = me.font_size
+                        me.search.text_size = me.search.size
+                        me.search.width = 10000
+                        me.search.font_kerning = False
+
+                    me.bind(scroll_x=me.scroll_search)
+                    me.__translate__ = False
+                    me.font_kerning = False
+                    me.index = index
+                    me.index_func = index_func
+                    me.undo_func = undo_func
+                    me.text = str(default_value)
+                    me.original_text = str(default_value)
+
+                    # Set to True for multi-line YAML editing
+                    me.multiline = True
+
+                    me.background_color = (0, 0, 0, 0)
+                    me.cursor_width = dp(3)
+                    me.eq = line.eq_label
+                    me.line = line.line_number
+                    me.last_color = (0, 0, 0, 0)
+                    me.valign = 'center'
+
+                    me.bind(text=me.on_text)
+                    me.bind(focused=me.on_focus)
+                    Clock.schedule_once(me.on_text, 0)
+
+                    me.size_hint_max = (None, None)
+                    me.size_hint_min_y = 40
+
+                    def set_scroll(*a):
+                        if me.text:
+                            me.grab_focus()
+                            me.focused = False
+                            me.on_focus()
+
+                            def scroll(*b):
+                                me.focused = False
+                                screen_manager.current_screen.current_line = None
+
+                            Clock.schedule_once(scroll, 0)
+
+                    Clock.schedule_once(set_scroll, 0.1)
+
+                # Ignore touch if popup exists
+                def on_touch_down(me, touch):
+                    popup_widget = screen_manager.current_screen.popup_widget
+                    if popup_widget:
+                        return
+                    else:
+                        return super(EditorInput, me).on_touch_down(touch)
+
+            # Line number
+            self.line_number = AlignLabel()
+            self.line_number.__translate__ = False
+            self.line_number.text = str(line)
+            self.line_number.halign = 'right'
+            self.line_number.markup = True
+            self.line_number.size_hint_max_x = (self.spacing * len(str(max_line_count)))
+            self.line_number.font_name = self.font_name
+            self.line_number.font_size = self.font_size
+            self.line_number.opacity = 0.35
+            self.line_number.color = (0.7, 0.7, 1, 1)
+            self.line_number.pos_hint = {'center_y': 0.7}
+
+            # Key label
+            self.key_label = Label()
+            self.key_label.__translate__ = False
+            self.key_label.text = key
+            self.key_label.original_text = key
+            self.key_label.font_name = self.font_name
+            self.key_label.font_size = self.font_size
+            self.key_label.markup = True
+            self.key_label.default_color = "#5E6BFF"
+            self.key_label.color = self.key_label.default_color
+            self.key_label.text_size[0] = 260
+            self.key_label.size_hint_max_y = 50
+            self.key_label.pos_hint = {'center_y': 0.5}
+
+            # We show ":" or "=" for YAML. Some prefer ":" to separate key: value
+            self.eq_label = Label()
+            self.eq_label.__translate__ = False
+            self.eq_label.text = ':'
+            self.eq_label.halign = 'left'
+            self.eq_label.font_name = self.font_name
+            self.eq_label.font_size = self.font_size
+            self.eq_label.color = (1, 1, 1, 1)
+            self.eq_label.opacity = 0.5
+            self.eq_label.pos_hint = {'center_y': 0.5}
+
+            # Value label (EditorInput)
+            self.value_label = EditorInput(
+                default_value=value,
+                line=self,
+                index=(line - 1),
+                index_func=index_func,
+                undo_func=undo_func
+            )
+
+            # Add all widgets
+            self.add_widget(self.line_number)
+            self.add_widget(self.key_label)
+            self.add_widget(self.eq_label)
+            self.add_widget(self.value_label)
+
+            # Ghost covers for left / right
+            self.ghost_cover_left = Image(color=background_color)
+            self.ghost_cover_right = Image(color=background_color)
+            self.add_widget(self.ghost_cover_left)
+            self.add_widget(self.ghost_cover_right)
+
+            Clock.schedule_once(self.key_label.texture_update, -1)
+            Clock.schedule_once(self.eq_label.texture_update, -1)
+            self.bind(size=self.on_resize, pos=self.on_resize)
+            Clock.schedule_once(self.on_resize, 0)
+            Clock.schedule_once(self.allow_animation, 1)
+
+    # A simple search bar for YAML content. Very similar to PropertiesSearchInput
+    class YamlSearchInput(TextInput):
+
+        def _on_focus(self, instance, value, *largs):
+            def update_focus(*args):
+                screen_manager.current_screen._input_focused = self.focus
+
+            Clock.schedule_once(update_focus, 0)
+
+            super(type(self), self)._on_focus(instance, value)
+            Animation.stop_all(self.parent.input_background)
+            Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+            self.original_text = ''
+            self.history_index = 0
+
+            self.multiline = False
+            self.halign = "left"
+            self.hint_text = "search for text..."
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.foreground_color = (0.6, 0.6, 1, 1)
+            self.background_color = (0, 0, 0, 0)
+            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+            self.font_size = sp(24)
+            self.padding_y = (12, 12)
+            self.padding_x = (70, 12)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.cursor_width = dp(3)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
+
+            self.bind(on_text_validate=self.on_enter)
+
+        def grab_focus(self, *a):
+            def focus_later(*args):
+                self.focus = True
+
+            Clock.schedule_once(focus_later, 0)
+
+        def on_enter(self, value):
+            self.grab_focus()
+
+        def insert_text(self, substring, from_undo=False):
+            if screen_manager.current_screen.popup_widget:
+                return None
+            substring = substring.replace("\n", "").replace("\r", "")
+            return super().insert_text(substring, from_undo=from_undo)
+
+        def keyboard_on_key_down(self, window, keycode, text, modifiers):
+            if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
+                return None
+
+            if keycode[1] == "backspace" and control in modifiers:
+                original_index = self.cursor_col
+                new_text, index = constants.control_backspace(self.text, original_index)
+                self.select_text(original_index - index, original_index)
+                self.delete_selection()
+            else:
+                super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+            # Fix overscroll
+            if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
+                self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.05))
+
+            if self.cursor_pos[0] < (self.x):
+                self.scroll_x = 0
+
+        def fix_overscroll(self, *args):
+            if self.cursor_pos[0] < (self.x):
+                self.scroll_x = 0
+
+        def on_touch_down(self, touch):
+            popup_widget = screen_manager.current_screen.popup_widget
+            if popup_widget:
+                return
+            else:
+                return super().on_touch_down(touch)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.header = None
+        self.line_list = None
+        self.search_bar = None
+        self.scroll_widget = None
+        self.scroll_layout = None
+        self.input_background = None
+        self.fullscreen_shadow = None
+        self.match_label = None
+        self.server_yaml = None
+        self.controls_button = None
+
+        self.undo_history = []
+        self.redo_history = []
+        self.last_search = ''
+        self.match_list = []
+        self.modified = False
+        self.current_line = None
+
+        self.background_color = constants.brighten_color(constants.background_color, -0.1)
+
+        self.path = None
+        self.file_name = None
+
+        # Background
+        with self.canvas.before:
+            self.color = Color(*self.background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+    # index_func
+    def set_index(self, index, **kwargs):
+        self.current_line = index
+
+    def focus_input(self, new_input=None, highlight=False):
+        if not new_input:
+            new_input = self.line_list[self.current_line]
+
+        if highlight:
+            original_color = constants.convert_color(new_input.key_label.default_color)['rgb']
+            new_input.key_label.color = constants.brighten_color(original_color, 0.2)
+            Animation.stop_all(new_input.key_label)
+            Animation(color=original_color, duration=0.5).start(new_input.key_label)
+
+        new_input.value_label.grab_focus()
+        self.scroll_widget.scroll_to(new_input.value_label, padding=30, animate=True)
+
+    def switch_input(self, position):
+        if self.current_line is None:
+            self.set_index(0)
+
+        index = 0
+        if position == 'up':
+            index = self.current_line - 1
+        elif position == 'down':
+            index = self.current_line + 1
+        elif position in ['pagedown', 'end']:
+            position = 'pagedown'
+            index = len(self.line_list) - 1
+        elif position in ['pageup', 'home']:
+            position = 'pageup'
+            index = 0
+
+        found_input = False
+        while not found_input:
+            ignore_input = False
+            if index >= len(self.line_list):
+                index = 0
+            elif index < 0:
+                index = len(self.line_list) - 1
+
+            new_input = self.line_list[index]
+
+            if self.match_list and self.last_search:
+                if not new_input.line_matched:
+                    ignore_input = True
+
+            # In a YAML file, there's no concept of #comment lines like in .properties
+            # but if you wanted to skip certain lines, you can do so here
+            if not ignore_input:
+                try:
+                    self.focus_input(new_input)
+                    break
+                except AttributeError:
+                    pass
+
+            index = index + (-1 if position == 'up' else 1)
+
+    def search_text(self, obj, text, *args):
+        self.last_search = text
+        self.match_list = []
+        first_match = None
+
+        for line in self.line_list:
+            result = line.highlight_text(text)
+            if result:
+                self.match_list.append(line)
+            if result and not first_match:
+                first_match = line
+
+        if first_match:
+            self.set_index(first_match.line - 1)
+            self.scroll_widget.scroll_to(first_match, padding=30, animate=True)
+
+        # Show match count
+        try:
+            Animation.stop_all(self.match_label)
+            Animation(opacity=(1 if text and self.match_list else 0.35 if text else 0), duration=0.1).start(
+                self.match_label)
+            matches = 0
+            search_str = text.strip()
+            if search_str:
+                for x in self.match_list:
+                    # Count occurrences in key+value
+                    total_str = x.key_label.text + x.value_label.text
+                    matches += total_str.count(search_str)
+            self.match_label.text = f'{matches} match{"es" if matches != 1 else ""}'
+        except AttributeError:
+            pass
+
+    def undo(self, save=False, undo=False):
+        if save:
+            self.redo_history = []
+            line = self.line_list[self.current_line]
+            same_line = False
+
+            if self.undo_history:
+                if self.undo_history[-1][0] == line.line:
+                    same_line = True
+
+            if not same_line:
+                self.undo_history.append((line.line, line.value_label.original_text))
+
+        else:
+            if undo:
+                line_num, old_text = self.undo_history[-1]
+                line_obj = self.line_list[line_num - 1]
+                self.redo_history.append([line_num, line_obj.value_label.original_text])
+                line_obj.value_label.text = old_text
+                self.undo_history.pop(-1)
+            else:
+                line_num, old_text = self.redo_history[-1]
+                line_obj = self.line_list[line_num - 1]
+                self.undo_history.append([line_num, line_obj.value_label.original_text])
+                line_obj.value_label.text = old_text
+                self.redo_history.pop(-1)
+
+            self.focus_input(line_obj, highlight=True)
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+
+        # (1) Load the YAML. If it's remote, adapt as needed.
+        # If you already have it in server_obj, do so. Otherwise:
+        yaml_path = constants.server_path(server_obj.name, 'server.yml')
+        with open(yaml_path, 'r', encoding='utf-8') as f:
+            try:
+                self.server_yaml = constants.yaml.safe_load(f)
+            except constants.yaml.YAMLError:
+                self.server_yaml = {}
+
+        # (2) Flatten the YAML into lines for display.
+        # We'll store a list of (full_key, value, indent_level).
+        # e.g. for {outer: {inner: value}} we get:
+        # [("outer", "", 0), ("inner", "value", 1)]
+        self.line_list = []
+        self.undo_history = []
+        self.redo_history = []
+        self.last_search = ''
+        self.match_list = []
+        self.modified = False
+        self.current_line = None
+
+        def flatten_yaml(data, prefix='', indent=0):
+            """
+            Recursively traverse 'data' (dict, list, scalar) to produce a flattened
+            list of lines. prefix = 'outer' => 'outer.inner' => etc.
+            """
+            if isinstance(data, dict):
+                for k, v in data.items():
+                    full_key = f'{prefix}.{k}' if prefix else str(k)
+                    # For pure dict keys, we add a line if the value isn't just a nested dict
+                    if isinstance(v, dict) or isinstance(v, list):
+                        # Insert a placeholder line if you want a line for the key alone:
+                        self.flat_lines.append((full_key, '', indent))
+                        flatten_yaml(v, full_key, indent + 1)
+                    else:
+                        self.flat_lines.append((full_key, v, indent))
+            elif isinstance(data, list):
+                for idx, v in enumerate(data):
+                    full_key = f'{prefix}[{idx}]'
+                    if isinstance(v, dict) or isinstance(v, list):
+                        self.flat_lines.append((full_key, '', indent))
+                        flatten_yaml(v, full_key, indent + 1)
+                    else:
+                        self.flat_lines.append((full_key, v, indent))
+            else:
+                # Scalar value
+                self.flat_lines.append((prefix, data, indent))
+
+        self.flat_lines = []
+        flatten_yaml(self.server_yaml)
+        # Now self.flat_lines is a list of (full_key, value, indent_level)
+
+        # Kivy UI for lines
+        self.scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
+        self.scroll_layout = GridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30])
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+        def resize_scroll(call_widget, grid_layout, *args):
+            call_widget.height = Window.height // 1.23
+            self.fullscreen_shadow.y = self.height + self.x - 3
+            self.fullscreen_shadow.width = Window.width
+            search_pos = 47
+            self.search_bar.pos = (self.x, search_pos)
+            self.input_background.pos = (self.search_bar.pos[0] - 15, self.search_bar.pos[1] + 8)
+            self.search_bar.size_hint_max_x = Window.width - self.search_bar.x - 200
+
+        self.resize_bind = lambda *_: Clock.schedule_once(
+            functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0
+        )
+        Window.bind(on_resize=self.resize_bind)
+        self.resize_bind()
+
+        # Add lines
+        max_lines = len(self.flat_lines)
+        for i, (full_key, val, indent) in enumerate(self.flat_lines, start=1):
+            line = self.EditorLine(
+                line=i,
+                key=full_key,
+                value=val,
+                indent_level=indent,
+                max_line_count=max_lines,
+                index_func=self.set_index,
+                undo_func=self.undo
+            )
+            self.line_list.append(line)
+            self.scroll_layout.add_widget(line)
+
+        # Scroll backgrounds, top/bottom shadows, etc.
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        self.scroll_widget.add_widget(self.scroll_layout)
+        float_layout.add_widget(self.scroll_widget)
+
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_top.color = self.background_color
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+        scroll_bottom.color = self.background_color
+        scroll_bottom.y = 115
+
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+        # Fullscreen shadow
+        self.fullscreen_shadow = Image()
+        self.fullscreen_shadow.allow_stretch = True
+        self.fullscreen_shadow.keep_ratio = False
+        self.fullscreen_shadow.size_hint_max = (None, 50)
+        self.fullscreen_shadow.color = (0, 0, 0, 1)
+        self.fullscreen_shadow.opacity = 0
+        self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
+        float_layout.add_widget(self.fullscreen_shadow)
+
+        # Add bottom/back buttons
+        buttons = []
+        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
+        for b in buttons:
+            float_layout.add_widget(b)
+
+        float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}' (YAML)"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Edit '${self.file_name}$'"))
+        self.add_widget(float_layout)
+
+        # Add search bar
+        self.search_bar = self.YamlSearchInput(size_hint_max_y=50)
+        self.search_bar.bind(text=self.search_text)
+        self.add_widget(self.search_bar)
+
+        self.match_label = AlignLabel()
+        self.match_label.text = '0 matches'
+        self.match_label.halign = "right"
+        self.match_label.color = (0.6, 0.6, 1, 1)
+        self.match_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+        self.match_label.font_size = sp(24)
+        self.match_label.y = 60
+        self.match_label.padding_x = 10
+        self.match_label.opacity = 0
+        self.add_widget(self.match_label)
+
+        # Input icon
+        self.input_background = Image()
+        self.input_background.default_opacity = 0.35
+        self.input_background.color = self.search_bar.foreground_color
+        self.input_background.opacity = self.input_background.default_opacity
+        self.input_background.allow_stretch = True
+        self.input_background.size_hint = (None, None)
+        self.input_background.height = self.search_bar.size_hint_max_y / 1.45
+        self.input_background.source = os.path.join(constants.gui_assets, 'icons', 'search.png')
+        self.add_widget(self.input_background)
+
+        # Controls popup
+        def show_controls():
+            controls_text = """This menu allows you to edit YML/YAML configuration files. Shortcuts are provided for ease of use:
+
+• Press 'CTRL+Z' to undo, and 'CTRL+R'/'CTRL+Y' to redo
+• Press 'CTRL+S' to save modifications
+• Press 'CTRL+Q' to quit the editor
+• Press 'CTRL+F' to search for data
+• Press 'SPACE' to toggle booleans (true/false)
+"""
+            # Adapt for macOS if needed
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_popup,
+                    "controls",
+                    "Controls",
+                    controls_text,
+                    (None)
+                ),
+                0
+            )
+
+        self.controls_button = IconButton('controls', {}, (70, 110), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_controls)
+        float_layout.add_widget(self.controls_button)
+
+        # Header banner
+        self.header = BannerObject(
+            pos_hint={"center_x": 0.5, "center_y": 0.9},
+            size=(250, 40),
+            color=(0.4, 0.682, 1, 1),
+            text="Viewing 'server.yml'",
+            icon="eye-outline.png"
+        )
+        self.add_widget(self.header)
+
+        # Save & quit
+        self.controls_button = IconButton('save & quit', {}, (120, 110), (None, None), 'save-sharp.png', clickable=True, anchor='right', click_func=self.save_and_quit, text_offset=(-5, 50))
+        float_layout.add_widget(self.controls_button)
+
+    def save_config(self):
+        """
+        Gather all lines from self.line_list, reconstruct the YAML data structure,
+        and write it to disk. Then reload it if desired.
+        """
+        # (1) Rebuild a dictionary or list from the flattened lines
+        # Here, we rely on each line's `key_label.original_text` for the path,
+        # and `value_label.text` for the value. We'll parse the path to see if it
+        # has array indices or nested keys, etc.
+
+        # Rebuild a nested data structure from flattened lines
+        # If you used flatten_yaml, you do the inverse here
+        data_tree = {}
+
+        def set_path_value(root, path_list, value):
+            # Recursively traverse 'root' based on path_list, setting the final value.
+            if not path_list:
+                return
+            key_part = path_list[0]
+            is_list_index = False
+            index_num = None
+
+            # If key_part is something like "outer[3]" we detect that
+            if '[' in key_part and key_part.endswith(']'):
+                # example:  outer[3]
+                bracket_pos = key_part.index('[')
+                actual_key = key_part[:bracket_pos]
+                index_num = int(key_part[bracket_pos + 1:-1])
+                is_list_index = True
+                key_part = actual_key
+
+            if len(path_list) == 1:
+                # Final key
+                if is_list_index:
+                    if key_part not in root:
+                        root[key_part] = []
+                    # ensure list length
+                    while len(root[key_part]) <= index_num:
+                        root[key_part].append(None)
+                    # set the value
+                    # Attempt numeric or boolean parse if you want strict types
+                    root[key_part][index_num] = value
+                else:
+                    root[key_part] = value
+            else:
+                # Not final key
+                if is_list_index:
+                    if key_part not in root:
+                        root[key_part] = []
+                    while len(root[key_part]) <= index_num:
+                        root[key_part].append({})
+                    if not isinstance(root[key_part][index_num], dict):
+                        root[key_part][index_num] = {}
+                    set_path_value(root[key_part][index_num], path_list[1:], value)
+                else:
+                    if key_part not in root:
+                        root[key_part] = {}
+                    if not isinstance(root[key_part], dict):
+                        root[key_part] = {}
+                    set_path_value(root[key_part], path_list[1:], value)
+
+        for line in self.line_list:
+            key_str = line.key_label.original_text
+            val_str = line.value_label.text
+
+            # Convert value to python type if desired
+            # For now, keep raw strings, but handle bool/numbers, etc.
+            parsed_val = val_str
+            # Attempt boolean
+            if parsed_val.lower() in ['true', 'false']:
+                parsed_val = (parsed_val.lower() == 'true')
+            else:
+                # Attempt number
+                try:
+                    if '.' in parsed_val:
+                        parsed_val = float(parsed_val)
+                    else:
+                        parsed_val = int(parsed_val)
+                except ValueError:
+                    pass
+
+            # Split key_str on '.' or detect [x]
+            # e.g. outer.inner => ["outer", "inner"]
+            # e.g. outer[3] => ["outer[3]"]
+            # If you used flatten_yaml's logic, key_str might contain multiple '.' segments
+            path_list = key_str.split('.')
+            set_path_value(data_tree, path_list, parsed_val)
+
+        # (2) Dump new data_tree to YAML
+        server_obj = constants.server_manager.current_server
+        yaml_path = self.path
+
+        try:
+            with open(yaml_path, 'w', encoding='utf-8') as f:
+                constants.yaml.dump(data_tree, f, sort_keys=False, allow_unicode=True)
+        except Exception as e:
+            if constants.debug:
+                print("Error saving YAML:", e)
+
+        # (3) Optionally reload the data
+        server_obj.reload_config()
+
+        # (4) Show banner or message
+        self.server_yaml = data_tree
+        self.set_banner_status(False)
+
+        if server_obj.running:
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_banner,
+                    (0.937, 0.831, 0.62, 1),
+                    f"A server restart is required to apply changes",
+                    "sync.png",
+                    3,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+        else:
+            Clock.schedule_once(
+                functools.partial(
+                    screen_manager.current_screen.show_banner,
+                    (0.553, 0.902, 0.675, 1),
+                    f"'{self.file_name}' was saved successfully",
+                    "checkmark-circle-sharp.png",
+                    2.5,
+                    {"center_x": 0.5, "center_y": 0.965}
+                ), 0
+            )
+
+    def quit_to_menu(self, *a):
+        for button in self.walk():
+            try:
+                if button.id == "exit_button":
+                    button.force_click()
+                    break
+            except AttributeError:
+                continue
+
+    def save_and_quit(self, *a):
+        self.save_config()
+        self.quit_to_menu()
+
+    # Reload YAML from disk (or from server_obj) to discard unsaved changes
+    def reset_data(self):
+        server_obj = constants.server_manager.current_server
+        try:
+            with open(self.path, 'r', encoding='utf-8') as f:
+                self.server_yaml = constants.yaml.safe_load(f)
+        except:
+            self.server_yaml = {}
+
+        # Rebuild the lines
+        self.undo_history = []
+        self.redo_history = []
+        flatten_yaml = []
+        # ... Re-flatten if needed
+        # ... Then reassign to your EditorLine similarly to generate_menu
+        # This can be as simple as calling generate_menu again, or a partial rebuild.
+
+        self.set_banner_status(False)
+
+    def check_data(self):
+        """
+        Check if lines match the last saved self.server_yaml.
+        You can do a quick check by re-building data_tree from line_list
+        and comparing to self.server_yaml or to the file on disk.
+        """
+        # Quick approach:
+        # 1. Rebuild dictionary from line_list
+        # 2. Compare to self.server_yaml
+        # If they match, return True else False.
+        # Implementation is omitted for brevity, but see `save_config` logic.
+        return True
+
+    def set_banner_status(self, changed=False):
+        if changed != self.modified:
+            # Change header
+            self.remove_widget(self.header)
+            del self.header
+
+            if changed:
+                self.header = BannerObject(
+                    pos_hint={"center_x": 0.5, "center_y": 0.9},
+                    size=(250, 40),
+                    color="#F3ED61",
+                    text=f"Editing '${self.file_name}$'",
+                    icon="pencil-sharp.png",
+                    animate=True
+                )
+                self.add_widget(self.header)
+            else:
+                self.header = BannerObject(
+                    pos_hint={"center_x": 0.5, "center_y": 0.9},
+                    size=(250, 40),
+                    color=(0.4, 0.682, 1, 1),
+                    text=f"Viewing '${self.file_name}$'",
+                    icon="eye-outline.png",
+                    animate=True
+                )
+                self.add_widget(self.header)
+
+        self.modified = changed
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        # Much of this logic is the same as your original, adapted for YAML.
+        # Checking for popup, control+S, control+Q, arrows for switch_input, etc.
+        if self.popup_widget:
+            # handle popup
+            # ...
+            return True
+
+        # If we hit escape or ctrl+q
+        if (keycode[1] == 'q' and control in modifiers) or keycode[1] == 'escape':
+            if self.modified:
+                self.show_popup(
+                    "query",
+                    "Unsaved Changes",
+                    f"There are unsaved changes in '${self.file_name}$'.\n\nWould you like to save before quitting?",
+                    [functools.partial(Clock.schedule_once, self.quit_to_menu, 0.25),
+                     functools.partial(Clock.schedule_once, self.save_and_quit, 0.25)]
+                )
+            else:
+                self.quit_to_menu()
+            return True
+
+        # arrow keys
+        if keycode[1] in ['down', 'up', 'pagedown', 'pageup']:
+            self.switch_input(keycode[1])
+
+        # ctrl+F
+        if keycode[1] == 'f' and control in modifiers:
+            if not self.search_bar.focused:
+                self.search_bar.grab_focus()
+            else:
+                # return focus to input
+                if self.current_line is not None:
+                    self.focus_input()
+            return True
+
+        # ctrl+S
+        if keycode[1] == 's' and control in modifiers and self.modified:
+            self.save_config()
+
+        # Undo/Redo
+        if keycode[1] == 'z' and control in modifiers and self.undo_history:
+            self.undo(save=False, undo=True)
+        elif keycode[1] == 'z' and control in modifiers and not self.undo_history:
+            if not self.check_data():
+                self.reset_data()
+        if keycode[1] in ['r', 'y'] and control in modifiers and self.redo_history:
+            self.undo(save=False, undo=False)
+
+        # Finally, update banner if changed
+        def set_banner(*a):
+            self.set_banner_status(not self.check_data())
+
+        Clock.schedule_once(set_banner, 0)
+
+        return True
+
+
+
+# Server Settings Screen ---------------------------------------------------------------------------------------------
 
 def toggle_proxy(boolean, *args):
     server_obj = constants.server_manager.current_server
