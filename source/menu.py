@@ -22912,7 +22912,7 @@ def open_config_file(path: str):
 
     try:
         server_obj = constants.server_manager.current_server
-        ext = os.path.split('.')[-1]
+        ext = path.split('.')[-1]
 
         # First check if file is compatible
         if ext not in valid_editor_ext:
@@ -22921,13 +22921,13 @@ def open_config_file(path: str):
         return False
 
     # If this file is via Telepath, download it first prior to editing
-    if server_obj._telepath_data:
-        config_data['_telepath_data'] = server_obj._telepath_data
+    config_data['_telepath_data'] = server_obj._telepath_data
+    if server_obj._telepath_data and os.path.basename(path) != 'server.properties':
         config_data['remote_path'] = path
         config_data['path'] = constants.telepath_download(server_obj._telepath_data, path)
 
     # Check if file exits and pick the correct editor for the format
-    if os.path.isfile(path):
+    if os.path.isfile(path) or path == 'server.properties':
         editor_screen = None
 
         if ext == 'properties':
@@ -22945,12 +22945,12 @@ def open_config_file(path: str):
         else:
             editor_screen = 'ServerTextEditScreen'
 
-        screen_manager.get_screen(editor_screen).update_data(config_data)
+        screen_manager.get_screen(editor_screen).update_path(config_data)
         screen_manager.current = editor_screen
 
     return False
 
-def save_config_file(data: dict):
+def save_config_file(data: dict, content: str):
 
     # This one is kind of tricky
     # 1. If Telepath, upload file remotely
@@ -23636,25 +23636,31 @@ class ServerPropertiesEditScreen(EditorRoot):
         self.modified = False
 
         # Get 'server.properties' remotely if needed
-        if server_obj._telepath_data:
-            server_obj._clear_attr_cache()
-            self.server_properties = []
-            for key, value in server_obj.server_properties.items():
-                if not (key or value):
-                    continue
+        if self.file_name == 'server.properties':
+            if self._config_data['_telepath_data']:
+                server_obj._clear_attr_cache()
+                self.server_properties = []
+                for key, value in server_obj.server_properties.items():
+                    if not (key or value):
+                        continue
 
-                if key.startswith("#"):
-                    line = "#" + key.strip('#').strip()
-                else:
-                    if isinstance(value, bool):
-                        value = str(value).lower()
-                    line = f"{key}={value}"
+                    if key.startswith("#"):
+                        line = "#" + key.strip('#').strip()
+                    else:
+                        if isinstance(value, bool):
+                            value = str(value).lower()
+                        line = f"{key}={value}"
 
-                self.server_properties.append(line)
+                    self.server_properties.append(line)
 
+            else:
+                properties = constants.server_path(server_obj.name, 'server.properties')
+                with open(properties, 'r') as f:
+                    self.server_properties = f.read().strip().splitlines()
+
+        # Process other '*.properties' files
         else:
-            properties = constants.server_path(server_obj.name, 'server.properties')
-            with open(properties, 'r') as f:
+            with open(self.path, 'r') as f:
                 self.server_properties = f.read().strip().splitlines()
 
 
@@ -23834,6 +23840,8 @@ class ServerPropertiesEditScreen(EditorRoot):
         server_obj = constants.server_manager.current_server
         final_config = {}
 
+
+        # Initially format the widget data into a processable dictionary
         for line in self.line_list:
             key = line.key_label.original_text
             value = line.value_label.text
@@ -23846,25 +23854,43 @@ class ServerPropertiesEditScreen(EditorRoot):
             else:
                 final_config[key] = value.strip()
 
-        server_obj.server_properties = final_config
-        server_obj.write_config()
-        server_obj.reload_config()
 
-        self.server_properties = []
-        for line in self.line_list:
-            key = line.key_label.original_text
-            value = line.value_label.text
+        # Reload 'server.properties' internally
+        if self.file_name == 'server.properties':
+            server_obj.server_properties = final_config
+            server_obj.write_config()
+            server_obj.reload_config()
 
-            if not (key or value):
-                continue
+            self.server_properties = []
+            for line in self.line_list:
+                key = line.key_label.original_text
+                value = line.value_label.text
 
-            if key.startswith("# "):
-                line = "#" + key[1:].strip()
-            else:
-                line = f"{key}={value}"
-            self.server_properties.append(line)
+                if not (key or value):
+                    continue
+
+                if key.startswith("# "):
+                    line = "#" + key[1:].strip()
+                else:
+                    line = f"{key}={value}"
+                self.server_properties.append(line)
+
+
+        # Other '*.properties' files
+        else:
+            file_contents = ""
+            for key, value in final_config.items():
+
+                # Force boolean values
+                if str(value).lower().strip() in ['true', 'false']:
+                    value = str(value).lower().strip()
+
+                file_contents += f"{key}{'' if key.startswith('#') else ('=' + str(value))}\n"
+            save_config_file(self._config_data, file_contents)
+
 
         self.set_banner_status(False)
+
 
         # Show banner if server is running
         if server_obj.running:
@@ -23884,7 +23910,7 @@ class ServerPropertiesEditScreen(EditorRoot):
                 functools.partial(
                     screen_manager.current_screen.show_banner,
                     (0.553, 0.902, 0.675, 1),
-                    "'server.properties' was saved successfully",
+                    f"'${self.file_name}$' was saved successfully",
                     "checkmark-circle-sharp.png",
                     2.5,
                     {"center_x": 0.5, "center_y": 0.965}
@@ -25520,7 +25546,7 @@ class ServerSettingsScreen(MenuBackground):
 
         # Edit properties button
         def edit_server_properties(*args):
-            screen_manager.current = 'ServerPropertiesEditScreen'
+            open_config_file('server.properties')
 
         sub_layout = ScrollItem()
         self.edit_properties_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
