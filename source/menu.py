@@ -22894,7 +22894,86 @@ class ServerAmscriptSearchScreen(MenuBackground):
 
 # Edit Config Screens ------------------------------------------------------------------------------------------------
 
-class ServerPropertiesEditScreen(MenuBackground):
+# Notes for cohesion:
+# - Create foundation function to determine the file type and open the specific editor
+#   - Make this function download the remote file and sync on save if Telepath
+#   - Change ServerPropertiesEditScreen to also support other .properties files because apparently that's not the only file which uses said format
+#   - Support JSON, TOML, and INI as well
+#   - If the file type isn't supported, have a plain-text editor as well
+
+# Determines the type of config file and open in the proper editor
+valid_editor_ext = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'ini']
+def open_config_file(path: str):
+    config_data = {
+        'path': path,
+        'remote_path': None,
+        '_telepath_data': None
+    }
+
+    try:
+        server_obj = constants.server_manager.current_server
+        ext = os.path.split('.')[-1]
+
+        # First check if file is compatible
+        if ext not in valid_editor_ext:
+            return False
+    except:
+        return False
+
+    # If this file is via Telepath, download it first prior to editing
+    if server_obj._telepath_data:
+        config_data['_telepath_data'] = server_obj._telepath_data
+        config_data['remote_path'] = path
+        config_data['path'] = constants.telepath_download(server_obj._telepath_data, path)
+
+    # Check if file exits and pick the correct editor for the format
+    if os.path.isfile(path):
+        editor_screen = None
+
+        if ext == 'properties':
+            editor_screen = 'ServerPropertiesEditScreen'
+
+        elif ext in ['yml', 'yaml']:
+            editor_screen = 'ServerYamlEditScreen'
+
+        elif ext in ['tml', 'toml']:
+            editor_screen = 'ServerTomlEditScreen'
+
+        elif ext == 'json':
+            editor_screen = 'ServerJsonEditScreen'
+
+        else:
+            editor_screen = 'ServerTextEditScreen'
+
+        screen_manager.get_screen(editor_screen).update_data(config_data)
+        screen_manager.current = editor_screen
+
+    return False
+
+def save_config_file(data: dict):
+
+    # This one is kind of tricky
+    # 1. If Telepath, upload file remotely
+    # 2. Create an endpoint to overwrite the local server file with the one uploaded to "Uploads"
+    #   - This will need directory validation to prevent directory traversal, force fail if writing outside the server directory
+    #   - This will also need name validation to make sure that the file name matches the file it's replacing
+    #   - These two mechanisms should prevent anyone arbitrarily writing data to anywhere on remote
+
+    pass
+
+class EditorRoot(MenuBackground):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._config_data = None
+        self.path = None
+        self.file_name = None
+
+    def update_path(self, data: dict):
+        self._config_data = data
+        self.path = self._config_data['path']
+        self.file_name = os.path.basename(self.path)
+
+class ServerPropertiesEditScreen(EditorRoot):
     class EditorLine(RelativeLayout):
 
         def on_resize(self, *args):
@@ -23657,7 +23736,7 @@ class ServerPropertiesEditScreen(MenuBackground):
             float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Edit 'server.properties'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Edit '${self.file_name}$'"))
 
         self.add_widget(float_layout)
 
@@ -24041,9 +24120,7 @@ class ServerPropertiesEditScreen(MenuBackground):
         # Return True to accept the key. Otherwise, it will be used by the system.
         return True
 
-
-class ServerYamlEditScreen(MenuBackground):
-
+class ServerYamlEditScreen(EditorRoot):
     class EditorLine(RelativeLayout):
 
         def on_resize(self, *args):
@@ -24539,9 +24616,6 @@ class ServerYamlEditScreen(MenuBackground):
 
         self.background_color = constants.brighten_color(constants.background_color, -0.1)
 
-        self.path = None
-        self.file_name = None
-
         # Background
         with self.canvas.before:
             self.color = Color(*self.background_color, mode='rgba')
@@ -24671,8 +24745,7 @@ class ServerYamlEditScreen(MenuBackground):
 
         # (1) Load the YAML. If it's remote, adapt as needed.
         # If you already have it in server_obj, do so. Otherwise:
-        yaml_path = constants.server_path(server_obj.name, 'server.yml')
-        with open(yaml_path, 'r', encoding='utf-8') as f:
+        with open(self.path, 'r', encoding='utf-8') as f:
             try:
                 self.server_yaml = constants.yaml.safe_load(f)
             except constants.yaml.YAMLError:
@@ -24949,17 +25022,13 @@ class ServerYamlEditScreen(MenuBackground):
 
         # (2) Dump new data_tree to YAML
         server_obj = constants.server_manager.current_server
-        yaml_path = self.path
-
         try:
-            with open(yaml_path, 'w', encoding='utf-8') as f:
+            with open(self.path, 'w', encoding='utf-8') as f:
                 constants.yaml.dump(data_tree, f, sort_keys=False, allow_unicode=True)
+                save_config_file(self._config_data)
         except Exception as e:
             if constants.debug:
                 print("Error saving YAML:", e)
-
-        # (3) Optionally reload the data
-        server_obj.reload_config()
 
         # (4) Show banner or message
         self.server_yaml = data_tree
