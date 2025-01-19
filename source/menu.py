@@ -22902,8 +22902,7 @@ class ServerAmscriptSearchScreen(MenuBackground):
 #   - If the file type isn't supported, have a plain-text editor as well
 
 # Determines the type of config file and open in the proper editor
-valid_editor_ext = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'ini']
-def open_config_file(path: str):
+def open_config_file(path: str, *a):
     config_data = {
         'path': path,
         'remote_path': None,
@@ -22915,7 +22914,7 @@ def open_config_file(path: str):
         ext = path.split('.')[-1]
 
         # First check if file is compatible
-        if ext not in valid_editor_ext:
+        if ext not in constants.valid_config_formats:
             return False
     except:
         return False
@@ -22939,7 +22938,7 @@ def open_config_file(path: str):
         elif ext in ['tml', 'toml']:
             editor_screen = 'ServerTomlEditScreen'
 
-        elif ext == 'json':
+        elif ext in ['json', 'json5']:
             editor_screen = 'ServerJsonEditScreen'
 
         else:
@@ -22960,6 +22959,299 @@ def save_config_file(data: dict, content: str):
     #   - These two mechanisms should prevent anyone arbitrarily writing data to anywhere on remote
 
     pass
+
+
+# Controller for ConfigFiles containers
+class ConfigFolder(RelativeLayout, HoverBehavior):
+    def __init__(self, path: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Internal properties
+        self.path = path
+        self.files = None
+        self.folded = True
+
+        # Widget properties
+        self.size_hint_max_y = 50
+        self.pos_hint = {'center_y': 1}
+        self.color = (0.6, 0.6, 1, 1)
+        self.opacity = 0.7
+
+        # Click behavior
+        self.button = Button()
+        self.button.opacity = 0
+        def on_click(*a):
+            self.toggle_fold(not self.folded)
+        self.button.bind(on_press=on_click)
+        self.add_widget(self.button)
+
+        # Folder icon
+        self.icon = Image()
+        self.icon.color = self.color
+        self.icon.opacity = 1
+        self.icon.allow_stretch = True
+        self.icon.keep_ratio = False
+        self.icon.size_hint_max = (35, 35)
+        self.icon.y = 5
+        self.icon.source = os.path.join(constants.gui_assets, 'icons', 'folder.png')
+        self.add_widget(self.icon)
+
+        # Folder text
+        self.text = AlignLabel()
+        self.text.__translate__ = False
+        self.text.halign = "left"
+        self.text.valign = "middle"
+        self.text.color = self.color
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.text.font_size = sp(25)
+        self.text.max_lines = 1
+        self.text.text = os.path.basename(self.path)
+        self.text.x = 55
+        self.add_widget(self.text)
+
+    def toggle_fold(self, fold=True, *a):
+        self.folded = fold
+        self.files.hide(fold)
+
+        # Capture old scroll data
+        screen = screen_manager.current_screen
+        old_scroll_ratio = screen.scroll_widget.scroll_y
+        old_content_height = screen.scroll_layout.height
+        viewport_height = screen.scroll_widget.height
+
+        # Adjust folder height
+        new_height = 0 if fold else len(self.files.file_list) * 50
+        self.files.size_hint_min_y = new_height
+
+        # Update icon and text
+        self.icon.source = os.path.join(constants.gui_assets, 'icons', 'folder.png' if self.folded else 'folder-outline.png')
+        Animation(opacity=0.7 if self.folded else 1, duration=0.1).start(self)
+
+        # Force update so the scroll_layout adjusts its height and update scroll position
+        def after_layout(*_):
+            screen.scroll_anchor.do_layout()
+            screen.scroll_layout.do_layout()
+            screen.scroll_anchor.size_hint_min_y = screen.scroll_layout.height
+
+            # Convert old pixel offset to the new scroll ratio
+            new_content_height = screen.scroll_layout.height
+            scrollable = new_content_height - viewport_height
+            if scrollable > 0:
+                # distance from top in pixels
+                old_offset_from_top = (1 - old_scroll_ratio) * (old_content_height - viewport_height)
+                new_ratio = 1 - (old_offset_from_top / scrollable)
+                new_ratio = min(max(new_ratio, 0), 1)
+                screen.scroll_widget.scroll_y = new_ratio
+
+            # No scrolling needed if content < viewport
+            else:
+                screen.scroll_widget.scroll_y = 1
+
+        Clock.schedule_once(after_layout, -1)
+
+
+# A container for ConfigFile objects that is controlled by ConfigFolder
+class ConfigFiles(GridLayout):
+
+    # A single file representation inside the parent
+    class ConfigFile(RelativeLayout):
+        def __init__(self, path: str, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+            # Internal properties
+            self.path = path
+
+            # Widget properties
+            self.size_hint_min_y = 50
+            self.size_hint_max_y = 50
+            self.pos_hint = {'center_y': 1}
+            self.color = (0.6, 0.6, 1, 1)
+            self.original_opacity = 0.5
+            self.hover_delay = 0.15
+
+            # Background button
+            self.button = HoverButton()
+            self.button.opacity = 0
+            self.button.y = -12
+            self.button.on_enter = self.on_enter
+            self.button.on_leave = self.on_leave
+            self.button.on_press = self.on_click
+            self.add_widget(self.button)
+
+            # File icon
+            self.icon = Image()
+            self.icon.color = self.color
+            self.icon.opacity = self.original_opacity
+            self.icon.allow_stretch = True
+            self.icon.keep_ratio = False
+            self.icon.size_hint_max = (35, 35)
+            self.icon.source = os.path.join(constants.gui_assets, 'icons', 'document-text-sharp.png')
+            self.icon.y = -3
+            self.add_widget(self.icon)
+
+            # File text
+            self.text = AlignLabel()
+            self.text.__translate__ = False
+            self.text.halign = "left"
+            self.text.valign = "bottom"
+            self.text.color = self.color
+            self.text.opacity = self.original_opacity
+            self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+            self.text.font_size = sp(25)
+            self.text.max_lines = 1
+            self.text.text = os.path.basename(self.path)
+            self.text.x = 48
+            self.add_widget(self.text)
+
+        def on_click(self):
+            new_color = (0.75, 0.75, 1, 1)
+            self.text.color = new_color
+            self.icon.color = new_color
+            Animation(color=self.color, duration=self.hover_delay).start(self.text)
+            Animation(color=self.color, duration=self.hover_delay).start(self.icon)
+            Clock.schedule_once(functools.partial(open_config_file, self.path), 0)
+
+
+        def on_enter(self):
+            Animation.stop_all(self.text)
+            Animation.stop_all(self.icon)
+            Animation(opacity=1, duration=self.hover_delay).start(self.text)
+            Animation(opacity=1, duration=self.hover_delay).start(self.icon)
+
+        def on_leave(self):
+            Animation.stop_all(self.text)
+            Animation.stop_all(self.icon)
+            Animation(opacity=self.original_opacity, duration=self.hover_delay).start(self.text)
+            Animation(opacity=self.original_opacity, duration=self.hover_delay).start(self.icon)
+
+    # Pretty animation :)
+    def hide(self, hide: bool = True):
+        constants.hide_widget(self, hide)
+        if not hide:
+            def animate(c, *a):
+                Animation.stop_all(c)
+                Animation(opacity=1, duration=0.15).start(c)
+            for child in self.children:
+                child.opacity = 0
+            for x, child in enumerate(reversed(self.children), 1):
+                if x > 10:
+                    x = 10
+                Clock.schedule_once(functools.partial(animate, child), x*0.03)
+
+    def __init__(self, folder: ConfigFolder, files: list, fold: bool = True, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Internal properties
+        self.folder = folder
+        self.file_list = files
+        folder.files = self
+
+        # Widget properties
+        self.pos_hint = {'center_y': 1}
+        self.cols = 1
+        self.padding = [0, -35.5, 0, 0]
+
+        # Add files to self
+        for file in self.file_list:
+            self.add_widget(self.ConfigFile(file))
+
+        Clock.schedule_once(functools.partial(self.folder.toggle_fold, fold), 0)
+
+
+# Abstracted file manager to display folders and config files
+class ServerConfigScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.scroll_widget = None
+        self.scroll_anchor = None
+        self.scroll_layout = None
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+
+        # Ignore screen if there are no config paths in the current server
+        if not server_obj.config_paths:
+            server_obj.reload_config_paths()
+            if not server_obj.config_paths:
+                previous_screen()
+                return
+
+        # Scroll list
+        self.scroll_widget = ScrollViewWidget()
+        self.scroll_widget.pos_hint = {'center_y': 0.485, 'center_x': 0.5}
+        self.scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(
+            cols=2,
+            spacing=10,
+            size_hint_max_x=750,
+            size_hint_y=None,
+            padding=[0, 80, 0, 60]
+        )
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.5
+            grid_layout.cols = 2
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout, self.scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.79}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.18}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(HeaderText("Select a configuration file to edit", '', (0, 0.88)))
+
+        # Create two linked widgets for the folder and the items
+        for folder, files in server_obj.config_paths.items():
+
+            folder_obj = ConfigFolder(folder)
+            files_obj = ConfigFiles(folder_obj, files, os.path.basename(folder) != server_obj.name)
+
+            folder_layout = RelativeLayout(size_hint_min_y=50)
+            folder_layout.pos_hint = {'center_y': 1}
+            folder_layout.add_widget(folder_obj)
+            self.scroll_layout.add_widget(folder_layout)
+            self.scroll_layout.add_widget(files_obj)
+
+
+        # Append scroll view items
+        self.scroll_anchor.add_widget(self.scroll_layout)
+        self.scroll_widget.add_widget(self.scroll_anchor)
+        float_layout.add_widget(self.scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+
+        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Edit config"))
+
+        self.add_widget(float_layout)
+
+
 
 class EditorRoot(MenuBackground):
     def __init__(self, **kwargs):
@@ -23823,7 +24115,7 @@ class ServerPropertiesEditScreen(EditorRoot):
             pos_hint = {"center_x": (0.5), "center_y": 0.9},
             size = (250, 40),
             color = (0.4, 0.682, 1, 1),
-            text = "Viewing 'server.properties'",
+            text = f"Viewing '${self.file_name}$'",
             icon = "eye-outline.png"
         )
         self.add_widget(self.header)
@@ -23986,7 +24278,7 @@ class ServerPropertiesEditScreen(EditorRoot):
                     pos_hint = {"center_x": (0.5), "center_y": 0.9},
                     size = (250, 40),
                     color = "#F3ED61",
-                    text = "Editing 'server.properties'",
+                    text = f"Editing '${self.file_name}$'",
                     icon = "pencil-sharp.png",
                     animate = True
                 )
@@ -23996,7 +24288,7 @@ class ServerPropertiesEditScreen(EditorRoot):
                     pos_hint = {"center_x": (0.5), "center_y": 0.9},
                     size = (250, 40),
                     color = (0.4, 0.682, 1, 1),
-                    text = "Viewing 'server.properties'",
+                    text = f"Viewing '${self.file_name}$'",
                     icon = "eye-outline.png",
                     animate = True
                 )
@@ -25098,7 +25390,6 @@ class ServerYamlEditScreen(EditorRoot):
 
     # Reload YAML from disk (or from server_obj) to discard unsaved changes
     def reset_data(self):
-        server_obj = constants.server_manager.current_server
         try:
             with open(self.path, 'r', encoding='utf-8') as f:
                 self.server_yaml = constants.yaml.safe_load(f)
@@ -25450,7 +25741,7 @@ class ServerSettingsScreen(MenuBackground):
         self.footer_widget = None
         self.menu_taskbar = None
 
-        self.edit_properties_button = None
+        self.config_button = None
         self.open_path_button = None
         self.update_button = None
         self.update_label = None
@@ -25544,13 +25835,19 @@ class ServerSettingsScreen(MenuBackground):
 
         general_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
-        # Edit properties button
-        def edit_server_properties(*args):
-            open_config_file('server.properties')
+        if server_obj.type == 'vanilla':
+            # Edit properties button
+            def edit_server_properties(*args):
+                open_config_file('server.properties')
+            self.config_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
+        else:
+            # Edit config button
+            def open_config_menu(*args):
+                screen_manager.current = 'ServerConfigScreen'
+            self.config_button = WaitButton("Edit Configuration Files", (0.5, 0.5), 'document-text-outline.png', click_func=open_config_menu)
 
         sub_layout = ScrollItem()
-        self.edit_properties_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
-        sub_layout.add_widget(self.edit_properties_button)
+        sub_layout.add_widget(self.config_button)
         general_layout.add_widget(sub_layout)
 
 

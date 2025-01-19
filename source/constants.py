@@ -43,7 +43,7 @@ import amscript
 
 app_version = "2.2.7"
 ams_version = "1.4"
-telepath_version = "1.0.4"
+telepath_version = "1.0.5"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -5899,6 +5899,43 @@ max-world-size=29999984"""
         f.write(serverProperties)
 
 
+# Recursively gathers all config files with a specific depth (default 3)
+# Returns {"dir1": ['match1', 'match2', 'match3', ...]}
+valid_config_formats = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'json5', 'ini']
+def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
+    root = server_path(name)
+    excludes = ['version_history.json', 'version_list.json', 'usercache.json', 'banned-players.json', 'banned-ips.json', 'whitelist.json', 'ops.json', server_ini]
+    final_dict = {}
+
+    def process_dir(path: str, depth: int = 0):
+        if depth > max_depth:
+            return
+
+        match_list = []
+
+        try:
+            with os.scandir(path) as items:
+                for item in items:
+
+                    # Add to final_dict if it's a valid config file
+                    if item.is_file() and os.path.splitext(item.name)[1].strip('.') in valid_config_formats and item.name not in excludes:
+                        match_list.append(item.path)
+
+                    # Continue recursion until max_depth is reached
+                    elif item.is_dir():
+                        process_dir(item.path, depth + 1)
+
+        except (PermissionError, FileNotFoundError) as e:
+            if debug:
+                print(f"Error accessing {path}: {e}")
+
+        if match_list:
+            final_dict[path] = sorted(match_list, key=lambda x: (os.path.basename(x) != 'server.properties', os.path.basename(x)))
+
+    process_dir(root)
+    return dict(sorted(final_dict.items(), key=lambda item: (os.path.basename(item[0]) != name, os.path.basename(item[0]))))
+
+
 # CTRL + Backspace function
 def control_backspace(text, index):
 
@@ -5930,9 +5967,7 @@ def control_backspace(text, index):
 
 # Updates the server icon with a new image
 # Returns: [bool: success, str: reason]
-valid_image_formats = [
-    "*.png", "*.jpg", "*.jpeg", "*.gif", "*.jpe", "*.jfif", "*.tif", "*.tiff", "*.bmp", "*.icns", "*.ico", "*.webp"
-]
+valid_image_formats = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.jpe", "*.jfif", "*.tif", "*.tiff", "*.bmp", "*.icns", "*.ico", "*.webp"]
 def update_server_icon(server_name: str, new_image: str = False) -> [bool, str]:
     icon_path = os.path.join(server_path(server_name), 'server-icon.png')
 
@@ -6723,7 +6758,7 @@ class SearchManager():
                 ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
                 ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}, ['mod', 'plugin', 'addon', 'extension']),
                 ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}, ['amscript', 'script', 'ide', 'develop']),
-                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (playit)': None, 'Install proxy (playit)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'playit', 'update', 'jvm', 'motd'])
+                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit configuration files": None, "Edit 'server.properties'": None, 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (playit)': None, 'Install proxy (playit)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'playit', 'update', 'jvm', 'motd', 'yml', 'config'])
             ]
         }
 
