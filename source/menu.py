@@ -24553,8 +24553,6 @@ class ServerYamlEditScreen(EditorRoot):
         def highlight_text(self, text):
             """
             Attempt to highlight text in both key and value for searching.
-            Largely the same logic as your original, but referencing
-            self.key_label.original_text and self.value_label.text.
             """
             self.last_search = text
             self.key_label.text = self.key_label.original_text
@@ -24572,7 +24570,8 @@ class ServerYamlEditScreen(EditorRoot):
                     for box in boxes:
                         with label.canvas.before:
                             Color(*self.select_color)
-                            Rectangle(pos=(get_x(label, box[0]), get_y(label, box[1])), size=(box[2] - box[0], box[1] - box[3]))
+                            Rectangle(pos=(get_x(label, box[0]), get_y(label, box[1])),
+                                      size=(box[2] - box[0], box[1] - box[3]))
 
             text = text.strip()
             if text:
@@ -24635,7 +24634,8 @@ class ServerYamlEditScreen(EditorRoot):
 
             # Key label
             self.key_label.font_name = self.font_name
-            self.key_label.default_color = "#636363" if self.is_comment else (0.5, 0.5, 1, 1) if self.is_header else "#5E6BFF"
+            self.key_label.default_color = "#636363" if self.is_comment else \
+                (0.5, 0.5, 1, 1) if self.is_header else "#5E6BFF"
 
             # Equals sign
             self.eq_label.font_name = self.font_name
@@ -24647,8 +24647,19 @@ class ServerYamlEditScreen(EditorRoot):
             elif not self.is_list_header and not self.value_label.parent:
                 self.add_widget(self.value_label)
 
-
-        def __init__(self, line, key, value, indent_level, is_header, is_list_header, max_line_count, index_func, undo_func, **kwargs):
+        def __init__(
+            self,
+            line,
+            key,
+            value,
+            indent_level,
+            is_header,
+            is_list_header,
+            max_line_count,
+            index_func,
+            undo_func,
+            **kwargs
+        ):
             super().__init__(**kwargs)
 
             # Format list_headers
@@ -24691,7 +24702,6 @@ class ServerYamlEditScreen(EditorRoot):
                 def grab_focus(me, *a):
                     def focus_later(*args):
                         me.focus = True
-
                     Clock.schedule_once(focus_later, 0)
 
                 def on_focus(me, *args):
@@ -24722,10 +24732,6 @@ class ServerYamlEditScreen(EditorRoot):
                     me.foreground_color = (0.408, 0.889, 1, 1)
                     me.cursor_color = (0.358, 0.839, 1, 1)
                     me.selection_color = (0.308, 0.789, 1, 0.4)
-
-                    # Remove newlines if you want single-line, or keep them if you support multiline
-                    # For multiline YAML support, we allow newlines:
-                    # me.text = me.text.replace("\r", "")  # Keep \n
 
                     # Boolean detection
                     if me.text.lower() in ['true', 'false', 'yes', 'no']:
@@ -24768,23 +24774,23 @@ class ServerYamlEditScreen(EditorRoot):
 
                     Clock.schedule_once(highlight, 0)
 
-                # Hook into insert_text
                 def insert_text(me, substring, from_undo=False):
                     if screen_manager.current_screen.popup_widget:
                         return None
                     super(EditorInput, me).insert_text(substring, from_undo=from_undo)
 
-                # Key press
                 def keyboard_on_key_down(me, window, keycode, text, modifiers):
                     # Ignore global undo/redo
                     if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
                         return None
 
-                    # Undo functionality
-                    if (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (keycode[1] == 'v' and control in modifiers) or (keycode[1] == 'backspace' and control in modifiers):
+                    # Undo functionality (text-level changes)
+                    if (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) \
+                       or (keycode[1] == 'v' and control in modifiers) \
+                       or (keycode[1] == 'backspace' and control in modifiers):
                         undo_func(save=True)
 
-                    # Toggle boolean
+                    # Toggle boolean on space
                     def replace_text(val, *args):
                         me.text = val
 
@@ -24805,14 +24811,19 @@ class ServerYamlEditScreen(EditorRoot):
                     # Ctrl+Backspace
                     if keycode[1] == "backspace" and control in modifiers:
                         original_index = me.cursor_col
-                        new_text, index = constants.control_backspace(me.text, original_index)
-                        me.select_text(original_index - index, original_index)
+                        new_text, idx = constants.control_backspace(me.text, original_index)
+                        me.select_text(original_index - idx, original_index)
                         me.delete_selection()
                     else:
                         super(EditorInput, me).keyboard_on_key_down(window, keycode, text, modifiers)
 
+                    # --------------------------------------------------
+                    # CHANGES FOR UNDO/REDO OF LINE INSERT/REMOVE
+                    # --------------------------------------------------
+
                     # Add a new list item on pressing "enter" in a current list
-                    if ((self.is_list_item and me.text) or (not self.is_list_item and not me.text)) and keycode[1] in ['enter', 'return']:
+                    if ((self.is_list_item and me.text) or (not self.is_list_item and not me.text)) \
+                       and keycode[1] in ['enter', 'return']:
                         parent = self.parent
                         if not parent:
                             return
@@ -24822,25 +24833,51 @@ class ServerYamlEditScreen(EditorRoot):
                             self.reload_display()
 
                         new_line = type(self)(
-                                self.line + 1,
-                                '__list__',
-                                '',
-                                self.indent_level,
-                                False,
-                                False,
-                                max_line_count,
-                                index_func,
-                                undo_func
-                            )
+                            self.line + 1,
+                            '__list__',
+                            '',
+                            self.indent_level,
+                            False,
+                            False,
+                            max_line_count,
+                            index_func,
+                            undo_func
+                        )
                         parent.insert_widget(new_line, self.line)
+
+                        # Record the insertion action for undo
+                        undo_func(
+                            save=True,
+                            action={
+                                'type': 'insert_line',
+                                'widget': new_line,
+                                'index': self.line,
+                                'parent': parent
+                            }
+                        )
+
                         new_line.value_label.focused = True
 
+                    # Remove line on backspace if it's empty
                     if self.is_list_item and keycode[1] in ['delete', 'backspace'] and not me._original_text:
                         parent = self.parent
                         if not parent:
                             return
 
+                        # Record the removal action for undo
+                        undo_func(
+                            save=True,
+                            action={
+                                'type': 'remove_line',
+                                'widget': self,
+                                'index': self.index,
+                                'parent': parent
+                            }
+                        )
+
                         parent.remove_widget(self)
+
+                        # Existing focusing logic
                         try:
                             previous_line = parent.children[len(parent.children) - self.index]
                             next_line = parent.children[len(parent.children) - self.index - 1]
@@ -24848,7 +24885,9 @@ class ServerYamlEditScreen(EditorRoot):
                             if previous_line.key_label.text == '-':
                                 previous_line.value_label.focused = True
 
-                            if previous_line.key_label.text != '-' and previous_line.is_list_header and next_line.key_label.text != '-':
+                            if (previous_line.key_label.text != '-' and
+                                previous_line.is_list_header and
+                                next_line.key_label.text != '-'):
                                 previous_line.value_label.focused = True
                                 previous_line.is_list_header = False
                                 previous_line.reload_display()
@@ -24923,12 +24962,9 @@ class ServerYamlEditScreen(EditorRoot):
                             def scroll(*b):
                                 me.focused = False
                                 screen_manager.current_screen.current_line = None
-
                             Clock.schedule_once(scroll, 0)
-
                     Clock.schedule_once(set_scroll, 0.1)
 
-                # Ignore touch if popup exists
                 def on_touch_down(me, touch):
                     popup_widget = screen_manager.current_screen.popup_widget
                     if popup_widget:
@@ -24960,7 +24996,8 @@ class ServerYamlEditScreen(EditorRoot):
             self.key_label.shorten = True
             self.key_label.shorten_from = 'left'
             self.key_label.markup = True
-            self.key_label.default_color = "#636363" if is_comment else (0.5, 0.5, 1, 1) if is_header else "#5E6BFF"
+            self.key_label.default_color = "#636363" if is_comment else \
+                (0.5, 0.5, 1, 1) if is_header else "#5E6BFF"
             self.key_label.color = self.key_label.default_color
             self.key_label.size_hint_max_y = 50
             self.key_label.pos_hint = {'center_y': 0.5}
@@ -24992,7 +25029,6 @@ class ServerYamlEditScreen(EditorRoot):
 
             if not (is_blank_line or is_comment):
                 self.add_widget(self.eq_label)
-
                 if not is_header and not is_list_header:
                     self.add_widget(self.value_label)
 
@@ -25008,7 +25044,6 @@ class ServerYamlEditScreen(EditorRoot):
             Clock.schedule_once(self.on_resize, 0)
             Clock.schedule_once(self.allow_animation, 1)
 
-
             # Force fade-in
             self.opacity = 0
             def opaque(*a):
@@ -25017,11 +25052,9 @@ class ServerYamlEditScreen(EditorRoot):
 
     # A simple search bar for YAML content. Very similar to PropertiesSearchInput
     class YamlSearchInput(TextInput):
-
         def _on_focus(self, instance, value, *largs):
             def update_focus(*args):
                 screen_manager.current_screen._input_focused = self.focus
-
             Clock.schedule_once(update_focus, 0)
 
             super(type(self), self)._on_focus(instance, value)
@@ -25053,7 +25086,6 @@ class ServerYamlEditScreen(EditorRoot):
         def grab_focus(self, *a):
             def focus_later(*args):
                 self.focus = True
-
             Clock.schedule_once(focus_later, 0)
 
         def on_enter(self, value):
@@ -25172,8 +25204,6 @@ class ServerYamlEditScreen(EditorRoot):
                 if not new_input.line_matched:
                     ignore_input = True
 
-            # In a YAML file, there's no concept of #comment lines like in .properties
-            # but if you wanted to skip certain lines, you can do so here
             if not ignore_input:
                 try:
                     self.focus_input(new_input)
@@ -25208,41 +25238,112 @@ class ServerYamlEditScreen(EditorRoot):
             search_str = text.strip()
             if search_str:
                 for x in self.match_list:
-                    # Count occurrences in key+value
                     total_str = x.key_label.text + x.value_label.text
                     matches += total_str.count(search_str)
             self.match_label.text = f'{matches} match{"es" if matches != 1 else ""}'
         except AttributeError:
             pass
 
-    def undo(self, save=False, undo=False):
-        if save:
+    # --------------------------------------------------------
+    # CHANGES FOR UNDO/REDO OF LINE INSERT/REMOVE
+    # --------------------------------------------------------
+    def _apply_action(self, action, undo=True):
+        """
+        Helper to apply or revert a structural action:
+        - 'insert_line' => add widget or remove it
+        - 'remove_line' => remove widget or restore it
+        """
+        a_type = action['type']
+        widget = action['widget']
+        idx = action['index']
+        parent = action['parent']
+
+        if a_type == 'insert_line':
+            # If we are UNDOing an insertion, remove the widget; if REDOing, insert it again
+            if undo:
+                if widget in parent.children:
+                    parent.remove_widget(widget)
+            else:
+                parent.insert_widget(widget, idx)
+
+        elif a_type == 'remove_line':
+            # If we are UNDOing a removal, re-insert the widget; if REDOing, remove it again
+            if undo:
+                parent.insert_widget(widget, idx)
+            else:
+                if widget in parent.children:
+                    parent.remove_widget(widget)
+
+    # --------------------------------------------------------
+    def undo(self, save=False, undo=False, action=None):
+        """
+        Extended to handle both text changes (the original logic) and line insert/remove actions.
+        - `save=True, action=...` => record a new structural action
+        - `save=True, action=None` => record a text-change action
+        - `undo=True` => actually undo the last action
+        - `undo=False` => redo the last undone action
+        """
+        if save and action is not None:
+            # We are saving a new structural action in the undo history
+            self.redo_history.clear()
+            self.undo_history.append(action)
+            return
+
+        if save and action is None:
+            # Original text-based "save" logic (store line and old text)
             self.redo_history = []
             line = self.line_list[self.current_line]
             same_line = False
 
             if self.undo_history:
-                if self.undo_history[-1][0] == line.line:
+                # If last recorded entry has the same line number, skip
+                last = self.undo_history[-1]
+                # text-based entries were stored as tuples, e.g. (line_num, old_text)
+                if not isinstance(last, dict) and last[0] == line.line:
                     same_line = True
 
             if not same_line:
                 self.undo_history.append((line.line, line.value_label.original_text))
+            return
 
-        else:
-            if undo:
-                line_num, old_text = self.undo_history[-1]
+        # Now we either UNDO or REDO:
+        if undo:
+            # UNDO => pop from undo_history, revert it
+            if not self.undo_history:
+                return
+            last_action = self.undo_history.pop()
+
+            # Check if structural or text-based
+            if isinstance(last_action, dict):
+                # structural
+                self._apply_action(last_action, undo=True)
+                self.redo_history.append(last_action)
+            else:
+                # text-based => last_action is something like (line_num, old_text)
+                (line_num, old_text) = last_action
                 line_obj = self.line_list[line_num - 1]
                 self.redo_history.append([line_num, line_obj.value_label.original_text])
                 line_obj.value_label.text = old_text
-                self.undo_history.pop(-1)
+                self.focus_input(line_obj, highlight=True)
+
+        else:
+            # REDO => pop from redo_history, re-apply it
+            if not self.redo_history:
+                return
+            last_action = self.redo_history.pop()
+
+            # Check if structural or text-based
+            if isinstance(last_action, dict):
+                self._apply_action(last_action, undo=False)
+                self.undo_history.append(last_action)
             else:
-                line_num, old_text = self.redo_history[-1]
+                (line_num, old_text) = last_action
                 line_obj = self.line_list[line_num - 1]
                 self.undo_history.append([line_num, line_obj.value_label.original_text])
                 line_obj.value_label.text = old_text
-                self.redo_history.pop(-1)
+                self.focus_input(line_obj, highlight=True)
 
-            self.focus_input(line_obj, highlight=True)
+    # --------------------------------------------------------
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
@@ -25306,7 +25407,6 @@ class ServerYamlEditScreen(EditorRoot):
 
                 key = None
                 value = None
-                # Only parse "key: value" if line doesn't start with '-'
                 if ':' in remainder and not line.strip().startswith('-'):
                     colon_idx = remainder.find(':')
                     key_part = remainder[:colon_idx].rstrip()
@@ -25355,14 +25455,6 @@ class ServerYamlEditScreen(EditorRoot):
                 self.children.append(child_node)
 
         def build_ast(tokens):
-            """
-            Merges normal indentation-based nesting with a special rule:
-              - If we see a node with `key!=None and value==None` (like "someKey:"),
-                then any consecutive tokens that start with '-' (is_list_item=True)
-                are forced as children of that node, *ignoring* indentation.
-              - Once we encounter a token that doesn't start with '-', we resume normal indentation rules.
-            """
-
             root = YamlNode(indent_level=-1, key='__ROOT__')
             stack = [root]
             i = 0
@@ -25382,15 +25474,12 @@ class ServerYamlEditScreen(EditorRoot):
                     i += 1
                     continue
 
-                # 2) Normal indentation-based logic:
-                #    Pop until we find a node with indent < token's indent
                 current_indent = token.indent_level
                 while stack and stack[-1].indent_level >= current_indent:
                     stack.pop()
 
                 parent_node = stack[-1] if stack else root
 
-                # 3) Create a normal node
                 new_node = YamlNode(
                     parent=parent_node,
                     indent_level=current_indent,
@@ -25403,19 +25492,13 @@ class ServerYamlEditScreen(EditorRoot):
                     )
                 )
                 parent_node.add_child(new_node)
-
-                # 4) Push this node on the stack (so normal children with higher indent attach to it)
                 stack.append(new_node)
                 i += 1
 
                 # 5) Special rule: if it's a "key with no value" => gather consecutive dash lines
                 if (new_node.key is not None) and (new_node.value is None):
-                    # Keep pulling next tokens that start with '-' (is_list_item=True),
-                    # ignoring indentation. Attach them as children of new_node.
                     while i < n:
                         lookahead = tokens[i]
-
-                        # If it's a pure comment, attach it to new_node as well
                         if lookahead.is_comment and lookahead.key is None and lookahead.value is None:
                             comment_node = YamlNode(
                                 parent=new_node,
@@ -25426,12 +25509,11 @@ class ServerYamlEditScreen(EditorRoot):
                             i += 1
                             continue
 
-                        # If it's a dash line, attach as a child of new_node
                         if lookahead.is_list_item:
                             child_item = YamlNode(
                                 parent=new_node,
                                 indent_level=lookahead.indent_level,
-                                key=None,  # dash lines don't have a key
+                                key=None,
                                 value=lookahead.value,
                                 is_list_item=True,
                                 inline_comment=(
@@ -25442,17 +25524,10 @@ class ServerYamlEditScreen(EditorRoot):
                             new_node.add_child(child_item)
                             i += 1
                         else:
-                            # As soon as we hit a non-dash line, break from dash gathering
                             break
-
-                    # After collecting consecutive dash lines, we’re done with this key
-                    # The next iteration will handle normal indentation for the next token
-                    # so we don't pop or push the stack again here.
-
             return root
 
         def to_python(node):
-            # Same exact code from your snippet
             if node.comment is not None and node.key is None and node.value is None and not node.children:
                 return {
                     '__type__': 'comment',
@@ -25521,54 +25596,37 @@ class ServerYamlEditScreen(EditorRoot):
         self.current_line = None
 
         def flatten_yaml(data, prefix='', indent=0):
-            """
-            Revised snippet so that each list item is displayed as `-` instead of `<prefix>[<index>]`.
-            """
-
-            # 1) Check if this is a pure comment node
             if isinstance(data, dict) and data.get('__type__') == 'comment':
                 self.flat_lines.append((data['comment'], '', data['indent'], False, False))
                 return
 
             if isinstance(data, dict):
-                # Flatten normal dict keys, skipping internal control keys
                 for k, v in data.items():
                     if k in ('__type__', '__inline_comment__', 'items', 'indent'):
                         continue
 
                     if isinstance(v, (dict, list)):
                         is_list_header = isinstance(v, list) or (isinstance(v, dict) and v.get('__type__') == 'list')
-                        # Keep the dict key for "header" lines
                         self.flat_lines.append((k, '', indent, True, is_list_header))
                         flatten_yaml(v, k, indent + 1)
                     else:
                         self.flat_lines.append((k, v, indent, False, False))
 
-                # If this dict is actually a 'list' wrapper: { '__type__': 'list', 'items': [...] }
-                # Flatten its items as well
                 if data.get('__type__') == 'list' and 'items' in data:
-                    # Show the dict as a list header using the existing `prefix`
                     self.flat_lines.append((prefix, '', indent, True, True))
                     flatten_yaml(data['items'], prefix, indent + 1)
 
             elif isinstance(data, list):
-                # For each item in a plain Python list, display the item key as a dash `-`
                 for idx, v in enumerate(data):
-                    # Instead of `f'{prefix}[{idx}]'`, we simply use `-`:
                     item_key = '__list__'
-
                     if isinstance(v, (dict, list)):
-                        # If it's nested, check if it's also a list
                         is_list_header = isinstance(v, list) or (isinstance(v, dict) and v.get('__type__') == 'list')
                         self.flat_lines.append((item_key, '', indent, True, is_list_header))
-                        # We still pass the old prefix for recursion so nested structures can get the correct path
                         flatten_yaml(v, prefix, indent + 1)
                     else:
-                        # Scalar item
                         self.flat_lines.append((item_key, v, indent, False, False))
 
             else:
-                # Final scalar
                 self.flat_lines.append((prefix, data, indent, False, False))
 
         self.flat_lines = []
@@ -25596,12 +25654,9 @@ class ServerYamlEditScreen(EditorRoot):
 
         max_lines = len(self.flat_lines)
         i = 0
-        # Unpack the 5-tuple: (full_key, value, indent, header, is_list_header)
         for (full_key, val, indent, header, is_list_header) in self.flat_lines:
-            # Skip synthetic "__comment__..." keys if needed
             if full_key.startswith('__comment__'):
                 continue
-            print(full_key, val, is_list_header)
             i += 1
             line = self.EditorLine(
                 line=i,
@@ -25720,28 +25775,19 @@ class ServerYamlEditScreen(EditorRoot):
     def save_config(self):
         """
         Gather all lines from self.line_list, reconstruct the YAML data structure,
-        and write it to disk. Then reload it if desired.
+        and write it to disk.
         """
-        # (1) Rebuild a dictionary or list from the flattened lines
-        # Here, we rely on each line's `key_label.original_text` for the path,
-        # and `value_label.text` for the value. We'll parse the path to see if it
-        # has array indices or nested keys, etc.
-
-        # Rebuild a nested data structure from flattened lines
-        # If you used flatten_yaml, you do the inverse here
+        # Rebuild dictionary from lines...
         data_tree = {}
 
         def set_path_value(root, path_list, value):
-            # Recursively traverse 'root' based on path_list, setting the final value.
             if not path_list:
                 return
             key_part = path_list[0]
             is_list_index = False
             index_num = None
 
-            # If key_part is something like "outer[3]" we detect that
             if '[' in key_part and key_part.endswith(']'):
-                # example:  outer[3]
                 bracket_pos = key_part.index('[')
                 actual_key = key_part[:bracket_pos]
                 index_num = int(key_part[bracket_pos + 1:-1])
@@ -25749,20 +25795,15 @@ class ServerYamlEditScreen(EditorRoot):
                 key_part = actual_key
 
             if len(path_list) == 1:
-                # Final key
                 if is_list_index:
                     if key_part not in root:
                         root[key_part] = []
-                    # ensure list length
                     while len(root[key_part]) <= index_num:
                         root[key_part].append(None)
-                    # set the value
-                    # Attempt numeric or boolean parse if you want strict types
                     root[key_part][index_num] = value
                 else:
                     root[key_part] = value
             else:
-                # Not final key
                 if is_list_index:
                     if key_part not in root:
                         root[key_part] = []
@@ -25782,14 +25823,12 @@ class ServerYamlEditScreen(EditorRoot):
             key_str = line.key_label.original_text
             val_str = line.value_label.text
 
-            # Convert value to python type if desired
-            # For now, keep raw strings, but handle bool/numbers, etc.
             parsed_val = val_str
-            # Attempt boolean
+            # Try bool
             if parsed_val.lower() in ['true', 'false']:
                 parsed_val = (parsed_val.lower() == 'true')
             else:
-                # Attempt number
+                # Try number
                 try:
                     if '.' in parsed_val:
                         parsed_val = float(parsed_val)
@@ -25798,14 +25837,9 @@ class ServerYamlEditScreen(EditorRoot):
                 except ValueError:
                     pass
 
-            # Split key_str on '.' or detect [x]
-            # e.g. outer.inner => ["outer", "inner"]
-            # e.g. outer[3] => ["outer[3]"]
-            # If you used flatten_yaml's logic, key_str might contain multiple '.' segments
             path_list = key_str.split('.')
             set_path_value(data_tree, path_list, parsed_val)
 
-        # (2) Dump new data_tree to YAML
         server_obj = constants.server_manager.current_server
         try:
             with open(self.path, 'w', encoding='utf-8') as f:
@@ -25815,7 +25849,6 @@ class ServerYamlEditScreen(EditorRoot):
             if constants.debug:
                 print("Error saving YAML:", e)
 
-        # (4) Show banner or message
         self.server_yaml = data_tree
         self.set_banner_status(False)
 
@@ -25855,40 +25888,21 @@ class ServerYamlEditScreen(EditorRoot):
         self.save_config()
         self.quit_to_menu()
 
-    # Reload YAML from disk (or from server_obj) to discard unsaved changes
     def reset_data(self):
         try:
             with open(self.path, 'r', encoding='utf-8') as f:
                 self.server_yaml = constants.yaml.safe_load(f)
         except:
             self.server_yaml = {}
-
-        # Rebuild the lines
-        self.undo_history = []
-        self.redo_history = []
-        flatten_yaml = []
-        # ... Re-flatten if needed
-        # ... Then reassign to your EditorLine similarly to generate_menu
-        # This can be as simple as calling generate_menu again, or a partial rebuild.
-
+        # Rebuild lines or simply re-run generate_menu, etc.
         self.set_banner_status(False)
 
     def check_data(self):
-        """
-        Check if lines match the last saved self.server_yaml.
-        You can do a quick check by re-building data_tree from line_list
-        and comparing to self.server_yaml or to the file on disk.
-        """
-        # Quick approach:
-        # 1. Rebuild dictionary from line_list
-        # 2. Compare to self.server_yaml
-        # If they match, return True else False.
-        # Implementation is omitted for brevity, but see `save_config` logic.
+        # Rebuild dictionary from line_list, compare with self.server_yaml, etc.
         return True
 
     def set_banner_status(self, changed=False):
         if changed != self.modified:
-            # Change header
             self.remove_widget(self.header)
             del self.header
 
@@ -25916,14 +25930,9 @@ class ServerYamlEditScreen(EditorRoot):
         self.modified = changed
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        # Much of this logic is the same as your original, adapted for YAML.
-        # Checking for popup, control+S, control+Q, arrows for switch_input, etc.
         if self.popup_widget:
-            # handle popup
-            # ...
             return True
 
-        # If we hit escape or ctrl+q
         if (keycode[1] == 'q' and control in modifiers) or keycode[1] == 'escape':
             if self.modified:
                 self.show_popup(
@@ -25937,21 +25946,17 @@ class ServerYamlEditScreen(EditorRoot):
                 self.quit_to_menu()
             return True
 
-        # arrow keys
         if keycode[1] in ['down', 'up', 'pagedown', 'pageup']:
             self.switch_input(keycode[1])
 
-        # ctrl+F
         if keycode[1] == 'f' and control in modifiers:
             if not self.search_bar.focused:
                 self.search_bar.grab_focus()
             else:
-                # return focus to input
                 if self.current_line is not None:
                     self.focus_input()
             return True
 
-        # ctrl+S
         if keycode[1] == 's' and control in modifiers and self.modified:
             self.save_config()
 
@@ -25961,13 +25966,12 @@ class ServerYamlEditScreen(EditorRoot):
         elif keycode[1] == 'z' and control in modifiers and not self.undo_history:
             if not self.check_data():
                 self.reset_data()
+
         if keycode[1] in ['r', 'y'] and control in modifiers and self.redo_history:
             self.undo(save=False, undo=False)
 
-        # Finally, update banner if changed
         def set_banner(*a):
             self.set_banner_status(not self.check_data())
-
         Clock.schedule_once(set_banner, 0)
 
         return True
