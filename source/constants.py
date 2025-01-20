@@ -3544,6 +3544,27 @@ def pre_server_update(telepath=False):
     else:
         telepath_data = server_obj._telepath_data
         if telepath_data:
+
+            # Copy import remotely if available
+            try:
+                if import_data['path']:
+                    import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
+
+                    api_manager.request(
+                        endpoint='/create/push_new_server',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={'server_info': new_server_info, 'import_info': import_data}
+                    )
+                    response = api_manager.request(
+                        endpoint='/create/pre_server_create',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={'telepath': True}
+                    )
+            except KeyError:
+                pass
+
             response = api_manager.request(
                 endpoint='/create/pre_server_update',
                 host=telepath_data['host'],
