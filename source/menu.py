@@ -20172,6 +20172,7 @@ class ServerCloneProgressScreen(ProgressScreen):
         self.page_contents['function_list'] = tuple(function_list)
 
 
+
 # Server Access Control ------------------------------------------------------------------------------------------------
 
 class ServerAclScreen(CreateServerAclScreen):
@@ -24772,14 +24773,13 @@ class ServerYamlEditScreen(EditorRoot):
                     super(EditorInput, me).insert_text(substring, from_undo=from_undo)
 
                 def keyboard_on_key_down(me, window, keycode, text, modifiers):
+
                     # Ignore global undo/redo
                     if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
                         return None
 
                     # Undo functionality (text-level changes)
-                    if (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) \
-                       or (keycode[1] == 'v' and control in modifiers) \
-                       or (keycode[1] == 'backspace' and control in modifiers):
+                    if (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (keycode[1] == 'v' and control in modifiers) or (keycode[1] == 'backspace' and control in modifiers):
                         undo_func(save=True)
 
                     # Toggle boolean on space
@@ -24809,13 +24809,8 @@ class ServerYamlEditScreen(EditorRoot):
                     else:
                         super(EditorInput, me).keyboard_on_key_down(window, keycode, text, modifiers)
 
-                    # --------------------------------------------------
-                    # CHANGES FOR UNDO/REDO OF LINE INSERT/REMOVE
-                    # --------------------------------------------------
-
                     # Add a new list item on pressing "enter" in a current list
-                    if ((self.is_list_item and me.text) or (not self.is_list_item and not me.text)) \
-                       and keycode[1] in ['enter', 'return']:
+                    if ((self.is_list_item and me.text) or (not self.is_list_item and not me.text)) and keycode[1] in ['enter', 'return']:
                         parent = self.parent
                         if not parent:
                             return
@@ -24988,8 +24983,7 @@ class ServerYamlEditScreen(EditorRoot):
             self.key_label.shorten = True
             self.key_label.shorten_from = 'left'
             self.key_label.markup = True
-            self.key_label.default_color = "#636363" if is_comment else \
-                (0.5, 0.5, 1, 1) if is_header else "#5E6BFF"
+            self.key_label.default_color = "#636363" if is_comment else (0.5, 0.5, 1, 1) if is_header else "#5E6BFF"
             self.key_label.color = self.key_label.default_color
             self.key_label.size_hint_max_y = 50
             self.key_label.pos_hint = {'center_y': 0.5}
@@ -25170,6 +25164,8 @@ class ServerYamlEditScreen(EditorRoot):
         if self.current_line is None:
             self.set_index(0)
 
+        self.line_list = list(reversed(list(self.scroll_layout.children)))
+
         index = 0
         if position == 'up':
             index = self.current_line - 1
@@ -25191,17 +25187,18 @@ class ServerYamlEditScreen(EditorRoot):
                 index = len(self.line_list) - 1
 
             new_input = self.line_list[index]
+            if not new_input.inactive:
 
-            if self.match_list and self.last_search:
-                if not new_input.line_matched:
-                    ignore_input = True
+                if self.match_list and self.last_search:
+                    if not new_input.line_matched:
+                        ignore_input = True
 
-            if not ignore_input:
-                try:
-                    self.focus_input(new_input)
-                    break
-                except AttributeError:
-                    pass
+                if not ignore_input:
+                    try:
+                        self.focus_input(new_input)
+                        break
+                    except AttributeError:
+                        pass
 
             index = index + (-1 if position == 'up' else 1)
 
@@ -25933,7 +25930,7 @@ class ServerYamlEditScreen(EditorRoot):
             return True
 
         if keycode[1] in ['down', 'up', 'pagedown', 'pageup']:
-            self.switch_input(keycode[1])
+            return self.switch_input(keycode[1])
 
         if keycode[1] == 'f' and control in modifiers:
             if not self.search_bar.focused:
