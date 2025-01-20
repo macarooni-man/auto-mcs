@@ -27152,7 +27152,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
             self.open_server(
                 import_data['name'],
                 True,
-                f"'Updated ${import_data['name']}$' successfully",
+                f"Updated '${import_data['name']}$' successfully",
                 show_readme=import_data['readme']
             )
 
