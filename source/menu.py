@@ -24611,9 +24611,10 @@ class ServerYamlEditScreen(EditorRoot):
             else:
                 # Reset visuals
                 self.line_number.text = str(self.line)
-                self.line_number.opacity = (
-                    1 if self.value_label.focused and self.animate else 0.35
-                )
+
+                if self._finished_rendering:
+                    self.line_number.opacity = (1 if self.value_label.focused and self.animate else 0.35)
+
                 self.value_label.search.opacity = 0
                 self.value_label.foreground_color = self.value_label.last_color
 
@@ -24647,19 +24648,7 @@ class ServerYamlEditScreen(EditorRoot):
             elif not self.is_list_header and not self.value_label.parent:
                 self.add_widget(self.value_label)
 
-        def __init__(
-            self,
-            line,
-            key,
-            value,
-            indent_level,
-            is_header,
-            is_list_header,
-            max_line_count,
-            index_func,
-            undo_func,
-            **kwargs
-        ):
+        def __init__(self, line, key, value, indent_level, is_header, is_list_header, max_line_count, index_func, undo_func, **kwargs):
             super().__init__(**kwargs)
 
             # Format list_headers
@@ -24680,6 +24669,10 @@ class ServerYamlEditScreen(EditorRoot):
             self.is_comment = is_comment
             self.is_blank_line = is_blank_line
             self.inactive = is_header or is_list_header or is_comment or is_blank_line
+            self._finished_rendering = False
+            def finish_rendering(*a):
+                self._finished_rendering = True
+            Clock.schedule_once(finish_rendering, 1)
 
             # Defaults
             self.line = line
@@ -24708,8 +24701,7 @@ class ServerYamlEditScreen(EditorRoot):
                     Animation.stop_all(self.eq_label)
                     Animation(opacity=(1 if me.focused else 0.5), duration=0.15).start(self.eq_label)
                     try:
-                        Animation(opacity=(1 if me.focused or self.line_matched else 0.35), duration=0.15).start(
-                            self.line_number)
+                        Animation(opacity=(1 if me.focused or self.line_matched else 0.35), duration=0.15).start(self.line_number)
                     except AttributeError:
                         pass
 
@@ -25244,9 +25236,6 @@ class ServerYamlEditScreen(EditorRoot):
         except AttributeError:
             pass
 
-    # --------------------------------------------------------
-    # CHANGES FOR UNDO/REDO OF LINE INSERT/REMOVE
-    # --------------------------------------------------------
     def _apply_action(self, action, undo=True):
         """
         Helper to apply or revert a structural action:
@@ -25265,16 +25254,17 @@ class ServerYamlEditScreen(EditorRoot):
                     parent.remove_widget(widget)
             else:
                 parent.insert_widget(widget, idx)
+                widget.value_label.focused = True
 
         elif a_type == 'remove_line':
             # If we are UNDOing a removal, re-insert the widget; if REDOing, remove it again
             if undo:
                 parent.insert_widget(widget, idx)
+                widget.value_label.focused = True
             else:
                 if widget in parent.children:
                     parent.remove_widget(widget)
 
-    # --------------------------------------------------------
     def undo(self, save=False, undo=False, action=None):
         """
         Extended to handle both text changes (the original logic) and line insert/remove actions.
@@ -25342,8 +25332,6 @@ class ServerYamlEditScreen(EditorRoot):
                 self.undo_history.append([line_num, line_obj.value_label.original_text])
                 line_obj.value_label.text = old_text
                 self.focus_input(line_obj, highlight=True)
-
-    # --------------------------------------------------------
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
@@ -25677,11 +25665,9 @@ class ServerYamlEditScreen(EditorRoot):
         self.scroll_widget.add_widget(self.scroll_layout)
         float_layout.add_widget(self.scroll_widget)
 
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos,
-                                       size=(self.scroll_widget.width // 1.5, 60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
         scroll_top.color = self.background_color
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos,
-                                          size=(self.scroll_widget.width // 1.5, -60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
         scroll_bottom.color = self.background_color
         scroll_bottom.y = 115
 
