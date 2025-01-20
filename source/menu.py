@@ -23265,6 +23265,88 @@ class EditorRoot(MenuBackground):
         self.path = self._config_data['path']
         self.file_name = os.path.basename(self.path)
 
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.widget import Widget
+
+class GridInsertLayout(GridLayout):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def add_widget(self, widget: Widget, index: int = None, **kwargs):
+        """
+        Adds a widget to the GridLayout.
+        Optionally allows specifying an index for compatibility with insert_widget.
+        """
+        if index is None:
+            # If no index is specified, just use the normal add_widget
+            super().add_widget(widget, **kwargs)
+        else:
+            self.insert_widget(widget, index)
+        self._update_widget_indices()
+
+    def insert_widget(self, widget: Widget, index: int):
+        """
+        Inserts a widget at a specific visual index in the GridLayout.
+
+        :param widget: The widget to insert.
+        :param index: The *visual* index (0-based) where the widget should be inserted.
+        """
+        if index < 0 or index > len(self.children):
+            raise IndexError("Index out of range for insert_widget.")
+
+        # If widget is already in another parent (or in this layout), remove it first
+        if widget.parent:
+            widget.parent.remove_widget(widget)
+
+        # Convert visual index to the reversed children list's index
+        reverse_index = len(self.children) - index
+
+        # Make a copy of current children
+        current_children = list(self.children)
+
+        # Insert the new widget in the *list* of children
+        current_children.insert(reverse_index, widget)
+
+        # Clear out the layout's children
+        self.clear_widgets()
+
+        # Re-add everything in reversed order so they appear visually as intended
+        for child in reversed(current_children):
+            super().add_widget(child)
+
+        # Trigger layout refresh and update indices
+        self._trigger_layout()
+        self._update_widget_indices()
+
+    def remove_widget(self, widget: Widget):
+        """
+        Removes a widget from the GridLayout and updates indices.
+        """
+        if widget in self.children:
+            super().remove_widget(widget)  # let Kivy do the removal
+            self._trigger_layout()
+            self._update_widget_indices()
+
+    def _update_widget_indices(self):
+        """
+        Updates `widget.index` for each child in the layout and
+        calls `on_index_update` if the widget defines it.
+        """
+        for visual_index, widget in enumerate(reversed(self.children)):
+            widget.index = visual_index
+            widget.max_line_count = len(self.children)
+
+            if hasattr(widget, "on_index_update"):
+                widget.on_index_update()
+
+    def get_widget_index(self, widget: Widget):
+        """
+        Gets the current visual index of a widget, or None if not in the layout.
+        """
+        if widget in self.children:
+            return widget.index
+        return None
+
 class ServerPropertiesEditScreen(EditorRoot):
     class EditorLine(RelativeLayout):
 
@@ -24440,6 +24522,11 @@ class ServerPropertiesEditScreen(EditorRoot):
 
 class ServerYamlEditScreen(EditorRoot):
     class EditorLine(RelativeLayout):
+        def on_index_update(self):
+            # Custom behavior when the index is updated
+            self.line_number.text = str(self.index + 1)
+            self.value_label.index = self.index
+            self.line_number.size_hint_max_x = (self.spacing * len(str(self.max_line_count)))
 
         def on_resize(self, *args):
             Clock.schedule_once(self.key_label.texture_update, -1)
@@ -24542,6 +24629,25 @@ class ServerYamlEditScreen(EditorRoot):
         def allow_animation(self, *args):
             self.animate = True
 
+        def reload_display(self):
+            font_name = 'mono-bold' if self.is_header or self.is_list_header else 'mono-medium'
+            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
+
+            # Key label
+            self.key_label.font_name = self.font_name
+            self.key_label.default_color = "#636363" if self.is_comment else (0.5, 0.5, 1, 1) if self.is_header else "#5E6BFF"
+
+            # Equals sign
+            self.eq_label.font_name = self.font_name
+            self.eq_label.color = (0.6, 0.6, 1, 1) if self.is_header else (1, 1, 1, 1)
+
+            if self.is_list_header and self.value_label.parent:
+                self.remove_widget(self.value_label)
+
+            elif not self.is_list_header and not self.value_label.parent:
+                self.add_widget(self.value_label)
+
+
         def __init__(self, line, key, value, indent_level, is_header, is_list_header, max_line_count, index_func, undo_func, **kwargs):
             super().__init__(**kwargs)
 
@@ -24556,12 +24662,18 @@ class ServerYamlEditScreen(EditorRoot):
             is_blank_line = not key.strip()
             background_color = constants.brighten_color(constants.background_color, -0.1)
 
+            # Determines if the line is skip-able when scrolling
+            self.is_header = is_header
+            self.is_list_header = is_list_header
+            self.is_list_item = is_list_item
+            self.is_comment = is_comment
+            self.is_blank_line = is_blank_line
+            self.inactive = is_header or is_list_header or is_comment or is_blank_line
+
             # Defaults
             self.line = line
-            if is_header or is_list_header:
-                self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-            else:
-                self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+            font_name = 'mono-bold' if is_header or is_list_header else 'mono-medium'
+            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
             self.font_size = dp(25)
             self.spacing = dp(16)
             self.size_hint_min_y = 50
@@ -24648,6 +24760,7 @@ class ServerYamlEditScreen(EditorRoot):
                         me.foreground_color = (0, 0, 0, 0)
 
                     def highlight(*args):
+                        me._original_text = me.text
                         try:
                             self.highlight_text(self.last_search)
                         except AttributeError:
@@ -24698,6 +24811,50 @@ class ServerYamlEditScreen(EditorRoot):
                     else:
                         super(EditorInput, me).keyboard_on_key_down(window, keycode, text, modifiers)
 
+                    # Add a new list item on pressing "enter" in a current list
+                    if ((self.is_list_item and me.text) or (not self.is_list_item and not me.text)) and keycode[1] in ['enter', 'return']:
+                        parent = self.parent
+                        if not parent:
+                            return
+
+                        if not me.text and not self.is_list_item:
+                            self.is_list_header = True
+                            self.reload_display()
+
+                        new_line = type(self)(
+                                self.line + 1,
+                                '__list__',
+                                '',
+                                self.indent_level,
+                                False,
+                                False,
+                                max_line_count,
+                                index_func,
+                                undo_func
+                            )
+                        parent.insert_widget(new_line, self.line)
+                        new_line.value_label.focused = True
+
+                    if self.is_list_item and keycode[1] in ['delete', 'backspace'] and not me._original_text:
+                        parent = self.parent
+                        if not parent:
+                            return
+
+                        parent.remove_widget(self)
+                        try:
+                            previous_line = parent.children[len(parent.children) - self.index]
+                            next_line = parent.children[len(parent.children) - self.index - 1]
+
+                            if previous_line.key_label.text == '-':
+                                previous_line.value_label.focused = True
+
+                            if previous_line.key_label.text != '-' and previous_line.is_list_header and next_line.key_label.text != '-':
+                                previous_line.value_label.focused = True
+                                previous_line.is_list_header = False
+                                previous_line.reload_display()
+                        except:
+                            pass
+
                     # Left overscroll fix
                     if me.cursor_pos[0] < me.x:
                         me.scroll_x = 0
@@ -24721,6 +24878,7 @@ class ServerYamlEditScreen(EditorRoot):
 
                 def __init__(me, default_value, line, index, index_func, undo_func, **kwargs):
                     super().__init__(**kwargs)
+                    self._original_text = ''
 
                     with me.canvas.after:
                         me.search = AlignLabel()
@@ -24741,10 +24899,7 @@ class ServerYamlEditScreen(EditorRoot):
                     me.undo_func = undo_func
                     me.text = str(default_value)
                     me.original_text = str(default_value)
-
-                    # Set to True for multi-line YAML editing
-                    me.multiline = True
-
+                    me.multiline = False
                     me.background_color = (0, 0, 0, 0)
                     me.cursor_width = dp(3)
                     me.eq = line.eq_label
@@ -24838,7 +24993,7 @@ class ServerYamlEditScreen(EditorRoot):
             if not (is_blank_line or is_comment):
                 self.add_widget(self.eq_label)
 
-                if not is_header:
+                if not is_header and not is_list_header:
                     self.add_widget(self.value_label)
 
             # Ghost covers for left / right
@@ -24852,6 +25007,13 @@ class ServerYamlEditScreen(EditorRoot):
             self.bind(size=self.on_resize, pos=self.on_resize)
             Clock.schedule_once(self.on_resize, 0)
             Clock.schedule_once(self.allow_animation, 1)
+
+
+            # Force fade-in
+            self.opacity = 0
+            def opaque(*a):
+                Animation(opacity=1, duration=0.15).start(self)
+            Clock.schedule_once(opaque, 0.1)
 
     # A simple search bar for YAML content. Very similar to PropertiesSearchInput
     class YamlSearchInput(TextInput):
@@ -25413,7 +25575,7 @@ class ServerYamlEditScreen(EditorRoot):
         flatten_yaml(self.server_yaml)
 
         self.scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
-        self.scroll_layout = GridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30])
+        self.scroll_layout = GridInsertLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30])
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
