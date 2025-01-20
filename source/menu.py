@@ -24542,8 +24542,15 @@ class ServerYamlEditScreen(EditorRoot):
         def allow_animation(self, *args):
             self.animate = True
 
-        def __init__(self, line, key, value, indent_level, is_header, max_line_count, index_func, undo_func, **kwargs):
+        def __init__(self, line, key, value, indent_level, is_header, is_list_header, max_line_count, index_func, undo_func, **kwargs):
             super().__init__(**kwargs)
+
+            # Format list_headers
+            if is_list_header:
+                is_header = False
+            is_list_item = key == '__list__'
+            if is_list_item:
+                key = '-'
 
             is_comment = key.strip().startswith('#')
             is_blank_line = not key.strip()
@@ -24551,7 +24558,7 @@ class ServerYamlEditScreen(EditorRoot):
 
             # Defaults
             self.line = line
-            if is_header:
+            if is_header or is_list_header:
                 self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
             else:
                 self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
@@ -24802,11 +24809,12 @@ class ServerYamlEditScreen(EditorRoot):
             self.key_label.color = self.key_label.default_color
             self.key_label.size_hint_max_y = 50
             self.key_label.pos_hint = {'center_y': 0.5}
+            self.key_label.opacity = 0 if is_list_item else 1
 
             # Show ":" for YAML
             self.eq_label = Label()
             self.eq_label.__translate__ = False
-            self.eq_label.text = ':'
+            self.eq_label.text = '-' if is_list_item else ':'
             self.eq_label.halign = 'left'
             self.eq_label.font_name = self.font_name
             self.eq_label.font_size = self.font_size
@@ -25078,7 +25086,6 @@ class ServerYamlEditScreen(EditorRoot):
         server_obj = constants.server_manager.current_server
 
         class YamlToken:
-
             def __init__(
                     self,
                     raw_line,
@@ -25090,26 +25097,24 @@ class ServerYamlEditScreen(EditorRoot):
                     value=None,
                     multiline_indicator=None
             ):
-                self.raw_line = raw_line  # The entire original line (including trailing spaces, etc.)
-                self.indent_level = indent_level  # Number of leading spaces
+                self.raw_line = raw_line
+                self.indent_level = indent_level
                 self.is_comment = is_comment
-                self.comment_text = comment_text  # For full-line or inline comments
-                self.is_list_item = is_list_item  # Whether line starts with "-"
-                self.key = key  # Parsed key before ':'
-                self.value = value  # Remainder after ':'
-                self.multiline_indicator = multiline_indicator  # '|', '>', etc.
+                self.comment_text = comment_text
+                self.is_list_item = is_list_item
+                self.key = key
+                self.value = value
+                self.multiline_indicator = multiline_indicator
 
         def tokenize(lines):
             tokens = []
             for line in lines:
-                # Count indentation
                 indent_level = 0
                 while indent_level < len(line) and line[indent_level] == ' ':
                     indent_level += 1
 
                 trimmed = line[indent_level:].rstrip('\n')
 
-                # Check empty or comment-only
                 if not trimmed or trimmed.lstrip().startswith('#'):
                     tokens.append(YamlToken(
                         raw_line=line,
@@ -25119,46 +25124,38 @@ class ServerYamlEditScreen(EditorRoot):
                     ))
                     continue
 
-                # Check if this is a list item
                 is_list_item = False
                 remainder = trimmed
                 if remainder.startswith('-'):
                     is_list_item = True
-                    # Remove leading '-' and any space right after it
                     remainder = remainder[1:].lstrip()
 
-                # Check inline comment '#' within the remainder
                 comment_text = None
                 hash_idx = remainder.find('#')
                 if hash_idx != -1:
                     comment_text = remainder[hash_idx:]
                     remainder = remainder[:hash_idx].rstrip()
 
-                # Check for multi-line indicator (| or >) at the end
                 multiline_indicator = None
                 stripped = remainder.rstrip()
                 if stripped.endswith('|') or stripped.endswith('>'):
                     multiline_indicator = stripped[-1]
-                    # remove the indicator from the end
                     remainder = stripped[:-1].rstrip()
 
-                # Find "key: value" if it exists
                 key = None
                 value = None
+                # Only parse "key: value" if line doesn't start with '-'
                 if ':' in remainder and not line.strip().startswith('-'):
-                    # get the first colon
                     colon_idx = remainder.find(':')
                     key_part = remainder[:colon_idx].rstrip()
                     value_part = remainder[colon_idx + 1:].lstrip()
                     key = key_part if key_part else None
                     value = value_part if value_part else None
                 else:
-                    # If it's simply "- something", treat as value
-                    # Otherwise, maybe it's a scalar line
                     if is_list_item and remainder:
                         value = remainder
                     else:
-                        key = remainder  # no colon, treat the entire remainder as 'key'
+                        key = remainder
 
                 tokens.append(YamlToken(
                     raw_line=line,
@@ -25173,10 +25170,6 @@ class ServerYamlEditScreen(EditorRoot):
             return tokens
 
         class YamlNode:
-            """
-            A node in the parsed YAML AST.
-            """
-
             def __init__(
                     self,
                     parent=None,
@@ -25190,83 +25183,122 @@ class ServerYamlEditScreen(EditorRoot):
                 self.parent = parent
                 self.indent_level = indent_level
                 self.key = key
-                self.value = value  # for scalars
+                self.value = value
                 self.is_list_item = is_list_item
-                self.comment = comment  # full-line comment
+                self.comment = comment
                 self.inline_comment = inline_comment
-                self.children = []  # nested structures
+                self.children = []
 
             def add_child(self, child_node):
                 self.children.append(child_node)
 
         def build_ast(tokens):
             """
-            Convert a list of YamlToken objects into a hierarchical YamlNode AST.
+            Merges normal indentation-based nesting with a special rule:
+              - If we see a node with `key!=None and value==None` (like "someKey:"),
+                then any consecutive tokens that start with '-' (is_list_item=True)
+                are forced as children of that node, *ignoring* indentation.
+              - Once we encounter a token that doesn't start with '-', we resume normal indentation rules.
             """
-            root = YamlNode(indent_level=-1, key='__ROOT__')  # artificial root
+
+            root = YamlNode(indent_level=-1, key='__ROOT__')
             stack = [root]
+            i = 0
+            n = len(tokens)
 
-            for token in tokens:
-                current_indent = token.indent_level
+            while i < n:
+                token = tokens[i]
 
-                # If it's a full-line comment only, attach it to the current node
+                # 1) Pure comment line => attach to top of stack
                 if token.is_comment and token.key is None and token.value is None:
                     comment_node = YamlNode(
                         parent=stack[-1],
-                        indent_level=current_indent,
+                        indent_level=token.indent_level,
                         comment=token.comment_text
                     )
                     stack[-1].add_child(comment_node)
+                    i += 1
                     continue
 
-                # Adjust stack to find the correct parent
+                # 2) Normal indentation-based logic:
+                #    Pop until we find a node with indent < token's indent
+                current_indent = token.indent_level
                 while stack and stack[-1].indent_level >= current_indent:
                     stack.pop()
 
                 parent_node = stack[-1] if stack else root
 
-                # Create a new node
+                # 3) Create a normal node
                 new_node = YamlNode(
                     parent=parent_node,
                     indent_level=current_indent,
                     key=token.key,
                     value=token.value,
                     is_list_item=token.is_list_item,
-                    inline_comment=token.comment_text if (not token.is_comment and token.comment_text) else None
+                    inline_comment=(
+                        token.comment_text
+                        if (not token.is_comment and token.comment_text) else None
+                    )
                 )
                 parent_node.add_child(new_node)
 
-                # If token indicates a multi-line block (| or >),
-                # in a more robust parser, you'd gather subsequent lines here.
-                # For brevity, we'll assume the line's 'value' is the block start
-                # and the next lines with higher indent get appended.
-                # (Implementation details omitted for simplicity.)
-
-                # Push new_node on the stack
+                # 4) Push this node on the stack (so normal children with higher indent attach to it)
                 stack.append(new_node)
+                i += 1
+
+                # 5) Special rule: if it's a "key with no value" => gather consecutive dash lines
+                if (new_node.key is not None) and (new_node.value is None):
+                    # Keep pulling next tokens that start with '-' (is_list_item=True),
+                    # ignoring indentation. Attach them as children of new_node.
+                    while i < n:
+                        lookahead = tokens[i]
+
+                        # If it's a pure comment, attach it to new_node as well
+                        if lookahead.is_comment and lookahead.key is None and lookahead.value is None:
+                            comment_node = YamlNode(
+                                parent=new_node,
+                                indent_level=lookahead.indent_level,
+                                comment=lookahead.comment_text
+                            )
+                            new_node.add_child(comment_node)
+                            i += 1
+                            continue
+
+                        # If it's a dash line, attach as a child of new_node
+                        if lookahead.is_list_item:
+                            child_item = YamlNode(
+                                parent=new_node,
+                                indent_level=lookahead.indent_level,
+                                key=None,  # dash lines don't have a key
+                                value=lookahead.value,
+                                is_list_item=True,
+                                inline_comment=(
+                                    lookahead.comment_text
+                                    if (not lookahead.is_comment and lookahead.comment_text) else None
+                                )
+                            )
+                            new_node.add_child(child_item)
+                            i += 1
+                        else:
+                            # As soon as we hit a non-dash line, break from dash gathering
+                            break
+
+                    # After collecting consecutive dash lines, we’re done with this key
+                    # The next iteration will handle normal indentation for the next token
+                    # so we don't pop or push the stack again here.
 
             return root
 
         def to_python(node):
-            """
-            Convert a YamlNode AST (with comment nodes) into a Python structure that
-            includes comment lines, inline comments, and blank lines as special entries.
-            """
-
-            # --- 1) Is this node a pure comment or blank line? ---
-            #    (i.e. it has comment text but no actual key/value)
+            # Same exact code from your snippet
             if node.comment is not None and node.key is None and node.value is None and not node.children:
                 return {
-                    '__type__': 'comment',  # so we can recognize it later
-                    'comment': node.comment,  # the actual comment text (could be blank if it's an empty line)
+                    '__type__': 'comment',
+                    'comment': node.comment,
                     'indent': node.indent_level
                 }
-
-            # --- 2) If it has no children => treat it as a scalar value. ---
-            #    (But if there's an inline comment, attach it in a special way.)
             if not node.children:
                 if node.inline_comment:
-                    # Return a dict that includes both scalar value and inline comment
                     return {
                         '__type__': 'scalar_with_comment',
                         'value': node.value,
@@ -25274,27 +25306,18 @@ class ServerYamlEditScreen(EditorRoot):
                         'indent': node.indent_level
                     }
                 else:
-                    # Just a normal scalar
                     return node.value
 
-            # --- 3) Otherwise, this node has children: figure out if it's a list or a dict. ---
-            #    We'll skip pure-comment children when deciding "list vs dict" but still include them in the final structure.
-
-            # Identify the “real” (non-comment) children:
             non_comment_children = [
                 c for c in node.children
                 if not (c.comment is not None and c.key is None and c.value is None)
             ]
-
-            # If all non-comment children are list items => we treat this node as a list
             if all(c.is_list_item for c in non_comment_children):
                 result_list = []
                 for child in node.children:
-                    child_py = to_python(child)  # might be comment or normal
+                    child_py = to_python(child)
                     result_list.append(child_py)
-
                 if node.inline_comment:
-                    # Store the inline comment in a special structure
                     return {
                         '__type__': 'list',
                         'items': result_list,
@@ -25302,52 +25325,31 @@ class ServerYamlEditScreen(EditorRoot):
                         'indent': node.indent_level
                     }
                 else:
-                    # Just a normal list (plus comment nodes inline)
                     return result_list
-
             else:
-                # This node is a dict-like structure
                 result_dict = {}
                 for child in node.children:
-                    # If it's a pure comment node, give it a unique “key” so we can flatten/display it.
-                    # Example: '__comment__0', '__comment__1', etc.
                     if (child.comment is not None and child.key is None and child.value is None):
-                        # pure comment
                         comment_key = f'__comment__{len(result_dict)}'
                         result_dict[comment_key] = to_python(child)
                     else:
-                        # Normal key/value child
                         if child.key is not None:
-                            # Normal dict entry
                             result_dict[child.key] = to_python(child)
                         else:
-                            # It could be a list item nested in a dict, e.g.:
-                            #   key:
-                            #     - something
-                            # We'll do a naive approach or skip special logic:
                             list_key = f'__listitem__{len(result_dict)}'
                             result_dict[list_key] = to_python(child)
-
-                # If the current node has an inline comment, store it too
                 if node.inline_comment:
                     result_dict['__inline_comment__'] = node.inline_comment
-
                 return result_dict
 
         with open(self.path, 'r', encoding='utf-8') as f:
             raw_lines = f.readlines()
 
-        # 1) Tokenize
         tokens = tokenize(raw_lines)
-
-        # 2) Build an AST
         root_ast = build_ast(tokens)
-
-        # 3) Convert AST → normal Python (dict/list/scalars)
-        #    (You can keep the AST around if you want to preserve EXACT formatting for rewriting)
         self.server_yaml = to_python(root_ast)
 
-        # Flatten the data into lines for display in your UI
+        # Flatten for the editor
         self.line_list = []
         self.undo_history = []
         self.redo_history = []
@@ -25358,38 +25360,57 @@ class ServerYamlEditScreen(EditorRoot):
 
         def flatten_yaml(data, prefix='', indent=0):
             """
-            Recursively traverse the standard Python structure (dict, list, scalar)
-            to produce a flattened list of lines for the editor
+            Revised snippet so that each list item is displayed as `-` instead of `<prefix>[<index>]`.
             """
-            if isinstance(data, dict):
-                if '__type__' in data and data['__type__'] == 'comment':
-                    self.flat_lines.append((data['comment'], '', data['indent'], False))
-                    return
 
+            # 1) Check if this is a pure comment node
+            if isinstance(data, dict) and data.get('__type__') == 'comment':
+                self.flat_lines.append((data['comment'], '', data['indent'], False, False))
+                return
+
+            if isinstance(data, dict):
+                # Flatten normal dict keys, skipping internal control keys
                 for k, v in data.items():
-                    # Insert a placeholder line if the value is nested
+                    if k in ('__type__', '__inline_comment__', 'items', 'indent'):
+                        continue
+
                     if isinstance(v, (dict, list)):
-                        self.flat_lines.append((k, '', indent, True))
+                        is_list_header = isinstance(v, list) or (isinstance(v, dict) and v.get('__type__') == 'list')
+                        # Keep the dict key for "header" lines
+                        self.flat_lines.append((k, '', indent, True, is_list_header))
                         flatten_yaml(v, k, indent + 1)
                     else:
-                        self.flat_lines.append((k, v, indent, False))
+                        self.flat_lines.append((k, v, indent, False, False))
+
+                # If this dict is actually a 'list' wrapper: { '__type__': 'list', 'items': [...] }
+                # Flatten its items as well
+                if data.get('__type__') == 'list' and 'items' in data:
+                    # Show the dict as a list header using the existing `prefix`
+                    self.flat_lines.append((prefix, '', indent, True, True))
+                    flatten_yaml(data['items'], prefix, indent + 1)
+
             elif isinstance(data, list):
+                # For each item in a plain Python list, display the item key as a dash `-`
                 for idx, v in enumerate(data):
-                    full_key = f'{prefix}[{idx}]'
+                    # Instead of `f'{prefix}[{idx}]'`, we simply use `-`:
+                    item_key = '__list__'
+
                     if isinstance(v, (dict, list)):
-                        self.flat_lines.append((full_key, '', indent, False))
-                        flatten_yaml(v, full_key, indent + 1)
+                        # If it's nested, check if it's also a list
+                        is_list_header = isinstance(v, list) or (isinstance(v, dict) and v.get('__type__') == 'list')
+                        self.flat_lines.append((item_key, '', indent, True, is_list_header))
+                        # We still pass the old prefix for recursion so nested structures can get the correct path
+                        flatten_yaml(v, prefix, indent + 1)
                     else:
-                        self.flat_lines.append((full_key, v, indent, False))
+                        # Scalar item
+                        self.flat_lines.append((item_key, v, indent, False, False))
+
             else:
-                # Scalar
-                self.flat_lines.append((prefix, data, indent))
+                # Final scalar
+                self.flat_lines.append((prefix, data, indent, False, False))
 
         self.flat_lines = []
         flatten_yaml(self.server_yaml)
-
-        # Now self.flat_lines is a list of (full_key, value, indent_level).
-        # The rest of your UI code is unchanged:
 
         self.scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
         self.scroll_layout = GridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30])
@@ -25411,13 +25432,14 @@ class ServerYamlEditScreen(EditorRoot):
         Window.bind(on_resize=self.resize_bind)
         self.resize_bind()
 
-        # Add lines
         max_lines = len(self.flat_lines)
         i = 0
-        for (full_key, val, indent, header) in self.flat_lines:
+        # Unpack the 5-tuple: (full_key, value, indent, header, is_list_header)
+        for (full_key, val, indent, header, is_list_header) in self.flat_lines:
+            # Skip synthetic "__comment__..." keys if needed
             if full_key.startswith('__comment__'):
                 continue
-            print(full_key, val, header)
+            print(full_key, val, is_list_header)
             i += 1
             line = self.EditorLine(
                 line=i,
@@ -25425,6 +25447,7 @@ class ServerYamlEditScreen(EditorRoot):
                 value=val,
                 indent_level=indent,
                 is_header=header,
+                is_list_header=is_list_header,
                 max_line_count=max_lines,
                 index_func=self.set_index,
                 undo_func=self.undo
@@ -25437,16 +25460,17 @@ class ServerYamlEditScreen(EditorRoot):
         self.scroll_widget.add_widget(self.scroll_layout)
         float_layout.add_widget(self.scroll_widget)
 
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos,
+                                       size=(self.scroll_widget.width // 1.5, 60))
         scroll_top.color = self.background_color
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos,
+                                          size=(self.scroll_widget.width // 1.5, -60))
         scroll_bottom.color = self.background_color
         scroll_bottom.y = 115
 
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
 
-        # Fullscreen shadow
         self.fullscreen_shadow = Image()
         self.fullscreen_shadow.allow_stretch = True
         self.fullscreen_shadow.keep_ratio = False
@@ -25456,7 +25480,6 @@ class ServerYamlEditScreen(EditorRoot):
         self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
         float_layout.add_widget(self.fullscreen_shadow)
 
-        # Add bottom/back buttons
         buttons = []
         buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
         for b in buttons:
@@ -25466,7 +25489,6 @@ class ServerYamlEditScreen(EditorRoot):
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Edit '${self.file_name}$'"))
         self.add_widget(float_layout)
 
-        # Add search bar
         self.search_bar = self.YamlSearchInput(size_hint_max_y=50)
         self.search_bar.bind(text=self.search_text)
         self.add_widget(self.search_bar)
@@ -25482,7 +25504,6 @@ class ServerYamlEditScreen(EditorRoot):
         self.match_label.opacity = 0
         self.add_widget(self.match_label)
 
-        # Input icon
         self.input_background = Image()
         self.input_background.default_opacity = 0.35
         self.input_background.color = self.search_bar.foreground_color
@@ -25493,7 +25514,6 @@ class ServerYamlEditScreen(EditorRoot):
         self.input_background.source = os.path.join(constants.gui_assets, 'icons', 'search.png')
         self.add_widget(self.input_background)
 
-        # Controls popup
         def show_controls():
             controls_text = """This menu allows you to edit YML/YAML configuration files. Shortcuts are provided for ease of use:
 
@@ -25514,11 +25534,12 @@ class ServerYamlEditScreen(EditorRoot):
                 0
             )
 
-        self.controls_button = IconButton('controls', {}, (70, 110), (None, None), 'question.png', clickable=True,
-                                          anchor='right', click_func=show_controls)
+        self.controls_button = IconButton(
+            'controls', {}, (70, 110), (None, None), 'question.png',
+            clickable=True, anchor='right', click_func=show_controls
+        )
         float_layout.add_widget(self.controls_button)
 
-        # Header banner
         self.header = BannerObject(
             pos_hint={"center_x": 0.5, "center_y": 0.9},
             size=(250, 40),
@@ -25528,8 +25549,10 @@ class ServerYamlEditScreen(EditorRoot):
         )
         self.add_widget(self.header)
 
-        # Save & quit
-        self.controls_button = IconButton('save & quit', {}, (120, 110), (None, None), 'save-sharp.png', clickable=True, anchor='right', click_func=self.save_and_quit, text_offset=(-5, 50))
+        self.controls_button = IconButton(
+            'save & quit', {}, (120, 110), (None, None), 'save-sharp.png',
+            clickable=True, anchor='right', click_func=self.save_and_quit, text_offset=(-5, 50)
+        )
         float_layout.add_widget(self.controls_button)
 
     def save_config(self):
