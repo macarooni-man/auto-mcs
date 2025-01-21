@@ -23410,13 +23410,10 @@ class ServerPropertiesEditScreen(EditorRoot):
 
                 # Check if search matches in key label
                 if text in self.key_label.text:
-                    self.key_label.text = f'[color=#000000][ref=0]{text}[/ref][/color]'.join(
-                        [x for x in self.key_label.original_text.split(text)])
+                    self.key_label.text = f'[color=#000000][ref=0]{text}[/ref][/color]'.join([x for x in self.key_label.original_text.split(text)])
                     self.line_matched = True
-                elif key_text and self.key_label.text.endswith(key_text) and self.value_label.original_text.startswith(
-                        value_text):
-                    self.key_label.text = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join(
-                        [x for x in self.key_label.original_text.rsplit(key_text, 1)])
+                elif key_text and self.key_label.text.endswith(key_text) and self.value_label.original_text.startswith(value_text):
+                    self.key_label.text = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join([x for x in self.key_label.original_text.rsplit(key_text, 1)])
                     self.line_matched = True
                 else:
                     self.key_label.text = self.key_label.original_text
@@ -23424,13 +23421,10 @@ class ServerPropertiesEditScreen(EditorRoot):
 
                 # Check if search matches in value input/ghost label
                 if text in self.value_label.text:
-                    self.value_label.search.text = f'[color=#000000][ref=0]{text}[/ref][/color]'.join(
-                        [x for x in self.value_label.text.split(text)])
+                    self.value_label.search.text = f'[color=#000000][ref=0]{text}[/ref][/color]'.join([x for x in self.value_label.text.split(text)])
                     self.line_matched = True
-                elif value_text and self.value_label.text.startswith(
-                        value_text) and self.key_label.original_text.endswith(key_text):
-                    self.value_label.search.text = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join(
-                        [x for x in self.value_label.text.split(value_text, 1)])
+                elif value_text and self.value_label.text.startswith(value_text) and self.key_label.original_text.endswith(key_text):
+                    self.value_label.search.text = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join([x for x in self.value_label.text.split(value_text, 1)])
                     self.line_matched = True
                 else:
                     self.value_label.search.text = self.value_label.text
@@ -24532,6 +24526,7 @@ class ServerYamlEditScreen(EditorRoot):
         def on_resize(self, *args):
             Clock.schedule_once(self.key_label.texture_update, -1)
             Clock.schedule_once(self.eq_label.texture_update, -1)
+            Clock.schedule_once(self.value_label.search.texture_update, -1)
             def after_texture_update(*a):
                 self.key_label.size_hint_max = self.key_label.texture_size
                 self.eq_label.size_hint_max = self.eq_label.texture_size
@@ -24540,6 +24535,18 @@ class ServerYamlEditScreen(EditorRoot):
                 self.eq_label.x = self.key_label.x + self.key_label.size_hint_max[0] + (self.spacing * 0.75)
                 self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * 0.75)
                 self.value_label.y = -6
+
+                # Properly position comments
+                if self.is_comment:
+                    if not self._comment_padding:
+                        self._comment_padding = self.key_label.size_hint_max_y * 0.75
+                    self.key_label.size_hint_max_y = self._comment_padding
+                    self.key_label.size_hint_max_x = Window.width
+
+                # Properly position search text
+                vl = self.value_label
+                vl.search.x = vl.x + 6
+                vl.search.y = vl.y + (5 if 'italic' in vl.font_name.lower() else 7) + 10
 
                 # Additional cover elements for ghosting or blocking touches
                 try:
@@ -24609,6 +24616,7 @@ class ServerYamlEditScreen(EditorRoot):
 
                 self.value_label.foreground_color = (0, 0, 0, 0)
                 self.value_label.search.opacity = 1
+
             else:
                 # Reset visuals
                 self.line_number.text = str(self.line)
@@ -24671,6 +24679,7 @@ class ServerYamlEditScreen(EditorRoot):
             self.is_blank_line = is_blank_line
             self.inactive = is_header or is_list_header or is_comment or is_blank_line
             self._finished_rendering = False
+            self._comment_padding = None
             def finish_rendering(*a):
                 self._finished_rendering = True
             Clock.schedule_once(finish_rendering, 1)
@@ -24750,10 +24759,6 @@ class ServerYamlEditScreen(EditorRoot):
                     me.search.font_size = me.font_size
                     me.search.font_name = me.font_name
                     me.search.text_size = me.search.size
-
-                    if me.scroll_x == 0:
-                        me.search.x = me.x + 5.3
-                    me.search.y = me.y + (5 if 'italic' in me.font_name.lower() else 7)
 
                     if me.search.opacity == 1:
                         me.foreground_color = (0, 0, 0, 0)
@@ -24973,7 +24978,10 @@ class ServerYamlEditScreen(EditorRoot):
             self.line_number.pos_hint = {'center_y': 0.7}
 
             # Key label
-            self.key_label = Label()
+            if self.is_comment:
+                self.key_label = AlignLabel(halign='left')
+            else:
+                self.key_label = Label()
             self.key_label.__translate__ = False
             self.key_label.text = key
             self.key_label.original_text = key
@@ -24981,7 +24989,7 @@ class ServerYamlEditScreen(EditorRoot):
             self.key_label.font_size = self.font_size
             self.key_label.max_lines = 1
             self.key_label.shorten = True
-            self.key_label.shorten_from = 'left'
+            self.key_label.shorten_from = 'right'
             self.key_label.markup = True
             self.key_label.default_color = "#636363" if is_comment else (0.5, 0.5, 1, 1) if is_header else "#5E6BFF"
             self.key_label.color = self.key_label.default_color
@@ -25009,20 +25017,21 @@ class ServerYamlEditScreen(EditorRoot):
                 undo_func=undo_func
             )
 
-            # Add all widgets
-            self.add_widget(self.line_number)
-            self.add_widget(self.key_label)
-
             if not (is_blank_line or is_comment):
-                self.add_widget(self.eq_label)
                 if not is_header and not is_list_header:
                     self.add_widget(self.value_label)
 
             # Ghost covers for left / right
             self.ghost_cover_left = Image(color=background_color)
             self.ghost_cover_right = Image(color=background_color)
-            # self.add_widget(self.ghost_cover_left)
-            # self.add_widget(self.ghost_cover_right)
+            self.add_widget(self.ghost_cover_left)
+            self.add_widget(self.ghost_cover_right)
+
+            # Add remaining widgets
+            if not (is_blank_line or is_comment):
+                self.add_widget(self.eq_label)
+            self.add_widget(self.line_number)
+            self.add_widget(self.key_label)
 
             Clock.schedule_once(self.key_label.texture_update, -1)
             Clock.schedule_once(self.eq_label.texture_update, -1)
