@@ -24828,7 +24828,7 @@ class ServerYamlEditScreen(EditorRoot):
                             self.line + 1,
                             '__list__',
                             '',
-                            self.indent_level,
+                            self.indent_level if self.is_list_item else self.indent_level + 1,
                             False,
                             False,
                             max_line_count,
