@@ -24586,20 +24586,14 @@ class ServerYamlEditScreen(EditorRoot):
                 # Check if search matches in key label
                 if text in self.key_label.text:
                     # Insert [ref][/ref] markup
-                    self.key_label.text = self.key_label.text.replace(
-                        text,
-                        f'[color=#000000][ref=0]{text}[/ref][/color]'
-                    )
+                    self.key_label.text = self.key_label.text.replace(text, f'[color=#000000][ref=0]{text}[/ref][/color]')
                     self.line_matched = True
                 else:
                     Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
 
                 # Check if search matches in value input/ghost label
                 if text in self.value_label.text:
-                    self.value_label.search.text = self.value_label.text.replace(
-                        text,
-                        f'[color=#000000][ref=0]{text}[/ref][/color]'
-                    )
+                    self.value_label.search.text = self.value_label.text.replace(text, f'[color=#000000][ref=0]{text}[/ref][/color]')
                     self.line_matched = True
                 else:
                     self.value_label.search.text = self.value_label.text
@@ -24644,8 +24638,7 @@ class ServerYamlEditScreen(EditorRoot):
 
             # Key label
             self.key_label.font_name = self.font_name
-            self.key_label.default_color = "#636363" if self.is_comment else \
-                (0.5, 0.5, 1, 1) if self.is_header else "#5E6BFF"
+            self.key_label.default_color = "#636363" if self.is_comment else (0.5, 0.5, 1, 1) if self.is_header else "#5E6BFF"
 
             # Equals sign
             self.eq_label.font_name = self.font_name
@@ -25242,7 +25235,8 @@ class ServerYamlEditScreen(EditorRoot):
         except AttributeError:
             pass
 
-    def _apply_action(self, action, undo=True):
+    @staticmethod
+    def _apply_action(action, undo=True):
         """
         Helper to apply or revert a structural action:
         - 'insert_line' => add widget or remove it
@@ -25765,83 +25759,38 @@ class ServerYamlEditScreen(EditorRoot):
         float_layout.add_widget(self.controls_button)
 
     def save_config(self):
-        """
-        Gather all lines from self.line_list, reconstruct the YAML data structure,
-        and write it to disk.
-        """
-        # Rebuild dictionary from lines...
-        data_tree = {}
-
-        def set_path_value(root, path_list, value):
-            if not path_list:
-                return
-            key_part = path_list[0]
-            is_list_index = False
-            index_num = None
-
-            if '[' in key_part and key_part.endswith(']'):
-                bracket_pos = key_part.index('[')
-                actual_key = key_part[:bracket_pos]
-                index_num = int(key_part[bracket_pos + 1:-1])
-                is_list_index = True
-                key_part = actual_key
-
-            if len(path_list) == 1:
-                if is_list_index:
-                    if key_part not in root:
-                        root[key_part] = []
-                    while len(root[key_part]) <= index_num:
-                        root[key_part].append(None)
-                    root[key_part][index_num] = value
-                else:
-                    root[key_part] = value
-            else:
-                if is_list_index:
-                    if key_part not in root:
-                        root[key_part] = []
-                    while len(root[key_part]) <= index_num:
-                        root[key_part].append({})
-                    if not isinstance(root[key_part][index_num], dict):
-                        root[key_part][index_num] = {}
-                    set_path_value(root[key_part][index_num], path_list[1:], value)
-                else:
-                    if key_part not in root:
-                        root[key_part] = {}
-                    if not isinstance(root[key_part], dict):
-                        root[key_part] = {}
-                    set_path_value(root[key_part], path_list[1:], value)
+        server_obj = constants.server_manager.current_server
+        self.line_list = list(reversed(list(self.scroll_layout.children)))
+        final_content = ''
 
         for line in self.line_list:
-            key_str = line.key_label.original_text
-            val_str = line.value_label.text
+            key_str = line.key_label.text.strip()
+            val_str = line.value_label.text.strip()
+            indent = "  " * line.indent_level
 
-            parsed_val = val_str
-            # Try bool
-            if parsed_val.lower() in ['true', 'false']:
-                parsed_val = (parsed_val.lower() == 'true')
-            else:
-                # Try number
-                try:
-                    if '.' in parsed_val:
-                        parsed_val = float(parsed_val)
-                    else:
-                        parsed_val = int(parsed_val)
-                except ValueError:
-                    pass
+            if line.is_comment or line.is_blank_line:
+                final_content += f'{indent}{key_str}\n'
 
-            path_list = key_str.split('.')
-            set_path_value(data_tree, path_list, parsed_val)
+            elif line.is_list_item and val_str:
+                final_content += f'{indent}- {val_str}\n'
 
-        server_obj = constants.server_manager.current_server
+            elif line.is_header or line.is_list_header or not val_str:
+                final_content += f'{indent}{key_str}:\n'
+
+            elif key_str and val_str:
+                final_content += f'{indent}{key_str}: {val_str}\n'
+
+        print(final_content)
+
         try:
             with open(self.path, 'w', encoding='utf-8') as f:
-                constants.yaml.dump(data_tree, f, sort_keys=False, allow_unicode=True)
+                f.write(final_content)
                 save_config_file(self._config_data)
         except Exception as e:
             if constants.debug:
                 print("Error saving YAML:", e)
+            return False
 
-        self.server_yaml = data_tree
         self.set_banner_status(False)
 
         if server_obj.running:
@@ -25860,7 +25809,7 @@ class ServerYamlEditScreen(EditorRoot):
                 functools.partial(
                     screen_manager.current_screen.show_banner,
                     (0.553, 0.902, 0.675, 1),
-                    f"'{self.file_name}' was saved successfully",
+                    f"'${self.file_name}$' was saved successfully",
                     "checkmark-circle-sharp.png",
                     2.5,
                     {"center_x": 0.5, "center_y": 0.965}
@@ -25890,8 +25839,7 @@ class ServerYamlEditScreen(EditorRoot):
         self.set_banner_status(False)
 
     def check_data(self):
-        # Rebuild dictionary from line_list, compare with self.server_yaml, etc.
-        return True
+        return not self.undo_history
 
     def set_banner_status(self, changed=False):
         if changed != self.modified:
@@ -25951,6 +25899,7 @@ class ServerYamlEditScreen(EditorRoot):
 
         if keycode[1] == 's' and control in modifiers and self.modified:
             self.save_config()
+            return None
 
         # Undo/Redo
         if keycode[1] == 'z' and control in modifiers and self.undo_history:
