@@ -23335,6 +23335,7 @@ class GridInsertLayout(GridLayout):
         """
         for visual_index, widget in enumerate(reversed(self.children)):
             widget.index = visual_index
+            widget.line = visual_index + 1
             widget.max_line_count = len(self.children)
 
             if hasattr(widget, "on_index_update"):
@@ -24704,7 +24705,7 @@ class ServerYamlEditScreen(EditorRoot):
             elif not self.is_list_header and not self.value_label.parent:
                 self.add_widget(self.value_label)
 
-        def __init__(self, line, key, value, indent_level, is_header, is_list_header, max_line_count, index_func, undo_func, **kwargs):
+        def __init__(self, line, key, value, indent_level, is_header, is_list_header, is_multiline_string, max_line_count, index_func, undo_func, **kwargs):
             super().__init__(**kwargs)
 
             # Format list_headers
@@ -24713,6 +24714,11 @@ class ServerYamlEditScreen(EditorRoot):
             is_list_item = key == '__list__'
             if is_list_item:
                 key = '-'
+
+            # Format mutli-line strings
+            if is_multiline_string:
+                indent_level = indent_level - 2
+                key = '⁎'
 
             is_comment = key.strip().startswith('#')
             is_blank_line = not key.strip()
@@ -24725,6 +24731,7 @@ class ServerYamlEditScreen(EditorRoot):
             self.is_comment = is_comment
             self.is_blank_line = is_blank_line
             self.inactive = is_header or is_list_header or is_comment or is_blank_line
+            self.is_multiline_string = is_multiline_string
             self._finished_rendering = False
             self._comment_padding = None
             def finish_rendering(*a):
@@ -24861,8 +24868,72 @@ class ServerYamlEditScreen(EditorRoot):
                     else:
                         super(EditorInput, me).keyboard_on_key_down(window, keycode, text, modifiers)
 
+
+                    # Add a new multi-line string on pressing "enter" in a current string
+                    if ((not self.is_list_item and me.text) or (self.is_multiline_string and me.text)) and keycode[1] in ['enter', 'return']:
+                        parent = self.parent
+                        if not parent:
+                            return
+
+                        new_line = type(self)(
+                            self.line + 1,
+                            '__string__',
+                            '',
+                            self.indent_level + (2 if self.is_multiline_string else 3),
+                            False,
+                            False,
+                            True,
+                            max_line_count,
+                            index_func,
+                            undo_func
+                        )
+                        parent.insert_widget(new_line, self.line)
+
+                        # Record the insertion action for undo
+                        undo_func(
+                            save=True,
+                            action={
+                                'type': 'insert_line',
+                                'widget': new_line,
+                                'index': self.line,
+                                'parent': parent
+                            }
+                        )
+
+                        new_line.value_label.focused = True
+
+                    elif self.is_multiline_string:
+
+                        # Remove line on backspace if it's empty
+                        if keycode[1] in ['delete', 'backspace'] and not me._original_text:
+                            parent = self.parent
+                            if not parent:
+                                return
+
+                            # Record the removal action for undo
+                            undo_func(
+                                save=True,
+                                action={
+                                    'type': 'remove_line',
+                                    'widget': self,
+                                    'index': self.index,
+                                    'parent': parent
+                                }
+                            )
+
+                            parent.remove_widget(self)
+
+                            # Existing focusing logic
+                            try:
+                                previous_line = parent.children[len(parent.children) - self.index]
+                                next_line = parent.children[len(parent.children) - self.index - 1]
+                                previous_line.value_label.focused = True
+                            except:
+                                pass
+
+
                     # Add a new list item on pressing "enter" in a current list
-                    if ((self.is_list_item and me.text) or (not self.is_list_item and not me.text)) and keycode[1] in ['enter', 'return']:
+                    elif ((self.is_list_item and me.text) or (not self.is_list_item and not me.text)) and keycode[1] in ['enter', 'return']:
                         parent = self.parent
                         if not parent:
                             return
@@ -24876,6 +24947,7 @@ class ServerYamlEditScreen(EditorRoot):
                             '__list__',
                             '',
                             self.indent_level if self.is_list_item else self.indent_level + 1,
+                            False,
                             False,
                             False,
                             max_line_count,
@@ -25076,8 +25148,10 @@ class ServerYamlEditScreen(EditorRoot):
             self.add_widget(self.ghost_cover_right)
 
             # Add remaining widgets
-            if not (is_blank_line or is_comment):
+            if not (is_blank_line or is_comment or is_multiline_string):
                 self.add_widget(self.eq_label)
+            if is_multiline_string:
+                self.key_label.opacity = 0
             self.add_widget(self.line_number)
             self.add_widget(self.key_label)
 
@@ -25303,7 +25377,6 @@ class ServerYamlEditScreen(EditorRoot):
         parent = action['parent']
 
         if a_type == 'insert_line':
-            # If we are UNDOing an insertion, remove the widget; if REDOing, insert it again
             if undo:
                 if widget in parent.children:
                     parent.remove_widget(widget)
@@ -25312,7 +25385,6 @@ class ServerYamlEditScreen(EditorRoot):
                 widget.value_label.focused = True
 
         elif a_type == 'remove_line':
-            # If we are UNDOing a removal, re-insert the widget; if REDOing, remove it again
             if undo:
                 parent.insert_widget(widget, idx)
                 widget.value_label.focused = True
@@ -25322,71 +25394,66 @@ class ServerYamlEditScreen(EditorRoot):
 
     def undo(self, save=False, undo=False, action=None):
         """
-        Extended to handle both text changes (the original logic) and line insert/remove actions.
+        Handles both structural (insert/remove line) and text changes.
         - `save=True, action=...` => record a new structural action
         - `save=True, action=None` => record a text-change action
-        - `undo=True` => actually undo the last action
-        - `undo=False` => redo the last undone action
+        - `undo=True` => perform undo
+        - `undo=False` => perform redo
         """
         if save and action is not None:
-            # We are saving a new structural action in the undo history
+            # Save structural action
             self.redo_history.clear()
             self.undo_history.append(action)
             return
 
         if save and action is None:
-            # Original text-based "save" logic (store line and old text)
-            self.redo_history = []
-            line = self.line_list[self.current_line]
-            same_line = False
-
-            if self.undo_history:
-                # If last recorded entry has the same line number, skip
-                last = self.undo_history[-1]
-                # text-based entries were stored as tuples, e.g. (line_num, old_text)
-                if not isinstance(last, dict) and last[0] == line.line:
-                    same_line = True
-
-            if not same_line:
+            # Save text-change action
+            self.redo_history.clear()
+            if self.current_line is not None and 0 <= self.current_line < len(self.line_list):
+                line = self.line_list[self.current_line]
+                if self.undo_history and not isinstance(self.undo_history[-1], dict):
+                    last = self.undo_history[-1]
+                    if last[0] == line.line:
+                        # Update existing action
+                        self.undo_history[-1] = (line.line, line.value_label.original_text)
+                        return
                 self.undo_history.append((line.line, line.value_label.original_text))
             return
 
-        # Now we either UNDO or REDO:
         if undo:
-            # UNDO => pop from undo_history, revert it
+            # Perform Undo
             if not self.undo_history:
                 return
             last_action = self.undo_history.pop()
-
-            # Check if structural or text-based
             if isinstance(last_action, dict):
-                # structural
+                # Structural action
                 self._apply_action(last_action, undo=True)
                 self.redo_history.append(last_action)
             else:
-                # text-based => last_action is something like (line_num, old_text)
-                (line_num, old_text) = last_action
-                line_obj = self.line_list[line_num - 1]
-                self.redo_history.append([line_num, line_obj.value_label.original_text])
-                line_obj.value_label.text = old_text
-                self.focus_input(line_obj, highlight=True)
-
+                # Text-based action
+                line_num, old_text = last_action
+                if 1 <= line_num <= len(self.line_list):
+                    line_obj = self.line_list[line_num - 1]
+                    self.redo_history.append((line_num, line_obj.value_label.original_text))
+                    line_obj.value_label.text = old_text
+                    self.focus_input(line_obj, highlight=True)
         else:
-            # REDO => pop from redo_history, re-apply it
+            # Perform Redo
             if not self.redo_history:
                 return
             last_action = self.redo_history.pop()
-
-            # Check if structural or text-based
             if isinstance(last_action, dict):
+                # Structural action
                 self._apply_action(last_action, undo=False)
                 self.undo_history.append(last_action)
             else:
-                (line_num, old_text) = last_action
-                line_obj = self.line_list[line_num - 1]
-                self.undo_history.append([line_num, line_obj.value_label.original_text])
-                line_obj.value_label.text = old_text
-                self.focus_input(line_obj, highlight=True)
+                # Text-based action
+                line_num, old_text = last_action
+                if 1 <= line_num <= len(self.line_list):
+                    line_obj = self.line_list[line_num - 1]
+                    self.undo_history.append((line_num, line_obj.value_label.original_text))
+                    line_obj.value_label.text = old_text
+                    self.focus_input(line_obj, highlight=True)
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
@@ -25401,7 +25468,8 @@ class ServerYamlEditScreen(EditorRoot):
                     is_list_item=False,
                     key=None,
                     value=None,
-                    multiline_indicator=None
+                    multiline_indicator=None,
+                    is_multiline_string=False
             ):
                 self.raw_line = raw_line
                 self.indent_level = indent_level
@@ -25411,68 +25479,7 @@ class ServerYamlEditScreen(EditorRoot):
                 self.key = key
                 self.value = value
                 self.multiline_indicator = multiline_indicator
-
-        def tokenize(lines):
-            tokens = []
-            for line in lines:
-                indent_level = 0
-                while indent_level < len(line) and line[indent_level] == ' ':
-                    indent_level += 1
-
-                trimmed = line[indent_level:].rstrip('\n')
-
-                if not trimmed or trimmed.lstrip().startswith('#'):
-                    tokens.append(YamlToken(
-                        raw_line=line,
-                        indent_level=indent_level,
-                        is_comment=True,
-                        comment_text=trimmed
-                    ))
-                    continue
-
-                is_list_item = False
-                remainder = trimmed
-                if remainder.startswith('-'):
-                    is_list_item = True
-                    remainder = remainder[1:].lstrip()
-
-                comment_text = None
-                hash_idx = remainder.find('#')
-                if hash_idx != -1:
-                    comment_text = remainder[hash_idx:]
-                    remainder = remainder[:hash_idx].rstrip()
-
-                multiline_indicator = None
-                stripped = remainder.rstrip()
-                if stripped.endswith('|') or stripped.endswith('>'):
-                    multiline_indicator = stripped[-1]
-                    remainder = stripped[:-1].rstrip()
-
-                key = None
-                value = None
-                if ':' in remainder and not line.strip().startswith('-'):
-                    colon_idx = remainder.find(':')
-                    key_part = remainder[:colon_idx].rstrip()
-                    value_part = remainder[colon_idx + 1:].lstrip()
-                    key = key_part if key_part else None
-                    value = value_part if value_part else None
-                else:
-                    if is_list_item and remainder:
-                        value = remainder
-                    else:
-                        key = remainder
-
-                tokens.append(YamlToken(
-                    raw_line=line,
-                    indent_level=indent_level,
-                    is_comment=False,
-                    comment_text=comment_text,
-                    is_list_item=is_list_item,
-                    key=key,
-                    value=value,
-                    multiline_indicator=multiline_indicator
-                ))
-            return tokens
+                self.is_multiline_string = is_multiline_string
 
         class YamlNode:
             def __init__(
@@ -25494,19 +25501,100 @@ class ServerYamlEditScreen(EditorRoot):
                 self.inline_comment = inline_comment
                 self.children = []
 
-            def add_child(self, child_node):
-                self.children.append(child_node)
+                # For multiline detection
+                self.is_multiline_string = False
+                self.multiline_indicator = None
+
+            def add_child(self, child):
+                self.children.append(child)
+
+        def tokenize(lines):
+            tokens = []
+            for line in lines:
+                indent_level = 0
+                while indent_level < len(line) and line[indent_level] == ' ':
+                    indent_level += 1
+
+                trimmed = line[indent_level:].rstrip('\n')
+
+                # If empty or all comment
+                if not trimmed or trimmed.lstrip().startswith('#'):
+                    tokens.append(YamlToken(
+                        raw_line=line,
+                        indent_level=indent_level,
+                        is_comment=True,
+                        comment_text=trimmed
+                    ))
+                    continue
+
+                # Check for list item ("- something")
+                is_list_item = False
+                remainder = trimmed
+                if remainder.startswith('-'):
+                    is_list_item = True
+                    remainder = remainder[1:].lstrip()
+
+                # Extract inline comment
+                comment_text = None
+                hash_idx = remainder.find('#')
+                if hash_idx != -1:
+                    comment_text = remainder[hash_idx:]
+                    remainder = remainder[:hash_idx].rstrip()
+
+                key = None
+                value = None
+                is_multiline_string = False
+                multiline_indicator = None
+
+                # If line has a colon and not a list item => parse "key: value"
+                if (':' in remainder) and not is_list_item:
+                    colon_idx = remainder.find(':')
+                    key_part = remainder[:colon_idx].rstrip()
+                    value_part = remainder[colon_idx + 1:].lstrip()
+
+                    key = key_part if key_part else None
+                    value = value_part if value_part else None
+
+                    # If the value is exactly '>' or '|', treat as block scalar
+                    if value in (">", "|"):
+                        multiline_indicator = value
+                        value = None
+
+                else:
+                    # No colon => if there's text and not a list item => multiline raw string
+                    if not is_list_item and remainder:
+                        key = "__string__"
+                        value = remainder
+                        is_multiline_string = True
+                    elif is_list_item:
+                        value = remainder
+                    else:
+                        # Possibly empty line
+                        key = remainder
+
+                tokens.append(YamlToken(
+                    raw_line=line,
+                    indent_level=indent_level,
+                    is_comment=False,
+                    comment_text=comment_text,
+                    is_list_item=is_list_item,
+                    key=key,
+                    value=value,
+                    multiline_indicator=multiline_indicator,
+                    is_multiline_string=is_multiline_string
+                ))
+
+            return tokens
 
         def build_ast(tokens):
             root = YamlNode(indent_level=-1, key='__ROOT__')
             stack = [root]
             i = 0
-            n = len(tokens)
 
-            while i < n:
+            while i < len(tokens):
                 token = tokens[i]
 
-                # 1) Pure comment line => attach to top of stack
+                # If it's just a comment
                 if token.is_comment and token.key is None and token.value is None:
                     comment_node = YamlNode(
                         parent=stack[-1],
@@ -25517,30 +25605,30 @@ class ServerYamlEditScreen(EditorRoot):
                     i += 1
                     continue
 
-                current_indent = token.indent_level
-                while stack and stack[-1].indent_level >= current_indent:
+                # Adjust indentation
+                while stack and stack[-1].indent_level >= token.indent_level:
                     stack.pop()
 
                 parent_node = stack[-1] if stack else root
 
                 new_node = YamlNode(
                     parent=parent_node,
-                    indent_level=current_indent,
+                    indent_level=token.indent_level,
                     key=token.key,
                     value=token.value,
                     is_list_item=token.is_list_item,
-                    inline_comment=(
-                        token.comment_text
-                        if (not token.is_comment and token.comment_text) else None
-                    )
+                    inline_comment=(token.comment_text if (not token.is_comment and token.comment_text) else None)
                 )
+                new_node.is_multiline_string = token.is_multiline_string
+                new_node.multiline_indicator = token.multiline_indicator
+
                 parent_node.add_child(new_node)
                 stack.append(new_node)
                 i += 1
 
-                # 5) Special rule: if it's a "key with no value" => gather consecutive dash lines
+                # If it's a key with no value, gather subsequent dash items
                 if (new_node.key is not None) and (new_node.value is None):
-                    while i < n:
+                    while i < len(tokens):
                         lookahead = tokens[i]
                         if lookahead.is_comment and lookahead.key is None and lookahead.value is None:
                             comment_node = YamlNode(
@@ -25559,25 +25647,49 @@ class ServerYamlEditScreen(EditorRoot):
                                 key=None,
                                 value=lookahead.value,
                                 is_list_item=True,
-                                inline_comment=(
-                                    lookahead.comment_text
-                                    if (not lookahead.is_comment and lookahead.comment_text) else None
-                                )
+                                inline_comment=(lookahead.comment_text if (
+                                            not lookahead.is_comment and lookahead.comment_text) else None)
                             )
+                            child_item.is_multiline_string = lookahead.is_multiline_string
+                            child_item.multiline_indicator = lookahead.multiline_indicator
+
                             new_node.add_child(child_item)
                             i += 1
                         else:
                             break
+
             return root
 
         def to_python(node):
-            if node.comment is not None and node.key is None and node.value is None and not node.children:
+            # (A) If it's a pure comment node
+            if (
+                    node.comment is not None and
+                    node.key is None and
+                    node.value is None and
+                    not node.children
+            ):
                 return {
                     '__type__': 'comment',
                     'comment': node.comment,
                     'indent': node.indent_level
                 }
+
+            # (B) If no children => leaf
             if not node.children:
+                if node.is_multiline_string:
+                    return {
+                        '__type__': 'multiline_string',
+                        'value': node.value,
+                        'indent': node.indent_level,
+                        'indicator': node.multiline_indicator
+                    }
+                if node.multiline_indicator:
+                    return {
+                        '__type__': 'block_scalar',
+                        'indicator': node.multiline_indicator,
+                        'value': node.value,
+                        'indent': node.indent_level
+                    }
                 if node.inline_comment:
                     return {
                         '__type__': 'scalar_with_comment',
@@ -25585,42 +25697,61 @@ class ServerYamlEditScreen(EditorRoot):
                         'inline_comment': node.inline_comment,
                         'indent': node.indent_level
                     }
-                else:
-                    return node.value
+                return node.value  # normal scalar
 
+            # (C) Node has children => figure out if it's a list or dict
             non_comment_children = [
                 c for c in node.children
                 if not (c.comment is not None and c.key is None and c.value is None)
             ]
+
+            # (C1) If all children are list items => produce a list
             if all(c.is_list_item for c in non_comment_children):
-                result_list = []
+                items = []
                 for child in node.children:
-                    child_py = to_python(child)
-                    result_list.append(child_py)
+                    items.append(to_python(child))
                 if node.inline_comment:
                     return {
                         '__type__': 'list',
-                        'items': result_list,
+                        'items': items,
                         '__inline_comment__': node.inline_comment,
                         'indent': node.indent_level
                     }
+                return items
+
+            # (C2) Normal dict, but possibly "scalar_with_children"
+            result = {}
+
+            # If parent has a direct scalar
+            if node.value is not None:
+                result['__value__'] = node.value
+                if node.is_multiline_string:
+                    result['__type__'] = 'multiline_scalar_with_children'
+                    result['__indicator__'] = node.multiline_indicator
                 else:
-                    return result_list
-            else:
-                result_dict = {}
-                for child in node.children:
-                    if (child.comment is not None and child.key is None and child.value is None):
-                        comment_key = f'__comment__{len(result_dict)}'
-                        result_dict[comment_key] = to_python(child)
+                    result['__type__'] = 'scalar_with_children'
+                result['indent'] = node.indent_level
+
+            # Convert children
+            for child in node.children:
+                if (
+                        child.comment is not None and
+                        child.key is None and
+                        child.value is None
+                ):
+                    comment_key = f'__comment__{len(result)}'
+                    result[comment_key] = to_python(child)
+                else:
+                    if child.key is not None:
+                        result[child.key] = to_python(child)
                     else:
-                        if child.key is not None:
-                            result_dict[child.key] = to_python(child)
-                        else:
-                            list_key = f'__listitem__{len(result_dict)}'
-                            result_dict[list_key] = to_python(child)
-                if node.inline_comment:
-                    result_dict['__inline_comment__'] = node.inline_comment
-                return result_dict
+                        list_key = f'__listitem__{len(result)}'
+                        result[list_key] = to_python(child)
+
+            if node.inline_comment:
+                result['__inline_comment__'] = node.inline_comment
+
+            return result
 
         with open(self.path, 'r', encoding='utf-8') as f:
             raw_lines = f.readlines()
@@ -25629,7 +25760,6 @@ class ServerYamlEditScreen(EditorRoot):
         root_ast = build_ast(tokens)
         self.server_yaml = to_python(root_ast)
 
-        # Flatten for the editor
         self.line_list = []
         self.undo_history = []
         self.redo_history = []
@@ -25638,43 +25768,133 @@ class ServerYamlEditScreen(EditorRoot):
         self.modified = False
         self.current_line = None
 
-        def flatten_yaml(data, prefix='', indent=0):
-            if isinstance(data, dict) and data.get('__type__') == 'comment':
-                self.flat_lines.append((data['comment'], '', data['indent'], False, False))
-                return
+        def flatten_yaml(data, parent_key='', indent=0):
+            """
+            Build self.flat_lines as:
+                ( key, value, indent, is_header, is_list_header, is_multiline_string )
+            """
 
-            if isinstance(data, dict):
-                for k, v in data.items():
-                    if k in ('__type__', '__inline_comment__', 'items', 'indent'):
+            # CASE 1: 'scalar_with_children' or 'multiline_scalar_with_children'
+            if (
+                    isinstance(data, dict) and
+                    data.get('__type__') in ('scalar_with_children', 'multiline_scalar_with_children')
+            ):
+                parent_val = data.get('__value__', '')
+                is_multi = (data['__type__'] == 'multiline_scalar_with_children')
+                shown_key = parent_key or '__root__'
+
+                # 1 line for the parent's key & value
+                self.flat_lines.append(
+                    (shown_key, parent_val, indent, False, False, is_multi)
+                )
+
+                # Now flatten real children under indent+1
+                for child_key, child_val in data.items():
+                    if child_key in (
+                            '__type__', '__value__', 'indent', '__indicator__',
+                            '__inline_comment__'
+                    ):
+                        continue
+                    if child_key.startswith('__comment__'):
+                        c_text = child_val.get('comment', '')
+                        c_indent = child_val.get('indent', indent + 1)
+                        self.flat_lines.append((c_text, '', c_indent, False, False, False))
                         continue
 
+                    flatten_yaml(child_val, child_key, indent + 1)
+
+                # If there's an inline comment
+                if '__inline_comment__' in data:
+                    cmt = data['__inline_comment__']
+                    self.flat_lines.append((f"__comment__{indent}", cmt, indent, False, False, False))
+                return
+
+            # CASE 2: Plain 'multiline_string'
+            if isinstance(data, dict) and data.get('__type__') == 'multiline_string':
+                val = data['value']
+                ml_flag = True
+                node_indent = data.get('indent', indent)
+                shown_key = parent_key or '__root__'
+                self.flat_lines.append((shown_key, val, node_indent, False, False, ml_flag))
+                return
+
+            # CASE 3: 'block_scalar'
+            if isinstance(data, dict) and data.get('__type__') == 'block_scalar':
+                val = data.get('value', '')
+                indicator = data.get('indicator', '')
+                node_indent = data.get('indent', indent)
+                shown_key = f"{parent_key} {indicator}".strip()
+                self.flat_lines.append((shown_key, val, node_indent, False, False, False))
+                return
+
+            # CASE 4: If it's a dict 'list'
+            if isinstance(data, dict) and data.get('__type__') == 'list' and 'items' in data:
+                self.flat_lines.append((parent_key, '', indent, True, True, False))
+                flatten_yaml(data['items'], parent_key, indent + 1)
+                return
+
+            # CASE 5: Normal dict => flatten each key
+            if isinstance(data, dict):
+                for k, v in data.items():
+                    if k in ('__type__', '__inline_comment__', 'items', 'indent', '__value__', '__indicator__'):
+                        continue
+                    if k.startswith('__comment__'):
+                        # flatten comment
+                        comment_text = v.get('comment', '')
+                        comment_indent = v.get('indent', indent)
+                        self.flat_lines.append((comment_text, '', comment_indent, False, False, False))
+                        continue
+
+                    # If v is nested
                     if isinstance(v, (dict, list)):
-                        is_list_header = isinstance(v, list) or (isinstance(v, dict) and v.get('__type__') == 'list')
-                        self.flat_lines.append((k, '', indent, True, is_list_header))
-                        flatten_yaml(v, k, indent + 1)
+                        # If it's a list or a dict that might be a list
+                        is_list_header = (
+                                isinstance(v, list) or
+                                (isinstance(v, dict) and v.get('__type__') == 'list')
+                        )
+                        # We do a "header line" only if it's NOT scalar_with_children
+                        if isinstance(v, dict) and v.get('__type__') in (
+                                'scalar_with_children', 'multiline_scalar_with_children'
+                        ):
+                            # Flatten it directly (no extra header line)
+                            flatten_yaml(v, k, indent)
+                        else:
+                            # Normal header line
+                            self.flat_lines.append((k, '', indent, True, is_list_header, False))
+                            flatten_yaml(v, k, indent + 1)
                     else:
-                        self.flat_lines.append((k, v, indent, False, False))
+                        # Scalar
+                        self.flat_lines.append((k, v, indent, False, False, False))
 
-                if data.get('__type__') == 'list' and 'items' in data:
-                    self.flat_lines.append((prefix, '', indent, True, True))
-                    flatten_yaml(data['items'], prefix, indent + 1)
+                # Inline comment
+                if '__inline_comment__' in data:
+                    cmt = data['__inline_comment__']
+                    self.flat_lines.append((f"__comment__{indent}", cmt, indent, False, False, False))
+                return
 
-            elif isinstance(data, list):
-                for idx, v in enumerate(data):
+            # CASE 6: If data is a list
+            if isinstance(data, list):
+                for idx, item in enumerate(data):
                     item_key = '__list__'
-                    if isinstance(v, (dict, list)):
-                        is_list_header = isinstance(v, list) or (isinstance(v, dict) and v.get('__type__') == 'list')
-                        self.flat_lines.append((item_key, '', indent, True, is_list_header))
-                        flatten_yaml(v, prefix, indent + 1)
+                    if isinstance(item, (dict, list)):
+                        is_list_header = (
+                                isinstance(item, list) or
+                                (isinstance(item, dict) and item.get('__type__') == 'list')
+                        )
+                        self.flat_lines.append((item_key, '', indent, True, is_list_header, False))
+                        flatten_yaml(item, parent_key, indent + 1)
                     else:
-                        self.flat_lines.append((item_key, v, indent, False, False))
+                        self.flat_lines.append((item_key, item, indent, False, False, False))
+                return
 
-            else:
-                self.flat_lines.append((prefix, data, indent, False, False))
+            # CASE 7: Otherwise a plain scalar
+            self.flat_lines.append((parent_key, data, indent, False, False, False))
 
+        # Flatten
         self.flat_lines = []
         flatten_yaml(self.server_yaml)
 
+        # Editor UI
         self.scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
         self.scroll_layout = GridInsertLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30])
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
@@ -25697,9 +25917,10 @@ class ServerYamlEditScreen(EditorRoot):
 
         max_lines = len(self.flat_lines)
         i = 0
-        for (full_key, val, indent, header, is_list_header) in self.flat_lines:
+        for (full_key, val, indent, header, is_list_header, ml_string) in self.flat_lines:
             if full_key.startswith('__comment__'):
                 continue
+
             i += 1
             line = self.EditorLine(
                 line=i,
@@ -25708,6 +25929,7 @@ class ServerYamlEditScreen(EditorRoot):
                 indent_level=indent,
                 is_header=header,
                 is_list_header=is_list_header,
+                is_multiline_string=ml_string,
                 max_line_count=max_lines,
                 index_func=self.set_index,
                 undo_func=self.undo
@@ -25720,9 +25942,17 @@ class ServerYamlEditScreen(EditorRoot):
         self.scroll_widget.add_widget(self.scroll_layout)
         float_layout.add_widget(self.scroll_widget)
 
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_top = scroll_background(
+            pos_hint={"center_x": 0.5, "center_y": 0.9},
+            pos=self.scroll_widget.pos,
+            size=(self.scroll_widget.width // 1.5, 60)
+        )
         scroll_top.color = self.background_color
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+        scroll_bottom = scroll_background(
+            pos_hint={"center_x": 0.5},
+            pos=self.scroll_widget.pos,
+            size=(self.scroll_widget.width // 1.5, -60)
+        )
         scroll_bottom.color = self.background_color
         scroll_bottom.y = 115
 
@@ -25773,14 +26003,30 @@ class ServerYamlEditScreen(EditorRoot):
         self.add_widget(self.input_background)
 
         def show_controls():
-            controls_text = """This menu allows you to edit YML/YAML configuration files. Shortcuts are provided for ease of use:
+            controls_text = """This menu allows you to edit additional YML/YAML configuration options. Shortcuts are provided for ease of use:
 
-    • Press 'CTRL+Z' to undo, and 'CTRL+R'/'CTRL+Y' to redo
-    • Press 'CTRL+S' to save modifications
-    • Press 'CTRL+Q' to quit the editor
-    • Press 'CTRL+F' to search for data
-    • Press 'SPACE' to toggle booleans (true/false)
-    """
+
+• Press 'CTRL+Z' to undo, and 'CTRL+R'/'CTRL+Y' to redo
+
+• Press 'CTRL+S' to save modifications
+
+• Press 'CTRL-Q' to quit the editor
+
+• Press 'CTRL+F' to search for data
+
+• Press 'SPACE' to toggle boolean values (e.g. true, false)""" if constants.os_name != 'macos' else """This menu allows you to edit additional YML/YAML configuration options. Shortcuts are provided for ease of use:
+
+
+• Press 'CMD+Z' to undo, and 'CMD+R'/'CMD+Y' to redo
+
+• Press 'CMD+S' to save modifications
+
+• Press 'CMD+Q' to quit the editor
+
+• Press 'CMD+F' to search for data
+
+• Press 'SPACE' to toggle boolean values (e.g. true, false)"""
+
             Clock.schedule_once(
                 functools.partial(
                     self.show_popup,
@@ -25809,7 +26055,9 @@ class ServerYamlEditScreen(EditorRoot):
 
         self.controls_button = IconButton(
             'save & quit', {}, (120, 110), (None, None), 'save-sharp.png',
-            clickable=True, anchor='right', click_func=self.save_and_quit, text_offset=(-5, 50)
+            clickable=True, anchor='right',
+            click_func=self.save_and_quit,
+            text_offset=(-5, 50)
         )
         float_layout.add_widget(self.controls_button)
 
@@ -25829,12 +26077,17 @@ class ServerYamlEditScreen(EditorRoot):
             elif line.is_list_item and val_str:
                 final_content += f'{indent}- {val_str}\n'
 
+            elif line.is_multiline_string and val_str:
+                final_content += f'{indent}{val_str}\n'
+
             elif line.is_header or line.is_list_header or not val_str:
                 final_content += f'{indent}{key_str}:\n'
 
             elif key_str and val_str:
                 final_content += f'{indent}{key_str}: {val_str}\n'
 
+
+        # return print(final_content)
         try:
             with open(self.path, 'w', encoding='utf-8') as f:
                 f.write(final_content)
