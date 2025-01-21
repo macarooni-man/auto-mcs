@@ -24517,6 +24517,56 @@ class ServerPropertiesEditScreen(EditorRoot):
 
 class ServerYamlEditScreen(EditorRoot):
     class EditorLine(RelativeLayout):
+        class ParagraphLabel(AlignLabel, HoverBehavior):
+            # Hover stuffies
+            def on_enter(self, *args):
+
+                if self.copyable:
+                    if '[u]' in self.text and '[/u]' in self.text and self.color_tag not in self.text:
+                        self.text = self.text.replace('[u]', f'{self.color_tag}[u]')
+                        self.text = self.text.replace('[/u]', '[/u][/color]')
+
+
+            def on_leave(self, *args):
+
+                if self.copyable:
+                    if '[u]' in self.text and '[/u]' in self.text and self.color_tag in self.text:
+                        self.text = self.text.replace(f'{self.color_tag}[u]', '[u]')
+                        self.text = self.text.replace('[/u][/color]', '[/u]')
+
+            # Normal stuffies
+            def on_ref_press(self, *args):
+                if not self.disabled:
+                    def click(*a):
+                        webbrowser.open_new_tab(self.url)
+
+                    Clock.schedule_once(click, 0)
+
+            def ref_text(self, *args):
+                if 'http://' in self.text or 'https://' in self.text:
+                    self.copyable = True
+
+                    if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
+                        self.original_text = self.text
+                        url_pattern = r'(https?://[^\s]+)'
+
+                        def replace_url(match):
+                            url = match.group(1)
+                            self.url = url
+                            return f'[u]{url}[/u]'
+
+                        # Use re.sub with the pattern
+                        self.text = '[ref=none]' + re.sub(url_pattern, replace_url, self.text, count=1) + '[/ref]'
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.markup = True
+                self.copyable = False
+                self.url = None
+                self.original_text = ''
+                self.color_tag = '[color=#8F8F8F]'
+                self.bind(text=self.ref_text)
+
         def on_index_update(self):
             # Custom behavior when the index is updated
             self.line_number.text = str(self.index + 1)
@@ -24567,6 +24617,9 @@ class ServerYamlEditScreen(EditorRoot):
             self.line_matched = False
 
             def draw_highlight_box(label, *args):
+                if self.key_label.url:
+                    return
+
                 def get_x(lb, ref_x):
                     return lb.center_x - lb.texture_size[0] * 0.5 + ref_x
 
@@ -24582,7 +24635,8 @@ class ServerYamlEditScreen(EditorRoot):
                                       size=(box[2] - box[0], box[1] - box[3]))
 
             text = text.strip()
-            if text:
+            if text and not self.key_label.url:
+
                 # Check if search matches in key label
                 if text in self.key_label.text:
                     # Insert [ref][/ref] markup
@@ -24972,9 +25026,10 @@ class ServerYamlEditScreen(EditorRoot):
 
             # Key label
             if self.is_comment:
-                self.key_label = AlignLabel(halign='left')
+                self.key_label = self.ParagraphLabel(halign='left')
             else:
                 self.key_label = Label()
+                self.key_label.url = None
             self.key_label.__translate__ = False
             self.key_label.text = key
             self.key_label.original_text = key
@@ -25769,7 +25824,7 @@ class ServerYamlEditScreen(EditorRoot):
             indent = "  " * line.indent_level
 
             if line.is_comment or line.is_blank_line:
-                final_content += f'{indent}{key_str}\n'
+                final_content += f'{indent}{line.key_label.original_text}\n'
 
             elif line.is_list_item and val_str:
                 final_content += f'{indent}- {val_str}\n'
@@ -25780,18 +25835,18 @@ class ServerYamlEditScreen(EditorRoot):
             elif key_str and val_str:
                 final_content += f'{indent}{key_str}: {val_str}\n'
 
-        print(final_content)
-
         try:
             with open(self.path, 'w', encoding='utf-8') as f:
                 f.write(final_content)
-                save_config_file(self._config_data)
+                save_config_file(self._config_data, final_content)
         except Exception as e:
             if constants.debug:
                 print("Error saving YAML:", e)
             return False
 
-        self.set_banner_status(False)
+        def set_banner(*a):
+            self.set_banner_status(False)
+        Clock.schedule_once(set_banner, 0)
 
         if server_obj.running:
             Clock.schedule_once(
