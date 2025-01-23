@@ -224,8 +224,14 @@ def launch_window(exc_code, log_path):
     root.geometry(f"{min_size[0]}x{min_size[1]}+{x}+{y}")
     root.minsize(width=min_size[0], height=min_size[1])
     root.title(f'{constants.app_title} - Crash')
-    img = PhotoImage(file=file_icon)
-    root.tk.call('wm', 'iconphoto', root._w, img)
+
+    # Attempt to use icon, ignore if it doesn't work
+    try:
+        img = PhotoImage(file=file_icon)
+        root.tk.call('wm', 'iconphoto', root._w, img)
+    except:
+        pass
+
     root.configure(bg=background_color)
     root.resizable(False, False)
     root.attributes('-topmost', 1)
