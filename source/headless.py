@@ -1334,7 +1334,7 @@ class CommandInput(urwid.Edit):
         if key == '?':
             help_content = commands['help'].show_command_help(self.get_edit_text().split(' '))
             if help_content:
-                command_content.set_text([('info', response_header), *help_content])
+                command_content.set_text([('success', response_header), *help_content])
             return
 
 
