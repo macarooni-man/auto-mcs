@@ -25516,7 +25516,7 @@ class ServerYamlEditScreen(EditorRoot):
 
         def tokenize(lines):
             tokens = []
-            for line in lines:
+            for line_number, line in enumerate(lines, start=1):
                 indent_level = 0
                 while indent_level < len(line) and line[indent_level] == ' ':
                     indent_level += 1
@@ -25529,7 +25529,7 @@ class ServerYamlEditScreen(EditorRoot):
                         raw_line=line,
                         indent_level=indent_level,
                         is_comment=True,
-                        comment_text=trimmed
+                        comment_text=trimmed.strip()
                     ))
                     continue
 
@@ -25544,7 +25544,7 @@ class ServerYamlEditScreen(EditorRoot):
                 comment_text = None
                 hash_idx = remainder.find('#')
                 if hash_idx != -1:
-                    comment_text = remainder[hash_idx:]
+                    comment_text = remainder[hash_idx:].strip()
                     remainder = remainder[:hash_idx].rstrip()
 
                 key = None
@@ -25552,31 +25552,39 @@ class ServerYamlEditScreen(EditorRoot):
                 is_multiline_string = False
                 multiline_indicator = None
 
-                # If line has a colon and not a list item => parse "key: value"
-                if (':' in remainder) and not is_list_item:
-                    colon_idx = remainder.find(':')
-                    key_part = remainder[:colon_idx].rstrip()
-                    value_part = remainder[colon_idx + 1:].lstrip()
+                if not is_list_item:
+                    # Split on the first occurrence of ": "
+                    split_index = remainder.find(': ')
+                    if split_index != -1:
+                        key_part = remainder[:split_index].rstrip()
+                        value_part = remainder[split_index + 2:].lstrip()
 
-                    key = key_part if key_part else None
-                    value = value_part if value_part else None
+                        key = key_part if key_part else None
+                        value = value_part if value_part else None
 
-                    # If the value is exactly '>' or '|', treat as block scalar
-                    if value in (">", "|"):
-                        multiline_indicator = value
+                        # If the value is exactly '>' or '|', treat as block scalar
+                        if value in (">", "|"):
+                            multiline_indicator = value
+                            value = None
+
+                    elif remainder.endswith(':'):
+                        # Line ends with ":", indicating a nested structure
+                        key_part = remainder[:-1].strip()
+                        key = key_part if key_part else None
                         value = None
+                    else:
+                        # No ": " found; could be a key with empty value or a multiline string
+                        key = remainder if remainder else None
+                        value = None
+                        is_multiline_string = True  # Assuming it's a multiline string
 
                 else:
-                    # No colon => if there's text and not a list item => multiline raw string
-                    if not is_list_item and remainder:
-                        key = "__string__"
-                        value = remainder
-                        is_multiline_string = True
-                    elif is_list_item:
-                        value = remainder
-                    else:
-                        # Possibly empty line
-                        key = remainder
+                    # List item; value is the remainder
+                    value = remainder
+
+                # Debug: Print the token details
+                # Uncomment the next line to enable debugging
+                # print(f"Tokenized Line {line_number}: Key='{key}', Value='{value}', List Item={is_list_item}")
 
                 tokens.append(YamlToken(
                     raw_line=line,
