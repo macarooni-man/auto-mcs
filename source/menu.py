@@ -24774,7 +24774,13 @@ class ServerYamlEditScreen(EditorRoot):
                         if (len(me.text) * (me.font_size / 1.85)) > me.width:
                             me.cursor = (len(me.text), me.cursor[1])
                             Clock.schedule_once(functools.partial(me.do_cursor_movement, 'cursor_end', True), 0)
-                            Clock.schedule_once(functools.partial(me.select_text, 0), 0.01)
+
+                            def select_error_handler(*a):
+                                try:
+                                    me.select_text(0)
+                                except:
+                                    pass
+                            Clock.schedule_once(select_error_handler, 0.01)
                     else:
                         me.scroll_x = 0
 
