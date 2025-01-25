@@ -24526,11 +24526,11 @@ class ServerYamlEditScreen(EditorRoot):
             except AttributeError:
                 pass
 
-        def highlight_text(self, text):
+        def highlight_text(self, text, *a):
             # Attempt to highlight text in both key and value for searching.
             self.last_search = text
             self.key_label.text = self.key_label.original_text
-            self.line_matched = False
+            self.line_matched = self._data['line_matched']
 
             def draw_highlight_box(label, *args):
                 if self.key_label.url:
@@ -24551,26 +24551,24 @@ class ServerYamlEditScreen(EditorRoot):
                                       size=(box[2] - box[0], box[1] - box[3]))
 
             text = text.strip()
-            if text and not self.key_label.url:
+
+            if text and not self.key_label.url and self.line_matched:
 
                 # Check if search matches in key label
-                if text in self.key_label.text:
-                    # Insert [ref][/ref] markup
-                    self.key_label.text = self.key_label.text.replace(text, f'[color=#000000][ref=0]{text}[/ref][/color]')
-                    self.line_matched = True
+                if self.line_matched['key']:
+                    self.key_label.text = self.line_matched['key']
                 else:
                     Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
 
                 # Check if search matches in value input/ghost label
-                if text in self.value_label.text:
-                    self.value_label.search.text = self.value_label.text.replace(text, f'[color=#000000][ref=0]{text}[/ref][/color]')
-                    self.line_matched = True
+                if self.line_matched['value']:
+                    self.value_label.search.text = self.line_matched['value']
                 else:
                     self.value_label.search.text = self.value_label.text
                     Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
 
             # Highlight matches if line matched
-            if self.line_matched and self.animate:
+            if self.line_matched and self._screen.search_bar.text:
                 self.line_number.text = f'[color=#4CFF99]{self.line}[/color]'
                 self.line_number.opacity = 1
                 self.on_resize()
@@ -24584,9 +24582,7 @@ class ServerYamlEditScreen(EditorRoot):
             else:
                 # Reset visuals
                 self.line_number.text = str(self.line)
-
-                if self._finished_rendering:
-                    self.line_number.opacity = (1 if self.value_label.focused and self.animate else 0.35)
+                self.line_number.opacity = (1 if self.value_label.focused else 0.35)
 
                 self.value_label.search.opacity = 0
                 self.value_label.foreground_color = self.value_label.last_color
@@ -24598,9 +24594,6 @@ class ServerYamlEditScreen(EditorRoot):
                 self.key_label.text = self.key_label.original_text
 
             return self.line_matched
-
-        def allow_animation(self, *args):
-            self.animate = True
 
         def _update_data(self, data: dict):
             self._data = data
@@ -24629,9 +24622,6 @@ class ServerYamlEditScreen(EditorRoot):
             self.line_matched = data['line_matched']
             self._finished_rendering = False
             self._comment_padding = None
-            def finish_rendering(*a):
-                self._finished_rendering = True
-            Clock.schedule_once(finish_rendering, 1)
 
             # Defaults
             self.line = line
@@ -24730,6 +24720,7 @@ class ServerYamlEditScreen(EditorRoot):
 
             # Update widget sizes
             Clock.schedule_once(self.on_resize, -1)
+            Clock.schedule_once(functools.partial(self.highlight_text, self._screen.search_bar.text), -1)
 
         def __init__(self, *args, **kwargs):
             super().__init__(**kwargs)
@@ -24738,9 +24729,10 @@ class ServerYamlEditScreen(EditorRoot):
             self.undo_func = None
             self.line = None
             self.last_search = None
+            self.font_size = dp(25)
+            self.line_matched = False
             self._data = None
             self._screen = screen_manager.current_screen
-            self.font_size = dp(25)
 
             # Create main text input
             class EditorInput(TextInput):
@@ -24821,11 +24813,12 @@ class ServerYamlEditScreen(EditorRoot):
                     def highlight(*args):
                         me._original_text = me.text
                         try:
+                            self._screen.check_match(self._data, self._screen.search_bar.text)
                             self.highlight_text(self.last_search)
                         except AttributeError:
                             pass
 
-                    # Clock.schedule_once(highlight, 0)
+                    Clock.schedule_once(highlight, 0)
 
                 def insert_text(me, substring, from_undo=False):
                     if screen_manager.current_screen.popup_widget:
@@ -25133,7 +25126,6 @@ class ServerYamlEditScreen(EditorRoot):
             self.ghost_cover_left = Image(color=background_color)
             self.ghost_cover_right = Image(color=background_color)
 
-            Clock.schedule_once(self.allow_animation, 1)
 
     # A simple search bar for YAML content. Very similar to PropertiesSearchInput
     class YamlSearchInput(TextInput):
@@ -25248,7 +25240,7 @@ class ServerYamlEditScreen(EditorRoot):
 
     def focus_input(self, new_input=None, highlight=False):
         if not new_input:
-            return self.scroll_to_line(self.current_line)
+            return self.scroll_to_line(self.current_line, highlight=highlight)
 
         if highlight:
             original_color = constants.convert_color(new_input.key_label.default_color)['rgb']
@@ -25257,21 +25249,26 @@ class ServerYamlEditScreen(EditorRoot):
             Animation(color=original_color, duration=0.5).start(new_input.key_label)
 
         new_input.value_label.grab_focus()
+        self.set_index(new_input.line)
 
-    def scroll_to_line(self, index: int, highlight=False, wrap_around=False):
+    def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True):
         new_scroll = 1 - (index * 50) / ((len(self.flat_lines) * 50) - self.search_bar.height - self.header.height)
         if new_scroll > 1:
             new_scroll = 1
         if new_scroll < 0:
             new_scroll = 0
 
-        Animation(scroll_y=new_scroll, duration=0.1).start(self.scroll_widget)
         def after_scroll(*a):
             for line in self.scroll_layout.children:
                 if line.line == index + 1:
-                    self.focus_input(line, highlight)
+                    self.focus_input(line, highlight=highlight)
 
-        Clock.schedule_once(after_scroll, 0.4 if wrap_around else 0.11)
+        if select:
+            Animation(scroll_y=new_scroll, duration=0.1).start(self.scroll_widget)
+            Clock.schedule_once(after_scroll, 0.4 if wrap_around else 0.11)
+        else:
+            self.scroll_widget.scroll_y = new_scroll
+            self.set_index(index + 1)
 
     def switch_input(self, position):
         if self.current_line is None:
@@ -25319,32 +25316,83 @@ class ServerYamlEditScreen(EditorRoot):
 
             index = index + (-1 if position == 'up' else 1)
 
+    # Updates data list in the background
+    @staticmethod
+    def check_match(data, search_text):
+        line_matched = False
+        key_matched = False
+        value_matched = False
+
+        if search_text:
+            search_text = search_text.strip()
+
+            # This needs to be fixed to detect what the separator would be for parameters like "is_list_item"
+            if ":" in search_text:
+                key_text, value_text = [x.strip() for x in search_text.split(":", 1)]
+            else:
+                key_text = ''
+                value_text = ''
+
+            key_data = str(data['key'])
+            value_data = str(data['value'])
+
+            # Check if search matches in key label
+            if search_text in key_data:
+                key_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join(
+                    [x for x in key_data.split(search_text)])
+            elif key_text and key_data.endswith(key_text) and value_text.startswith(value_text):
+                key_matched = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join(
+                    [x for x in key_data.rsplit(key_text, 1)])
+
+            # Check if search matches in value input/ghost label
+            if search_text in value_data:
+                value_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join(
+                    [x for x in value_data.split(search_text)])
+            elif value_text and value_data.startswith(value_text) and key_data.endswith(key_text):
+                value_matched = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join(
+                    [x for x in value_data.split(value_text, 1)])
+
+            if key_matched or value_matched:
+                line_matched = {'key': key_matched, 'value': value_matched}
+
+        data['line_matched'] = line_matched
+        return line_matched
+
     def search_text(self, obj, text, *args):
         self.last_search = text
         self.match_list = []
         first_match = None
 
-        for line in self.line_list:
-            result = line.highlight_text(text)
+        # Update search data in background
+        for x, line in enumerate(self.flat_lines):
+            result = self.check_match(line['data'], text)
             if result:
                 self.match_list.append(line)
             if result and not first_match:
                 first_match = line
 
+        for line in self.scroll_layout.children:
+            Clock.schedule_once(functools.partial(line.highlight_text, text), -1)
+
+
+        # Scroll to first match
         if first_match:
-            self.set_index(first_match.line - 1)
-            self.scroll_widget.scroll_to(first_match, padding=30, animate=True)
+            index = self.flat_lines.index(first_match)
+            self.scroll_to_line(index, select=False)
+
+        # Dirty hack to force focus to search bar
+        for x in range(30):
+            Clock.schedule_once(self.search_bar.grab_focus, 0.01 * x)
 
         # Show match count
         try:
             Animation.stop_all(self.match_label)
-            Animation(opacity=(1 if text and self.match_list else 0.35 if text else 0), duration=0.1).start(
-                self.match_label)
+            Animation(opacity=(1 if text and self.match_list else 0.35 if text else 0), duration=0.1).start(self.match_label)
             matches = 0
             search_str = text.strip()
             if search_str:
                 for x in self.match_list:
-                    total_str = x.key_label.text + x.value_label.text
+                    total_str = str(x['data']['key']) + str(x['data']['value'])
                     matches += total_str.count(search_str)
             self.match_label.text = f'{matches} match{"es" if matches != 1 else ""}'
         except AttributeError:
@@ -25441,7 +25489,7 @@ class ServerYamlEditScreen(EditorRoot):
                     line_obj.value_label.text = old_text
                     self.focus_input(line_obj, highlight=True)
 
-    def insert_line(self, line: dict, index: int = None):
+    def insert_line(self, line: (tuple, list), index: int = None):
         key, value, indent, is_header, is_list_header, is_multiline_string = line
 
         # Format list_headers
