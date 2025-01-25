@@ -23266,89 +23266,6 @@ class EditorRoot(MenuBackground):
         self.path = self._config_data['path']
         self.file_name = os.path.basename(self.path)
 
-from kivy.uix.gridlayout import GridLayout
-from kivy.uix.widget import Widget
-
-class GridInsertLayout(GridLayout):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-    def add_widget(self, widget: Widget, index: int = None, **kwargs):
-        """
-        Adds a widget to the GridLayout.
-        Optionally allows specifying an index for compatibility with insert_widget.
-        """
-        if index is None:
-            # If no index is specified, just use the normal add_widget
-            super().add_widget(widget, **kwargs)
-        else:
-            self.insert_widget(widget, index)
-        self._update_widget_indices()
-
-    def insert_widget(self, widget: Widget, index: int):
-        """
-        Inserts a widget at a specific visual index in the GridLayout.
-
-        :param widget: The widget to insert.
-        :param index: The *visual* index (0-based) where the widget should be inserted.
-        """
-        if index < 0 or index > len(self.children):
-            raise IndexError("Index out of range for insert_widget.")
-
-        # If widget is already in another parent (or in this layout), remove it first
-        if widget.parent:
-            widget.parent.remove_widget(widget)
-
-        # Convert visual index to the reversed children list's index
-        reverse_index = len(self.children) - index
-
-        # Make a copy of current children
-        current_children = list(self.children)
-
-        # Insert the new widget in the *list* of children
-        current_children.insert(reverse_index, widget)
-
-        # Clear out the layout's children
-        self.clear_widgets()
-
-        # Re-add everything in reversed order so they appear visually as intended
-        for child in reversed(current_children):
-            super().add_widget(child)
-
-        # Trigger layout refresh and update indices
-        self._trigger_layout()
-        self._update_widget_indices()
-
-    def remove_widget(self, widget: Widget):
-        """
-        Removes a widget from the GridLayout and updates indices.
-        """
-        if widget in self.children:
-            super().remove_widget(widget)  # let Kivy do the removal
-            self._trigger_layout()
-            self._update_widget_indices()
-
-    def _update_widget_indices(self):
-        """
-        Updates `widget.index` for each child in the layout and
-        calls `on_index_update` if the widget defines it.
-        """
-        for visual_index, widget in enumerate(reversed(self.children)):
-            widget.index = visual_index
-            widget.line = visual_index + 1
-            widget.max_line_count = len(self.children)
-
-            if hasattr(widget, "on_index_update"):
-                widget.on_index_update()
-
-    def get_widget_index(self, widget: Widget):
-        """
-        Gets the current visual index of a widget, or None if not in the layout.
-        """
-        if widget in self.children:
-            return widget.index
-        return None
-
 class ServerPropertiesEditScreen(EditorRoot):
     class EditorLine(RelativeLayout):
 
@@ -24527,7 +24444,6 @@ class ServerYamlEditScreen(EditorRoot):
                         self.text = self.text.replace('[u]', f'{self.color_tag}[u]')
                         self.text = self.text.replace('[/u]', '[/u][/color]')
 
-
             def on_leave(self, *args):
 
                 if self.copyable:
@@ -24568,6 +24484,12 @@ class ServerYamlEditScreen(EditorRoot):
                 self.color_tag = '[color=#8F8F8F]'
                 self.bind(text=self.ref_text)
 
+        def __setattr__(self, attr, value):
+            if attr == "data" and value:
+                self._update_data(value)
+
+            super().__setattr__(attr, value)
+
         def on_index_update(self):
             # Custom behavior when the index is updated
             self.line_number.text = str(self.index + 1)
@@ -24575,44 +24497,37 @@ class ServerYamlEditScreen(EditorRoot):
             self.line_number.size_hint_max_x = (self.spacing * len(str(self.max_line_count)))
 
         def on_resize(self, *args):
-            Clock.schedule_once(self.key_label.texture_update, -1)
-            Clock.schedule_once(self.eq_label.texture_update, -1)
-            Clock.schedule_once(self.value_label.search.texture_update, -1)
-            def after_texture_update(*a):
-                self.key_label.size_hint_max = self.key_label.texture_size
-                self.eq_label.size_hint_max = self.eq_label.texture_size
+            self.key_label.size_hint_max = self.key_label.texture_size
+            self.eq_label.size_hint_max = self.eq_label.texture_size
 
-                self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4) + 10 + self.indent_space
-                self.eq_label.x = self.key_label.x + self.key_label.size_hint_max[0] + (self.spacing * 0.75)
-                self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * 0.75)
-                self.value_label.y = -6
+            self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4) + 10 + self.indent_space
+            self.eq_label.x = self.key_label.x + self.key_label.size_hint_max[0] + (self.spacing * 0.75)
+            self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * 0.75)
+            self.value_label.y = -6
 
-                # Properly position comments
-                if self.is_comment:
-                    if not self._comment_padding:
-                        self._comment_padding = self.key_label.size_hint_max_y * 0.75
-                    self.key_label.size_hint_max_y = self._comment_padding
-                    self.key_label.size_hint_max_x = Window.width
+            # Properly position comments
+            if self.is_comment:
+                if not self._comment_padding:
+                    self._comment_padding = self.key_label.size_hint_max_y * 0.75
+                self.key_label.size_hint_max_y = self._comment_padding
+                self.key_label.size_hint_max_x = Window.width
 
-                # Properly position search text
-                vl = self.value_label
-                vl.search.x = vl.x + 6
-                vl.search.y = vl.y + (5 if 'italic' in vl.font_name.lower() else 7) + 10
+            # Properly position search text
+            vl = self.value_label
+            vl.search.x = vl.x + 6
+            vl.search.y = vl.y + (5 if 'italic' in vl.font_name.lower() else 7) + 10
 
-                # Additional cover elements for ghosting or blocking touches
-                try:
-                    self.ghost_cover_left.x = -10
-                    self.ghost_cover_left.size_hint_max_x = self.value_label.x + 14
-                    self.ghost_cover_right.x = Window.width - 33
-                    self.ghost_cover_right.size_hint_max_x = 33
-                except AttributeError:
-                    pass
-            Clock.schedule_once(after_texture_update, 0)
+            # Additional cover elements for ghosting or blocking touches
+            try:
+                self.ghost_cover_left.x = -10
+                self.ghost_cover_left.size_hint_max_x = self.value_label.x + 14
+                self.ghost_cover_right.x = Window.width - 33
+                self.ghost_cover_right.size_hint_max_x = 33
+            except AttributeError:
+                pass
 
         def highlight_text(self, text):
-            """
-            Attempt to highlight text in both key and value for searching.
-            """
+            # Attempt to highlight text in both key and value for searching.
             self.last_search = text
             self.key_label.text = self.key_label.original_text
             self.line_matched = False
@@ -24687,42 +24602,21 @@ class ServerYamlEditScreen(EditorRoot):
         def allow_animation(self, *args):
             self.animate = True
 
-        def reload_display(self):
-            font_name = 'mono-bold' if self.is_header or self.is_list_header else 'mono-medium'
-            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
+        def _update_data(self, data: dict):
+            self._data = data
+            flat_lines = self._screen.flat_lines
+            line = flat_lines.index({'data': data}) + 1
+            key = data['key']
+            value = data['value']
+            indent_level = data['indent']
+            is_header = data['is_header']
+            is_list_header = data['is_list_header']
+            is_multiline_string = data['is_multiline_string']
+            is_list_item = data['is_list_item']
+            is_comment = data['is_comment']
+            is_blank_line = data['is_blank_line']
+            max_line_count = len(flat_lines)
 
-            # Key label
-            self.key_label.font_name = self.font_name
-            self.key_label.default_color = "#636363" if self.is_comment else (0.5, 0.5, 1, 1) if self.is_header else "#5E6BFF"
-
-            # Equals sign
-            self.eq_label.font_name = self.font_name
-            self.eq_label.color = (0.6, 0.6, 1, 1) if self.is_header else (1, 1, 1, 1)
-
-            if self.is_list_header and self.value_label.parent:
-                self.remove_widget(self.value_label)
-
-            elif not self.is_list_header and not self.value_label.parent:
-                self.add_widget(self.value_label)
-
-        def __init__(self, line, key, value, indent_level, is_header, is_list_header, is_multiline_string, max_line_count, index_func, undo_func, **kwargs):
-            super().__init__(**kwargs)
-
-            # Format list_headers
-            if is_list_header:
-                is_header = False
-            is_list_item = key == '__list__'
-            if is_list_item:
-                key = '-'
-
-            # Format mutli-line strings
-            if is_multiline_string:
-                indent_level = indent_level - 2
-                key = '⁎'
-
-            is_comment = key.strip().startswith('#')
-            is_blank_line = not key.strip()
-            background_color = constants.brighten_color(constants.background_color, -0.1)
 
             # Determines if the line is skip-able when scrolling
             self.is_header = is_header
@@ -24730,8 +24624,9 @@ class ServerYamlEditScreen(EditorRoot):
             self.is_list_item = is_list_item
             self.is_comment = is_comment
             self.is_blank_line = is_blank_line
-            self.inactive = is_header or is_list_header or is_comment or is_blank_line
             self.is_multiline_string = is_multiline_string
+            self.inactive = data['inactive']
+            self.line_matched = data['line_matched']
             self._finished_rendering = False
             self._comment_padding = None
             def finish_rendering(*a):
@@ -24742,7 +24637,6 @@ class ServerYamlEditScreen(EditorRoot):
             self.line = line
             font_name = 'mono-bold' if is_header or is_list_header else 'mono-medium'
             self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
-            self.font_size = dp(25)
             self.spacing = dp(16)
             self.size_hint_min_y = 50
             self.last_search = ''
@@ -24753,6 +24647,100 @@ class ServerYamlEditScreen(EditorRoot):
             # Indentation space
             self.indent_level = indent_level
             self.indent_space = dp(25) * indent_level
+
+
+            # Line number
+            self.line_number.text = str(line)
+            self.line_number.size_hint_max_x = (self.spacing * len(str(max_line_count)))
+            self.line_number.opacity = 0.35
+
+            # Key label
+            try:
+                self.remove_widget(self.key_label)
+            except:
+                pass
+            self.key_label = self._key_labels['comment' if self.is_comment else 'normal']
+            self.key_label.url = None
+            self.key_label.__translate__ = False
+            self.key_label.max_lines = 1
+            self.key_label.shorten = True
+            self.key_label.shorten_from = 'right'
+            self.key_label.markup = True
+            self.key_label.text = key
+            self.key_label.original_text = key
+            self.key_label.font_name = self.font_name
+            self.key_label.font_size = self.font_size
+            self.key_label.default_color = "#636363" if is_comment else (0.5, 0.5, 1, 1) if is_header else "#5E6BFF"
+            self.key_label.color = self.key_label.default_color
+            self.key_label.size_hint_max_y = 50
+            self.key_label.pos_hint = {'center_y': 0.5}
+            self.key_label.opacity = 0 if is_list_item else 1
+
+            # Show ":" for YAML
+            self.eq_label.text = '-' if is_list_item else ':'
+            self.eq_label.font_name = self.font_name
+            self.eq_label.font_size = self.font_size
+            self.eq_label.color = (0.6, 0.6, 1, 1) if is_header else (1, 1, 1, 1)
+            self.eq_label.opacity = 0.5
+            self.eq_label.pos_hint = {'center_y': 0.5}
+
+            # Value label (EditorInput)
+            self.value_label._update_data(
+                default_value=value,
+                line=self,
+                index=(line - 1),
+                index_func=self.index_func,
+                undo_func=self.undo_func
+            )
+
+            try:
+                self.remove_widget(self.ghost_cover_left)
+                self.remove_widget(self.ghost_cover_right)
+            except:
+                pass
+            try:
+                self.remove_widget(self.line_number)
+            except:
+                pass
+            try:
+                self.remove_widget(self.value_label)
+            except:
+                pass
+            try:
+                self.remove_widget(self.eq_label)
+            except:
+                pass
+
+
+            if not (is_blank_line or is_comment):
+                if not is_header and not is_list_header:
+                    self.add_widget(self.value_label)
+
+            # Ghost covers for left / right
+            self.add_widget(self.ghost_cover_left)
+            self.add_widget(self.ghost_cover_right)
+
+            # Add remaining widgets
+            if not (is_blank_line or is_comment or is_multiline_string):
+                self.add_widget(self.eq_label)
+            if is_multiline_string:
+                self.key_label.opacity = 0
+            self.add_widget(self.line_number)
+            self.add_widget(self.key_label)
+
+            # Update widget sizes
+            Clock.schedule_once(self.on_resize, -1)
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(**kwargs)
+            background_color = constants.brighten_color(constants.background_color, -0.1)
+            self.index_func = None
+            self.undo_func = None
+            self.line = None
+            self.last_search = None
+            self._data = None
+            self._screen = screen_manager.current_screen
+            self.font_size = dp(25)
 
             # Create main text input
             class EditorInput(TextInput):
@@ -24770,7 +24758,9 @@ class ServerYamlEditScreen(EditorRoot):
                         pass
 
                     if me.focused:
-                        index_func(me.index)
+                        self._screen.current_line = self.line
+                        if self.index_func:
+                            self.index_func(me.index)
                         if (len(me.text) * (me.font_size / 1.85)) > me.width:
                             me.cursor = (len(me.text), me.cursor[1])
                             Clock.schedule_once(functools.partial(me.do_cursor_movement, 'cursor_end', True), 0)
@@ -24786,6 +24776,11 @@ class ServerYamlEditScreen(EditorRoot):
 
                 # Type color and prediction
                 def on_text(me, *args):
+
+                    # Update text in memory
+                    if self._data:
+                        self._data['value'] = me.text
+
                     Animation.stop_all(me)
                     Animation.stop_all(me.search)
 
@@ -24830,7 +24825,7 @@ class ServerYamlEditScreen(EditorRoot):
                         except AttributeError:
                             pass
 
-                    Clock.schedule_once(highlight, 0)
+                    # Clock.schedule_once(highlight, 0)
 
                 def insert_text(me, substring, from_undo=False):
                     if screen_manager.current_screen.popup_widget:
@@ -24845,7 +24840,8 @@ class ServerYamlEditScreen(EditorRoot):
 
                     # Undo functionality (text-level changes)
                     if (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (keycode[1] == 'v' and control in modifiers) or (keycode[1] == 'backspace' and control in modifiers):
-                        undo_func(save=True)
+                        if self.undo_func:
+                            self.undo_func(save=True)
 
                     # Toggle boolean on space
                     def replace_text(val, *args):
@@ -24875,141 +24871,145 @@ class ServerYamlEditScreen(EditorRoot):
                         super(EditorInput, me).keyboard_on_key_down(window, keycode, text, modifiers)
 
 
-                    # Add a new multi-line string on pressing "enter" in a current string
-                    if ((not self.is_list_item and me.text) or (self.is_multiline_string and me.text)) and keycode[1] in ['enter', 'return']:
-                        parent = self.parent
-                        if not parent:
-                            return
-
-                        new_line = type(self)(
-                            self.line + 1,
-                            '__string__',
-                            '',
-                            self.indent_level + (2 if self.is_multiline_string else 3),
-                            False,
-                            False,
-                            True,
-                            max_line_count,
-                            index_func,
-                            undo_func
-                        )
-                        parent.insert_widget(new_line, self.line)
-
-                        # Record the insertion action for undo
-                        undo_func(
-                            save=True,
-                            action={
-                                'type': 'insert_line',
-                                'widget': new_line,
-                                'index': self.line,
-                                'parent': parent
-                            }
-                        )
-
-                        new_line.value_label.focused = True
-
-                    elif self.is_multiline_string:
-
-                        # Remove line on backspace if it's empty
-                        if keycode[1] in ['delete', 'backspace'] and not me._original_text:
-                            parent = self.parent
-                            if not parent:
-                                return
-
-                            # Record the removal action for undo
-                            undo_func(
-                                save=True,
-                                action={
-                                    'type': 'remove_line',
-                                    'widget': self,
-                                    'index': self.index,
-                                    'parent': parent
-                                }
-                            )
-
-                            parent.remove_widget(self)
-
-                            # Existing focusing logic
-                            try:
-                                previous_line = parent.children[len(parent.children) - self.index]
-                                next_line = parent.children[len(parent.children) - self.index - 1]
-                                previous_line.value_label.focused = True
-                            except:
-                                pass
-
-
-                    # Add a new list item on pressing "enter" in a current list
-                    elif ((self.is_list_item and me.text) or (not self.is_list_item and not me.text)) and keycode[1] in ['enter', 'return']:
-                        parent = self.parent
-                        if not parent:
-                            return
-
-                        if not me.text and not self.is_list_item:
-                            self.is_list_header = True
-                            self.reload_display()
-
-                        new_line = type(self)(
-                            self.line + 1,
-                            '__list__',
-                            '',
-                            self.indent_level if self.is_list_item else self.indent_level + 1,
-                            False,
-                            False,
-                            False,
-                            max_line_count,
-                            index_func,
-                            undo_func
-                        )
-                        parent.insert_widget(new_line, self.line)
-
-                        # Record the insertion action for undo
-                        undo_func(
-                            save=True,
-                            action={
-                                'type': 'insert_line',
-                                'widget': new_line,
-                                'index': self.line,
-                                'parent': parent
-                            }
-                        )
-
-                        new_line.value_label.focused = True
-
-                    # Remove line on backspace if it's empty
-                    if self.is_list_item and keycode[1] in ['delete', 'backspace'] and not me._original_text:
-                        parent = self.parent
-                        if not parent:
-                            return
-
-                        # Record the removal action for undo
-                        undo_func(
-                            save=True,
-                            action={
-                                'type': 'remove_line',
-                                'widget': self,
-                                'index': self.index,
-                                'parent': parent
-                            }
-                        )
-
-                        parent.remove_widget(self)
-
-                        # Existing focusing logic
-                        try:
-                            previous_line = parent.children[len(parent.children) - self.index]
-                            next_line = parent.children[len(parent.children) - self.index - 1]
-
-                            if previous_line.key_label.text == '-':
-                                previous_line.value_label.focused = True
-
-                            if (previous_line.key_label.text != '-' and
-                                previous_line.is_list_header and
-                                next_line.key_label.text != '-'):
-                                previous_line.value_label.focused = True
-                                previous_line.is_list_header = False
-                                previous_line.reload_display()
-                        except:
-                            pass
+                    # # Add a new multi-line string on pressing "enter" in a current string
+                    # if ((not self.is_list_item and me.text) or (self.is_multiline_string and me.text)) and keycode[1] in ['enter', 'return']:
+                    #     parent = self.parent
+                    #     if not parent:
+                    #         return
+                    #
+                    #     new_line = type(self)(
+                    #         self.line + 1,
+                    #         '__string__',
+                    #         '',
+                    #         self.indent_level + (2 if self.is_multiline_string else 3),
+                    #         False,
+                    #         False,
+                    #         True,
+                    #         max_line_count,
+                    #         index_func,
+                    #         undo_func
+                    #     )
+                    #     parent.insert_widget(new_line, self.line)
+                    #
+                    #     # Record the insertion action for undo
+                    #     if self.undo_func:
+                    #         self.undo_func(
+                    #             save=True,
+                    #             action={
+                    #                 'type': 'insert_line',
+                    #                 'widget': new_line,
+                    #                 'index': self.line,
+                    #                 'parent': parent
+                    #             }
+                    #         )
+                    #
+                    #     new_line.value_label.focused = True
+                    #
+                    # elif self.is_multiline_string:
+                    #
+                    #     # Remove line on backspace if it's empty
+                    #     if keycode[1] in ['delete', 'backspace'] and not me._original_text:
+                    #         parent = self.parent
+                    #         if not parent:
+                    #             return
+                    #
+                    #         # Record the removal action for undo
+                    #         if self.undo_func:
+                    #             self.undo_func(
+                    #                 save=True,
+                    #                 action={
+                    #                     'type': 'remove_line',
+                    #                     'widget': self,
+                    #                     'index': self.index,
+                    #                     'parent': parent
+                    #                 }
+                    #             )
+                    #
+                    #         parent.remove_widget(self)
+                    #
+                    #         # Existing focusing logic
+                    #         try:
+                    #             previous_line = parent.children[len(parent.children) - self.index]
+                    #             next_line = parent.children[len(parent.children) - self.index - 1]
+                    #             previous_line.value_label.focused = True
+                    #         except:
+                    #             pass
+                    #
+                    #
+                    # # Add a new list item on pressing "enter" in a current list
+                    # elif ((self.is_list_item and me.text) or (not self.is_list_item and not me.text)) and keycode[1] in ['enter', 'return']:
+                    #     parent = self.parent
+                    #     if not parent:
+                    #         return
+                    #
+                    #     if not me.text and not self.is_list_item:
+                    #         self.is_list_header = True
+                    #         self.reload_display()
+                    #
+                    #     new_line = type(self)(
+                    #         self.line + 1,
+                    #         '__list__',
+                    #         '',
+                    #         self.indent_level if self.is_list_item else self.indent_level + 1,
+                    #         False,
+                    #         False,
+                    #         False,
+                    #         max_line_count,
+                    #         index_func,
+                    #         undo_func
+                    #     )
+                    #     parent.insert_widget(new_line, self.line)
+                    #
+                    #     # Record the insertion action for undo
+                    #     if self.undo_func:
+                    #         self.undo_func(
+                    #             save=True,
+                    #             action={
+                    #                 'type': 'insert_line',
+                    #                 'widget': new_line,
+                    #                 'index': self.line,
+                    #                 'parent': parent
+                    #             }
+                    #         )
+                    #
+                    #     new_line.value_label.focused = True
+                    #
+                    # # Remove line on backspace if it's empty
+                    # if self.is_list_item and keycode[1] in ['delete', 'backspace'] and not me._original_text:
+                    #     parent = self.parent
+                    #     if not parent:
+                    #         return
+                    #
+                    #     # Record the removal action for undo
+                    #     if self.undo_func:
+                    #         self.undo_func(
+                    #             save=True,
+                    #             action={
+                    #                 'type': 'remove_line',
+                    #                 'widget': self,
+                    #                 'index': self.index,
+                    #                 'parent': parent
+                    #             }
+                    #         )
+                    #
+                    #     parent.remove_widget(self)
+                    #
+                    #     # Existing focusing logic
+                    #     try:
+                    #         previous_line = parent.children[len(parent.children) - self.index]
+                    #         next_line = parent.children[len(parent.children) - self.index - 1]
+                    #
+                    #         if previous_line.key_label.text == '-':
+                    #             previous_line.value_label.focused = True
+                    #
+                    #         if (previous_line.key_label.text != '-' and
+                    #             previous_line.is_list_header and
+                    #             next_line.key_label.text != '-'):
+                    #             previous_line.value_label.focused = True
+                    #             previous_line.is_list_header = False
+                    #             previous_line.reload_display()
+                    #     except:
+                    #         pass
 
                     # Left overscroll fix
                     if me.cursor_pos[0] < me.x:
@@ -25032,7 +25032,22 @@ class ServerYamlEditScreen(EditorRoot):
 
                     Clock.schedule_once(highlight, 0)
 
-                def __init__(me, default_value, line, index, index_func, undo_func, **kwargs):
+                def _update_data(me, default_value, line, index, index_func, undo_func):
+                    me.index = index
+                    me.index_func = index_func
+                    me.undo_func = undo_func
+                    me.text = str(default_value)
+                    me.original_text = str(default_value)
+                    me.eq = line.eq_label
+                    me.line = line.line_number
+
+                    # Fix line focus
+                    if self.line == self._screen.current_line:
+                        me.grab_focus()
+                    else:
+                        me.focused = False
+
+                def __init__(me, **kwargs):
                     super().__init__(**kwargs)
                     self._original_text = ''
 
@@ -25050,16 +25065,16 @@ class ServerYamlEditScreen(EditorRoot):
                     me.bind(scroll_x=me.scroll_search)
                     me.__translate__ = False
                     me.font_kerning = False
-                    me.index = index
-                    me.index_func = index_func
-                    me.undo_func = undo_func
-                    me.text = str(default_value)
-                    me.original_text = str(default_value)
+                    me.index = None
+                    me.index_func = None
+                    me.undo_func = None
+                    me.text = ''
+                    me.original_text = ''
                     me.multiline = False
                     me.background_color = (0, 0, 0, 0)
                     me.cursor_width = dp(3)
-                    me.eq = line.eq_label
-                    me.line = line.line_number
+                    me.eq = None
+                    me.line = None
                     me.last_color = (0, 0, 0, 0)
                     me.valign = 'center'
 
@@ -25078,7 +25093,7 @@ class ServerYamlEditScreen(EditorRoot):
 
                             def scroll(*b):
                                 me.focused = False
-                                screen_manager.current_screen.current_line = None
+                                self._screen.current_line = None
                             Clock.schedule_once(scroll, 0)
                     Clock.schedule_once(set_scroll, 0.1)
 
@@ -25092,86 +25107,33 @@ class ServerYamlEditScreen(EditorRoot):
             # Line number
             self.line_number = AlignLabel()
             self.line_number.__translate__ = False
-            self.line_number.text = str(line)
+            self.line_number.text = ''
             self.line_number.halign = 'right'
             self.line_number.markup = True
-            self.line_number.size_hint_max_x = (self.spacing * len(str(max_line_count)))
-            self.line_number.font_name = self.font_name
-            self.line_number.font_size = self.font_size
-            self.line_number.opacity = 0.35
+            self.line_number.opacity = 0
             self.line_number.color = (0.7, 0.7, 1, 1)
             self.line_number.pos_hint = {'center_y': 0.7}
+            self.line_number.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+            self.line_number.font_size = self.font_size
 
             # Key label
-            if self.is_comment:
-                self.key_label = self.ParagraphLabel(halign='left')
-            else:
-                self.key_label = Label()
-                self.key_label.url = None
-            self.key_label.__translate__ = False
-            self.key_label.text = key
-            self.key_label.original_text = key
-            self.key_label.font_name = self.font_name
-            self.key_label.font_size = self.font_size
-            self.key_label.max_lines = 1
-            self.key_label.shorten = True
-            self.key_label.shorten_from = 'right'
-            self.key_label.markup = True
-            self.key_label.default_color = "#636363" if is_comment else (0.5, 0.5, 1, 1) if is_header else "#5E6BFF"
-            self.key_label.color = self.key_label.default_color
-            self.key_label.size_hint_max_y = 50
-            self.key_label.pos_hint = {'center_y': 0.5}
-            self.key_label.opacity = 0 if is_list_item else 1
+            self._key_labels = {'comment': self.ParagraphLabel(halign='left'), 'normal': Label()}
 
             # Show ":" for YAML
             self.eq_label = Label()
             self.eq_label.__translate__ = False
-            self.eq_label.text = '-' if is_list_item else ':'
             self.eq_label.halign = 'left'
-            self.eq_label.font_name = self.font_name
-            self.eq_label.font_size = self.font_size
-            self.eq_label.color = (0.6, 0.6, 1, 1) if is_header else (1, 1, 1, 1)
-            self.eq_label.opacity = 0.5
+            self.eq_label.opacity = 0
             self.eq_label.pos_hint = {'center_y': 0.5}
 
             # Value label (EditorInput)
-            self.value_label = EditorInput(
-                default_value=value,
-                line=self,
-                index=(line - 1),
-                index_func=index_func,
-                undo_func=undo_func
-            )
-
-            if not (is_blank_line or is_comment):
-                if not is_header and not is_list_header:
-                    self.add_widget(self.value_label)
+            self.value_label = EditorInput()
 
             # Ghost covers for left / right
             self.ghost_cover_left = Image(color=background_color)
             self.ghost_cover_right = Image(color=background_color)
-            self.add_widget(self.ghost_cover_left)
-            self.add_widget(self.ghost_cover_right)
 
-            # Add remaining widgets
-            if not (is_blank_line or is_comment or is_multiline_string):
-                self.add_widget(self.eq_label)
-            if is_multiline_string:
-                self.key_label.opacity = 0
-            self.add_widget(self.line_number)
-            self.add_widget(self.key_label)
-
-            Clock.schedule_once(self.key_label.texture_update, -1)
-            Clock.schedule_once(self.eq_label.texture_update, -1)
-            self.bind(size=self.on_resize, pos=self.on_resize)
-            Clock.schedule_once(self.on_resize, 0)
             Clock.schedule_once(self.allow_animation, 1)
-
-            # Force fade-in
-            self.opacity = 0
-            def opaque(*a):
-                Animation(opacity=1, duration=0.15).start(self)
-            Clock.schedule_once(opaque, 0.1)
 
     # A simple search bar for YAML content. Very similar to PropertiesSearchInput
     class YamlSearchInput(TextInput):
@@ -25256,7 +25218,6 @@ class ServerYamlEditScreen(EditorRoot):
         self.menu = 'init'
 
         self.header = None
-        self.line_list = None
         self.search_bar = None
         self.scroll_widget = None
         self.scroll_layout = None
@@ -25272,6 +25233,7 @@ class ServerYamlEditScreen(EditorRoot):
         self.match_list = []
         self.modified = False
         self.current_line = None
+        self.flat_lines = []
 
         self.background_color = constants.brighten_color(constants.background_color, -0.1)
 
@@ -25286,7 +25248,7 @@ class ServerYamlEditScreen(EditorRoot):
 
     def focus_input(self, new_input=None, highlight=False):
         if not new_input:
-            new_input = self.line_list[self.current_line]
+            return self.scroll_to_line(self.current_line)
 
         if highlight:
             original_color = constants.convert_color(new_input.key_label.default_color)['rgb']
@@ -25295,13 +25257,28 @@ class ServerYamlEditScreen(EditorRoot):
             Animation(color=original_color, duration=0.5).start(new_input.key_label)
 
         new_input.value_label.grab_focus()
-        self.scroll_widget.scroll_to(new_input.value_label, padding=30, animate=True)
+
+    def scroll_to_line(self, index: int, highlight=False, wrap_around=False):
+        new_scroll = 1 - (index * 50) / ((len(self.flat_lines) * 50) - self.search_bar.height - self.header.height)
+        if new_scroll > 1:
+            new_scroll = 1
+        if new_scroll < 0:
+            new_scroll = 0
+
+        Animation(scroll_y=new_scroll, duration=0.1).start(self.scroll_widget)
+        def after_scroll(*a):
+            for line in self.scroll_layout.children:
+                if line.line == index + 1:
+                    self.focus_input(line, highlight)
+
+        Clock.schedule_once(after_scroll, 0.4 if wrap_around else 0.11)
 
     def switch_input(self, position):
         if self.current_line is None:
             self.set_index(0)
 
-        self.line_list = list(reversed(list(self.scroll_layout.children)))
+        found_input = False
+        wrap_around = False
 
         index = 0
         if position == 'up':
@@ -25310,29 +25287,32 @@ class ServerYamlEditScreen(EditorRoot):
             index = self.current_line + 1
         elif position in ['pagedown', 'end']:
             position = 'pagedown'
-            index = len(self.line_list) - 1
+            index = len(self.flat_lines) - 1
         elif position in ['pageup', 'home']:
             position = 'pageup'
             index = 0
 
-        found_input = False
+        index = index - 1
+
         while not found_input:
             ignore_input = False
-            if index >= len(self.line_list):
+            if index >= len(self.flat_lines):
                 index = 0
+                wrap_around = True
             elif index < 0:
-                index = len(self.line_list) - 1
+                index = len(self.flat_lines) - 1
+                wrap_around = True
 
-            new_input = self.line_list[index]
-            if not new_input.inactive:
+            new_input = self.flat_lines[index]['data']
+            if not new_input['inactive']:
 
                 if self.match_list and self.last_search:
-                    if not new_input.line_matched:
+                    if not new_input['line_matched']:
                         ignore_input = True
 
                 if not ignore_input:
                     try:
-                        self.focus_input(new_input)
+                        self.scroll_to_line(index, wrap_around=wrap_around)
                         break
                     except AttributeError:
                         pass
@@ -25461,8 +25441,54 @@ class ServerYamlEditScreen(EditorRoot):
                     line_obj.value_label.text = old_text
                     self.focus_input(line_obj, highlight=True)
 
-    def generate_menu(self, **kwargs):
-        server_obj = constants.server_manager.current_server
+    def insert_line(self, line: dict, index: int = None):
+        key, value, indent, is_header, is_list_header, is_multiline_string = line
+
+        # Format list_headers
+        if is_list_header:
+            is_header = False
+        is_list_item = key == '__list__'
+        if is_list_item:
+            key = '-'
+
+        # Format multiline strings
+        if is_multiline_string:
+            indent = indent - 2
+            key = '⁎'
+
+        is_comment = key.strip().startswith('#')
+        is_blank_line = not key.strip()
+        inactive = is_header or is_list_header or is_comment or is_blank_line
+
+
+        data = {'data': {
+            '__hash__': constants.gen_rstring(4),
+            'key': key,
+            'value': value,
+            'indent': indent,
+            'is_header': is_header,
+            'is_list_header': is_list_header,
+            'is_multiline_string': is_multiline_string,
+            'is_comment': is_comment,
+            'is_blank_line': is_blank_line,
+            'is_list_item': is_list_item,
+            'inactive': inactive,
+            'line_matched': False
+        }}
+
+        if index:
+            self.flat_lines.insert(index, data)
+
+        else:
+            self.flat_lines.append(data)
+
+        return data
+
+    def remove_line(self, index: int):
+        if index in range(len(self.flat_lines)):
+            return self.flat_lines.pop(index)
+
+    def load_file(self):
 
         class YamlToken:
             def __init__(
@@ -25522,6 +25548,10 @@ class ServerYamlEditScreen(EditorRoot):
                     indent_level += 1
 
                 trimmed = line[indent_level:].rstrip('\n')
+
+                # Debug: Print the current line being processed
+                # Uncomment the next line to enable debugging
+                # print(f"Processing line {line_number}: '{trimmed}' with indent {indent_level}")
 
                 # If empty or all comment
                 if not trimmed or trimmed.lstrip().startswith('#'):
@@ -25773,8 +25803,6 @@ class ServerYamlEditScreen(EditorRoot):
         tokens = tokenize(raw_lines)
         root_ast = build_ast(tokens)
         self.server_yaml = to_python(root_ast)
-
-        self.line_list = []
         self.undo_history = []
         self.redo_history = []
         self.last_search = ''
@@ -25908,9 +25936,23 @@ class ServerYamlEditScreen(EditorRoot):
         self.flat_lines = []
         flatten_yaml(self.server_yaml)
 
+        # Filter and format data
+        filtered = self.flat_lines
+        self.flat_lines = []
+        for line in filtered:
+            if line[0].startswith('__comment__'):
+                continue
+
+            self.insert_line(line)
+
+        return self.flat_lines
+
+    def generate_menu(self, **kwargs):
+        server_obj = constants.server_manager.current_server
+
         # Editor UI
-        self.scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
-        self.scroll_layout = GridInsertLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30])
+        self.scroll_widget = RecycleViewWidget(position=(0.5, 0.5), view_class=self.EditorLine)
+        self.scroll_layout = RecycleGridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30], default_height=50, default_width=1250)
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
@@ -25930,26 +25972,7 @@ class ServerYamlEditScreen(EditorRoot):
         self.resize_bind()
 
         max_lines = len(self.flat_lines)
-        i = 0
-        for (full_key, val, indent, header, is_list_header, ml_string) in self.flat_lines:
-            if full_key.startswith('__comment__'):
-                continue
-
-            i += 1
-            line = self.EditorLine(
-                line=i,
-                key=full_key,
-                value=val,
-                indent_level=indent,
-                is_header=header,
-                is_list_header=is_list_header,
-                is_multiline_string=ml_string,
-                max_line_count=max_lines,
-                index_func=self.set_index,
-                undo_func=self.undo
-            )
-            self.line_list.append(line)
-            self.scroll_layout.add_widget(line)
+        self.scroll_widget.data = self.load_file()
 
         float_layout = FloatLayout()
         float_layout.id = 'content'
@@ -26101,7 +26124,7 @@ class ServerYamlEditScreen(EditorRoot):
                 final_content += f'{indent}{key_str}: {val_str}\n'
 
 
-        # return print(final_content)
+        return print(final_content)
         try:
             with open(self.path, 'w', encoding='utf-8') as f:
                 f.write(final_content)
