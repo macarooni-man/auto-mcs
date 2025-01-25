@@ -24507,9 +24507,7 @@ class ServerYamlEditScreen(EditorRoot):
 
             # Properly position comments
             if self.is_comment:
-                if not self._comment_padding:
-                    self._comment_padding = self.key_label.size_hint_max_y * 0.75
-                self.key_label.size_hint_max_y = self._comment_padding
+                self.key_label.size_hint_max_y = self.eq_label.size_hint_max_y
                 self.key_label.size_hint_max_x = Window.width
 
             # Properly position search text
@@ -24742,6 +24740,13 @@ class ServerYamlEditScreen(EditorRoot):
                     Clock.schedule_once(focus_later, 0)
 
                 def on_focus(me, *args):
+                    try:
+                        if self.inactive:
+                            me.focused = False
+                            return
+                    except:
+                        return
+
                     Animation.stop_all(self.eq_label)
                     Animation(opacity=(1 if me.focused else 0.5), duration=0.15).start(self.eq_label)
                     try:
@@ -25174,6 +25179,13 @@ class ServerYamlEditScreen(EditorRoot):
             return super().insert_text(substring, from_undo=from_undo)
 
         def keyboard_on_key_down(self, window, keycode, text, modifiers):
+
+            if keycode[1] == 'escape' and self.focused:
+                self.focused = False
+                if self.parent:
+                    self.parent.focus_input()
+                return True
+
             if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
                 return None
 
@@ -25239,7 +25251,10 @@ class ServerYamlEditScreen(EditorRoot):
 
     def focus_input(self, new_input=None, highlight=False):
         if not new_input:
-            return self.scroll_to_line(self.current_line, highlight=highlight)
+            if self.current_line:
+                return self.scroll_to_line(self.current_line - 1, highlight=highlight)
+            else:
+                return None
 
         if highlight:
             original_color = constants.convert_color(new_input.key_label.default_color)['rgb']
