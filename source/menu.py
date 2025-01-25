@@ -24533,6 +24533,7 @@ class ServerYamlEditScreen(EditorRoot):
             self.line_matched = self._data['line_matched']
 
             def draw_highlight_box(label, *args):
+                label.canvas.before.clear()
                 if self.key_label.url:
                     return
 
@@ -24542,7 +24543,6 @@ class ServerYamlEditScreen(EditorRoot):
                 def get_y(lb, ref_y):
                     return lb.center_y + lb.texture_size[1] * 0.5 - ref_y
 
-                label.canvas.before.clear()
                 for name, boxes in label.refs.items():
                     for box in boxes:
                         with label.canvas.before:
@@ -25126,7 +25126,6 @@ class ServerYamlEditScreen(EditorRoot):
             self.ghost_cover_left = Image(color=background_color)
             self.ghost_cover_right = Image(color=background_color)
 
-
     # A simple search bar for YAML content. Very similar to PropertiesSearchInput
     class YamlSearchInput(TextInput):
         def _on_focus(self, instance, value, *largs):
@@ -25370,6 +25369,10 @@ class ServerYamlEditScreen(EditorRoot):
                 self.match_list.append(line)
             if result and not first_match:
                 first_match = line
+
+        # Update all visible widgets
+        if not text:
+            self.scroll_widget.refresh_from_data()
 
         for line in self.scroll_layout.children:
             Clock.schedule_once(functools.partial(line.highlight_text, text), -1)
@@ -26013,9 +26016,7 @@ class ServerYamlEditScreen(EditorRoot):
             self.input_background.pos = (self.search_bar.pos[0] - 15, self.search_bar.pos[1] + 8)
             self.search_bar.size_hint_max_x = Window.width - self.search_bar.x - 200
 
-        self.resize_bind = lambda *_: Clock.schedule_once(
-            functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0
-        )
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
         Window.bind(on_resize=self.resize_bind)
         self.resize_bind()
 
