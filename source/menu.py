@@ -354,7 +354,10 @@ class TextInput(TextInput):
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
         elif constants.app_config.locale == 'en' and key in ['hint_text']:
             value = filter_text(value)
-        super().__setattr__(key, value)
+        try:
+            super().__setattr__(key, value)
+        except:
+            pass
 
 
 # Opens text file with logviewer
@@ -24736,7 +24739,10 @@ class ServerYamlEditScreen(EditorRoot):
             class EditorInput(TextInput):
                 def grab_focus(me, *a):
                     def focus_later(*args):
-                        me.focus = True
+                        try:
+                            me.focus = True
+                        except:
+                            return
                     Clock.schedule_once(focus_later, 0)
 
                 def on_focus(me, *args):
@@ -25277,12 +25283,17 @@ class ServerYamlEditScreen(EditorRoot):
                 if line.line == index + 1:
                     self.focus_input(line, highlight=highlight)
 
-        if select:
-            Animation(scroll_y=new_scroll, duration=0.1).start(self.scroll_widget)
-            Clock.schedule_once(after_scroll, 0.4 if wrap_around else 0.11)
-        else:
-            self.scroll_widget.scroll_y = new_scroll
-            self.set_index(index + 1)
+        # Only scroll when there is a scrollbar
+        if len(self.scroll_layout.children) < len(self.flat_lines):
+            if select:
+                Animation(scroll_y=new_scroll, duration=0.1).start(self.scroll_widget)
+                Clock.schedule_once(after_scroll, 0.4 if wrap_around else 0.11)
+            else:
+                self.scroll_widget.scroll_y = new_scroll
+                self.set_index(index + 1)
+
+        elif select:
+            after_scroll()
 
     def switch_input(self, position):
         if self.current_line is None:
