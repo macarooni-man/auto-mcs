@@ -25357,8 +25357,10 @@ class ServerYamlEditScreen(EditorRoot):
         if search_text:
             search_text = search_text.strip()
 
-            # This needs to be fixed to detect what the separator would be for parameters like "is_list_item"
-            if ":" in search_text:
+            # Detect different types of key/value pairs
+            if "-" in search_text and data['is_list_item']:
+                key_text, value_text = [x.strip() for x in search_text.split("-", 1)]
+            elif ":" in search_text:
                 key_text, value_text = [x.strip() for x in search_text.split(":", 1)]
             else:
                 key_text = ''
@@ -25369,19 +25371,15 @@ class ServerYamlEditScreen(EditorRoot):
 
             # Check if search matches in key label
             if search_text in key_data:
-                key_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join(
-                    [x for x in key_data.split(search_text)])
+                key_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join([x for x in key_data.split(search_text)])
             elif key_text and key_data.endswith(key_text) and value_text.startswith(value_text):
-                key_matched = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join(
-                    [x for x in key_data.rsplit(key_text, 1)])
+                key_matched = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join([x for x in key_data.rsplit(key_text, 1)])
 
             # Check if search matches in value input/ghost label
             if search_text in value_data:
-                value_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join(
-                    [x for x in value_data.split(search_text)])
+                value_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join([x for x in value_data.split(search_text)])
             elif value_text and value_data.startswith(value_text) and key_data.endswith(key_text):
-                value_matched = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join(
-                    [x for x in value_data.split(value_text, 1)])
+                value_matched = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join([x for x in value_data.split(value_text, 1)])
 
             if key_matched or value_matched:
                 line_matched = {'key': key_matched, 'value': value_matched}
@@ -26279,8 +26277,7 @@ class ServerYamlEditScreen(EditorRoot):
             elif key_str and val_str:
                 final_content += str(f"{indent}{key_str}: {val_str}".rstrip() + '\n')
 
-
-        return print(final_content)
+        # return print(final_content)
         try:
             with open(self.path, 'w', encoding='utf-8') as f:
                 f.write(final_content)
