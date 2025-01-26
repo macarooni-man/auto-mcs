@@ -24832,11 +24832,22 @@ class ServerYamlEditScreen(EditorRoot):
                     Clock.schedule_once(highlight, 0)
 
                 def insert_text(me, substring, from_undo=False):
+
+                    # Ignore all key presses if search bar is highlighted or not selected line
+                    if self._screen.search_bar.focused or self.line - 1 != self._screen.current_line:
+                        me.focused = False
+                        return None
+
                     if screen_manager.current_screen.popup_widget:
                         return None
                     super(EditorInput, me).insert_text(substring, from_undo=from_undo)
 
                 def keyboard_on_key_down(me, window, keycode, text, modifiers):
+
+                    # Ignore all key presses if search bar is highlighted or not selected line
+                    if self._screen.search_bar.focused or self.line - 1 != self._screen.current_line:
+                        me.focused = False
+                        return None
 
                     # Ignore global undo/redo
                     if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
@@ -25249,7 +25260,7 @@ class ServerYamlEditScreen(EditorRoot):
     def focus_input(self, new_input=None, highlight=False):
         if not new_input:
             if self.current_line:
-                return self.scroll_to_line(self.current_line - 1, highlight=highlight)
+                return self.scroll_to_line(self.current_line, highlight=highlight)
             else:
                 return None
 
@@ -25299,9 +25310,9 @@ class ServerYamlEditScreen(EditorRoot):
 
         index = 0
         if position == 'up':
-            index = self.current_line - 1
+            index = self.current_line
         elif position == 'down':
-            index = self.current_line + 1
+            index = self.current_line + 2
         elif position in ['pagedown', 'end']:
             position = 'pagedown'
             index = len(self.flat_lines) - 1
@@ -25939,8 +25950,6 @@ class ServerYamlEditScreen(EditorRoot):
             """
             Build self.flat_lines as tuples of:
               ( key, value, indent, is_header, is_list_header, is_multiline_string ).
-
-            We'll merge any __inline_comment__ into the value string itself.
             """
 
             # -- CASE 1: 'scalar_with_children' or 'multiline_scalar_with_children' --
@@ -26058,25 +26067,8 @@ class ServerYamlEditScreen(EditorRoot):
                             self.flat_lines.append((k, '', indent, True, is_list_header, False))
                             flatten_yaml(v, k, indent + 1)
                     else:
-                        # It's just a scalar => inline comment might belong to the dict itself,
-                        # but typically each scalar won't have its own inline comment unless
-                        # it's a 'scalar_with_comment' type. So we just do:
                         self.flat_lines.append((k, v, indent, False, False, False))
 
-                # If there's an inline comment on *this* dictionary node, append it
-                # to the parent's line. But your code doesn't produce a "parent line"
-                # unless it was a 'scalar_with_children', etc. So by default, you might
-                # choose to skip or treat it as a separate line. We'll skip it or
-                # incorporate it as needed:
-                #
-                # For the sake of matching your existing approach, let's remove the
-                # separate line for inline_comment:
-                #
-                # if '__inline_comment__' in data:
-                #     cmt = data['__inline_comment__']
-                #     # We won't do a separate line. If you wanted to,
-                #     # you'd do self.flat_lines.append((f"__comment__{indent}", cmt, indent, ...))
-                #
                 return
 
             # -- CASE 6: If data is a list --
