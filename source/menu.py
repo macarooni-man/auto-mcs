@@ -25678,16 +25678,12 @@ class ServerYamlEditScreen(EditorRoot):
 
         def tokenize(lines):
             tokens = []
-            for line_number, line in enumerate(lines, start=1):
+            for line in lines:
                 indent_level = 0
                 while indent_level < len(line) and line[indent_level] == ' ':
                     indent_level += 1
 
                 trimmed = line[indent_level:].rstrip('\n')
-
-                # Debug: Print the current line being processed
-                # Uncomment the next line to enable debugging
-                # print(f"Processing line {line_number}: '{trimmed}' with indent {indent_level}")
 
                 # If empty or all comment
                 if not trimmed or trimmed.lstrip().startswith('#'):
@@ -25695,7 +25691,7 @@ class ServerYamlEditScreen(EditorRoot):
                         raw_line=line,
                         indent_level=indent_level,
                         is_comment=True,
-                        comment_text=trimmed.strip()
+                        comment_text=trimmed
                     ))
                     continue
 
@@ -25710,7 +25706,7 @@ class ServerYamlEditScreen(EditorRoot):
                 comment_text = None
                 hash_idx = remainder.find('#')
                 if hash_idx != -1:
-                    comment_text = remainder[hash_idx:].strip()
+                    comment_text = remainder[hash_idx:]
                     remainder = remainder[:hash_idx].rstrip()
 
                 key = None
@@ -25719,38 +25715,36 @@ class ServerYamlEditScreen(EditorRoot):
                 multiline_indicator = None
 
                 if not is_list_item:
-                    # Split on the first occurrence of ": "
-                    split_index = remainder.find(': ')
-                    if split_index != -1:
-                        key_part = remainder[:split_index].rstrip()
-                        value_part = remainder[split_index + 2:].lstrip()
-
-                        key = key_part if key_part else None
-                        value = value_part if value_part else None
-
-                        # If the value is exactly '>' or '|', treat as block scalar
-                        if value in (">", "|"):
-                            multiline_indicator = value
-                            value = None
-
-                    elif remainder.endswith(':'):
-                        # Line ends with ":", indicating a nested structure
-                        key_part = remainder[:-1].strip()
-                        key = key_part if key_part else None
+                    # 1) If line ends with ":" => treat as key only
+                    #    e.g. "minecraft:elytra:" => key="minecraft:elytra", value=None
+                    trimmed_for_colon = remainder.rstrip()
+                    if trimmed_for_colon.endswith(':'):
+                        key = trimmed_for_colon[:-1].rstrip()
                         value = None
+
                     else:
-                        # No ": " found; could be a key with empty value or a multiline string
-                        key = remainder if remainder else None
-                        value = None
-                        is_multiline_string = True  # Assuming it's a multiline string
+                        # 2) Otherwise look for ": " => that indicates key: value
+                        sep_index = remainder.find(': ')
+                        if sep_index != -1:
+                            key_part = remainder[:sep_index].rstrip()
+                            value_part = remainder[sep_index + 2:].lstrip()
 
+                            key = key_part if key_part else None
+                            value = value_part if value_part else None
+
+                            # If the value is exactly '>' or '|', treat as block scalar
+                            if value in (">", "|"):
+                                multiline_indicator = value
+                                value = None
+                        else:
+                            # 3) No trailing colon, no ": " =>
+                            #    treat entire line as *value*, empty key.
+                            key = ''
+                            value = remainder
+                            is_multiline_string = True
                 else:
-                    # List item; value is the remainder
+                    # It's a list item => remainder is the value
                     value = remainder
-
-                # Debug: Print the token details
-                # Uncomment the next line to enable debugging
-                # print(f"Tokenized Line {line_number}: Key='{key}', Value='{value}', List Item={is_list_item}")
 
                 tokens.append(YamlToken(
                     raw_line=line,
@@ -25828,7 +25822,7 @@ class ServerYamlEditScreen(EditorRoot):
                                 value=lookahead.value,
                                 is_list_item=True,
                                 inline_comment=(lookahead.comment_text if (
-                                            not lookahead.is_comment and lookahead.comment_text) else None)
+                                        not lookahead.is_comment and lookahead.comment_text) else None)
                             )
                             child_item.is_multiline_string = lookahead.is_multiline_string
                             child_item.multiline_indicator = lookahead.multiline_indicator
@@ -25851,7 +25845,7 @@ class ServerYamlEditScreen(EditorRoot):
                 return {
                     '__type__': 'comment',
                     'comment': node.comment,
-                    'indent': node.indent_level
+                    '__indent__': node.indent_level
                 }
 
             # (B) If no children => leaf
@@ -25860,7 +25854,7 @@ class ServerYamlEditScreen(EditorRoot):
                     return {
                         '__type__': 'multiline_string',
                         'value': node.value,
-                        'indent': node.indent_level,
+                        '__indent__': node.indent_level,
                         'indicator': node.multiline_indicator
                     }
                 if node.multiline_indicator:
@@ -25868,14 +25862,14 @@ class ServerYamlEditScreen(EditorRoot):
                         '__type__': 'block_scalar',
                         'indicator': node.multiline_indicator,
                         'value': node.value,
-                        'indent': node.indent_level
+                        '__indent__': node.indent_level
                     }
                 if node.inline_comment:
                     return {
                         '__type__': 'scalar_with_comment',
                         'value': node.value,
                         'inline_comment': node.inline_comment,
-                        'indent': node.indent_level
+                        '__indent__': node.indent_level
                     }
                 return node.value  # normal scalar
 
@@ -25893,9 +25887,9 @@ class ServerYamlEditScreen(EditorRoot):
                 if node.inline_comment:
                     return {
                         '__type__': 'list',
-                        'items': items,
+                        '__items__': items,
                         '__inline_comment__': node.inline_comment,
-                        'indent': node.indent_level
+                        '__indent__': node.indent_level
                     }
                 return items
 
@@ -25910,10 +25904,11 @@ class ServerYamlEditScreen(EditorRoot):
                     result['__indicator__'] = node.multiline_indicator
                 else:
                     result['__type__'] = 'scalar_with_children'
-                result['indent'] = node.indent_level
+                result['__indent__'] = node.indent_level
 
             # Convert children
             for child in node.children:
+                # If the child is a pure comment node
                 if (
                         child.comment is not None and
                         child.key is None and
@@ -25969,13 +25964,13 @@ class ServerYamlEditScreen(EditorRoot):
                 # Now flatten real children under indent+1
                 for child_key, child_val in data.items():
                     if child_key in (
-                            '__type__', '__value__', 'indent', '__indicator__',
+                            '__type__', '__value__', '__indent__', '__indicator__',
                             '__inline_comment__'
                     ):
                         continue
                     if child_key.startswith('__comment__'):
                         c_text = child_val.get('comment', '')
-                        c_indent = child_val.get('indent', indent + 1)
+                        c_indent = child_val.get('__indent__', indent + 1)
                         self.flat_lines.append((c_text, '', c_indent, False, False, False))
                         continue
 
@@ -25991,7 +25986,7 @@ class ServerYamlEditScreen(EditorRoot):
             if isinstance(data, dict) and data.get('__type__') == 'multiline_string':
                 val = data['value']
                 ml_flag = True
-                node_indent = data.get('indent', indent)
+                node_indent = data.get('__indent__', indent)
                 shown_key = parent_key or '__root__'
                 self.flat_lines.append((shown_key, val, node_indent, False, False, ml_flag))
                 return
@@ -26000,26 +25995,32 @@ class ServerYamlEditScreen(EditorRoot):
             if isinstance(data, dict) and data.get('__type__') == 'block_scalar':
                 val = data.get('value', '')
                 indicator = data.get('indicator', '')
-                node_indent = data.get('indent', indent)
+                node_indent = data.get('__indent__', indent)
                 shown_key = f"{parent_key} {indicator}".strip()
                 self.flat_lines.append((shown_key, val, node_indent, False, False, False))
                 return
 
             # CASE 4: If it's a dict 'list'
-            if isinstance(data, dict) and data.get('__type__') == 'list' and 'items' in data:
+            if isinstance(data, dict) and data.get('__type__') == 'list' and '__items__' in data:
                 self.flat_lines.append((parent_key, '', indent, True, True, False))
-                flatten_yaml(data['items'], parent_key, indent + 1)
+                flatten_yaml(data['__items__'], parent_key, indent + 1)
                 return
 
             # CASE 5: Normal dict => flatten each key
             if isinstance(data, dict):
+                # We skip only internal keys
+                skip_keys = (
+                    '__type__', '__inline_comment__', '__items__',
+                    '__indent__', '__value__', '__indicator__'
+                )
                 for k, v in data.items():
-                    if k in ('__type__', '__inline_comment__', 'items', 'indent', '__value__', '__indicator__'):
+                    if k in skip_keys:
                         continue
+
                     if k.startswith('__comment__'):
                         # flatten comment
                         comment_text = v.get('comment', '')
-                        comment_indent = v.get('indent', indent)
+                        comment_indent = v.get('__indent__', indent)
                         self.flat_lines.append((comment_text, '', comment_indent, False, False, False))
                         continue
 
@@ -26243,19 +26244,19 @@ class ServerYamlEditScreen(EditorRoot):
             indent = "  " * line['indent']
 
             if line['is_comment'] or line['is_blank_line']:
-                final_content += f"{indent}{key_str}\n"
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
 
             elif line['is_list_item'] and val_str:
-                final_content += f'{indent}- {val_str}\n'
+                final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
 
             elif line['is_multiline_string'] and val_str:
-                final_content += f'{indent}{val_str}\n'
+                final_content += str(f"{indent}{val_str}".rstrip() + '\n')
 
             elif line['is_header'] or line['is_list_header'] or not val_str:
-                final_content += f'{indent}{key_str}:\n'
+                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
 
             elif key_str and val_str:
-                final_content += f'{indent}{key_str}: {val_str}\n'
+                final_content += str(f"{indent}{key_str}: {val_str}".rstrip() + '\n')
 
 
         return print(final_content)
