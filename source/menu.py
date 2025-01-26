@@ -24727,8 +24727,8 @@ class ServerYamlEditScreen(EditorRoot):
             super().__init__(**kwargs)
             background_color = constants.brighten_color(constants.background_color, -0.1)
             self._screen = screen_manager.current_screen
-            self.index_func = None # self._screen.set_index
-            self.undo_func = None # self._screen.undo
+            self.index_func = self._screen.set_index
+            self.undo_func = self._screen.undo
             self.line = None
             self.last_search = None
             self.font_size = dp(25)
@@ -24903,8 +24903,7 @@ class ServerYamlEditScreen(EditorRoot):
                                 action={
                                     'type': 'insert_line',
                                     'data': data,
-                                    'index': self.line,
-                                    'parent': parent
+                                    'index': self.line
                                 }
                             )
 
@@ -24925,8 +24924,7 @@ class ServerYamlEditScreen(EditorRoot):
                                     action={
                                         'type': 'remove_line',
                                         'data': self._data,
-                                        'index': self.line - 1,
-                                        'parent': parent
+                                        'index': self.line - 1
                                     }
                                 )
 
@@ -24965,8 +24963,7 @@ class ServerYamlEditScreen(EditorRoot):
                                 action={
                                     'type': 'insert_line',
                                     'data': data,
-                                    'index': self.line,
-                                    'parent': parent
+                                    'index': self.line
                                 }
                             )
 
@@ -24985,8 +24982,7 @@ class ServerYamlEditScreen(EditorRoot):
                                 action={
                                     'type': 'remove_line',
                                     'data': self._data,
-                                    'index': self.line - 1,
-                                    'parent': parent
+                                    'index': self.line - 1
                                 }
                             )
 
@@ -25426,131 +25422,173 @@ class ServerYamlEditScreen(EditorRoot):
         except AttributeError:
             pass
 
-    @staticmethod
-    def _apply_action(action, undo=True):
+    def _apply_action(self, action, undo=True):
         """
-        Helper to apply or revert a structural action:
-        - 'insert_line' => add widget or remove it
-        - 'remove_line' => remove widget or restore it
+        Called to undo or redo a structural action:
+          - 'insert_line': remove or re-insert
+          - 'remove_line': re-insert or remove
         """
         a_type = action['type']
-        data = action['data']
+        line_data = action['data']  # either the dict or the (key,value,...) tuple
         idx = action['index']
-        parent = action['parent']
 
         if a_type == 'insert_line':
             if undo:
-                if widget in parent.children:
-                    parent.remove_widget(widget)
+                # Undo an insert => remove it
+                self.remove_line(idx, refresh=True)
             else:
-                parent.insert_widget(widget, idx)
-                widget.value_label.focused = True
+                # Redo an insert => put it back
+                self.insert_line(line_data, idx, refresh=True)
 
         elif a_type == 'remove_line':
             if undo:
-                parent.insert_widget(widget, idx)
-                widget.value_label.focused = True
+                # Undo a remove => re-insert it
+                self.insert_line(line_data, idx, refresh=True)
             else:
-                if widget in parent.children:
-                    parent.remove_widget(widget)
+                # Redo a remove => remove again
+                self.remove_line(idx, refresh=True)
 
     def undo(self, save=False, undo=False, action=None):
         """
-        Handles both structural (insert/remove line) and text changes.
-        - `save=True, action=...` => record a new structural action
-        - `save=True, action=None` => record a text-change action
+        Handles both structural (insert/remove line) and text changes,
+        with exactly the one-step-per-line logic you had before.
+
+        - `save=True, action=...` => record a *structural* action
+        - `save=True, action=None` => record a *text-change* action
         - `undo=True` => perform undo
         - `undo=False` => perform redo
         """
+
+        # 1) Save a *structural* action
         if save and action is not None:
-            # Save structural action
             self.redo_history.clear()
             self.undo_history.append(action)
             return
 
+        # 2) Save a *text-change* action
         if save and action is None:
-            # Save text-change action
             self.redo_history.clear()
-            if self.current_line is not None and 0 <= self.current_line < len(self.line_list):
-                line = self.line_list[self.current_line]
+            if self.current_line is not None and 0 <= self.current_line < len(self.flat_lines):
+
+                # We'll use 1-based line numbering, just like your original code:
+                line_num = self.current_line + 1
+
+                # Grab the current line's "original_value" from the data
+                old_text = self.flat_lines[self.current_line]['data']['original_value']
+
+                # If the last undo entry is text for the *same line*, update it
+                # (thus storing only one undo step for repeated typing on that line)
                 if self.undo_history and not isinstance(self.undo_history[-1], dict):
-                    last = self.undo_history[-1]
-                    if last[0] == line.line:
-                        # Update existing action
-                        self.undo_history[-1] = (line.line, line.value_label.original_text)
+                    last = self.undo_history[-1]  # e.g. (line_num, old_text)
+                    if last[0] == line_num:
+                        # "Update existing action"
+                        self.undo_history[-1] = (line_num, old_text)
                         return
-                self.undo_history.append((line.line, line.value_label.original_text))
+
+                # Otherwise, create a new text-based action
+                self.undo_history.append((line_num, old_text))
+
             return
 
+        # 3) Actually perform Undo or Redo
         if undo:
-            # Perform Undo
+            # UNDO
             if not self.undo_history:
                 return
             last_action = self.undo_history.pop()
+
             if isinstance(last_action, dict):
-                # Structural action
+                # structural
                 self._apply_action(last_action, undo=True)
                 self.redo_history.append(last_action)
             else:
-                # Text-based action
+                # text-based => (line_num, old_text)
                 line_num, old_text = last_action
-                if 1 <= line_num <= len(self.line_list):
-                    line_obj = self.line_list[line_num - 1]
-                    self.redo_history.append((line_num, line_obj.value_label.original_text))
-                    line_obj.value_label.text = old_text
-                    self.focus_input(line_obj, highlight=True)
+                if 1 <= line_num <= len(self.flat_lines):
+                    # Before reverting, store the current text for Redo
+                    current_text = self.flat_lines[line_num - 1]['data']['value']
+                    self.redo_history.append((line_num, current_text))
+
+                    # Revert to old_text in the data
+                    self.flat_lines[line_num - 1]['data']['value'] = old_text
+
+                    # Also revert 'original_value' if you want it fully consistent:
+                    self.flat_lines[line_num - 1]['data']['original_value'] = old_text
+
+                    # Refresh the RecycleView so the UI sees the change
+                    self.scroll_widget.data = self.flat_lines
+                    self.scroll_widget.refresh_from_data()
+
+                    # Optionally scroll/focus that line
+                    self.scroll_to_line(line_num - 1, highlight=True)
+
         else:
-            # Perform Redo
+            # REDO
             if not self.redo_history:
                 return
             last_action = self.redo_history.pop()
+
             if isinstance(last_action, dict):
-                # Structural action
+                # structural
                 self._apply_action(last_action, undo=False)
                 self.undo_history.append(last_action)
             else:
-                # Text-based action
+                # text-based => (line_num, old_text)
                 line_num, old_text = last_action
-                if 1 <= line_num <= len(self.line_list):
-                    line_obj = self.line_list[line_num - 1]
-                    self.undo_history.append((line_num, line_obj.value_label.original_text))
-                    line_obj.value_label.text = old_text
-                    self.focus_input(line_obj, highlight=True)
+                if 1 <= line_num <= len(self.flat_lines):
+                    # store the current text in Undo before overwriting
+                    current_text = self.flat_lines[line_num - 1]['data']['value']
+                    self.undo_history.append((line_num, current_text))
 
-    def insert_line(self, line: (tuple, list), index: int = None, refresh=True):
-        key, value, indent, is_header, is_list_header, is_multiline_string = line
+                    # revert data
+                    self.flat_lines[line_num - 1]['data']['value'] = old_text
+                    self.flat_lines[line_num - 1]['data']['original_value'] = old_text
 
-        # Format list_headers
-        if is_list_header:
-            is_header = False
-        is_list_item = key == '__list__'
-        if is_list_item:
-            key = '-'
+                    # refresh
+                    self.scroll_widget.data = self.flat_lines
+                    self.scroll_widget.refresh_from_data()
+                    self.scroll_to_line(line_num - 1, highlight=True)
 
-        # Format multiline strings
-        if is_multiline_string:
-            indent = indent - 2
-            key = '⁎'
+    def insert_line(self, line: (tuple, list, dict), index: int = None, refresh=True):
+        if not isinstance(line, dict):
 
-        is_comment = key.strip().startswith('#')
-        is_blank_line = not key.strip()
-        inactive = is_header or is_list_header or is_comment or is_blank_line
+            key, value, indent, is_header, is_list_header, is_multiline_string = line
+
+            # Format list_headers
+            if is_list_header:
+                is_header = False
+            is_list_item = key == '__list__'
+            if is_list_item:
+                key = '-'
+
+            # Format multiline strings
+            if is_multiline_string:
+                indent = indent - 2
+                key = '⁎'
+
+            is_comment = key.strip().startswith('#')
+            is_blank_line = not key.strip()
+            inactive = is_header or is_list_header or is_comment or is_blank_line
 
 
-        data = {'data': {
-            '__hash__': constants.gen_rstring(4),
-            'key': key,
-            'value': value,
-            'indent': indent,
-            'is_header': is_header,
-            'is_list_header': is_list_header,
-            'is_multiline_string': is_multiline_string,
-            'is_comment': is_comment,
-            'is_blank_line': is_blank_line,
-            'is_list_item': is_list_item,
-            'inactive': inactive,
-            'line_matched': False
-        }}
+            data = {'data': {
+                '__hash__': constants.gen_rstring(4),
+                'key': key,
+                'value': value,
+                'original_value': value,
+                'indent': indent,
+                'is_header': is_header,
+                'is_list_header': is_list_header,
+                'is_multiline_string': is_multiline_string,
+                'is_comment': is_comment,
+                'is_blank_line': is_blank_line,
+                'is_list_item': is_list_item,
+                'inactive': inactive,
+                'line_matched': False
+            }}
+
+        else:
+            data = line
 
         if index is not None:
             self.flat_lines.insert(index, data)
