@@ -24726,14 +24726,14 @@ class ServerYamlEditScreen(EditorRoot):
         def __init__(self, *args, **kwargs):
             super().__init__(**kwargs)
             background_color = constants.brighten_color(constants.background_color, -0.1)
-            self.index_func = None
-            self.undo_func = None
+            self._screen = screen_manager.current_screen
+            self.index_func = None # self._screen.set_index
+            self.undo_func = None # self._screen.undo
             self.line = None
             self.last_search = None
             self.font_size = dp(25)
             self.line_matched = False
             self._data = None
-            self._screen = screen_manager.current_screen
 
             # Create main text input
             class EditorInput(TextInput):
@@ -24875,145 +24875,140 @@ class ServerYamlEditScreen(EditorRoot):
                         super(EditorInput, me).keyboard_on_key_down(window, keycode, text, modifiers)
 
 
-                    # # Add a new multi-line string on pressing "enter" in a current string
-                    # if ((not self.is_list_item and me.text) or (self.is_multiline_string and me.text)) and keycode[1] in ['enter', 'return']:
-                    #     parent = self.parent
-                    #     if not parent:
-                    #         return
-                    #
-                    #     new_line = type(self)(
-                    #         self.line + 1,
-                    #         '__string__',
-                    #         '',
-                    #         self.indent_level + (2 if self.is_multiline_string else 3),
-                    #         False,
-                    #         False,
-                    #         True,
-                    #         max_line_count,
-                    #         index_func,
-                    #         undo_func
-                    #     )
-                    #     parent.insert_widget(new_line, self.line)
-                    #
-                    #     # Record the insertion action for undo
-                    #     if self.undo_func:
-                    #         self.undo_func(
-                    #             save=True,
-                    #             action={
-                    #                 'type': 'insert_line',
-                    #                 'widget': new_line,
-                    #                 'index': self.line,
-                    #                 'parent': parent
-                    #             }
-                    #         )
-                    #
-                    #     new_line.value_label.focused = True
-                    #
-                    # elif self.is_multiline_string:
-                    #
-                    #     # Remove line on backspace if it's empty
-                    #     if keycode[1] in ['delete', 'backspace'] and not me._original_text:
-                    #         parent = self.parent
-                    #         if not parent:
-                    #             return
-                    #
-                    #         # Record the removal action for undo
-                    #         if self.undo_func:
-                    #             self.undo_func(
-                    #                 save=True,
-                    #                 action={
-                    #                     'type': 'remove_line',
-                    #                     'widget': self,
-                    #                     'index': self.index,
-                    #                     'parent': parent
-                    #                 }
-                    #             )
-                    #
-                    #         parent.remove_widget(self)
-                    #
-                    #         # Existing focusing logic
-                    #         try:
-                    #             previous_line = parent.children[len(parent.children) - self.index]
-                    #             next_line = parent.children[len(parent.children) - self.index - 1]
-                    #             previous_line.value_label.focused = True
-                    #         except:
-                    #             pass
-                    #
-                    #
-                    # # Add a new list item on pressing "enter" in a current list
-                    # elif ((self.is_list_item and me.text) or (not self.is_list_item and not me.text)) and keycode[1] in ['enter', 'return']:
-                    #     parent = self.parent
-                    #     if not parent:
-                    #         return
-                    #
-                    #     if not me.text and not self.is_list_item:
-                    #         self.is_list_header = True
-                    #         self.reload_display()
-                    #
-                    #     new_line = type(self)(
-                    #         self.line + 1,
-                    #         '__list__',
-                    #         '',
-                    #         self.indent_level if self.is_list_item else self.indent_level + 1,
-                    #         False,
-                    #         False,
-                    #         False,
-                    #         max_line_count,
-                    #         index_func,
-                    #         undo_func
-                    #     )
-                    #     parent.insert_widget(new_line, self.line)
-                    #
-                    #     # Record the insertion action for undo
-                    #     if self.undo_func:
-                    #         self.undo_func(
-                    #             save=True,
-                    #             action={
-                    #                 'type': 'insert_line',
-                    #                 'widget': new_line,
-                    #                 'index': self.line,
-                    #                 'parent': parent
-                    #             }
-                    #         )
-                    #
-                    #     new_line.value_label.focused = True
-                    #
-                    # # Remove line on backspace if it's empty
-                    # if self.is_list_item and keycode[1] in ['delete', 'backspace'] and not me._original_text:
-                    #     parent = self.parent
-                    #     if not parent:
-                    #         return
-                    #
-                    #     # Record the removal action for undo
-                    #     if self.undo_func:
-                    #         self.undo_func(
-                    #             save=True,
-                    #             action={
-                    #                 'type': 'remove_line',
-                    #                 'widget': self,
-                    #                 'index': self.index,
-                    #                 'parent': parent
-                    #             }
-                    #         )
-                    #
-                    #     parent.remove_widget(self)
-                    #
-                    #     # Existing focusing logic
-                    #     try:
-                    #         previous_line = parent.children[len(parent.children) - self.index]
-                    #         next_line = parent.children[len(parent.children) - self.index - 1]
-                    #
-                    #         if previous_line.key_label.text == '-':
-                    #             previous_line.value_label.focused = True
-                    #
-                    #         if (previous_line.key_label.text != '-' and
-                    #             previous_line.is_list_header and
-                    #             next_line.key_label.text != '-'):
-                    #             previous_line.value_label.focused = True
-                    #             previous_line.is_list_header = False
-                    #             previous_line.reload_display()
-                    #     except:
-                    #         pass
+                    # Add a new multi-line string on pressing "enter" in a current string
+                    if ((not self.is_list_item and me.text) or (self.is_multiline_string and me.text)) and keycode[1] in ['enter', 'return']:
+                        parent = self.parent
+                        if not parent:
+                            return
+
+                        data = (
+                            '__string__',
+                            '',
+                            self.indent_level + (2 if self.is_multiline_string else 3),
+                            False,
+                            False,
+                            True
+                        )
+
+                        self._screen.insert_line(data, self.line)
+                        def deselect(*a):
+                            self._screen.current_line = None
+                            me.focused = False
+                        Clock.schedule_once(deselect, 0)
+
+                        # Record the insertion action for undo
+                        if self.undo_func:
+                            self.undo_func(
+                                save=True,
+                                action={
+                                    'type': 'insert_line',
+                                    'data': data,
+                                    'index': self.line,
+                                    'parent': parent
+                                }
+                            )
+
+                        self._screen.scroll_to_line(self.line)
+
+                    elif self.is_multiline_string:
+
+                        # Remove line on backspace if it's empty
+                        if keycode[1] in ['delete', 'backspace'] and not me._original_text:
+                            parent = self.parent
+                            if not parent:
+                                return
+
+                            # Record the removal action for undo
+                            if self.undo_func:
+                                self.undo_func(
+                                    save=True,
+                                    action={
+                                        'type': 'remove_line',
+                                        'data': self._data,
+                                        'index': self.line - 1,
+                                        'parent': parent
+                                    }
+                                )
+
+                            self._screen.remove_line(self.line - 1)
+                            self._screen.scroll_to_line(self.line - 2)
+
+
+                    # Add a new list item on pressing "enter" in a current list
+                    elif ((self.is_list_item and me.text) or (not self.is_list_item and not me.text)) and keycode[1] in ['enter', 'return']:
+                        parent = self.parent
+                        if not parent:
+                            return
+
+                        if not me.text and not self.is_list_item:
+                            self._data['is_list_header'] = True
+                            self._update_data(self._data)
+
+                        data = (
+                            '__list__',
+                            '',
+                            self.indent_level if self.is_list_item else self.indent_level + 1,
+                            False,
+                            False,
+                            False
+                        )
+                        self._screen.insert_line(data, self.line)
+                        def deselect(*a):
+                            self._screen.current_line = None
+                            me.focused = False
+                        Clock.schedule_once(deselect, 0)
+
+                        # Record the insertion action for undo
+                        if self.undo_func:
+                            self.undo_func(
+                                save=True,
+                                action={
+                                    'type': 'insert_line',
+                                    'data': data,
+                                    'index': self.line,
+                                    'parent': parent
+                                }
+                            )
+
+                        self._screen.scroll_to_line(self.line)
+
+                    # Remove line on backspace if it's empty
+                    if self.is_list_item and keycode[1] in ['delete', 'backspace'] and not me._original_text:
+                        parent = self.parent
+                        if not parent:
+                            return
+
+                        # Record the removal action for undo
+                        if self.undo_func:
+                            self.undo_func(
+                                save=True,
+                                action={
+                                    'type': 'remove_line',
+                                    'data': self._data,
+                                    'index': self.line - 1,
+                                    'parent': parent
+                                }
+                            )
+
+                        self._screen.remove_line(self.line - 1)
+
+                        # Existing focusing logic
+                        try:
+                            previous_line = self._screen.flat_lines[self.line - 2]['data']
+                            next_line = self._screen.flat_lines[self.line - 1]['data']
+
+                            if previous_line['is_list_item']:
+                                self._screen.scroll_to_line(self.line - 2)
+
+                            if not previous_line['is_list_item'] and previous_line['is_list_header'] and not next_line['is_list_item']:
+                                self._screen.scroll_to_line(self.line - 2)
+                                previous_line['is_list_header'] = False
+                                for line in self.scroll_layout.children:
+                                    line.value_label.focused = False
+                                self.scroll_widget.data = self.flat_lines
+                                self.scroll_widget.refresh_from_data()
+                        except:
+                            pass
 
                     # Left overscroll fix
                     if me.cursor_pos[0] < me.x:
@@ -25278,6 +25273,10 @@ class ServerYamlEditScreen(EditorRoot):
         if new_scroll < 0:
             new_scroll = 0
 
+        self.current_line = None
+        for line in self.scroll_layout.children:
+            line.value_label.focused = False
+
         def after_scroll(*a):
             for line in self.scroll_layout.children:
                 if line.line == index + 1:
@@ -25435,7 +25434,7 @@ class ServerYamlEditScreen(EditorRoot):
         - 'remove_line' => remove widget or restore it
         """
         a_type = action['type']
-        widget = action['widget']
+        data = action['data']
         idx = action['index']
         parent = action['parent']
 
@@ -25518,7 +25517,7 @@ class ServerYamlEditScreen(EditorRoot):
                     line_obj.value_label.text = old_text
                     self.focus_input(line_obj, highlight=True)
 
-    def insert_line(self, line: (tuple, list), index: int = None):
+    def insert_line(self, line: (tuple, list), index: int = None, refresh=True):
         key, value, indent, is_header, is_list_header, is_multiline_string = line
 
         # Format list_headers
@@ -25553,17 +25552,39 @@ class ServerYamlEditScreen(EditorRoot):
             'line_matched': False
         }}
 
-        if index:
+        if index is not None:
             self.flat_lines.insert(index, data)
 
         else:
             self.flat_lines.append(data)
 
+        # Update layout with new data
+        if refresh:
+            self.current_line = None
+
+            for line in self.scroll_layout.children:
+                line.value_label.focused = False
+
+            self.scroll_widget.data = self.flat_lines
+            self.scroll_widget.refresh_from_data()
+
         return data
 
-    def remove_line(self, index: int):
+    def remove_line(self, index: int, refresh=True):
         if index in range(len(self.flat_lines)):
-            return self.flat_lines.pop(index)
+            self.current_line = None
+
+            for line in self.scroll_layout.children:
+                line.value_label.focused = False
+
+            data = self.flat_lines.pop(index)
+
+            # Update layout with new data
+            if refresh:
+                self.scroll_widget.data = self.flat_lines
+                self.scroll_widget.refresh_from_data()
+
+            return data
 
     def load_file(self):
 
@@ -26020,7 +26041,7 @@ class ServerYamlEditScreen(EditorRoot):
             if line[0].startswith('__comment__'):
                 continue
 
-            self.insert_line(line)
+            self.insert_line(line, refresh=False)
 
         return self.flat_lines
 
