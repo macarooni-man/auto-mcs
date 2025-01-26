@@ -26234,24 +26234,24 @@ class ServerYamlEditScreen(EditorRoot):
 
     def save_config(self):
         server_obj = constants.server_manager.current_server
-        self.line_list = list(reversed(list(self.scroll_layout.children)))
         final_content = ''
 
-        for line in self.line_list:
-            key_str = line.key_label.text.strip()
-            val_str = line.value_label.text.strip()
-            indent = "  " * line.indent_level
+        for line in self.flat_lines:
+            line = line['data']
+            key_str = str(line['key']).strip()
+            val_str = str(line['value']).strip()
+            indent = "  " * line['indent']
 
-            if line.is_comment or line.is_blank_line:
-                final_content += f'{indent}{line.key_label.original_text}\n'
+            if line['is_comment'] or line['is_blank_line']:
+                final_content += f"{indent}{key_str}\n"
 
-            elif line.is_list_item and val_str:
+            elif line['is_list_item'] and val_str:
                 final_content += f'{indent}- {val_str}\n'
 
-            elif line.is_multiline_string and val_str:
+            elif line['is_multiline_string'] and val_str:
                 final_content += f'{indent}{val_str}\n'
 
-            elif line.is_header or line.is_list_header or not val_str:
+            elif line['is_header'] or line['is_list_header'] or not val_str:
                 final_content += f'{indent}{key_str}:\n'
 
             elif key_str and val_str:
