@@ -25685,7 +25685,7 @@ class ServerYamlEditScreen(EditorRoot):
 
                 trimmed = line[indent_level:].rstrip('\n')
 
-                # If empty or all comment
+                # If empty or line starts with '#' => treat as entire comment line
                 if not trimmed or trimmed.lstrip().startswith('#'):
                     tokens.append(YamlToken(
                         raw_line=line,
@@ -25702,12 +25702,9 @@ class ServerYamlEditScreen(EditorRoot):
                     is_list_item = True
                     remainder = remainder[1:].lstrip()
 
-                # Extract inline comment
+                # We no longer look for '#' in the middle of the line.
+                # All of `remainder` is the “real content.”
                 comment_text = None
-                hash_idx = remainder.find('#')
-                if hash_idx != -1:
-                    comment_text = remainder[hash_idx:]
-                    remainder = remainder[:hash_idx].rstrip()
 
                 key = None
                 value = None
@@ -25715,15 +25712,13 @@ class ServerYamlEditScreen(EditorRoot):
                 multiline_indicator = None
 
                 if not is_list_item:
-                    # 1) If line ends with ":" => treat as key only
-                    #    e.g. "minecraft:elytra:" => key="minecraft:elytra", value=None
+                    # 1) If line ends with ":" => key only
                     trimmed_for_colon = remainder.rstrip()
                     if trimmed_for_colon.endswith(':'):
                         key = trimmed_for_colon[:-1].rstrip()
                         value = None
-
                     else:
-                        # 2) Otherwise look for ": " => that indicates key: value
+                        # 2) Otherwise, look for ": "
                         sep_index = remainder.find(': ')
                         if sep_index != -1:
                             key_part = remainder[:sep_index].rstrip()
@@ -25737,20 +25732,19 @@ class ServerYamlEditScreen(EditorRoot):
                                 multiline_indicator = value
                                 value = None
                         else:
-                            # 3) No trailing colon, no ": " =>
-                            #    treat entire line as *value*, empty key.
+                            # 3) No trailing colon and no ": " => entire line is value
                             key = ''
                             value = remainder
                             is_multiline_string = True
                 else:
-                    # It's a list item => remainder is the value
+                    # It's a list item => everything is the value
                     value = remainder
 
                 tokens.append(YamlToken(
                     raw_line=line,
                     indent_level=indent_level,
                     is_comment=False,
-                    comment_text=comment_text,
+                    comment_text=comment_text,  # Will remain None
                     is_list_item=is_list_item,
                     key=key,
                     value=value,
@@ -25943,23 +25937,28 @@ class ServerYamlEditScreen(EditorRoot):
 
         def flatten_yaml(data, parent_key='', indent=0):
             """
-            Build self.flat_lines as:
-                ( key, value, indent, is_header, is_list_header, is_multiline_string )
+            Build self.flat_lines as tuples of:
+              ( key, value, indent, is_header, is_list_header, is_multiline_string ).
+
+            We'll merge any __inline_comment__ into the value string itself.
             """
 
-            # CASE 1: 'scalar_with_children' or 'multiline_scalar_with_children'
+            # -- CASE 1: 'scalar_with_children' or 'multiline_scalar_with_children' --
             if (
-                    isinstance(data, dict) and
-                    data.get('__type__') in ('scalar_with_children', 'multiline_scalar_with_children')
+                    isinstance(data, dict)
+                    and data.get('__type__') in ('scalar_with_children', 'multiline_scalar_with_children')
             ):
                 parent_val = data.get('__value__', '')
                 is_multi = (data['__type__'] == 'multiline_scalar_with_children')
                 shown_key = parent_key or '__root__'
 
+                # Grab any inline comment and append it to the value
+                inline_comment = data.get('__inline_comment__')
+                if inline_comment:
+                    parent_val = f"{parent_val}  {inline_comment}"
+
                 # 1 line for the parent's key & value
-                self.flat_lines.append(
-                    (shown_key, parent_val, indent, False, False, is_multi)
-                )
+                self.flat_lines.append((shown_key, parent_val, indent, False, False, is_multi))
 
                 # Now flatten real children under indent+1
                 for child_key, child_val in data.items():
@@ -25976,49 +25975,67 @@ class ServerYamlEditScreen(EditorRoot):
 
                     flatten_yaml(child_val, child_key, indent + 1)
 
-                # If there's an inline comment
-                if '__inline_comment__' in data:
-                    cmt = data['__inline_comment__']
-                    self.flat_lines.append((f"__comment__{indent}", cmt, indent, False, False, False))
+                # We no longer append a separate line for '__inline_comment__'!
                 return
 
-            # CASE 2: Plain 'multiline_string'
+            # -- CASE 2: Plain 'multiline_string' --
             if isinstance(data, dict) and data.get('__type__') == 'multiline_string':
                 val = data['value']
                 ml_flag = True
                 node_indent = data.get('__indent__', indent)
                 shown_key = parent_key or '__root__'
+
+                # Merge inline comment
+                inline_comment = data.get('__inline_comment__')
+                if inline_comment:
+                    val = f"{val}  {inline_comment}"
+
                 self.flat_lines.append((shown_key, val, node_indent, False, False, ml_flag))
                 return
 
-            # CASE 3: 'block_scalar'
+            # -- CASE 3: 'block_scalar' --
             if isinstance(data, dict) and data.get('__type__') == 'block_scalar':
                 val = data.get('value', '')
                 indicator = data.get('indicator', '')
                 node_indent = data.get('__indent__', indent)
                 shown_key = f"{parent_key} {indicator}".strip()
+
+                # Merge inline comment
+                inline_comment = data.get('__inline_comment__')
+                if inline_comment:
+                    val = f"{val}  {inline_comment}"
+
                 self.flat_lines.append((shown_key, val, node_indent, False, False, False))
                 return
 
-            # CASE 4: If it's a dict 'list'
+            # -- CASE 4: If it's a dict with __type__='list' --
             if isinstance(data, dict) and data.get('__type__') == 'list' and '__items__' in data:
-                self.flat_lines.append((parent_key, '', indent, True, True, False))
+                inline_comment = data.get('__inline_comment__', '')
+                list_line_value = ''
+                if inline_comment:
+                    list_line_value = f"{list_line_value}  {inline_comment}".strip()
+
+                # This prints "parent_key:" on one line
+                self.flat_lines.append((parent_key, list_line_value, indent, True, True, False))
+
+                # Then flatten all items
                 flatten_yaml(data['__items__'], parent_key, indent + 1)
                 return
 
-            # CASE 5: Normal dict => flatten each key
+            # -- CASE 5: Normal dict => flatten each key --
             if isinstance(data, dict):
-                # We skip only internal keys
+                # We'll skip our internal metadata keys
                 skip_keys = (
                     '__type__', '__inline_comment__', '__items__',
                     '__indent__', '__value__', '__indicator__'
                 )
+
                 for k, v in data.items():
                     if k in skip_keys:
                         continue
 
                     if k.startswith('__comment__'):
-                        # flatten comment
+                        # Flatten a pure comment
                         comment_text = v.get('comment', '')
                         comment_indent = v.get('__indent__', indent)
                         self.flat_lines.append((comment_text, '', comment_indent, False, False, False))
@@ -26026,32 +26043,43 @@ class ServerYamlEditScreen(EditorRoot):
 
                     # If v is nested
                     if isinstance(v, (dict, list)):
-                        # If it's a list or a dict that might be a list
+                        # Possibly it's a list or dict with children
                         is_list_header = (
                                 isinstance(v, list) or
                                 (isinstance(v, dict) and v.get('__type__') == 'list')
                         )
-                        # We do a "header line" only if it's NOT scalar_with_children
+                        # If it's a "scalar_with_children," flatten directly
                         if isinstance(v, dict) and v.get('__type__') in (
                                 'scalar_with_children', 'multiline_scalar_with_children'
                         ):
-                            # Flatten it directly (no extra header line)
                             flatten_yaml(v, k, indent)
                         else:
-                            # Normal header line
+                            # Normal "header line" for the sub-dict or sub-list
                             self.flat_lines.append((k, '', indent, True, is_list_header, False))
                             flatten_yaml(v, k, indent + 1)
                     else:
-                        # Scalar
+                        # It's just a scalar => inline comment might belong to the dict itself,
+                        # but typically each scalar won't have its own inline comment unless
+                        # it's a 'scalar_with_comment' type. So we just do:
                         self.flat_lines.append((k, v, indent, False, False, False))
 
-                # Inline comment
-                if '__inline_comment__' in data:
-                    cmt = data['__inline_comment__']
-                    self.flat_lines.append((f"__comment__{indent}", cmt, indent, False, False, False))
+                # If there's an inline comment on *this* dictionary node, append it
+                # to the parent's line. But your code doesn't produce a "parent line"
+                # unless it was a 'scalar_with_children', etc. So by default, you might
+                # choose to skip or treat it as a separate line. We'll skip it or
+                # incorporate it as needed:
+                #
+                # For the sake of matching your existing approach, let's remove the
+                # separate line for inline_comment:
+                #
+                # if '__inline_comment__' in data:
+                #     cmt = data['__inline_comment__']
+                #     # We won't do a separate line. If you wanted to,
+                #     # you'd do self.flat_lines.append((f"__comment__{indent}", cmt, indent, ...))
+                #
                 return
 
-            # CASE 6: If data is a list
+            # -- CASE 6: If data is a list --
             if isinstance(data, list):
                 for idx, item in enumerate(data):
                     item_key = '__list__'
@@ -26066,7 +26094,8 @@ class ServerYamlEditScreen(EditorRoot):
                         self.flat_lines.append((item_key, item, indent, False, False, False))
                 return
 
-            # CASE 7: Otherwise a plain scalar
+            # -- CASE 7: Otherwise a plain scalar --
+            # Merge inline_comment if we had it. (We don't in plain scalars, typically.)
             self.flat_lines.append((parent_key, data, indent, False, False, False))
 
         # Flatten
