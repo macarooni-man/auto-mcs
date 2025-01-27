@@ -23826,7 +23826,7 @@ class EditorRoot(MenuBackground):
 
         # Editor UI
         self.scroll_widget = RecycleViewWidget(position=(0.5, 0.5), view_class=self.EditorLine)
-        self.scroll_layout = RecycleGridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30], default_height=50, default_width=1250)
+        self.scroll_layout = RecycleGridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30], default_size=(1250, 50))
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
 
