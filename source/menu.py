@@ -22925,15 +22925,15 @@ def open_config_file(path: str, *a):
 
     # If this file is via Telepath, download it first prior to editing
     config_data['_telepath_data'] = server_obj._telepath_data
-    if server_obj._telepath_data and os.path.basename(path) != 'server.properties':
+    if server_obj._telepath_data:
         config_data['remote_path'] = path
         config_data['path'] = constants.telepath_download(server_obj._telepath_data, path)
 
     # Check if file exits and pick the correct editor for the format
-    if os.path.isfile(path) or path == 'server.properties':
+    if os.path.isfile(path):
         editor_screen = None
 
-        if ext == 'properties':
+        if ext == ['properties', 'ini']:
             editor_screen = 'ServerPropertiesEditScreen'
 
         elif ext in ['yml', 'yaml']:
@@ -23258,16 +23258,705 @@ class ServerConfigScreen(MenuBackground):
 
 
 class EditorRoot(MenuBackground):
+
+    # Search bar for editor content
+    class SearchInput(TextInput):
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self._screen = screen_manager.current_screen
+
+            self.original_text = ''
+            self.history_index = 0
+
+            self.size_hint_max_y = 50
+            self.multiline = False
+            self.halign = "left"
+            self.hint_text = "search for text..."
+            self.hint_text_color = (0.6, 0.6, 1, 0.4)
+            self.foreground_color = (0.6, 0.6, 1, 1)
+            self.background_color = (0, 0, 0, 0)
+            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+            self.font_size = sp(24)
+            self.padding_y = (12, 12)
+            self.padding_x = (70, 12)
+            self.cursor_color = (0.55, 0.55, 1, 1)
+            self.cursor_width = dp(3)
+            self.selection_color = (0.5, 0.5, 1, 0.4)
+
+            self.bind(on_text_validate=self.on_enter)
+
+        def _on_focus(self, instance, value, *largs):
+            def update_focus(*args):
+                self._screen._input_focused = self.focus
+            Clock.schedule_once(update_focus, 0)
+
+            super(type(self), self)._on_focus(instance, value)
+            Animation.stop_all(self.parent.input_background)
+            Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
+
+        def grab_focus(self, *a):
+            def focus_later(*args):
+                self.focus = True
+            Clock.schedule_once(focus_later, 0)
+
+        def on_enter(self, value):
+            self.grab_focus()
+
+        def insert_text(self, substring, from_undo=False):
+            if self._screen.popup_widget:
+                return None
+            substring = substring.replace("\n", "").replace("\r", "")
+            return super().insert_text(substring, from_undo=from_undo)
+
+        def keyboard_on_key_down(self, window, keycode, text, modifiers):
+
+            if keycode[1] == 'escape' and self.focused:
+                self.focused = False
+                if self.parent:
+                    self.parent.focus_input()
+                return True
+
+            if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
+                return None
+
+            if keycode[1] == "backspace" and control in modifiers:
+                original_index = self.cursor_col
+                new_text, index = constants.control_backspace(self.text, original_index)
+                self.select_text(original_index - index, original_index)
+                self.delete_selection()
+            else:
+                super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+            # Fix overscroll
+            if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
+                self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.05))
+
+            if self.cursor_pos[0] < (self.x):
+                self.scroll_x = 0
+
+        def fix_overscroll(self, *args):
+            if self.cursor_pos[0] < (self.x):
+                self.scroll_x = 0
+
+        def on_touch_down(self, touch):
+            if self._screen.popup_widget:
+                return
+            else:
+                return super().on_touch_down(touch)
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
         self._config_data = None
         self.path = None
         self.file_name = None
 
+        self.server_obj = None
+        self.header = None
+        self.search_bar = None
+        self.scroll_widget = None
+        self.scroll_layout = None
+        self.input_background = None
+        self.fullscreen_shadow = None
+        self.match_label = None
+        self.controls_button = None
+
+        self.undo_history = []
+        self.redo_history = []
+        self.last_search = ''
+        self.match_list = []
+        self.modified = False
+        self.current_line = None
+        self.line_list = []
+
+        self.background_color = constants.brighten_color(constants.background_color, -0.1)
+
+        # Background
+        with self.canvas.before:
+            self.color = Color(*self.background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+    # Update current file loaded in editor
     def update_path(self, data: dict):
         self._config_data = data
         self.path = self._config_data['path']
         self.file_name = os.path.basename(self.path)
+
+    # Set current line as index
+    def set_index(self, index, **kwargs):
+        self.current_line = index
+
+    # Highlight specific input
+    def focus_input(self, new_input=None, highlight=False):
+        if not new_input:
+            if self.current_line:
+                return self.scroll_to_line(self.current_line, highlight=highlight)
+            else:
+                return None
+
+        if highlight:
+            original_color = constants.convert_color(new_input.key_label.default_color)['rgb']
+            new_input.key_label.color = constants.brighten_color(original_color, 0.2)
+            Animation.stop_all(new_input.key_label)
+            Animation(color=original_color, duration=0.5).start(new_input.key_label)
+
+        new_input.value_label.grab_focus()
+        self.set_index(new_input.line)
+
+    # Scroll to any line in RecycleView
+    def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True):
+        new_scroll = 1 - (index * 50) / ((len(self.line_list) * 50) - self.search_bar.height - self.header.height)
+        if new_scroll > 1:
+            new_scroll = 1
+        if new_scroll < 0:
+            new_scroll = 0
+
+        self.current_line = None
+        for line in self.scroll_layout.children:
+            line.value_label.focused = False
+
+        def after_scroll(*a):
+            for line in self.scroll_layout.children:
+                if line.line == index + 1:
+                    self.focus_input(line, highlight=highlight)
+
+        # Only scroll when there is a scrollbar
+        if len(self.scroll_layout.children) < len(self.line_list):
+            if select:
+                Animation(scroll_y=new_scroll, duration=0.1).start(self.scroll_widget)
+                Clock.schedule_once(after_scroll, 0.4 if wrap_around else 0.11)
+            else:
+                self.scroll_widget.scroll_y = new_scroll
+                self.set_index(index + 1)
+
+        elif select:
+            after_scroll()
+
+    # Move between inputs with arrow keys
+    def switch_input(self, position):
+        if self.current_line is None:
+            self.set_index(0)
+
+        found_input = False
+        wrap_around = False
+
+        index = 0
+        if position == 'up':
+            index = self.current_line
+        elif position == 'down':
+            index = self.current_line + 2
+        elif position in ['pagedown', 'end']:
+            position = 'pagedown'
+            index = len(self.line_list) - 1
+        elif position in ['pageup', 'home']:
+            position = 'pageup'
+            index = 0
+
+        index = index - 1
+
+        while not found_input:
+            ignore_input = False
+            if index >= len(self.line_list):
+                index = 0
+                wrap_around = True
+            elif index < 0:
+                index = len(self.line_list) - 1
+                wrap_around = True
+
+            new_input = self.line_list[index]['data']
+            if not new_input['inactive']:
+
+                if self.match_list and self.last_search:
+                    if not new_input['line_matched']:
+                        ignore_input = True
+
+                if not ignore_input:
+                    try:
+                        self.scroll_to_line(index, wrap_around=wrap_around)
+                        break
+                    except AttributeError:
+                        pass
+
+            index = index + (-1 if position == 'up' else 1)
+
+    # Generate search in background
+    @staticmethod
+    def _check_match_logic(data: dict, search_text: str):
+        # Override logic here to parse search matches with delimiters like ":" or "=" differently
+
+        key_text = ''
+        value_text = ''
+
+        return key_text, value_text
+
+    def check_match(self, data: dict, search_text: str):
+        line_matched = False
+        key_matched = False
+        value_matched = False
+
+        if search_text:
+            search_text = search_text.strip()
+
+            # Detect different types of key/value pairs
+            key_text, value_text = self._check_match_logic(data, search_text)
+
+            key_data = str(data['key'])
+            value_data = str(data['value'])
+
+            # Check if search matches in key label
+            if search_text in key_data:
+                key_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join([x for x in key_data.split(search_text)])
+            elif key_text and key_data.endswith(key_text) and value_text.startswith(value_text):
+                key_matched = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join([x for x in key_data.rsplit(key_text, 1)])
+
+            # Check if search matches in value input/ghost label
+            if search_text in value_data:
+                value_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join([x for x in value_data.split(search_text)])
+            elif value_text and value_data.startswith(value_text) and key_data.endswith(key_text):
+                value_matched = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join([x for x in value_data.split(value_text, 1)])
+
+            if key_matched or value_matched:
+                line_matched = {'key': key_matched, 'value': value_matched}
+
+        data['line_matched'] = line_matched
+        return line_matched
+
+    def search_text(self, obj, text, *args):
+        self.last_search = text
+        self.match_list = []
+        first_match = None
+
+        # Update search data in background
+        for x, line in enumerate(self.line_list):
+            result = self.check_match(line['data'], text)
+            if result:
+                self.match_list.append(line)
+            if result and not first_match:
+                first_match = line
+
+        # Update all visible widgets
+        if not text:
+            self.scroll_widget.refresh_from_data()
+
+        for line in self.scroll_layout.children:
+            Clock.schedule_once(functools.partial(line.highlight_text, text), -1)
+
+
+        # Scroll to first match
+        if first_match:
+            index = self.line_list.index(first_match)
+            self.scroll_to_line(index, select=False)
+
+        # Dirty hack to force focus to search bar
+        for x in range(30):
+            Clock.schedule_once(self.search_bar.grab_focus, 0.01 * x)
+
+        # Show match count
+        try:
+            Animation.stop_all(self.match_label)
+            Animation(opacity=(1 if text and self.match_list else 0.35 if text else 0), duration=0.1).start(self.match_label)
+            matches = 0
+            search_str = text.strip()
+            if search_str:
+                for x in self.match_list:
+                    total_str = str(x['data']['key']) + str(x['data']['value'])
+                    matches += total_str.count(search_str)
+            self.match_label.text = f'{matches} match{"es" if matches != 1 else ""}'
+        except AttributeError:
+            pass
+
+
+    # Undo/redo behavior
+    def _apply_action(self, action, undo=True):
+        """
+        Called to undo or redo a structural action:
+          - 'insert_line': remove or re-insert
+          - 'remove_line': re-insert or remove
+        """
+        a_type = action['type']
+        line_data = action['data']  # either the dict or the (key,value,...) tuple
+        idx = action['index']
+
+        if a_type == 'insert_line':
+            if undo:
+                # Undo an insert => remove it
+                self.remove_line(idx, refresh=True)
+            else:
+                # Redo an insert => put it back
+                self.insert_line(line_data, idx, refresh=True)
+
+        elif a_type == 'remove_line':
+            if undo:
+                # Undo a remove => re-insert it
+                self.insert_line(line_data, idx, refresh=True)
+            else:
+                # Redo a remove => remove again
+                self.remove_line(idx, refresh=True)
+
+    def undo(self, save=False, undo=False, action=None):
+        """
+        Handles both structural (insert/remove line) and text changes,
+        with exactly the one-step-per-line logic you had before.
+
+        - `save=True, action=...` => record a *structural* action
+        - `save=True, action=None` => record a *text-change* action
+        - `undo=True` => perform undo
+        - `undo=False` => perform redo
+        """
+
+        # 1) Save a *structural* action
+        if save and action is not None:
+            self.redo_history.clear()
+            self.undo_history.append(action)
+            return
+
+        # 2) Save a *text-change* action
+        if save and action is None:
+            self.redo_history.clear()
+            if self.current_line is not None and 0 <= self.current_line < len(self.line_list):
+
+                # We'll use 1-based line numbering, just like your original code:
+                line_num = self.current_line + 1
+
+                # Grab the current line's "original_value" from the data
+                old_text = self.line_list[self.current_line]['data']['original_value']
+
+                # If the last undo entry is text for the *same line*, update it
+                # (thus storing only one undo step for repeated typing on that line)
+                if self.undo_history and not isinstance(self.undo_history[-1], dict):
+                    last = self.undo_history[-1]  # e.g. (line_num, old_text)
+                    if last[0] == line_num:
+                        # "Update existing action"
+                        self.undo_history[-1] = (line_num, old_text)
+                        return
+
+                # Otherwise, create a new text-based action
+                self.undo_history.append((line_num, old_text))
+
+            return
+
+        # 3) Actually perform Undo or Redo
+        if undo:
+            # UNDO
+            if not self.undo_history:
+                return
+            last_action = self.undo_history.pop()
+
+            if isinstance(last_action, dict):
+                # structural
+                self._apply_action(last_action, undo=True)
+                self.redo_history.append(last_action)
+            else:
+                # text-based => (line_num, old_text)
+                line_num, old_text = last_action
+                if 1 <= line_num <= len(self.line_list):
+                    # Before reverting, store the current text for Redo
+                    current_text = self.line_list[line_num - 1]['data']['value']
+                    self.redo_history.append((line_num, current_text))
+
+                    # Revert to old_text in the data
+                    self.line_list[line_num - 1]['data']['value'] = old_text
+
+                    # Also revert 'original_value' if you want it fully consistent:
+                    self.line_list[line_num - 1]['data']['original_value'] = old_text
+
+                    # Refresh the RecycleView so the UI sees the change
+                    self.scroll_widget.data = self.line_list
+                    self.scroll_widget.refresh_from_data()
+
+                    # Optionally scroll/focus that line
+                    self.scroll_to_line(line_num - 1, highlight=True)
+
+        else:
+            # REDO
+            if not self.redo_history:
+                return
+            last_action = self.redo_history.pop()
+
+            if isinstance(last_action, dict):
+                # structural
+                self._apply_action(last_action, undo=False)
+                self.undo_history.append(last_action)
+            else:
+                # text-based => (line_num, old_text)
+                line_num, old_text = last_action
+                if 1 <= line_num <= len(self.line_list):
+                    # store the current text in Undo before overwriting
+                    current_text = self.line_list[line_num - 1]['data']['value']
+                    self.undo_history.append((line_num, current_text))
+
+                    # revert data
+                    self.line_list[line_num - 1]['data']['value'] = old_text
+                    self.line_list[line_num - 1]['data']['original_value'] = old_text
+
+                    # refresh
+                    self.scroll_widget.data = self.line_list
+                    self.scroll_widget.refresh_from_data()
+                    self.scroll_to_line(line_num - 1, highlight=True)
+
+
+    # Line behavior
+    def insert_line(self, line: (tuple, list, dict), index: int = None, refresh=True):
+        # Override in child editors for specific line formats
+        pass
+
+    def remove_line(self, index: int, refresh=True):
+        if index in range(len(self.line_list)):
+            self.current_line = None
+
+            for line in self.scroll_layout.children:
+                line.value_label.focused = False
+
+            data = self.line_list.pop(index)
+
+            # Update layout with new data
+            if refresh:
+                self.scroll_widget.data = self.line_list
+                self.scroll_widget.refresh_from_data()
+
+            return data
+
+
+    # Menu navigation
+    def quit_to_menu(self, *a):
+        for button in self.walk():
+            try:
+                if button.id == "exit_button":
+                    button.force_click()
+                    break
+            except AttributeError:
+                continue
+
+    def save_and_quit(self, *a):
+        self.save_file()
+        self.quit_to_menu()
+
+    def reset_data(self):
+        self.load_file()
+        self.set_banner_status(False)
+
+    def check_data(self):
+        return not self.undo_history
+
+    def set_banner_status(self, changed=False):
+        if changed != self.modified:
+            self.remove_widget(self.header)
+            del self.header
+
+            if changed:
+                self.header = BannerObject(
+                    pos_hint={"center_x": 0.5, "center_y": 0.9},
+                    size=(250, 40),
+                    color="#F3ED61",
+                    text=f"Editing '${self.file_name}$'",
+                    icon="pencil-sharp.png",
+                    animate=True
+                )
+                self.add_widget(self.header)
+            else:
+                self.header = BannerObject(
+                    pos_hint={"center_x": 0.5, "center_y": 0.9},
+                    size=(250, 40),
+                    color=(0.4, 0.682, 1, 1),
+                    text=f"Viewing '${self.file_name}$'",
+                    icon="eye-outline.png",
+                    animate=True
+                )
+                self.add_widget(self.header)
+
+        self.modified = changed
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        if self.popup_widget:
+            return True
+
+        if (keycode[1] == 'q' and control in modifiers) or keycode[1] == 'escape':
+            if self.modified:
+                self.show_popup(
+                    "query",
+                    "Unsaved Changes",
+                    f"There are unsaved changes in '${self.file_name}$'.\n\nWould you like to save before quitting?",
+                    [functools.partial(Clock.schedule_once, self.quit_to_menu, 0.25),
+                     functools.partial(Clock.schedule_once, self.save_and_quit, 0.25)]
+                )
+            else:
+                self.quit_to_menu()
+            return True
+
+        if keycode[1] in ['down', 'up', 'pagedown', 'pageup']:
+            return self.switch_input(keycode[1])
+
+        if keycode[1] == 'f' and control in modifiers:
+            if not self.search_bar.focused:
+                self.search_bar.grab_focus()
+            else:
+                if self.current_line is not None:
+                    self.focus_input()
+            return True
+
+        if keycode[1] == 's' and control in modifiers and self.modified:
+            self.save_file()
+            return None
+
+        # Undo/Redo
+        if keycode[1] == 'z' and control in modifiers and self.undo_history:
+            self.undo(save=False, undo=True)
+        elif keycode[1] == 'z' and control in modifiers and not self.undo_history:
+            if not self.check_data():
+                self.reset_data()
+
+        if keycode[1] in ['r', 'y'] and control in modifiers and self.redo_history:
+            self.undo(save=False, undo=False)
+
+        def set_banner(*a):
+            self.set_banner_status(not self.check_data())
+        Clock.schedule_once(set_banner, 0)
+
+        return True
+
+    def generate_menu(self, **kwargs):
+        self.server_obj = constants.server_manager.current_server
+
+        # Editor UI
+        self.scroll_widget = RecycleViewWidget(position=(0.5, 0.5), view_class=self.EditorLine)
+        self.scroll_layout = RecycleGridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30], default_height=50, default_width=1250)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+        def resize_scroll(call_widget, grid_layout, *args):
+            call_widget.height = Window.height // 1.23
+            self.fullscreen_shadow.y = self.height + self.x - 3
+            self.fullscreen_shadow.width = Window.width
+            search_pos = 47
+            self.search_bar.pos = (self.x, search_pos)
+            self.input_background.pos = (self.search_bar.pos[0] - 15, self.search_bar.pos[1] + 8)
+            self.search_bar.size_hint_max_x = Window.width - self.search_bar.x - 200
+
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
+        Window.bind(on_resize=self.resize_bind)
+        self.resize_bind()
+
+        self.scroll_widget.data = self.load_file()
+
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        self.scroll_widget.add_widget(self.scroll_layout)
+        float_layout.add_widget(self.scroll_widget)
+
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_top.color = self.background_color
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+        scroll_bottom.color = self.background_color
+        scroll_bottom.y = 115
+
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+        self.fullscreen_shadow = Image()
+        self.fullscreen_shadow.allow_stretch = True
+        self.fullscreen_shadow.keep_ratio = False
+        self.fullscreen_shadow.size_hint_max = (None, 50)
+        self.fullscreen_shadow.color = (0, 0, 0, 1)
+        self.fullscreen_shadow.opacity = 0
+        self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
+        float_layout.add_widget(self.fullscreen_shadow)
+
+        buttons = []
+        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
+        for b in buttons:
+            float_layout.add_widget(b)
+
+        float_layout.add_widget(generate_title(f"Server Settings: '{self.server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{self.server_obj.name}, Settings, Edit '${self.file_name}$'"))
+        self.add_widget(float_layout)
+
+        self.search_bar = self.SearchInput()
+        self.search_bar.bind(text=self.search_text)
+        self.add_widget(self.search_bar)
+
+        self.match_label = AlignLabel()
+        self.match_label.text = '0 matches'
+        self.match_label.halign = "right"
+        self.match_label.color = (0.6, 0.6, 1, 1)
+        self.match_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+        self.match_label.font_size = sp(24)
+        self.match_label.y = 60
+        self.match_label.padding_x = 10
+        self.match_label.opacity = 0
+        self.add_widget(self.match_label)
+
+        self.input_background = Image()
+        self.input_background.default_opacity = 0.35
+        self.input_background.color = self.search_bar.foreground_color
+        self.input_background.opacity = self.input_background.default_opacity
+        self.input_background.allow_stretch = True
+        self.input_background.size_hint = (None, None)
+        self.input_background.height = self.search_bar.size_hint_max_y / 1.45
+        self.input_background.source = os.path.join(constants.gui_assets, 'icons', 'search.png')
+        self.add_widget(self.input_background)
+
+        def show_controls():
+            controls_text = """This editor allows you to modify additional server configuration options. Shortcuts are provided for ease of use:
+
+
+• Press 'CTRL+Z' to undo, and 'CTRL+R'/'CTRL+Y' to redo
+
+• Press 'CTRL+S' to save modifications
+
+• Press 'CTRL-Q' to quit the editor
+
+• Press 'CTRL+F' to search for data
+
+• Press 'SPACE' to toggle boolean values (e.g. true, false)""" if constants.os_name != 'macos' else """This editor allows you to modify additional server configuration options. Shortcuts are provided for ease of use:
+
+
+• Press 'CMD+Z' to undo, and 'CMD+R'/'CMD+Y' to redo
+
+• Press 'CMD+S' to save modifications
+
+• Press 'CMD+Q' to quit the editor
+
+• Press 'CMD+F' to search for data
+
+• Press 'SPACE' to toggle boolean values (e.g. true, false)"""
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_popup,
+                    "controls",
+                    "Controls",
+                    controls_text,
+                    (None)
+                ),
+                0
+            )
+
+        self.controls_button = IconButton(
+            'controls', {}, (70, 110), (None, None), 'question.png',
+            clickable=True, anchor='right', click_func=show_controls
+        )
+        float_layout.add_widget(self.controls_button)
+
+        self.header = BannerObject(
+            pos_hint={"center_x": 0.5, "center_y": 0.9},
+            size=(250, 40),
+            color=(0.4, 0.682, 1, 1),
+            text=f"Viewing '${self.file_name}$'",
+            icon="eye-outline.png"
+        )
+        self.add_widget(self.header)
+
+        self.controls_button = IconButton(
+            'save & quit', {}, (120, 110), (None, None), 'save-sharp.png',
+            clickable=True, anchor='right',
+            click_func=self.save_and_quit,
+            text_offset=(-5, 50)
+        )
+        float_layout.add_widget(self.controls_button)
+
 
 class ServerPropertiesEditScreen(EditorRoot):
     class EditorLine(RelativeLayout):
@@ -23660,473 +24349,95 @@ class ServerPropertiesEditScreen(EditorRoot):
             Clock.schedule_once(self.on_resize, 0)
             Clock.schedule_once(self.allow_animation, 1)
 
-    # Search bar input at the bottom
-    class PropertiesSearchInput(TextInput):
+    # Override logic to parse search matches
+    @staticmethod
+    def _check_match_logic(data: dict, search_text: str):
+        if "=" in search_text:
+            key_text, value_text = [x.strip() for x in search_text.split("=", 1)]
+        else:
+            key_text = ''
+            value_text = ''
 
-        def _on_focus(self, instance, value, *largs):
-
-            # Update screen focus value on next frame
-            def update_focus(*args):
-                screen_manager.current_screen._input_focused = self.focus
-
-            Clock.schedule_once(update_focus, 0)
-
-            super(type(self), self)._on_focus(instance, value)
-            Animation.stop_all(self.parent.input_background)
-            Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
-
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-
-            self.original_text = ''
-            self.history_index = 0
-
-            self.multiline = False
-            self.halign = "left"
-            self.hint_text = "search for text..."
-            self.hint_text_color = (0.6, 0.6, 1, 0.4)
-            self.foreground_color = (0.6, 0.6, 1, 1)
-            self.background_color = (0, 0, 0, 0)
-            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-            self.font_size = sp(24)
-            self.padding_y = (12, 12)
-            self.padding_x = (70, 12)
-            self.cursor_color = (0.55, 0.55, 1, 1)
-            self.cursor_width = dp(3)
-            self.selection_color = (0.5, 0.5, 1, 0.4)
-
-            self.bind(on_text_validate=self.on_enter)
-
-        def grab_focus(self, *a):
-            def focus_later(*args):
-                self.focus = True
-
-            Clock.schedule_once(focus_later, 0)
-
-        def on_enter(self, value):
-            self.grab_focus()
-
-        # Input validation
-        def insert_text(self, substring, from_undo=False):
-            if screen_manager.current_screen.popup_widget:
-                return None
-
-            substring = substring.replace("\n", "").replace("\r", "")
-            return super().insert_text(substring, from_undo=from_undo)
-
-        def keyboard_on_key_down(self, window, keycode, text, modifiers):
-
-            # Ignore undo and redo for global effect
-            if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
-                return None
-
-            if keycode[1] == "backspace" and control in modifiers:
-                original_index = self.cursor_col
-                new_text, index = constants.control_backspace(self.text, original_index)
-                self.select_text(original_index - index, original_index)
-                self.delete_selection()
-            else:
-                super().keyboard_on_key_down(window, keycode, text, modifiers)
-
-            # Fix overscroll
-            if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
-                self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.05))
-
-            # Fix overscroll
-            if self.cursor_pos[0] < (self.x):
-                self.scroll_x = 0
-
-        def fix_overscroll(self, *args):
-
-            if self.cursor_pos[0] < (self.x):
-                self.scroll_x = 0
-
-        # Ignore touch events when popup is present
-        def on_touch_down(self, touch):
-            popup_widget = screen_manager.current_screen.popup_widget
-            if popup_widget:
-                return
-            else:
-                return super().on_touch_down(touch)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-
-        self.header = None
-        self.line_list = None
-        self.search_bar = None
-        self.scroll_widget = None
-        self.scroll_layout = None
-        self.input_background = None
-        self.fullscreen_shadow = None
-        self.match_label = None
-        self.server_properties = None
-        self.controls_button = None
-
-        self.undo_history = []
-        self.redo_history = []
-        self.last_search = ''
-        self.match_list = []
-        self.modified = False
-        self.current_line = None
-
-        self.background_color = constants.brighten_color(constants.background_color, -0.1)
-
-        # Background
-        with self.canvas.before:
-            self.color = Color(*self.background_color, mode='rgba')
-            self.rect = Rectangle(pos=self.pos, size=self.size)
-
-    # index_func
-    def set_index(self, index, **kwargs):
-        self.current_line = index
-
-    def focus_input(self, new_input=None, highlight=False):
-        if not new_input:
-            new_input = self.line_list[self.current_line]
-
-        # Highlight focused input
-        if highlight:
-            original_color = constants.convert_color(new_input.key_label.default_color)['rgb']
-            new_input.key_label.color = constants.brighten_color(original_color, 0.2)
-            Animation.stop_all(new_input.key_label)
-            Animation(color=original_color, duration=0.5).start(new_input.key_label)
-
-        new_input.value_label.grab_focus()
-        self.scroll_widget.scroll_to(new_input.value_label, padding=30, animate=True)
-
-    # Changes input on different keypresses
-    def switch_input(self, position):
-        if self.current_line is None:
-            self.set_index(0)
-
-        index = 0
-
-        # Set initial index
-        if position == 'up':
-            index = self.current_line - 1
-
-        elif position == 'down':
-            index = self.current_line + 1
-
-        elif position in ['pagedown', 'end']:
-            position = 'pagedown'
-            index = len(self.line_list) - 1
-
-        elif position in ['pageup', 'home']:
-            position = 'pageup'
-            index = 0
+        return key_text, value_text
 
 
-        # Loop over indexes until next match to support rollover
-        found_input = False
-        while not found_input:
-            ignore_input = False
+    # *.properties/INI specific features
+    def insert_line(self, line: (tuple, list, dict), index: int = None, refresh=True):
+        if not isinstance(line, dict):
 
-            # Rollover indexes
-            if index >= len(self.line_list):
-                index = 0
-            elif index <= 0 and 'page' not in position:
-                index = len(self.line_list) - 1
+            key, value, is_blank_line, is_comment, is_header = line
 
-            new_input = self.line_list[index]
+            inactive = is_blank_line or is_header or is_comment
 
-
-            # Ignore result if not a search match
-            if self.match_list and self.last_search:
-                if not new_input.line_matched:
-                    ignore_input = True
-
-
-            if not new_input.key_label.text.startswith("#") and not ignore_input:
-
-                try:
-                    self.focus_input(new_input)
-                    break
-
-                except AttributeError:
-                    pass
-
-            index = index + (-1 if position == 'up' else 1)
-
-    def search_text(self, obj, text, *args):
-        self.last_search = text
-        self.match_list = []
-        first_match = None
-
-        for line in self.line_list:
-            result = line.highlight_text(text)
-            if result:
-                self.match_list.append(line)
-
-            if result and not first_match:
-                first_match = line
-
-        if first_match:
-            self.set_index(first_match.line-1)
-            self.scroll_widget.scroll_to(first_match, padding=30, animate=True)
-
-        # Handle match text
-        try:
-            Animation.stop_all(self.match_label)
-            Animation(opacity=(1 if text and self.match_list else 0.35 if text else 0), duration=0.1).start(self.match_label)
-            if "=" in text:
-                new_text = '='.join([x.strip() for x in text.split("=", 1)]).strip()
-            else:
-                new_text = text.strip()
-            matches = sum([f'{x.key_label.text}={x.value_label.text}'.count(new_text) for x in self.match_list])
-            self.match_label.text = f'{matches} match{"" if matches == 1 else "es"}'
-        except AttributeError:
-            pass
-
-    # Saves info to self.undo/redo_history, and handles changing values
-    def undo(self, save=False, undo=False):
-        if save:
-            self.redo_history = []
-            line = self.line_list[self.current_line]
-            same_line = False
-
-            if self.undo_history:
-                if self.undo_history[-1][0] == line.line:
-                    same_line = True
-
-            if not same_line:
-                self.undo_history.append((line.line, line.value_label.original_text))
+            data = {'data': {
+                '__hash__': constants.gen_rstring(4),
+                'key': key,
+                'value': value,
+                'original_value': value,
+                'is_header': is_header,
+                'is_comment': is_comment,
+                'is_blank_line': is_blank_line,
+                'inactive': inactive,
+                'line_matched': False
+            }}
 
         else:
-            if undo:
-                line = self.undo_history[-1]
-                line_obj = self.line_list[line[0]-1]
-                self.redo_history.append([line[0], line_obj.value_label.original_text])
-                line_obj.value_label.text = line[1]
-                self.undo_history.pop(-1)
+            data = line
 
-            else:
-                line = self.redo_history[-1]
-                line_obj = self.line_list[line[0]-1]
-                self.undo_history.append([line[0], line_obj.value_label.original_text])
-                line_obj.value_label.text = line[1]
-                self.redo_history.pop(-1)
-            self.focus_input(line_obj, highlight=True)
+        if index is not None:
+            self.line_list.insert(index, data)
 
-        # print(self.undo_history, self.redo_history)
-
-    def generate_menu(self, **kwargs):
-        server_obj = constants.server_manager.current_server
-        server_obj.reload_config()
-
-        # Reset values
-        self.match_label = None
-        self.undo_history = []
-        self.redo_history = []
-        self.last_search = ''
-        self.match_list = []
-        self.modified = False
-
-        # Get 'server.properties' remotely if needed
-        if self.file_name == 'server.properties':
-            if self._config_data['_telepath_data']:
-                server_obj._clear_attr_cache()
-                self.server_properties = []
-                for key, value in server_obj.server_properties.items():
-                    if not (key or value):
-                        continue
-
-                    if key.startswith("#"):
-                        line = "#" + key.strip('#').strip()
-                    else:
-                        if isinstance(value, bool):
-                            value = str(value).lower()
-                        line = f"{key}={value}"
-
-                    self.server_properties.append(line)
-
-            else:
-                properties = constants.server_path(server_obj.name, 'server.properties')
-                with open(properties, 'r') as f:
-                    self.server_properties = f.read().strip().splitlines()
-
-        # Process other '*.properties' files
         else:
-            with open(self.path, 'r') as f:
-                self.server_properties = f.read().strip().splitlines()
+            self.line_list.append(data)
 
+        # Update layout with new data
+        if refresh:
+            self.current_line = None
 
-        # Scroll list
-        self.scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
-        self.scroll_layout = GridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30])
+            for line in self.scroll_layout.children:
+                line.value_label.focused = False
 
+            self.scroll_widget.data = self.line_list
+            self.scroll_widget.refresh_from_data()
 
-        # Bind / cleanup height on resize
-        def resize_scroll(call_widget, grid_layout, *args):
-            call_widget.height = Window.height // 1.23
+        return data
 
-            self.fullscreen_shadow.y = self.height + self.x - 3
-            self.fullscreen_shadow.width = Window.width
-
-            search_pos = 47
-
-            self.search_bar.pos = (self.x, search_pos)
-            self.input_background.pos = (self.search_bar.pos[0] - 15, self.search_bar.pos[1] + 8)
-
-            self.search_bar.size_hint_max_x = Window.width - self.search_bar.x - 200
-
-
-
-        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
-        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-        self.scroll_layout.id = 'scroll_content'
-
-
-        # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
-        scroll_top.color = self.background_color
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
-        scroll_bottom.color = self.background_color
-        scroll_bottom.y = 115
-
-
-        # Generate buttons on page load
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-
-
-        # Generate editor content
-        props = server_obj.server_properties
-        self.current_line = None
-        self.undo_history = []
-        self.redo_history = []
+    def load_file(self):
         self.line_list = []
-        for x, pair in enumerate(props.items(), 1):
-            line = self.EditorLine(line=x, key=pair[0], value=pair[1], max_value=len(props), index_func=self.set_index, undo_func=self.undo)
-            self.line_list.append(line)
-            self.scroll_layout.add_widget(line)
+
+        with open(self.path, 'r') as f:
+            for line in f.read().strip().splitlines():
+                line = line.strip()
+
+                is_comment = False
+                is_blank_line = False
+                is_header = False
+                key = ''
+                value = ''
 
 
-        # Append scroll view items
-        self.scroll_widget.add_widget(self.scroll_layout)
-        float_layout.add_widget(self.scroll_widget)
-        float_layout.add_widget(scroll_top)
-        float_layout.add_widget(scroll_bottom)
+                # Is blank line
+                if not line.strip():
+                    is_blank_line = True
+
+                # Is INI header
+                elif line.startswith('[') and line.endswith(']') and '=' not in line:
+                    key = line
+                    is_header = True
+
+                # Is comment
+                elif line.startswith("#"):
+                    key = "# " + line.lstrip('#').strip()
+                    is_comment = True
+
+                elif '=' in line:
+                    key, value = [x.strip() for x in line.split("=", 1)]
 
 
-        # Fullscreen shadow
-        self.fullscreen_shadow = Image()
-        self.fullscreen_shadow.allow_stretch = True
-        self.fullscreen_shadow.keep_ratio = False
-        self.fullscreen_shadow.size_hint_max = (None, 50)
-        self.fullscreen_shadow.color = (0, 0, 0, 1)
-        self.fullscreen_shadow.opacity = 0
-        self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
-        float_layout.add_widget(self.fullscreen_shadow)
+                line = (key, value, is_blank_line, is_comment, is_header)
+                self.insert_line(line, refresh=False)
 
-
-        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
-
-        for button in buttons:
-            float_layout.add_widget(button)
-
-        float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Edit '${self.file_name}$'"))
-
-        self.add_widget(float_layout)
-
-
-        # Add search bar
-        self.search_bar = self.PropertiesSearchInput(size_hint_max_y=50)
-        self.search_bar.bind(text=self.search_text)
-        self.add_widget(self.search_bar)
-
-        # Match label
-        self.match_label = AlignLabel()
-        self.match_label.text = '0 matches'
-        self.match_label.halign = "right"
-        self.match_label.color = (0.6, 0.6, 1, 1)
-        self.match_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-        self.match_label.font_size = sp(24)
-        self.match_label.y = 60
-        self.match_label.padding_x = 10
-        self.match_label.opacity = 0
-        self.add_widget(self.match_label)
-
-
-        # Input icon
-        self.input_background = Image()
-        self.input_background.default_opacity = 0.35
-        self.input_background.color = self.search_bar.foreground_color
-        self.input_background.opacity = self.input_background.default_opacity
-        self.input_background.allow_stretch = True
-        self.input_background.size_hint = (None, None)
-        self.input_background.height = self.search_bar.size_hint_max_y / 1.45
-        self.input_background.source = os.path.join(constants.gui_assets, 'icons', 'search.png')
-        self.add_widget(self.input_background)
-
-        # Controls button
-        def show_controls():
-
-            controls_text = """This menu allows you to edit additional configuration options provided by the 'server.properties' file. Refer to the Minecraft Wiki for more information. Shortcuts are provided for ease of use:
-
-
-• Press 'CTRL+Z' to undo, and 'CTRL+R'/'CTRL+Y' to redo
-
-• Press 'CTRL+S' to save modifications
-
-• Press 'CTRL-Q' to quit the editor
-
-• Press 'CTRL+F' to search for data
-
-• Press 'SPACE' to toggle boolean values (e.g. true, false)""" if constants.os_name != 'macos' else """This menu allows you to edit additional configuration options provided by the 'server.properties' file. Refer to the Minecraft Wiki for more information. Shortcuts are provided for ease of use:
-
-
-• Press 'CMD+Z' to undo, and 'CMD+R'/'CMD+Y' to redo
-
-• Press 'CMD+S' to save modifications
-
-• Press 'CMD+Q' to quit the editor
-
-• Press 'CMD+F' to search for data
-
-• Press 'SPACE' to toggle boolean values (e.g. true, false)"""
-
-            Clock.schedule_once(
-                functools.partial(
-                    self.show_popup,
-                    "controls",
-                    "Controls",
-                    controls_text,
-                    (None)
-                ),
-                0
-            )
-
-        self.controls_button = IconButton('controls', {}, (70, 110), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_controls)
-        float_layout.add_widget(self.controls_button)
-
-
-        # Header
-        self.header = BannerObject(
-            pos_hint = {"center_x": (0.5), "center_y": 0.9},
-            size = (250, 40),
-            color = (0.4, 0.682, 1, 1),
-            text = f"Viewing '${self.file_name}$'",
-            icon = "eye-outline.png"
-        )
-        self.add_widget(self.header)
-
-
-        # Save & quit button
-        self.controls_button = IconButton('save & quit', {}, (120, 110), (None, None), 'save-sharp.png', clickable=True, anchor='right', click_func=self.save_and_quit, text_offset=(-5, 50))
-        float_layout.add_widget(self.controls_button)
-
-
-
-    # Writes config to server.properties file, and reloads it in the server manager if the server is not running
-    def save_config(self):
+    def save_file(self):
         server_obj = constants.server_manager.current_server
         final_config = {}
 
@@ -24207,234 +24518,6 @@ class ServerPropertiesEditScreen(EditorRoot):
                 ), 0
             )
 
-    def quit_to_menu(self, *a):
-        for button in self.walk():
-            try:
-                if button.id == "exit_button":
-                    button.force_click()
-                    break
-            except AttributeError:
-                continue
-
-    def save_and_quit(self, *a):
-        self.save_config()
-        self.quit_to_menu()
-
-    # Reset results of all cells
-    def reset_data(self):
-        server_obj = constants.server_manager.current_server
-        props = server_obj.server_properties
-        self.undo_history = []
-
-        for x, pair in enumerate(props.items(), 0):
-            line = self.line_list[x]
-            key, value = pair
-            if key.startswith("#"):
-                key = key.replace("#", "# ", 1)
-                line.key_label.text = key.strip()
-            else:
-                line.key_label.text = key.strip()
-                if isinstance(value, bool):
-                    value = str(value).lower().strip()
-
-                if line.value_label.text != str(value):
-                    self.redo_history.append((x+1, line.value_label.text))
-
-                line.value_label.text = str(value)
-
-        self.set_banner_status(False)
-
-    # Checks if data in editor matches saved file
-    def check_data(self):
-
-        for line in self.line_list:
-            key = line.key_label.original_text
-            value = line.value_label.text
-
-            if not (key or value):
-                continue
-
-            if key.startswith("#"):
-                line = "#" + key.strip("#").strip()
-            else:
-                line = f"{key}={value}"
-
-            if line not in self.server_properties:
-                return False
-
-        return True
-
-    def set_banner_status(self, changed=False):
-
-        if changed != self.modified:
-            # Change header
-            self.remove_widget(self.header)
-            del self.header
-
-            if changed:
-                self.header = BannerObject(
-                    pos_hint = {"center_x": (0.5), "center_y": 0.9},
-                    size = (250, 40),
-                    color = "#F3ED61",
-                    text = f"Editing '${self.file_name}$'",
-                    icon = "pencil-sharp.png",
-                    animate = True
-                )
-                self.add_widget(self.header)
-            else:
-                self.header = BannerObject(
-                    pos_hint = {"center_x": (0.5), "center_y": 0.9},
-                    size = (250, 40),
-                    color = (0.4, 0.682, 1, 1),
-                    text = f"Viewing '${self.file_name}$'",
-                    icon = "eye-outline.png",
-                    animate = True
-                )
-                self.add_widget(self.header)
-
-        self.modified = changed
-
-    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        # print('The key', keycode, 'have been pressed')
-        # print(' - text is %r' % text)
-        # print(' - modifiers are %r' % modifiers)
-
-        # Ignore key presses when popup is visible
-        if self.popup_widget:
-
-            # Override for PopupSearch
-            if self.popup_widget.__class__.__name__ == 'PopupSearch':
-                if keycode[1] == 'escape':
-                    self.popup_widget.self_destruct(True)
-                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
-                    self.popup_widget.resize_window()
-                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
-
-                    def insert_text(content):
-                        col = self.popup_widget.window_input.cursor_col
-                        start = self.popup_widget.window_input.text[:col]
-                        end = self.popup_widget.window_input.text[col:]
-                        self.popup_widget.window_input.text = start + content + end
-                        for x in range(len(content)):
-                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
-
-                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
-                    if 'shift' in modifiers:
-                        new_str = new_str.upper()
-                    if len(new_str) == 1:
-                        insert_text(new_str)
-                    elif keycode[1] == 'spacebar':
-                        insert_text(' ')
-                    self.popup_widget.resize_window()
-                else:
-                    self.popup_widget.resize_window()
-                return True
-
-            if keycode[1] in ['escape', 'n']:
-                try:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
-                except AttributeError:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
-
-            elif keycode[1] in ['enter', 'return', 'y']:
-                try:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.yes_button)
-                except AttributeError:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
-            return False
-
-        # Trigger for showing search bar
-        elif keycode[1] == 'shift':
-            if not self._shift_held:
-                self._shift_held = True
-                self._shift_press_count += 1
-
-                if self._shift_timer:
-                    self._shift_timer.cancel()
-
-                # Check for double tap
-                if self._shift_press_count == 2:
-                    self.show_search()
-                    self._shift_press_count = 0
-
-                # Otherwise, reset the timer
-                else:
-                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
-            return True
-
-        def return_to_input():
-            if self.current_line is not None:
-                self.focus_input()
-
-        # Keycode is composed of an integer + a string
-        # If we hit escape, release the keyboard
-        # On ESC, click on back button if it exists
-        if not self._input_focused:
-            # if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
-            #     quit_to_menu()
-            pass
-
-
-        if ((keycode[1] == 'h' and control in modifiers and constants.os_name != 'macos') or (keycode[1] == 'h' and control in modifiers and 'shift' in modifiers and constants.os_name == 'macos')) and not self.popup_widget:
-            self.controls_button.button.trigger_action()
-
-
-        # Exiting search bar
-        elif keycode[1] == 'escape' and screen_manager.current_screen._input_focused:
-            return_to_input()
-
-
-        # Quit and prompt to save if file was changed
-        elif (keycode[1] == 'q' and control in modifiers) or keycode[1] == 'escape':
-            if self.modified:
-                self.show_popup(
-                    "query",
-                    "Unsaved Changes",
-                    'There are unsaved changes in your configuration.\n\nWould you like to save the file before quitting?',
-                    [functools.partial(Clock.schedule_once, self.quit_to_menu, 0.25), functools.partial(Clock.schedule_once, self.save_and_quit, 0.25)]
-                )
-            else:
-                self.quit_to_menu()
-
-
-        # Focus text input if server is started
-        if (keycode[1] in ['down', 'up', 'pagedown', 'pageup']):
-            self.switch_input(keycode[1])
-
-
-        # Ctrl-F to search
-        if keycode[1] == 'f' and control in modifiers:
-            if not self.search_bar.focused:
-                self.search_bar.grab_focus()
-            else:
-                return_to_input()
-
-
-        # Save config file
-        if keycode[1] == 's' and control in modifiers and self.modified:
-            self.save_config()
-
-
-        # Undo / Redo functionality
-        if keycode[1] == 'z' and control in modifiers and self.undo_history:
-            self.undo(save=False, undo=True)
-
-        elif keycode[1] == 'z' and control in modifiers and not self.undo_history:
-            if not self.check_data():
-                self.reset_data()
-
-        if keycode[1] in ['r', 'y'] and control in modifiers and self.redo_history:
-            self.undo(save=False, undo=False)
-
-
-        # Check if data is updated on keypress
-        def set_banner(*a):
-            self.set_banner_status(not self.check_data())
-        Clock.schedule_once(set_banner, 0)
-
-
-        # Return True to accept the key. Otherwise, it will be used by the system.
-        return True
 
 class ServerYamlEditScreen(EditorRoot):
     class EditorLine(RelativeLayout):
@@ -24598,8 +24681,8 @@ class ServerYamlEditScreen(EditorRoot):
 
         def _update_data(self, data: dict):
             self._data = data
-            flat_lines = self._screen.flat_lines
-            line = flat_lines.index({'data': data}) + 1
+            line_list = self._screen.line_list
+            line = line_list.index({'data': data}) + 1
             key = data['key']
             value = data['value']
             indent_level = data['indent']
@@ -24609,7 +24692,7 @@ class ServerYamlEditScreen(EditorRoot):
             is_list_item = data['is_list_item']
             is_comment = data['is_comment']
             is_blank_line = data['is_blank_line']
-            max_line_count = len(flat_lines)
+            max_line_count = len(line_list)
 
 
             # Determines if the line is skip-able when scrolling
@@ -25001,8 +25084,8 @@ class ServerYamlEditScreen(EditorRoot):
 
                         # Existing focusing logic
                         try:
-                            previous_line = self._screen.flat_lines[self.line - 2]['data']
-                            next_line = self._screen.flat_lines[self.line - 1]['data']
+                            previous_line = self._screen.line_list[self.line - 2]['data']
+                            next_line = self._screen.line_list[self.line - 1]['data']
 
                             if previous_line['is_list_item']:
                                 self._screen.scroll_to_line(self.line - 2)
@@ -25012,7 +25095,7 @@ class ServerYamlEditScreen(EditorRoot):
                                 previous_line['is_list_header'] = False
                                 for line in self.scroll_layout.children:
                                     line.value_label.focused = False
-                                self.scroll_widget.data = self.flat_lines
+                                self.scroll_widget.data = self.line_list
                                 self.scroll_widget.refresh_from_data()
                         except:
                             pass
@@ -25139,425 +25222,22 @@ class ServerYamlEditScreen(EditorRoot):
             self.ghost_cover_left = Image(color=background_color)
             self.ghost_cover_right = Image(color=background_color)
 
-    # A simple search bar for YAML content. Very similar to PropertiesSearchInput
-    class YamlSearchInput(TextInput):
-        def _on_focus(self, instance, value, *largs):
-            def update_focus(*args):
-                screen_manager.current_screen._input_focused = self.focus
-            Clock.schedule_once(update_focus, 0)
 
-            super(type(self), self)._on_focus(instance, value)
-            Animation.stop_all(self.parent.input_background)
-            Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
-
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-
-            self.original_text = ''
-            self.history_index = 0
-
-            self.multiline = False
-            self.halign = "left"
-            self.hint_text = "search for text..."
-            self.hint_text_color = (0.6, 0.6, 1, 0.4)
-            self.foreground_color = (0.6, 0.6, 1, 1)
-            self.background_color = (0, 0, 0, 0)
-            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-            self.font_size = sp(24)
-            self.padding_y = (12, 12)
-            self.padding_x = (70, 12)
-            self.cursor_color = (0.55, 0.55, 1, 1)
-            self.cursor_width = dp(3)
-            self.selection_color = (0.5, 0.5, 1, 0.4)
-
-            self.bind(on_text_validate=self.on_enter)
-
-        def grab_focus(self, *a):
-            def focus_later(*args):
-                self.focus = True
-            Clock.schedule_once(focus_later, 0)
-
-        def on_enter(self, value):
-            self.grab_focus()
-
-        def insert_text(self, substring, from_undo=False):
-            if screen_manager.current_screen.popup_widget:
-                return None
-            substring = substring.replace("\n", "").replace("\r", "")
-            return super().insert_text(substring, from_undo=from_undo)
-
-        def keyboard_on_key_down(self, window, keycode, text, modifiers):
-
-            if keycode[1] == 'escape' and self.focused:
-                self.focused = False
-                if self.parent:
-                    self.parent.focus_input()
-                return True
-
-            if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
-                return None
-
-            if keycode[1] == "backspace" and control in modifiers:
-                original_index = self.cursor_col
-                new_text, index = constants.control_backspace(self.text, original_index)
-                self.select_text(original_index - index, original_index)
-                self.delete_selection()
-            else:
-                super().keyboard_on_key_down(window, keycode, text, modifiers)
-
-            # Fix overscroll
-            if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
-                self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.05))
-
-            if self.cursor_pos[0] < (self.x):
-                self.scroll_x = 0
-
-        def fix_overscroll(self, *args):
-            if self.cursor_pos[0] < (self.x):
-                self.scroll_x = 0
-
-        def on_touch_down(self, touch):
-            popup_widget = screen_manager.current_screen.popup_widget
-            if popup_widget:
-                return
-            else:
-                return super().on_touch_down(touch)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = self.__class__.__name__
-        self.menu = 'init'
-
-        self.header = None
-        self.search_bar = None
-        self.scroll_widget = None
-        self.scroll_layout = None
-        self.input_background = None
-        self.fullscreen_shadow = None
-        self.match_label = None
-        self.server_yaml = None
-        self.controls_button = None
-
-        self.undo_history = []
-        self.redo_history = []
-        self.last_search = ''
-        self.match_list = []
-        self.modified = False
-        self.current_line = None
-        self.flat_lines = []
-
-        self.background_color = constants.brighten_color(constants.background_color, -0.1)
-
-        # Background
-        with self.canvas.before:
-            self.color = Color(*self.background_color, mode='rgba')
-            self.rect = Rectangle(pos=self.pos, size=self.size)
-
-    # index_func
-    def set_index(self, index, **kwargs):
-        self.current_line = index
-
-    def focus_input(self, new_input=None, highlight=False):
-        if not new_input:
-            if self.current_line:
-                return self.scroll_to_line(self.current_line, highlight=highlight)
-            else:
-                return None
-
-        if highlight:
-            original_color = constants.convert_color(new_input.key_label.default_color)['rgb']
-            new_input.key_label.color = constants.brighten_color(original_color, 0.2)
-            Animation.stop_all(new_input.key_label)
-            Animation(color=original_color, duration=0.5).start(new_input.key_label)
-
-        new_input.value_label.grab_focus()
-        self.set_index(new_input.line)
-
-    def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True):
-        new_scroll = 1 - (index * 50) / ((len(self.flat_lines) * 50) - self.search_bar.height - self.header.height)
-        if new_scroll > 1:
-            new_scroll = 1
-        if new_scroll < 0:
-            new_scroll = 0
-
-        self.current_line = None
-        for line in self.scroll_layout.children:
-            line.value_label.focused = False
-
-        def after_scroll(*a):
-            for line in self.scroll_layout.children:
-                if line.line == index + 1:
-                    self.focus_input(line, highlight=highlight)
-
-        # Only scroll when there is a scrollbar
-        if len(self.scroll_layout.children) < len(self.flat_lines):
-            if select:
-                Animation(scroll_y=new_scroll, duration=0.1).start(self.scroll_widget)
-                Clock.schedule_once(after_scroll, 0.4 if wrap_around else 0.11)
-            else:
-                self.scroll_widget.scroll_y = new_scroll
-                self.set_index(index + 1)
-
-        elif select:
-            after_scroll()
-
-    def switch_input(self, position):
-        if self.current_line is None:
-            self.set_index(0)
-
-        found_input = False
-        wrap_around = False
-
-        index = 0
-        if position == 'up':
-            index = self.current_line
-        elif position == 'down':
-            index = self.current_line + 2
-        elif position in ['pagedown', 'end']:
-            position = 'pagedown'
-            index = len(self.flat_lines) - 1
-        elif position in ['pageup', 'home']:
-            position = 'pageup'
-            index = 0
-
-        index = index - 1
-
-        while not found_input:
-            ignore_input = False
-            if index >= len(self.flat_lines):
-                index = 0
-                wrap_around = True
-            elif index < 0:
-                index = len(self.flat_lines) - 1
-                wrap_around = True
-
-            new_input = self.flat_lines[index]['data']
-            if not new_input['inactive']:
-
-                if self.match_list and self.last_search:
-                    if not new_input['line_matched']:
-                        ignore_input = True
-
-                if not ignore_input:
-                    try:
-                        self.scroll_to_line(index, wrap_around=wrap_around)
-                        break
-                    except AttributeError:
-                        pass
-
-            index = index + (-1 if position == 'up' else 1)
-
-    # Updates data list in the background
+    # Override logic to parse search matches
     @staticmethod
-    def check_match(data, search_text):
-        line_matched = False
-        key_matched = False
-        value_matched = False
-
-        if search_text:
-            search_text = search_text.strip()
-
-            # Detect different types of key/value pairs
-            if "-" in search_text and data['is_list_item']:
-                key_text, value_text = [x.strip() for x in search_text.split("-", 1)]
-            elif ":" in search_text:
-                key_text, value_text = [x.strip() for x in search_text.split(":", 1)]
-            else:
-                key_text = ''
-                value_text = ''
-
-            key_data = str(data['key'])
-            value_data = str(data['value'])
-
-            # Check if search matches in key label
-            if search_text in key_data:
-                key_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join([x for x in key_data.split(search_text)])
-            elif key_text and key_data.endswith(key_text) and value_text.startswith(value_text):
-                key_matched = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join([x for x in key_data.rsplit(key_text, 1)])
-
-            # Check if search matches in value input/ghost label
-            if search_text in value_data:
-                value_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join([x for x in value_data.split(search_text)])
-            elif value_text and value_data.startswith(value_text) and key_data.endswith(key_text):
-                value_matched = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join([x for x in value_data.split(value_text, 1)])
-
-            if key_matched or value_matched:
-                line_matched = {'key': key_matched, 'value': value_matched}
-
-        data['line_matched'] = line_matched
-        return line_matched
-
-    def search_text(self, obj, text, *args):
-        self.last_search = text
-        self.match_list = []
-        first_match = None
-
-        # Update search data in background
-        for x, line in enumerate(self.flat_lines):
-            result = self.check_match(line['data'], text)
-            if result:
-                self.match_list.append(line)
-            if result and not first_match:
-                first_match = line
-
-        # Update all visible widgets
-        if not text:
-            self.scroll_widget.refresh_from_data()
-
-        for line in self.scroll_layout.children:
-            Clock.schedule_once(functools.partial(line.highlight_text, text), -1)
-
-
-        # Scroll to first match
-        if first_match:
-            index = self.flat_lines.index(first_match)
-            self.scroll_to_line(index, select=False)
-
-        # Dirty hack to force focus to search bar
-        for x in range(30):
-            Clock.schedule_once(self.search_bar.grab_focus, 0.01 * x)
-
-        # Show match count
-        try:
-            Animation.stop_all(self.match_label)
-            Animation(opacity=(1 if text and self.match_list else 0.35 if text else 0), duration=0.1).start(self.match_label)
-            matches = 0
-            search_str = text.strip()
-            if search_str:
-                for x in self.match_list:
-                    total_str = str(x['data']['key']) + str(x['data']['value'])
-                    matches += total_str.count(search_str)
-            self.match_label.text = f'{matches} match{"es" if matches != 1 else ""}'
-        except AttributeError:
-            pass
-
-    def _apply_action(self, action, undo=True):
-        """
-        Called to undo or redo a structural action:
-          - 'insert_line': remove or re-insert
-          - 'remove_line': re-insert or remove
-        """
-        a_type = action['type']
-        line_data = action['data']  # either the dict or the (key,value,...) tuple
-        idx = action['index']
-
-        if a_type == 'insert_line':
-            if undo:
-                # Undo an insert => remove it
-                self.remove_line(idx, refresh=True)
-            else:
-                # Redo an insert => put it back
-                self.insert_line(line_data, idx, refresh=True)
-
-        elif a_type == 'remove_line':
-            if undo:
-                # Undo a remove => re-insert it
-                self.insert_line(line_data, idx, refresh=True)
-            else:
-                # Redo a remove => remove again
-                self.remove_line(idx, refresh=True)
-
-    def undo(self, save=False, undo=False, action=None):
-        """
-        Handles both structural (insert/remove line) and text changes,
-        with exactly the one-step-per-line logic you had before.
-
-        - `save=True, action=...` => record a *structural* action
-        - `save=True, action=None` => record a *text-change* action
-        - `undo=True` => perform undo
-        - `undo=False` => perform redo
-        """
-
-        # 1) Save a *structural* action
-        if save and action is not None:
-            self.redo_history.clear()
-            self.undo_history.append(action)
-            return
-
-        # 2) Save a *text-change* action
-        if save and action is None:
-            self.redo_history.clear()
-            if self.current_line is not None and 0 <= self.current_line < len(self.flat_lines):
-
-                # We'll use 1-based line numbering, just like your original code:
-                line_num = self.current_line + 1
-
-                # Grab the current line's "original_value" from the data
-                old_text = self.flat_lines[self.current_line]['data']['original_value']
-
-                # If the last undo entry is text for the *same line*, update it
-                # (thus storing only one undo step for repeated typing on that line)
-                if self.undo_history and not isinstance(self.undo_history[-1], dict):
-                    last = self.undo_history[-1]  # e.g. (line_num, old_text)
-                    if last[0] == line_num:
-                        # "Update existing action"
-                        self.undo_history[-1] = (line_num, old_text)
-                        return
-
-                # Otherwise, create a new text-based action
-                self.undo_history.append((line_num, old_text))
-
-            return
-
-        # 3) Actually perform Undo or Redo
-        if undo:
-            # UNDO
-            if not self.undo_history:
-                return
-            last_action = self.undo_history.pop()
-
-            if isinstance(last_action, dict):
-                # structural
-                self._apply_action(last_action, undo=True)
-                self.redo_history.append(last_action)
-            else:
-                # text-based => (line_num, old_text)
-                line_num, old_text = last_action
-                if 1 <= line_num <= len(self.flat_lines):
-                    # Before reverting, store the current text for Redo
-                    current_text = self.flat_lines[line_num - 1]['data']['value']
-                    self.redo_history.append((line_num, current_text))
-
-                    # Revert to old_text in the data
-                    self.flat_lines[line_num - 1]['data']['value'] = old_text
-
-                    # Also revert 'original_value' if you want it fully consistent:
-                    self.flat_lines[line_num - 1]['data']['original_value'] = old_text
-
-                    # Refresh the RecycleView so the UI sees the change
-                    self.scroll_widget.data = self.flat_lines
-                    self.scroll_widget.refresh_from_data()
-
-                    # Optionally scroll/focus that line
-                    self.scroll_to_line(line_num - 1, highlight=True)
-
+    def _check_match_logic(data: dict, search_text: str):
+        if "-" in search_text and data['is_list_item']:
+            key_text, value_text = [x.strip() for x in search_text.split("-", 1)]
+        elif ":" in search_text:
+            key_text, value_text = [x.strip() for x in search_text.split(":", 1)]
         else:
-            # REDO
-            if not self.redo_history:
-                return
-            last_action = self.redo_history.pop()
+            key_text = ''
+            value_text = ''
 
-            if isinstance(last_action, dict):
-                # structural
-                self._apply_action(last_action, undo=False)
-                self.undo_history.append(last_action)
-            else:
-                # text-based => (line_num, old_text)
-                line_num, old_text = last_action
-                if 1 <= line_num <= len(self.flat_lines):
-                    # store the current text in Undo before overwriting
-                    current_text = self.flat_lines[line_num - 1]['data']['value']
-                    self.undo_history.append((line_num, current_text))
+        return key_text, value_text
 
-                    # revert data
-                    self.flat_lines[line_num - 1]['data']['value'] = old_text
-                    self.flat_lines[line_num - 1]['data']['original_value'] = old_text
 
-                    # refresh
-                    self.scroll_widget.data = self.flat_lines
-                    self.scroll_widget.refresh_from_data()
-                    self.scroll_to_line(line_num - 1, highlight=True)
-
+    # YAML/YML specific features
     def insert_line(self, line: (tuple, list, dict), index: int = None, refresh=True):
         if not isinstance(line, dict):
 
@@ -25600,10 +25280,10 @@ class ServerYamlEditScreen(EditorRoot):
             data = line
 
         if index is not None:
-            self.flat_lines.insert(index, data)
+            self.line_list.insert(index, data)
 
         else:
-            self.flat_lines.append(data)
+            self.line_list.append(data)
 
         # Update layout with new data
         if refresh:
@@ -25612,26 +25292,10 @@ class ServerYamlEditScreen(EditorRoot):
             for line in self.scroll_layout.children:
                 line.value_label.focused = False
 
-            self.scroll_widget.data = self.flat_lines
+            self.scroll_widget.data = self.line_list
             self.scroll_widget.refresh_from_data()
 
         return data
-
-    def remove_line(self, index: int, refresh=True):
-        if index in range(len(self.flat_lines)):
-            self.current_line = None
-
-            for line in self.scroll_layout.children:
-                line.value_label.focused = False
-
-            data = self.flat_lines.pop(index)
-
-            # Update layout with new data
-            if refresh:
-                self.scroll_widget.data = self.flat_lines
-                self.scroll_widget.refresh_from_data()
-
-            return data
 
     def load_file(self):
 
@@ -25931,22 +25595,9 @@ class ServerYamlEditScreen(EditorRoot):
 
             return result
 
-        with open(self.path, 'r', encoding='utf-8') as f:
-            raw_lines = f.readlines()
-
-        tokens = tokenize(raw_lines)
-        root_ast = build_ast(tokens)
-        self.server_yaml = to_python(root_ast)
-        self.undo_history = []
-        self.redo_history = []
-        self.last_search = ''
-        self.match_list = []
-        self.modified = False
-        self.current_line = None
-
         def flatten_yaml(data, parent_key='', indent=0):
             """
-            Build self.flat_lines as tuples of:
+            Build self.line_list as tuples of:
               ( key, value, indent, is_header, is_list_header, is_multiline_string ).
             """
 
@@ -25965,7 +25616,7 @@ class ServerYamlEditScreen(EditorRoot):
                     parent_val = f"{parent_val}  {inline_comment}"
 
                 # 1 line for the parent's key & value
-                self.flat_lines.append((shown_key, parent_val, indent, False, False, is_multi))
+                self.line_list.append((shown_key, parent_val, indent, False, False, is_multi))
 
                 # Now flatten real children under indent+1
                 for child_key, child_val in data.items():
@@ -25977,7 +25628,7 @@ class ServerYamlEditScreen(EditorRoot):
                     if child_key.startswith('__comment__'):
                         c_text = child_val.get('comment', '')
                         c_indent = child_val.get('__indent__', indent + 1)
-                        self.flat_lines.append((c_text, '', c_indent, False, False, False))
+                        self.line_list.append((c_text, '', c_indent, False, False, False))
                         continue
 
                     flatten_yaml(child_val, child_key, indent + 1)
@@ -25997,7 +25648,7 @@ class ServerYamlEditScreen(EditorRoot):
                 if inline_comment:
                     val = f"{val}  {inline_comment}"
 
-                self.flat_lines.append((shown_key, val, node_indent, False, False, ml_flag))
+                self.line_list.append((shown_key, val, node_indent, False, False, ml_flag))
                 return
 
             # -- CASE 3: 'block_scalar' --
@@ -26012,7 +25663,7 @@ class ServerYamlEditScreen(EditorRoot):
                 if inline_comment:
                     val = f"{val}  {inline_comment}"
 
-                self.flat_lines.append((shown_key, val, node_indent, False, False, False))
+                self.line_list.append((shown_key, val, node_indent, False, False, False))
                 return
 
             # -- CASE 4: If it's a dict with __type__='list' --
@@ -26023,7 +25674,7 @@ class ServerYamlEditScreen(EditorRoot):
                     list_line_value = f"{list_line_value}  {inline_comment}".strip()
 
                 # This prints "parent_key:" on one line
-                self.flat_lines.append((parent_key, list_line_value, indent, True, True, False))
+                self.line_list.append((parent_key, list_line_value, indent, True, True, False))
 
                 # Then flatten all items
                 flatten_yaml(data['__items__'], parent_key, indent + 1)
@@ -26045,7 +25696,7 @@ class ServerYamlEditScreen(EditorRoot):
                         # Flatten a pure comment
                         comment_text = v.get('comment', '')
                         comment_indent = v.get('__indent__', indent)
-                        self.flat_lines.append((comment_text, '', comment_indent, False, False, False))
+                        self.line_list.append((comment_text, '', comment_indent, False, False, False))
                         continue
 
                     # If v is nested
@@ -26062,10 +25713,10 @@ class ServerYamlEditScreen(EditorRoot):
                             flatten_yaml(v, k, indent)
                         else:
                             # Normal "header line" for the sub-dict or sub-list
-                            self.flat_lines.append((k, '', indent, True, is_list_header, False))
+                            self.line_list.append((k, '', indent, True, is_list_header, False))
                             flatten_yaml(v, k, indent + 1)
                     else:
-                        self.flat_lines.append((k, v, indent, False, False, False))
+                        self.line_list.append((k, v, indent, False, False, False))
 
                 return
 
@@ -26078,185 +25729,51 @@ class ServerYamlEditScreen(EditorRoot):
                                 isinstance(item, list) or
                                 (isinstance(item, dict) and item.get('__type__') == 'list')
                         )
-                        self.flat_lines.append((item_key, '', indent, True, is_list_header, False))
+                        self.line_list.append((item_key, '', indent, True, is_list_header, False))
                         flatten_yaml(item, parent_key, indent + 1)
                     else:
-                        self.flat_lines.append((item_key, item, indent, False, False, False))
+                        self.line_list.append((item_key, item, indent, False, False, False))
                 return
 
             # -- CASE 7: Otherwise a plain scalar --
             # Merge inline_comment if we had it. (We don't in plain scalars, typically.)
-            self.flat_lines.append((parent_key, data, indent, False, False, False))
+            self.line_list.append((parent_key, data, indent, False, False, False))
+
+        self.undo_history = []
+        self.redo_history = []
+        self.last_search = ''
+        self.match_list = []
+        self.modified = False
+        self.current_line = None
 
         # Flatten
-        self.flat_lines = []
-        flatten_yaml(self.server_yaml)
+        self.line_list = []
+
+        with open(self.path, 'r', encoding='utf-8') as f:
+            raw_lines = f.readlines()
+
+        tokens = tokenize(raw_lines)
+        root_ast = build_ast(tokens)
+        yaml_data = to_python(root_ast)
+        flatten_yaml(yaml_data)
+
 
         # Filter and format data
-        filtered = self.flat_lines
-        self.flat_lines = []
+        filtered = self.line_list
+        self.line_list = []
         for line in filtered:
             if line[0].startswith('__comment__'):
                 continue
 
             self.insert_line(line, refresh=False)
 
-        return self.flat_lines
+        return self.line_list
 
-    def generate_menu(self, **kwargs):
-        server_obj = constants.server_manager.current_server
-
-        # Editor UI
-        self.scroll_widget = RecycleViewWidget(position=(0.5, 0.5), view_class=self.EditorLine)
-        self.scroll_layout = RecycleGridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30], default_height=50, default_width=1250)
-        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-        self.scroll_layout.id = 'scroll_content'
-
-        def resize_scroll(call_widget, grid_layout, *args):
-            call_widget.height = Window.height // 1.23
-            self.fullscreen_shadow.y = self.height + self.x - 3
-            self.fullscreen_shadow.width = Window.width
-            search_pos = 47
-            self.search_bar.pos = (self.x, search_pos)
-            self.input_background.pos = (self.search_bar.pos[0] - 15, self.search_bar.pos[1] + 8)
-            self.search_bar.size_hint_max_x = Window.width - self.search_bar.x - 200
-
-        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
-        Window.bind(on_resize=self.resize_bind)
-        self.resize_bind()
-
-        max_lines = len(self.flat_lines)
-        self.scroll_widget.data = self.load_file()
-
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
-        self.scroll_widget.add_widget(self.scroll_layout)
-        float_layout.add_widget(self.scroll_widget)
-
-        scroll_top = scroll_background(
-            pos_hint={"center_x": 0.5, "center_y": 0.9},
-            pos=self.scroll_widget.pos,
-            size=(self.scroll_widget.width // 1.5, 60)
-        )
-        scroll_top.color = self.background_color
-        scroll_bottom = scroll_background(
-            pos_hint={"center_x": 0.5},
-            pos=self.scroll_widget.pos,
-            size=(self.scroll_widget.width // 1.5, -60)
-        )
-        scroll_bottom.color = self.background_color
-        scroll_bottom.y = 115
-
-        float_layout.add_widget(scroll_top)
-        float_layout.add_widget(scroll_bottom)
-
-        self.fullscreen_shadow = Image()
-        self.fullscreen_shadow.allow_stretch = True
-        self.fullscreen_shadow.keep_ratio = False
-        self.fullscreen_shadow.size_hint_max = (None, 50)
-        self.fullscreen_shadow.color = (0, 0, 0, 1)
-        self.fullscreen_shadow.opacity = 0
-        self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
-        float_layout.add_widget(self.fullscreen_shadow)
-
-        buttons = []
-        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
-        for b in buttons:
-            float_layout.add_widget(b)
-
-        float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Edit '${self.file_name}$'"))
-        self.add_widget(float_layout)
-
-        self.search_bar = self.YamlSearchInput(size_hint_max_y=50)
-        self.search_bar.bind(text=self.search_text)
-        self.add_widget(self.search_bar)
-
-        self.match_label = AlignLabel()
-        self.match_label.text = '0 matches'
-        self.match_label.halign = "right"
-        self.match_label.color = (0.6, 0.6, 1, 1)
-        self.match_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-        self.match_label.font_size = sp(24)
-        self.match_label.y = 60
-        self.match_label.padding_x = 10
-        self.match_label.opacity = 0
-        self.add_widget(self.match_label)
-
-        self.input_background = Image()
-        self.input_background.default_opacity = 0.35
-        self.input_background.color = self.search_bar.foreground_color
-        self.input_background.opacity = self.input_background.default_opacity
-        self.input_background.allow_stretch = True
-        self.input_background.size_hint = (None, None)
-        self.input_background.height = self.search_bar.size_hint_max_y / 1.45
-        self.input_background.source = os.path.join(constants.gui_assets, 'icons', 'search.png')
-        self.add_widget(self.input_background)
-
-        def show_controls():
-            controls_text = """This menu allows you to edit additional YML/YAML configuration options. Shortcuts are provided for ease of use:
-
-
-• Press 'CTRL+Z' to undo, and 'CTRL+R'/'CTRL+Y' to redo
-
-• Press 'CTRL+S' to save modifications
-
-• Press 'CTRL-Q' to quit the editor
-
-• Press 'CTRL+F' to search for data
-
-• Press 'SPACE' to toggle boolean values (e.g. true, false)""" if constants.os_name != 'macos' else """This menu allows you to edit additional YML/YAML configuration options. Shortcuts are provided for ease of use:
-
-
-• Press 'CMD+Z' to undo, and 'CMD+R'/'CMD+Y' to redo
-
-• Press 'CMD+S' to save modifications
-
-• Press 'CMD+Q' to quit the editor
-
-• Press 'CMD+F' to search for data
-
-• Press 'SPACE' to toggle boolean values (e.g. true, false)"""
-
-            Clock.schedule_once(
-                functools.partial(
-                    self.show_popup,
-                    "controls",
-                    "Controls",
-                    controls_text,
-                    (None)
-                ),
-                0
-            )
-
-        self.controls_button = IconButton(
-            'controls', {}, (70, 110), (None, None), 'question.png',
-            clickable=True, anchor='right', click_func=show_controls
-        )
-        float_layout.add_widget(self.controls_button)
-
-        self.header = BannerObject(
-            pos_hint={"center_x": 0.5, "center_y": 0.9},
-            size=(250, 40),
-            color=(0.4, 0.682, 1, 1),
-            text=f"Viewing '${self.file_name}$'",
-            icon="eye-outline.png"
-        )
-        self.add_widget(self.header)
-
-        self.controls_button = IconButton(
-            'save & quit', {}, (120, 110), (None, None), 'save-sharp.png',
-            clickable=True, anchor='right',
-            click_func=self.save_and_quit,
-            text_offset=(-5, 50)
-        )
-        float_layout.add_widget(self.controls_button)
-
-    def save_config(self):
+    def save_file(self):
         server_obj = constants.server_manager.current_server
         final_content = ''
 
-        for line in self.flat_lines:
+        for line in self.line_list:
             line = line['data']
             key_str = str(line['key']).strip()
             val_str = str(line['value']).strip()
@@ -26313,108 +25830,6 @@ class ServerYamlEditScreen(EditorRoot):
                     {"center_x": 0.5, "center_y": 0.965}
                 ), 0
             )
-
-    def quit_to_menu(self, *a):
-        for button in self.walk():
-            try:
-                if button.id == "exit_button":
-                    button.force_click()
-                    break
-            except AttributeError:
-                continue
-
-    def save_and_quit(self, *a):
-        self.save_config()
-        self.quit_to_menu()
-
-    def reset_data(self):
-        try:
-            with open(self.path, 'r', encoding='utf-8') as f:
-                self.server_yaml = constants.yaml.safe_load(f)
-        except:
-            self.server_yaml = {}
-        # Rebuild lines or simply re-run generate_menu, etc.
-        self.set_banner_status(False)
-
-    def check_data(self):
-        return not self.undo_history
-
-    def set_banner_status(self, changed=False):
-        if changed != self.modified:
-            self.remove_widget(self.header)
-            del self.header
-
-            if changed:
-                self.header = BannerObject(
-                    pos_hint={"center_x": 0.5, "center_y": 0.9},
-                    size=(250, 40),
-                    color="#F3ED61",
-                    text=f"Editing '${self.file_name}$'",
-                    icon="pencil-sharp.png",
-                    animate=True
-                )
-                self.add_widget(self.header)
-            else:
-                self.header = BannerObject(
-                    pos_hint={"center_x": 0.5, "center_y": 0.9},
-                    size=(250, 40),
-                    color=(0.4, 0.682, 1, 1),
-                    text=f"Viewing '${self.file_name}$'",
-                    icon="eye-outline.png",
-                    animate=True
-                )
-                self.add_widget(self.header)
-
-        self.modified = changed
-
-    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        if self.popup_widget:
-            return True
-
-        if (keycode[1] == 'q' and control in modifiers) or keycode[1] == 'escape':
-            if self.modified:
-                self.show_popup(
-                    "query",
-                    "Unsaved Changes",
-                    f"There are unsaved changes in '${self.file_name}$'.\n\nWould you like to save before quitting?",
-                    [functools.partial(Clock.schedule_once, self.quit_to_menu, 0.25),
-                     functools.partial(Clock.schedule_once, self.save_and_quit, 0.25)]
-                )
-            else:
-                self.quit_to_menu()
-            return True
-
-        if keycode[1] in ['down', 'up', 'pagedown', 'pageup']:
-            return self.switch_input(keycode[1])
-
-        if keycode[1] == 'f' and control in modifiers:
-            if not self.search_bar.focused:
-                self.search_bar.grab_focus()
-            else:
-                if self.current_line is not None:
-                    self.focus_input()
-            return True
-
-        if keycode[1] == 's' and control in modifiers and self.modified:
-            self.save_config()
-            return None
-
-        # Undo/Redo
-        if keycode[1] == 'z' and control in modifiers and self.undo_history:
-            self.undo(save=False, undo=True)
-        elif keycode[1] == 'z' and control in modifiers and not self.undo_history:
-            if not self.check_data():
-                self.reset_data()
-
-        if keycode[1] in ['r', 'y'] and control in modifiers and self.redo_history:
-            self.undo(save=False, undo=False)
-
-        def set_banner(*a):
-            self.set_banner_status(not self.check_data())
-        Clock.schedule_once(set_banner, 0)
-
-        return True
-
 
 
 # Server Settings Screen ---------------------------------------------------------------------------------------------
