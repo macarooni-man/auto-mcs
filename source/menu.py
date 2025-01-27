@@ -26304,7 +26304,7 @@ class ServerSettingsScreen(MenuBackground):
         if server_obj.type == 'vanilla':
             # Edit properties button
             def edit_server_properties(*args):
-                open_config_file('server.properties')
+                open_config_file(constants.server_path(server_obj.name, 'server.properties'))
             self.config_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
         else:
             # Edit config button
