@@ -24336,15 +24336,14 @@ class EditorRoot(MenuBackground):
 
         self.line_list = []
 
-        with open(self.path, 'r') as f:
-            for line in f.read().strip().splitlines():
-                line = line.strip()
+        for line in self.read_from_disk():
+            line = line.strip()
 
-                key = ''
-                value = line.rstrip()
+            key = ''
+            value = line.rstrip()
 
-                line = (key, value)
-                self.insert_line(line, refresh=False)
+            line = (key, value)
+            self.insert_line(line, refresh=False)
 
         return self.line_list
 
@@ -24362,6 +24361,11 @@ class EditorRoot(MenuBackground):
             final_content += str(f"{key_str}{val_str}".rstrip() + '\n')
 
         self.write_to_disk(final_content)
+
+    def read_from_disk(self) -> list:
+        with open(self.path, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+            return content.splitlines()
 
     def write_to_disk(self, content: str):
         try:
@@ -24636,6 +24640,7 @@ class EditorRoot(MenuBackground):
         )
         float_layout.add_widget(self.controls_button)
 
+# Edit all *.properties/INI files
 class ServerPropertiesEditScreen(EditorRoot):
     class EditorLine(EditorRoot.EditorLine):
         def configure(self):
@@ -24755,37 +24760,36 @@ class ServerPropertiesEditScreen(EditorRoot):
     def load_file(self):
         self.line_list = []
 
-        with open(self.path, 'r') as f:
-            for line in f.read().strip().splitlines():
-                line = line.strip()
+        for line in self.read_from_disk():
+            line = line.strip()
 
-                is_comment = False
-                is_blank_line = False
-                is_header = False
-                key = ''
-                value = ''
-
-
-                # Is blank line
-                if not line.strip():
-                    is_blank_line = True
-
-                # Is INI header
-                elif line.startswith('[') and line.endswith(']') and '=' not in line:
-                    key = line
-                    is_header = True
-
-                # Is comment
-                elif line.startswith("#"):
-                    key = "# " + line.lstrip('#').strip()
-                    is_comment = True
-
-                elif '=' in line:
-                    key, value = [x.strip() for x in line.split("=", 1)]
+            is_comment = False
+            is_blank_line = False
+            is_header = False
+            key = ''
+            value = ''
 
 
-                line = (key, value, is_blank_line, is_comment, is_header)
-                self.insert_line(line, refresh=False)
+            # Is blank line
+            if not line.strip():
+                is_blank_line = True
+
+            # Is INI header
+            elif line.startswith('[') and line.endswith(']') and '=' not in line:
+                key = line
+                is_header = True
+
+            # Is comment
+            elif line.startswith("#"):
+                key = "# " + line.lstrip('#').strip()
+                is_comment = True
+
+            elif '=' in line:
+                key, value = [x.strip() for x in line.split("=", 1)]
+
+
+            line = (key, value, is_blank_line, is_comment, is_header)
+            self.insert_line(line, refresh=False)
 
         return self.line_list
 
@@ -24816,6 +24820,7 @@ class ServerPropertiesEditScreen(EditorRoot):
         if self.file_name == 'server.properties':
             self.server_obj.reload_config()
 
+# Edit all YAML/YML files
 class ServerYamlEditScreen(EditorRoot):
     class EditorLine(EditorRoot.EditorLine):
         def configure(self):
@@ -25589,8 +25594,7 @@ class ServerYamlEditScreen(EditorRoot):
         # Flatten
         self.line_list = []
 
-        with open(self.path, 'r', encoding='utf-8') as f:
-            raw_lines = f.readlines()
+        raw_lines = self.read_from_disk()
 
         tokens = tokenize(raw_lines)
         root_ast = build_ast(tokens)
@@ -25638,6 +25642,52 @@ class ServerYamlEditScreen(EditorRoot):
 
         # return print(final_content)
         self.write_to_disk(final_content)
+
+# Edit all JSON/JSON5 files
+class ServerJsonEditScreen(ServerYamlEditScreen):
+
+    # Internally convert JSON to YAML for ease of editing
+    def read_from_disk(self) -> list:
+        with open(self.path, 'r', encoding='utf-8') as f:
+            json_data = constants.json.load(f)
+            content = constants.yaml.dump(json_data)
+            return content.strip().splitlines()
+
+    def save_file(self):
+        final_content = ''
+
+        for line in self.line_list:
+            line = line['data']
+            key_str = str(line['key']).strip()
+            val_str = str(line['value']).strip()
+            indent = "  " * line['indent']
+
+            if line['is_comment'] or line['is_blank_line']:
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
+
+            elif line['is_list_item'] and val_str:
+                final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
+
+            elif line['is_multiline_string'] and val_str:
+                final_content += str(f"{indent}{val_str}".rstrip() + '\n')
+
+            elif line['is_header'] or line['is_list_header'] or not val_str:
+                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
+
+            elif key_str and val_str:
+                final_content += str(f"{indent}{key_str}: {val_str}".rstrip() + '\n')
+
+            elif key_str:
+                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
+
+
+        # Internally convert YAML back to JSON to retain file format
+        yaml_data = constants.yaml.safe_load(final_content)
+        final_content = constants.json.dumps(yaml_data, indent=4)
+
+        # return print(final_content)
+        self.write_to_disk(final_content)
+
 
 
 # Server Settings Screen ---------------------------------------------------------------------------------------------
