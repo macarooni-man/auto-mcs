@@ -354,10 +354,14 @@ class TextInput(TextInput):
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
         elif constants.app_config.locale == 'en' and key in ['hint_text']:
             value = filter_text(value)
-        try:
+
+        if key in ['focus', 'focused']:
+            try:
+                super().__setattr__(key, value)
+            except:
+                pass
+        else:
             super().__setattr__(key, value)
-        except:
-            pass
 
 
 # Opens text file with logviewer
@@ -23291,9 +23295,14 @@ class EditorRoot(MenuBackground):
                     pass
 
                 if self.focused:
+                    # Use 1-based line index
                     self._line._screen.current_line = self._line.line
+
+                    # If there's a function to set the editor's index, pass our 1-based line
                     if self._line.index_func:
-                        self._line.index_func(self.index + 1)
+                        # The parent's 0-based index + 1 => 1-based
+                        self._line.index_func(self._line.index + 1)
+
                     if (len(self.text) * (self.font_size / 1.85)) > self.width:
                         self.cursor = (len(self.text), self.cursor[1])
                         Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0)
@@ -23362,7 +23371,8 @@ class EditorRoot(MenuBackground):
             def insert_text(self, substring, from_undo=False):
 
                 # Ignore all key presses if search bar is highlighted or not selected line
-                if self._line._screen.search_bar.focused or self._line.line - 1 != self._line._screen.current_line:
+                # Check 1-based line vs current_line
+                if self._line._screen.search_bar.focused or self._line.line != self._line._screen.current_line:
                     self.focused = False
                     return None
 
@@ -23372,11 +23382,9 @@ class EditorRoot(MenuBackground):
 
             # Add in special key presses
             def keyboard_on_key_down(self, window, keycode, text, modifiers):
-                process_overrides = True
-                override_result = None
 
                 # Ignore all key presses if search bar is highlighted or not selected line
-                if self._line._screen.search_bar.focused or self._line.line - 1 != self._line._screen.current_line:
+                if self._line._screen.search_bar.focused or self._line.line != self._line._screen.current_line:
                     self.focused = False
                     return None
 
@@ -23386,7 +23394,7 @@ class EditorRoot(MenuBackground):
 
                 # Undo functionality
                 elif (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (keycode[1] == 'v' and control in modifiers) or (keycode[1] == 'backspace' and control in modifiers):
-                    return self.undo_func(save=True)
+                    self.undo_func(save=True)
 
                 # Toggle boolean values with space
                 def replace_text(val, *args):
@@ -23394,25 +23402,20 @@ class EditorRoot(MenuBackground):
 
                 if keycode[1] == "spacebar" and self.text == 'true':
                     Clock.schedule_once(functools.partial(replace_text, 'false'), 0)
-                    return
+
                 elif keycode[1] == "spacebar" and self.text == 'false':
                     Clock.schedule_once(functools.partial(replace_text, 'true'), 0)
-                    return
 
                 if keycode[1] == "backspace" and control in modifiers:
                     original_index = self.cursor_col
                     new_text, index = constants.control_backspace(self.text, original_index)
                     self.select_text(original_index - index, original_index)
                     self.delete_selection()
-                    process_overrides = False
                 else:
                     super().keyboard_on_key_down(window, keycode, text, modifiers)
-                    process_overrides = False
-
 
                 # Process override defined behavior
-                if process_overrides:
-                    override_result = self._line.keyboard_overrides(self, window, keycode, text, modifiers)
+                override_result = self._line.keyboard_overrides(self, window, keycode, text, modifiers)
 
                 # Fix overscroll
                 if self.cursor_pos[0] < (self.x):
@@ -23452,8 +23455,13 @@ class EditorRoot(MenuBackground):
                 self.text = default_value
                 self.original_text = default_value
                 self.eq = self._line.eq_label
-                self.line = self._line.line_number
-                self.index = self._line.line - 1
+
+                # This was formerly: self.line = self._line.line_number
+                # Renamed to indicate it’s the label widget for the line number
+                self.line_number = self._line.line_number
+
+                # Instead of self.index, rely on self._line.index (0-based)
+                # Instead of self.line, rely on self._line.line (1-based)
 
                 if self._line.line == self._line._screen.current_line:
                     self.grab_focus()
@@ -23479,7 +23487,6 @@ class EditorRoot(MenuBackground):
                 self.bind(scroll_x=self.scroll_search)
                 self.__translate__ = False
                 self.font_kerning = False
-                self.index = None
                 self.index_func = None
                 self.undo_func = None
                 self.get_type = None
@@ -23489,7 +23496,10 @@ class EditorRoot(MenuBackground):
                 self.background_color = (0, 0, 0, 0)
                 self.cursor_width = dp(3)
                 self.eq = None
-                self.line = None
+
+                # Holds the label widget for the line number, not the numeric index
+                self.line_number = None
+
                 self.last_color = (0, 0, 0, 0)
                 self.valign = 'center'
 
@@ -23499,18 +23509,6 @@ class EditorRoot(MenuBackground):
 
                 self.size_hint_max = (None, None)
                 self.size_hint_min_y = 40
-
-                def set_scroll(*a):
-                    if self.text:
-                        self.grab_focus()
-                        self.focused = False
-                        self.on_focus()
-
-                        def scroll(*b):
-                            self.focused = False
-                            self._line._screen.current_line = None
-                        Clock.schedule_once(scroll, 0)
-                Clock.schedule_once(set_scroll, 0.1)
 
         class CommentLabel(AlignLabel, HoverBehavior):
             # Hover stuffies
@@ -23569,15 +23567,16 @@ class EditorRoot(MenuBackground):
 
         def on_index_update(self):
             # Custom behavior when the index is updated
+            # self.index is 0-based, so line_number text is index+1 for display
             self.line_number.text = str(self.index + 1)
-            self.value_label.index = self.index
+            self.value_label._line.index = self.index  # Keep input's parent index in sync
             self.line_number.size_hint_max_x = (self.spacing * len(str(self.max_line_count)))
 
         def on_resize(self, *args):
             self.key_label.size_hint_max = self.key_label.texture_size
             self.eq_label.size_hint_max = self.eq_label.texture_size
 
-            self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4) + 10
+            self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4) + 10 + self.indent_space
             self.eq_label.x = self.key_label.x + self.key_label.size_hint_max[0] + (self.spacing * self.eq_spacing[0])
             self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * self.eq_spacing[1])
             self.value_label.y = -6
@@ -23601,11 +23600,14 @@ class EditorRoot(MenuBackground):
             except AttributeError:
                 pass
 
-        def highlight_text(self, text, *a):
+        def highlight_text(self, text, animate=True, *a):
             # Attempt to highlight text in both key and value for searching.
             self.last_search = text
             self.key_label.text = self.key_label.original_text
             self.line_matched = self._data['line_matched']
+
+            if not animate:
+                Animation.stop_all(self.line_number)
 
             def draw_highlight_box(label, *args):
                 label.canvas.before.clear()
@@ -23674,8 +23676,13 @@ class EditorRoot(MenuBackground):
             # Remove all widgets to be added in 'self.render_line'
             self.clear_widgets()
 
+            # First set self.index (0-based), then self.line (1-based)
+            idx = self._screen.line_list.index({'data': data})
+            self.index = idx
+            self.line = idx + 1
+
             # Add global 'data' parsing here
-            self.line = self._screen.line_list.index({'data': data}) + 1
+            self._data = data
 
             # Render line as defined in override
             self.render_line(data)
@@ -23693,7 +23700,12 @@ class EditorRoot(MenuBackground):
             self._screen = screen_manager.current_screen
             self.index_func = self._screen.set_index
             self.undo_func = self._screen.undo
+
+            # Store the 1-based line here
             self.line = None
+            # Store the 0-based index here
+            self.index = None
+
             self.last_search = None
             self.font_size = dp(25)
             self.line_matched = False
@@ -23702,7 +23714,7 @@ class EditorRoot(MenuBackground):
             # Overridable attributes
             self.eq_character = '='
             self.eq_spacing = (0.75, 0.75)
-
+            self.indent_space = 0
 
             # Line number
             self.line_number = AlignLabel()
@@ -23748,7 +23760,6 @@ class EditorRoot(MenuBackground):
             key = data['key']
             max_line_count = len(self._screen.line_list)
 
-
             # Determines if the line is skip-able when scrolling
             self.inactive = data['inactive']
             self.line_matched = data['line_matched']
@@ -23771,7 +23782,6 @@ class EditorRoot(MenuBackground):
             self.line_number.opacity = 0.35
 
             # Key label
-            # Can check for comments with:  self._key_labels['comment' if self.is_comment else 'normal']
             self.key_label.url = None
             self.key_label.__translate__ = False
             self.key_label.max_lines = 1
@@ -23820,7 +23830,6 @@ class EditorRoot(MenuBackground):
             # Numeric detection (int or float)
             elif value.replace(".", "").replace("-", "").isdigit():
                 data_type = float
-
 
             return data_type
 
@@ -23894,8 +23903,8 @@ class EditorRoot(MenuBackground):
 
             if keycode[1] == "backspace" and control in modifiers:
                 original_index = self.cursor_col
-                new_text, index = constants.control_backspace(self.text, original_index)
-                self.select_text(original_index - index, original_index)
+                new_text, idx = constants.control_backspace(self.text, original_index)
+                self.select_text(original_index - idx, original_index)
                 self.delete_selection()
             else:
                 super().keyboard_on_key_down(window, keycode, text, modifiers)
@@ -23941,7 +23950,10 @@ class EditorRoot(MenuBackground):
         self.last_search = ''
         self.match_list = []
         self.modified = False
+
+        # EditorRoot.current_line is now consistently 1-based
         self.current_line = None
+
         self.line_list = []
 
         self.background_color = constants.brighten_color(constants.background_color, -0.1)
@@ -23957,7 +23969,7 @@ class EditorRoot(MenuBackground):
         self.path = self._config_data['path']
         self.file_name = os.path.basename(self.path)
 
-    # Set current line as index
+    # Set current line as 1-based index
     def set_index(self, index, **kwargs):
         self.current_line = index
 
@@ -23980,20 +23992,23 @@ class EditorRoot(MenuBackground):
 
     # Scroll to any line in RecycleView
     def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True):
-        new_scroll = 1 - (index * 50) / ((len(self.line_list) * 50) - self.search_bar.height - self.header.height)
+        Animation.stop_all(self.scroll_widget, 'scroll_y')
+
+        # index is 1-based; subtract 1 for the scroll offset
+        new_scroll = 1 - ((index - 1) * 50) / ((len(self.line_list) * 50) - self.search_bar.height - self.header.height)
+
         if new_scroll > 1:
             new_scroll = 1
         if new_scroll < 0:
             new_scroll = 0
 
-        self.current_line = None
-        for line in self.scroll_layout.children:
-            line.value_label.focused = False
-
+        # Focus newly "scrolled to" line
         def after_scroll(*a):
-            for line in self.scroll_layout.children:
-                if line.line == index + 1:
-                    self.focus_input(line, highlight=highlight)
+            [self.focus_input(line, highlight) for line in self.scroll_layout.children if line.line == index]
+
+            # If there is a current search, refresh all widgets to "refresh" highlight boxes and widget selection
+            if self.search_bar.text:
+                Clock.schedule_once(lambda *_: [line.highlight_text(self.search_bar.text, False) for line in self.scroll_layout.children], 0)
 
         # Only scroll when there is a scrollbar
         if len(self.scroll_layout.children) < len(self.line_list):
@@ -24002,19 +24017,22 @@ class EditorRoot(MenuBackground):
                 Clock.schedule_once(after_scroll, 0.4 if wrap_around else 0.11)
             else:
                 self.scroll_widget.scroll_y = new_scroll
-                self.set_index(index + 1)
-
-        elif select:
-            after_scroll()
+                # If not selecting/focusing, just set our current_line
+                self.set_index(index)
+        else:
+            if select:
+                after_scroll()
 
     # Move between inputs with arrow keys
     def switch_input(self, position):
         if self.current_line is None:
-            self.set_index(0)
+            # Default to line 1 if current_line is unset
+            self.set_index(1)
 
         found_input = False
         wrap_around = False
 
+        # Keep the original increments to preserve user’s existing navigation behavior
         index = 0
         if position == 'up':
             index = self.current_line
@@ -24022,15 +24040,15 @@ class EditorRoot(MenuBackground):
             index = self.current_line + 2
         elif position in ['pagedown', 'end']:
             position = 'pagedown'
-            index = len(self.line_list) - 1
+            index = len(self.line_list)
         elif position in ['pageup', 'home']:
             position = 'pageup'
-            index = 0
+            index = 1
 
-        index = index - 1
+        # After the above, the code subtracts 1
+        index = index - 2
 
         while not found_input:
-            ignore_input = False
             if index >= len(self.line_list):
                 index = 0
                 wrap_around = True
@@ -24039,6 +24057,7 @@ class EditorRoot(MenuBackground):
                 wrap_around = True
 
             new_input = self.line_list[index]['data']
+            ignore_input = False
             if not new_input['inactive']:
 
                 if self.match_list and self.last_search:
@@ -24047,12 +24066,16 @@ class EditorRoot(MenuBackground):
 
                 if not ignore_input:
                     try:
-                        self.scroll_to_line(index, wrap_around=wrap_around)
+                        # scroll_to_line expects a 1-based index
+                        self.scroll_to_line(index + 1, wrap_around=wrap_around)
                         break
                     except AttributeError:
                         pass
 
-            index = index + (-1 if position == 'up' else 1)
+            if position == 'up':
+                index = index - 1
+            else:
+                index = index + 1
 
     # Generate search in background
     @staticmethod
@@ -24116,11 +24139,11 @@ class EditorRoot(MenuBackground):
         for line in self.scroll_layout.children:
             Clock.schedule_once(functools.partial(line.highlight_text, text), -1)
 
-
         # Scroll to first match
         if first_match:
             index = self.line_list.index(first_match)
-            self.scroll_to_line(index, select=False)
+            # scroll_to_line expects 1-based
+            self.scroll_to_line(index + 1, select=False)
 
         # Dirty hack to force focus to search bar
         for x in range(30):
@@ -24139,7 +24162,6 @@ class EditorRoot(MenuBackground):
             self.match_label.text = f'{matches} match{"es" if matches != 1 else ""}'
         except AttributeError:
             pass
-
 
     # Undo/redo behavior
     def _apply_action(self, action, undo=True):
@@ -24188,16 +24210,15 @@ class EditorRoot(MenuBackground):
         # 2) Save a *text-change* action
         if save and action is None:
             self.redo_history.clear()
-            if self.current_line is not None and 0 <= self.current_line < len(self.line_list):
+            if self.current_line is not None and 1 <= self.current_line <= len(self.line_list):
 
-                # We'll use 1-based line numbering, just like your original code:
-                line_num = self.current_line + 1
+                # We already store EditorRoot.current_line as 1-based
+                line_num = self.current_line
 
                 # Grab the current line's "original_value" from the data
-                old_text = self.line_list[self.current_line]['data']['original_value']
+                old_text = self.line_list[line_num - 1]['data']['original_value']
 
                 # If the last undo entry is text for the *same line*, update it
-                # (thus storing only one undo step for repeated typing on that line)
                 if self.undo_history and not isinstance(self.undo_history[-1], dict):
                     last = self.undo_history[-1]  # e.g. (line_num, old_text)
                     if last[0] == line_num:
@@ -24240,7 +24261,7 @@ class EditorRoot(MenuBackground):
                     self.scroll_widget.refresh_from_data()
 
                     # Optionally scroll/focus that line
-                    self.scroll_to_line(line_num - 1, highlight=True)
+                    self.scroll_to_line(line_num, highlight=True)
 
         else:
             # REDO
@@ -24267,8 +24288,7 @@ class EditorRoot(MenuBackground):
                     # refresh
                     self.scroll_widget.data = self.line_list
                     self.scroll_widget.refresh_from_data()
-                    self.scroll_to_line(line_num - 1, highlight=True)
-
+                    self.scroll_to_line(line_num, highlight=True)
 
     # Line behavior
     def insert_line(self, data: (tuple, list, dict), index: int = None, refresh=True):
@@ -24308,7 +24328,6 @@ class EditorRoot(MenuBackground):
                 self.scroll_widget.refresh_from_data()
 
             return data
-
 
     # Load/save behavior
     def load_file(self):
@@ -24379,7 +24398,6 @@ class EditorRoot(MenuBackground):
                     {"center_x": 0.5, "center_y": 0.965}
                 ), 0
             )
-
 
     # Menu navigation
     def quit_to_menu(self, *a):
@@ -24567,7 +24585,7 @@ class EditorRoot(MenuBackground):
 
 • Press 'CTRL+S' to save modifications
 
-• Press 'CTRL-Q' to quit the editor
+• Press 'CTRL+Q' to quit the editor
 
 • Press 'CTRL+F' to search for data
 
@@ -24709,7 +24727,6 @@ class ServerPropertiesEditScreen(EditorRoot):
 
         return key_text, value_text
 
-
     # *.properties/INI specific features
     def insert_line(self, line: (tuple, list, dict), index: int = None, refresh=True):
         if not isinstance(line, dict):
@@ -24802,30 +24819,37 @@ class ServerPropertiesEditScreen(EditorRoot):
 class ServerYamlEditScreen(EditorRoot):
     class EditorLine(EditorRoot.EditorLine):
         def configure(self):
-            self.eq_character = '='
+            self.eq_character = ':'
             self.eq_spacing = (1.05, 0.67)
 
         def render_line(self, data: dict):
             self._data = data
+            line_list = self._screen.line_list
             key = data['key']
-            value = data['value']
+            indent_level = data['indent']
             is_header = data['is_header']
+            is_list_header = data['is_list_header']
+            is_multiline_string = data['is_multiline_string']
+            is_list_item = data['is_list_item']
             is_comment = data['is_comment']
             is_blank_line = data['is_blank_line']
-            max_line_count = len(self._screen.line_list)
+            max_line_count = len(line_list)
 
 
             # Determines if the line is skip-able when scrolling
             self.is_header = is_header
+            self.is_list_header = is_list_header
+            self.is_list_item = is_list_item
             self.is_comment = is_comment
             self.is_blank_line = is_blank_line
+            self.is_multiline_string = is_multiline_string
             self.inactive = data['inactive']
             self.line_matched = data['line_matched']
             self._finished_rendering = False
             self._comment_padding = None
 
             # Defaults
-            font_name = 'mono-bold' if is_header else 'mono-medium'
+            font_name = 'mono-bold' if is_header or is_list_header else 'mono-medium'
             self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
             self.spacing = dp(16)
             self.size_hint_min_y = 50
@@ -24833,6 +24857,11 @@ class ServerYamlEditScreen(EditorRoot):
             self.line_matched = False
             self.select_color = (0.3, 1, 0.6, 1)
             self.animate = False
+
+            # Indentation space
+            self.indent_level = indent_level
+            self.indent_space = dp(25) * indent_level
+
 
             # Line number
             self.line_number.text = str(self.line)
@@ -24844,6 +24873,8 @@ class ServerYamlEditScreen(EditorRoot):
             self.key_label.url = None
             self.key_label.__translate__ = False
             self.key_label.max_lines = 1
+            self.key_label.shorten = True
+            self.key_label.shorten_from = 'right'
             self.key_label.markup = True
             self.key_label.text = key
             self.key_label.original_text = key
@@ -24853,11 +24884,10 @@ class ServerYamlEditScreen(EditorRoot):
             self.key_label.color = self.key_label.default_color
             self.key_label.size_hint_max_y = 50
             self.key_label.pos_hint = {'center_y': 0.5}
-            self.key_label.text_size[0] = 600 if key.startswith('#') else 260
-            self.key_label.opacity = 1
+            self.key_label.opacity = 0 if is_list_item else 1
 
-            # Show "=" for *.properties/INI
-            self.eq_label.text = self.eq_character
+            # Show ":" for YAML
+            self.eq_label.text = '-' if is_list_item else ':'
             self.eq_label.font_name = self.font_name
             self.eq_label.font_size = self.font_size
             self.eq_label.color = (0.6, 0.6, 1, 1) if is_header else (1, 1, 1, 1)
@@ -24865,9 +24895,8 @@ class ServerYamlEditScreen(EditorRoot):
             self.eq_label.pos_hint = {'center_y': 0.5}
 
 
-            # Dynamically add widgets back
             if not (is_blank_line or is_comment):
-                if not is_header:
+                if not is_header and not is_list_header:
                     self.add_widget(self.value_label)
 
             # Ghost covers for left / right
@@ -24875,8 +24904,10 @@ class ServerYamlEditScreen(EditorRoot):
             self.add_widget(self.ghost_cover_right)
 
             # Add remaining widgets
-            if not (is_blank_line or is_comment or is_header):
+            if not (is_blank_line or is_comment or is_multiline_string):
                 self.add_widget(self.eq_label)
+            if is_multiline_string:
+                self.key_label.opacity = 0
             self.add_widget(self.line_number)
             self.add_widget(self.key_label)
 
@@ -24913,8 +24944,7 @@ class ServerYamlEditScreen(EditorRoot):
                     return
 
             # Add a new multi-line string on pressing "enter" in a current string
-            if ((not self._line.is_list_item and self.text) or (self._line.is_multiline_string and self.text)) and keycode[1] in [
-                'enter', 'return']:
+            if ((not self._line.is_list_item and self.text) or (self._line.is_multiline_string and self.text)) and keycode[1] in ['enter', 'return']:
                 parent = self._line.parent
                 if not parent:
                     return
@@ -24947,7 +24977,7 @@ class ServerYamlEditScreen(EditorRoot):
                         }
                     )
 
-                self._line._screen.scroll_to_line(self._line.line)
+                self._line._screen.scroll_to_line(self._line.line + 1)
 
             elif self._line.is_multiline_string:
 
@@ -24969,7 +24999,7 @@ class ServerYamlEditScreen(EditorRoot):
                         )
 
                     self._line._screen.remove_line(self._line.line - 1)
-                    self._line._screen.scroll_to_line(self._line.line - 2)
+                    self._line._screen.scroll_to_line(self._line.line - 1)
 
 
             # Add a new list item on pressing "enter" in a current list
@@ -25010,7 +25040,7 @@ class ServerYamlEditScreen(EditorRoot):
                         }
                     )
 
-                self._line._screen.scroll_to_line(self._line.line)
+                self._line._screen.scroll_to_line(self._line.line + 1)
 
             # Remove line on backspace if it's empty
             if self._line.is_list_item and keycode[1] in ['delete', 'backspace'] and not self._original_text:
@@ -25037,11 +25067,11 @@ class ServerYamlEditScreen(EditorRoot):
                     next_line = self._line._screen.line_list[self._line.line - 1]['data']
 
                     if previous_line['is_list_item']:
-                        self._line._screen.scroll_to_line(self._line.line - 2)
+                        self._line._screen.scroll_to_line(self._line.line - 1)
 
                     if not previous_line['is_list_item'] and previous_line['is_list_header'] and not next_line[
                         'is_list_item']:
-                        self._line._screen.scroll_to_line(self._line.line - 2)
+                        self._line._screen.scroll_to_line(self._line.line - 1)
                         previous_line['is_list_header'] = False
                         for line in self._line.scroll_layout.children:
                             line.value_label.focused = False
@@ -25062,7 +25092,6 @@ class ServerYamlEditScreen(EditorRoot):
             value_text = ''
 
         return key_text, value_text
-
 
     # YAML/YML specific features
     def insert_line(self, line: (tuple, list, dict), index: int = None, refresh=True):
