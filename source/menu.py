@@ -23389,11 +23389,13 @@ class EditorRoot(MenuBackground):
                     return None
 
                 # Ignore undo and redo for global effect
-                if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
+                if keycode[1] in ['r', 'z', 'y', 'c'] and control in modifiers:
                     return None
 
                 # Undo functionality
-                elif (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (keycode[1] == 'v' and control in modifiers) or (keycode[1] == 'backspace' and control in modifiers):
+                elif (((not modifiers or bool([m for m in modifiers if m not in keycode[1]])) and (text or keycode[1] in ['backspace', 'delete', 'spacebar'])) or
+                      (keycode[1] in ['v', 'x'] and control in modifiers) or
+                      (keycode[1] == 'backspace' and control in modifiers)):
                     self.undo_func(save=True)
 
                 # Toggle boolean values with space
@@ -23417,9 +23419,14 @@ class EditorRoot(MenuBackground):
                 # Process override defined behavior
                 override_result = self._line.keyboard_overrides(self, window, keycode, text, modifiers)
 
-                # Fix overscroll
+                # Fix overscroll (cursor X pos is less than input position
                 if self.cursor_pos[0] < (self.x):
                     self.scroll_x = 0
+
+                # Fix underscroll (cursor X pos is greater than max width, and cursor is at the end of text)
+                if (self.cursor_pos[0] >= Window.width - self._line.input_padding) and len(self.text) == self.cursor[0]:
+                    # Fix overscroll, this needs to be delayed as it only detects after it exceeds the widget size
+                    pass
 
                 if override_result:
                     return override_result
@@ -23581,10 +23588,17 @@ class EditorRoot(MenuBackground):
             self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * self.eq_spacing[1])
             self.value_label.y = -6
 
+
             # Properly position comments
             if self.is_comment:
                 self.key_label.size_hint_max_y = self.eq_label.size_hint_max_y
                 self.key_label.size_hint_max_x = Window.width
+
+
+            # Properly position all other inputs to just before the edge of the screen
+            else:
+                self.value_label.size_hint_max_x = self.value_label.size_hint_min_x = Window.width - self.value_label.x - self.input_padding
+
 
             # Properly position search text
             vl = self.value_label
@@ -23715,6 +23729,7 @@ class EditorRoot(MenuBackground):
             self.eq_character = '='
             self.eq_spacing = (0.75, 0.75)
             self.indent_space = 0
+            self.input_padding = 50
 
             # Line number
             self.line_number = AlignLabel()
@@ -25104,6 +25119,10 @@ class ServerYamlEditScreen(EditorRoot):
 
             key, value, indent, is_header, is_list_header, is_multiline_string = line
 
+            # Format empty values
+            if value in ['""', "''", None]:
+                value = ''
+
             # Format list_headers
             if is_list_header:
                 is_header = False
@@ -25622,6 +25641,10 @@ class ServerYamlEditScreen(EditorRoot):
             val_str = str(line['value']).strip()
             indent = "  " * line['indent']
 
+            # Format empty values
+            if val_str in ['""', "''", None]:
+                val_str = ''
+
             if line['is_comment'] or line['is_blank_line']:
                 final_content += str(f"{indent}{key_str}".rstrip() + '\n')
 
@@ -25640,7 +25663,7 @@ class ServerYamlEditScreen(EditorRoot):
             elif key_str:
                 final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
 
-        # return print(final_content)
+        return print(final_content)
         self.write_to_disk(final_content)
 
 # Edit all JSON/JSON5 files
