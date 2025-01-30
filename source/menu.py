@@ -23271,6 +23271,65 @@ class EditorRoot(MenuBackground):
     class EditorLine(RelativeLayout):
         class EditorInput(TextInput):
 
+            class OverflowLabel(RelativeLayout):
+                def show(self, show=True):
+                    self.opacity = 1 if show else 0
+                    self.background.opacity = 1 if show else 0
+                    self.text.opacity = 1 if show else 0
+                def __init__(self, side='left', *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.size_hint_max_x = 30
+                    self.side = side
+
+                    self.background = Image(source=os.path.join(constants.gui_assets, 'scroll_overflow.png'))
+                    self.background.color = constants.brighten_color(constants.background_color, -0.1)
+                    self.background.allow_stretch = True
+                    self.background.keep_ratio = False
+                    self.background.size_hint_max_x = (self.size_hint_max_x + 10) * (1 if self.side == 'left' else -1)
+                    self.background.x = (0 if self.side == 'left' else self.size_hint_max_x - 5)
+
+                    self.add_widget(self.background)
+
+                    self.text = Label()
+                    self.text.text = '…'
+                    self.text.color = (0.6, 0.6, 1, 0.6)
+                    self.text.markup = True
+                    self.text.size_hint_max_x = self.size_hint_max_x
+                    self.add_widget(self.text)
+
+                    self.show(False)
+
+            def _update_overflow(self):
+                try:
+                    if self.text:
+                        text_width = self._get_text_width(self.text, self.tab_width, self.font_size)
+                        self.scrollable = text_width > self.width
+
+                        if self.scrollable:
+
+                            # Update text properties
+                            self.ovf_left.text.font_name = self.ovf_right.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+                            self.ovf_left.text.font_size = self.ovf_right.text.font_size = self.font_size + 6
+                            self.ovf_left.height = self.ovf_right.height = self.height
+
+                            # Update positions
+                            y_pos = self.y + 7
+                            self.ovf_left.pos = (self.x + 3, y_pos)
+                            self.ovf_right.pos = (Window.width - self._line.input_padding - 16, y_pos)
+
+                            # Update opacity
+                            self.ovf_left.show(self.scroll_x > 0)
+                            self.ovf_right.show(self.scroll_x + self.width <= text_width)
+
+                            return
+
+                except AttributeError:
+                    pass
+
+                self.scrollable = False
+                self.ovf_left.show(False)
+                self.ovf_right.show(False)
+
             def grab_focus(self, *a):
                 def focus_later(*args):
                     try:
@@ -23305,7 +23364,7 @@ class EditorRoot(MenuBackground):
 
                     if (len(self.text) * (self.font_size / 1.85)) > self.width:
                         self.cursor = (len(self.text), self.cursor[1])
-                        Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0)
+                        self.do_cursor_movement("cursor_end")
 
                         def select_error_handler(*a):
                             try:
@@ -23314,7 +23373,10 @@ class EditorRoot(MenuBackground):
                                 pass
                         Clock.schedule_once(select_error_handler, 0.01)
                 else:
+                    self.do_cursor_movement("cursor_home")
                     self.scroll_x = 0
+
+                self._update_overflow()
 
             # Type color and prediction
             def on_text(self, *args):
@@ -23419,14 +23481,21 @@ class EditorRoot(MenuBackground):
                 # Process override defined behavior
                 override_result = self._line.keyboard_overrides(self, window, keycode, text, modifiers)
 
-                # Fix overscroll (cursor X pos is less than input position
-                if self.cursor_pos[0] < (self.x):
-                    self.scroll_x = 0
 
-                # Fix underscroll (cursor X pos is greater than max width, and cursor is at the end of text)
-                if (self.cursor_pos[0] >= Window.width - self._line.input_padding) and len(self.text) == self.cursor[0]:
-                    # Fix overscroll, this needs to be delayed as it only detects after it exceeds the widget size
-                    pass
+                # Fix scrolling issues with text input after text updates
+                def fix_scroll(*a):
+                    # Fix overscroll (cursor X pos is less than input position
+                    if self.cursor_pos[0] < (self.x):
+                        self.scroll_x = 0
+
+                    # Fix underscroll (cursor X pos is greater than max width, and cursor is at the end of text)
+                    if (self.cursor_pos[0] >= Window.width - self._line.input_padding) and len(self.text) == self.cursor[0]:
+                        self.scroll_x = self._get_text_width(self.text, self.tab_width, self.font_size) - self.width + 12
+
+                    # Update ellipses for content that's off-screen
+                    self._update_overflow()
+                Clock.schedule_once(fix_scroll, 0)
+
 
                 if override_result:
                     return override_result
@@ -23474,6 +23543,10 @@ class EditorRoot(MenuBackground):
                     self.grab_focus()
                 else:
                     self.focused = False
+                    self.do_cursor_movement("cursor_home")
+                    self.scroll_x = 0
+                    # This seems to have problems with not actually updating when scrolling
+                    self._update_overflow()
 
             def __init__(self, line, **kwargs):
                 super().__init__(**kwargs)
@@ -23491,6 +23564,9 @@ class EditorRoot(MenuBackground):
                     self.search.width = 10000
                     self.search.font_kerning = False
 
+                    self.ovf_left = self.OverflowLabel('left')
+                    self.ovf_right = self.OverflowLabel('right')
+
                 self.bind(scroll_x=self.scroll_search)
                 self.__translate__ = False
                 self.font_kerning = False
@@ -23503,6 +23579,7 @@ class EditorRoot(MenuBackground):
                 self.background_color = (0, 0, 0, 0)
                 self.cursor_width = dp(3)
                 self.eq = None
+                self.scrollable = False
 
                 # Holds the label widget for the line number, not the numeric index
                 self.line_number = None
@@ -23598,6 +23675,7 @@ class EditorRoot(MenuBackground):
             # Properly position all other inputs to just before the edge of the screen
             else:
                 self.value_label.size_hint_max_x = self.value_label.size_hint_min_x = Window.width - self.value_label.x - self.input_padding
+                self.value_label._update_overflow()
 
 
             # Properly position search text
@@ -23729,7 +23807,7 @@ class EditorRoot(MenuBackground):
             self.eq_character = '='
             self.eq_spacing = (0.75, 0.75)
             self.indent_space = 0
-            self.input_padding = 50
+            self.input_padding = 100
 
             # Line number
             self.line_number = AlignLabel()
@@ -24050,18 +24128,15 @@ class EditorRoot(MenuBackground):
         # Keep the original increments to preserve user’s existing navigation behavior
         index = 0
         if position == 'up':
-            index = self.current_line
+            index = self.current_line - 2
         elif position == 'down':
-            index = self.current_line + 2
+            index = self.current_line
         elif position in ['pagedown', 'end']:
             position = 'pagedown'
-            index = len(self.line_list)
+            index = len(self.line_list) - 1
         elif position in ['pageup', 'home']:
             position = 'pageup'
-            index = 1
-
-        # After the above, the code subtracts 1
-        index = index - 2
+            index = 0
 
         while not found_input:
             if index >= len(self.line_list):
@@ -24087,7 +24162,7 @@ class EditorRoot(MenuBackground):
                     except AttributeError:
                         pass
 
-            if position == 'up':
+            if 'up' in position:
                 index = index - 1
             else:
                 index = index + 1
