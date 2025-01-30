@@ -25673,7 +25673,12 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
     def read_from_disk(self) -> list:
         with open(self.path, 'r', encoding='utf-8') as f:
             json_data = constants.json.load(f)
-            content = constants.yaml.dump(json_data)
+            content = constants.yaml.dump(
+                json_data,
+                sort_keys=False,
+                allow_unicode=True,
+                width=float("inf")
+            )
             return content.strip().splitlines()
 
     def save_file(self):

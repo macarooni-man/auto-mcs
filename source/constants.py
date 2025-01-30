@@ -5939,7 +5939,7 @@ def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
                 for item in items:
 
                     # Add to final_dict if it's a valid config file
-                    if item.is_file() and os.path.splitext(item.name)[1].strip('.') in valid_config_formats and item.name not in excludes:
+                    if item.is_file() and os.path.splitext(item.name)[1].strip('.') in valid_config_formats and item.name not in excludes and not item.name.startswith('.'):
                         match_list.append(item.path)
 
                     # Continue recursion until max_depth is reached
