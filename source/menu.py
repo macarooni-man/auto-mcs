@@ -25672,7 +25672,12 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
     # Internally convert JSON to YAML for ease of editing
     def read_from_disk(self) -> list:
         with open(self.path, 'r', encoding='utf-8') as f:
-            json_data = constants.json.load(f)
+            raw_content = f.read()
+
+            # Determine format features prior to parsing to preserve later
+            self.minified = len(raw_content.splitlines()) <= 1
+
+            json_data = constants.json.loads(raw_content)
             content = constants.yaml.dump(
                 json_data,
                 sort_keys=False,
@@ -25709,9 +25714,17 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
                 final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
 
 
-        # Internally convert YAML back to JSON to retain file format
-        yaml_data = constants.yaml.safe_load(final_content)
-        final_content = constants.json.dumps(yaml_data, indent=4)
+        # Internally convert YAML back to JSON to retain original file format
+        try:
+            yaml_data = constants.yaml.safe_load(final_content)
+            final_content = constants.json.dumps(
+                yaml_data,
+                indent=(None if self.minified else 4)
+            )
+        except Exception as e:
+            if constants.debug:
+                print(f'Failed to save: {e}')
+            return False
 
         # return print(final_content)
         self.write_to_disk(final_content)
