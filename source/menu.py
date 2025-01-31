@@ -22940,11 +22940,11 @@ def open_config_file(path: str, *a):
         if ext in ['properties', 'ini']:
             editor_screen = 'ServerPropertiesEditScreen'
 
-        elif ext in ['yml', 'yaml']:
-            editor_screen = 'ServerYamlEditScreen'
-
         elif ext in ['tml', 'toml']:
             editor_screen = 'ServerTomlEditScreen'
+
+        elif ext in ['yml', 'yaml']:
+            editor_screen = 'ServerYamlEditScreen'
 
         elif ext in ['json', 'json5']:
             editor_screen = 'ServerJsonEditScreen'
@@ -23646,7 +23646,7 @@ class EditorRoot(MenuBackground):
 
         def __setattr__(self, attr, value):
             if attr == "data" and value:
-                self._update_data(value)
+                return self._update_data(value)
 
             super().__setattr__(attr, value)
 
@@ -24068,7 +24068,7 @@ class EditorRoot(MenuBackground):
         self.current_line = index
 
     # Highlight specific input
-    def focus_input(self, new_input=None, highlight=False, force_end=False):
+    def focus_input(self, new_input=None, highlight=False, force_end=True):
         if not new_input:
             if self.current_line:
                 return self.scroll_to_line(self.current_line, highlight=highlight)
@@ -24090,7 +24090,7 @@ class EditorRoot(MenuBackground):
         self.set_index(new_input.line)
 
     # Scroll to any line in RecycleView
-    def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True, force_end=False):
+    def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True):
         Animation.stop_all(self.scroll_widget, 'scroll_y')
 
         # index is 1-based; subtract 1 for the scroll offset
@@ -24103,7 +24103,7 @@ class EditorRoot(MenuBackground):
 
         # Focus newly "scrolled to" line
         def after_scroll(*a):
-            [self.focus_input(line, highlight, force_end) for line in self.scroll_layout.children if line.line == index]
+            [self.focus_input(line, highlight, True) for line in self.scroll_layout.children if line.line == index]
 
             # If there is a current search, refresh all widgets to "refresh" highlight boxes and widget selection
             if self.search_bar.text:
@@ -24163,7 +24163,7 @@ class EditorRoot(MenuBackground):
                 if not ignore_input:
                     try:
                         # scroll_to_line expects a 1-based index
-                        self.scroll_to_line(index + 1, wrap_around=wrap_around, force_end=True)
+                        self.scroll_to_line(index + 1, wrap_around=wrap_around)
                         break
                     except AttributeError:
                         pass
@@ -24274,17 +24274,21 @@ class EditorRoot(MenuBackground):
             if undo:
                 # Undo an insert => remove it
                 self.remove_line(idx, refresh=True)
+                self.scroll_to_line(idx)
             else:
                 # Redo an insert => put it back
                 self.insert_line(line_data, idx, refresh=True)
+                self.scroll_to_line(idx + 1, highlight=True)
 
         elif a_type == 'remove_line':
             if undo:
                 # Undo a remove => re-insert it
                 self.insert_line(line_data, idx, refresh=True)
+                self.scroll_to_line(idx + 1, highlight=True)
             else:
                 # Redo a remove => remove again
                 self.remove_line(idx, refresh=True)
+                self.scroll_to_line(idx)
 
     def undo(self, save=False, undo=False, action=None):
         """
@@ -24390,6 +24394,8 @@ class EditorRoot(MenuBackground):
     def insert_line(self, data: (tuple, list, dict), index: int = None, refresh=True):
 
         # Override data parsing in child editors for specific line formats
+        if 'data' not in data:
+            data = {'data': data}
 
         if index is not None:
             self.line_list.insert(index, data)
@@ -24916,6 +24922,11 @@ class ServerPropertiesEditScreen(EditorRoot):
         if self.file_name == 'server.properties':
             self.server_obj.reload_config()
 
+# Edit all TOML/TML files
+class ServerTomlEditScreen(ServerPropertiesEditScreen):
+    # Need support for lists and indentation like YAML editor, but in the same format as this
+    pass
+
 # Edit all YAML/YML files
 class ServerYamlEditScreen(EditorRoot):
     class EditorLine(EditorRoot.EditorLine):
@@ -25080,32 +25091,29 @@ class ServerYamlEditScreen(EditorRoot):
 
                 self._line._screen.scroll_to_line(self._line.line + 1)
 
-            elif self._line.is_multiline_string:
+            # Remove line on backspace if it's empty
+            elif self._line.is_multiline_string and keycode[1] in ['delete', 'backspace'] and not self._original_text:
+                parent = self._line.parent
+                if not parent:
+                    return
 
-                # Remove line on backspace if it's empty
-                if keycode[1] in ['delete', 'backspace'] and not self._original_text:
-                    parent = self._line.parent
-                    if not parent:
-                        return
+                # Record the removal action for undo
+                if self._line.undo_func:
+                    self._line.undo_func(
+                        save=True,
+                        action={
+                            'type': 'remove_line',
+                            'data': self._line._data,
+                            'index': self._line.line - 1
+                        }
+                    )
 
-                    # Record the removal action for undo
-                    if self._line.undo_func:
-                        self._line.undo_func(
-                            save=True,
-                            action={
-                                'type': 'remove_line',
-                                'data': self._line._data,
-                                'index': self._line.line - 1
-                            }
-                        )
-
-                    self._line._screen.remove_line(self._line.line - 1)
-                    self._line._screen.scroll_to_line(self._line.line - 1, force_end=True)
+                self._line._screen.remove_line(self._line.line - 1)
+                self._line._screen.scroll_to_line(self._line.line - 1)
 
 
             # Add a new list item on pressing "enter" in a current list
-            elif ((self._line.is_list_item and self.text) or (not self._line.is_list_item and not self.text)) and keycode[1] in [
-                'enter', 'return']:
+            elif ((self._line.is_list_item and self.text) or (not self._line.is_list_item and not self.text)) and keycode[1] in ['enter', 'return']:
                 parent = self._line.parent
                 if not parent:
                     return
@@ -25171,10 +25179,10 @@ class ServerYamlEditScreen(EditorRoot):
                         next_line = {'is_list_item': False}
 
                     if previous_line['is_list_item']:
-                        self._line._screen.scroll_to_line(self._line.line - 1, force_end=True)
+                        self._line._screen.scroll_to_line(self._line.line - 1)
 
                     if not previous_line['is_list_item'] and previous_line['is_list_header'] and not next_line['is_list_item']:
-                        self._line._screen.scroll_to_line(self._line.line - 1, force_end=True)
+                        self._line._screen.scroll_to_line(self._line.line - 1)
                         previous_line['is_list_header'] = False
                         for line in self._line.scroll_layout.children:
                             line.value_label.focused = False
