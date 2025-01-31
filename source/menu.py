@@ -24068,7 +24068,7 @@ class EditorRoot(MenuBackground):
         self.current_line = index
 
     # Highlight specific input
-    def focus_input(self, new_input=None, highlight=False):
+    def focus_input(self, new_input=None, highlight=False, force_end=False):
         if not new_input:
             if self.current_line:
                 return self.scroll_to_line(self.current_line, highlight=highlight)
@@ -24082,10 +24082,15 @@ class EditorRoot(MenuBackground):
             Animation(color=original_color, duration=0.5).start(new_input.key_label)
 
         new_input.value_label.grab_focus()
+
+        # Force cursor to the end of the line
+        if force_end:
+            new_input.value_label.do_cursor_movement('cursor_end', True)
+
         self.set_index(new_input.line)
 
     # Scroll to any line in RecycleView
-    def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True):
+    def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True, force_end=False):
         Animation.stop_all(self.scroll_widget, 'scroll_y')
 
         # index is 1-based; subtract 1 for the scroll offset
@@ -24098,7 +24103,7 @@ class EditorRoot(MenuBackground):
 
         # Focus newly "scrolled to" line
         def after_scroll(*a):
-            [self.focus_input(line, highlight) for line in self.scroll_layout.children if line.line == index]
+            [self.focus_input(line, highlight, force_end) for line in self.scroll_layout.children if line.line == index]
 
             # If there is a current search, refresh all widgets to "refresh" highlight boxes and widget selection
             if self.search_bar.text:
@@ -24158,7 +24163,7 @@ class EditorRoot(MenuBackground):
                 if not ignore_input:
                     try:
                         # scroll_to_line expects a 1-based index
-                        self.scroll_to_line(index + 1, wrap_around=wrap_around)
+                        self.scroll_to_line(index + 1, wrap_around=wrap_around, force_end=True)
                         break
                     except AttributeError:
                         pass
@@ -25095,7 +25100,7 @@ class ServerYamlEditScreen(EditorRoot):
                         )
 
                     self._line._screen.remove_line(self._line.line - 1)
-                    self._line._screen.scroll_to_line(self._line.line - 1)
+                    self._line._screen.scroll_to_line(self._line.line - 1, force_end=True)
 
 
             # Add a new list item on pressing "enter" in a current list
@@ -25160,14 +25165,16 @@ class ServerYamlEditScreen(EditorRoot):
                 # Existing focusing logic
                 try:
                     previous_line = self._line._screen.line_list[self._line.line - 2]['data']
-                    next_line = self._line._screen.line_list[self._line.line - 1]['data']
+                    try:
+                        next_line = self._line._screen.line_list[self._line.line - 1]['data']
+                    except:
+                        next_line = {'is_list_item': False}
 
                     if previous_line['is_list_item']:
-                        self._line._screen.scroll_to_line(self._line.line - 1)
+                        self._line._screen.scroll_to_line(self._line.line - 1, force_end=True)
 
-                    if not previous_line['is_list_item'] and previous_line['is_list_header'] and not next_line[
-                        'is_list_item']:
-                        self._line._screen.scroll_to_line(self._line.line - 1)
+                    if not previous_line['is_list_item'] and previous_line['is_list_header'] and not next_line['is_list_item']:
+                        self._line._screen.scroll_to_line(self._line.line - 1, force_end=True)
                         previous_line['is_list_header'] = False
                         for line in self._line.scroll_layout.children:
                             line.value_label.focused = False
@@ -28490,13 +28497,15 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        # if not constants.app_compiled:
-        #     def open_menu(*a):
-        #         open_server('Beds Rock')
-        #     Clock.schedule_once(open_menu, 0.5)
-        #     def open_menu(*a):
-        #         screen_manager.current = 'ServerPropertiesEditScreen'
-        #     Clock.schedule_once(open_menu, 0.8)
+        if not constants.app_compiled:
+            # constants.server_manager.open_server('purpur crash test')
+            # open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/purpur crash test/purpur.yml')
+            # open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/purpur crash test/plugins/spark/config.json')
+            # open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/purpur crash test/server.properties')
+            constants.make_update_list()
+            constants.server_manager.open_server('Cobblemon Official')
+            open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/Cobblemon Official/config/bedrockify/bedrockify-ExternalLoadingTips.json')
+
 
 
         # Process --launch flag
