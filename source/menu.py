@@ -23302,7 +23302,7 @@ class EditorRoot(MenuBackground):
             def _update_overflow(self):
                 try:
                     if self.text:
-                        text_width = self._get_text_width(self.text, self.tab_width, self.font_size)
+                        text_width = self._get_text_width(str(self.text), self.tab_width, self._label_cached)
                         self.scrollable = text_width > self.width
 
                         if self.scrollable:
@@ -23362,9 +23362,10 @@ class EditorRoot(MenuBackground):
                         # The parent's 0-based index + 1 => 1-based
                         self._line.index_func(self._line.index + 1)
 
-                    if (len(self.text) * (self.font_size / 1.85)) > self.width:
+                    if self._get_text_width(str(self.text), self.tab_width, self._label_cached) > self.width:
                         self.cursor = (len(self.text), self.cursor[1])
-                        self.do_cursor_movement("cursor_end")
+                        self.scroll_x = self._get_text_width(str(self.text), self.tab_width, self._label_cached) - self.width + 1
+                        Clock.schedule_once(lambda *_: self.do_cursor_movement("cursor_end"), -1)
 
                         def select_error_handler(*a):
                             try:
@@ -23490,7 +23491,7 @@ class EditorRoot(MenuBackground):
 
                     # Fix underscroll (cursor X pos is greater than max width, and cursor is at the end of text)
                     if (self.cursor_pos[0] >= Window.width - self._line.input_padding) and len(self.text) == self.cursor[0]:
-                        self.scroll_x = self._get_text_width(self.text, self.tab_width, self.font_size) - self.width + 12
+                        self.scroll_x = self._get_text_width(self.text, self.tab_width, self._label_cached) - self.width + 12
 
                     # Update ellipses for content that's off-screen
                     self._update_overflow()
@@ -25749,7 +25750,7 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
         with open(self.path, 'r', encoding='utf-8') as f:
             raw_content = f.read()
 
-            # Determine format features prior to parsing to preserve later
+            # Determine format features prior to parsing to preserve when saving
             self.minified = len(raw_content.splitlines()) <= 1
 
             json_data = constants.json.loads(raw_content)
