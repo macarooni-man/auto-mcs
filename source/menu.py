@@ -28497,14 +28497,14 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        if not constants.app_compiled:
+        # if not constants.app_compiled:
             # constants.server_manager.open_server('purpur crash test')
             # open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/purpur crash test/purpur.yml')
             # open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/purpur crash test/plugins/spark/config.json')
             # open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/purpur crash test/server.properties')
-            constants.make_update_list()
-            constants.server_manager.open_server('Cobblemon Official')
-            open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/Cobblemon Official/config/bedrockify/bedrockify-ExternalLoadingTips.json')
+            # constants.make_update_list()
+            # constants.server_manager.open_server('Cobblemon Official')
+            # open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/Cobblemon Official/config/bedrockify/bedrockify-ExternalLoadingTips.json')
 
 
 
