@@ -24068,10 +24068,10 @@ class EditorRoot(MenuBackground):
         self.current_line = index
 
     # Highlight specific input
-    def focus_input(self, new_input=None, highlight=False, force_end=True):
+    def focus_input(self, new_input=None, highlight=False, force_end=True, grab_focus=False):
         if not new_input:
             if self.current_line:
-                return self.scroll_to_line(self.current_line, highlight=highlight)
+                return self.scroll_to_line(self.current_line, highlight=highlight, grab_focus=grab_focus)
             else:
                 return None
 
@@ -24081,7 +24081,8 @@ class EditorRoot(MenuBackground):
             Animation.stop_all(new_input.key_label)
             Animation(color=original_color, duration=0.5).start(new_input.key_label)
 
-        new_input.value_label.grab_focus()
+        if grab_focus:
+            new_input.value_label.grab_focus()
 
         # Force cursor to the end of the line
         if force_end:
@@ -24090,7 +24091,7 @@ class EditorRoot(MenuBackground):
         self.set_index(new_input.line)
 
     # Scroll to any line in RecycleView
-    def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True):
+    def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True, grab_focus=False):
         Animation.stop_all(self.scroll_widget, 'scroll_y')
 
         # index is 1-based; subtract 1 for the scroll offset
@@ -24103,7 +24104,7 @@ class EditorRoot(MenuBackground):
 
         # Focus newly "scrolled to" line
         def after_scroll(*a):
-            [self.focus_input(line, highlight, True) for line in self.scroll_layout.children if line.line == index]
+            [self.focus_input(line, highlight, True, grab_focus) for line in self.scroll_layout.children if line.line == index]
 
             # If there is a current search, refresh all widgets to "refresh" highlight boxes and widget selection
             if self.search_bar.text:
@@ -24163,7 +24164,7 @@ class EditorRoot(MenuBackground):
                 if not ignore_input:
                     try:
                         # scroll_to_line expects a 1-based index
-                        self.scroll_to_line(index + 1, wrap_around=wrap_around)
+                        self.scroll_to_line(index + 1, wrap_around=wrap_around, grab_focus=True)
                         break
                     except AttributeError:
                         pass
@@ -24239,7 +24240,7 @@ class EditorRoot(MenuBackground):
         if first_match:
             index = self.line_list.index(first_match)
             # scroll_to_line expects 1-based
-            self.scroll_to_line(index + 1, select=False)
+            self.scroll_to_line(index + 1, select=False, grab_focus=True)
 
         # Dirty hack to force focus to search bar
         for x in range(30):
@@ -24274,21 +24275,21 @@ class EditorRoot(MenuBackground):
             if undo:
                 # Undo an insert => remove it
                 self.remove_line(idx, refresh=True)
-                self.scroll_to_line(idx)
+                self.scroll_to_line(idx, grab_focus=True)
             else:
                 # Redo an insert => put it back
                 self.insert_line(line_data, idx, refresh=True)
-                self.scroll_to_line(idx + 1, highlight=True)
+                self.scroll_to_line(idx + 1, highlight=True, grab_focus=True)
 
         elif a_type == 'remove_line':
             if undo:
                 # Undo a remove => re-insert it
                 self.insert_line(line_data, idx, refresh=True)
-                self.scroll_to_line(idx + 1, highlight=True)
+                self.scroll_to_line(idx + 1, highlight=True, grab_focus=True)
             else:
                 # Redo a remove => remove again
                 self.remove_line(idx, refresh=True)
-                self.scroll_to_line(idx)
+                self.scroll_to_line(idx, grab_focus=True)
 
     def undo(self, save=False, undo=False, action=None):
         """
@@ -24361,7 +24362,7 @@ class EditorRoot(MenuBackground):
                     self.scroll_widget.refresh_from_data()
 
                     # Optionally scroll/focus that line
-                    self.scroll_to_line(line_num, highlight=True)
+                    self.scroll_to_line(line_num, highlight=True, grab_focus=True)
 
         else:
             # REDO
@@ -24388,7 +24389,7 @@ class EditorRoot(MenuBackground):
                     # refresh
                     self.scroll_widget.data = self.line_list
                     self.scroll_widget.refresh_from_data()
-                    self.scroll_to_line(line_num, highlight=True)
+                    self.scroll_to_line(line_num, highlight=True, grab_focus=True)
 
     # Line behavior
     def insert_line(self, data: (tuple, list, dict), index: int = None, refresh=True):
@@ -25089,7 +25090,7 @@ class ServerYamlEditScreen(EditorRoot):
                         }
                     )
 
-                self._line._screen.scroll_to_line(self._line.line + 1)
+                self._line._screen.scroll_to_line(self._line.line + 1, grab_focus=True)
 
             # Remove line on backspace if it's empty
             elif self._line.is_multiline_string and keycode[1] in ['delete', 'backspace'] and not self._original_text:
@@ -25113,7 +25114,7 @@ class ServerYamlEditScreen(EditorRoot):
 
 
             # Add a new list item on pressing "enter" in a current list
-            elif ((self._line.is_list_item and self.text) or (not self._line.is_list_item and not self.text)) and keycode[1] in ['enter', 'return']:
+            elif (not self._line.is_multiline_string) and (((self._line.is_list_item and self.text) or (not self._line.is_list_item and not self.text)) and keycode[1] in ['enter', 'return']):
                 parent = self._line.parent
                 if not parent:
                     return
@@ -25149,7 +25150,7 @@ class ServerYamlEditScreen(EditorRoot):
                         }
                     )
 
-                self._line._screen.scroll_to_line(self._line.line + 1)
+                self._line._screen.scroll_to_line(self._line.line + 1, grab_focus=True)
 
             # Remove line on backspace if it's empty
             if self._line.is_list_item and keycode[1] in ['delete', 'backspace'] and not self._original_text:
@@ -25182,8 +25183,9 @@ class ServerYamlEditScreen(EditorRoot):
                         self._line._screen.scroll_to_line(self._line.line - 1)
 
                     if not previous_line['is_list_item'] and previous_line['is_list_header'] and not next_line['is_list_item']:
-                        self._line._screen.scroll_to_line(self._line.line - 1)
                         previous_line['is_list_header'] = False
+                        previous_line['inactive'] = False
+                        self._line._screen.scroll_to_line(self._line.line - 1)
                         for line in self._line.scroll_layout.children:
                             line.value_label.focused = False
                         self._line.scroll_widget.data = self._line.line_list
