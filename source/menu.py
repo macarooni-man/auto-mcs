@@ -24138,8 +24138,7 @@ class EditorRoot(MenuBackground):
             new_scroll_y = 1 - (target_offset / max_offset)
 
         def after_scroll(*a):
-            [self.focus_input(line, highlight, True, grab_focus)
-             for line in self.scroll_layout.children if line.line == index]
+            [self.focus_input(line, highlight, True, grab_focus) for line in self.scroll_layout.children if line.line == index]
 
             # If a search term is active, update highlights.
             if self.search_bar.text:
@@ -25132,6 +25131,13 @@ class ServerYamlEditScreen(EditorRoot):
                 if not parent:
                     return
 
+                # Attempt to gather last line
+                try:
+                    next_line = self._line._screen.line_list[self._line.line - 1]['data']
+                except:
+                    next_line = {'is_list_item': False, 'eof': True}
+                eof = 'eof' in next_line
+
                 # Record the removal action for undo
                 if self._line.undo_func:
                     self._line.undo_func(
@@ -25144,7 +25150,7 @@ class ServerYamlEditScreen(EditorRoot):
                     )
 
                 self._line._screen.remove_line(self._line.line - 1)
-                self._line._screen.scroll_to_line(self._line.line - 1)
+                self._line._screen.scroll_to_line(self._line.line - 1, grab_focus=not eof)
 
 
             # Add a new list item on pressing "enter" in a current list
@@ -25211,15 +25217,16 @@ class ServerYamlEditScreen(EditorRoot):
                     try:
                         next_line = self._line._screen.line_list[self._line.line - 1]['data']
                     except:
-                        next_line = {'is_list_item': False}
+                        next_line = {'is_list_item': False, 'eof': True}
+                    eof = 'eof' in next_line
 
                     if previous_line['is_list_item']:
-                        self._line._screen.scroll_to_line(self._line.line - 1)
+                        self._line._screen.scroll_to_line(self._line.line - 1, grab_focus=True)
 
                     if not previous_line['is_list_item'] and previous_line['is_list_header'] and not next_line['is_list_item']:
                         previous_line['is_list_header'] = False
                         previous_line['inactive'] = False
-                        self._line._screen.scroll_to_line(self._line.line - 1)
+                        self._line._screen.scroll_to_line(self._line.line - 1, grab_focus=not eof)
                         for line in self._line.scroll_layout.children:
                             line.value_label.focused = False
                         self._line.scroll_widget.data = self._line.line_list
@@ -25844,10 +25851,13 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
         # Internally convert YAML back to JSON to retain original file format
         try:
             yaml_data = constants.yaml.safe_load(final_content)
-            final_content = constants.json.dumps(
-                yaml_data,
-                indent=(None if self.minified else 4)
-            )
+
+            if self.minified:
+                final_content = constants.json.dumps(yaml_data, indent=None, separators=(',', ':')).strip()
+
+            else:
+                final_content = constants.json.dumps(yaml_data, indent=4)
+
         except Exception as e:
             if constants.debug:
                 print(f'Failed to save: {e}')
