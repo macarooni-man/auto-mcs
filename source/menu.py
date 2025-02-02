@@ -24086,38 +24086,72 @@ class EditorRoot(MenuBackground):
 
         # Force cursor to the end of the line
         if force_end:
-            new_input.value_label.do_cursor_movement('cursor_end', True)
+            Clock.schedule_once(lambda *_: new_input.value_label.do_cursor_movement('cursor_end', True), 0)
 
         self.set_index(new_input.line)
 
     # Scroll to any line in RecycleView
     def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True, grab_focus=False):
         Animation.stop_all(self.scroll_widget, 'scroll_y')
+        line_height = 50
+        padding_lines = 5
+        total_lines = len(self.line_list)
+        content_height = total_lines * line_height
+        viewport_height = self.scroll_widget.height - self.search_bar.height - self.header.height
 
-        # index is 1-based; subtract 1 for the scroll offset
-        new_scroll = 1 - ((index - 1) * 50) / ((len(self.line_list) * 50) - self.search_bar.height - self.header.height)
+        # If the content is smaller than or equal to the viewport, don't scroll.
+        if content_height <= viewport_height:
+            new_scroll_y = 1
+        else:
+            max_offset = content_height - viewport_height
 
-        if new_scroll > 1:
-            new_scroll = 1
-        if new_scroll < 0:
-            new_scroll = 0
+            # Compute the top (in pixels) of the target line in the full content.
+            target_line_top = (index - 1) * line_height
 
-        # Focus newly "scrolled to" line
+            # Set how many lines you want as padding.
+            padding_pixels = padding_lines * line_height
+
+            # Determine where in the viewport the target line should appear.
+            # We choose a position opposite to the direction of travel:
+            # - If scrolling downward (new index > current), position the target line
+            #   near the bottom so that the extra padding appears above it.
+            # - If scrolling upward (new index < current), position it near the top,
+            #   leaving extra space (padding) below it.
+            if self.current_line is not None:
+                if index > self.current_line:
+                    # Scrolling downward: target line should appear near the bottom.
+                    desired_y = viewport_height - padding_pixels
+                elif index < self.current_line:
+                    # Scrolling upward: target line should appear near the top.
+                    desired_y = padding_pixels
+                else:
+                    desired_y = viewport_height / 2
+            else:
+                desired_y = viewport_height / 2
+
+            # Compute the new scroll offset (in pixels) so that the target line’s
+            # position in the viewport becomes the desired_y value.
+            target_offset = target_line_top - desired_y
+
+            # Clamp to valid scroll range.
+            target_offset = max(0, min(target_offset, max_offset))
+            new_scroll_y = 1 - (target_offset / max_offset)
+
         def after_scroll(*a):
-            [self.focus_input(line, highlight, True, grab_focus) for line in self.scroll_layout.children if line.line == index]
+            [self.focus_input(line, highlight, True, grab_focus)
+             for line in self.scroll_layout.children if line.line == index]
 
-            # If there is a current search, refresh all widgets to "refresh" highlight boxes and widget selection
+            # If a search term is active, update highlights.
             if self.search_bar.text:
                 Clock.schedule_once(lambda *_: [line.highlight_text(self.search_bar.text, False) for line in self.scroll_layout.children], 0)
 
-        # Only scroll when there is a scrollbar
-        if len(self.scroll_layout.children) < len(self.line_list):
+        # Only scroll when there is a scrollbar (i.e. not all lines are generated).
+        if len(self.scroll_layout.children) < total_lines:
             if select:
-                Animation(scroll_y=new_scroll, duration=0.1).start(self.scroll_widget)
+                Animation(scroll_y=new_scroll_y, duration=0.1).start(self.scroll_widget)
                 Clock.schedule_once(after_scroll, 0.4 if wrap_around else 0.11)
             else:
-                self.scroll_widget.scroll_y = new_scroll
-                # If not selecting/focusing, just set our current_line
+                self.scroll_widget.scroll_y = new_scroll_y
                 self.set_index(index)
         else:
             if select:
@@ -25153,7 +25187,7 @@ class ServerYamlEditScreen(EditorRoot):
                 self._line._screen.scroll_to_line(self._line.line + 1, grab_focus=True)
 
             # Remove line on backspace if it's empty
-            if self._line.is_list_item and keycode[1] in ['delete', 'backspace'] and not self._original_text:
+            elif self._line.is_list_item and keycode[1] in ['delete', 'backspace'] and not self._original_text:
                 parent = self._line.parent
                 if not parent:
                     return
@@ -28508,13 +28542,7 @@ class MainApp(App):
 
         # Screen manager override for testing
         # if not constants.app_compiled:
-            # constants.server_manager.open_server('purpur crash test')
-            # open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/purpur crash test/purpur.yml')
-            # open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/purpur crash test/plugins/spark/config.json')
-            # open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/purpur crash test/server.properties')
-            # constants.make_update_list()
-            # constants.server_manager.open_server('Cobblemon Official')
-            # open_config_file('/Users/kaleb/Library/Application Support/auto-mcs/Servers/Cobblemon Official/config/bedrockify/bedrockify-ExternalLoadingTips.json')
+        #     pass
 
 
 
