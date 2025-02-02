@@ -15,12 +15,13 @@ import functools
 import threading
 import inspect
 import random
+import json
+import yaml
 import time
 import math
 import sys
 import os
 import re
-# import gc
 
 
 # Local imports
@@ -4077,14 +4078,6 @@ class ScrollViewWidget(ScrollView):
                 pass
         return super().on_touch_down(touch)
 
-    # def __del__(self):
-    #     for widget in self.walk():
-    #         self.remove_widget(widget)
-    #         del widget
-    #
-    #     self.clear_widgets()
-    #     gc.collect()
-
 class ScrollItem(RelativeLayout):
     def __init__(self, widget=None, **kwargs):
         super().__init__(**kwargs)
@@ -4164,14 +4157,6 @@ class RecycleViewWidget(RecycleView):
 
     def assign_viewclass(self, view_class, *args):
         self.viewclass = view_class
-
-    # def __del__(self):
-    #     for widget in self.walk():
-    #         self.remove_widget(widget)
-    #         del widget
-    #
-    #     self.clear_widgets()
-    #     gc.collect()
 
 
 
@@ -16627,7 +16612,7 @@ class PerformancePanel(RelativeLayout):
                     constants.folder_check(constants.tempDir)
                     file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
                     with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
-                        f.write(constants.json.dumps(data['log']))
+                        f.write(json.dumps(data['log']))
 
 
         def update_data(*args):
@@ -17377,7 +17362,7 @@ class ConsolePanel(FloatLayout):
                     constants.folder_check(constants.tempDir)
                     file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
                     with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
-                        f.write(constants.json.dumps(data['log']))
+                        f.write(json.dumps(data['log']))
             Clock.schedule_once(check_for_crash, 1)
 
 
@@ -17735,7 +17720,7 @@ class ConsolePanel(FloatLayout):
                 constants.folder_check(constants.tempDir)
                 file_name = f"{server_obj.name}-latest.log"
                 with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
-                    f.write(constants.json.dumps(self.run_data['log']))
+                    f.write(json.dumps(self.run_data['log']))
 
 
             self.run_data = None
@@ -17994,7 +17979,7 @@ class ConsolePanel(FloatLayout):
             def change_later(*a):
                 try:
                     with open(file_path, 'r') as f:
-                        self.scroll_layout.data = constants.json.loads(f.read())
+                        self.scroll_layout.data = json.loads(f.read())
                 except:
                     if constants.debug:
                         print('Failed to load "latest.log"')
@@ -22946,8 +22931,11 @@ def open_config_file(path: str, *a):
         elif ext in ['yml', 'yaml']:
             editor_screen = 'ServerYamlEditScreen'
 
-        elif ext in ['json', 'json5']:
+        elif ext == 'json':
             editor_screen = 'ServerJsonEditScreen'
+
+        elif ext == 'json5':
+            editor_screen = 'ServerJson5EditScreen'
 
         else:
             editor_screen = 'ServerTextEditScreen'
@@ -23395,8 +23383,14 @@ class EditorRoot(MenuBackground):
                 self.cursor_color = (0.358, 0.839, 1, 1)
                 self.selection_color = (0.308, 0.789, 1, 0.4)
 
+                # Structured data detection
+                if self.get_type(self.text) in (list, tuple, dict):
+                    self.foreground_color = (0.2, 1, 0.5, 1)
+                    self.cursor_color = (0.2, 1, 0.5, 1)
+                    self.selection_color = (0.2, 1, 0.5, 0.4)
+
                 # Boolean detection
-                if self.get_type(self.text.lower()) == bool:
+                elif self.get_type(self.text.lower()) == bool:
                     self.text = self.text.lower()
                     self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-italic"]}')
                     self.foreground_color = (1, 0.451, 1, 1)
@@ -23917,8 +23911,14 @@ class EditorRoot(MenuBackground):
 
             # Define custom behavior for determining data types
 
+            # Structured data detection
+            if ((value.strip().startswith('{') and value.strip().endswith('}'))
+            or (value.strip().startswith('[') and value.strip().endswith(']'))
+            or (value.strip().startswith('(') and value.strip().endswith(')'))):
+                data_type = dict
+
             # Boolean detection
-            if value.lower() in ['true', 'false']:
+            elif value.lower() in ['true', 'false']:
                 data_type = bool
 
             # Numeric detection (int or float)
@@ -24223,13 +24223,13 @@ class EditorRoot(MenuBackground):
         value_matched = False
 
         if search_text:
-            search_text = search_text.strip()
+            search_text = kivy.utils.escape_markup(search_text.strip())
 
             # Detect different types of key/value pairs
             key_text, value_text = self._check_match_logic(data, search_text)
 
-            key_data = str(data['key'])
-            value_data = str(data['value'])
+            key_data = kivy.utils.escape_markup(str(data['key']))
+            value_data = kivy.utils.escape_markup(str(data['value']))
 
             # Check if search matches in key label
             if search_text in key_data:
@@ -25063,8 +25063,14 @@ class ServerYamlEditScreen(EditorRoot):
 
             # Define custom behavior for determining data types
 
+            # Structured data detection
+            if ((value.strip().startswith('{') and value.strip().endswith('}'))
+            or (value.strip().startswith('[') and value.strip().endswith(']'))
+            or (value.strip().startswith('(') and value.strip().endswith(')'))):
+                data_type = dict
+
             # Boolean detection
-            if value.lower() in ['true', 'false', 'yes', 'no']:
+            elif value.lower() in ['true', 'false', 'yes', 'no']:
                 data_type = bool
 
             # Numeric detection (int or float)
@@ -25098,10 +25104,9 @@ class ServerYamlEditScreen(EditorRoot):
                 data = (
                     '__string__',
                     '',
-                    self._line.indent_level + (2 if self._line.is_multiline_string else 3),
+                    self._line.indent_level + (2 if self._line.is_multiline_string else 1),
                     False,
-                    False,
-                    True
+                    False
                 )
 
                 self._line._screen.insert_line(data, self._line.line)
@@ -25166,8 +25171,7 @@ class ServerYamlEditScreen(EditorRoot):
                 data = (
                     '__list__',
                     '',
-                    self._line.indent_level if self._line.is_list_item else self._line.indent_level + 1,
-                    False,
+                    self._line.indent_level,
                     False,
                     False
                 )
@@ -25251,7 +25255,7 @@ class ServerYamlEditScreen(EditorRoot):
     def insert_line(self, line: (tuple, list, dict), index: int = None, refresh=True):
         if not isinstance(line, dict):
 
-            key, value, indent, is_header, is_list_header, is_multiline_string = line
+            key, value, indent, is_header, is_list_header = line
 
             # Format empty values
             if value in ['""', "''", None]:
@@ -25260,9 +25264,16 @@ class ServerYamlEditScreen(EditorRoot):
             # Format list_headers
             if is_list_header:
                 is_header = False
+
+            # Format list items
             is_list_item = key == '__list__'
             if is_list_item:
                 key = '-'
+
+            # Format multiline strings
+            is_multiline_string = key == '__string__'
+            if is_multiline_string:
+                key = ''
 
             # Format multiline strings
             if is_multiline_string:
@@ -25297,445 +25308,185 @@ class ServerYamlEditScreen(EditorRoot):
 
     def load_file(self):
 
-        class YamlToken:
-            def __init__(
-                    self,
-                    raw_line,
-                    indent_level,
-                    is_comment=False,
-                    comment_text=None,
-                    is_list_item=False,
-                    key=None,
-                    value=None,
-                    multiline_indicator=None,
-                    is_multiline_string=False
-            ):
-                self.raw_line = raw_line
-                self.indent_level = indent_level
-                self.is_comment = is_comment
-                self.comment_text = comment_text
-                self.is_list_item = is_list_item
-                self.key = key
-                self.value = value
-                self.multiline_indicator = multiline_indicator
-                self.is_multiline_string = is_multiline_string
+        def parse_yaml(lines: list):
+            """
+            Parses a YAML-like text line by line and returns a list of tuples in the form:
+              (key, value, indent, is_header, is_list_header)
 
-        class YamlNode:
-            def __init__(
-                    self,
-                    parent=None,
-                    indent_level=0,
-                    key=None,
-                    value=None,
-                    is_list_item=False,
-                    comment=None,
-                    inline_comment=None
-            ):
-                self.parent = parent
-                self.indent_level = indent_level
-                self.key = key
-                self.value = value
-                self.is_list_item = is_list_item
-                self.comment = comment
-                self.inline_comment = inline_comment
-                self.children = []
+            Where:
+              - Comments become (full_comment_text, '', indent, False, False)
+              - Blank lines become ('', '', 0, False, False)
+              - Multiline strings become ('__string__', full_line_text, indent, False, False)
+              - List items become ('__list__', item_value, indent, False, False)
+              - Normal key/value lines become (key, value, indent, is_header, is_list_header)
+                * is_header = True if the line ends with a colon and no value,
+                  and the next line is indented more deeply than this line.
+                * is_list_header = True if the line ends with a colon and no value,
+                  and the next non-comment, non-blank line is a list item.
+            """
 
-                # For multiline detection
-                self.is_multiline_string = False
-                self.multiline_indicator = None
+            # This list will hold dictionaries that we will later convert to tuples
+            parsed_lines = []
 
-            def add_child(self, child):
-                self.children.append(child)
+            def get_indent(line):
+                """
+                Count leading spaces and convert to an integer "indent level".
+                This example divides the number of leading spaces by 2, assuming 2 spaces = 1 indent level.
+                Adjust if your YAML uses a different convention.
+                """
+                raw_leading_spaces = len(line) - len(line.lstrip(' '))
+                return raw_leading_spaces // 2
 
-        def tokenize(lines):
-            tokens = []
             for line in lines:
-                indent_level = 0
-                while indent_level < len(line) and line[indent_level] == ' ':
-                    indent_level += 1
+                # 1) Identify indentation
+                indent = get_indent(line)
+                stripped = line.lstrip(' ')
 
-                trimmed = line[indent_level:].rstrip('\n')
-
-                # If empty or line starts with '#' => treat as entire comment line
-                if not trimmed or trimmed.lstrip().startswith('#'):
-                    tokens.append(YamlToken(
-                        raw_line=line,
-                        indent_level=indent_level,
-                        is_comment=True,
-                        comment_text=trimmed
-                    ))
+                # 2) Check if blank line
+                if not stripped.strip():
+                    # Blank line (indent is forced to 0 in the final structure, per your example)
+                    parsed_lines.append({
+                        'key': '',
+                        'value': '',
+                        'indent': 0,
+                        'is_header': False,
+                        'is_list_header': False
+                    })
                     continue
 
-                # Check for list item ("- something")
-                is_list_item = False
-                remainder = trimmed
-                if remainder.startswith('-'):
-                    is_list_item = True
-                    remainder = remainder[1:].lstrip()
+                # 3) Check if comment line
+                if stripped.startswith('#'):
+                    # Store the comment as key, no value
+                    # Keep the "calculated" indent—your examples show comments sometimes having >0 indent
+                    parsed_lines.append({
+                        'key': stripped,
+                        'value': '',
+                        'indent': indent,
+                        'is_header': False,
+                        'is_list_header': False
+                    })
+                    continue
 
-                # We no longer look for '#' in the middle of the line.
-                # All of `remainder` is the “real content.”
-                comment_text = None
+                # 4) Check if list item (starts with '-')
+                if stripped.startswith('-'):
+                    # Everything after the dash is the item value
+                    item_value = stripped[1:].strip()
+                    current_line = {
+                        'key': '__list__',
+                        'value': item_value,
+                        'indent': indent,
+                        'is_header': False,
+                        'is_list_header': False
+                    }
+                    parsed_lines.append(current_line)
 
-                key = None
-                value = None
-                is_multiline_string = False
-                multiline_indicator = None
+                    # Check if the previous meaningful line should be flagged as a "multiline list header"
+                    # Condition: the previous line has no value, is not blank or comment or __string__
+                    if len(parsed_lines) > 1:
+                        prev_line = parsed_lines[-2]
+                        # "Meaningful" means not blank line, not comment, not string placeholder
+                        if (
+                                prev_line['value'] == '' and
+                                prev_line['key'] not in ('', '__string__') and
+                                not prev_line['key'].startswith('#')
+                        ):
+                            prev_line['is_list_header'] = True
 
-                if not is_list_item:
-                    # 1) If line ends with ":" => key only
-                    trimmed_for_colon = remainder.rstrip()
-                    if trimmed_for_colon.endswith(':'):
-                        key = trimmed_for_colon[:-1].rstrip()
-                        value = None
-                    else:
-                        # 2) Otherwise, look for ": "
-                        sep_index = remainder.find(': ')
-                        if sep_index != -1:
-                            key_part = remainder[:sep_index].rstrip()
-                            value_part = remainder[sep_index + 2:].lstrip()
+                    continue
 
-                            key = key_part if key_part else None
-                            value = value_part if value_part else None
+                # 5) Check if we have a proper "key: value" or "key:" line
+                #    If there's a colon, split on the first colon
+                if ':' in stripped:
+                    key_part, value_part = stripped.split(':', 1)
+                    key_part = key_part.strip()
+                    value_part = value_part.strip()
 
-                            # If the value is exactly '>' or '|', treat as block scalar
-                            if value in (">", "|"):
-                                multiline_indicator = value
-                                value = None
-                        else:
-                            # 3) No trailing colon and no ": " => entire line is value
-                            key = ''
-                            value = remainder
-                            is_multiline_string = True
+                    current_line = {
+                        'key': key_part,
+                        'value': value_part,
+                        'indent': indent,
+                        'is_header': False,  # will be set later if no value & next line is deeper
+                        'is_list_header': False  # might also be set if next line is a list item
+                    }
+                    parsed_lines.append(current_line)
+
                 else:
-                    # It's a list item => everything is the value
-                    value = remainder
-
-                tokens.append(YamlToken(
-                    raw_line=line,
-                    indent_level=indent_level,
-                    is_comment=False,
-                    comment_text=comment_text,  # Will remain None
-                    is_list_item=is_list_item,
-                    key=key,
-                    value=value,
-                    multiline_indicator=multiline_indicator,
-                    is_multiline_string=is_multiline_string
-                ))
-
-            return tokens
-
-        def build_ast(tokens):
-            root = YamlNode(indent_level=-1, key='__ROOT__')
-            stack = [root]
-            i = 0
-
-            while i < len(tokens):
-                token = tokens[i]
-
-                # If it's just a comment
-                if token.is_comment and token.key is None and token.value is None:
-                    comment_node = YamlNode(
-                        parent=stack[-1],
-                        indent_level=token.indent_level,
-                        comment=token.comment_text
-                    )
-                    stack[-1].add_child(comment_node)
-                    i += 1
-                    continue
-
-                # Adjust indentation
-                while stack and stack[-1].indent_level >= token.indent_level:
-                    stack.pop()
-
-                parent_node = stack[-1] if stack else root
-
-                new_node = YamlNode(
-                    parent=parent_node,
-                    indent_level=token.indent_level,
-                    key=token.key,
-                    value=token.value,
-                    is_list_item=token.is_list_item,
-                    inline_comment=(token.comment_text if (not token.is_comment and token.comment_text) else None)
-                )
-                new_node.is_multiline_string = token.is_multiline_string
-                new_node.multiline_indicator = token.multiline_indicator
-
-                parent_node.add_child(new_node)
-                stack.append(new_node)
-                i += 1
-
-                # If it's a key with no value, gather subsequent dash items
-                if (new_node.key is not None) and (new_node.value is None):
-                    while i < len(tokens):
-                        lookahead = tokens[i]
-                        if lookahead.is_comment and lookahead.key is None and lookahead.value is None:
-                            comment_node = YamlNode(
-                                parent=new_node,
-                                indent_level=lookahead.indent_level,
-                                comment=lookahead.comment_text
-                            )
-                            new_node.add_child(comment_node)
-                            i += 1
-                            continue
-
-                        if lookahead.is_list_item:
-                            child_item = YamlNode(
-                                parent=new_node,
-                                indent_level=lookahead.indent_level,
-                                key=None,
-                                value=lookahead.value,
-                                is_list_item=True,
-                                inline_comment=(lookahead.comment_text if (
-                                        not lookahead.is_comment and lookahead.comment_text) else None)
-                            )
-                            child_item.is_multiline_string = lookahead.is_multiline_string
-                            child_item.multiline_indicator = lookahead.multiline_indicator
-
-                            new_node.add_child(child_item)
-                            i += 1
+                    # 6) Possibly a multiline string line or a weird line with no colon at all
+                    #    We'll interpret this as a multiline string if it is more indented than the previous line
+                    #    and the previous line is not comment/blank/string
+                    if parsed_lines:
+                        prev_line = parsed_lines[-1]
+                        if (
+                                indent > prev_line['indent'] and
+                                prev_line['key'] not in ('', '__string__') and
+                                not prev_line['key'].startswith('#')
+                        ):
+                            # It's a multiline string line
+                            parsed_lines.append({
+                                'key': '__string__',
+                                'value': stripped,
+                                'indent': indent,
+                                'is_header': False,
+                                'is_list_header': False
+                            })
                         else:
-                            break
+                            # Fallback: treat as a "header" with no value
+                            parsed_lines.append({
+                                'key': stripped,
+                                'value': '',
+                                'indent': indent,
+                                'is_header': False,
+                                'is_list_header': False
+                            })
+                    else:
+                        # If it's the first line in the file and has no colon, treat as a header
+                        parsed_lines.append({
+                            'key': stripped,
+                            'value': '',
+                            'indent': indent,
+                            'is_header': False,
+                            'is_list_header': False
+                        })
 
-            return root
+            # ----------------------------------------------------------------
+            # SECOND PASS:
+            # Mark any line as a 'header' if it has an empty value and the NEXT line is more indented.
+            #
+            # Mark it as a 'header' if:
+            #    - key != '' (not blank)
+            #    - key != '#' (not comment)
+            #    - value = ''
+            #    - next line is more indented
+            #
+            # We already handle list headers in the single pass,
+            # so we only do "is_header" fix-up here.
+            # ----------------------------------------------------------------
+            for i in range(len(parsed_lines) - 1):
+                current_line = parsed_lines[i]
+                next_line = parsed_lines[i + 1]
 
-        def to_python(node):
-            # (A) If it's a pure comment node
-            if (
-                    node.comment is not None and
-                    node.key is None and
-                    node.value is None and
-                    not node.children
-            ):
-                return {
-                    '__type__': 'comment',
-                    'comment': node.comment,
-                    '__indent__': node.indent_level
-                }
+                # Skip if it's blank, comment, string marker, or has a value
+                if (
+                        current_line['key'] not in ('', '__string__') and
+                        not current_line['key'].startswith('#') and
+                        current_line['value'] == '' and
+                        next_line['indent'] > current_line['indent']
+                ):
+                    current_line['is_header'] = True
 
-            # (B) If no children => leaf
-            if not node.children:
-                if node.is_multiline_string:
-                    return {
-                        '__type__': 'multiline_string',
-                        'value': node.value,
-                        '__indent__': node.indent_level,
-                        'indicator': node.multiline_indicator
-                    }
-                if node.multiline_indicator:
-                    return {
-                        '__type__': 'block_scalar',
-                        'indicator': node.multiline_indicator,
-                        'value': node.value,
-                        '__indent__': node.indent_level
-                    }
-                if node.inline_comment:
-                    return {
-                        '__type__': 'scalar_with_comment',
-                        'value': node.value,
-                        'inline_comment': node.inline_comment,
-                        '__indent__': node.indent_level
-                    }
-                return node.value  # normal scalar
-
-            # (C) Node has children => figure out if it's a list or dict
-            non_comment_children = [
-                c for c in node.children
-                if not (c.comment is not None and c.key is None and c.value is None)
+            # Finally, convert parsed_lines (list of dicts) to the list of tuples
+            result = [
+                (
+                    d['key'],
+                    d['value'],
+                    d['indent'],
+                    d['is_header'],
+                    d['is_list_header']
+                )
+                for d in parsed_lines
             ]
 
-            # (C1) If all children are list items => produce a list
-            if all(c.is_list_item for c in non_comment_children):
-                items = []
-                for child in node.children:
-                    items.append(to_python(child))
-                if node.inline_comment:
-                    return {
-                        '__type__': 'list',
-                        '__items__': items,
-                        '__inline_comment__': node.inline_comment,
-                        '__indent__': node.indent_level
-                    }
-                return items
-
-            # (C2) Normal dict, but possibly "scalar_with_children"
-            result = {}
-
-            # If parent has a direct scalar
-            if node.value is not None:
-                result['__value__'] = node.value
-                if node.is_multiline_string:
-                    result['__type__'] = 'multiline_scalar_with_children'
-                    result['__indicator__'] = node.multiline_indicator
-                else:
-                    result['__type__'] = 'scalar_with_children'
-                result['__indent__'] = node.indent_level
-
-            # Convert children
-            for child in node.children:
-                # If the child is a pure comment node
-                if (
-                        child.comment is not None and
-                        child.key is None and
-                        child.value is None
-                ):
-                    comment_key = f'__comment__{len(result)}'
-                    result[comment_key] = to_python(child)
-                else:
-                    if child.key is not None:
-                        result[child.key] = to_python(child)
-                    else:
-                        list_key = f'__listitem__{len(result)}'
-                        result[list_key] = to_python(child)
-
-            if node.inline_comment:
-                result['__inline_comment__'] = node.inline_comment
-
             return result
-
-        def flatten_yaml(data, parent_key='', indent=0):
-            """
-            Build self.line_list as tuples of:
-              ( key, value, indent, is_header, is_list_header, is_multiline_string ).
-            """
-
-            # -- CASE 1: 'scalar_with_children' or 'multiline_scalar_with_children' --
-            if (
-                    isinstance(data, dict)
-                    and data.get('__type__') in ('scalar_with_children', 'multiline_scalar_with_children')
-            ):
-                parent_val = data.get('__value__', '')
-                is_multi = (data['__type__'] == 'multiline_scalar_with_children')
-                shown_key = parent_key or '__root__'
-
-                # Grab any inline comment and append it to the value
-                inline_comment = data.get('__inline_comment__')
-                if inline_comment:
-                    parent_val = f"{parent_val}  {inline_comment}"
-
-                # 1 line for the parent's key & value
-                self.line_list.append((shown_key, parent_val, indent, False, False, is_multi))
-
-                # Now flatten real children under indent+1
-                for child_key, child_val in data.items():
-                    if child_key in (
-                            '__type__', '__value__', '__indent__', '__indicator__',
-                            '__inline_comment__'
-                    ):
-                        continue
-                    if child_key.startswith('__comment__'):
-                        c_text = child_val.get('comment', '')
-                        c_indent = child_val.get('__indent__', indent + 1)
-                        self.line_list.append((c_text, '', c_indent, False, False, False))
-                        continue
-
-                    flatten_yaml(child_val, child_key, indent + 1)
-
-                # We no longer append a separate line for '__inline_comment__'!
-                return
-
-            # -- CASE 2: Plain 'multiline_string' --
-            if isinstance(data, dict) and data.get('__type__') == 'multiline_string':
-                val = data['value']
-                ml_flag = True
-                node_indent = data.get('__indent__', indent)
-                shown_key = parent_key or '__root__'
-
-                # Merge inline comment
-                inline_comment = data.get('__inline_comment__')
-                if inline_comment:
-                    val = f"{val}  {inline_comment}"
-
-                self.line_list.append((shown_key, val, node_indent, False, False, ml_flag))
-                return
-
-            # -- CASE 3: 'block_scalar' --
-            if isinstance(data, dict) and data.get('__type__') == 'block_scalar':
-                val = data.get('value', '')
-                indicator = data.get('indicator', '')
-                node_indent = data.get('__indent__', indent)
-                shown_key = f"{parent_key} {indicator}".strip()
-
-                # Merge inline comment
-                inline_comment = data.get('__inline_comment__')
-                if inline_comment:
-                    val = f"{val}  {inline_comment}"
-
-                self.line_list.append((shown_key, val, node_indent, False, False, False))
-                return
-
-            # -- CASE 4: If it's a dict with __type__='list' --
-            if isinstance(data, dict) and data.get('__type__') == 'list' and '__items__' in data:
-                inline_comment = data.get('__inline_comment__', '')
-                list_line_value = ''
-                if inline_comment:
-                    list_line_value = f"{list_line_value}  {inline_comment}".strip()
-
-                # This prints "parent_key:" on one line
-                self.line_list.append((parent_key, list_line_value, indent, True, True, False))
-
-                # Then flatten all items
-                flatten_yaml(data['__items__'], parent_key, indent + 1)
-                return
-
-            # -- CASE 5: Normal dict => flatten each key --
-            if isinstance(data, dict):
-                # We'll skip our internal metadata keys
-                skip_keys = (
-                    '__type__', '__inline_comment__', '__items__',
-                    '__indent__', '__value__', '__indicator__'
-                )
-
-                for k, v in data.items():
-                    if k in skip_keys:
-                        continue
-
-                    if k.startswith('__comment__'):
-                        # Flatten a pure comment
-                        comment_text = v.get('comment', '')
-                        comment_indent = v.get('__indent__', indent)
-                        self.line_list.append((comment_text, '', comment_indent, False, False, False))
-                        continue
-
-                    # If v is nested
-                    if isinstance(v, (dict, list)):
-                        # Possibly it's a list or dict with children
-                        is_list_header = (
-                                isinstance(v, list) or
-                                (isinstance(v, dict) and v.get('__type__') == 'list')
-                        )
-                        # If it's a "scalar_with_children," flatten directly
-                        if isinstance(v, dict) and v.get('__type__') in (
-                                'scalar_with_children', 'multiline_scalar_with_children'
-                        ):
-                            flatten_yaml(v, k, indent)
-                        else:
-                            # Normal "header line" for the sub-dict or sub-list
-                            self.line_list.append((k, '', indent, True, is_list_header, False))
-                            flatten_yaml(v, k, indent + 1)
-                    else:
-                        self.line_list.append((k, v, indent, False, False, False))
-
-                return
-
-            # -- CASE 6: If data is a list --
-            if isinstance(data, list):
-                for idx, item in enumerate(data):
-                    item_key = '__list__'
-                    if isinstance(item, (dict, list)):
-                        is_list_header = (
-                                isinstance(item, list) or
-                                (isinstance(item, dict) and item.get('__type__') == 'list')
-                        )
-                        self.line_list.append((item_key, '', indent, True, is_list_header, False))
-                        flatten_yaml(item, parent_key, indent + 1)
-                    else:
-                        self.line_list.append((item_key, item, indent, False, False, False))
-                return
-
-            # -- CASE 7: Otherwise a plain scalar --
-            # Merge inline_comment if we had it. (We don't in plain scalars, typically.)
-            self.line_list.append((parent_key, data, indent, False, False, False))
 
         self.undo_history = []
         self.redo_history = []
@@ -25744,25 +25495,9 @@ class ServerYamlEditScreen(EditorRoot):
         self.modified = False
         self.current_line = None
 
-        # Flatten
+        # Flatten and insert into the editor
         self.line_list = []
-
-        raw_lines = self.read_from_disk()
-
-        tokens = tokenize(raw_lines)
-        root_ast = build_ast(tokens)
-        yaml_data = to_python(root_ast)
-        flatten_yaml(yaml_data)
-
-
-        # Filter and format data
-        filtered = self.line_list
-        self.line_list = []
-        for line in filtered:
-            if line[0].startswith('__comment__'):
-                continue
-
-            self.insert_line(line, refresh=False)
+        [self.insert_line(line, refresh=False) for line in parse_yaml(self.read_from_disk())]
 
         return self.line_list
 
@@ -25773,34 +25508,45 @@ class ServerYamlEditScreen(EditorRoot):
             line = line['data']
             key_str = str(line['key']).strip()
             val_str = str(line['value']).strip()
-            indent = "  " * line['indent']
+            base_indent = " " * 2
+
 
             # Format empty values
             if val_str in ['""', "''", None]:
                 val_str = ''
 
+            # Ignore empty list items or multiline strings
+            if (line['is_multiline_string'] or line['is_list_item']) and not val_str:
+                continue
+
             if line['is_comment'] or line['is_blank_line']:
+                indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}".rstrip() + '\n')
 
             elif line['is_list_item'] and val_str:
+                indent = base_indent * line['indent']
                 final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
 
             elif line['is_multiline_string'] and val_str:
+                indent = base_indent * (line['indent'] + 2)
                 final_content += str(f"{indent}{val_str}".rstrip() + '\n')
 
             elif line['is_header'] or line['is_list_header'] or not val_str:
+                indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
 
             elif key_str and val_str:
+                indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}: {val_str}".rstrip() + '\n')
 
             elif key_str:
+                indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
 
-        return print(final_content)
+        # return print(final_content)
         self.write_to_disk(final_content)
 
-# Edit all JSON/JSON5 files
+# Edit all JSON files
 class ServerJsonEditScreen(ServerYamlEditScreen):
 
     # Internally convert JSON to YAML for ease of editing
@@ -25811,13 +25557,8 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
             # Determine format features prior to parsing to preserve when saving
             self.minified = len(raw_content.splitlines()) <= 1
 
-            json_data = constants.json.loads(raw_content)
-            content = constants.yaml.dump(
-                json_data,
-                sort_keys=False,
-                allow_unicode=True,
-                width=float("inf")
-            )
+            json_data = json.loads(raw_content)
+            content = yaml.dump(json_data, sort_keys=False, allow_unicode=True, width=float("inf"))
             return content.strip().splitlines()
 
     def save_file(self):
@@ -25850,13 +25591,13 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
 
         # Internally convert YAML back to JSON to retain original file format
         try:
-            yaml_data = constants.yaml.safe_load(final_content)
+            yaml_data = yaml.safe_load(final_content)
 
             if self.minified:
-                final_content = constants.json.dumps(yaml_data, indent=None, separators=(',', ':')).strip()
+                final_content = json.dumps(yaml_data, indent=None, separators=(',', ':')).strip()
 
             else:
-                final_content = constants.json.dumps(yaml_data, indent=4)
+                final_content = json.dumps(yaml_data, indent=4)
 
         except Exception as e:
             if constants.debug:
