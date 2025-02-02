@@ -25394,16 +25394,27 @@ class ServerYamlEditScreen(EditorRoot):
 
                     continue
 
-                # 5) Check if we have a proper "key: value" or "key:" line
-                #    If there's a colon, split on the first colon
-                if ':' in stripped:
-                    key_part, value_part = stripped.split(':', 1)
+                # 5) Check if we have a proper "key: value"
+                # If there's a colon, split on the first colon + space
+                if ': ' in stripped:
+                    key_part, value_part = stripped.split(': ', 1)
                     key_part = key_part.strip()
                     value_part = value_part.strip()
 
                     current_line = {
                         'key': key_part,
                         'value': value_part,
+                        'indent': indent,
+                        'is_header': False,  # will be set later if no value & next line is deeper
+                        'is_list_header': False  # might also be set if next line is a list item
+                    }
+                    parsed_lines.append(current_line)
+
+                # 6) Check if we have a proper "key:" line
+                elif stripped.endswith(':'):
+                    current_line = {
+                        'key': stripped.rstrip(':'),
+                        'value': '',
                         'indent': indent,
                         'is_header': False,  # will be set later if no value & next line is deeper
                         'is_list_header': False  # might also be set if next line is a list item
