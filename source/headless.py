@@ -848,9 +848,15 @@ class HelpCommand(Command):
         ]
 
     def show_command_help(self, cmd: list or tuple or str):
-        if isinstance(cmd, list or tuple):
+        if isinstance(cmd, (list, tuple)):
             root = cmd[0].strip()
             args = cmd[1:]
+
+            # Dirty fix to failure parsing args
+            if ' ' in root and not args:
+                new_root = root.split(' ')
+                root = new_root[0]
+                args = new_root[1:]
         else:
             root = cmd.strip()
             args = []

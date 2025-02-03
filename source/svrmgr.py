@@ -72,6 +72,7 @@ class ServerObject():
             self.server_properties = constants.server_properties(server_name)
 
         self.config_file = constants.server_config(server_name)
+        self.config_paths = None
         self.properties_hash = self._get_properties_hash()
 
 
@@ -204,6 +205,9 @@ class ServerObject():
         def load_scriptmgr(*args):
             self.script_manager = amscript.ScriptManager(self.name)
         Timer(0, load_scriptmgr).start()
+        def load_config_paths(*args):
+            self.reload_config_paths()
+        Timer(0, load_config_paths).start()
 
         if not constants.headless:
             print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
@@ -298,6 +302,10 @@ class ServerObject():
         self.write_config()
         self.proxy_enabled = enabled
 
+    # Retrieve a data structure of all config files in the server
+    def reload_config_paths(self):
+        self.config_paths = constants.gather_config_files(self.name)
+        return self.config_paths
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
@@ -423,6 +431,9 @@ class ServerObject():
             def load_scriptmgr(*args):
                 self.script_manager = amscript.ScriptManager(self.name)
             Timer(0, load_scriptmgr).start()
+            def load_config_paths(*args):
+                self.reload_config_paths()
+            Timer(0, load_config_paths).start()
 
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):

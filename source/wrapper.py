@@ -306,7 +306,6 @@ if __name__ == '__main__':
             exitApp = True
 
             # Use crash handler when app is compiled
-            cleanup_on_close()
             if crash and constants.app_compiled:
 
                 # Destroy init window if macOS
@@ -314,6 +313,8 @@ if __name__ == '__main__':
                     init_window.destroy()
 
                 app_crash(crash)
+
+            cleanup_on_close()
 
             # Normal Python behavior when testing
             if not constants.app_compiled:

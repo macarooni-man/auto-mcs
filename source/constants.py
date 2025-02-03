@@ -43,7 +43,7 @@ import amscript
 
 app_version = "2.2.7"
 ams_version = "1.4"
-telepath_version = "1.0.4"
+telepath_version = "1.0.5"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -494,6 +494,10 @@ def translate(text: str):
     def search_data(s, *a):
         try:
             return locale_data[s.strip().lower()][app_config.locale]
+        except KeyError:
+            pass
+        try:
+            return locale_data[s.strip()][app_config.locale]
         except KeyError:
             pass
 
@@ -1023,7 +1027,7 @@ def telepath_upload(telepath_data: dict, path: str):
 # Whitelist is for restricting downloadable content
 telepath_download_whitelist = {
     'paths': [serverDir, scriptDir, backupFolder],
-    'names': ['.ams', '.amb', 'server.properties', 'server-icon.png']
+    'names': ['.ams', '.amb', 'server-icon.png']
 }
 def telepath_download(telepath_data: dict, path: str, destination=downDir, rename=''):
     if not api_manager:
@@ -3544,6 +3548,27 @@ def pre_server_update(telepath=False):
     else:
         telepath_data = server_obj._telepath_data
         if telepath_data:
+
+            # Copy import remotely if available
+            try:
+                if import_data['path']:
+                    import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
+
+                    api_manager.request(
+                        endpoint='/create/push_new_server',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={'server_info': new_server_info, 'import_info': import_data}
+                    )
+                    response = api_manager.request(
+                        endpoint='/create/pre_server_create',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={'telepath': True}
+                    )
+            except KeyError:
+                pass
+
             response = api_manager.request(
                 endpoint='/create/pre_server_update',
                 host=telepath_data['host'],
@@ -4610,6 +4635,9 @@ def scan_modpack(update=False, progress_func=None):
         if os.path.exists(os.path.join(test_server, 'config')):
             file_list.extend(glob(os.path.join(test_server, "config", "*.*")))
 
+        # Make sure they are actually files
+        file_list = [file for file in file_list if os.path.isfile(file)]
+
         matches = {
             'forge': 0,
             'fabric': 0,
@@ -5268,7 +5296,7 @@ def server_properties(server_name: str, write_object=None):
     # If write_object, write it to file path
     if write_object:
 
-        with open(properties_file, 'w') as f:
+        with open(properties_file, 'w', encoding='utf-8', errors='ignore') as f:
             file_contents = ""
 
             for key, value in write_object.items():
@@ -5899,6 +5927,140 @@ max-world-size=29999984"""
         f.write(serverProperties)
 
 
+# Recursively gathers all config files with a specific depth (default 3)
+# Returns {"dir1": ['match1', 'match2', 'match3', ...]}
+valid_config_formats = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'json5', 'ini', 'txt', 'snbt']
+[telepath_download_whitelist['names'].append(f'.{ext}') for ext in valid_config_formats]
+def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
+    root = server_path(name)
+    excludes = [
+        'version_history.json', 'version_list.json', 'usercache.json', 'banned-players.json', 'banned-ips.json',
+        'whitelist.json', 'ops.json', 'ops.txt', 'whitelist.txt', 'banned-players.txt', 'banned-ips.txt', 'eula.txt',
+        'bans.txt', 'modrinth.index.json', 'amscript', server_ini
+    ]
+    final_dict = {}
+
+    def process_dir(path: str, depth: int = 0):
+        basename = os.path.basename(path)
+        if depth > max_depth or basename.startswith('.') or basename in excludes:
+            return
+
+        match_list = []
+
+        try:
+            with os.scandir(path) as items:
+                for item in items:
+
+                    # Add to final_dict if it's a valid config file
+                    if item.is_file() and os.path.splitext(item.name)[1].strip('.') in valid_config_formats and item.name not in excludes and not item.name.startswith('.'):
+                        match_list.append(item.path)
+
+                    # Continue recursion until max_depth is reached
+                    elif item.is_dir():
+                        process_dir(item.path, depth + 1)
+
+        except (PermissionError, FileNotFoundError) as e:
+            if debug:
+                print(f"Error accessing {path}: {e}")
+
+        if match_list:
+            final_dict[path] = sorted(match_list, key=lambda x: (os.path.basename(x) != 'server.properties', os.path.basename(x)))
+
+    process_dir(root)
+    return dict(sorted(final_dict.items(), key=lambda item: (os.path.basename(item[0]) != name, os.path.basename(item[0]))))
+
+# Replace configuration files via Telepath
+def update_config_file(server_name: str, upload_path: str, destination_path: str):
+
+    # Don't allow move to itself
+    if upload_path == destination_path:
+        return False
+
+    # Only allow files to get replaced in the current server
+    if not destination_path.startswith(server_path(server_name)):
+        return False
+
+    # Only allow files which already exist
+    if not os.path.isfile(destination_path):
+        return False
+
+    # Only allow files from uploadDir
+    if not upload_path.startswith(uploadDir):
+        return False
+
+    # Only allow accepted file types
+    for ext in valid_config_formats:
+        if destination_path.endswith(f'.{ext}') or upload_path.endswith(f'.{ext}'):
+            break
+    else:
+        return False
+
+    # Move file to intended path
+    move(upload_path, destination_path)
+    clear_uploads()
+
+# Allows parsing of any OS path style
+def cross_platform_path(path, depth=1):
+    """
+    Returns the last `depth` components of the given path.
+
+    For Unix-style paths:
+      - Only forward slashes ("/") are considered true directory separators.
+      - Backslashes are used to escape characters (e.g. spaces) and are unescaped in the result.
+      - If the original path is absolute (starts with '/'), the returned value will also be absolute.
+
+    For Windows-style paths:
+      - Both backslashes ("\") and forward slashes ("/") are treated as separators.
+      - No unescaping is performed.
+
+    If depth is greater than the available number of components,
+    the original path is returned.
+
+    Parameters:
+      path (str): The file path.
+      depth (int): The number of path components (from the right) to return (default is 1).
+
+    Returns:
+      str: The resulting subpath.
+    """
+    if depth < 1:
+        raise ValueError("depth must be >= 1")
+
+    def sanitize(text: str):
+        return text.lstrip('/').lstrip('\\')
+
+    # Remove any trailing separators to avoid an empty final component.
+    path = re.sub(r'[\\/]+$', '', path)
+
+    # Detect Windows-style paths:
+    # - They often start with a drive letter (e.g., "C:\...")
+    # - Or they contain backslashes and no forward slashes.
+    if re.match(r'^[A-Za-z]:', path) or ('\\' in path and '/' not in path):
+        # Split on one or more of either separator.
+        parts = re.split(r'[\\/]+', path)
+        # If the requested depth is more than available parts, return the original path.
+        if depth >= len(parts):
+            return sanitize(path)
+        # Join the last `depth` parts with the Windows separator.
+        return sanitize('\\'.join(parts[-depth:]))
+    else:
+        # Unix-style path.
+        # In Unix, the only true separator is "/"; backslashes are escapes.
+        is_absolute = path.startswith('/')
+        # Split on "/" (ignoring empty strings which can occur if the path is absolute)
+        parts = [p for p in path.split('/') if p]
+        if depth > len(parts):
+            # If depth is more than available, return the original path.
+            return sanitize(path)
+        # Grab the last `depth` components.
+        selected_parts = parts[-depth:]
+        # Unescape any escaped characters in each component (e.g. turn "\ " into " ").
+        selected_parts = [re.sub(r'\\(.)', r'\1', comp) for comp in selected_parts]
+        result = '/'.join(selected_parts)
+        if is_absolute:
+            result = '/' + result
+        return sanitize(result)
+
 # CTRL + Backspace function
 def control_backspace(text, index):
 
@@ -5930,9 +6092,7 @@ def control_backspace(text, index):
 
 # Updates the server icon with a new image
 # Returns: [bool: success, str: reason]
-valid_image_formats = [
-    "*.png", "*.jpg", "*.jpeg", "*.gif", "*.jpe", "*.jfif", "*.tif", "*.tiff", "*.bmp", "*.icns", "*.ico", "*.webp"
-]
+valid_image_formats = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.jpe", "*.jfif", "*.tif", "*.tiff", "*.bmp", "*.icns", "*.ico", "*.webp"]
 def update_server_icon(server_name: str, new_image: str = False) -> [bool, str]:
     icon_path = os.path.join(server_path(server_name), 'server-icon.png')
 
@@ -6723,7 +6883,7 @@ class SearchManager():
                 ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
                 ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}, ['mod', 'plugin', 'addon', 'extension']),
                 ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}, ['amscript', 'script', 'ide', 'develop']),
-                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (playit)': None, 'Install proxy (playit)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'playit', 'update', 'jvm', 'motd'])
+                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit configuration files": None, "Edit 'server.properties'": None, 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (playit)': None, 'Install proxy (playit)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'playit', 'update', 'jvm', 'motd', 'yml', 'config'])
             ]
         }
 
