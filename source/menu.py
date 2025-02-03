@@ -23369,6 +23369,19 @@ class EditorRoot(MenuBackground):
                 self._update_overflow()
 
             # Type color and prediction
+            @staticmethod
+            def _input_validation(text: str):
+
+                # Escape newlines and tabs from pasting
+                if '\n' in text:
+                    text = text.replace('\n', '\\n')
+                if '\r' in text:
+                    text = text.replace('\r', '\\r')
+                if '\t' in text:
+                    text = text.replace('\t', '    ')
+
+                return text
+
             def on_text(self, *args):
 
                 # Update text in memory
@@ -23442,6 +23455,9 @@ class EditorRoot(MenuBackground):
 
                 if self._line._screen.popup_widget:
                     return None
+
+                substring = self._input_validation(substring)
+
                 super().insert_text(substring, from_undo=from_undo)
 
             # Add in special key presses
@@ -23455,6 +23471,10 @@ class EditorRoot(MenuBackground):
                 # Ignore undo and redo for global effect
                 if keycode[1] in ['r', 'z', 'y', 'c'] and control in modifiers:
                     return None
+
+                # Ignore pressing certain keys
+                elif (keycode[1] == 'super' and control in modifiers) or (control in modifiers and keycode[1] in ['s', 'f']):
+                    pass
 
                 # Undo functionality
                 elif (((not modifiers or bool([m for m in modifiers if m not in keycode[1]])) and (text or keycode[1] in ['backspace', 'delete', 'spacebar'])) or
@@ -23530,9 +23550,10 @@ class EditorRoot(MenuBackground):
                 self.index_func = self._line.index_func
                 self.undo_func = self._line.undo_func
                 self.get_type = self._line.get_type
-                self.text = default_value
-                self.original_text = default_value
                 self.eq = self._line.eq_label
+
+                self.text = self._input_validation(default_value)
+                self.original_text = str(self.text)
 
                 # This was formerly: self.line = self._line.line_number
                 # Renamed to indicate it’s the label widget for the line number
@@ -23544,11 +23565,13 @@ class EditorRoot(MenuBackground):
                 if self._line.line == self._line._screen.current_line:
                     self.grab_focus()
                 else:
-                    self.focused = False
-                    self.do_cursor_movement("cursor_home")
-                    self.scroll_x = 0
-                    # This seems to have problems with not actually updating when scrolling
-                    self._update_overflow()
+                    def unfocus_later(*a):
+                        self.focused = False
+                        self.do_cursor_movement("cursor_home")
+                        self.scroll_x = 0
+                        # This seems to have problems with not actually updating when scrolling
+                        self._update_overflow()
+                    Clock.schedule_once(unfocus_later, 0)
 
             def __init__(self, line, **kwargs):
                 super().__init__(**kwargs)
@@ -24185,7 +24208,9 @@ class EditorRoot(MenuBackground):
             position = 'pageup'
             index = 0
 
-        while not found_input:
+        # Loop until full circle or input is found
+        attempts = 0
+        while not found_input and attempts <= len(self.line_list):
             if index >= len(self.line_list):
                 index = 0
                 wrap_around = True
@@ -24213,6 +24238,8 @@ class EditorRoot(MenuBackground):
                 index = index - 1
             else:
                 index = index + 1
+
+            attempts += 1
 
     # Generate search in background
     @staticmethod
@@ -24431,6 +24458,17 @@ class EditorRoot(MenuBackground):
                     self.scroll_widget.refresh_from_data()
                     self.scroll_to_line(line_num, highlight=True, grab_focus=True)
 
+    def _refresh_viewport(self):
+        # Force refresh of all data in the viewport
+        self.scroll_widget.data = self.line_list
+        self.scroll_widget.refresh_from_data()
+
+        # If the content is smaller than or equal to the viewport, don't allow overscroll
+        total_lines = len(self.line_list)
+        content_height = total_lines * 50
+        viewport_height = self.scroll_widget.height - self.search_bar.height
+        self.scroll_widget.always_overscroll = content_height > viewport_height
+
     # Line behavior
     def insert_line(self, data: (tuple, list, dict), index: int = None, refresh=True):
 
@@ -24451,8 +24489,7 @@ class EditorRoot(MenuBackground):
             for line in self.scroll_layout.children:
                 line.value_label.focused = False
 
-            self.scroll_widget.data = self.line_list
-            self.scroll_widget.refresh_from_data()
+            self._refresh_viewport()
 
         return data
 
@@ -24467,8 +24504,7 @@ class EditorRoot(MenuBackground):
 
             # Update layout with new data
             if refresh:
-                self.scroll_widget.data = self.line_list
-                self.scroll_widget.refresh_from_data()
+                self._refresh_viewport()
 
             return data
 
@@ -24653,6 +24689,7 @@ class EditorRoot(MenuBackground):
 
         # Editor UI
         self.scroll_widget = RecycleViewWidget(position=(0.5, 0.5), view_class=self.EditorLine)
+        self.scroll_widget.always_overscroll = False
         self.scroll_layout = RecycleGridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30], default_size=(1250, 50))
         self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
         self.scroll_layout.id = 'scroll_content'
@@ -24788,7 +24825,7 @@ class EditorRoot(MenuBackground):
         )
         float_layout.add_widget(self.controls_button)
 
-# Edit in plain text mode for fallback
+# Edit in plain-text mode for fallback
 class ServerTextEditScreen(EditorRoot):
 
     class EditorLine(EditorRoot.EditorLine):
@@ -24930,6 +24967,7 @@ class ServerPropertiesEditScreen(EditorRoot):
 
         for raw_line in self.read_from_disk():
             line = raw_line.rstrip('\r\n')
+            print(line)
 
             # Extract leading indentation
             match = re.match(r'^(\s*)', line)
@@ -25933,6 +25971,7 @@ class ServerJson5EditScreen(ServerYamlEditScreen):
         # Write the JSON5 back to disk
         # return print(json5_content)
         return self.write_to_disk(json5_content)
+
 
 
 # Server Settings Screen ---------------------------------------------------------------------------------------------
