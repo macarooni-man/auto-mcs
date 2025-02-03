@@ -24501,7 +24501,7 @@ class EditorRoot(MenuBackground):
 
     def read_from_disk(self) -> list:
         with open(self.path, 'r', encoding='utf-8') as f:
-            content = f.read().strip()
+            content = f.read().strip('\r\n')
             return content.splitlines()
 
     def write_to_disk(self, content: str):
@@ -24790,6 +24790,7 @@ class ServerPropertiesEditScreen(EditorRoot):
             is_header = data['is_header']
             is_comment = data['is_comment']
             is_blank_line = data['is_blank_line']
+            indent_level = data['indent']
             max_line_count = len(self._screen.line_list)
 
 
@@ -24801,6 +24802,10 @@ class ServerPropertiesEditScreen(EditorRoot):
             self.line_matched = data['line_matched']
             self._finished_rendering = False
             self._comment_padding = None
+
+            # Indentation space
+            self.indent_level = indent_level
+            self.indent_space = dp(25) * self.indent_level
 
             # Defaults
             font_name = 'mono-bold' if is_header else 'mono-medium'
@@ -24831,7 +24836,7 @@ class ServerPropertiesEditScreen(EditorRoot):
             self.key_label.color = self.key_label.default_color
             self.key_label.size_hint_max_y = 50
             self.key_label.pos_hint = {'center_y': 0.5}
-            self.key_label.text_size[0] = 600 if key.startswith('#') else 260
+            self.key_label.text_size[0] = 800 if is_comment or is_header else 260
             self.key_label.opacity = 1
 
             # Show "=" for *.properties/INI
@@ -24897,8 +24902,15 @@ class ServerPropertiesEditScreen(EditorRoot):
     def load_file(self):
         self.line_list = []
 
-        for line in self.read_from_disk():
-            line = line.strip()
+        for raw_line in self.read_from_disk():
+            line = raw_line.rstrip('\r\n')
+
+            # Extract leading indentation
+            match = re.match(r'^(\s*)', line)
+            indent_str = match.group(1) if match else ''
+
+            # Strip the indentation and parse the rest
+            stripped_line = line[len(indent_str):]
 
             is_comment = False
             is_blank_line = False
@@ -24906,27 +24918,40 @@ class ServerPropertiesEditScreen(EditorRoot):
             key = ''
             value = ''
 
-
-            # Is blank line
-            if not line.strip():
+            # Line has no content
+            if not stripped_line.strip():
                 is_blank_line = True
 
-            # Is INI header
-            elif line.startswith('[') and line.endswith(']') and '=' not in line:
-                key = line
+            # Is INI/TOML header
+            elif stripped_line.startswith('[') and stripped_line.endswith(']') and '=' not in stripped_line:
+                key = stripped_line
                 is_header = True
 
-            # Is comment
-            elif line.startswith("#"):
-                key = "# " + line.lstrip('#').strip()
+            # Line is a comment
+            elif stripped_line.startswith('#'):
+                key = '# ' + stripped_line.lstrip('#').strip()
                 is_comment = True
 
-            elif '=' in line:
-                key, value = [x.strip() for x in line.split("=", 1)]
+            # Normal key=value pair
+            elif '=' in stripped_line:
+                key, value = [x.strip() for x in stripped_line.split('=', 1)]
 
+            # Build the data object
+            data = {
+                '__hash__': constants.gen_rstring(4),
+                'key': key,
+                'value': value,
+                'original_value': value,
+                'is_header': is_header,
+                'is_comment': is_comment,
+                'is_blank_line': is_blank_line,
+                'indent': len(indent_str),
+                'inactive': (is_blank_line or is_header or is_comment),
+                'line_matched': False
+            }
 
-            line = (key, value, is_blank_line, is_comment, is_header)
-            self.insert_line(line, refresh=False)
+            # Insert data into editor
+            self.insert_line({'data': data}, refresh=False)
 
         return self.line_list
 
@@ -24935,20 +24960,21 @@ class ServerPropertiesEditScreen(EditorRoot):
 
         for line in self.line_list:
             line = line['data']
+            indent = "    " * line['indent']
             key_str = str(line['key']).strip()
             val_str = str(line['value']).strip()
 
             if line['is_comment'] or line['is_blank_line']:
-                final_content += str(f"{key_str}".rstrip() + '\n')
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
 
             elif line['is_header'] or not val_str:
-                final_content += str(f"{key_str}".rstrip() + '\n')
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
 
             elif key_str and val_str:
-                final_content += str(f"{key_str}={val_str}".rstrip() + '\n')
+                final_content += str(f"{indent}{key_str}={val_str}".rstrip() + '\n')
 
             elif key_str:
-                final_content += str(f"{key_str}=".rstrip() + '\n')
+                final_content += str(f"{indent}{key_str}=".rstrip() + '\n')
 
 
         self.write_to_disk(final_content)
@@ -24959,8 +24985,30 @@ class ServerPropertiesEditScreen(EditorRoot):
 
 # Edit all TOML/TML files
 class ServerTomlEditScreen(ServerPropertiesEditScreen):
-    # Need support for lists and indentation like YAML editor, but in the same format as this
-    pass
+
+    def save_file(self):
+        final_content = ''
+
+        for line in self.line_list:
+            line = line['data']
+            indent = "    " * line['indent']
+            key_str = str(line['key']).strip()
+            val_str = str(line['value']).strip()
+
+            if line['is_comment'] or line['is_blank_line']:
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
+
+            elif line['is_header'] or not val_str:
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
+
+            elif key_str and val_str:
+                final_content += str(f"{indent}{key_str} = {val_str}".rstrip() + '\n')
+
+            elif key_str:
+                final_content += str(f"{indent}{key_str} = ".rstrip() + '\n')
+
+        # return print(final_content)
+        self.write_to_disk(final_content)
 
 # Edit all YAML/YML files
 class ServerYamlEditScreen(EditorRoot):
@@ -25007,7 +25055,7 @@ class ServerYamlEditScreen(EditorRoot):
 
             # Indentation space
             self.indent_level = indent_level
-            self.indent_space = dp(25) * indent_level
+            self.indent_space = dp(25) * self.indent_level
 
 
             # Line number
