@@ -50,3 +50,4 @@ slowapi>=0.1.9
 packaging>=24.1
 pypresence>=4.3.0
 python-dateutil>=1.16.0
+pyjson5>=1.6.8

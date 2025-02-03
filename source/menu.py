@@ -13,6 +13,7 @@ import webbrowser
 import traceback
 import functools
 import threading
+import pyjson5
 import inspect
 import random
 import json
@@ -25405,8 +25406,8 @@ class ServerYamlEditScreen(EditorRoot):
                         'key': key_part,
                         'value': value_part,
                         'indent': indent,
-                        'is_header': False,  # will be set later if no value & next line is deeper
-                        'is_list_header': False  # might also be set if next line is a list item
+                        'is_header': False,
+                        'is_list_header': False
                     }
                     parsed_lines.append(current_line)
 
@@ -25416,8 +25417,8 @@ class ServerYamlEditScreen(EditorRoot):
                         'key': stripped.rstrip(':'),
                         'value': '',
                         'indent': indent,
-                        'is_header': False,  # will be set later if no value & next line is deeper
-                        'is_list_header': False  # might also be set if next line is a list item
+                        'is_header': False,
+                        'is_list_header': False
                     }
                     parsed_lines.append(current_line)
 
@@ -25554,7 +25555,7 @@ class ServerYamlEditScreen(EditorRoot):
                 indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
 
-        # return print(final_content)
+        return print(final_content)
         self.write_to_disk(final_content)
 
 # Edit all JSON files
@@ -25579,30 +25580,45 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
             line = line['data']
             key_str = str(line['key']).strip()
             val_str = str(line['value']).strip()
-            indent = "  " * line['indent']
+            base_indent = " " * 2
+
+
+            # Format empty values
+            if val_str in ['""', "''", None]:
+                val_str = ''
+
+            # Ignore empty list items or multiline strings
+            if (line['is_multiline_string'] or line['is_list_item']) and not val_str:
+                continue
 
             if line['is_comment'] or line['is_blank_line']:
+                indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}".rstrip() + '\n')
 
             elif line['is_list_item'] and val_str:
+                indent = base_indent * line['indent']
                 final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
 
             elif line['is_multiline_string'] and val_str:
+                indent = base_indent * (line['indent'] + 2)
                 final_content += str(f"{indent}{val_str}".rstrip() + '\n')
 
             elif line['is_header'] or line['is_list_header'] or not val_str:
+                indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
 
             elif key_str and val_str:
+                indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}: {val_str}".rstrip() + '\n')
 
             elif key_str:
+                indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
 
 
         # Internally convert YAML back to JSON to retain original file format
         try:
-            yaml_data = yaml.safe_load(final_content)
+            yaml_data = yaml.safe_load(final_content.strip())
 
             if self.minified:
                 final_content = json.dumps(yaml_data, indent=None, separators=(',', ':')).strip()
@@ -25615,9 +25631,213 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
                 print(f'Failed to save: {e}')
             return False
 
-        # return print(final_content)
+        return print(final_content)
         self.write_to_disk(final_content)
 
+# Edit all JSON5 files
+class ServerJson5EditScreen(ServerYamlEditScreen):
+
+    @staticmethod
+    def json5_to_yaml(raw_content: str) -> str:
+        """
+        Convert JSON5 content to a simple YAML format preserving comments and blank lines.
+
+        Expected JSON5 format (for a single flat object):
+        {
+            // Comment for key1
+            "key1": value1,
+            // Comment for key2
+            "key2": value2,
+            ...
+        }
+
+        Produces YAML like:
+        # Comment for key1
+        key1: value1
+
+        # Comment for key2
+        key2: value2
+        """
+        lines = raw_content.splitlines()
+        output_lines = []
+        pending_comments = []
+
+        for line in lines:
+            stripped = line.strip()
+            # Skip the outer curly braces
+            if stripped in ("{", "}"):
+                continue
+
+            # Preserve blank lines.
+            if not stripped:
+                output_lines.append("")
+                continue
+
+            # Process single-line comments (// …)
+            if stripped.startswith("//"):
+                comment_text = stripped[2:].strip()
+                pending_comments.append(comment_text)
+                continue
+
+            # Process block comments (assumes one-line block comments)
+            if stripped.startswith("/*"):
+                comment_text = stripped.lstrip("/*").rstrip("*/").strip()
+                pending_comments.append(comment_text)
+                continue
+
+            # Process key/value lines.
+            # We assume keys are quoted and each key/value is on its own line.
+            m = re.match(r'^\s*"([^"]+)"\s*:\s*(.+?)(,)?\s*$', line)
+            if m:
+                key = m.group(1)
+                value = m.group(2).strip()
+                # If the value is a quoted string, remove its quotes.
+                if value.startswith('"') and value.endswith('"'):
+                    value = value[1:-1]
+                # Write any pending comments as YAML comments.
+                for comm in pending_comments:
+                    output_lines.append("# " + comm)
+                pending_comments.clear()
+                # Write the key/value pair in YAML format (unquoted key).
+                output_lines.append(f"{key}: {value}")
+            else:
+                # If the line doesn't match the expected key/value pattern, pass it through.
+                output_lines.append(line)
+        # Remove any trailing blank lines.
+        while output_lines and output_lines[-1] == "":
+            output_lines.pop()
+
+        return "\n".join(output_lines)
+
+    @staticmethod
+    def yaml_to_json5(yaml_content: str) -> str:
+        """
+        Convert the YAML text (as produced above) back to JSON5, preserving comments and blank lines.
+
+        Expected YAML format:
+          # Comment line(s)
+          key: value
+
+          # Another comment
+          key2: value2
+
+        Produces JSON5 like:
+        {
+            // Comment line(s)
+            "key": value,
+
+            // Another comment
+            "key2": value2
+        }
+
+        Note: Keys will be re-quoted and values that are not numeric or booleans will be quoted.
+        """
+        lines = yaml_content.splitlines()
+        pairs = []
+        pending_comments = []
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue  # Skip blank lines.
+            if stripped.startswith("#"):
+                # Collect comment text.
+                comment_text = stripped.lstrip("#").strip()
+                pending_comments.append(comment_text)
+                continue
+            # Expect a key-value pair in the format: key: value
+            m = re.match(r'^([\w\-]+)\s*:\s*(.+)$', stripped)
+            if m:
+                key = m.group(1)
+                value = m.group(2).strip()
+                # If value is not a boolean or numeric, ensure it is quoted.
+                if not (value in ["true", "false"] or re.match(r'^-?\d+(\.\d+)?$', value)):
+                    # Quote it if it isn’t already.
+                    if not ((value.startswith('"') and value.endswith('"')) or
+                            (value.startswith("'") and value.endswith("'"))):
+                        value = f'"{value}"'
+                pairs.append((pending_comments.copy(), key, value))
+                pending_comments.clear()
+            # Lines that don't match are skipped.
+
+        # Build the JSON5 text.
+        json5_lines = []
+        json5_lines.append("{")
+        for idx, (comments, key, value) in enumerate(pairs):
+            # Write each pending comment as a JSON5 comment.
+            for comment in comments:
+                json5_lines.append("    // " + comment)
+            comma = "," if idx < len(pairs) - 1 else ""
+            json5_lines.append(f'    "{key}": {value}{comma}')
+        json5_lines.append("}")
+        return "\n".join(json5_lines)
+
+    # Internally convert JSON5 to YAML for ease of editing.
+    def read_from_disk(self) -> list:
+        with open(self.path, 'r', encoding='utf-8') as f:
+            raw_content = f.read()
+
+            # Determine if the file is minified.
+            self.minified = len(raw_content.splitlines()) <= 1
+
+            # Convert JSON5 to YAML using our custom parser.
+            content = self.json5_to_yaml(raw_content)
+            return content.splitlines()
+
+    def save_file(self):
+        final_content = ''
+
+        for line in self.line_list:
+            line = line['data']
+            key_str = str(line['key']).strip()
+            val_str = str(line['value']).strip()
+            base_indent = " " * 2
+
+
+            # Format empty values
+            if val_str in ['""', "''", None]:
+                val_str = ''
+
+            # Ignore empty list items or multiline strings
+            if (line['is_multiline_string'] or line['is_list_item']) and not val_str:
+                continue
+
+            if line['is_comment'] or line['is_blank_line']:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
+
+            elif line['is_list_item'] and val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
+
+            elif line['is_multiline_string'] and val_str:
+                indent = base_indent * (line['indent'] + 2)
+                final_content += str(f"{indent}{val_str}".rstrip() + '\n')
+
+            elif line['is_header'] or line['is_list_header'] or not val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
+
+            elif key_str and val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}: {val_str}".rstrip() + '\n')
+
+            elif key_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
+
+
+        try:
+            # Convert the assembled YAML back into JSON5.
+            json5_content = self.yaml_to_json5(final_content.strip())
+        except Exception as e:
+            if constants.debug:
+                print(f"Failed to save: {e}")
+            return False
+
+        # Write the JSON5 back to disk
+        return print(json5_content)
+        return self.write_to_disk(json5_content)
 
 
 # Server Settings Screen ---------------------------------------------------------------------------------------------
