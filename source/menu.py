@@ -23405,6 +23405,12 @@ class EditorRoot(MenuBackground):
                     self.cursor_color = (0.939, 0.541, 0.254, 1)
                     self.selection_color = (0.889, 0.511, 0.254, 0.4)
 
+                # Plain-text detection
+                elif self.get_type(self.text) is None:
+                    self.foreground_color = (0.7, 0.7, 1, 1)
+                    self.cursor_color = (0.7, 0.7, 1, 1)
+                    self.selection_color = (0.7, 0.7, 1, 0.4)
+
                 self.last_color = self.foreground_color
                 self.original_text = str(self.text)
                 self.search.text = str(self.text)
@@ -23846,10 +23852,10 @@ class EditorRoot(MenuBackground):
 
         def render_line(self, data: dict):
             self._data = data
-            key = data['key']
             max_line_count = len(self._screen.line_list)
 
             # Determines if the line is skip-able when scrolling
+            self.is_comment = data['is_comment']
             self.inactive = data['inactive']
             self.line_matched = data['line_matched']
             self._finished_rendering = False
@@ -23875,22 +23881,22 @@ class EditorRoot(MenuBackground):
             self.key_label.__translate__ = False
             self.key_label.max_lines = 1
             self.key_label.markup = True
-            self.key_label.text = key
-            self.key_label.original_text = key
+            self.key_label.text = ''
+            self.key_label.original_text = ''
             self.key_label.font_name = self.font_name
             self.key_label.font_size = self.font_size
             self.key_label.default_color = "#5E6BFF"
             self.key_label.color = self.key_label.default_color
             self.key_label.size_hint_max_y = 50
             self.key_label.pos_hint = {'center_y': 0.5}
-            self.key_label.text_size[0] = 600 if key.startswith('#') else 260
+            self.key_label.text_size[0] = 0
             self.key_label.opacity = 1
 
             # Show eq character
             self.eq_label.text = self.eq_character
             self.eq_label.font_name = self.font_name
             self.eq_label.font_size = self.font_size
-            self.eq_label.color = (1, 1, 1, 1)
+            self.eq_label.color = (0, 0, 0, 0)
             self.eq_label.opacity = 0.5
             self.eq_label.pos_hint = {'center_y': 0.5}
 
@@ -24476,11 +24482,16 @@ class EditorRoot(MenuBackground):
         for line in self.read_from_disk():
             line = line.strip()
 
-            key = ''
-            value = line.rstrip()
+            data = {
+                'key': '',
+                'value': line,
+                'original_value': line,
+                'is_comment': False,
+                'inactive': False,
+                'line_matched': False
+            }
 
-            line = (key, value)
-            self.insert_line(line, refresh=False)
+            self.insert_line(data, refresh=False)
 
         return self.line_list
 
@@ -24776,6 +24787,21 @@ class EditorRoot(MenuBackground):
             text_offset=(-5, 50)
         )
         float_layout.add_widget(self.controls_button)
+
+# Edit in plain text mode for fallback
+class ServerTextEditScreen(EditorRoot):
+
+    class EditorLine(EditorRoot.EditorLine):
+        def configure(self):
+            self.eq_character = ':'
+            self.eq_spacing = (1.05, 0.67)
+
+        @staticmethod
+        def get_type(value: str):
+
+            # Define custom behavior for determining data types
+
+            return None
 
 # Edit all *.properties/INI files
 class ServerPropertiesEditScreen(EditorRoot):

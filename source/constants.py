@@ -5922,7 +5922,7 @@ max-world-size=29999984"""
 
 # Recursively gathers all config files with a specific depth (default 3)
 # Returns {"dir1": ['match1', 'match2', 'match3', ...]}
-valid_config_formats = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'json5', 'ini']
+valid_config_formats = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'json5', 'ini', 'txt']
 def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
     root = server_path(name)
     excludes = ['version_history.json', 'version_list.json', 'usercache.json', 'banned-players.json', 'banned-ips.json', 'whitelist.json', 'ops.json', server_ini]
