@@ -5956,6 +5956,34 @@ def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
     process_dir(root)
     return dict(sorted(final_dict.items(), key=lambda item: (os.path.basename(item[0]) != name, os.path.basename(item[0]))))
 
+# Replace configuration files via Telepath
+def update_config_file(server_name: str, upload_path: str, destination_path: str):
+
+    # Don't allow move to itself
+    if upload_path == destination_path:
+        return False
+
+    # Only allow files to get replaced in the current server
+    if not destination_path.startswith(server_path(server_name)):
+        return False
+
+    # Only allow files which already exist
+    if not os.path.isfile(destination_path):
+        return False
+
+    # Only allow files from uploadDir
+    if not upload_path.startswith(uploadDir):
+        return False
+
+    # Only allow accepted file types
+    for ext in valid_config_formats:
+        if not destination_path.endswith(f'.{ext}') or not upload_path.endswith(f'.{ext}'):
+            return False
+
+    # Move file to intended path
+    move(upload_path, destination_path)
+    clear_uploads()
+
 
 # CTRL + Backspace function
 def control_backspace(text, index):

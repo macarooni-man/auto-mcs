@@ -22952,14 +22952,21 @@ def save_config_file(data: dict, content: str):
     with open(data['path'], 'w', encoding='utf-8', errors='ignore') as f:
         f.write(content)
 
-    # This one is kind of tricky
-    # 1. If Telepath, upload file remotely
-    # 2. Create an endpoint to overwrite the local server file with the one uploaded to "Uploads"
-    #   - This will need directory validation to prevent directory traversal, force fail if writing outside the server directory
-    #   - This will also need name validation to make sure that the file name matches the file it's replacing
-    #   - These two mechanisms should prevent anyone arbitrarily writing data to anywhere on remote
+    # Upload via Telepath if remote
+    if data['_telepath_data'] and data['remote_path']:
+        telepath_data = data['_telepath_data']
+        upload_path = constants.telepath_upload(telepath_data, data['path'])
 
-    pass
+        constants.api_manager.request(
+            endpoint='/main/update_config_file',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={
+                'server_name': constants.server_manager.current_server.name,
+                'upload_path': upload_path,
+                'destination_path': data['remote_path']
+            }
+        )
 
 
 # Controller for ConfigFiles containers
@@ -24967,7 +24974,6 @@ class ServerPropertiesEditScreen(EditorRoot):
 
         for raw_line in self.read_from_disk():
             line = raw_line.rstrip('\r\n')
-            print(line)
 
             # Extract leading indentation
             match = re.match(r'^(\s*)', line)
@@ -25667,7 +25673,7 @@ class ServerYamlEditScreen(EditorRoot):
                 indent = base_indent * line['indent']
                 final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
 
-        return print(final_content)
+        # return print(final_content)
         self.write_to_disk(final_content)
 
 # Edit all JSON files

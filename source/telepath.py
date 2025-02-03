@@ -1969,6 +1969,7 @@ create_endpoint(constants.java_check, 'main', True)
 create_endpoint(constants.allow_close, 'main', True)
 create_endpoint(constants.clear_uploads, 'main')
 create_endpoint(constants.update_world, 'main', True)
+create_endpoint(constants.update_config_file, 'main', True)
 
 # Add-on based functionality outside the add-on manager
 create_endpoint(constants.load_addon_cache, 'addon', True)
