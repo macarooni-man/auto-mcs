@@ -22887,13 +22887,6 @@ class ServerAmscriptSearchScreen(MenuBackground):
 
 # Edit Config Screens ------------------------------------------------------------------------------------------------
 
-# Notes for cohesion:
-# - Create foundation function to determine the file type and open the specific editor
-#   - Make this function download the remote file and sync on save if Telepath
-#   - Change ServerPropertiesEditScreen to also support other .properties files because apparently that's not the only file which uses said format
-#   - Support JSON, TOML, and INI as well
-#   - If the file type isn't supported, have a plain-text editor as well
-
 # Determines the type of config file and open in the proper editor
 def open_config_file(path: str, *a):
     config_data = {
@@ -23082,7 +23075,6 @@ class ConfigFolder(RelativeLayout, HoverBehavior):
 
         Clock.schedule_once(after_layout, -1)
 
-
 # A container for ConfigFile objects that is controlled by ConfigFolder
 class ConfigFiles(GridLayout):
 
@@ -23206,7 +23198,6 @@ class ConfigFiles(GridLayout):
         Clock.schedule_once(self.resize_files, 0)
         Clock.schedule_once(functools.partial(self.folder.toggle_fold, fold), 0)
 
-
 # Abstracted file manager to display folders and config files
 class ServerConfigScreen(MenuBackground):
 
@@ -23215,21 +23206,92 @@ class ServerConfigScreen(MenuBackground):
         self.name = self.__class__.__name__
         self.menu = 'init'
 
+        self.server_obj = None
         self.scroll_widget = None
         self.scroll_anchor = None
         self.scroll_layout = None
+        self.header = None
+        self.filter_text = ''
+        self.search_bar = None
+        self.search_label = None
         self._cached = None
 
+    def filter_files(self, query: str = None):
+        self.filter_text = query
+
+        if not query:
+            return self.server_obj.config_paths
+
+        # Filter by file name matches
+        else:
+            filtered = {}
+            for folder, files in self.server_obj.config_paths.items():
+                for file in files:
+                    if query.lower() in constants.cross_platform_path(file).lower():
+                        if folder not in filtered:
+                            filtered[folder] = []
+                        filtered[folder].append(file)
+
+            return filtered
+
+    def gen_search_results(self, results: dict = None, *a):
+        if results is None:
+            results = self.filter_files()
+        else:
+            self.scroll_layout.opacity = 0
+            self.scroll_layout.clear_widgets()
+
+
+        if results:
+
+            # Hide "no results"
+            if self.search_label.opacity > 0:
+                Animation(opacity=0, duration=0.05).start(self.search_label)
+
+
+            # Create two linked widgets for the folder and the items
+            for folder, files in results.items():
+
+                # Create expand filter
+                expand_filter = False
+                if self.server_obj.config_paths == results:
+                    expand_filter = constants.cross_platform_path(folder) != self.server_obj.name
+
+                folder_obj = ConfigFolder(folder)
+                files_obj = ConfigFiles(folder_obj, files, expand_filter)
+
+                folder_layout = RelativeLayout(size_hint_min_y=50)
+                folder_layout.pos_hint = {'center_y': 1}
+                folder_layout.add_widget(folder_obj)
+                self.scroll_layout.add_widget(folder_layout)
+                self.scroll_layout.add_widget(files_obj)
+
+
+        # Show "no results"
+        else:
+            Animation.stop_all(self.search_label)
+            self.search_label.text = f"No results for '{self.filter_text}'"
+            Animation(opacity=1, duration=0.2).start(self.search_label)
+
+
+        # Refresh screen
+        if self.scroll_layout.opacity < 1:
+            def reset_layout(*a):
+                Animation.stop_all(self.scroll_layout)
+                Animation(opacity=1, duration=0.3).start(self.scroll_layout)
+            Clock.schedule_once(reset_layout, 0.1)
+
+
     def generate_menu(self, **kwargs):
-        server_obj = constants.server_manager.current_server
+        self.server_obj = constants.server_manager.current_server
 
         # Re-use previously generated widget if the server is the same
-        if self._cached and self._cached[0] == server_obj:
+        if self._cached and self._cached[0] == self.server_obj:
             return self.add_widget(self._cached[1])
 
         # Ignore screen if there are no config paths in the current server
-        if not server_obj.config_paths:
-            if not server_obj.reload_config_paths():
+        if not self.server_obj.config_paths:
+            if not self.server_obj.reload_config_paths():
                 return previous_screen()
 
         # Scroll list
@@ -23270,19 +23332,22 @@ class ServerConfigScreen(MenuBackground):
         buttons = []
         float_layout = FloatLayout()
         float_layout.id = 'content'
-        float_layout.add_widget(HeaderText("Select a configuration file to edit", '', (0, 0.88)))
 
-        # Create two linked widgets for the folder and the items
-        for folder, files in server_obj.config_paths.items():
+        # Create header/search bar
+        self.header = HeaderText("Select a configuration file to edit", '', (0, 0.9), no_line=True)
+        self.search_bar = search_input(return_function=self.filter_files, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.84}, allow_empty=True)
 
-            folder_obj = ConfigFolder(folder)
-            files_obj = ConfigFiles(folder_obj, files, constants.cross_platform_path(folder) != server_obj.name)
-
-            folder_layout = RelativeLayout(size_hint_min_y=50)
-            folder_layout.pos_hint = {'center_y': 1}
-            folder_layout.add_widget(folder_obj)
-            self.scroll_layout.add_widget(folder_layout)
-            self.scroll_layout.add_widget(files_obj)
+        # Lol search label idek
+        self.search_label = Label()
+        self.search_label.__translate__ = False
+        self.search_label.text = ""
+        self.search_label.halign = "center"
+        self.search_label.valign = "center"
+        self.search_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.search_label.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.search_label.font_size = sp(25)
+        self.search_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.search_label)
 
 
         # Append scroll view items
@@ -23291,6 +23356,8 @@ class ServerConfigScreen(MenuBackground):
         float_layout.add_widget(self.scroll_widget)
         float_layout.add_widget(scroll_top)
         float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.header)
+        float_layout.add_widget(self.search_bar)
 
 
         buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
@@ -23298,11 +23365,13 @@ class ServerConfigScreen(MenuBackground):
         for button in buttons:
             float_layout.add_widget(button)
 
-        float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Edit config"))
+        float_layout.add_widget(generate_title(f"Server Settings: '{self.server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{self.server_obj.name}, Settings, Edit config"))
 
-        self._cached = (server_obj, float_layout)
+        self._cached = (self.server_obj, float_layout)
         self.add_widget(float_layout)
+
+        self.gen_search_results()
 
 
 # Config file editor
