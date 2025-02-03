@@ -22920,7 +22920,7 @@ def open_config_file(path: str, *a):
         config_data['path'] = constants.telepath_download(server_obj._telepath_data, path)
 
     # Check if file exits and pick the correct editor for the format
-    if os.path.isfile(path):
+    if config_data['path'] and os.path.isfile(config_data['path']):
         editor_screen = None
 
         if ext in ['properties', 'ini']:

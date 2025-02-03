@@ -4631,6 +4631,9 @@ def scan_modpack(update=False, progress_func=None):
         if os.path.exists(os.path.join(test_server, 'config')):
             file_list.extend(glob(os.path.join(test_server, "config", "*.*")))
 
+        # Make sure they are actually files
+        file_list = [file for file in file_list if os.path.isfile(file)]
+
         matches = {
             'forge': 0,
             'fabric': 0,
@@ -5925,7 +5928,11 @@ max-world-size=29999984"""
 valid_config_formats = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'json5', 'ini', 'txt']
 def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
     root = server_path(name)
-    excludes = ['version_history.json', 'version_list.json', 'usercache.json', 'banned-players.json', 'banned-ips.json', 'whitelist.json', 'ops.json', server_ini]
+    excludes = [
+        'version_history.json', 'version_list.json', 'usercache.json', 'banned-players.json', 'banned-ips.json',
+        'whitelist.json', 'ops.json', 'ops.txt', 'whitelist.txt', 'banned-players.txt', 'banned-ips.txt', 'eula.txt',
+        'bans.txt', 'modrinth.index.json', server_ini
+    ]
     final_dict = {}
 
     def process_dir(path: str, depth: int = 0):
