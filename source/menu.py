@@ -22988,6 +22988,15 @@ class ConfigFolder(RelativeLayout, HoverBehavior):
         self.button = Button()
         self.button.opacity = 0
         def on_click(*a):
+
+            # Open folder on right-click
+            if not constants.server_manager.current_server._telepath_data:
+                try:
+                    if self.button.last_touch.button == 'right':
+                        return constants.open_folder(self.path)
+                except:
+                    pass
+
             self.toggle_fold(not self.folded)
         self.button.bind(on_press=on_click)
         self.add_widget(self.button)
@@ -23079,6 +23088,12 @@ class ConfigFiles(GridLayout):
 
     # A single file representation inside the parent
     class ConfigFile(RelativeLayout):
+        def resize(self, *a):
+            self.padding = 10 if Window.width < 900 else 100
+            self.button.x = self.padding
+            self.icon.x = self.padding
+            self.text.x = 48 + self.padding
+
         def __init__(self, path: str, *args, **kwargs):
             super().__init__(*args, **kwargs)
 
@@ -23092,6 +23107,7 @@ class ConfigFiles(GridLayout):
             self.color = (0.6, 0.6, 1, 1)
             self.original_opacity = 0.5
             self.hover_delay = 0.15
+            self.padding = 0
 
             # Background button
             self.button = HoverButton()
@@ -23100,6 +23116,7 @@ class ConfigFiles(GridLayout):
             self.button.on_enter = self.on_enter
             self.button.on_leave = self.on_leave
             self.button.on_press = self.on_click
+            self.button.x = self.padding
             self.add_widget(self.button)
 
             # File icon
@@ -23111,6 +23128,7 @@ class ConfigFiles(GridLayout):
             self.icon.size_hint_max = (35, 35)
             self.icon.source = os.path.join(constants.gui_assets, 'icons', 'document-text-sharp.png')
             self.icon.y = -3
+            self.icon.x = self.padding
             self.add_widget(self.icon)
 
             # File text
@@ -23126,7 +23144,7 @@ class ConfigFiles(GridLayout):
             self.text.shorten_from = 'left'
             self.text.font_size = sp(25 - (0 if len(self.text.text) < 20 else (len(self.text.text) // 8)))
             self.text.max_lines = 1
-            self.text.x = 48
+            self.text.x = 48 + self.padding
             self.add_widget(self.text)
 
         def on_click(self):
@@ -23148,6 +23166,10 @@ class ConfigFiles(GridLayout):
             Animation.stop_all(self.icon)
             Animation(opacity=self.original_opacity, duration=self.hover_delay).start(self.text)
             Animation(opacity=self.original_opacity, duration=self.hover_delay).start(self.icon)
+
+    def resize_files(self, *a):
+        for file in self.children:
+            file.resize()
 
     # Pretty animation :)
     def hide(self, hide: bool = True):
@@ -23180,6 +23202,8 @@ class ConfigFiles(GridLayout):
         for file in self.file_list:
             self.add_widget(self.ConfigFile(file))
 
+        self.bind(size=self.resize_files, pos=self.resize_files)
+        Clock.schedule_once(self.resize_files, 0)
         Clock.schedule_once(functools.partial(self.folder.toggle_fold, fold), 0)
 
 
@@ -23194,16 +23218,19 @@ class ServerConfigScreen(MenuBackground):
         self.scroll_widget = None
         self.scroll_anchor = None
         self.scroll_layout = None
+        self._cached = None
 
     def generate_menu(self, **kwargs):
         server_obj = constants.server_manager.current_server
 
+        # Re-use previously generated widget if the server is the same
+        if self._cached and self._cached[0] == server_obj:
+            return self.add_widget(self._cached[1])
+
         # Ignore screen if there are no config paths in the current server
         if not server_obj.config_paths:
-            server_obj.reload_config_paths()
-            if not server_obj.config_paths:
-                previous_screen()
-                return
+            if not server_obj.reload_config_paths():
+                return previous_screen()
 
         # Scroll list
         self.scroll_widget = ScrollViewWidget()
@@ -23274,6 +23301,7 @@ class ServerConfigScreen(MenuBackground):
         float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Edit config"))
 
+        self._cached = (server_obj, float_layout)
         self.add_widget(float_layout)
 
 
@@ -24923,7 +24951,7 @@ class ServerPropertiesEditScreen(EditorRoot):
             self.key_label.color = self.key_label.default_color
             self.key_label.size_hint_max_y = 50
             self.key_label.pos_hint = {'center_y': 0.5}
-            self.key_label.text_size[0] = 800 if is_comment or is_header else 260
+            self.key_label.text_size[0] = Window.width if is_comment or is_header else 260
             self.key_label.opacity = 1
 
             # Show "=" for *.properties/INI
