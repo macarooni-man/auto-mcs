@@ -23521,7 +23521,7 @@ class EditorRoot(MenuBackground):
                     return None
 
                 # Ignore undo and redo for global effect
-                if keycode[1] in ['r', 'z', 'y', 'c'] and control in modifiers:
+                if (keycode[1] in ['r', 'z', 'y', 'c'] and control in modifiers) or keycode[1] == 'escape':
                     return None
 
                 # Ignore pressing certain keys
@@ -24568,7 +24568,7 @@ class EditorRoot(MenuBackground):
         self.line_list = []
 
         for line in self.read_from_disk():
-            line = line.strip()
+            line = line.rstrip()
 
             data = {
                 'key': '',
@@ -24601,6 +24601,7 @@ class EditorRoot(MenuBackground):
     def read_from_disk(self) -> list:
         with open(self.path, 'r', encoding='utf-8') as f:
             content = f.read().strip('\r\n')
+            content = content.replace(r'\n', '\\n').replace(r'\r', '\\r')
             return content.splitlines()
 
     def write_to_disk(self, content: str):
@@ -24951,7 +24952,7 @@ class ServerPropertiesEditScreen(EditorRoot):
             self.key_label.color = self.key_label.default_color
             self.key_label.size_hint_max_y = 50
             self.key_label.pos_hint = {'center_y': 0.5}
-            self.key_label.text_size[0] = Window.width if is_comment or is_header else 260
+            self.key_label.text_size[0] = 1000 if is_comment or is_header else 260
             self.key_label.opacity = 1
 
             # Show "=" for *.properties/INI
@@ -25728,13 +25729,16 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
     def read_from_disk(self) -> list:
         with open(self.path, 'r', encoding='utf-8') as f:
             raw_content = f.read()
+            raw_content = raw_content.replace('\\n', '\\\\n').replace('\\r', '\\\\r')
 
             # Determine format features prior to parsing to preserve when saving
             self.minified = len(raw_content.splitlines()) <= 1
 
             json_data = json.loads(raw_content)
             content = yaml.dump(json_data, sort_keys=False, allow_unicode=True, width=float("inf"))
-            return content.strip().splitlines()
+
+            content = content.strip('\r\n')
+            return content.splitlines()
 
     def save_file(self):
         final_content = ''
@@ -25963,6 +25967,7 @@ class ServerJson5EditScreen(ServerYamlEditScreen):
     def read_from_disk(self) -> list:
         with open(self.path, 'r', encoding='utf-8') as f:
             raw_content = f.read()
+            raw_content = raw_content.replace(r'\n', '\\n').replace(r'\r', '\\r')
 
             # Convert JSON5 to YAML using our custom parser.
             content = self.json5_to_yaml(raw_content)

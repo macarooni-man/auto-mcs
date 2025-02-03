@@ -5925,7 +5925,7 @@ max-world-size=29999984"""
 
 # Recursively gathers all config files with a specific depth (default 3)
 # Returns {"dir1": ['match1', 'match2', 'match3', ...]}
-valid_config_formats = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'json5', 'ini', 'txt']
+valid_config_formats = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'json5', 'ini', 'txt', 'snbt']
 [telepath_download_whitelist['names'].append(f'.{ext}') for ext in valid_config_formats]
 def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
     root = server_path(name)
