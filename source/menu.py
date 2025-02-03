@@ -25631,7 +25631,7 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
                 print(f'Failed to save: {e}')
             return False
 
-        return print(final_content)
+        # return print(final_content)
         self.write_to_disk(final_content)
 
 # Edit all JSON5 files
@@ -25640,32 +25640,28 @@ class ServerJson5EditScreen(ServerYamlEditScreen):
     @staticmethod
     def json5_to_yaml(raw_content: str) -> str:
         """
-        Convert JSON5 content to a simple YAML format preserving comments and blank lines.
+        Convert JSON5 content to a YAML-like string preserving comments,
+        blank lines, nesting, and indentation.
 
-        Expected JSON5 format (for a single flat object):
-        {
-            // Comment for key1
-            "key1": value1,
-            // Comment for key2
-            "key2": value2,
-            ...
-        }
-
-        Produces YAML like:
-        # Comment for key1
-        key1: value1
-
-        # Comment for key2
-        key2: value2
+        The root scope is not indented—that is, one indent level is subtracted
+        from every key compared to the raw JSON5. (When converting back to JSON5,
+        that indent level is added back.)
         """
         lines = raw_content.splitlines()
         output_lines = []
         pending_comments = []
+        base_indent = " " * 2  # two spaces per indent level
+        indent_level = 0
 
         for line in lines:
             stripped = line.strip()
-            # Skip the outer curly braces
-            if stripped in ("{", "}"):
+
+            # Check for opening or closing braces/brackets (ignoring trailing commas)
+            if stripped.rstrip(",") in ("{", "["):
+                indent_level += 1
+                continue
+            if stripped.rstrip(",") in ("}", "]"):
+                indent_level = max(indent_level - 1, 0)
                 continue
 
             # Preserve blank lines.
@@ -25673,102 +25669,130 @@ class ServerJson5EditScreen(ServerYamlEditScreen):
                 output_lines.append("")
                 continue
 
-            # Process single-line comments (// …)
+            # Process comments.
             if stripped.startswith("//"):
                 comment_text = stripped[2:].strip()
                 pending_comments.append(comment_text)
                 continue
-
-            # Process block comments (assumes one-line block comments)
             if stripped.startswith("/*"):
                 comment_text = stripped.lstrip("/*").rstrip("*/").strip()
                 pending_comments.append(comment_text)
                 continue
 
             # Process key/value lines.
-            # We assume keys are quoted and each key/value is on its own line.
+            # (Assumes keys are quoted and each key/value is on its own line.)
             m = re.match(r'^\s*"([^"]+)"\s*:\s*(.+?)(,)?\s*$', line)
             if m:
                 key = m.group(1)
                 value = m.group(2).strip()
-                # If the value is a quoted string, remove its quotes.
+                # Remove surrounding quotes from a string value.
                 if value.startswith('"') and value.endswith('"'):
                     value = value[1:-1]
-                # Write any pending comments as YAML comments.
+                # Subtract one indent level for the YAML output.
+                effective_indent = max(indent_level - 1, 0)
+                current_indent = base_indent * effective_indent
+                # Emit any pending comments.
                 for comm in pending_comments:
-                    output_lines.append("# " + comm)
+                    output_lines.append(current_indent + "# " + comm)
                 pending_comments.clear()
-                # Write the key/value pair in YAML format (unquoted key).
-                output_lines.append(f"{key}: {value}")
+                # If the value indicates a nested object, output the key alone and increase indent.
+                if value == "{" or value.startswith("{"):
+                    output_lines.append(current_indent + f"{key}:")
+                    indent_level += 1
+                else:
+                    output_lines.append(current_indent + f"{key}: {value}")
             else:
-                # If the line doesn't match the expected key/value pattern, pass it through.
-                output_lines.append(line)
-        # Remove any trailing blank lines.
+                current_indent = base_indent * max(indent_level - 1, 0)
+                output_lines.append(current_indent + line.strip())
         while output_lines and output_lines[-1] == "":
             output_lines.pop()
-
         return "\n".join(output_lines)
 
     @staticmethod
     def yaml_to_json5(yaml_content: str) -> str:
         """
-        Convert the YAML text (as produced above) back to JSON5, preserving comments and blank lines.
+        Convert the YAML text (as produced above) back to JSON5, preserving comments,
+        blank lines, nesting, and indentation.
 
-        Expected YAML format:
-          # Comment line(s)
-          key: value
-
-          # Another comment
-          key2: value2
-
-        Produces JSON5 like:
-        {
-            // Comment line(s)
-            "key": value,
-
-            // Another comment
-            "key2": value2
-        }
-
-        Note: Keys will be re-quoted and values that are not numeric or booleans will be quoted.
+        The YAML file is assumed to have no root indentation (i.e. one indent level was
+        subtracted in the JSON5 → YAML conversion). The build step below adds one indent
+        level back so that JSON5 keys inside the braces are indented appropriately.
         """
         lines = yaml_content.splitlines()
-        pairs = []
-        pending_comments = []
 
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue  # Skip blank lines.
-            if stripped.startswith("#"):
-                # Collect comment text.
-                comment_text = stripped.lstrip("#").strip()
-                pending_comments.append(comment_text)
-                continue
-            # Expect a key-value pair in the format: key: value
-            m = re.match(r'^([\w\-]+)\s*:\s*(.+)$', stripped)
-            if m:
-                key = m.group(1)
-                value = m.group(2).strip()
-                # If value is not a boolean or numeric, ensure it is quoted.
-                if not (value in ["true", "false"] or re.match(r'^-?\d+(\.\d+)?$', value)):
-                    # Quote it if it isn’t already.
-                    if not ((value.startswith('"') and value.endswith('"')) or
-                            (value.startswith("'") and value.endswith("'"))):
-                        value = f'"{value}"'
-                pairs.append((pending_comments.copy(), key, value))
-                pending_comments.clear()
-            # Lines that don't match are skipped.
+        def parse_yaml(lines, start_index=0, current_indent=0):
+            entries = []
+            index = start_index
+            pending_comments = []
+            while index < len(lines):
+                line = lines[index]
+                # Determine the indentation level.
+                line_indent = len(line) - len(line.lstrip(" "))
+                if line_indent < current_indent:
+                    break
+                stripped_line = line.lstrip(" ")
+                if not stripped_line:
+                    index += 1
+                    continue
+                if stripped_line.startswith("#"):
+                    # Collect comment.
+                    comment_text = stripped_line[1:].strip()
+                    pending_comments.append(comment_text)
+                    index += 1
+                    continue
+                # Expect a line in the format: key: [value]
+                m = re.match(r'^([\w\-]+)\s*:(.*)$', stripped_line)
+                if m:
+                    key = m.group(1)
+                    value_str = m.group(2).strip()
+                    index += 1
+                    if value_str == "":
+                        # No immediate value; assume a nested block.
+                        nested_entries, new_index = parse_yaml(lines, index, current_indent + 2)
+                        entry = (pending_comments.copy(), key, nested_entries)
+                        pending_comments.clear()
+                        entries.append(entry)
+                        index = new_index
+                    else:
+                        # A leaf value.
+                        entry = (pending_comments.copy(), key, value_str)
+                        pending_comments.clear()
+                        entries.append(entry)
+                else:
+                    index += 1
+            return entries, index
 
-        # Build the JSON5 text.
+        parsed_entries, _ = parse_yaml(lines, 0, 0)
+
+        # Build JSON5 text from the parsed structure.
         json5_lines = []
         json5_lines.append("{")
-        for idx, (comments, key, value) in enumerate(pairs):
-            # Write each pending comment as a JSON5 comment.
-            for comment in comments:
-                json5_lines.append("    // " + comment)
-            comma = "," if idx < len(pairs) - 1 else ""
-            json5_lines.append(f'    "{key}": {value}{comma}')
+
+        def build_json5(entries, indent_level):
+            result_lines = []
+            json_indent = " " * 4  # 4 spaces per indent level in JSON5 output.
+            for i, (comments, key, value) in enumerate(entries):
+                for comm in comments:
+                    result_lines.append(json_indent * (indent_level + 1) + "// " + comm)
+                if isinstance(value, list):
+                    result_lines.append(json_indent * (indent_level + 1) + f'"{key}": ' + "{")
+                    nested_lines = build_json5(value, indent_level + 1)
+                    result_lines.extend(nested_lines)
+                    closing_line = json_indent * (indent_level + 1) + "}"
+                    comma = "," if i < len(entries) - 1 else ""
+                    result_lines.append(closing_line + comma)
+                else:
+                    # Quote the value if it is not a boolean or numeric.
+                    if not (value in ["true", "false"] or re.match(r'^-?\d+(\.\d+)?$', value)):
+                        if not ((value.startswith('"') and value.endswith('"')) or
+                                (value.startswith("'") and value.endswith("'"))):
+                            value = f'"{value}"'
+                    comma = "," if i < len(entries) - 1 else ""
+                    result_lines.append(json_indent * (indent_level + 1) + f'"{key}": {value}{comma}')
+            return result_lines
+
+        # Start with indent_level 0; build_json5 will add one indent level to root keys.
+        json5_lines.extend(build_json5(parsed_entries, 0))
         json5_lines.append("}")
         return "\n".join(json5_lines)
 
@@ -25776,9 +25800,6 @@ class ServerJson5EditScreen(ServerYamlEditScreen):
     def read_from_disk(self) -> list:
         with open(self.path, 'r', encoding='utf-8') as f:
             raw_content = f.read()
-
-            # Determine if the file is minified.
-            self.minified = len(raw_content.splitlines()) <= 1
 
             # Convert JSON5 to YAML using our custom parser.
             content = self.json5_to_yaml(raw_content)
@@ -25836,7 +25857,7 @@ class ServerJson5EditScreen(ServerYamlEditScreen):
             return False
 
         # Write the JSON5 back to disk
-        return print(json5_content)
+        # return print(json5_content)
         return self.write_to_disk(json5_content)
 
 
