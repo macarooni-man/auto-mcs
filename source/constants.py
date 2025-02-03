@@ -1023,7 +1023,7 @@ def telepath_upload(telepath_data: dict, path: str):
 # Whitelist is for restricting downloadable content
 telepath_download_whitelist = {
     'paths': [serverDir, scriptDir, backupFolder],
-    'names': ['.ams', '.amb', 'server.properties', 'server-icon.png']
+    'names': ['.ams', '.amb', 'server-icon.png']
 }
 def telepath_download(telepath_data: dict, path: str, destination=downDir, rename=''):
     if not api_manager:
@@ -5926,6 +5926,7 @@ max-world-size=29999984"""
 # Recursively gathers all config files with a specific depth (default 3)
 # Returns {"dir1": ['match1', 'match2', 'match3', ...]}
 valid_config_formats = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'json5', 'ini', 'txt']
+[telepath_download_whitelist['names'].append(f'.{ext}') for ext in valid_config_formats]
 def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
     root = server_path(name)
     excludes = [
@@ -5936,7 +5937,7 @@ def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
     final_dict = {}
 
     def process_dir(path: str, depth: int = 0):
-        if depth > max_depth:
+        if depth > max_depth or os.path.basename(path).startswith('.'):
             return
 
         match_list = []
@@ -5984,13 +5985,76 @@ def update_config_file(server_name: str, upload_path: str, destination_path: str
 
     # Only allow accepted file types
     for ext in valid_config_formats:
-        if not destination_path.endswith(f'.{ext}') or not upload_path.endswith(f'.{ext}'):
-            return False
+        if destination_path.endswith(f'.{ext}') or upload_path.endswith(f'.{ext}'):
+            break
+    else:
+        return False
 
     # Move file to intended path
     move(upload_path, destination_path)
     clear_uploads()
 
+# Allows parsing of any OS path style
+def cross_platform_path(path, depth=1):
+    """
+    Returns the last `depth` components of the given path.
+
+    For Unix-style paths:
+      - Only forward slashes ("/") are considered true directory separators.
+      - Backslashes are used to escape characters (e.g. spaces) and are unescaped in the result.
+      - If the original path is absolute (starts with '/'), the returned value will also be absolute.
+
+    For Windows-style paths:
+      - Both backslashes ("\") and forward slashes ("/") are treated as separators.
+      - No unescaping is performed.
+
+    If depth is greater than the available number of components,
+    the original path is returned.
+
+    Parameters:
+      path (str): The file path.
+      depth (int): The number of path components (from the right) to return (default is 1).
+
+    Returns:
+      str: The resulting subpath.
+    """
+    if depth < 1:
+        raise ValueError("depth must be >= 1")
+
+    def sanitize(text: str):
+        return text.lstrip('/').lstrip('\\')
+
+    # Remove any trailing separators to avoid an empty final component.
+    path = re.sub(r'[\\/]+$', '', path)
+
+    # Detect Windows-style paths:
+    # - They often start with a drive letter (e.g., "C:\...")
+    # - Or they contain backslashes and no forward slashes.
+    if re.match(r'^[A-Za-z]:', path) or ('\\' in path and '/' not in path):
+        # Split on one or more of either separator.
+        parts = re.split(r'[\\/]+', path)
+        # If the requested depth is more than available parts, return the original path.
+        if depth >= len(parts):
+            return sanitize(path)
+        # Join the last `depth` parts with the Windows separator.
+        return sanitize('\\'.join(parts[-depth:]))
+    else:
+        # Unix-style path.
+        # In Unix, the only true separator is "/"; backslashes are escapes.
+        is_absolute = path.startswith('/')
+        # Split on "/" (ignoring empty strings which can occur if the path is absolute)
+        parts = [p for p in path.split('/') if p]
+        if depth > len(parts):
+            # If depth is more than available, return the original path.
+            return sanitize(path)
+        # Grab the last `depth` components.
+        selected_parts = parts[-depth:]
+        # Unescape any escaped characters in each component (e.g. turn "\ " into " ").
+        selected_parts = [re.sub(r'\\(.)', r'\1', comp) for comp in selected_parts]
+        result = '/'.join(selected_parts)
+        if is_absolute:
+            result = '/' + result
+        return sanitize(result)
 
 # CTRL + Backspace function
 def control_backspace(text, index):

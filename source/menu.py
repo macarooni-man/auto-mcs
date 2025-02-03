@@ -22955,9 +22955,9 @@ def save_config_file(data: dict, content: str):
     # Upload via Telepath if remote
     if data['_telepath_data'] and data['remote_path']:
         telepath_data = data['_telepath_data']
-        upload_path = constants.telepath_upload(telepath_data, data['path'])
+        upload_path = constants.telepath_upload(telepath_data, data['path'])['path']
 
-        constants.api_manager.request(
+        test = constants.api_manager.request(
             endpoint='/main/update_config_file',
             host=telepath_data['host'],
             port=telepath_data['port'],
@@ -23010,12 +23010,29 @@ class ConfigFolder(RelativeLayout, HoverBehavior):
         self.text.halign = "left"
         self.text.valign = "middle"
         self.text.color = self.color
+        self.text.markup = True
+        self.text.shorten = True
+        self.text.shorten_from = 'left'
         self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
-        self.text.font_size = sp(25)
+        self.text.text = self.generate_name()
+        depth = 1 if self.path.endswith(constants.server_manager.current_server.name) else 2
+        text = constants.cross_platform_path(self.path, depth=depth)
+        self.text.font_size = sp(25 - (0 if len(text) < 25 else (len(text) // 8)))
         self.text.max_lines = 1
-        self.text.text = os.path.basename(self.path)
         self.text.x = 55
         self.add_widget(self.text)
+
+    def generate_name(self, color='#555599'):
+        depth = 1 if self.path.endswith(constants.server_manager.current_server.name) else 2
+        text = constants.cross_platform_path(self.path, depth=depth)
+        if '/' in text:
+            parent, child = text.rsplit('/', 1)
+            return f'[color={color}]{parent}/[/color]{child}'
+        elif '\\' in text:
+            parent, child = text.rsplit('\\', 1)
+            return f'[color={color}]{parent}\[/color]{child}'
+        else:
+            return text.strip()
 
     def toggle_fold(self, fold=True, *a):
         self.folded = fold
@@ -23105,9 +23122,11 @@ class ConfigFiles(GridLayout):
             self.text.color = self.color
             self.text.opacity = self.original_opacity
             self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
-            self.text.font_size = sp(25)
+            self.text.text = constants.cross_platform_path(self.path)
+            self.text.shorten = True
+            self.text.shorten_from = 'left'
+            self.text.font_size = sp(25 - (0 if len(self.text.text) < 20 else (len(self.text.text) // 8)))
             self.text.max_lines = 1
-            self.text.text = os.path.basename(self.path)
             self.text.x = 48
             self.add_widget(self.text)
 
@@ -23119,12 +23138,11 @@ class ConfigFiles(GridLayout):
             Animation(color=self.color, duration=self.hover_delay).start(self.icon)
             Clock.schedule_once(functools.partial(open_config_file, self.path), 0)
 
-
         def on_enter(self):
             Animation.stop_all(self.text)
             Animation.stop_all(self.icon)
-            Animation(opacity=1, duration=self.hover_delay).start(self.text)
-            Animation(opacity=1, duration=self.hover_delay).start(self.icon)
+            Animation(opacity=1, duration=self.hover_delay / 2).start(self.text)
+            Animation(opacity=1, duration=self.hover_delay / 2).start(self.icon)
 
         def on_leave(self):
             Animation.stop_all(self.text)
@@ -23232,7 +23250,7 @@ class ServerConfigScreen(MenuBackground):
         for folder, files in server_obj.config_paths.items():
 
             folder_obj = ConfigFolder(folder)
-            files_obj = ConfigFiles(folder_obj, files, os.path.basename(folder) != server_obj.name)
+            files_obj = ConfigFiles(folder_obj, files, constants.cross_platform_path(folder) != server_obj.name)
 
             folder_layout = RelativeLayout(size_hint_min_y=50)
             folder_layout.pos_hint = {'center_y': 1}
