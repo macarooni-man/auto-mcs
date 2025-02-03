@@ -8076,7 +8076,7 @@ class PopupSearch(RelativeLayout):
             self.window_input = BaseInput()
             self.window_input.__translate__ = False
             self.window_input.title_text = ""
-            self.window_input.id = 'search_input'
+            self.window_input.id = 'global_search_input'
             self.window_input.multiline = False
             self.window_input.size_hint_max = (600, 100)
             self.window_input.pos_hint = {"center_x": 0.5, "center_y": 0.5}
@@ -22962,7 +22962,8 @@ def save_config_file(data: dict, content: str):
 
 
 # Controller for ConfigFiles containers
-class ConfigFolder(RelativeLayout, HoverBehavior):
+class ConfigFolder(RelativeLayout):
+
     def __init__(self, path: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -22975,23 +22976,17 @@ class ConfigFolder(RelativeLayout, HoverBehavior):
         self.size_hint_max_y = 50
         self.pos_hint = {'center_y': 1}
         self.color = (0.6, 0.6, 1, 1)
-        self.opacity = 0.7
+        self.original_opacity = 0.7
+        self.hover_delay = 0.1
+        self.opacity = self.original_opacity
 
         # Click behavior
-        self.button = Button()
+        self.button = HoverButton()
         self.button.opacity = 0
-        def on_click(*a):
-
-            # Open folder on right-click
-            if not constants.server_manager.current_server._telepath_data:
-                try:
-                    if self.button.last_touch.button == 'right':
-                        return constants.open_folder(self.path)
-                except:
-                    pass
-
-            self.toggle_fold(not self.folded)
-        self.button.bind(on_press=on_click)
+        self.button.y = -15
+        self.button.on_enter = self.on_enter
+        self.button.on_leave = self.on_leave
+        self.button.on_press = self.on_click
         self.add_widget(self.button)
 
         # Folder icon
@@ -23075,16 +23070,32 @@ class ConfigFolder(RelativeLayout, HoverBehavior):
 
         Clock.schedule_once(after_layout, -1)
 
+    def on_click(self, *a):
+
+        # Open folder on right-click
+        if not constants.server_manager.current_server._telepath_data:
+            try:
+                if self.button.last_touch.button == 'right':
+                    return constants.open_folder(self.path)
+            except:
+                pass
+
+        self.toggle_fold(not self.folded)
+
+    def on_enter(self):
+        Animation.stop_all(self)
+        Animation(opacity=1, duration=self.hover_delay / 2).start(self)
+
+    def on_leave(self):
+        Animation.stop_all(self)
+        Animation(opacity=self.original_opacity if self.folded else 1, duration=self.hover_delay).start(self)
+
+
 # A container for ConfigFile objects that is controlled by ConfigFolder
 class ConfigFiles(GridLayout):
 
     # A single file representation inside the parent
     class ConfigFile(RelativeLayout):
-        def resize(self, *a):
-            self.padding = 10 if Window.width < 900 else 100
-            self.button.x = self.padding
-            self.icon.x = self.padding
-            self.text.x = 48 + self.padding
 
         def __init__(self, path: str, *args, **kwargs):
             super().__init__(*args, **kwargs)
@@ -23104,7 +23115,7 @@ class ConfigFiles(GridLayout):
             # Background button
             self.button = HoverButton()
             self.button.opacity = 0
-            self.button.y = -12
+            self.button.y = -15
             self.button.on_enter = self.on_enter
             self.button.on_leave = self.on_leave
             self.button.on_press = self.on_click
@@ -23119,7 +23130,7 @@ class ConfigFiles(GridLayout):
             self.icon.keep_ratio = False
             self.icon.size_hint_max = (35, 35)
             self.icon.source = os.path.join(constants.gui_assets, 'icons', 'document-text-sharp.png')
-            self.icon.y = -3
+            self.icon.y = -5
             self.icon.x = self.padding
             self.add_widget(self.icon)
 
@@ -23138,6 +23149,12 @@ class ConfigFiles(GridLayout):
             self.text.max_lines = 1
             self.text.x = 48 + self.padding
             self.add_widget(self.text)
+
+        def resize(self, *a):
+            self.padding = 10 if Window.width < 900 else 100
+            self.button.x = self.padding
+            self.icon.x = self.padding
+            self.text.x = 48 + self.padding
 
         def on_click(self):
             new_color = (0.75, 0.75, 1, 1)
@@ -23162,6 +23179,10 @@ class ConfigFiles(GridLayout):
     def resize_files(self, *a):
         for file in self.children:
             file.resize()
+
+        self.folder.parent.background.size_hint_min_x = screen_manager.current_screen.max_width + (10 if Window.width < 900 else 60)
+        Animation.stop_all(self.folder.parent.background)
+        Animation(opacity=(0 if self.folder.folded else 1), duration=0.15).start(self.folder.parent.background)
 
     # Pretty animation :)
     def hide(self, hide: bool = True):
@@ -23200,6 +23221,24 @@ class ConfigFiles(GridLayout):
 
 # Abstracted file manager to display folders and config files
 class ServerConfigScreen(MenuBackground):
+    class Background(RelativeLayout):
+        def resize(self, *args):
+            self.rectangle1.pos = self.pos
+            self.rectangle1.size = self.size
+            self.rectangle2.pos = self.pos
+            self.rectangle2.size = self.size
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            image = os.path.join(constants.gui_assets, 'head_highlight.png')
+            radius = 25
+
+            with self.canvas:
+                Color(0, 0, 0.05, 0.12)
+                self.rectangle1 = kivy.graphics.RoundedRectangle(source=image, radius=[radius]*4)
+                self.rectangle2 = kivy.graphics.RoundedRectangle(radius=[radius]*4)
+
+            self.bind(pos=self.resize, size=self.resize)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -23262,7 +23301,15 @@ class ServerConfigScreen(MenuBackground):
 
                 folder_layout = RelativeLayout(size_hint_min_y=50)
                 folder_layout.pos_hint = {'center_y': 1}
+
+                padding = 10
+                folder_layout.background = self.Background()
+                folder_layout.background.size_hint_min_x = self.max_width + (padding * 2)
+                folder_layout.background.pos = (-padding, 11)
+                folder_layout.add_widget(folder_layout.background)
+
                 folder_layout.add_widget(folder_obj)
+
                 self.scroll_layout.add_widget(folder_layout)
                 self.scroll_layout.add_widget(files_obj)
 
@@ -23285,9 +23332,9 @@ class ServerConfigScreen(MenuBackground):
     def generate_menu(self, **kwargs):
         self.server_obj = constants.server_manager.current_server
 
-        # Re-use previously generated widget if the server is the same
-        if self._cached and self._cached[0] == self.server_obj:
-            return self.add_widget(self._cached[1])
+        # Re-use previously generated widget if the server and language is the same
+        if self._cached and self._cached['server_obj'] == self.server_obj and self._cached['locale'] == constants.app_config.locale:
+            return self.add_widget(self._cached['layout'])
 
         # Ignore screen if there are no config paths in the current server
         if not self.server_obj.config_paths:
@@ -23295,13 +23342,14 @@ class ServerConfigScreen(MenuBackground):
                 return previous_screen()
 
         # Scroll list
+        self.max_width = 750
         self.scroll_widget = ScrollViewWidget()
         self.scroll_widget.pos_hint = {'center_y': 0.485, 'center_x': 0.5}
         self.scroll_anchor = AnchorLayout()
         self.scroll_layout = GridLayout(
             cols=2,
             spacing=10,
-            size_hint_max_x=750,
+            size_hint_max_x=self.max_width,
             size_hint_y=None,
             padding=[0, 80, 0, 60]
         )
@@ -23368,7 +23416,7 @@ class ServerConfigScreen(MenuBackground):
         float_layout.add_widget(generate_title(f"Server Settings: '{self.server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{self.server_obj.name}, Settings, Edit config"))
 
-        self._cached = (self.server_obj, float_layout)
+        self._cached = {'server_obj': self.server_obj, 'locale': constants.app_config.locale, 'layout': float_layout}
         self.add_widget(float_layout)
 
         self.gen_search_results()
@@ -23583,6 +23631,8 @@ class EditorRoot(MenuBackground):
 
             # Add in special key presses
             def keyboard_on_key_down(self, window, keycode, text, modifiers):
+                if self._line._screen.popup_widget:
+                    return None
 
                 # Ignore all key presses if search bar is highlighted or not selected line
                 if self._line._screen.search_bar.focused or self._line.line != self._line._screen.current_line:
@@ -24136,6 +24186,8 @@ class EditorRoot(MenuBackground):
             return super().insert_text(substring, from_undo=from_undo)
 
         def keyboard_on_key_down(self, window, keycode, text, modifiers):
+            if self.parent.popup_widget:
+                return None
 
             if keycode[1] == 'escape' and self.focused:
                 self.focused = False
@@ -24759,8 +24811,50 @@ class EditorRoot(MenuBackground):
         self.modified = changed
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+
+        # Ignore key presses when popup is visible
         if self.popup_widget:
-            return True
+
+            # Override for PopupSearch
+            if self.popup_widget.__class__.__name__ == 'PopupSearch':
+                if keycode[1] == 'escape':
+                    self.popup_widget.self_destruct(True)
+                elif keycode[1] == 'backspace' or ('shift' in modifiers and text and not text.isalnum()):
+                    self.popup_widget.resize_window()
+                elif control not in modifiers and text and self.popup_widget.window_input.keyboard:
+
+                    def insert_text(content):
+                        col = self.popup_widget.window_input.cursor_col
+                        start = self.popup_widget.window_input.text[:col]
+                        end = self.popup_widget.window_input.text[col:]
+                        self.popup_widget.window_input.text = start + content + end
+                        for x in range(len(content)):
+                            Clock.schedule_once(functools.partial(self.popup_widget.window_input.do_cursor_movement, 'cursor_right', True), 0)
+
+                    new_str = self.popup_widget.window_input.keyboard.keycode_to_string(keycode[0])
+                    if 'shift' in modifiers:
+                        new_str = new_str.upper()
+                    if len(new_str) == 1:
+                        insert_text(new_str)
+                    elif keycode[1] == 'spacebar':
+                        insert_text(' ')
+                    self.popup_widget.resize_window()
+                else:
+                    self.popup_widget.resize_window()
+                return True
+
+            if keycode[1] in ['escape', 'n']:
+                try:
+                    self.popup_widget.click_event(self.popup_widget, 'no')
+                except AttributeError:
+                    self.popup_widget.click_event(self.popup_widget, 'ok')
+
+            elif keycode[1] in ['enter', 'return', 'y']:
+                try:
+                    self.popup_widget.click_event(self.popup_widget, 'yes')
+                except AttributeError:
+                    self.popup_widget.click_event(self.popup_widget, 'ok')
+            return
 
         if (keycode[1] == 'q' and control in modifiers) or keycode[1] == 'escape':
             if self.modified:
@@ -24799,6 +24893,25 @@ class EditorRoot(MenuBackground):
 
         if keycode[1] in ['r', 'y'] and control in modifiers and self.redo_history:
             self.undo(save=False, undo=False)
+
+        # Trigger for showing search bar
+        elif keycode[1] == 'shift':
+            if not self._shift_held:
+                self._shift_held = True
+                self._shift_press_count += 1
+
+                if self._shift_timer:
+                    self._shift_timer.cancel()
+
+                # Check for double tap
+                if self._shift_press_count == 2:
+                    self.show_search()
+                    self._shift_press_count = 0
+
+                # Otherwise, reset the timer
+                else:
+                    self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
+            return True
 
         def set_banner(*a):
             self.set_banner_status(not self.check_data())
@@ -24860,7 +24973,7 @@ class EditorRoot(MenuBackground):
             float_layout.add_widget(b)
 
         float_layout.add_widget(generate_title(f"Server Settings: '{self.server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{self.server_obj.name}, Settings, Edit '${self.file_name}$'"))
+        float_layout.add_widget(generate_footer(f"${self.server_obj.name}$, Settings, Edit '${self.file_name}$'"))
         self.add_widget(float_layout)
 
         self.search_bar = self.SearchInput()

@@ -496,6 +496,10 @@ def translate(text: str):
             return locale_data[s.strip().lower()][app_config.locale]
         except KeyError:
             pass
+        try:
+            return locale_data[s.strip()][app_config.locale]
+        except KeyError:
+            pass
 
 
     # Extract proper noun if present with flag
@@ -5932,12 +5936,13 @@ def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
     excludes = [
         'version_history.json', 'version_list.json', 'usercache.json', 'banned-players.json', 'banned-ips.json',
         'whitelist.json', 'ops.json', 'ops.txt', 'whitelist.txt', 'banned-players.txt', 'banned-ips.txt', 'eula.txt',
-        'bans.txt', 'modrinth.index.json', server_ini
+        'bans.txt', 'modrinth.index.json', 'amscript', server_ini
     ]
     final_dict = {}
 
     def process_dir(path: str, depth: int = 0):
-        if depth > max_depth or os.path.basename(path).startswith('.'):
+        basename = os.path.basename(path)
+        if depth > max_depth or basename.startswith('.') or basename in excludes:
             return
 
         match_list = []
