@@ -24973,7 +24973,7 @@ class EditorRoot(MenuBackground):
             float_layout.add_widget(b)
 
         float_layout.add_widget(generate_title(f"Server Settings: '{self.server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"${self.server_obj.name}$, Settings, Edit '${self.file_name}$'"))
+        float_layout.add_widget(generate_footer(f"{self.server_obj.name}, Settings, Edit '${self.file_name}$'"))
         self.add_widget(float_layout)
 
         self.search_bar = self.SearchInput()
