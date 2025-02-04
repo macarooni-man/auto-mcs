@@ -52,6 +52,7 @@ if constants.app_compiled and constants.debug is False:
 os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug" if constants.debug else "info"
 os.environ["KIVY_IMAGE"] = "pil,sdl2"
 os.environ['KIVY_NO_ARGS'] = '1'
+os.environ["KIVY_METRICS_DENSITY"] = "1"
 
 from kivy.config import Config
 Config.set('graphics', 'maxfps', '120')
