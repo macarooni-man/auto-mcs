@@ -1741,12 +1741,19 @@ def find_latest_mc():
             reqs = requests.get(url, timeout=timeout)
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
-            # Get side panel latest version
-            li = soup.find('li', 'li-version-list')
+            version_list = []
 
+            # Get side panel versions
+            li_list = soup.find_all('li', 'li-version-list')
+            for li in li_list:
+                for sub_li in li.find_all('li'):
+                    version = sub_li.text.strip()
+                    url = url.rsplit('/', 1)[0] + f'/index_{version}.html'
+                    version_list.append((version, url))
+
+            # Get the first entry from the side panel versions
             try:
-                new_url = url.rsplit('/', 1)[0] + '/' + li.find_all('a')[-1].get('href')
-                reqs = requests.get(new_url, timeout=timeout)
+                reqs = requests.get(version_list[0][-1], timeout=timeout)
                 soup = BeautifulSoup(reqs.text, 'html.parser')
             except:
                 pass
