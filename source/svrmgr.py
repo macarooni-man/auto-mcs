@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from subprocess import Popen, PIPE, run
 from datetime import datetime as dt
 from threading import Timer
@@ -2119,7 +2119,8 @@ class ServerManager():
 
     # Refreshes self.server_list with current info
     def refresh_list(self):
-        self.server_list = create_server_list(self.load_telepath_servers())
+
+        self.server_list = create_server_list(self.online_telepath_servers)
 
     # Sets self.current_server to selected ServerObject
     def open_server(self, name):
@@ -2210,31 +2211,39 @@ class ServerManager():
     # Checks which servers are alive
     def check_telepath_servers(self):
         new_server_list = {}
-        for host, data in self.telepath_servers.items():
+
+        def check_server(host, data):
             url = f'http://{host}:{data["port"]}/telepath/check_status'
             try:
                 # Check if remote server is online
-                if requests.get(url, timeout=1).json():
-
+                if requests.get(url, timeout=0.5).json():
                     # Attempt to log in
                     login_data = constants.api_manager.login(host, data["port"])
                     if login_data:
-
                         # Update values if host exists
                         if host in self.telepath_servers:
                             for k, v in login_data.items():
-                                if host in self.telepath_servers and v:
+                                if v:
                                     self.telepath_servers[host][k] = v
-
-                        # Otherwise, set the whole thing
                         else:
                             self.telepath_servers[host] = login_data
 
-                        new_server_list[host] = constants.deepcopy(data)
-            except:
+                        return host, constants.deepcopy(data)
+            except Exception:
                 pass
+            return None
 
-        # Add a discovery endpoint at some point here, and only return active servers
+        # Use ThreadPoolExecutor to check multiple servers concurrently
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_host = {executor.submit(check_server, host, data): host for host, data in self.telepath_servers.items()}
+
+            for future in as_completed(future_to_host):
+                result = future.result()
+                if result:
+                    host, data = result
+                    new_server_list[host] = data
+
+        # Update the online servers list
         self.online_telepath_servers = new_server_list
         self.write_telepath_servers(overwrite=True)
         return new_server_list
@@ -2257,12 +2266,14 @@ class ServerManager():
             instance['nickname'] = constants.format_nickname(instance['hostname'])
 
         self.write_telepath_servers(instance)
+        self.check_telepath_servers()
 
     def remove_telepath_server(self, instance: dict):
         if instance['host'] in self.telepath_servers:
             del self.telepath_servers[instance['host']]
 
         self.write_telepath_servers(overwrite=True)
+        self.check_telepath_servers()
 
     def rename_telepath_server(self, instance: dict, new_name: str):
         new_name = constants.format_nickname(new_name)

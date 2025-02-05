@@ -5550,8 +5550,9 @@ class DropButton(FloatLayout):
 
 # Figure out where self.change_text is called, and add telepath icon to label
 class TelepathDropButton(DropButton):
-    def __init__(self, telepath_data, type, position, x_offset=0, facing='center', *args, **kwargs):
+    def __init__(self, type, position, x_offset=0, facing='center', *args, **kwargs):
         FloatLayout.__init__(self, *args, **kwargs)
+        telepath_data = constants.server_manager.online_telepath_servers
 
         if type == 'create':
             name = 'create a server on'
@@ -10603,7 +10604,7 @@ class CreateServerTemplateScreen(MenuBackground):
             float_layout.add_widget(scroll_bottom)
             float_layout.add_widget(self.page_switcher)
 
-            telepath_data = constants.server_manager.check_telepath_servers()
+            telepath_data = constants.server_manager.online_telepath_servers
             buttons.append(ExitButton('Back', (0.5, 0.11 if telepath_data else 0.14), cycle=True))
 
             for button in buttons:
@@ -10615,7 +10616,7 @@ class CreateServerTemplateScreen(MenuBackground):
 
             # Add telepath button if servers are connected
             if telepath_data:
-                float_layout.add_widget(TelepathDropButton(telepath_data, 'create', (0.5, 0.202)))
+                float_layout.add_widget(TelepathDropButton('create', (0.5, 0.202)))
 
             self.add_widget(float_layout)
 
@@ -10679,6 +10680,9 @@ class CreateServerModeScreen(MenuBackground):
         float_layout.add_widget(generate_title('Create New Server'))
         float_layout.add_widget(generate_footer('Create new server'))
 
+        # Async reload Telepath servers
+        threading.Timer(0, constants.server_manager.check_telepath_servers).start()
+
         self.add_widget(float_layout)
 
 
@@ -10725,9 +10729,8 @@ class CreateServerNameScreen(MenuBackground):
 
 
         # Add telepath button if servers are connected
-        telepath_data = constants.server_manager.check_telepath_servers()
-        if telepath_data:
-            float_layout.add_widget(TelepathDropButton(telepath_data, 'create', (0.5, 0.4)))
+        if constants.server_manager.online_telepath_servers:
+            float_layout.add_widget(TelepathDropButton('create', (0.5, 0.4)))
 
 
         float_layout.add_widget(generate_title('Create New Server'))
@@ -14366,10 +14369,10 @@ class ServerImportScreen(MenuBackground):
 
         # Add telepath button if servers are connected
         offset = 0
-        telepath_data = constants.server_manager.check_telepath_servers()
+        telepath_data = constants.server_manager.online_telepath_servers
         if telepath_data:
             offset = 0.05
-            self.add_widget(TelepathDropButton(telepath_data, 'import', (0.5, 0.45)))
+            self.add_widget(TelepathDropButton('import', (0.5, 0.45)))
 
 
         if input_type == "external":
@@ -14554,10 +14557,9 @@ class ServerImportModpackScreen(MenuBackground):
 
         # Add telepath button if servers are connected
         offset = 0
-        telepath_data = constants.server_manager.check_telepath_servers()
-        if telepath_data:
+        if constants.server_manager.online_telepath_servers:
             offset = 0.05
-            self.add_widget(TelepathDropButton(telepath_data, 'install', (0.5, 0.37)))
+            self.add_widget(TelepathDropButton('install', (0.5, 0.37)))
 
 
         # Regular menus
@@ -20061,9 +20063,8 @@ class ServerCloneScreen(MenuBackground):
 
 
         # Add telepath button if servers are connected
-        telepath_data = constants.server_manager.check_telepath_servers()
-        if telepath_data:
-            float_layout.add_widget(TelepathDropButton(telepath_data, 'clone', (0.5, 0.4)))
+        if constants.server_manager.online_telepath_servers:
+            float_layout.add_widget(TelepathDropButton('clone', (0.5, 0.4)))
 
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups, Clone"))
@@ -20072,15 +20073,6 @@ class ServerCloneScreen(MenuBackground):
         self.name_input.grab_focus()
         Clock.schedule_once(functools.partial(self.name_input.on_enter, self.name_input.text, False), 0)
 
-        # Requires opening the server again, since loading "TelepathDropButton" logs in, and logging in clears the ServerObject.remote_server parameter locally on the remote system
-        # Refer to this server-side behavior in TelepathManager._login()
-        if server_obj._telepath_data:
-            constants.api_manager.request(
-                endpoint=f'/main/open_remote_server?name={constants.quote(server_obj.name)}',
-                host=server_obj._telepath_data['host'],
-                port=server_obj._telepath_data['port'],
-                args={'none': None}
-            )
 
 class ServerCloneProgressScreen(ProgressScreen):
 
@@ -27615,26 +27607,18 @@ class InstanceButton(HoverButton):
                 self.background_normal = os.path.join(constants.gui_assets, 'telepath_button_enabled.png')
 
             else:
-                url = f'http://{self.properties["host"]}:{self.properties["port"]}/telepath/check_status'
-                # Check if remote server is online
-                try:
-                    if constants.requests.get(url, timeout=1).json():
-                        self.connect_color = (1, 0.65, 0.65, 1)
-                        self.subtitle.color = self.connect_color
-                        self.subtitle.default_opacity = 0.8
-                        self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                self.connect_color = (1, 0.65, 0.65, 1)
+                self.subtitle.color = self.connect_color
+                self.subtitle.default_opacity = 0.8
+                self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
 
-                        if self.properties['telepath-version'] != constants.api_manager.version:
-                            self.subtitle.text = 'API version mismatch'
-                        else:
-                            self.subtitle.text = 'Authentication failure'
+                if self.properties['telepath-version'] != constants.api_manager.version:
+                    self.subtitle.text = 'API version mismatch'
+                else:
+                    self.subtitle.text = 'Authentication failure'
 
-                        self.enabled = False
-                        self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
-                    else:
-                        reset()
-                except constants.requests.exceptions.ConnectionError:
-                    reset()
+                self.enabled = False
+                self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
 
         except KeyError:
             reset()
@@ -27743,7 +27727,7 @@ class InstanceButton(HoverButton):
                     pos_hint={"center_x": 1, "center_y": 0.5},
                     size=(100, 30),
                     color=(0.647, 0.839, 0.969, 1),
-                    text= ('   ' + update_banner + '  ') if update_banner.startswith('b-') else update_banner,
+                    text=update_banner,
                     icon="arrow-up-circle.png",
                     icon_side="left"
                 )
@@ -27910,6 +27894,7 @@ class TelepathInstanceScreen(MenuBackground):
         self.scroll_layout = None
         self.blank_label = None
         self.page_switcher = None
+        self.load_layout = None
 
         self.last_results = []
         self.page_size = 10
@@ -27928,8 +27913,11 @@ class TelepathInstanceScreen(MenuBackground):
         if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
             self.switch_page(keycode[1])
 
+    def show_loading(self, show=True, *a):
+        Animation.stop_all(self.load_layout)
+        Animation(opacity=1 if show else 0, duration=0.2).start(self.load_layout)
+
     def generate_menu(self, **kwargs):
-        constants.server_manager.check_telepath_servers()
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
@@ -27989,10 +27977,42 @@ class TelepathInstanceScreen(MenuBackground):
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(f'Telepath, {menu_name}', no_background=True))
 
-        self.add_widget(float_layout)
+        # Load layout
+        self.load_layout = FloatLayout(opacity=0)
 
-        # Automatically generate results on page load
-        self.gen_search_results(constants.server_manager.telepath_servers)
+        # Loading icon to swap button
+        self.load_layout.icon = Image()
+        self.load_layout.icon.id = "load_icon"
+        self.load_layout.icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_layout.icon.size_hint_max = (50, 50)
+        self.load_layout.icon.color = (0.6, 0.6, 1, 1)
+        self.load_layout.icon.pos_hint = {"center_y": 0.5, "center_x": 0.4}
+        self.load_layout.icon.allow_stretch = True
+        self.load_layout.icon.anim_delay = constants.anim_speed * 0.02
+        self.load_layout.add_widget(self.load_layout.icon)
+
+        # Load label
+        self.load_layout.text = Label()
+        self.load_layout.text.__translate__ = False
+        self.load_layout.text.text = "loading instances..."
+        self.load_layout.text.halign = "center"
+        self.load_layout.text.valign = "center"
+        self.load_layout.text.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.load_layout.text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.load_layout.text.font_size = sp(25)
+        self.load_layout.text.color = (0.6, 0.6, 1, 0.5)
+        self.load_layout.add_widget(self.load_layout.text)
+
+        self.add_widget(float_layout)
+        self.add_widget(self.load_layout)
+
+        # Async reload Telepath servers
+        def refresh_telepath_instances(*a):
+            Clock.schedule_once(lambda *_: self.show_loading(True), 0)
+            constants.server_manager.check_telepath_servers()
+            Clock.schedule_once(lambda *_: self.show_loading(False), 0)
+            Clock.schedule_once(lambda *_: self.gen_search_results(constants.server_manager.telepath_servers), 0.15)
+        threading.Timer(0, refresh_telepath_instances).start()
 
 
 
