@@ -650,9 +650,16 @@ class ServerObject():
 
 
                 # Server stop log
-                elif "Stopping server" in line or "Failed to start the minecraft server" in line:
+                elif "Stopping server" in line:
                     type_label = "STOP"
                     type_color = (0.3, 1, 0.6, 1)
+                    self.check_for_deadlock()
+
+
+                # Server fail to start log
+                elif "Failed to start the minecraft server" in line:
+                    type_label = "FATAL"
+                    type_color = (1, 0.5, 0.65, 1)
                     self.check_for_deadlock()
 
 
