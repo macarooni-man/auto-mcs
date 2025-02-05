@@ -2552,13 +2552,14 @@ def push_new_server(server_info: dict, import_info={}):
 
 # Generate new server name
 def new_server_name(existing_server=None, s_list=server_list_lower):
+    pattern = r'\s\(\d+\)$'
     if not s_list:
         generate_server_list()
         s_list = server_list_lower
     def iter_name(new_name):
         x = 1
         while new_name.lower() in s_list:
-            new_name = f'{new_name} ({x})'
+            new_name = f'{re.sub(pattern, "", new_name).strip()} ({x})'
             x += 1
         return new_name
 

@@ -129,9 +129,16 @@ def escape_emojis(text, allow_breaks=True):
 
     # Dirty fix for the meantime to prevent crashing when pasting emojis
     return ''.join(f"{char}" if is_emoji(char) else char for char in text)
+token = None
 def to_english_2(text: str):
+    global token
+    if not token:
+        token = re.search(
+            r'(?<=name\=\"translator_nonce\" value=\")\S+(?=\"\s)',
+            requests.get('https://anythingtranslate.com/translators/brain-rot-translator/').text
+        )[0]
     def get_content():
-        data = {'action': 'do_translation', 'translator_nonce': '759775a7ec', 'post_id': '17141', 'to_translate': text}
+        data = {'action': 'do_translation', 'translator_nonce': token, 'post_id': '17141', 'to_translate': text}
         r = requests.post('https://anythingtranslate.com/wp-admin/admin-ajax.php', data=data, timeout=5)
         if r.status_code == 200:
             return escape_emojis(r.json()['data'])

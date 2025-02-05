@@ -27993,7 +27993,6 @@ class TelepathInstanceScreen(MenuBackground):
 
         # Load label
         self.load_layout.text = Label()
-        self.load_layout.text.__translate__ = False
         self.load_layout.text.text = "loading instances..."
         self.load_layout.text.halign = "center"
         self.load_layout.text.valign = "center"
