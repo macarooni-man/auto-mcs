@@ -23246,8 +23246,15 @@ class ServerConfigScreen(MenuBackground):
         self.filter_text = ''
         self.search_bar = None
         self.search_label = None
+        self.back_button = None
         self._cached = None
-
+    
+    def on_pre_enter(self, *args):
+        if self.back_button:
+            self.back_button.button.on_leave()
+            self.back_button.button.background_normal = os.path.join(constants.gui_assets, 'exit_button.png')
+        super().on_pre_enter(*args)
+    
     def filter_files(self, query: str = None):
         self.filter_text = query
 
@@ -23320,7 +23327,6 @@ class ServerConfigScreen(MenuBackground):
                 Animation.stop_all(self.scroll_layout)
                 Animation(opacity=1, duration=0.3).start(self.scroll_layout)
             Clock.schedule_once(reset_layout, 0.1)
-
 
     def generate_menu(self, **kwargs):
         self.server_obj = constants.server_manager.current_server
@@ -23400,8 +23406,8 @@ class ServerConfigScreen(MenuBackground):
         float_layout.add_widget(self.header)
         float_layout.add_widget(self.search_bar)
 
-
-        buttons.append(ExitButton('Back', (0.5, 0.12), cycle=True))
+        self.back_button = ExitButton('Back', (0.5, 0.12), cycle=True)
+        buttons.append(self.back_button)
 
         for button in buttons:
             float_layout.add_widget(button)
