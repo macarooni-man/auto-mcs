@@ -3810,7 +3810,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 for jar in sorted(jar_list, key=lambda x: os.path.getsize(x)):
                     folder_check(tempDir)
                     jar_name = os.path.basename(jar)
-                    script_name = os.path.join(tempDir, jar_name + '.bat')
+                    script_name = os.path.join(tempDir, 'importtest', jar_name + '.bat')
                     with open(script_name, 'w+') as f:
                         f.write(f'java -jar {jar_name}')
                     script_list.append(script_name)
@@ -3954,6 +3954,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                 if os.path.exists("server.jar"):
                                     os.remove("server.jar")
                                 run_proc(f"{'move' if os_name == 'windows' else 'mv'} {file_name}.jar server.jar")
+                                file_name = 'server'
 
                         time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
 
