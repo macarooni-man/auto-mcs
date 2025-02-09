@@ -3949,12 +3949,11 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             if os.path.exists(os.path.join(test_server, 'fabric-server-launch.jar')):
                                 file_name = 'fabric-server-launch.jar'
 
-                        else:
-                            if file_name != "server":
-                                if os.path.exists("server.jar"):
-                                    os.remove("server.jar")
-                                run_proc(f"{'move' if os_name == 'windows' else 'mv'} {file_name}.jar server.jar")
-                                file_name = 'server'
+                        # else:
+                        #     if file_name != "server":
+                        #         if os.path.exists("server.jar"):
+                        #             os.remove("server.jar")
+                        #         run_proc(f"{'move' if os_name == 'windows' else 'mv'} {file_name}.jar server.jar")
 
                         time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
 
@@ -4113,7 +4112,7 @@ eula=true"""
                     os.remove(script)
 
                 # Delete all *.jar files in directory
-                for jar in glob(os.path.join(str(path), '*.jar'), recursive=False):
+                for jar in glob(os.path.join(tmpsvr, '*.jar'), recursive=False):
                     if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name in jar)):
                         os.remove(jar)
 
