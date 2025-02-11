@@ -166,7 +166,7 @@ is_android = 'ANDROID_PRIVATE' in os.environ
 os_name = 'windows' if os.name == 'nt' else 'macos' if system().lower() == 'darwin' else 'linux' if os.name == 'posix' else os.name
 home = os.getenv("ANDROID_PRIVATE") if is_android else os.path.expanduser('~')
 appdata = os.getenv("APPDATA") if os_name == 'windows' else f'{home}/Library/Application Support' if os_name == 'macos' else home
-applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
+applicationFolder = os.path.join(appdata, ('auto-mcs' if (os_name == 'macos' or is_android) else '.auto-mcs'))
 
 saveFolder = os.path.join(appdata, '.minecraft', 'saves') if os_name != 'macos' else f"{home}/Library/Application Support/minecraft/saves"
 downDir = os.path.join(applicationFolder, 'Downloads')
@@ -612,7 +612,8 @@ def check_free_space(telepath_data=None):
         except:
             return True
 
-    free_space = round(disk_usage('/').free / 1048576)
+    path_to_check = home if is_android else '/'
+    free_space = round(disk_usage(path_to_check).free / 1048576)
     return free_space > 1024
 
 def telepath_busy():

@@ -65,9 +65,10 @@ Config.set('kivy', 'exit_on_escape', '0')
 
 # Android settings
 if constants.is_android:
-    from kivy.logger import Logger
-    constants.debug = True
+
+    # Override debug print statements to Logger
     if constants.debug:
+        from kivy.logger import Logger
         print = lambda *a: Logger.debug(str(a))
 
     Config.set('graphics', 'width', str(constants.window_size[0]))
@@ -528,10 +529,11 @@ class HoverBehavior(object):
 
         # Unhover if Android
         if constants.is_android:
+            current_screen = str(screen_manager.current)
             def unhover(*a):
-                Window.mouse_pos = pos
-                self.dispatch('on_leave')
-            Clock.schedule_once(unhover, 0.5)
+                if current_screen != screen_manager.current:
+                    self.dispatch('on_leave')
+            Clock.schedule_once(unhover, 0.25)
 
 
         # Next line to_widget allow to compensate for relative layout
@@ -6349,7 +6351,7 @@ class PopupWindow(RelativeLayout):
 
         button_pressed = 'ignore'
         try:
-            button_pressed = args[1].button
+            button_pressed = 'left' if constants.is_android else args[1].button
         except:
             pass
 
@@ -6954,7 +6956,7 @@ class BigPopupWindow(RelativeLayout):
 
         button_pressed = 'ignore'
         try:
-            button_pressed = args[1].button
+            button_pressed = 'left' if constants.is_android else args[1].button
         except:
             pass
 
@@ -8008,7 +8010,7 @@ class PopupSearch(RelativeLayout):
 
         button_pressed = 'ignore'
         try:
-            button_pressed = args[1].button
+            button_pressed = 'left' if constants.is_android else args[1].button
         except:
             pass
 

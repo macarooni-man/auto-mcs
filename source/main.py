@@ -33,15 +33,16 @@ if __name__ == '__main__':
         DisplayMetrics = autoclass('android.util.DisplayMetrics')
         dm = DisplayMetrics()
         activity.getWindowManager().getDefaultDisplay().getMetrics(dm)
-        phone_width = dm.widthPixels
-        phone_height = dm.heightPixels
+        phone_width = int(dm.widthPixels)
+        phone_height = int(dm.heightPixels)
 
-        # Set your desired scale factor; e.g., 2.0 will half the resolution.
-        constants.scale_factor = 1.25
+        # Set the scale factor dynamically, 2.0 will half the resolution
+        min_height = 720
+        constants.scale_factor = phone_height / min_height
 
         # Calculate the virtual resolution.
-        virtual_width = int(phone_width / constants.scale_factor)
-        virtual_height = int(phone_height / constants.scale_factor)
+        virtual_width = round(phone_width / constants.scale_factor)
+        virtual_height = round(phone_height / constants.scale_factor)
         constants.window_size = (virtual_width, virtual_height)
 
         SDLActivity = autoclass('org.libsdl.app.SDLActivity')
@@ -56,12 +57,25 @@ if __name__ == '__main__':
         layoutParams.height = LayoutParams.MATCH_PARENT
         mSurface.setLayoutParams(layoutParams)
 
+        # Get default system language
+        try:
+            system_locale = autoclass('java.util.Locale').getDefault().getLanguage()
+
+            for v in constants.available_locales.values():
+                if system_locale.startswith(v['code']):
+                    if not constants.app_config.locale:
+                        constants.app_config.locale = v['code']
+                    break
+        except Exception as e:
+            print(f'Failed to determine locale: {e}')
+
+        if not constants.app_config.locale:
+            constants.app_config.locale = 'en'
+
 
     # Create an instance of Runnable, then assign the function attribute.
     runnable = Runnable()
     runnable.func = update_window_configuration
-
-    # Schedule it on the UI thread.
     activity.runOnUiThread(runnable)
 
 
@@ -82,25 +96,7 @@ if __name__ == '__main__':
         pass
 
     # os.environ["KIVY_NO_CONSOLELOG"] = "1"
-
-
-    # Get default system language
-    try:
-        from locale import getdefaultlocale
-        system_locale = getdefaultlocale()[0]
-        if '_' in system_locale:
-            system_locale = system_locale.split('_')[0]
-        for v in constants.available_locales.values():
-            if system_locale.startswith(v['code']):
-                if not constants.app_config.locale:
-                    constants.app_config.locale = v['code']
-                break
-    except Exception as e:
-        if not constants.is_docker:
-            print(f'Failed to determine locale: {e}')
-    if not constants.app_config.locale:
-        constants.app_config.locale = 'en'
-
+    constants.debug = True
 
     # Start the app
     launch_automcs()
