@@ -51,6 +51,7 @@ refresh_rate = 60
 anim_speed = 1
 last_window = {}
 window_size = (850, 850)
+scale_factor = 1
 project_link = "https://github.com/macarooni-man/auto-mcs"
 website = "https://auto-mcs.com"
 update_data = {
@@ -158,8 +159,9 @@ json_format_floor = "1.7.6"
 
 
 # Paths
+is_android = 'ANDROID_PRIVATE' in os.environ
 os_name = 'windows' if os.name == 'nt' else 'macos' if system().lower() == 'darwin' else 'linux' if os.name == 'posix' else os.name
-home = os.path.expanduser('~')
+home = os.getenv("ANDROID_PRIVATE") if is_android else os.path.expanduser('~')
 appdata = os.getenv("APPDATA") if os_name == 'windows' else f'{home}/Library/Application Support' if os_name == 'macos' else home
 applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
 

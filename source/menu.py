@@ -6,7 +6,6 @@ from pypresence import Presence
 from plyer import filechooser
 from random import randrange
 from PIL import ImageEnhance
-import simpleaudio as sa
 from pathlib import Path
 from glob import glob
 import webbrowser
@@ -25,10 +24,13 @@ import re
 
 
 # Local imports
-import amseditor
-import logviewer
 import constants
-import crashmgr
+if not constants.is_android:
+    import simpleaudio as sa
+    import amseditor
+    import logviewer
+    import crashmgr
+
 import amscript
 import telepath
 import addons
@@ -43,23 +45,81 @@ if constants.os_name == "windows":
 control = 'meta' if constants.os_name == "macos" else 'ctrl'
 
 # Disable Kivy logging if debug is off and app is compiled
-if constants.app_compiled and constants.debug is False:
+if constants.app_compiled and constants.debug is False and not constants.is_android:
     kivy_folder = os.path.join(constants.os_temp, ".kivy")
     constants.folder_check(kivy_folder)
     os.environ['KIVY_HOME'] = kivy_folder
 
 
-os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug" if constants.debug else "info"
+# os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug" if constants.debug else "info"
+os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug"
 os.environ["KIVY_IMAGE"] = "pil,sdl2"
 os.environ['KIVY_NO_ARGS'] = '1'
 os.environ["KIVY_METRICS_DENSITY"] = "1"
 
+# Global settings
 from kivy.config import Config
 Config.set('graphics', 'maxfps', '120')
 Config.set('graphics', 'vsync', '-1')
-Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
-Config.set('graphics', 'window_state', 'hidden')
 Config.set('kivy', 'exit_on_escape', '0')
+
+# Android settings
+if constants.is_android:
+    from kivy.logger import Logger
+    constants.debug = True
+    if constants.debug:
+        print = lambda *a: Logger.debug(str(a))
+
+    Config.set('graphics', 'width', str(constants.window_size[0]))
+    Config.set('graphics', 'height', str(constants.window_size[1]))
+    Config.set('graphics', 'fullscreen', 'auto')
+    Config.set('graphics', 'resizable', '0')
+
+
+    # Scaled touch calibration
+    from kivy.core.window.window_sdl2 import SDL2MotionEventProvider, SDL2MotionEvent
+    def _update(self, dispatch_fn):
+        touchmap = self.touchmap
+        while True:
+            try:
+                value = self.q.pop()
+            except IndexError:
+                return
+
+            action, fid, x, y, pressure = value
+
+            y = 1 - (y / constants.scale_factor)
+            x = x / constants.scale_factor
+
+            if fid not in touchmap:
+                me = SDL2MotionEvent('sdl', fid, (x, y, pressure))
+                me.sx = x
+                me.sy = y
+                me.x = x * constants.window_size[0]
+                me.y = y * constants.window_size[1]
+                me.pos = (me.x, me.y)
+                Window.mouse_pos = me.pos
+                touchmap[fid] = me
+            else:
+                me = touchmap[fid]
+                me.move((x, y, pressure))
+            if action == 'fingerdown':
+                dispatch_fn('begin', me)
+            elif action == 'fingerup':
+                me.update_time_end()
+                dispatch_fn('end', me)
+                del touchmap[fid]
+            else:
+                dispatch_fn('update', me)
+    SDL2MotionEventProvider.update = _update
+
+
+
+# Desktop settings
+else:
+    Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
+    Config.set('graphics', 'window_state', 'hidden')
+
 
 
 # Import kivy elements
@@ -428,6 +488,15 @@ class HoverBehavior(object):
         if not self.get_root_window() or self.disabled:
             return  # do proceed if I'm not displayed <=> If there's no parent
         pos = args[1]
+f
+        # Unhover if Android
+        if constants.is_android:
+            def unhover(*a):
+                Window.mouse_pos = pos
+                self.dispatch('on_leave')
+            Clock.schedule_once(unhover, 0.5)
+
+
         # Next line to_widget allow to compensate for relative layout
         inside = self.collide_point(*self.to_widget(*pos))
 
@@ -6420,7 +6489,8 @@ class PopupInfo(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
+        if not constants.is_android:
+            self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6454,7 +6524,8 @@ class PopupWarning(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+        if not constants.is_android:
+            self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -6488,7 +6559,8 @@ class PopupQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
+        if not constants.is_android:
+            self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6537,7 +6609,8 @@ class PopupWarningQuery(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+        if not constants.is_android:
+            self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6586,7 +6659,8 @@ class PopupErrorLog(PopupWindow):
         super().__init__(**kwargs)
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
+        if not constants.is_android:
+            self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_warning.wav'))
         self.ok_button = None
         with self.canvas.after:
             self.no_button = Button()
@@ -6714,8 +6788,9 @@ class PopupTelepathPair(PopupWindow):
                 button_text = 'OKAY'
 
         # Modal specific settings
+        if not constants.is_android:
+            self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', window_sound))
         self.window_title.text = title
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', window_sound))
         self.no_button = None
         self.yes_button = None
         with self.canvas.after:
@@ -7491,7 +7566,8 @@ class PopupUpdate(BigPopupWindow):
 
 
         # Modal specific settings
-        self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
+        if not constants.is_android:
+            self.window_sound = sa.WaveObject.from_wave_file(os.path.join(constants.gui_assets, 'sounds', 'popup_normal.wav'))
         self.ok_button = None
         with self.canvas.after:
 
@@ -8173,6 +8249,11 @@ def button_action(button_name, button, specific_screen=''):
     # print(button_name)
     # print(button.button_pressed)
 
+    # Format button presses for Android
+    if constants.is_android and button and not button.button_pressed:
+        touch = button.last_touch
+        button.button_pressed = 'right' if touch.time_end - touch.time_start >= 0.5 else 'left'
+
     if button.button_pressed == "left":
 
         if button_name.lower() == "quit":
@@ -8540,9 +8621,12 @@ class MenuBackground(Screen):
 
         # Keyboard yumminess
         self._input_focused = False
-        self._keyboard = Window.request_keyboard(None, self, 'text')
-        self._keyboard.bind(on_key_down=self._on_keyboard_down)
-        self._keyboard.bind(on_key_up=self._on_keyboard_up)
+
+        # Ignore keyboard on Android
+        if not constants.is_android:
+            self._keyboard = Window.request_keyboard(None, self, 'text')
+            self._keyboard.bind(on_key_down=self._on_keyboard_down)
+            self._keyboard.bind(on_key_up=self._on_keyboard_up)
 
 
     def on_leave(self, *args):
@@ -28814,7 +28898,8 @@ def check_running(final_func):
         final_func()
 
 def exit_app():
-    amseditor.quit_ipc = True
+    if not constants.is_android:
+        amseditor.quit_ipc = True
     sys.exit(0)
 
 class MainApp(App):
@@ -28824,29 +28909,29 @@ class MainApp(App):
         def open_settings(self, *largs):
             pass
 
-    # Check if window pos is set in config
-    preconfigured = False
-    if constants.app_config.geometry:
-        constants.last_window = constants.app_config.geometry
-        pos = constants.app_config.geometry['pos']
-        size = constants.app_config.geometry['size']
-        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50) and (pos[0] > -5000 and pos[1] > -5000):
-            Window.size = size
-            Window.left = pos[0]
-            Window.top = pos[1]
-            preconfigured = True
+    if not constants.is_android:
+        preconfigured = False
+        if constants.app_config.geometry:
+            constants.last_window = constants.app_config.geometry
+            pos = constants.app_config.geometry['pos']
+            size = constants.app_config.geometry['size']
+            if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50) and (pos[0] > -5000 and pos[1] > -5000):
+                Window.size = size
+                Window.left = pos[0]
+                Window.top = pos[1]
+                preconfigured = True
 
-    # Window size
-    if not preconfigured:
-        size = constants.window_size
+        # Window size
+        if not preconfigured:
+            size = constants.window_size
 
-        # Get pos and knowing the old size calculate the new one
-        top = dp((Window.top * Window.size[1] / size[1])) - dp(50)
-        left = dp(Window.left * Window.size[0] / size[0])
+            # Get pos and knowing the old size calculate the new one
+            top = dp((Window.top * Window.size[1] / size[1])) - dp(50)
+            left = dp(Window.left * Window.size[0] / size[0])
 
-        Window.size = (dp(size[0]), dp(size[1]))
-        Window.top = top
-        Window.left = left
+            Window.size = (dp(size[0]), dp(size[1]))
+            Window.top = top
+            Window.left = left
     Window.on_request_close = functools.partial(sys.exit)
 
     Window.minimum_width = constants.window_size[0]
@@ -28905,19 +28990,23 @@ class MainApp(App):
 
         screen_manager.transition = FadeTransition(duration=0.115)
 
-        # Close splash screen if compiled
-        if constants.app_compiled and constants.os_name == 'windows':
-            import pyi_splash
-            pyi_splash.close()
 
-        if constants.app_config.fullscreen:
-            Window.maximize()
-        Window.show()
+        # Show and raise window on Desktop
+        if not constants.is_android:
 
-        # Raise window
-        def raise_window(*a):
-            Window.raise_window()
-        Clock.schedule_once(raise_window, 0)
+            # Close splash screen if compiled
+            if constants.app_compiled and constants.os_name == 'windows':
+                import pyi_splash
+                pyi_splash.close()
+
+            if constants.app_config.fullscreen:
+                Window.maximize()
+            Window.show()
+
+            # Raise window
+            def raise_window(*a):
+                Window.raise_window()
+            Clock.schedule_once(raise_window, 0)
 
 
         # Screen manager override for testing

@@ -10,6 +10,189 @@ import os
 import gc
 
 
+# Variables
+update_log = None
+exitApp = False
+crash = None
+
+
+# Functions
+def cleanup_on_close():
+    from telepath import expire_timers
+    import constants
+
+    constants.api_manager.stop()
+    constants.api_manager.close_sessions()
+
+    # Cancel all token expiry timers to prevent hanging on close
+    for timer in expire_timers:
+        if timer.is_alive():
+            timer.cancel()
+
+    # Close Discord rich presence
+    try:
+        if constants.discord_presence:
+            if constants.discord_presence.presence:
+                constants.discord_presence.presence.close()
+    except:
+        pass
+
+    # Close amscript IDE if open on close
+
+    # Delete live images/temp files on close
+    for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
+        try:
+            os.remove(img)
+        except OSError:
+            pass
+    if not update_log or not os.path.exists(update_log):
+        constants.safe_delete(constants.tempDir)
+
+
+def app_crash(exception):
+    import constants
+    import crashmgr
+    log = crashmgr.generate_log(exception)
+    if not constants.headless:
+        crashmgr.launch_window(*log)
+
+
+# Main wrapper
+def background():
+    global exitApp, crash
+    import constants
+
+    # Check for updates
+    constants.check_app_updates()
+    constants.search_manager = constants.SearchManager()
+
+    # Try to log into telepath servers automatically
+    if os.path.exists(constants.telepathFile):
+        while not constants.server_manager:
+            time.sleep(0.1)
+        if constants.server_list_lower:
+            constants.server_manager.check_telepath_servers()
+
+    def background_launch(func, *a):
+        global exitApp, crash
+
+        if exitApp or crash:
+            return
+
+        try:
+            func()
+        except Exception as e:
+            if constants.debug:
+                print(f'Error running {func}: {e}')
+
+    # Find latest game versions and update data cache
+    def get_public_ip(*a):
+        constants.public_ip = requests.get('https://api.ipify.org').content.decode('utf-8')
+
+    def get_versions(*a):
+        constants.find_latest_mc()
+        constants.make_update_list()
+        constants.get_repo_templates()
+
+    background_launch(get_public_ip)
+    background_launch(get_versions)
+    background_launch(constants.load_addon_cache)
+    background_launch(constants.check_data_cache)
+    background_launch(constants.search_manager.cache_pages)
+
+    # Update variables in the background
+    connect_counter = 0
+    while True:
+
+        # Exit this thread if the main thread closes, or crashes
+        if exitApp or crash:
+            break
+        else:
+
+            # Check for network changes in the background
+            connect_counter += 1
+            if (connect_counter == 10 and not constants.app_online) or (
+                    connect_counter == 3600 and constants.app_online):
+                try:
+                    constants.check_app_updates()
+                except Exception as e:
+                    if constants.debug:
+                        print(e)
+
+                connect_counter = 0
+
+            time.sleep(1)
+
+
+def foreground():
+    global exitApp, crash
+    import ui_launcher
+    import constants
+
+
+    # Main thread
+    try:
+        ui_launcher.mainLoop()
+        exitApp = True
+
+    except SystemExit:
+        exitApp = True
+
+    # On crash
+    except Exception as e:
+        crash = format_exc()
+        exitApp = True
+
+        # Use crash handler when app is compiled
+        if crash and constants.app_compiled:
+
+            # Destroy init window if macOS
+            if constants.os_name == 'macos':
+                init_window.destroy()
+
+            app_crash(crash)
+
+        cleanup_on_close()
+
+        # Normal Python behavior when testing
+        if not constants.app_compiled:
+            raise e
+
+    # Destroy init window if macOS
+    cleanup_on_close()
+    if constants.os_name == 'macos' and not constants.headless and not crash:
+        init_window.destroy()
+        raise SystemExit()
+
+
+def launch_automcs():
+    from telepath import TelepathManager
+    import constants
+
+    # Launch API before UI
+    # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
+    constants.api_manager = TelepathManager()
+    config = constants.app_config
+    if ((config.telepath_settings['enable-api'] or constants.headless) and not constants.is_admin()) or constants.is_docker:
+        constants.api_manager.update_config(config.telepath_settings['api-host'], config.telepath_settings['api-port'])
+        constants.api_manager.start()
+
+
+    # Launch/threading logic
+    b = threading.Thread(name='background', target=background)
+    b.setDaemon(True)
+
+    # Log errors to file if debug
+    if constants.app_compiled and constants.debug is True:
+        sys.stderr = open("error.log", "a")
+
+    b.start()
+    foreground()
+    b.join()
+
+
+
+# Desktop launcher
 if __name__ == '__main__':
 
     # Modify garbage collector
@@ -28,7 +211,6 @@ if __name__ == '__main__':
 
     # Import constants and set variables
     import constants
-    import telepath
 
     # Open devnull to stdout on Windows
     if constants.os_name == 'windows' and constants.app_compiled:
@@ -51,7 +233,6 @@ if __name__ == '__main__':
         os.environ["KIVY_NO_CONSOLELOG"] = "1"
 
     # Check for update log
-    update_log = None
     try:
         update_log = os.path.join(constants.tempDir, 'update-log')
         if os.path.exists(update_log):
@@ -88,7 +269,7 @@ if __name__ == '__main__':
 
 
         # Force headless if display is not set on Linux
-        if (constants.os_name == 'linux' and 'DISPLAY' not in os.environ) or constants.is_docker:
+        if ((constants.os_name == 'linux' and 'DISPLAY' not in os.environ) or constants.is_docker) and not constants.is_android:
             constants.headless = True
 
         # Close splash if headless & compiled
@@ -181,169 +362,5 @@ if __name__ == '__main__':
         constants.app_config.locale = 'en'
 
 
-    import main
-
-
-    # Variables
-    exitApp = False
-    crash = None
-
-
-    # Functions
-    def cleanup_on_close():
-        constants.api_manager.stop()
-        constants.api_manager.close_sessions()
-
-        # Cancel all token expiry timers to prevent hanging on close
-        for timer in telepath.expire_timers:
-            if timer.is_alive():
-                timer.cancel()
-
-        # Close Discord rich presence
-        try:
-            if constants.discord_presence:
-                if constants.discord_presence.presence:
-                    constants.discord_presence.presence.close()
-        except:
-            pass
-
-        # Close amscript IDE if open on close
-
-
-        # Delete live images/temp files on close
-        for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
-            try:
-                os.remove(img)
-            except OSError:
-                pass
-        if not update_log or not os.path.exists(update_log):
-            constants.safe_delete(constants.tempDir)
-
-    def app_crash(exception):
-        import crashmgr
-        log = crashmgr.generate_log(exception)
-        if not constants.headless:
-            crashmgr.launch_window(*log)
-
-
-    # Main wrapper
-    def background():
-        global exitApp, crash
-
-        # Check for updates
-        constants.check_app_updates()
-        constants.search_manager = constants.SearchManager()
-
-        # Try to log into telepath servers automatically
-        if os.path.exists(constants.telepathFile):
-            while not constants.server_manager:
-                time.sleep(0.1)
-            if constants.server_list_lower:
-                constants.server_manager.check_telepath_servers()
-
-        def background_launch(func, *a):
-            global exitApp, crash
-
-            if exitApp or crash:
-                return
-
-            try:
-                func()
-            except Exception as e:
-                if constants.debug:
-                    print(f'Error running {func}: {e}')
-
-        # Find latest game versions and update data cache
-        def get_public_ip(*a):
-            constants.public_ip = requests.get('https://api.ipify.org').content.decode('utf-8')
-        def get_versions(*a):
-            constants.find_latest_mc()
-            constants.make_update_list()
-            constants.get_repo_templates()
-        background_launch(get_public_ip)
-        background_launch(get_versions)
-        background_launch(constants.load_addon_cache)
-        background_launch(constants.check_data_cache)
-        background_launch(constants.search_manager.cache_pages)
-
-
-        # Update variables in the background
-        connect_counter = 0
-        while True:
-
-            # Exit this thread if the main thread closes, or crashes
-            if exitApp or crash:
-                break
-            else:
-
-                # Check for network changes in the background
-                connect_counter += 1
-                if (connect_counter == 10 and not constants.app_online) or (connect_counter == 3600 and constants.app_online):
-                    try:
-                        constants.check_app_updates()
-                    except Exception as e:
-                        if constants.debug:
-                            print(e)
-
-                    connect_counter = 0
-
-                time.sleep(1)
-
-    def foreground():
-        global exitApp, crash
-
-        # Main thread
-        try:
-            main.mainLoop()
-            exitApp = True
-
-        except SystemExit:
-            exitApp = True
-
-        # On crash
-        except Exception as e:
-            crash = format_exc()
-            exitApp = True
-
-            # Use crash handler when app is compiled
-            if crash and constants.app_compiled:
-
-                # Destroy init window if macOS
-                if constants.os_name == 'macos':
-                    init_window.destroy()
-
-                app_crash(crash)
-
-            cleanup_on_close()
-
-            # Normal Python behavior when testing
-            if not constants.app_compiled:
-                raise e
-
-        # Destroy init window if macOS
-        cleanup_on_close()
-        if constants.os_name == 'macos' and not constants.headless and not crash:
-            init_window.destroy()
-            raise SystemExit()
-
-
-    # Launch API before UI
-    # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
-    constants.api_manager = telepath.TelepathManager()
-    config = constants.app_config
-    if ((config.telepath_settings['enable-api'] or constants.headless) and not constants.is_admin()) or constants.is_docker:
-        constants.api_manager.update_config(config.telepath_settings['api-host'], config.telepath_settings['api-port'])
-        constants.api_manager.start()
-
-
-    # Launch/threading logic
-    b = threading.Thread(name='background', target=background)
-    b.setDaemon(True)
-
-    # Log errors to file if debug
-    if constants.app_compiled and constants.debug is True:
-        sys.stderr = open("error.log", "a")
-
-    b.start()
-    foreground()
-    b.join()
+    # Start the app
+    launch_automcs()
