@@ -488,7 +488,7 @@ class HoverBehavior(object):
         if not self.get_root_window() or self.disabled:
             return  # do proceed if I'm not displayed <=> If there's no parent
         pos = args[1]
-f
+
         # Unhover if Android
         if constants.is_android:
             def unhover(*a):
