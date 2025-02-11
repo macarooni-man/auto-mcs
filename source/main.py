@@ -1,81 +1,106 @@
-# Local imports
-from svrmgr import ServerManager
-import constants
+from wrapper import launch_automcs
+import sys
+import os
+import gc
 
 
-# Run app, eventually in wrapper
-def mainLoop():
+# Android launcher
+if __name__ == '__main__':
+    os.environ['SDL_VIDEO_SCALE_MODE'] = 'stretch'
 
-    # Fixes display scaling on Windows - Eventually add this to the beginning of wrapper.py
-    if constants.os_name == "windows" and not constants.headless:
-        from ctypes import windll, c_int64
+    from jnius import autoclass, PythonJavaClass, java_method
+    import constants
 
-        # Calculate screen width and disable DPI scaling if bigger than a certain resolution
-        try:
-            width = windll.user32.GetSystemMetrics(0)
-            scale = windll.shcore.GetScaleFactorForDevice(0) / 100
-            if (width * scale) < 2000:
-                windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
-        except:
-            print('Error: failed to set DPI context')
+    # Get the Android activity
+    PythonActivity = autoclass('org.kivy.android.PythonActivity')
+    activity = PythonActivity.mActivity
 
 
-    # Cleanup temp files and generate splash text
-    constants.cleanup_old_files()
-    constants.generate_splash()
-    constants.get_refresh_rate()
+    # Define a PythonJavaClass implementing java/lang/Runnable without overriding __init__
+    class Runnable(PythonJavaClass):
+        __javainterfaces__ = ['java/lang/Runnable']
+        __javacontext__ = 'app'
 
-    # Instantiate Server Manager
-    constants.server_manager = ServerManager()
-
-    # If no local servers and Telepath connections, attempt to check those first
-    if not constants.server_list_lower and constants.server_manager.telepath_servers:
-        constants.server_manager.check_telepath_servers()
-
+        @java_method('()V')
+        def run(self):
+            # Check if a function has been assigned; if so, call it.
+            if hasattr(self, 'func'):
+                self.func()
 
 
-    # Only start the GUI if not headless
-    if not constants.headless:
-        from menu import run_application
+    def update_window_configuration():
+        # Get the DisplayMetrics to determine the phone's resolution.
+        DisplayMetrics = autoclass('android.util.DisplayMetrics')
+        dm = DisplayMetrics()
+        activity.getWindowManager().getDefaultDisplay().getMetrics(dm)
+        phone_width = dm.widthPixels
+        phone_height = dm.heightPixels
 
-    # Otherwise, start a loop for a CLI interpreter with basic commands
-    else:
-        from headless import run_application
+        # Set your desired scale factor; e.g., 2.0 will half the resolution.
+        constants.scale_factor = 1.25
 
-    run_application()
+        # Calculate the virtual resolution.
+        virtual_width = int(phone_width / constants.scale_factor)
+        virtual_height = int(phone_height / constants.scale_factor)
+        constants.window_size = (virtual_width, virtual_height)
+
+        SDLActivity = autoclass('org.libsdl.app.SDLActivity')
+        mSurface = SDLActivity.mSurface  # This should be an SDLSurface (SurfaceView)
+        mHolder = mSurface.getHolder()
+        mHolder.setFixedSize(virtual_width, virtual_height)
+
+        layoutParams = mSurface.getLayoutParams()
+        LayoutParams = autoclass('android.view.ViewGroup$LayoutParams')
+
+        layoutParams.width = LayoutParams.MATCH_PARENT
+        layoutParams.height = LayoutParams.MATCH_PARENT
+        mSurface.setLayoutParams(layoutParams)
+
+
+    # Create an instance of Runnable, then assign the function attribute.
+    runnable = Runnable()
+    runnable.func = update_window_configuration
+
+    # Schedule it on the UI thread.
+    activity.runOnUiThread(runnable)
 
 
 
-# ----------------------------------------------------------------------------------------------
-#                             _
-#                  __ _ _   _| |_ ___                   < Module execution chain >
-#   ▄▄██████▄▄    / _` | | | | __/ _ \          
-#  ████████████  | (_| | |_| | || (_) |        -- Root: wrapper.py <─────────┐
-# ████▀▀██▀▀████  \__,_|\__,_|\__\___/                   ┆      ┆            │
-# ████▄▄▀▀▄▄████   _ __ ___   ___ ___            (bg thread)  (fg thread)    │
-# █████    █████  | '_ ` _ \ / __/ __|                ┆            ┆         ├── constants.py
-#  ████▄██▄████   | | | | | | (__\__ \          crash-handler    main.py <───┤
-#   ▀▀██████▀▀    |_| |_| |_|\___|___/                             ┆         │
-#                                                                menu.py <───┘
-#
-#   < Functional Tests >
-#   
-#   - Windows 10 1909, 20H2, 21H2
-#   - Windows 11 22H2
-#   - macOS Monterey (Intel, 12.7.3)
-#   - Manjaro KDE 2022 - 5.10, 5.16, 6.1, 6.3
-#   - Manjaro XFCE 2022 - 5.15.8  //No file dialog, requires installation of Zenity
-#   - Arch Linux (KDE) - 6.6.9
-#   - Kali Linux 2022 - 5.15
-#   - Ubuntu 23.10 Desktop (Wayland) - 6.5
-#   - Ubuntu 22.04 Server (XFCE, LXDE) - 5.15
-#   - Ubuntu 22.04.1 Desktop (Wayland, X11) - 5.15
-#   - Fedora 33 Workstation - 5.8
-#   - PopOS 22.04 - 5.19
-#   - Linux Mint 21 MATE - 5.15
-#   - Garuda KDE Lite - 5.19.7
-#   - Garuda Wayfire - 5.19.7  //Issues with YAD not displaying file dialog
-#   - Garuda i3 - 5.19.7       //Issues with YAD not displaying file dialog
-#   - SteamOS Holo - 5.13
-#
-# ----------------------------------------------------------------------------------------------
+    # Modify garbage collector
+    gc.collect(2)
+    gc.freeze()
+
+    constants.app_compiled = True
+    constants.launch_path = sys.executable
+    try:
+        constants.username = constants.run_proc('whoami', True).split('\\')[-1].strip()
+    except:
+        pass
+    try:
+        constants.hostname = constants.run_proc('hostname', True).strip()
+    except:
+        pass
+
+    # os.environ["KIVY_NO_CONSOLELOG"] = "1"
+
+
+    # Get default system language
+    try:
+        from locale import getdefaultlocale
+        system_locale = getdefaultlocale()[0]
+        if '_' in system_locale:
+            system_locale = system_locale.split('_')[0]
+        for v in constants.available_locales.values():
+            if system_locale.startswith(v['code']):
+                if not constants.app_config.locale:
+                    constants.app_config.locale = v['code']
+                break
+    except Exception as e:
+        if not constants.is_docker:
+            print(f'Failed to determine locale: {e}')
+    if not constants.app_config.locale:
+        constants.app_config.locale = 'en'
+
+
+    # Start the app
+    launch_automcs()
