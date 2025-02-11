@@ -15,7 +15,7 @@ source.dir = ../source
 source.entrypoint = ../source/main.py
 
 # (list) File extensions to include in the package
-source.include_exts = py,kv,png,jpg,ico,ttf,otf,gif,webp
+source.include_exts = py,kv,png,jpg,ico,ttf,otf,gif,webp,json,wav
 
 # (str) Application version
 version = 2.3
