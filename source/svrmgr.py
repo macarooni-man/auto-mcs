@@ -1653,11 +1653,13 @@ class ServerObject():
 
             # Reset server object properties
             backup.rename_backups(original_name, new_name)
-            self.reload_config(reload_objects=True)
 
             # Reset constants properties
             constants.generate_server_list()
             constants.make_update_list()
+
+            # Reload properties
+            self.reload_config(reload_objects=True)
 
     # Deletes server
     def delete(self):
