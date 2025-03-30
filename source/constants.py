@@ -97,7 +97,10 @@ latestMC = {
     "builds": {
         "forge": "0",
         "paper": "0",
-        "purpur": "0"
+        "purpur": "0",
+        "fabric": "0",
+        "neoforge": "0",
+        "quilt": "0"
     }
 }
 
@@ -5183,11 +5186,12 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
     else:
         config_file = server_path(server_name, server_ini)
 
+    builds_available = list(latestMC['builds'].keys())
 
     # If write_object, write it to file path
     if write_object:
 
-        if write_object.get('general', 'serverType').lower() not in ['forge', 'paper', 'purpur']:
+        if write_object.get('general', 'serverType').lower() not in builds_available:
             write_object.remove_option('general', 'serverBuild')
 
         if os_name == "windows":
@@ -5215,7 +5219,7 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
                 pass
 
         if config:
-            if config.get('general', 'serverType').lower() not in ['forge', 'paper']:
+            if config.get('general', 'serverType').lower() not in builds_available:
                 config.remove_option('general', 'serverBuild')
 
             # Override legacy configuration options
