@@ -2030,7 +2030,8 @@ def generate_splash(crash=False):
             "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
             "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
             "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
-            "You can't run away from all your problems…\n            Not when they have ender pearls.", "[!] bite hazard [!]"]
+            "You can't run away from all your problems…\n            Not when they have ender pearls.",
+            "[!] bite hazard [!]", "How are you doing today Bob/Steve/Kyle?"]
 
     if crash:
         exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
