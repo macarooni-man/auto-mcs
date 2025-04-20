@@ -9676,7 +9676,7 @@ class MainMenuScreen(MenuBackground):
     # Prompt update/show banner when starting up
     def on_enter(self, *args):
         global shown_disk_error
-
+        print(constants.launch_path)
 
         # Show warning if running with elevated permissions, and flag is used
         if constants.is_admin() and constants.bypass_admin_warning:
@@ -9706,14 +9706,14 @@ class MainMenuScreen(MenuBackground):
 
         # Close on macOS when it's running in DMG
         elif constants.app_compiled and constants.os_name == 'macos' and constants.launch_path.startswith('/private/var/folders/'):
-            def admin_error(*_):
+            def dmg_error(*_):
                 self.show_popup(
                     "warning",
                     "Permission Error",
-                    f"Please move auto-mcs to the applications folder to continue",
+                    f"Please move auto-mcs to the Applications folder to continue",
                     Window.close
                 )
-            Clock.schedule_once(admin_error, 0.5)
+            Clock.schedule_once(dmg_error, 0.5)
             return
 
 
