@@ -103,9 +103,14 @@ class DiscordPresenceManager():
         self.presence = None
         self.connected = False
         self.updating_presence = False
+        self.splash = constants.session_splash.replace(' ', '')
+        self.id = "1293773204552421429"
+        self.start_time = 0
         if constants.app_config.discord_presence:
-            self.splash = constants.session_splash.replace(' ', '')
-            self.id = "1293773204552421429"
+            self.start()
+
+    def start(self):
+        if not self.connected:
             self.presence = Presence(self.id)
             self.start_time = int(time.time())
             def presence_thread(*a):
@@ -117,6 +122,14 @@ class DiscordPresenceManager():
                     self.presence = None
                     print("Discord Presence: Failed to connect")
             threading.Timer(0, presence_thread).start()
+
+    def stop(self):
+        if self.connected:
+            self.presence.close()
+            self.start_time = None
+            self.presence = None
+            self.connected = False
+            print("Discord Presence: Disconnected")
 
     def get_image(self, file_path: str):
         server_obj = constants.server_manager.current_server
@@ -247,7 +260,31 @@ class DiscordPresenceManager():
         if not self.updating_presence:
             threading.Timer(0, do_update).start()
 constants.discord_presence = DiscordPresenceManager()
+def toggle_discord_presence():
+    if constants.discord_presence.connected:
+        constants.discord_presence.stop()
+        banner_text = f"$Discord$ rich presence is now disabled"
+        banner_color = (0.937, 0.831, 0.62, 1)
+        banner_icon = "discord-strike.png"
+        constants.app_config.discord_presence = False
+    else:
+        constants.discord_presence.start()
+        constants.discord_presence.update_presence(constants.footer_path)
+        banner_text = f"$Discord$ rich presence is now enabled"
+        banner_color = (0.553, 0.902, 0.675, 1)
+        banner_icon = "discord.png"
+        constants.app_config.discord_presence = True
 
+    Clock.schedule_once(
+        functools.partial(
+            screen_manager.current_screen.show_banner,
+             banner_color,
+            banner_text,
+            banner_icon,
+            2.5,
+            {"center_x": 0.5, "center_y": 0.965}
+        ), 0
+    )
 
 
 # Override Kivy widgets for translation
@@ -3607,15 +3644,18 @@ class SettingsButton(RelativeLayout):
         super().__init__(**kwargs)
         self.shown = False
 
+        # Parent button to show/hide settings
         self.hide_button = RelativeIconButton('close', {'center_x': 1}, (0, 5), (None, None), 'close-sharp.png', anchor='right', clickable=True, click_func=self.hide, anchor_text='right', text_offset=(-85, 40), force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'])
         self.hide_button.x = -35
 
-        self.settings_button = RelativeIconButton('settings', {'center_x': 1}, (0, 5), (None, None), 'settings-sharp.png', anchor='right', clickable=True, click_func=self.show, anchor_text='right', text_offset=(-20, 0))
+        self.settings_button = RelativeIconButton('settings', {'center_x': 1}, (0, 5), (None, None), 'settings-sharp.png', anchor='right', clickable=True, click_func=self.show, anchor_text='right', text_offset=(-73, 40))
         self.settings_button.x = -35
         self.add_widget(self.settings_button)
 
 
         # Buttons when settings menu is opened
+
+        # Changelog button
         def open_changelog(*a):
             if constants.app_online:
                 url = f'{constants.project_link}/releases/latest'
@@ -3627,6 +3667,8 @@ class SettingsButton(RelativeLayout):
         self.changelog_button.button.disabled = True
         self.add_widget(self.changelog_button)
 
+
+        # Telepath menu button
         def change_telepath_screen(*a):
             screen_manager.current = 'TelepathManagerScreen'
         self.telepath_button = RelativeIconButton('$telepath$', {'center_x': 1}, (0, 5), (None, None), 'telepath.png', anchor='right', clickable=True, click_func=change_telepath_screen, anchor_text='right', text_offset=(-70, 40))
@@ -3636,6 +3678,8 @@ class SettingsButton(RelativeLayout):
         self.telepath_button.button.disabled = True
         self.add_widget(self.telepath_button)
 
+
+        # Locale menu button
         def change_locale_screen(*a):
             screen_manager.current = 'ChangeLocaleScreen'
         self.locale_button = RelativeIconButton(constants.get_locale_string(), {'center_x': 1}, (0, 5), (None, None), 'language.png', anchor='right', clickable=True, click_func=change_locale_screen, anchor_text='right', text_offset=(-55, 40))
@@ -3645,19 +3689,45 @@ class SettingsButton(RelativeLayout):
         self.locale_button.button.disabled = True
         self.add_widget(self.locale_button)
 
+
+        # Discord rich presence toggle
+        class DiscordButton(RelativeIconButton):
+            def on_hover(self, hovered, *a):
+                conn = constants.discord_presence.connected
+                disabled = hovered and conn or not hovered and not conn
+                Clock.schedule_once(lambda *_: self.change_data(
+                    icon = 'discord-strike.png' if disabled else 'discord.png',
+                    text = 'disable rich presence' if disabled else 'enable rich presence'
+                ), 0.05)
+        def toggle_presence():
+            toggle_discord_presence()
+            self.discord_button.on_hover(False)
+            self.hide()
+        self.discord_button = DiscordButton('disable rich presence', {'center_x': 1}, (0, 5), (None, None), 'discord.png', anchor='right', clickable=True, click_func=toggle_presence, anchor_text='right', text_offset=(-15, 40))
+        self.discord_button.on_hover(False)
+        self.discord_button.x = -35
+        self.discord_button.y = 200
+        self.discord_button.opacity = 0
+        self.discord_button.button.disabled = True
+        self.add_widget(self.discord_button)
+
+
     def show(self, *a):
         self.shown = True
-        Animation(opacity=1, duration=0.45).start(self.locale_button)
+        Animation(opacity=1, duration=0.45).start(self.discord_button)
+        Animation(opacity=1, duration=0.4).start(self.locale_button)
         Animation(opacity=1, duration=0.3).start(self.telepath_button)
         Animation(opacity=1, duration=0.15).start(self.changelog_button)
         self.remove_widget(self.settings_button)
         self.add_widget(self.hide_button)
         self.telepath_button.button.disabled = False
         self.locale_button.button.disabled = False
+        self.discord_button.button.disabled = False
         self.changelog_button.button.disabled = False
 
     def hide(self, *a):
         self.shown = False
+        Animation(opacity=0, duration=0.03).start(self.discord_button)
         Animation(opacity=0, duration=0.08).start(self.locale_button)
         Animation(opacity=0, duration=0.16).start(self.telepath_button)
         Animation(opacity=0, duration=0.24).start(self.changelog_button)
@@ -3666,8 +3736,9 @@ class SettingsButton(RelativeLayout):
         def after(*a):
             self.telepath_button.button.disabled = True
             self.locale_button.button.disabled = True
+            self.discord_button.button.disabled = True
             self.changelog_button.button.disabled = True
-        Clock.schedule_once(after, 0.2)
+        Clock.schedule_once(after, 0.25)
 
 
 def footer_label(path, color, progress_screen=False):
@@ -4688,6 +4759,9 @@ class RelativeIconButton(RelativeLayout):
         if self.text_offset:
             self.text.x += self.text_offset[0]
 
+    def on_hover(self, hovered=False, *a):
+        pass
+
     def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, **kwargs):
         super().__init__(**kwargs)
 
@@ -4780,6 +4854,10 @@ class RelativeIconButton(RelativeLayout):
         if screen_manager.current_screen.name == 'MainMenuScreen':
             Clock.schedule_once(self.text.texture_update, 0)
             Clock.schedule_once(self.resize, 0)
+
+        # Hover hook
+        self.button.bind(on_enter=lambda *_: self.on_hover(True))
+        self.button.bind(on_leave=lambda *_: self.on_hover(False))
 
 class AnimButton(FloatLayout):
 
