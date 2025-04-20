@@ -9677,6 +9677,8 @@ class MainMenuScreen(MenuBackground):
     def on_enter(self, *args):
         global shown_disk_error
 
+
+        # Show warning if running with elevated permissions, and flag is used
         if constants.is_admin() and constants.bypass_admin_warning:
             def admin_error(*_):
                 self.show_popup(
@@ -9688,6 +9690,8 @@ class MainMenuScreen(MenuBackground):
             Clock.schedule_once(admin_error, 0.5)
             return
 
+
+        # Close if running with elevated permissions, and flag is not used
         elif constants.is_admin():
             def admin_error(*_):
                 self.show_popup(
@@ -9699,6 +9703,21 @@ class MainMenuScreen(MenuBackground):
             Clock.schedule_once(admin_error, 0.5)
             return
 
+
+        # Close on macOS when it's running in DMG
+        elif constants.app_compiled and constants.os_name == 'macos' and constants.launch_path.startswith('/private/var/folders/'):
+            def admin_error(*_):
+                self.show_popup(
+                    "warning",
+                    "Permission Error",
+                    f"Please move auto-mcs to the applications folder to continue",
+                    Window.close
+                )
+            Clock.schedule_once(admin_error, 0.5)
+            return
+
+
+        # Show warning when disk is full
         elif not constants.check_free_space() and not shown_disk_error:
             shown_disk_error = True
             def disk_error(*_):
