@@ -1421,37 +1421,37 @@ class ServerObject():
 
     # Forcefully ends the server process
     def kill(self):
-
-        # Iterate over self and children to find Java process
         try:
             parent = psutil.Process(self.run_data['process'].pid)
-        except:
+        except Exception as e:
+            print(f"Failed to find process: {e}")
             return False
-        sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
-
-        # Windows
+    
+        # Windows: check for both java.exe and javaw.exe
         if constants.os_name == "windows":
             children = parent.children(recursive=True)
             for proc in children:
-                if proc.name() == "java.exe":
+                if proc.name().lower() in ("java.exe", "javaw.exe"):
                     constants.run_proc(f"taskkill /f /pid {proc.pid}")
-                    break
-
-        # macOS
-        elif constants.os_name == "macos":
-            if parent.name() == "java":
-                constants.run_proc(f"kill {parent.pid}")
-
-        # Linux
+            # Optionally, kill the parent as well if needed
+            # constants.run_proc(f"taskkill /f /pid {parent.pid}")
+    
+        # macOS/Linux: use kill -9 if regular kill fails
         else:
+            targets = []
             if parent.name() == "java":
-                constants.run_proc(f"kill {parent.pid}")
+                targets.append(parent)
             else:
                 children = parent.children(recursive=True)
                 for proc in children:
                     if proc.name() == "java":
-                        constants.run_proc(f"kill {proc.pid}")
-                        break
+                        targets.append(proc)
+            for proc in targets:
+                try:
+                    proc.kill()  # Sends SIGKILL on Unix
+                except Exception as e:
+                    print(f"Failed to kill process {proc.pid}: {e}")
+
 
 
     # Checks if a server has closed, but hangs
