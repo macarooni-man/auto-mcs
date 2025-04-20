@@ -6154,7 +6154,10 @@ class PopupWindow(RelativeLayout):
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
-        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        try:
+            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        except:
+            return
 
         # Prevent this from running every resize
         def reset_activity(*args):
@@ -6747,7 +6750,10 @@ class BigPopupWindow(RelativeLayout):
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
-        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        try:
+            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        except:
+            return
 
         # Prevent this from running every resize
         def reset_activity(*args):
@@ -9676,7 +9682,7 @@ class MainMenuScreen(MenuBackground):
     # Prompt update/show banner when starting up
     def on_enter(self, *args):
         global shown_disk_error
-        print(constants.launch_path)
+
 
         # Show warning if running with elevated permissions, and flag is used
         if constants.is_admin() and constants.bypass_admin_warning:
@@ -9705,7 +9711,7 @@ class MainMenuScreen(MenuBackground):
 
 
         # Close on macOS when it's running in DMG
-        elif constants.app_compiled and constants.os_name == 'macos' and constants.launch_path.startswith('/private/var/folders/'):
+        elif constants.os_name == 'macos' and (constants.launch_path.startswith('/Volumes/') and constants.app_title in constants.launch_path):
             def dmg_error(*_):
                 self.show_popup(
                     "warning",
