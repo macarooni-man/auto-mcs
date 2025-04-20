@@ -1423,35 +1423,32 @@ class ServerObject():
     def kill(self):
         try:
             parent = psutil.Process(self.run_data['process'].pid)
-        except Exception as e:
-            print(f"Failed to find process: {e}")
-            return False
-    
-        # Windows: check for both java.exe and javaw.exe
-        if constants.os_name == "windows":
-            children = parent.children(recursive=True)
+            children = parent.children(recursive=False)  # Direct children only
+            
             for proc in children:
-                if proc.name().lower() in ("java.exe", "javaw.exe"):
-                    constants.run_proc(f"taskkill /f /pid {proc.pid}")
-            # Optionally, kill the parent as well if needed
-            # constants.run_proc(f"taskkill /f /pid {parent.pid}")
-    
-        # macOS/Linux: use kill -9 if regular kill fails
-        else:
-            targets = []
-            if parent.name() == "java":
-                targets.append(parent)
-            else:
-                children = parent.children(recursive=True)
-                for proc in children:
+                # Windows handling
+                if constants.os_name == "windows":
+                    if proc.name().lower() in ('java.exe', 'javaw.exe'):
+                        constants.run_proc(f"taskkill /f /pid {proc.pid}")
+                
+                # Unix handling (Linux/macOS)
+                else:
                     if proc.name() == "java":
-                        targets.append(proc)
-            for proc in targets:
-                try:
-                    proc.kill()  # Sends SIGKILL on Unix
-                except Exception as e:
-                    print(f"Failed to kill process {proc.pid}: {e}")
-
+                        try:
+                            proc.kill()  # SIGTERM
+                            time.sleep(0.5)  # Brief pause before SIGKILL
+                            proc.kill()  # Second SIGTERM
+                        except psutil.NoSuchProcess:
+                            pass
+                        except Exception:
+                            os.kill(proc.pid, signal.SIGKILL)  # Forceful SIGKILL
+    
+        except psutil.NoSuchProcess:
+            return True  # Parent already dead
+        except Exception as e:
+            print(f"Kill error: {str(e)}")
+            return False
+        return True
 
 
     # Checks if a server has closed, but hangs
