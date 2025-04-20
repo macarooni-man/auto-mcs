@@ -9722,7 +9722,7 @@ class MainMenuScreen(MenuBackground):
                 self.show_popup(
                     "warning",
                     "Permission Error",
-                    f"Please move auto-mcs to the Applications folder to continue",
+                    f"Please move $auto-mcs$ to the Applications folder to continue",
                     Window.close
                 )
             Clock.schedule_once(dmg_error, 0.5)
