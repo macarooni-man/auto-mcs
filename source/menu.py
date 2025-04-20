@@ -6157,6 +6157,7 @@ class PopupWindow(RelativeLayout):
         try:
             constants.folder_check(os.path.join(constants.gui_assets, 'live'))
         except:
+            self.blur_background.color = constants.background_color
             return
 
         # Prevent this from running every resize
@@ -6753,6 +6754,7 @@ class BigPopupWindow(RelativeLayout):
         try:
             constants.folder_check(os.path.join(constants.gui_assets, 'live'))
         except:
+            self.blur_background.color = constants.background_color
             return
 
         # Prevent this from running every resize
@@ -7803,7 +7805,11 @@ class PopupSearch(RelativeLayout):
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
-        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        try:
+            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        except:
+            self.blur_background.color = constants.background_color
+            return
 
         # Prevent this from running every resize
         def reset_activity(*args):
