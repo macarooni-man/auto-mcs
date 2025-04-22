@@ -176,10 +176,10 @@ jobs:
         run: |
           source ./venv/bin/activate
           cd build-tools
-          cp ../source/auto-mcs.linux.spec ../source/
+          cp auto-mcs.macos.spec ../source/
           cd ../source
           # Run PyInstaller normally on arm64 macOS runner; it will build arm64 binary
-          pyinstaller auto-mcs.linux.spec --clean --distpath ../build-tools/dist
+          pyinstaller auto-mcs.macos.spec --clean --distpath ../build-tools/dist
           cd ../build-tools
           chmod +x dist/auto-mcs
   
