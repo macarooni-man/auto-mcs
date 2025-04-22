@@ -18149,6 +18149,8 @@ class ConsolePanel(FloatLayout):
             def change_later(*a):
                 try:
                     with open(file_path, 'r') as f:
+                        self._unfiltered_text = json.loads(f.read())
+                        self.update_text(self._unfiltered_text)
                 except:
                     if constants.debug:
                         print('Failed to load "latest.log"')
@@ -20323,7 +20325,6 @@ class ServerCloneScreen(MenuBackground):
             screen_manager.current = 'ServerCloneProgressScreen'
         buttons.append(next_button('Clone', (0.5, 0.24), False, click_func=start_clone))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
-        float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
 
         for button in buttons:
             float_layout.add_widget(button)
