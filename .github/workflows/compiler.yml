@@ -515,75 +515,39 @@ jobs:
           retention-days: 5
 
 
-
-  # Upload artifacts to auto-mcs cloud 
-  upload-cloud:
-    name: Upload to auto-mcs cloud
+  create-github-release:
+    name: Create GitHub Release and Upload All Artifacts
     runs-on: ubuntu-latest
     needs: [setup-env, windows, macos, macos-arm64, linux, linux-arm, alpine, alpine-arm]
     steps:
-      - name: Download All Artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts
-
-      - name: List Downloaded Artifacts (Debugging)
-        run: |
-          echo "Downloaded artifacts:"
-          ls -R ./artifacts
-
-      - name: Upload Artifacts
-        env:
-          CLOUD_URL: ${{ secrets.CLOUD_URL }}
-          CLOUD_USERNAME: ${{ secrets.CLOUD_USERNAME }}
-          CLOUD_PASSWORD: ${{ secrets.CLOUD_PASSWORD }}
-          APP_VERSION: ${{ needs.setup-env.outputs.APP_VERSION }}
-        run: |
-          # Verify remote folder exists
-          version_folder="${APP_VERSION}-beta"
-          echo "Creating directory ${version_folder} if it doesn't exist..."
-          curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -X MKCOL "${CLOUD_URL}/${version_folder}" || echo "Directory already exists or creation failed"
-
-          find ./artifacts -type f | while read file; do
-
-            # Extract platform name by removing version numbers and trailing hyphens
-            dir_name=$(basename $(dirname "$file"))
-            platform_name=$(echo "$dir_name" | sed -E 's/-[0-9]+(\.[0-9]+)*(-beta\.[0-9]+)?$//')
-            platform_name="${platform_name%-}"  # Remove any trailing hyphens
-
-            # Check if the file has an extension; if not, add ".bin" as a placeholder
-            base_filename=$(basename "$file")
-            if [[ "$base_filename" == *.* ]]; then
-              extension="${base_filename##*.}"
-              new_filename="${platform_name}-${APP_VERSION}-beta.${extension}"
-            else
-              new_filename="${platform_name}-${APP_VERSION}-beta.bin"
-            fi
-
-            echo "Uploading $new_filename to ${CLOUD_URL}/${version_folder}..."
-            
-            # Upload the file to the versioned subfolder with the new name
-            curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "$file" "${CLOUD_URL}/${version_folder}/${new_filename}"
-          done
-
-
-          # Upload metadata
-          echo "Commit: ${{ github.sha }}" > ./commit-metadata.txt
-          echo "URL: https://github.com/macarooni-man/auto-mcs/commit/${{ github.sha }}" >> ./commit-metadata.txt
-          echo "Author: ${{ github.actor }}" >> ./commit-metadata.txt
-          echo "Repository: ${{ github.repository }}" >> ./commit-metadata.txt
-          echo "Branch: ${{ github.ref_name }}" >> ./commit-metadata.txt
-          echo "Workflow Run: ${{ github.run_id }}" >> ./commit-metadata.txt
-          echo "Timestamp: $(date)" >> ./commit-metadata.txt
-          curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "./commit-metadata.txt" "${CLOUD_URL}/${version_folder}/commit-metadata.txt"
-
-
-          # Upload source code
-          source="auto-mcs-source-${APP_VERSION}-beta.zip"
-          curl -L -o ./${source} \
-            https://github.com/${{ github.repository }}/archive/refs/heads/${{ github.ref_name }}.zip
-          curl -u "$CLOUD_USERNAME:$CLOUD_PASSWORD" -T "${source}" "${CLOUD_URL}/${version_folder}/${source}"
-
+  
+      - name: Create GitHub Release
+        id: release
+        uses: shogo82148/actions-create-release@v1
+        with:
+          tag_name: ${{ needs.setup-env.outputs.APP_VERSION }}-beta
+          release_name: Release ${{ needs.setup-env.outputs.APP_VERSION }} Beta
+          draft: false
+          prerelease: true
+          body: |
+            Automated release for version ${{ needs.setup-env.outputs.APP_VERSION }}-beta.
+  
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Workflow Run: ${{ github.run_id }}
+            Timestamp: $(date)
+  
+      - name: Upload all release assets
+        uses: shogo82148/actions-upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.release.outputs.upload_url }}
+          asset_path: 'artifacts/**/*'
 
   # Publish images to Docker Hub
   publish-docker:
