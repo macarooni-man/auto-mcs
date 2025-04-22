@@ -4786,7 +4786,9 @@ def edit_script(script_path: str, data: dict, ipc_functions: dict, *args):
 
 
 # IPC functions (these run in the context of the main process, and "data" is passed in)
+quit_ipc = False
 def ipc_start_listener(connection: multiprocessing.connection.Connection, start_data: dict, ipc_functions: dict):
+    global quit_ipc
     print("[amscript IDE] IPC connection opened")
 
     # Process child commands and execute parent functions
@@ -4807,6 +4809,12 @@ def ipc_start_listener(connection: multiprocessing.connection.Connection, start_
                         break
 
                     process_command(data)
+
+                if quit_ipc:
+                    connection.close()
+                    break
+
+                time.sleep(0.5)
 
         except EOFError:
             pass

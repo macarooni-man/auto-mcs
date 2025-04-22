@@ -134,7 +134,7 @@ class TelepathManager():
         self.max_retries = REQUEST_MAX_RETRIES
         self.update_config(host=self.host, port=self.port)
         self.client_data = {
-            'host': constants.hostname,
+            'host': constants.hostname if constants.hostname else constants.os_name,
             'user': constants.username,
             'session_id': SESSION_ID,
             'telepath-version': self.version
@@ -207,7 +207,7 @@ class TelepathManager():
 
         return {
             'access-token': create_access_token(session),
-            'hostname': constants.hostname,
+            'hostname': constants.hostname if constants.hostname else constants.os_name,
             'os': constants.os_name,
             'app-version': constants.app_version,
             'telepath-version': self.version
@@ -1262,7 +1262,10 @@ def create_remote_obj(obj: object, request=True):
         if name == 'run_data':
             return self._telepath_run_data()
         if name == 'crash_log':
-            return self._sync_telepath_stop()['crash']
+            try:
+                return self._sync_telepath_stop()['crash']
+            except:
+                return None
 
 
         try:
@@ -1966,6 +1969,7 @@ create_endpoint(constants.java_check, 'main', True)
 create_endpoint(constants.allow_close, 'main', True)
 create_endpoint(constants.clear_uploads, 'main')
 create_endpoint(constants.update_world, 'main', True)
+create_endpoint(constants.update_config_file, 'main', True)
 
 # Add-on based functionality outside the add-on manager
 create_endpoint(constants.load_addon_cache, 'addon', True)
@@ -1989,3 +1993,5 @@ create_endpoint(constants.scan_import, 'create', True)
 create_endpoint(constants.finalize_import, 'create', True)
 create_endpoint(constants.scan_modpack, 'create', True)
 create_endpoint(constants.finalize_modpack, 'create', True)
+
+create_endpoint(constants.clone_server, 'create', True)

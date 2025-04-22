@@ -637,7 +637,7 @@ class AclManager():
                         try:
                             if ipaddress.IPv4Address(user['latest-ip'].split(':')[0]) in ip_obj:
                                 display_data['affected_users'] += 1
-                        except KeyError:
+                        except:
                             continue
 
             except FileNotFoundError:

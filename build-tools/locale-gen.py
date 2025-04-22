@@ -1,7 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
 from glob import glob
 import googletrans
+import requests
 import json
+import time
 import ast
 import sys
 import os
@@ -100,6 +102,56 @@ for script in glob(os.path.join(source_dir, '*.py')):
                 last_line = node.lineno
 
 
+# Translate English 2
+def is_emoji(char):
+    """Determine if a character is an emoji based on Unicode ranges."""
+    # Define Unicode ranges for emojis
+    emoji_ranges = [
+        (0x1F600, 0x1F64F),  # Emoticons
+        (0x1F300, 0x1F5FF),  # Misc Symbols and Pictographs
+        (0x1F680, 0x1F6FF),  # Transport and Map
+        (0x2600, 0x26FF),    # Misc symbols
+        (0x2700, 0x27BF),    # Dingbats
+        (0xFE00, 0xFE0F),    # Variation Selectors
+        (0x1F900, 0x1F9FF),  # Supplemental Symbols and Pictographs
+        (0x1FA70, 0x1FAFF),  # Symbols and Pictographs Extended-A
+        (0x200D, 0x200D),    # Zero Width Joiner
+    ]
+    codepoint = ord(char)
+    return any(start <= codepoint <= end for start, end in emoji_ranges)
+def escape_emojis(text, allow_breaks=True):
+    def is_valid_char(char):
+        return char.isprintable() and not is_emoji(char)
+
+    # Remove non-printable characters
+    sanitized_text = ''.join(c for c in text if is_valid_char(c) or (allow_breaks and c == '\n'))
+    return sanitized_text
+
+    # Dirty fix for the meantime to prevent crashing when pasting emojis
+    return ''.join(f"{char}" if is_emoji(char) else char for char in text)
+token = None
+def to_english_2(text: str):
+    global token
+    if not token:
+        token = re.search(
+            r'(?<=name\=\"translator_nonce\" value=\")\S+(?=\"\s)',
+            requests.get('https://anythingtranslate.com/translators/brain-rot-translator/').text
+        )[0]
+    def get_content():
+        data = {'action': 'do_translation', 'translator_nonce': token, 'post_id': '17141', 'to_translate': text}
+        r = requests.post('https://anythingtranslate.com/wp-admin/admin-ajax.php', data=data, timeout=5)
+        if r.status_code == 200:
+            return escape_emojis(r.json()['data'])
+    while True:
+        try:
+            data = get_content()
+            if data:
+                return data
+        except:
+            pass
+        time.sleep(1)
+        # print('Fail!')
+
 # Translate list of terms
 t = googletrans.Translator()
 locale_file = os.path.join(source_dir, 'locales.json')
@@ -147,7 +199,11 @@ for x, string in enumerate(all_terms, 1):
             else:
                 translate = string
 
-            locale_data[key][code] = t.translate(translate, src='en', dest=code).text
+            if code == 'e2':
+                text = to_english_2(translate)
+            else:
+                text = t.translate(translate, src='en', dest=code).text
+            locale_data[key][code] = text
 
     with ThreadPoolExecutor(max_workers=20) as pool:
         pool.map(process_locale, locale_codes)
