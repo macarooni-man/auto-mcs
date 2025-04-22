@@ -156,33 +156,40 @@ jobs:
     runs-on: macos-13
     needs: [setup-env, test-env]
     steps:
-  
-      - name: Clone Repo
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
   
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           brew install python@3.9 python-tk@3.9 create-dmg
   
-      - name: Compile auto-mcs (arm64)
+      - name: Setup Python venv and install requirements
+        run: |
+          python3.9 -m venv ./venv
+          source ./venv/bin/activate
+          pip install --upgrade pip setuptools wheel
+          pip install -r build-tools/reqs-linux.txt  # or macOS-specific if needed
+  
+      - name: Compile auto-mcs with PyInstaller (arm64)
+        run: |
+          source ./venv/bin/activate
+          cd build-tools
+          cp ../source/auto-mcs.linux.spec ../source/
+          cd ../source
+          # Run PyInstaller normally on arm64 macOS runner; it will build arm64 binary
+          pyinstaller auto-mcs.linux.spec --clean --distpath ../build-tools/dist
+          cd ../build-tools
+          chmod +x dist/auto-mcs
+  
+      - name: Create .dmg installer
         run: |
           root=$(pwd)
           cd build-tools
-          mkdir -p /Users/runner/Library/Fonts
-          chmod +x build-macos.sh
-  
-          # Run build script forcing arm64 architecture
-          arch -arm64 sudo ./build-macos.sh
-  
-          chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
-  
-          # Create .dmg from .app with retry logic
           max_attempts=5
           attempt=1
           set +e
-  
           while [ $attempt -le $max_attempts ]; do
             sudo create-dmg \
               --volname "auto-mcs" \
@@ -214,13 +221,12 @@ jobs:
             fi
           done
   
-      - name: Upload Binary (arm64)
+      - name: Upload arm64 macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: auto-mcs-macos-arm64-${{ needs.setup-env.outputs.APP_VERSION }}
           path: build-tools/dist/auto-mcs-arm64.dmg
           retention-days: 5
-
 
 
 
