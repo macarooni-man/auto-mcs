@@ -52,6 +52,7 @@ class ServerObject():
         self.crash_log = None
         self.max_log_size = 2000
         self.run_data = {}
+        self.console_filter = 'everything'
         self.viewed_notifs = {}
         self.taskbar = None
         self._hash = constants.gen_rstring(8)
@@ -83,6 +84,10 @@ class ServerObject():
         self.type = self.config_file.get("general", "serverType").lower()
         self.version = self.config_file.get("general", "serverVersion").lower()
         self.build = None
+        try:
+            self.console_filter = self.config_file.get("general", "consoleFilter")
+        except:
+            pass
         try:
             self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
         except:
@@ -323,6 +328,10 @@ class ServerObject():
         self.type = self.config_file.get("general", "serverType").lower()
         self.version = self.config_file.get("general", "serverVersion").lower()
         self.build = None
+        try:
+            self.console_filter = self.config_file.get("general", "consoleFilter")
+        except:
+            pass
         try:
             self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
         except:
@@ -1622,6 +1631,13 @@ class ServerObject():
         data = constants.update_server_icon(self.name, new_icon)
         self.server_icon = constants.server_path(self.name, 'server-icon.png')
         return data
+
+    # Updates console event filter in config
+    # 'everything', 'errors', 'players', 'amscript'
+    def change_filter(self, filter_type: str):
+        self.config_file = constants.server_config(self.name)
+        self.config_file.set("general", "consoleFilter", filter_type)
+        constants.server_config(self.name, self.config_file)
 
     # Renames server
     def rename(self, new_name: str):

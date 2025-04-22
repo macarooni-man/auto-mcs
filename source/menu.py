@@ -5844,7 +5844,7 @@ class ContextMenu(GridLayout):
 
             Clock.schedule_once(delay_anim, delay)
 
-        def __init__(self, sub_data, sub_id, **kw):
+        def __init__(self, sub_data, sub_id, selected=False, **kw):
             super().__init__(**kw)
 
             self.id = sub_data['name']
@@ -5853,6 +5853,7 @@ class ContextMenu(GridLayout):
             self.width = 200
             self.text_x = 0
             self.icon_x = 0
+            self.selected = selected
 
             # Add button
             self.button = HoverButton()
@@ -5861,6 +5862,9 @@ class ContextMenu(GridLayout):
 
             if sub_id == 'list_red_button':
                 self.button.color_id = [(0.1, 0.07, 0.07, 1), (1, 0.6, 0.7, 1)]
+            elif self.selected:
+                self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.76, 0.76, 1, 1)]
+                self.button.background_color = (0.7, 0.7, 0.7, 1)
             else:
                 self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
@@ -5967,6 +5971,7 @@ class ContextMenu(GridLayout):
     def _round_top_left(self, *a):
         b = self.children[-1]
         b.button.id = 'list_start_flip_button'
+        b.button.background_down = os.path.join(constants.gui_assets, f'{b.button.id}_click.png')
         b.button.on_leave()
 
     # Moves menu to cursor, and prevents it from going off-screen
@@ -17498,6 +17503,26 @@ class ConsolePanel(FloatLayout):
 
     # Updates RecycleView text with console text
     def update_text(self, text, force_scroll=False, animate_last=True, *args):
+        current_filter = self.filter_menu.current_filter
+        self._unfiltered_text = text
+
+        # Filterrrr oh yeah
+        if current_filter != 'everything':
+            event_whitelist = ['INIT', 'START', 'STOP', 'SUCCESS']
+
+            if current_filter == 'errors':
+                event_whitelist.extend(['ERROR', 'FATAL'])
+
+            elif current_filter == 'players':
+                event_whitelist.extend(['CHAT', 'PLAYER'])
+
+            elif current_filter == 'amscript':
+                event_whitelist.extend(['AMS', 'EXEC'])
+
+            text = [l for l in text if l['text'][1] in event_whitelist]
+
+
+
         original_scroll = self.scroll_layout.scroll_y
         original_len = len(self.scroll_layout.data)
         label_height = 41.8
@@ -17540,7 +17565,7 @@ class ConsolePanel(FloatLayout):
                 except:
                     pass
         if len(text) > original_len and animate_last:
-            Clock.schedule_once(fade_animation, 0)
+            Clock.schedule_once(fade_animation, -1)
 
 
         # Update selection coordinates if they exist
@@ -17561,7 +17586,7 @@ class ConsolePanel(FloatLayout):
 
         self.console_text.width = self.width
 
-        self.input.pos = self.pos
+        self.input.pos = (self.x, self.y)
 
         self.gradient.pos = (self.input.pos[0], self.pos[1] + (self.input.height * 1.2))
         self.gradient.width = self.scroll_layout.width - self.scroll_layout.bar_width
@@ -17608,6 +17633,7 @@ class ConsolePanel(FloatLayout):
             self.controls.maximize_button.pos = (self.width - 90, self.height - 80)
             self.controls.stop_button.pos = (self.width - 142, self.height - 80)
             self.controls.restart_button.pos = (self.width - 194, self.height - 80)
+            self.controls.filter_button.pos = (self.width - 246, self.height - 80)
 
         # Fullscreen shadow
         self.fullscreen_shadow.y = self.height + self.x - 3
@@ -17640,9 +17666,11 @@ class ConsolePanel(FloatLayout):
         constants.hide_widget(self.controls.maximize_button, False)
         constants.hide_widget(self.controls.stop_button, False)
         constants.hide_widget(self.controls.restart_button, False)
+        constants.hide_widget(self.controls.filter_button, False)
         self.controls.maximize_button.opacity = 0
         self.controls.stop_button.opacity = 0
         self.controls.restart_button.opacity = 0
+        self.controls.filter_button.opacity = 0
 
         self.controls.crash_text.clear_text()
 
@@ -17658,6 +17686,7 @@ class ConsolePanel(FloatLayout):
             self.controls.maximize_button.disabled = False
             self.controls.stop_button.disabled = False
             self.controls.restart_button.disabled = False
+            self.controls.filter_button.disabled = False
             self.controls.remove_widget(self.controls.launch_button)
             self.controls.remove_widget(self.controls.log_button)
             self.controls.remove_widget(self.controls.view_button)
@@ -17668,6 +17697,7 @@ class ConsolePanel(FloatLayout):
                 def anim_delay(*a):
                     function.start(obj)
                 Clock.schedule_once(anim_delay, delay)
+            delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.filter_button, 0.18)
             delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.restart_button, 0.12)
             delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.stop_button, 0.06)
             Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine').start(self.controls.maximize_button)
@@ -17847,6 +17877,7 @@ class ConsolePanel(FloatLayout):
                 constants.hide_widget(self.controls.maximize_button, True)
                 constants.hide_widget(self.controls.stop_button, True)
                 constants.hide_widget(self.controls.restart_button, True)
+                constants.hide_widget(self.controls.filter_button, True)
                 self.controls.control_shadow.opacity = 0
 
 
@@ -17884,6 +17915,7 @@ class ConsolePanel(FloatLayout):
                     Animation(opacity=0, duration=anim_speed).start(self.controls.maximize_button)
                     Animation(opacity=0, duration=anim_speed).start(self.controls.stop_button)
                     Animation(opacity=0, duration=anim_speed).start(self.controls.restart_button)
+                    Animation(opacity=0, duration=anim_speed).start(self.controls.filter_button)
                     Clock.schedule_once(disable_buttons, anim_speed*1.1)
 
                 def after_anim2(*a):
@@ -17891,6 +17923,7 @@ class ConsolePanel(FloatLayout):
                     self.controls.maximize_button.disabled = False
                     self.controls.stop_button.disabled = False
                     self.controls.restart_button.disabled = False
+                    self.controls.filter_button.disabled = False
                     self.scroll_layout.data = []
                     self.controls.control_shadow.opacity = 1
 
@@ -17948,12 +17981,20 @@ class ConsolePanel(FloatLayout):
                 self.controls.view_button.opacity = 0
                 self.controls.add_widget(self.controls.view_button)
 
+                # Filter button
+                self.controls.remove_widget(self.controls.filter_button)
+                del self.controls.filter_button
+                self.controls.filter_button = IconButton('filter', {}, (123, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button.opacity = 0
+                self.controls.add_widget(self.controls.filter_button)
+
                 def after_anim(*a):
                     self.full_screen = True
                     self.ignore_keypress = False
                     Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
                     Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.view_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
 
                 Clock.schedule_once(after_anim, (anim_speed * 1.1))
 
@@ -17985,6 +18026,13 @@ class ConsolePanel(FloatLayout):
                 self.controls.restart_button.opacity = 0
                 self.controls.add_widget(self.controls.restart_button)
 
+                # Filter button
+                self.controls.remove_widget(self.controls.filter_button)
+                del self.controls.filter_button
+                self.controls.filter_button = IconButton('filter', {}, (227, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button.opacity = 0
+                self.controls.add_widget(self.controls.filter_button)
+
                 def after_anim(*a):
                     self.full_screen = True
                     self.ignore_keypress = False
@@ -17993,6 +18041,7 @@ class ConsolePanel(FloatLayout):
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
                     fix_scroll()
 
                 Clock.schedule_once(after_anim, (anim_speed*1.1))
@@ -18028,10 +18077,18 @@ class ConsolePanel(FloatLayout):
             self.controls.restart_button.opacity = 0
             self.controls.add_widget(self.controls.restart_button)
 
+            # Filter button
+            self.controls.remove_widget(self.controls.filter_button)
+            del self.controls.filter_button
+            self.controls.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+            self.controls.filter_button.opacity = 0
+            self.controls.add_widget(self.controls.filter_button)
+
             if not self.run_data:
                 constants.hide_widget(self.controls.maximize_button, True)
                 constants.hide_widget(self.controls.stop_button, True)
                 constants.hide_widget(self.controls.restart_button, True)
+                constants.hide_widget(self.controls.filter_button, True)
 
             def after_anim(*a):
                 self.full_screen = False
@@ -18041,6 +18098,7 @@ class ConsolePanel(FloatLayout):
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
                 fix_scroll()
 
             Clock.schedule_once(after_anim, (anim_speed*1.1))
@@ -18342,6 +18400,7 @@ class ConsolePanel(FloatLayout):
 
         self.server_name = server_name
         self.server_obj = None
+        self.run_data = None
         self.server_button = server_button
         self.deadlocked = False
         self.log_view = False
@@ -18359,9 +18418,11 @@ class ConsolePanel(FloatLayout):
         self.last_self_touch = None
         self.in_scroll_region = False
 
+        self._unfiltered_text = []
 
         self.button_colors = {
             'maximize': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], ''],
+            'filter': [[(0.05, 0.08, 0.07, 1), (0.251, 0.251, 0.451, 1)], ''],
             'stop': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], 'pink']
         }
 
@@ -18732,7 +18793,7 @@ class ConsolePanel(FloatLayout):
                 self.control_shadow.keep_ratio = False
                 self.control_shadow.color = background_color
                 self.control_shadow.source = os.path.join(constants.gui_assets, 'console_control_shadow.png')
-                self.control_shadow.size_hint_max = (255, 120)
+                self.control_shadow.size_hint_max = (280, 120)
                 self.add_widget(self.control_shadow)
 
                 # Full screen button
@@ -18750,13 +18811,109 @@ class ConsolePanel(FloatLayout):
                 constants.hide_widget(self.restart_button)
                 self.add_widget(self.restart_button)
 
+                # Filter button
+                self.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.panel.button_colors['filter'], click_func=self.panel.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                constants.hide_widget(self.filter_button)
+                self.add_widget(self.filter_button)
+
                 # View log button
                 self.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png', clickable=True, anchor='right', text_offset=(18, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.show_log, True))
                 Clock.schedule_once(self.panel.add_log_button, 0)
 
+        # Scrollable list for configuring console event filtering
+        class FilterMenu(ContextMenu):
+            def __init__(self, panel, **kwargs):
+                super().__init__(**kwargs)
+                self.panel = panel
+                self.change_filter(constants.server_manager.current_server.console_filter)
+
+            def _change_options(self, options_list):
+                self.options_list = options_list
+                self.clear_widgets()
+
+                for item in self.options_list:
+                    if not item:
+                        continue
+
+                    selected = self.current_filter in item['name']
+
+                    # Start of the list
+                    if item == self.options_list[0]:
+                        start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected)
+                        self.add_widget(start_btn)
+
+                    # Middle of the list
+                    elif item != self.options_list[-1]:
+                        mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected)
+                        self.add_widget(mid_btn)
+
+                    # Last button
+                    else:
+                        if 'color' in item:
+                            sub_id = f'list_{item["color"]}_button'
+                        else:
+                            sub_id = 'list_end_button'
+                        end_btn = self.ListButton(item, sub_id=sub_id, selected=selected)
+                        self.add_widget(end_btn)
+
+            def _update_pos(self):
+
+                # Set initial position
+                pos = (self.panel.x + self.panel.width - 220, self.panel.controls.y + self.panel.controls.height - 58)
+                self.x = pos[0]
+                self.y = pos[1] - self.height
+                Clock.schedule_once(self._round_top_left, 0)
+
+            def change_filter(self, filter_type):
+                self.current_filter = filter_type
+                constants.server_manager.current_server.change_filter(filter_type)
+                filter_button = None
+
+                if self.panel.run_data:
+                    self.panel.update_text(self.panel._unfiltered_text)
+                    filter_button = self.panel.controls.filter_button
+
+                # Change filter icon colors
+                filter_color = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], '']
+                default_color = [[(0.05, 0.08, 0.07, 1), (0.251, 0.251, 0.451, 1)], '']
+
+                if filter_type == 'everything':
+                    self.panel.button_colors['filter'] = default_color
+                    if filter_button:
+                        filter_button.button.color_id = default_color[0]
+                        filter_button.button.on_leave()
+                else:
+                    self.panel.button_colors['filter'] = filter_color
+                    if filter_button:
+                        filter_button.button.color_id = filter_color[0]
+                        filter_button.button.on_leave()
+
+            def show(self):
+                filters = [
+                    {'name': 'everything', 'icon': 'reader.png', 'action': lambda *_: self.change_filter('everything')},
+                    {'name': 'only errors', 'icon': 'warning.png', 'action': lambda *_: self.change_filter('errors')},
+                    {'name': 'only players', 'icon': 'person.png', 'action': lambda *_: self.change_filter('players')},
+                    {'name': 'amscript', 'icon': 'amscript.png', 'action': lambda *_: self.change_filter('amscript')}
+                ]
+                super().show(widget=self.panel.controls.filter_button.button, options_list=filters)
+
+            def hide(self, animate=True, *args):
+                Clock.schedule_once(self.widget.on_leave, 0.05)
+
+                if animate:
+                    Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
+                    for b in self.children:
+                        b.animate(False)
+                    Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
+                    Clock.schedule_once(lambda *_: self.clear_widgets(), 0.141)
+                else:
+                    self.clear_widgets()
+
+        # Event filter
+        self.filter_menu = FilterMenu(self)
+
 
         # Popen object reference
-        self.run_data = None
         self.scale = 1
         self.auto_scroll = False
 
@@ -18864,6 +19021,8 @@ class ConsolePanel(FloatLayout):
         self.corner_mask.add_widget(self.corner_mask.sb)
 
         self.add_widget(self.corner_mask)
+
+        self.add_widget(self.filter_menu)
 
 
         self.bind(pos=self.update_size)
@@ -29030,8 +29189,8 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        # if not constants.app_compiled:
-        #     pass
+        if not constants.app_compiled:
+            open_server('awawda')
 
 
 
