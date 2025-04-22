@@ -17511,7 +17511,7 @@ class ConsolePanel(FloatLayout):
             event_whitelist = ['INIT', 'START', 'STOP', 'SUCCESS']
 
             if current_filter == 'errors':
-                event_whitelist.extend(['ERROR', 'FATAL'])
+                event_whitelist.extend(['WARN', 'ERROR', 'CRITICAL', 'SEVERE', 'FATAL'])
 
             elif current_filter == 'players':
                 event_whitelist.extend(['CHAT', 'PLAYER'])
@@ -17636,7 +17636,7 @@ class ConsolePanel(FloatLayout):
             self.controls.filter_button.pos = (self.width - 246, self.height - 80)
 
         # Fullscreen shadow
-        self.fullscreen_shadow.y = self.height + self.x - 3
+        self.fullscreen_shadow.y = self.height + self.x - 3 + 25
         self.fullscreen_shadow.width = Window.width
 
         # Controls background
@@ -18149,7 +18149,6 @@ class ConsolePanel(FloatLayout):
             def change_later(*a):
                 try:
                     with open(file_path, 'r') as f:
-                        self.scroll_layout.data = json.loads(f.read())
                 except:
                     if constants.debug:
                         print('Failed to load "latest.log"')
@@ -18827,6 +18826,30 @@ class ConsolePanel(FloatLayout):
                 self.panel = panel
                 self.change_filter(constants.server_manager.current_server.console_filter)
 
+            def change_filter(self, filter_type):
+                self.current_filter = filter_type
+                constants.server_manager.current_server.change_filter(filter_type)
+                filter_button = None
+
+                if self.panel.run_data or self.panel.log_view:
+                    self.panel.update_text(self.panel._unfiltered_text)
+                    filter_button = self.panel.controls.filter_button
+
+                # Change filter icon colors
+                filter_color = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], '']
+                default_color = [[(0.05, 0.08, 0.07, 1), (0.251, 0.251, 0.451, 1)], '']
+
+                if filter_type == 'everything':
+                    self.panel.button_colors['filter'] = default_color
+                    if filter_button:
+                        filter_button.button.color_id = default_color[0]
+                        filter_button.button.on_leave()
+                else:
+                    self.panel.button_colors['filter'] = filter_color
+                    if filter_button:
+                        filter_button.button.color_id = filter_color[0]
+                        filter_button.button.on_leave()
+
             def _change_options(self, options_list):
                 self.options_list = options_list
                 self.clear_widgets()
@@ -18863,30 +18886,6 @@ class ConsolePanel(FloatLayout):
                 self.x = pos[0]
                 self.y = pos[1] - self.height
                 Clock.schedule_once(self._round_top_left, 0)
-
-            def change_filter(self, filter_type):
-                self.current_filter = filter_type
-                constants.server_manager.current_server.change_filter(filter_type)
-                filter_button = None
-
-                if self.panel.run_data:
-                    self.panel.update_text(self.panel._unfiltered_text)
-                    filter_button = self.panel.controls.filter_button
-
-                # Change filter icon colors
-                filter_color = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], '']
-                default_color = [[(0.05, 0.08, 0.07, 1), (0.251, 0.251, 0.451, 1)], '']
-
-                if filter_type == 'everything':
-                    self.panel.button_colors['filter'] = default_color
-                    if filter_button:
-                        filter_button.button.color_id = default_color[0]
-                        filter_button.button.on_leave()
-                else:
-                    self.panel.button_colors['filter'] = filter_color
-                    if filter_button:
-                        filter_button.button.color_id = filter_color[0]
-                        filter_button.button.on_leave()
 
             def show(self):
                 filters = [
@@ -18945,7 +18944,7 @@ class ConsolePanel(FloatLayout):
         self.gradient.keep_ratio = False
         self.gradient.size_hint = (None, None)
         self.gradient.color = background_color
-        self.gradient.opacity = 0.9
+        self.gradient.opacity = 0.65
         self.gradient.source = os.path.join(constants.gui_assets, 'scroll_gradient.png')
         self.add_widget(self.gradient)
 
@@ -18971,8 +18970,8 @@ class ConsolePanel(FloatLayout):
         self.fullscreen_shadow = Image()
         self.fullscreen_shadow.allow_stretch = True
         self.fullscreen_shadow.keep_ratio = False
-        self.fullscreen_shadow.size_hint_max = (None, 50)
-        self.fullscreen_shadow.color = (0, 0, 0, 1)
+        self.fullscreen_shadow.size_hint_max = (None, 25)
+        self.fullscreen_shadow.color = background_color
         self.fullscreen_shadow.opacity = 0
         self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
         self.add_widget(self.fullscreen_shadow)
@@ -25198,7 +25197,7 @@ class EditorRoot(MenuBackground):
 
         def resize_scroll(call_widget, grid_layout, *args):
             call_widget.height = Window.height // 1.23
-            self.fullscreen_shadow.y = self.height + self.x - 3
+            self.fullscreen_shadow.y = self.height + self.x - 3 + 25
             self.fullscreen_shadow.width = Window.width
             search_pos = 47
             self.search_bar.pos = (self.x, search_pos)
@@ -25228,8 +25227,8 @@ class EditorRoot(MenuBackground):
         self.fullscreen_shadow = Image()
         self.fullscreen_shadow.allow_stretch = True
         self.fullscreen_shadow.keep_ratio = False
-        self.fullscreen_shadow.size_hint_max = (None, 50)
-        self.fullscreen_shadow.color = (0, 0, 0, 1)
+        self.fullscreen_shadow.size_hint_max = (None, 25)
+        self.fullscreen_shadow.color = self.background_color
         self.fullscreen_shadow.opacity = 0
         self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
         float_layout.add_widget(self.fullscreen_shadow)

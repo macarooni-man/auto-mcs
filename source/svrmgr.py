@@ -495,6 +495,10 @@ class ServerObject():
 
         text = text.replace(b'\xa7', b'\xc2\xa7').decode('utf-8', errors='ignore')
 
+        # Ignore terminal warning
+        if "Advanced terminal features are not available in this environment" in text:
+            return
+
         # (date, type, log, color)
         def format_log(line, *args):
 
