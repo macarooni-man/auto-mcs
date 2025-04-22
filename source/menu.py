@@ -29189,8 +29189,8 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        if not constants.app_compiled:
-            open_server('awawda')
+        # if not constants.app_compiled:
+        #    pass
 
 
 
