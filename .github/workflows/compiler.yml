@@ -151,6 +151,77 @@ jobs:
           path: build-tools/dist/auto-mcs.dmg
           retention-days: 5
 
+  macos-arm64:
+    name: macOS Build (arm64)
+    runs-on: macos-13
+    needs: [setup-env, test-env]
+    steps:
+  
+      - name: Clone Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+  
+      - name: Install Dependencies
+        run: |
+          brew install python@3.9 python-tk@3.9 create-dmg
+  
+      - name: Compile auto-mcs (arm64)
+        run: |
+          root=$(pwd)
+          cd build-tools
+          mkdir -p /Users/runner/Library/Fonts
+          chmod +x build-macos.sh
+  
+          # Run build script forcing arm64 architecture
+          arch -arm64 sudo ./build-macos.sh
+  
+          chmod +x dist/auto-mcs.app/Contents/MacOS/auto-mcs
+  
+          # Create .dmg from .app with retry logic
+          max_attempts=5
+          attempt=1
+          set +e
+  
+          while [ $attempt -le $max_attempts ]; do
+            sudo create-dmg \
+              --volname "auto-mcs" \
+              --volicon "$root/other/macos-dmg/icon.icns" \
+              --background "$root/other/macos-dmg/bg.png" \
+              --window-pos 200 120 \
+              --window-size 835 620 \
+              --icon-size 128 \
+              --text-size 16 \
+              --icon "auto-mcs.app" 230 277 \
+              --hide-extension "auto-mcs.app" \
+              --app-drop-link 593 277 \
+              "$root/build-tools/dist/auto-mcs-arm64.dmg" \
+              "$root/build-tools/dist/auto-mcs.app"
+  
+            if [[ -f "$root/build-tools/dist/auto-mcs-arm64.dmg" ]]; then
+              echo "Disk image created successfully."
+              break
+            else
+              echo "Attempt $attempt failed: Disk image creation resource is busy."
+              attempt=$(( attempt + 1 ))
+              sleep 5
+            fi
+  
+            if [ $attempt -gt $max_attempts ]; then
+              echo "Failed to create disk image after $max_attempts attempts."
+              set -e
+              exit 1
+            fi
+          done
+  
+      - name: Upload Binary (arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-mcs-macos-arm64-${{ needs.setup-env.outputs.APP_VERSION }}
+          path: build-tools/dist/auto-mcs-arm64.dmg
+          retention-days: 5
+
+
 
 
   linux:
@@ -443,7 +514,7 @@ jobs:
   upload-cloud:
     name: Upload to auto-mcs cloud
     runs-on: ubuntu-latest
-    needs: [setup-env, windows, macos, linux, linux-arm, alpine, alpine-arm]
+    needs: [setup-env, windows, macos, macos-arm64, linux, linux-arm, alpine, alpine-arm]
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
