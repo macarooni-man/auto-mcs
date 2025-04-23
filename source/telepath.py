@@ -146,7 +146,7 @@ class TelepathManager():
         self.logger = AuditLogger()
 
         # Server side data
-        self.current_user = None
+        self.current_users = {}
         self.pair_data = {}
         self.pair_listen = False
 
@@ -270,16 +270,16 @@ class TelepathManager():
         threading.Timer((PAIR_CODE_EXPIRE_MINUTES * 60), _clear_pair_code).start()
 
     def _update_user(self, session=None):
-        self.current_user = session
-        self.current_user['last_active'] = dt.now()
-        self.logger.current_user = self.current_user
+        self.current_users[session['host']] = session
+        self.current_users[session['host']]['last_active'] = dt.now()
+        self.logger.current_users = self.current_users
 
     # Resets current user
     def _force_logout(self, session_id: str):
-        if session_id == self.current_user['session_id']:
-            del self.current_user
-            self.current_user = {}
-            return True
+        for host, user in self.current_users.items():
+            if session_id == user['session_id']:
+                del self.current_users[host]
+                return True
 
     def update_config(self, host: str, port: int):
         self.host = host
@@ -554,17 +554,17 @@ class TelepathManager():
                 if self._verify_id(id, session['id']):
 
                     # Check if current user can be removed due to token expiry
-                    if self.current_user and (self.current_user['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
-                        self._force_logout(self.current_user['session_id'])
+                    if host['host'] in self.current_users and (self.current_users[host['host']]['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
+                        self._force_logout(self.current_users[host['host']]['session_id'])
 
                     # This can change later, but currently, there can only be one telepath user globally
                     # (self.current_user['id'] == session['id'] and self.current_user['ip'] == request.client.host)
-                    if self.current_user and not (self.current_user['ip'] == request.client.host):
-                        raise HTTPException(
-                            status_code=status.HTTP_409_CONFLICT,
-                            detail="Logged in from another session",
-                            headers={"WWW-Authenticate": "Bearer"},
-                        )
+                    # if self.current_user and not (self.current_user['ip'] == request.client.host):
+                    #     raise HTTPException(
+                    #         status_code=status.HTTP_409_CONFLICT,
+                    #         detail="Logged in from another session",
+                    #         headers={"WWW-Authenticate": "Bearer"},
+                    #     )
 
                     # Reset remote server for permission reasons
                     if host['host'] in constants.server_manager.remote_servers:
@@ -590,13 +590,14 @@ class TelepathManager():
 
     def _logout(self, host: dict, request: Request):
         ip = request.client.host
-        if self.current_user:
-            if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == self.current_user['user']:
+        for user in self.current_users.values():
+
+            if ip == user['ip'] and host['host'] == user['host'] and host['user'] == user['user']:
 
                 # Show banner on logout
                 constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged out", False)
 
-                return self._force_logout(self.current_user['session_id'])
+                return self._force_logout(user['session_id'])
 
         return False
 
@@ -854,7 +855,7 @@ class SecretHandler():
 class AuditLogger():
     def __init__(self):
         self.path = os.path.join(constants.telepathDir, 'audit-logs')
-        self.current_user = None
+        self.current_users = {}
         self.max_logs = 50
         self.tags = {
             'ignore': ['_sync_attr', '_sync_telepath_stop', '_telepath_run_data', 'return_single_list', 'hash_changed',
@@ -897,8 +898,8 @@ class AuditLogger():
             return
 
         # Format host
-        if not host and self.current_user:
-            host = self.current_user
+        if host in self.current_users:
+            host = self.current_users[host]
 
         if host:
             formatted_host = f"{host['host']}/{host['user']} | {host['ip']}"
@@ -989,7 +990,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
         try:
             decoded_token = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             ip = request.client.host
-            current_user = constants.api_manager.current_user
+            current_user = constants.api_manager.current_users[request.client.host]
 
             # Only allow if machine name matches current user, and the IP is from the same location
             if decoded_token.get('host') == current_user['host'] and ip == current_user['ip']:
@@ -1022,7 +1023,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
         # This is to give some leeway for a reconnection before alarm in case the legitimate session expired
 
         # Check if the user failed to log in because the token just expired
-        current_user = deepcopy(constants.api_manager.current_user)
+        current_user = deepcopy(constants.api_manager.current_users[request.client.host])
         if current_user and current_user['ip'] == request.client.host:
 
             # Log to telepath logger
@@ -1268,7 +1269,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         formatted_args = ''
         if kwargs:
             formatted_args = ', '.join([f'{k}={v}' for k, v in kwargs.items()])
-        constants.api_manager.logger._report(f'{short_name}.{method_name}', extra_data=formatted_args, server_name=remote_server.name)
+        constants.api_manager.logger._report(f'{short_name}.{method_name}', host=host, extra_data=formatted_args, server_name=remote_server.name)
 
         return exec_memory['locals']['returned'](**kwargs)
 
@@ -1901,7 +1902,7 @@ async def open_remote_server(name: str, request: Request):
     if (constants.app_config.telepath_settings['enable-api'] or constants.headless) and constants.server_manager:
 
         # Report event to logger
-        constants.api_manager.logger._report('main.open_remote_server', extra_data=f'Opened: "{name}"')
+        constants.api_manager.logger._report('main.open_remote_server', host=request.client.host, extra_data=f'Opened: "{name}"')
 
         return constants.server_manager.open_remote_server(request.client.host, name)
 
@@ -1909,7 +1910,7 @@ async def open_remote_server(name: str, request: Request):
 
 # Upload file endpoint
 @app.post("/main/upload_file", tags=['main'], dependencies=[Depends(authenticate)])
-async def upload_file(file: UploadFile = File(...), is_dir=False):
+async def upload_file(request: Request, file: UploadFile = File(...), is_dir=False):
     if isinstance(is_dir, str):
         is_dir = is_dir.lower() == 'true'
 
@@ -1932,7 +1933,7 @@ async def upload_file(file: UploadFile = File(...), is_dir=False):
             destination_path = os.path.join(constants.uploadDir, dir_name)
 
         # Report event to logger
-        constants.api_manager.logger._report('main.upload_file', extra_data=f'Uploaded: "{destination_path}"')
+        constants.api_manager.logger._report('main.upload_file', host=request.client.host, extra_data=f'Uploaded: "{destination_path}"')
 
         return JSONResponse(content={
             "name": file_name,
@@ -1944,7 +1945,7 @@ async def upload_file(file: UploadFile = File(...), is_dir=False):
 
 # Download file endpoint
 @app.post("/main/download_file", tags=['main'], dependencies=[Depends(authenticate)])
-async def download_file(file: str):
+async def download_file(request: Request, file: str):
     denied = HTTPException(status_code=403, detail=f"Access denied")
     blocked_symbols = ['*', '..']
 
@@ -1979,7 +1980,7 @@ async def download_file(file: str):
         raise HTTPException(status_code=500, detail=f"File '{file}' does not exist")
 
     # Report event to logger
-    constants.api_manager.logger._report('main.download_file', extra_data=f'Downloaded: "{path}"')
+    constants.api_manager.logger._report('main.download_file', host=request.client.host, extra_data=f'Downloaded: "{path}"')
 
     # If it exists in a permitted directory, respond with the file
     return FileResponse(path, filename=os.path.basename(path))
