@@ -1650,15 +1650,17 @@ def check_app_updates():
                     continue
 
                 if "macOS" in line:
-                    checksum = "macos"
-                    continue
-
-                if "arm64" in line.lower():
-                    checksum = "linux-arm64"
+                    if "arm64" in line.lower():
+                        checksum = "macos-arm64"
+                    else:
+                        checksum = "macos"
                     continue
 
                 if "Linux" in line:
-                    checksum = "linux"
+                    if "arm64" in line.lower():
+                        checksum = "linux-arm64"
+                    else:
+                        checksum = "linux"
                     continue
         except:
             pass
