@@ -1,3 +1,5 @@
+import traceback
+
 from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Request, Depends, status
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -270,8 +272,8 @@ class TelepathManager():
         threading.Timer((PAIR_CODE_EXPIRE_MINUTES * 60), _clear_pair_code).start()
 
     def _update_user(self, session=None):
-        self.current_users[session['host']] = session
-        self.current_users[session['host']]['last_active'] = dt.now()
+        self.current_users[session['ip']] = session
+        self.current_users[session['ip']]['last_active'] = dt.now()
         self.logger.current_users = self.current_users
 
     # Resets current user
@@ -554,8 +556,8 @@ class TelepathManager():
                 if self._verify_id(id, session['id']):
 
                     # Check if current user can be removed due to token expiry
-                    if host['host'] in self.current_users and (self.current_users[host['host']]['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
-                        self._force_logout(self.current_users[host['host']]['session_id'])
+                    if ip in self.current_users and (self.current_users[ip]['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
+                        self._force_logout(self.current_users[ip]['session_id'])
 
                     # This can change later, but currently, there can only be one telepath user globally
                     # (self.current_user['id'] == session['id'] and self.current_user['ip'] == request.client.host)
@@ -567,8 +569,8 @@ class TelepathManager():
                     #     )
 
                     # Reset remote server for permission reasons
-                    if host['host'] in constants.server_manager.remote_servers:
-                        del constants.server_manager.remote_server[host['hosts']]
+                    if ip in constants.server_manager.remote_servers:
+                        del constants.server_manager.remote_server[ip]
 
                     # Show banner on login
                     constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
@@ -898,7 +900,7 @@ class AuditLogger():
             return
 
         # Format host
-        if host in self.current_users:
+        if isinstance(host, str) and host in self.current_users:
             host = self.current_users[host]
 
         if host:
@@ -948,6 +950,7 @@ class AuditLogger():
         return log_data
 
     def log(self, message: str):
+        print(message)
         file_name = self._get_file_name()
 
         mode = 'a+'
@@ -1023,22 +1026,24 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
         # This is to give some leeway for a reconnection before alarm in case the legitimate session expired
 
         # Check if the user failed to log in because the token just expired
-        current_user = deepcopy(constants.api_manager.current_users[request.client.host])
-        if current_user and current_user['ip'] == request.client.host:
+        if request.client.host in constants.api_manager.current_users:
 
-            # Log to telepath logger
-            extra_data = "Connection blocked: session has expired"
-            constants.api_manager.logger._report(endpoint, host=current_user, extra_data=extra_data)
+            current_user = deepcopy(constants.api_manager.current_users[request.client.host])
+            if current_user and current_user['ip'] == request.client.host:
 
-            if 'pending-removal' not in current_user:
-                current_user['pending-removal'] = True
-                constants.api_manager._force_logout(current_user['session_id'])
+                # Log to telepath logger
+                extra_data = "Connection blocked: session has expired"
+                constants.api_manager.logger._report(endpoint, host=current_user, extra_data=extra_data)
 
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session expired, please log in again",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+                if 'pending-removal' not in current_user:
+                    current_user['pending-removal'] = True
+                    constants.api_manager._force_logout(current_user['session_id'])
+
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Session expired, please log in again",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
 
 
         # If it wasn't the last user, report violation to telepath logger
