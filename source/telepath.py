@@ -513,8 +513,8 @@ class TelepathManager():
                         # Successfully authenticated
 
                         # Reset remote server for permission reasons
-                        if host['host'] in constants.server_manager.remote_servers:
-                            del constants.server_manager.remote_server[host['hosts']]
+                        if ip in constants.server_manager.remote_servers:
+                            del constants.server_manager.remote_servers[ip]
 
                         # Call function to write this data to a file
                         session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip}
@@ -570,7 +570,7 @@ class TelepathManager():
 
                     # Reset remote server for permission reasons
                     if ip in constants.server_manager.remote_servers:
-                        del constants.server_manager.remote_server[ip]
+                        del constants.server_manager.remote_servers[ip]
 
                     # Show banner on login
                     constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
