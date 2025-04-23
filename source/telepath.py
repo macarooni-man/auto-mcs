@@ -1362,6 +1362,7 @@ def create_remote_obj(obj: object, request=True):
             '_sync_attr',
             True,
             {'name': (str, ...)},
+            self._telepath_data['host'],
             name
         )
     def _reset_expiry(self, value=None, length=60):
