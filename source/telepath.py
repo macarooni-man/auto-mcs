@@ -950,7 +950,6 @@ class AuditLogger():
         return log_data
 
     def log(self, message: str):
-        print(message)
         file_name = self._get_file_name()
 
         mode = 'a+'

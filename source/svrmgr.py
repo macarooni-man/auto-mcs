@@ -250,7 +250,7 @@ class ServerObject():
     # Checks if server was initialized remotely
     def _is_telepath_session(self):
         try:
-            return constants.server_manager.remote_server == self
+            return self in constants.server_manager.remote_servers.values()
         except AttributeError:
             pass
         except RecursionError:
