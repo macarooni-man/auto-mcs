@@ -1250,7 +1250,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
 
 
     # If this session is responding to a remote request
-    else:
+    elif host in constants.server_manager.remote_servers:
         # Reconstruct data if available
         if isinstance(kwargs, dict):
             kwargs = {k: reconstruct_object(v) for k, v in kwargs.items()}
