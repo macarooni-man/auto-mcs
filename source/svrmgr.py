@@ -2191,14 +2191,11 @@ class ServerManager():
         except AttributeError:
             pass
 
-
-        if self.remote_servers:
+        if host in self.remote_servers:
             crash_info = (self.remote_servers[host].name, self.remote_servers[host].crash_log)
+            del self.remote_servers[host]
         else:
             crash_info = (None, None)
-
-        if host in self.remote_servers:
-            del self.remote_servers[host]
 
         # Check if server is running
         if name in self.running_servers.keys():
