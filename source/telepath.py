@@ -1174,12 +1174,10 @@ def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
 
 # Create an endpoint from a function
 def return_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
-    async def endpoint(input: input_model = Body(...) if input_model else None):
-        if input_model:
-            result = func(**input.dict())
-        else:
-            result = func()
-        return result
+    async def endpoint(request: Request, input: input_model = Body(...) if input_model else None):
+        kwargs = input.dict() if input_model else {}
+        kwargs["host"] = request.client.host
+        return func(**kwargs)
 
     return endpoint
 
@@ -1209,7 +1207,7 @@ def generate_endpoints(app: FastAPI, instance):
 
 # This will communicate with the endpoints
 # "request" parameter is in context to this particular session, or subjectively, "am I requesting data?"
-def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None, *args, **kwargs):
+def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None, host=None, *args, **kwargs):
     def format_args():
         formatted = {}
         args_list = list(args)
@@ -1254,7 +1252,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
 
         # Manipulate strings to execute a function call to the actual server manager
         lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
-        command = 'returned = server_manager.remote_server.'
+        command = 'returned = remote_server.'
         short_name = 'server'
         if obj_name in lookup:
             short_name = lookup[obj_name]
@@ -1262,14 +1260,15 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         command += f'{method_name}'
 
         # Format locals() to include a new "returned" variable which will store the data to be returned
-        exec_memory = {'locals': {'returned': None}, 'globals': {'server_manager': constants.server_manager}}
+        remote_server = constants.server_manager.remote_servers[host]
+        exec_memory = {'locals': {'returned': None}, 'globals': {'remote_server': remote_server}}
         exec(command, exec_memory['globals'], exec_memory['locals'])
 
         # Report event to logger
         formatted_args = ''
         if kwargs:
             formatted_args = ', '.join([f'{k}={v}' for k, v in kwargs.items()])
-        constants.api_manager.logger._report(f'{short_name}.{method_name}', extra_data=formatted_args, server_name=constants.server_manager.remote_server.name)
+        constants.api_manager.logger._report(f'{short_name}.{method_name}', extra_data=formatted_args, server_name=remote_server.name)
 
         return exec_memory['locals']['returned'](**kwargs)
 
@@ -1409,8 +1408,8 @@ def create_remote_obj(obj: object, request=True):
 
             # Define a wrapper that takes 'self' and calls the original method
             def param_wrapper(func_name, func_params):
-                def method_wrapper(self, *args, **kwargs):
-                    return api_wrapper(self, self._obj_name, func_name, request, func_params, *args, **kwargs)
+                def method_wrapper(self, *args, host=None, **kwargs):
+                    return api_wrapper(self, self._obj_name, func_name, request, func_params, host, *args, **kwargs)
                 return method_wrapper
 
             data['methods'][name] = param_wrapper(name, params)
