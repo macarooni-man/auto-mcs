@@ -18829,6 +18829,9 @@ class ConsolePanel(FloatLayout):
                 self.change_filter(constants.server_manager.current_server.console_filter)
 
             def change_filter(self, filter_type):
+                if not filter_type:
+                    filter_type = 'everything'
+
                 self.current_filter = filter_type
                 constants.server_manager.current_server.change_filter(filter_type)
                 filter_button = None
