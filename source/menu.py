@@ -28920,7 +28920,7 @@ class TelepathPair():
         if not self.is_open:
             return
 
-        current_user = constants.api_manager.current_user
+        current_user = constants.api_manager.current_users[self.pair_data['host']['ip']]
         if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
             message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
             color = (0.553, 0.902, 0.675, 1)
