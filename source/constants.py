@@ -685,7 +685,7 @@ def check_app_version(current, latest, limit=None):
         return False
 
 
-# Restarts auto-mcs by dynamically generating script
+# Restarts auto-mcs by dynamically generating a script
 def restart_app(*a):
     executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-reboot'
@@ -731,7 +731,7 @@ rm \"{os.path.join(tempDir, script_name)}\""""
     sys.exit()
 
 
-# Restarts and updates auto-mcs by dynamically generating script
+# Restarts and updates auto-mcs by dynamically generating a script
 def restart_update_app(*a):
     executable = os.path.basename(launch_path)
     new_version = update_data['version']
