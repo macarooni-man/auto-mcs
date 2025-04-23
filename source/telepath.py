@@ -511,7 +511,8 @@ class TelepathManager():
                         # Successfully authenticated
 
                         # Reset remote server for permission reasons
-                        constants.server_manager.remote_server = None
+                        if host['host'] in constants.server_manager.remote_servers:
+                            del constants.server_manager.remote_server[host['hosts']]
 
                         # Call function to write this data to a file
                         session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip}
@@ -566,7 +567,8 @@ class TelepathManager():
                         )
 
                     # Reset remote server for permission reasons
-                    constants.server_manager.remote_server = None
+                    if host['host'] in constants.server_manager.remote_servers:
+                        del constants.server_manager.remote_server[host['hosts']]
 
                     # Show banner on login
                     constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
@@ -1059,20 +1061,47 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
 # ---------------------------------------------- Utility Functions -----------------------------------------------------
 
 # Creates an endpoint from a method, tagged, and optionally if it contains parameters, or requires a JWT token
-def create_endpoint(method: Callable, tag: str, params=False, auth_required=True):
-    kwargs = {
-        'methods': ["POST" if params else "GET"],
-        'name': method.__name__,
-        'tags': [tag],
+def create_endpoint(method: Callable, tag: str, params=False, auth_required=True, send_host=False):
+    """
+    Registers `method` under  /{tag}/{method.__name__}
+
+    ─────────────────────────────────────────────────────────────
+    • `params=True`   →  request body (JSON) is unpacked into **kwargs
+    • `send_host=True`→  if `client_ip` is an argument of `method`,
+                         it receives the remote IP address.
+    """
+
+    async def endpoint(request: Request):
+        kwargs = {}
+
+        # 1) JSON body → kwargs (only when requested)
+        if params:
+            try:
+                body = await request.json()
+                if isinstance(body, dict):
+                    kwargs.update(body)
+            except Exception:
+                pass   # silently ignore empty / invalid bodies
+
+        # 2) Caller’s IP → kwargs (opt-in)
+        if send_host and "client_ip" in inspect.signature(method).parameters:
+            kwargs["client_ip"] = request.client.host
+
+        # 3) Call the original function (sync or async)
+        if inspect.iscoroutinefunction(method):
+            return await method(**kwargs)
+        return method(**kwargs)
+
+    # ---------- FastAPI route registration ---------------------
+    route_kwargs = {
+        "methods": ["POST" if params else "GET"],
+        "name":    method.__name__,
+        "tags":    [tag],
     }
     if auth_required:
-        kwargs['dependencies'] = [Depends(authenticate)]
+        route_kwargs["dependencies"] = [Depends(authenticate)]
 
-    app.add_api_route(
-        f"/{tag}/{method.__name__}",
-        return_endpoint(method, create_pydantic_model(method) if params else None),
-        **kwargs
-    )
+    app.add_api_route(f"/{tag}/{method.__name__}", endpoint, **route_kwargs)
 
 
 # Reconstructs a serialized object to "__reconstruct__"
@@ -1869,13 +1898,13 @@ async def logout(host: dict, request: Request):
 
 # Authenticated and functional endpoints
 @app.post("/main/open_remote_server", tags=['main'], dependencies=[Depends(authenticate)])
-async def open_remote_server(name: str):
+async def open_remote_server(name: str, request: Request):
     if (constants.app_config.telepath_settings['enable-api'] or constants.headless) and constants.server_manager:
 
         # Report event to logger
         constants.api_manager.logger._report('main.open_remote_server', extra_data=f'Opened: "{name}"')
 
-        return constants.server_manager.open_remote_server(name)
+        return constants.server_manager.open_remote_server(request.client.host, name)
 
     return False
 
@@ -1974,8 +2003,8 @@ create_endpoint(constants.update_config_file, 'main', True)
 # Add-on based functionality outside the add-on manager
 create_endpoint(constants.load_addon_cache, 'addon', True)
 create_endpoint(constants.iter_addons, 'addon', True)
-create_endpoint(constants.pre_addon_update, 'addon', True)
-create_endpoint(constants.post_addon_update, 'addon', True)
+create_endpoint(constants.pre_addon_update, 'addon', True, send_host=True)
+create_endpoint(constants.post_addon_update, 'addon', True, send_host=True)
 
 # Endpoints for updating, server creation, and importing
 create_endpoint(constants.push_new_server, 'create', True)
@@ -1984,8 +2013,8 @@ create_endpoint(constants.install_server, 'create', True)
 create_endpoint(constants.generate_server_files, 'create', True)
 create_endpoint(constants.update_server_files, 'create', True)
 create_endpoint(constants.create_backup, 'create', True)
-create_endpoint(constants.pre_server_update, 'create', True)
-create_endpoint(constants.post_server_update, 'create', True)
+create_endpoint(constants.pre_server_update, 'create', True, send_host=True)
+create_endpoint(constants.post_server_update, 'create', True, send_host=True)
 create_endpoint(constants.pre_server_create, 'create', True)
 create_endpoint(constants.post_server_create, 'create', True)
 
@@ -1994,4 +2023,4 @@ create_endpoint(constants.finalize_import, 'create', True)
 create_endpoint(constants.scan_modpack, 'create', True)
 create_endpoint(constants.finalize_modpack, 'create', True)
 
-create_endpoint(constants.clone_server, 'create', True)
+create_endpoint(constants.clone_server, 'create', True, send_host=True)

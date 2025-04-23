@@ -43,7 +43,7 @@ import amscript
 
 app_version = "2.3"
 ams_version = "1.4"
-telepath_version = "1.0.5"
+telepath_version = "1.1"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -612,7 +612,7 @@ def check_free_space(telepath_data=None):
     return free_space > 1024
 
 def telepath_busy():
-    return ignore_close and server_manager.remote_server
+    return ignore_close and server_manager.remote_servers
 
 
 # Retrieves the refresh rate of the display to calculate consistent animation speed
@@ -2991,12 +2991,12 @@ def iter_addons(progress_func=None, update=False, telepath=False):
         progress_func(100)
 
     return True
-def pre_addon_update(telepath=False):
+def pre_addon_update(telepath=False, host=None):
     global new_server_info
     server_obj = server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
@@ -3020,14 +3020,14 @@ def pre_addon_update(telepath=False):
     # Generate server info for downloading proper add-on versions
     new_server_init()
     new_server_info = server_obj.properties_dict()
-    init_update(telepath=telepath)
+    init_update(telepath=telepath, host=host)
     new_server_info['addon_objects'] = server_obj.addon.return_single_list()
-def post_addon_update(telepath=False):
+def post_addon_update(telepath=False, host=None):
     global new_server_info
     server_obj = server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
@@ -3549,12 +3549,12 @@ def update_server_files(progress_func=None):
             run_proc(f"attrib +H \"{os.path.join(new_path, server_ini)}\"")
 
         return True
-def pre_server_update(telepath=False):
+def pre_server_update(telepath=False, host=None):
     global new_server_info
     server_obj = server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
@@ -3617,12 +3617,12 @@ def pre_server_update(telepath=False):
         data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
         api_manager.logger._report(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
 
-def post_server_update(telepath=False):
+def post_server_update(telepath=False, host=None):
     global new_server_info
     server_obj = server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
@@ -4924,9 +4924,9 @@ eula=true"""
 
 
 # Generates new information for a server update
-def init_update(telepath=False):
+def init_update(telepath=False, host=None):
     if telepath:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[host]
     else:
         server_obj = server_manager.current_server
     new_server_info['name'] = server_obj.name
@@ -4956,7 +4956,7 @@ def init_update(telepath=False):
 # Updates a world in a server
 def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
     if telepath_data:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[telepath_data['host']]
 
         # Report to telepath logger
         api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
@@ -4998,12 +4998,12 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
 
 
 # Clones a server with support for Telepath
-def clone_server(server_obj: object or str, progress_func=None, *args):
+def clone_server(server_obj: object or str, progress_func=None, host=None, *args):
 
     if server_obj == '$remote':
         source_data = None
         destination_data = None
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[host]
 
     else:
         source_data = server_obj._telepath_data
