@@ -141,14 +141,14 @@ class DiscordPresenceManager():
 
         url = 'https://0x0.st'
         files = {'file': open(file_path, 'rb')}
-        response = constants.requests.post(url, files=files)
+        response = constants.requests.post(url, files=files, headers={'User-Agent': f'{constants.app_title}/{constants.app_version}'})
         if response.status_code == 200:
             url = response.text.strip()
 
             # Cache icon for later retrieval
             server_obj.run_data['rich-presence-icon'] = url
             return url
-        else:
+        elif constants.debug:
             print("Upload failed:", response.text)
             return None
 
