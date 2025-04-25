@@ -1892,7 +1892,7 @@ async def logout(host: dict, request: Request):
     if constants.api_manager:
 
         # Report event to logger
-        constants.api_manager.logger._report('telepath.logout')
+        constants.api_manager.logger._report('telepath.logout', host=request.client.host)
 
         return constants.api_manager._logout(host, request)
 
