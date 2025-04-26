@@ -6095,7 +6095,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     final = FloatLayout()
     final.x += 174 + x_offset
 
-    button = ToggleButton(state='down' if default_state else 'normal')
+    final.button = button = ToggleButton(state='down' if default_state else 'normal')
     button.id = 'toggle_button'
     button.pos_hint = {"center_x": position[0], "center_y": position[1]}
     button.size_hint_max = (82, 42)
@@ -6104,7 +6104,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     button.background_down = button.background_normal if disabled else os.path.join(constants.gui_assets, 'toggle_button_enabled.png')
     button.bind(on_press=functools.partial(on_active, name))
 
-    knob = Image()
+    final.knob = knob = Image()
     knob.id = 'knob'
     knob.source = os.path.join(constants.gui_assets, f'toggle_button_knob{"_enabled" if default_state else ""}.png')
     knob.size = (30, 30)
@@ -29099,6 +29099,7 @@ class TelepathManagerScreen(MenuBackground):
         self.users_button = None
         self.pair_button = None
         self.api_input = None
+        self.api_toggle = None
         self.host_input = None
         self.confirm_input = None
         self.load_icon = None
@@ -29239,6 +29240,42 @@ class TelepathManagerScreen(MenuBackground):
         Animation(opacity=0, duration=self.page_speed).start(self.pair_layout)
         Clock.schedule_once(after, self.page_speed + 0.05)
 
+    def recalculate_buttons(self, *a):
+        try:
+            self.main_layout.remove_widget(self.users_button)
+        except:
+            pass
+        try:
+            self.main_layout.remove_widget(self.instances_button)
+        except:
+            pass
+
+        if constants.api_manager.authenticated_sessions and constants.app_config.telepath_settings['enable-api']:
+            self.main_layout.add_widget(self.users_button)
+
+            pair_pos = (0.5, 0.42)
+            enable_pos = (0.5, 0.29)
+            back_pos = (0.5, 0.13)
+
+        elif constants.server_manager.telepath_servers:
+            self.main_layout.add_widget(self.instances_button)
+
+            pair_pos = (0.5, 0.42)
+            enable_pos = (0.5, 0.29)
+            back_pos = (0.5, 0.13)
+
+        else:
+            pair_pos = (0.5, 0.5)
+            enable_pos = (0.5, 0.35)
+            back_pos = (0.5, 0.17)
+
+        self.pair_button.pos_hint = {'center_x': pair_pos[0], 'center_y': pair_pos[1]}
+        self.api_input.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
+        self.api_toggle.button.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
+        self.api_toggle.knob.pos_hint = {"center_y": enable_pos[1]}
+        self.back_button.text.pos_hint = self.back_button.button.pos_hint = {'center_x': back_pos[0], 'center_y': back_pos[1]}
+        self.back_button.icon.pos_hint = {'center_y': back_pos[1]}
+
     def generate_menu(self, **kwargs):
         self.main_layout = FloatLayout()
         self.main_layout.opacity = 0
@@ -29306,27 +29343,7 @@ Once paired, remote servers will appear in the Server Manager and can be interac
             screen_manager.current = "TelepathInstanceScreen"
         self.users_button = color_button("MANAGE USERS", position=(0.5, 0.55), icon_name='person-sharp.png', click_func=user_manager, color=(0.8, 0.8, 1, 1))
         self.instances_button = color_button("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png', click_func=instance_manager, color=(0.8, 0.8, 1, 1))
-
-        if constants.api_manager.authenticated_sessions and constants.app_config.telepath_settings['enable-api']:
-            self.main_layout.add_widget(self.users_button)
-
-            pair_pos = (0.5, 0.42)
-            enable_pos = (0.5, 0.29)
-            back_pos = (0.5, 0.13)
-
-        elif constants.server_manager.telepath_servers:
-            self.main_layout.add_widget(self.instances_button)
-
-            pair_pos = (0.5, 0.42)
-            enable_pos = (0.5, 0.29)
-            back_pos = (0.5, 0.13)
-
-        else:
-            pair_pos = (0.5, 0.5)
-            enable_pos = (0.5, 0.35)
-            back_pos = (0.5, 0.17)
-
-        self.pair_button = color_button("PAIR A SERVER", position=pair_pos, icon_name='telepath.png', click_func=functools.partial(self.show_pair_input, False), color=(0.8, 0.8, 1, 1))
+        self.pair_button = color_button("PAIR A SERVER", position=(0.5, 0.5), icon_name='telepath.png', click_func=functools.partial(self.show_pair_input, False), color=(0.8, 0.8, 1, 1))
         self.main_layout.add_widget(self.pair_button)
 
 
@@ -29337,21 +29354,6 @@ Once paired, remote servers will appear in the Server Manager and can be interac
                 constants.app_config.save_config()
                 text = 'enabled' if state else 'disabled'
                 constants.telepath_banner(f'$Telepath$ API is now {text}', state)
-
-            # Modulate button visibility
-            try:
-                self.main_layout.remove_widget(self.users_button)
-            except:
-                pass
-            try:
-                self.main_layout.remove_widget(self.instances_button)
-            except:
-                pass
-
-            if constants.api_manager.authenticated_sessions and constants.app_config.telepath_settings['enable-api']:
-                self.main_layout.add_widget(self.users_button)
-            elif constants.server_manager.telepath_servers:
-                self.main_layout.add_widget(self.instances_button)
 
             # Update hint text
             if state:
@@ -29375,19 +29377,22 @@ Once paired, remote servers will appear in the Server Manager and can be interac
 
             self.api_input.hint_text = new_text
         sub_layout = RelativeLayout()
-        self.api_input = blank_input(pos_hint={"center_x": enable_pos[0], "center_y": enable_pos[1]}, hint_text="share this instance")
+        self.api_input = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.35}, hint_text="share this instance")
+        self.api_toggle = toggle_button('api', (0.5, 0.35), default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api)
         sub_layout.add_widget(self.api_input)
-        sub_layout.add_widget(toggle_button('api', enable_pos, default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api))
+        sub_layout.add_widget(self.api_toggle)
         self.main_layout.add_widget(sub_layout)
         if constants.app_config.telepath_settings['enable-api']:
             toggle_api(True, True)
+
+        Clock.schedule_once(self.recalculate_buttons, 0)
 
 
         # Static content on each page
         self.add_widget(generate_footer('$Telepath$', no_background=True))
         self.add_widget(self.main_layout)
         Animation(opacity=1, duration=1).start(self.main_layout)
-        self.back_button = ExitButton('Back', back_pos, cycle=True)
+        self.back_button = ExitButton('Back', (0.5, 0.17), cycle=True)
         self.add_widget(self.back_button)
 
 
@@ -29471,6 +29476,10 @@ def telepath_banner(message: str, finished: bool, play_sound=None):
                 play_sound
             ), 0.1
         )
+
+    # Refresh Telepath home screen
+    if screen.name == 'TelepathManagerScreen':
+        Clock.schedule_once(screen.recalculate_buttons, 0)
 
     # Refresh user list if visible
     if screen.name == 'TelepathUserScreen' and not screen.popup_widget:
