@@ -222,7 +222,7 @@ class TelepathManager():
             if (new_session['id'] == session['id']) or (new_session['user'] == session['user'] and new_session['host'] == session['host']):
                 self.authenticated_sessions.remove(session)
 
-        self.authenticated_sessions.append(new_session)
+        self.authenticated_sessions.append(constants.deepcopy(new_session))
         self.secret_file.write(self.authenticated_sessions)
 
         # Eventually add code here to save and reload this from a file
