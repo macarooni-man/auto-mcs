@@ -219,7 +219,7 @@ class TelepathManager():
 
         # Remove saved data to prevent duplication
         for session in self.authenticated_sessions:
-            if new_session['id'] == session['id']:
+            if (new_session['id'] == session['id']) or (new_session['user'] == session['user'] and new_session['host'] == session['host']):
                 self.authenticated_sessions.remove(session)
 
         self.authenticated_sessions.append(new_session)
@@ -246,6 +246,7 @@ class TelepathManager():
     def _reset_session(self):
         self.secret_file.write([])
         self.authenticated_sessions = []
+        self.current_users = {}
         return []
 
     def _create_pair_code(self, host: dict, id: str):
@@ -282,6 +283,38 @@ class TelepathManager():
             if session_id == user['session_id']:
                 del self.current_users[host]
                 return True
+
+    # Toggle disabling users
+    def _disable_user(self, user_id: str, disabled: bool):
+
+        # Check if user has been disabled
+        for session in self.authenticated_sessions:
+            if user_id == session['id']:
+                session['disabled'] = disabled
+
+                self.secret_file.write(self.authenticated_sessions)
+
+                # Log out user if they are connected and disabled
+                if disabled:
+                    for user in self.current_users.values():
+                        if user['user'] == session['user'] and user['host'] == session['host']:
+
+                            # Show banner on logout
+                            constants.telepath_banner(f"'${user['host']}/{user['user']}$' logged out", False)
+
+                            return self._force_logout(user['session_id'])
+
+                break
+
+    # Check if session is permitted
+    def _check_permissions(self, session: dict):
+
+        # Do things with the matched user
+        if 'disabled' in session and session['disabled']:
+            return False
+
+        return True
+
 
     def update_config(self, host: str, port: int):
         self.host = host
@@ -439,7 +472,7 @@ class TelepathManager():
                 print(f"[INFO] [telepath] Closed session to '{host}:{data['port']}'")
 
 
-    # -------- Internal endpoints to authenticate with telepath -------- #
+    # -------- Internal endpoints to authenticate with Telepath -------- #
 
     # Returns data for pairing a remote session
     # host = {'host': str, 'user': str}
@@ -517,7 +550,7 @@ class TelepathManager():
                             del constants.server_manager.remote_servers[ip]
 
                         # Call function to write this data to a file
-                        session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip}
+                        session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip, 'disabled': False}
                         self._save_session(session)
                         self._update_user(session)
                         self.pair_data = {}
@@ -544,7 +577,6 @@ class TelepathManager():
                 detail=f"API versions do not match. Server - v{self.version}"
             )
 
-
         if self.running:
             ip = request.client.host
             id = self.auth._decrypt(id_hash, ip)
@@ -554,6 +586,13 @@ class TelepathManager():
 
             for session in self.authenticated_sessions:
                 if self._verify_id(id, session['id']):
+
+                    # Check if user is allowed to log in
+                    if not self._check_permissions(session):
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Permission denied"
+                        )
 
                     # Check if current user can be removed due to token expiry
                     if ip in self.current_users and (self.current_users[ip]['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
