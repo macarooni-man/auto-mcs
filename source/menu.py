@@ -28323,11 +28323,13 @@ class UserButton(HoverButton):
         self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78, self.y + 8)
         offset = 9.55
 
-        self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 6
+        self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 8
         self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
 
-        self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 70
-        self.type_image.type_label.y = self.y - (self.height * 0.08)
+        self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 75
+        self.type_image.type_label.y = self.y + (self.height * 0.15)
+
+        self.disable_layout.pos = (self.x + self.width + 57, self.y - 23)
 
 
         # Edit button
@@ -28363,7 +28365,7 @@ class UserButton(HoverButton):
             else:
                 self.connect_color = (1, 0.65, 0.65, 1)
                 self.type_image.image.color = self.type_image.type_label.color = self.connect_color
-                self.type_image.type_label.text = 'offline'
+                self.type_image.type_label.text = 'restricted' if self.access_disabled else 'offline'
                 self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
 
         except KeyError:
@@ -28386,6 +28388,7 @@ class UserButton(HoverButton):
         self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
         self.size_hint_max = (580, 80)
         self.id = "server_button"
+        self.access_disabled = 'disabled' in self.properties and self.properties['disabled']
         self.connected = connected
 
         self.background_normal = os.path.join(constants.gui_assets, 'server_button.png' if self.connected else 'addon_button_disabled.png')
@@ -28480,6 +28483,20 @@ class UserButton(HoverButton):
         self.update_status()
 
 
+        # Temporary disable switch
+        def disable_user(disable=True):
+            constants.api_manager._disable_user(self.properties['id'], not disable)
+            self.access_disabled = not disable
+            self.update_status()
+
+        # Make this check eventual variable
+        self.disable_layout = RelativeLayout(size_hint_max=(10, 10))
+        self.disable_user = toggle_button('telepath-disable', (0.5, 0.5), default_state=not self.access_disabled, x_offset=-395, custom_func=disable_user)
+        self.disable_layout.size_hint_max = (10, 10)
+        self.disable_layout.add_widget(self.disable_user)
+        self.add_widget(self.disable_layout)
+
+
         # Animate opacity
         if fade_in > 0:
             self.opacity = 0
@@ -28523,7 +28540,23 @@ class TelepathUserScreen(MenuBackground):
         self.page_switcher.update_index(self.current_page, self.max_pages)
         self.gen_search_results(self.last_results)
 
-    def gen_search_results(self, results, new_search=False, fade_in=True, highlight=None, animate_scroll=True, *args):
+    def gen_search_results(self, new_search=False, fade_in=True, highlight=None, animate_scroll=True, *args):
+
+        # Generate list of online users
+        online_list = []
+        for user in constants.api_manager.current_users.values():
+            user_str = f'{user["host"]}/{user["user"]}'
+            if user_str not in online_list:
+                online_list.append(user_str)
+
+        # Sort users based on if they are online
+        results = sorted(
+            constants.api_manager.authenticated_sessions,
+            key = lambda u: f'{u["host"]}/{u["user"]}' in online_list,
+            reverse = True
+        )
+
+
         default_scroll = 1
 
         # Update page counter
@@ -28548,14 +28581,6 @@ class TelepathUserScreen(MenuBackground):
                 break
 
 
-        # Generate list of online users
-        online_list = []
-        for user in constants.api_manager.current_users.values():
-            user_str = f'{user["host"]}/{user["user"]}'
-            if user_str not in online_list:
-                online_list.append(user_str)
-
-
         # Show users if they exist
         if user_count != 0:
 
@@ -28564,22 +28589,21 @@ class TelepathUserScreen(MenuBackground):
 
                 # Activated when server is clicked
                 def view_user(data, *a):
-                    if data['nickname']:
-                        display_name = f"{data['host']} ({data['nickname']})"
+                    if data['host']:
+                        display_name = f"{data['host']}/{data['user']}"
                     else:
-                        display_name = data['nickname']
+                        display_name = f"{data['ip']}/{data['user']}"
 
-                    desc = f"Un-pairing this instance will prevent you from accessing it via $Telepath$ until it's paired again.\n\nAre you sure you want to un-pair from '${display_name}$'?"
+                    desc = f"Un-pairing this user will prevent them from accessing this instance via $Telepath$ until paired again.\n\nAre you sure you want to un-pair '${display_name}$'?"
 
                     def unpair(*a):
                         # Log out if possible
-                        if data['host'] in constants.api_manager.jwt_tokens:
-                            constants.api_manager.logout(data['host'], data['port'])
+                        if data['ip'] in constants.api_manager.current_users:
+                            constants.api_manager._force_logout(constants.api_manager.current_users[data['ip']]['session_id'])
 
-                        constants.server_manager.remove_telepath_server(data)
-                        self.gen_search_results(constants.server_manager.telepath_servers)
-
-                        telepath_banner(f"Un-paired from '${data['host']}$'", False)
+                        constants.api_manager._revoke_session(data['id'])
+                        self.gen_search_results()
+                        telepath_banner(f"Un-paired '${display_name}$'", False)
 
 
                     Clock.schedule_once(
@@ -28600,7 +28624,7 @@ class TelepathUserScreen(MenuBackground):
                             user_data = user,
                             fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
                             click_function = view_user,
-                            connected = f'{user["host"]}/{user["user"]}' in online_list
+                            connected = f'{user["host"]}/{user["user"]}' in online_list,
                         )
                     )
                 )
@@ -28714,35 +28738,9 @@ class TelepathUserScreen(MenuBackground):
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(f'Telepath, {menu_name}', no_background=True))
 
-        # Load layout
-        self.load_layout = FloatLayout(opacity=0)
-
-        # Loading icon to swap button
-        self.load_layout.icon = Image()
-        self.load_layout.icon.id = "load_icon"
-        self.load_layout.icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
-        self.load_layout.icon.size_hint_max = (50, 50)
-        self.load_layout.icon.color = (0.6, 0.6, 1, 1)
-        self.load_layout.icon.pos_hint = {"center_y": 0.5, "center_x": 0.4}
-        self.load_layout.icon.allow_stretch = True
-        self.load_layout.icon.anim_delay = constants.anim_speed * 0.02
-        self.load_layout.add_widget(self.load_layout.icon)
-
-        # Load label
-        self.load_layout.text = Label()
-        self.load_layout.text.text = "loading users..."
-        self.load_layout.text.halign = "center"
-        self.load_layout.text.valign = "center"
-        self.load_layout.text.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
-        self.load_layout.text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-        self.load_layout.text.font_size = sp(25)
-        self.load_layout.text.color = (0.6, 0.6, 1, 0.5)
-        self.load_layout.add_widget(self.load_layout.text)
-
         self.add_widget(float_layout)
-        self.add_widget(self.load_layout)
 
-        self.gen_search_results(constants.api_manager.authenticated_sessions)
+        self.gen_search_results()
 
 
 
@@ -29097,6 +29095,8 @@ class TelepathManagerScreen(MenuBackground):
         self.background_color = constants.brighten_color(constants.background_color, -0.09)
         self.back_button = None
         self.help_button = None
+        self.instances_button = None
+        self.users_button = None
         self.pair_button = None
         self.api_input = None
         self.host_input = None
@@ -29299,11 +29299,23 @@ Once paired, remote servers will appear in the Server Manager and can be interac
         self.main_layout.add_widget(session_splash)
 
 
-        if constants.server_manager.telepath_servers:
-            def show_manager(*a):
-                screen_manager.current = "TelepathInstanceScreen"
-            self.pair_button = color_button("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png', click_func=show_manager, color=(0.8, 0.8, 1, 1))
-            self.main_layout.add_widget(self.pair_button)
+        # Logic-driven button visibility
+        def user_manager(*a):
+            screen_manager.current = "TelepathUserScreen"
+        def instance_manager(*a):
+            screen_manager.current = "TelepathInstanceScreen"
+        self.users_button = color_button("MANAGE USERS", position=(0.5, 0.55), icon_name='person-sharp.png', click_func=user_manager, color=(0.8, 0.8, 1, 1))
+        self.instances_button = color_button("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png', click_func=instance_manager, color=(0.8, 0.8, 1, 1))
+
+        if constants.api_manager.authenticated_sessions and constants.app_config.telepath_settings['enable-api']:
+            self.main_layout.add_widget(self.users_button)
+
+            pair_pos = (0.5, 0.42)
+            enable_pos = (0.5, 0.29)
+            back_pos = (0.5, 0.13)
+
+        elif constants.server_manager.telepath_servers:
+            self.main_layout.add_widget(self.instances_button)
 
             pair_pos = (0.5, 0.42)
             enable_pos = (0.5, 0.29)
@@ -29325,6 +29337,21 @@ Once paired, remote servers will appear in the Server Manager and can be interac
                 constants.app_config.save_config()
                 text = 'enabled' if state else 'disabled'
                 constants.telepath_banner(f'$Telepath$ API is now {text}', state)
+
+            # Modulate button visibility
+            try:
+                self.main_layout.remove_widget(self.users_button)
+            except:
+                pass
+            try:
+                self.main_layout.remove_widget(self.instances_button)
+            except:
+                pass
+
+            if constants.api_manager.authenticated_sessions and constants.app_config.telepath_settings['enable-api']:
+                self.main_layout.add_widget(self.users_button)
+            elif constants.server_manager.telepath_servers:
+                self.main_layout.add_widget(self.instances_button)
 
             # Update hint text
             if state:
@@ -29430,10 +29457,12 @@ constants.telepath_pair = TelepathPair()
 
 # Telepath banner endpoint for sending remote notifications
 def telepath_banner(message: str, finished: bool, play_sound=None):
-    if screen_manager.current_screen.show_banner:
+    screen = screen_manager.current_screen
+
+    if screen.show_banner:
         Clock.schedule_once(
             functools.partial(
-                screen_manager.current_screen.show_banner,
+                screen.show_banner,
                 (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
                 message,
                 "checkmark-circle-sharp.png" if finished else "telepath.png",
@@ -29442,6 +29471,11 @@ def telepath_banner(message: str, finished: bool, play_sound=None):
                 play_sound
             ), 0.1
         )
+
+    # Refresh user list if visible
+    if screen.name == 'TelepathUserScreen' and not screen.popup_widget:
+        Clock.schedule_once(lambda *_: screen.gen_search_results(fade_in=False), 0)
+
 constants.telepath_banner = telepath_banner
 telepath.create_endpoint(constants.telepath_banner, 'main', True)
 
