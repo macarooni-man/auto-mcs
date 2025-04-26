@@ -28356,16 +28356,26 @@ class UserButton(HoverButton):
             self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
 
         try:
+
+            # User is connected
             if self.connected:
                 self.connect_color = (0.529, 1, 0.729, 1)
                 self.type_image.image.color = self.type_image.type_label.color = self.connect_color
                 self.type_image.type_label.text = 'connected'
                 self.background_normal = os.path.join(constants.gui_assets, 'telepath_button_enabled.png')
 
+            # User is offline
+            elif not self.access_disabled:
+                self.connect_color = (0.65, 0.65, 1, 1)
+                self.type_image.image.color = self.type_image.type_label.color = self.connect_color
+                self.type_image.type_label.text = 'offline'
+                self.background_normal = os.path.join(constants.gui_assets, 'addon_button.png')
+
+            # User is restricted
             else:
                 self.connect_color = (1, 0.65, 0.65, 1)
                 self.type_image.image.color = self.type_image.type_label.color = self.connect_color
-                self.type_image.type_label.text = 'restricted' if self.access_disabled else 'offline'
+                self.type_image.type_label.text = 'restricted'
                 self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
 
         except KeyError:
