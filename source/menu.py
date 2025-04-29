@@ -17140,13 +17140,13 @@ class PerformancePanel(RelativeLayout):
                     self.recalculate_size()
                     return
 
-                text_width = int(((self.scroll_layout.width // text_width) // 1))
-                self.player_list.cols = text_width
-                self.player_list.rows = round(data_len / text_width) + 3
-                # print(text_width, self.player_list.cols, self.player_list.rows, data_len)
-
                 # Dirty fix to circumvent RecycleView missing data: https://github.com/kivy/kivy/pull/7262
                 try:
+                    text_width = int(((self.scroll_layout.width // text_width) // 1))
+                    self.player_list.cols = text_width
+                    self.player_list.rows = round(data_len / text_width) + 3
+                    # print(text_width, self.player_list.cols, self.player_list.rows, data_len)
+
                     if ((data_len <= self.player_list.cols) and self.player_list.rows <= 5) or data_len + 1 == self.player_list.cols:
                         if self.scroll_layout.data[-1] is not {'text': blank_name}:
                             for x in range(self.player_list.cols):
