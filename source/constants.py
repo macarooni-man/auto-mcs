@@ -4117,11 +4117,11 @@ eula=true"""
 
                 # Delete all *.jar files in directory
                 for jar in glob(os.path.join(tmpsvr, '*.jar'), recursive=False):
-                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name in jar)):
+                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name and file_name in jar)):
                         os.remove(jar)
 
                     # Rename actual .jar file to server.jar to prevent crashes
-                    if file_name in jar:
+                    if file_name and file_name in jar:
                         run_proc(f"{'move' if os_name == 'windows' else 'mv'} \"{os.path.join(tmpsvr, os.path.basename(jar))}\" \"{os.path.join(tmpsvr, 'server.jar')}\"")
 
 
