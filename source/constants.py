@@ -41,9 +41,9 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.2.6"
+app_version = "2.3"
 ams_version = "1.4"
-telepath_version = "1.0.3"
+telepath_version = "1.1"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -97,7 +97,10 @@ latestMC = {
     "builds": {
         "forge": "0",
         "paper": "0",
-        "purpur": "0"
+        "purpur": "0",
+        "fabric": "0",
+        "neoforge": "0",
+        "quilt": "0"
     }
 }
 
@@ -459,6 +462,7 @@ available_locales = {
     "Portuguese": {"name": 'Português', "code": 'pt'},
     "Swedish": {"name": 'Suédois', "code": 'sv'},
     "Finnish": {"name": 'Suomi', "code": 'fi'},
+    "English 2": {"name": 'English 2', "code": 'e2'}
 
     # Requires special fonts:
 
@@ -493,6 +497,10 @@ def translate(text: str):
     def search_data(s, *a):
         try:
             return locale_data[s.strip().lower()][app_config.locale]
+        except KeyError:
+            pass
+        try:
+            return locale_data[s.strip()][app_config.locale]
         except KeyError:
             pass
 
@@ -587,7 +595,7 @@ def translate(text: str):
         return re.sub(r'\$(.*)\$', '\g<1>', text)
 
 
-# Returns False if less than 500MB free
+# Returns False if less than 1GB free
 def check_free_space(telepath_data=None):
     if telepath_data:
         url = f'http://{telepath_data["host"]}:{telepath_data["port"]}/main/check_free_space'
@@ -601,10 +609,10 @@ def check_free_space(telepath_data=None):
             return True
 
     free_space = round(disk_usage('/').free / 1048576)
-    return free_space > 500
+    return free_space > 1024
 
 def telepath_busy():
-    return ignore_close and server_manager.remote_server
+    return ignore_close and server_manager.remote_servers
 
 
 # Retrieves the refresh rate of the display to calculate consistent animation speed
@@ -677,7 +685,7 @@ def check_app_version(current, latest, limit=None):
         return False
 
 
-# Restarts auto-mcs by dynamically generating script
+# Restarts auto-mcs by dynamically generating a script
 def restart_app(*a):
     executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-reboot'
@@ -723,7 +731,7 @@ rm \"{os.path.join(tempDir, script_name)}\""""
     sys.exit()
 
 
-# Restarts and updates auto-mcs by dynamically generating script
+# Restarts and updates auto-mcs by dynamically generating a script
 def restart_update_app(*a):
     executable = os.path.basename(launch_path)
     new_version = update_data['version']
@@ -1022,7 +1030,7 @@ def telepath_upload(telepath_data: dict, path: str):
 # Whitelist is for restricting downloadable content
 telepath_download_whitelist = {
     'paths': [serverDir, scriptDir, backupFolder],
-    'names': ['.ams', '.amb', 'server.properties', 'server-icon.png']
+    'names': ['.ams', '.amb', 'server-icon.png']
 }
 def telepath_download(telepath_data: dict, path: str, destination=downDir, rename=''):
     if not api_manager:
@@ -1736,12 +1744,19 @@ def find_latest_mc():
             reqs = requests.get(url, timeout=timeout)
             soup = BeautifulSoup(reqs.text, 'html.parser')
 
-            # Get side panel latest version
-            li = soup.find('li', 'li-version-list')
+            version_list = []
 
+            # Get side panel versions
+            li_list = soup.find_all('li', 'li-version-list')
+            for li in li_list:
+                for sub_li in li.find_all('li'):
+                    version = sub_li.text.strip()
+                    url = url.rsplit('/', 1)[0] + f'/index_{version}.html'
+                    version_list.append((version, url))
+
+            # Get the first entry from the side panel versions
             try:
-                new_url = url.rsplit('/', 1)[0] + '/' + li.find_all('a')[-1].get('href')
-                reqs = requests.get(new_url, timeout=timeout)
+                reqs = requests.get(version_list[0][-1], timeout=timeout)
                 soup = BeautifulSoup(reqs.text, 'html.parser')
             except:
                 pass
@@ -2015,7 +2030,8 @@ def generate_splash(crash=False):
             "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
             "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
             "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
-            "You can't run away from all your problems…\n            Not when they have ender pearls.", "[!] bite hazard [!]"]
+            "You can't run away from all your problems…\n            Not when they have ender pearls.",
+            "[!] bite hazard [!]", "How are you doing today Bob/Steve/Kyle?"]
 
     if crash:
         exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
@@ -2540,13 +2556,14 @@ def push_new_server(server_info: dict, import_info={}):
 
 # Generate new server name
 def new_server_name(existing_server=None, s_list=server_list_lower):
+    pattern = r'\s\(\d+\)$'
     if not s_list:
         generate_server_list()
         s_list = server_list_lower
     def iter_name(new_name):
         x = 1
         while new_name.lower() in s_list:
-            new_name = f'{new_name} ({x})'
+            new_name = f'{re.sub(pattern, "", new_name).strip()} ({x})'
             x += 1
         return new_name
 
@@ -2974,12 +2991,12 @@ def iter_addons(progress_func=None, update=False, telepath=False):
         progress_func(100)
 
     return True
-def pre_addon_update(telepath=False):
+def pre_addon_update(telepath=False, host=None):
     global new_server_info
     server_obj = server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
@@ -3003,14 +3020,14 @@ def pre_addon_update(telepath=False):
     # Generate server info for downloading proper add-on versions
     new_server_init()
     new_server_info = server_obj.properties_dict()
-    init_update(telepath=telepath)
+    init_update(telepath=telepath, host=host)
     new_server_info['addon_objects'] = server_obj.addon.return_single_list()
-def post_addon_update(telepath=False):
+def post_addon_update(telepath=False, host=None):
     global new_server_info
     server_obj = server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
@@ -3532,17 +3549,38 @@ def update_server_files(progress_func=None):
             run_proc(f"attrib +H \"{os.path.join(new_path, server_ini)}\"")
 
         return True
-def pre_server_update(telepath=False):
+def pre_server_update(telepath=False, host=None):
     global new_server_info
     server_obj = server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
         telepath_data = server_obj._telepath_data
         if telepath_data:
+
+            # Copy import remotely if available
+            try:
+                if import_data['path']:
+                    import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
+
+                    api_manager.request(
+                        endpoint='/create/push_new_server',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={'server_info': new_server_info, 'import_info': import_data}
+                    )
+                    response = api_manager.request(
+                        endpoint='/create/pre_server_create',
+                        host=telepath_data['host'],
+                        port=telepath_data['port'],
+                        args={'telepath': True}
+                    )
+            except KeyError:
+                pass
+
             response = api_manager.request(
                 endpoint='/create/pre_server_update',
                 host=telepath_data['host'],
@@ -3579,12 +3617,12 @@ def pre_server_update(telepath=False):
         data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
         api_manager.logger._report(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
 
-def post_server_update(telepath=False):
+def post_server_update(telepath=False, host=None):
     global new_server_info
     server_obj = server_manager.current_server
 
     if telepath:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[host]
 
     # If remote, do this through telepath
     else:
@@ -3665,10 +3703,9 @@ def restore_server(backup_obj: backup.BackupObject, progress_func=None):
             for path, dir_count, file_count in os.walk(server_path(server_name)):
                 current_count += len(file_count)
 
-            percent = round((current_count/total_files) * 100)
-            progress_func(percent)
-
-        print("Done!")
+            if not proc_complete:
+                percent = round((current_count/total_files) * 100)
+                progress_func(percent)
 
     thread_check = threading.Timer(0, thread_checker)
     thread_check.daemon = True
@@ -3777,7 +3814,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 for jar in sorted(jar_list, key=lambda x: os.path.getsize(x)):
                     folder_check(tempDir)
                     jar_name = os.path.basename(jar)
-                    script_name = os.path.join(tempDir, jar_name + '.bat')
+                    script_name = os.path.join(tempDir, 'importtest', jar_name + '.bat')
                     with open(script_name, 'w+') as f:
                         f.write(f'java -jar {jar_name}')
                     script_list.append(script_name)
@@ -3916,11 +3953,11 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             if os.path.exists(os.path.join(test_server, 'fabric-server-launch.jar')):
                                 file_name = 'fabric-server-launch.jar'
 
-                        else:
-                            if file_name != "server":
-                                if os.path.exists("server.jar"):
-                                    os.remove("server.jar")
-                                run_proc(f"{'move' if os_name == 'windows' else 'mv'} {file_name}.jar server.jar")
+                        # else:
+                        #     if file_name != "server":
+                        #         if os.path.exists("server.jar"):
+                        #             os.remove("server.jar")
+                        #         run_proc(f"{'move' if os_name == 'windows' else 'mv'} {file_name}.jar server.jar")
 
                         time_stamp = datetime.date.today().strftime(f"#%a %b %d ") + datetime.datetime.now().strftime("%H:%M:%S ") + "MCS" + datetime.date.today().strftime(f" %Y")
 
@@ -4045,7 +4082,7 @@ eula=true"""
                             # Ignore flags with invalid data
                             if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                                 continue
-                            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft']:
+                            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft', '-mirror']:
                                 if exclude in flag:
                                     break
 
@@ -4079,12 +4116,12 @@ eula=true"""
                     os.remove(script)
 
                 # Delete all *.jar files in directory
-                for jar in glob(os.path.join(str(path), '*.jar'), recursive=False):
-                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name in jar)):
+                for jar in glob(os.path.join(tmpsvr, '*.jar'), recursive=False):
+                    if not ((jar.startswith('minecraft_server') and import_data['type'] == 'forge') or (file_name and file_name in jar)):
                         os.remove(jar)
 
                     # Rename actual .jar file to server.jar to prevent crashes
-                    if file_name in jar:
+                    if file_name and file_name in jar:
                         run_proc(f"{'move' if os_name == 'windows' else 'mv'} \"{os.path.join(tmpsvr, os.path.basename(jar))}\" \"{os.path.join(tmpsvr, 'server.jar')}\"")
 
 
@@ -4116,6 +4153,21 @@ eula=true"""
 
             try:
                 config_file.set('general', 'customFlags', str(import_data['config_file'].get('general', 'customFlags')).lower())
+            except configparser.NoOptionError:
+                pass
+
+            try:
+                config_file.set('general', 'enableGeyser', str(import_data['config_file'].get('general', 'enableGeyser')).lower())
+            except configparser.NoOptionError:
+                pass
+
+            try:
+                config_file.set('general', 'enableProxy', str(import_data['config_file'].get('general', 'enableProxy')).lower())
+            except configparser.NoOptionError:
+                pass
+
+            try:
+                config_file.set('general', 'consoleFilter', str(import_data['config_file'].get('general', 'consoleFilter')).lower())
             except configparser.NoOptionError:
                 pass
 
@@ -4154,7 +4206,7 @@ eula=true"""
         # Find command temp if it exists
         for item in glob(os.path.join(tmpsvr, "*start-cmd.tmp")):
             try:
-                os.rename(item, command_tmp)
+                os.rename(item, os.path.join(tmpsvr, command_tmp))
             except FileExistsError:
                 pass
 
@@ -4368,7 +4420,7 @@ def scan_modpack(update=False, progress_func=None):
             # Ignore flags with invalid data
             if ("%" in flag or "${" in flag or '-Xmx' in flag or '-Xms' in flag or len(flag) < 5) and (not flag.strip().startswith('@')):
                 continue
-            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft']:
+            for exclude in ['-install', '-server', '-jar', '--nogui', '-nogui', '-Command', '-fullversion', '-version', '-mcversion', '-loader', '-downloadminecraft', '-mirror']:
                 if exclude in flag:
                     break
 
@@ -4599,6 +4651,9 @@ def scan_modpack(update=False, progress_func=None):
             file_list = glob(os.path.join(test_server, "scripts", "*.*"))
         if os.path.exists(os.path.join(test_server, 'config')):
             file_list.extend(glob(os.path.join(test_server, "config", "*.*")))
+
+        # Make sure they are actually files
+        file_list = [file for file in file_list if os.path.isfile(file)]
 
         matches = {
             'forge': 0,
@@ -4874,9 +4929,9 @@ eula=true"""
 
 
 # Generates new information for a server update
-def init_update(telepath=False):
+def init_update(telepath=False, host=None):
     if telepath:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[host]
     else:
         server_obj = server_manager.current_server
     new_server_info['name'] = server_obj.name
@@ -4906,7 +4961,7 @@ def init_update(telepath=False):
 # Updates a world in a server
 def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
     if telepath_data:
-        server_obj = server_manager.remote_server
+        server_obj = server_manager.remote_servers[telepath_data['host']]
 
         # Report to telepath logger
         api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
@@ -4947,6 +5002,161 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
     server_obj.reload_config()
 
 
+# Clones a server with support for Telepath
+def clone_server(server_obj: object or str, progress_func=None, host=None, *args):
+
+    if server_obj == '$remote':
+        source_data = None
+        destination_data = None
+        server_obj = server_manager.remote_servers[host]
+
+    else:
+        source_data = server_obj._telepath_data
+        destination_data = new_server_info['_telepath_data']
+
+
+
+    # Mode 4: remote a -> remote a
+    if (source_data and destination_data) and (source_data['host'] == destination_data['host']):
+
+        # Register clone_server function as an endpoint, and run this function remotely as local -> local
+        response = api_manager.request(
+            endpoint='/create/clone_server',
+            host=source_data['host'],
+            port=source_data['port'],
+            args={'server_obj': '$remote'}
+        )
+        if progress_func and response:
+            progress_func(100)
+        return response
+
+
+
+    # Mode 3: remote a -> remote b
+    elif source_data and destination_data:
+
+        # Download back-up from server_obj
+        folder_check(downDir)
+        file = telepath_download(source_data, server_obj.backup.latest['path'], downDir)
+        if progress_func:
+            progress_func(25)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        if progress_func:
+            progress_func(50)
+
+        # Upload back-up to new server
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = telepath_upload(destination_data, file)['path']
+        import_data['_telepath_data'] = None
+        api_manager.request(
+            endpoint='/create/push_new_server',
+            host=destination_data['host'],
+            port=destination_data['port'],
+            args={'server_info': new_server_info, 'import_info': import_data}
+        )
+        import_data['_telepath_data'] = destination_data
+        if progress_func:
+            progress_func(75)
+
+        # Import back-up to new server
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            return True
+
+
+
+    # Mode 2: local -> remote
+    elif not source_data and destination_data:
+
+        # Copy back-up to tempDir
+        folder_check(tempDir)
+        file = copy(server_obj.backup.latest.path, tempDir)
+        if progress_func:
+            progress_func(25)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        if progress_func:
+            progress_func(50)
+
+        # Upload back-up to new server
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = telepath_upload(destination_data, file)['path']
+        import_data['_telepath_data'] = None
+        api_manager.request(
+            endpoint='/create/push_new_server',
+            host=destination_data['host'],
+            port=destination_data['port'],
+            args={'server_info': new_server_info, 'import_info': import_data}
+        )
+        import_data['_telepath_data'] = destination_data
+        if progress_func:
+            progress_func(75)
+
+        # Import back-up to new server
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            return True
+
+
+
+    # Mode 1: remote -> local
+    elif source_data and not destination_data:
+
+        # Download back-up from server_obj
+        folder_check(downDir)
+        file = telepath_download(source_data, server_obj.backup.latest['path'], downDir)
+        if progress_func:
+            progress_func(33)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = file
+        import_data['_telepath_data'] = None
+        if progress_func:
+            progress_func(66)
+
+        # Import back-up
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            return True
+
+
+
+    # Mode 0: local -> local
+    else:
+
+        # Copy back-up to tempDir
+        folder_check(tempDir)
+        file = copy(server_obj.backup.latest.path, tempDir)
+        if progress_func:
+            progress_func(33)
+
+        # Edit back-up to rename the server
+        if new_server_info['name'] != server_obj.name:
+            file = backup.rename_backup(file, new_server_info['name'])
+        import_data['name'] = new_server_info['name']
+        import_data['path'] = file
+        import_data['_telepath_data'] = None
+        if progress_func:
+            progress_func(66)
+
+        # Import back-up
+        if scan_import(True) and finalize_import():
+            if progress_func:
+                progress_func(100)
+            return True
+
+
 
 # ------------------------------------------------ Server Functions ----------------------------------------------------
 
@@ -4982,11 +5192,12 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
     else:
         config_file = server_path(server_name, server_ini)
 
+    builds_available = list(latestMC['builds'].keys())
 
     # If write_object, write it to file path
     if write_object:
 
-        if write_object.get('general', 'serverType').lower() not in ['forge', 'paper', 'purpur']:
+        if write_object.get('general', 'serverType').lower() not in builds_available:
             write_object.remove_option('general', 'serverBuild')
 
         if os_name == "windows":
@@ -5014,7 +5225,7 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
                 pass
 
         if config:
-            if config.get('general', 'serverType').lower() not in ['forge', 'paper']:
+            if config.get('general', 'serverType').lower() not in builds_available:
                 config.remove_option('general', 'serverBuild')
 
             # Override legacy configuration options
@@ -5103,7 +5314,7 @@ def server_properties(server_name: str, write_object=None):
     # If write_object, write it to file path
     if write_object:
 
-        with open(properties_file, 'w') as f:
+        with open(properties_file, 'w', encoding='utf-8', errors='ignore') as f:
             file_contents = ""
 
             for key, value in write_object.items():
@@ -5296,7 +5507,7 @@ def calculate_ram(properties):
             ram = 2
             pass
 
-        if properties['type'].lower() == "forge":
+        if properties['type'].lower() in ["forge", "neoforge", "fabric", "quilt"]:
             ram = ram + 2
 
     else:
@@ -5734,6 +5945,140 @@ max-world-size=29999984"""
         f.write(serverProperties)
 
 
+# Recursively gathers all config files with a specific depth (default 3)
+# Returns {"dir1": ['match1', 'match2', 'match3', ...]}
+valid_config_formats = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'json5', 'ini', 'txt', 'snbt']
+[telepath_download_whitelist['names'].append(f'.{ext}') for ext in valid_config_formats]
+def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
+    root = server_path(name)
+    excludes = [
+        'version_history.json', 'version_list.json', 'usercache.json', 'banned-players.json', 'banned-ips.json',
+        'banned-subnets.json', 'whitelist.json', 'ops.json', 'ops.txt', 'whitelist.txt', 'banned-players.txt',
+        'banned-ips.txt', 'eula.txt', 'bans.txt', 'modrinth.index.json', 'amscript', server_ini
+    ]
+    final_dict = {}
+
+    def process_dir(path: str, depth: int = 0):
+        basename = os.path.basename(path)
+        if depth > max_depth or basename.startswith('.') or basename in excludes:
+            return
+
+        match_list = []
+
+        try:
+            with os.scandir(path) as items:
+                for item in items:
+
+                    # Add to final_dict if it's a valid config file
+                    if item.is_file() and os.path.splitext(item.name)[1].strip('.') in valid_config_formats and item.name not in excludes and not item.name.startswith('.'):
+                        match_list.append(item.path)
+
+                    # Continue recursion until max_depth is reached
+                    elif item.is_dir():
+                        process_dir(item.path, depth + 1)
+
+        except (PermissionError, FileNotFoundError) as e:
+            if debug:
+                print(f"Error accessing {path}: {e}")
+
+        if match_list:
+            final_dict[path] = sorted(match_list, key=lambda x: (os.path.basename(x) != 'server.properties', os.path.basename(x)))
+
+    process_dir(root)
+    return dict(sorted(final_dict.items(), key=lambda item: (os.path.basename(item[0]) != name, os.path.basename(item[0]))))
+
+# Replace configuration files via Telepath
+def update_config_file(server_name: str, upload_path: str, destination_path: str):
+
+    # Don't allow move to itself
+    if upload_path == destination_path:
+        return False
+
+    # Only allow files to get replaced in the current server
+    if not destination_path.startswith(server_path(server_name)):
+        return False
+
+    # Only allow files which already exist
+    if not os.path.isfile(destination_path):
+        return False
+
+    # Only allow files from uploadDir
+    if not upload_path.startswith(uploadDir):
+        return False
+
+    # Only allow accepted file types
+    for ext in valid_config_formats:
+        if destination_path.endswith(f'.{ext}') or upload_path.endswith(f'.{ext}'):
+            break
+    else:
+        return False
+
+    # Move file to intended path
+    move(upload_path, destination_path)
+    clear_uploads()
+
+# Allows parsing of any OS path style
+def cross_platform_path(path, depth=1):
+    """
+    Returns the last `depth` components of the given path.
+
+    For Unix-style paths:
+      - Only forward slashes ("/") are considered true directory separators.
+      - Backslashes are used to escape characters (e.g. spaces) and are unescaped in the result.
+      - If the original path is absolute (starts with '/'), the returned value will also be absolute.
+
+    For Windows-style paths:
+      - Both backslashes ("\") and forward slashes ("/") are treated as separators.
+      - No unescaping is performed.
+
+    If depth is greater than the available number of components,
+    the original path is returned.
+
+    Parameters:
+      path (str): The file path.
+      depth (int): The number of path components (from the right) to return (default is 1).
+
+    Returns:
+      str: The resulting subpath.
+    """
+    if depth < 1:
+        raise ValueError("depth must be >= 1")
+
+    def sanitize(text: str):
+        return text.lstrip('/').lstrip('\\')
+
+    # Remove any trailing separators to avoid an empty final component.
+    path = re.sub(r'[\\/]+$', '', path)
+
+    # Detect Windows-style paths:
+    # - They often start with a drive letter (e.g., "C:\...")
+    # - Or they contain backslashes and no forward slashes.
+    if re.match(r'^[A-Za-z]:', path) or ('\\' in path and '/' not in path):
+        # Split on one or more of either separator.
+        parts = re.split(r'[\\/]+', path)
+        # If the requested depth is more than available parts, return the original path.
+        if depth >= len(parts):
+            return sanitize(path)
+        # Join the last `depth` parts with the Windows separator.
+        return sanitize('\\'.join(parts[-depth:]))
+    else:
+        # Unix-style path.
+        # In Unix, the only true separator is "/"; backslashes are escapes.
+        is_absolute = path.startswith('/')
+        # Split on "/" (ignoring empty strings which can occur if the path is absolute)
+        parts = [p for p in path.split('/') if p]
+        if depth > len(parts):
+            # If depth is more than available, return the original path.
+            return sanitize(path)
+        # Grab the last `depth` components.
+        selected_parts = parts[-depth:]
+        # Unescape any escaped characters in each component (e.g. turn "\ " into " ").
+        selected_parts = [re.sub(r'\\(.)', r'\1', comp) for comp in selected_parts]
+        result = '/'.join(selected_parts)
+        if is_absolute:
+            result = '/' + result
+        return sanitize(result)
+
 # CTRL + Backspace function
 def control_backspace(text, index):
 
@@ -5765,9 +6110,7 @@ def control_backspace(text, index):
 
 # Updates the server icon with a new image
 # Returns: [bool: success, str: reason]
-valid_image_formats = [
-    "*.png", "*.jpg", "*.jpeg", "*.gif", "*.jpe", "*.jfif", "*.tif", "*.tiff", "*.bmp", "*.icns", "*.ico", "*.webp"
-]
+valid_image_formats = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.jpe", "*.jfif", "*.tif", "*.tiff", "*.bmp", "*.icns", "*.ico", "*.webp"]
 def update_server_icon(server_name: str, new_image: str = False) -> [bool, str]:
     icon_path = os.path.join(server_path(server_name), 'server-icon.png')
 
@@ -6554,11 +6897,11 @@ class SearchManager():
 
             'Server': [
                 ScreenObject('Server Manager', 'ServerViewScreen', {'Launch server': None, 'Stop server': None, 'Restart server': None, 'Enter console commands': None}),
-                ScreenObject('Back-up Manager', 'ServerBackupScreen', {'Save a back-up now': None, 'Restore from a back-up': 'ServerBackupRestoreScreen', 'Enable automatic back-ups': None, 'Specify maximum back-ups': None, 'Open back-up directory': None, 'Migrate back-up directory': None}, ['backup', 'revert', 'snapshot', 'restore', 'save']),
+                ScreenObject('Back-up Manager', 'ServerBackupScreen', {'Save a back-up now': None, 'Restore from a back-up': 'ServerBackupRestoreScreen', 'Enable automatic back-ups': None, 'Specify maximum back-ups': None, 'Open back-up directory': None, 'Migrate back-up directory': None, 'Clone this server': 'ServerCloneScreen'}, ['backup', 'revert', 'snapshot', 'restore', 'save', 'clone']),
                 ScreenObject('Access Control', 'ServerAclScreen', {'Configure bans': None, 'Configure operators': None, 'Configure the whitelist': None}, ['player', 'user', 'ban', 'white', 'op', 'rule', 'ip', 'acl', 'access control']),
                 ScreenObject('Add-on Manager', 'ServerAddonScreen', {'Download add-ons': 'ServerAddonSearchScreen', 'Import add-ons': None, 'Toggle add-on state': None, 'Update add-ons': None}, ['mod', 'plugin', 'addon', 'extension']),
                 ScreenObject('Script Manager', 'ServerAmscriptScreen', {'Download scripts': 'ServerAmscriptSearchScreen', 'Import scripts': None, 'Create a new script': 'CreateAmscriptScreen', 'Edit a script': None, 'Open script directory': None}, ['amscript', 'script', 'ide', 'develop']),
-                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit 'server.properties'": 'ServerPropertiesEditScreen', 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (playit)': None, 'Install proxy (playit)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'playit', 'update', 'jvm', 'motd'])
+                ScreenObject('Server Settings', 'ServerSettingsScreen', {"Edit configuration files": 'ServerConfigScreen', "Edit 'server.properties'": None, 'Open server directory': None, 'Specify memory usage': None, 'Change MOTD': None, 'Specify IP/port': None, 'Change launch flags': None, 'Enable proxy (playit)': None, 'Install proxy (playit)': None, 'Enable Bedrock support': None, 'Enable automatic updates': None, 'Update this server': None, "Change 'server.jar'": 'MigrateServerTypeScreen', 'Rename this server': None, 'Change world file': 'ServerWorldScreen', 'Delete this server': None}, ['ram', 'memory', 'server.properties', 'properties', 'rename', 'delete', 'bedrock', 'proxy', 'ngrok', 'playit', 'update', 'jvm', 'motd', 'yml', 'config'])
             ]
         }
 

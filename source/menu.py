@@ -15,12 +15,13 @@ import functools
 import threading
 import inspect
 import random
+import json
+import yaml
 import time
 import math
 import sys
 import os
 import re
-# import gc
 
 
 # Local imports
@@ -51,6 +52,7 @@ if constants.app_compiled and constants.debug is False:
 os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug" if constants.debug else "info"
 os.environ["KIVY_IMAGE"] = "pil,sdl2"
 os.environ['KIVY_NO_ARGS'] = '1'
+os.environ["KIVY_METRICS_DENSITY"] = "1"
 
 from kivy.config import Config
 Config.set('graphics', 'maxfps', '120')
@@ -101,9 +103,14 @@ class DiscordPresenceManager():
         self.presence = None
         self.connected = False
         self.updating_presence = False
+        self.splash = constants.session_splash.replace(' ', '')
+        self.id = "1293773204552421429"
+        self.start_time = 0
         if constants.app_config.discord_presence:
-            self.splash = constants.session_splash.replace(' ', '')
-            self.id = "1293773204552421429"
+            self.start()
+
+    def start(self):
+        if not self.connected:
             self.presence = Presence(self.id)
             self.start_time = int(time.time())
             def presence_thread(*a):
@@ -116,6 +123,14 @@ class DiscordPresenceManager():
                     print("Discord Presence: Failed to connect")
             threading.Timer(0, presence_thread).start()
 
+    def stop(self):
+        if self.connected:
+            self.presence.close()
+            self.start_time = None
+            self.presence = None
+            self.connected = False
+            print("Discord Presence: Disconnected")
+
     def get_image(self, file_path: str):
         server_obj = constants.server_manager.current_server
         try:
@@ -126,14 +141,14 @@ class DiscordPresenceManager():
 
         url = 'https://0x0.st'
         files = {'file': open(file_path, 'rb')}
-        response = constants.requests.post(url, files=files)
+        response = constants.requests.post(url, files=files, headers={'User-Agent': f'{constants.app_title}/{constants.app_version}'})
         if response.status_code == 200:
             url = response.text.strip()
 
             # Cache icon for later retrieval
             server_obj.run_data['rich-presence-icon'] = url
             return url
-        else:
+        elif constants.debug:
             print("Upload failed:", response.text)
             return None
 
@@ -245,7 +260,31 @@ class DiscordPresenceManager():
         if not self.updating_presence:
             threading.Timer(0, do_update).start()
 constants.discord_presence = DiscordPresenceManager()
+def toggle_discord_presence():
+    if constants.discord_presence.connected:
+        constants.discord_presence.stop()
+        banner_text = f"$Discord$ rich presence is now disabled"
+        banner_color = (0.937, 0.831, 0.62, 1)
+        banner_icon = "discord-strike.png"
+        constants.app_config.discord_presence = False
+    else:
+        constants.discord_presence.start()
+        constants.discord_presence.update_presence(constants.footer_path)
+        banner_text = f"$Discord$ rich presence is now enabled"
+        banner_color = (0.553, 0.902, 0.675, 1)
+        banner_icon = "discord.png"
+        constants.app_config.discord_presence = True
 
+    Clock.schedule_once(
+        functools.partial(
+            screen_manager.current_screen.show_banner,
+             banner_color,
+            banner_text,
+            banner_icon,
+            2.5,
+            {"center_x": 0.5, "center_y": 0.965}
+        ), 0
+    )
 
 
 # Override Kivy widgets for translation
@@ -354,7 +393,14 @@ class TextInput(TextInput):
                 Clock.schedule_once(functools.partial(scale_size, self, o, value), 0)
         elif constants.app_config.locale == 'en' and key in ['hint_text']:
             value = filter_text(value)
-        super().__setattr__(key, value)
+
+        if key in ['focus', 'focused']:
+            try:
+                super().__setattr__(key, value)
+            except:
+                pass
+        else:
+            super().__setattr__(key, value)
 
 
 # Opens text file with logviewer
@@ -673,7 +719,7 @@ class InputLabel(RelativeLayout):
             def reset_color(item, *args):
                 item.color = (1, 0.53, 0.58, 0)
 
-            Clock.schedule_once(functools.partial(reset_color, child), 0.2)
+            Clock.schedule_once(functools.partial(reset_color, child), 0.12)
 
 
 class BaseInput(TextInput):
@@ -1124,7 +1170,7 @@ class ServerNameInput(BaseInput):
         self.get_server_list()
 
 
-    def on_enter(self, value):
+    def on_enter(self, value, click_next=True, *args):
 
         constants.new_server_info['name'] = (self.text).strip()
 
@@ -1136,7 +1182,7 @@ class ServerNameInput(BaseInput):
             self.valid(False)
 
     # Valid input
-        else:
+        elif click_next:
             break_loop = False
             for child in self.parent.children:
                 if break_loop:
@@ -1202,7 +1248,8 @@ class ServerNameInput(BaseInput):
                 substring = substring.splitlines()[0]
             s = re.sub('[^a-zA-Z0-9 _().-]', '', substring)
 
-            self.valid((self.text + s).lower().strip() not in self.server_list, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
+            is_valid = (self.text + s).lower().strip() not in self.server_list
+            self.valid(is_valid, ((len(self.text + s) > 0) and not (str.isspace(self.text))))
 
             # Add name to current config
             def get_text(*a):
@@ -1210,6 +1257,31 @@ class ServerNameInput(BaseInput):
             Clock.schedule_once(get_text, 0)
 
             return super().insert_text(s, from_undo=from_undo)
+
+
+
+    def update_server(self, force_ignore=False, hide_popup=False):
+
+        def disable_next(disable=False):
+            for item in screen_manager.current_screen.next_button.children:
+                try:
+                    if item.id == "next_button":
+                        item.disable(disable)
+                        break
+                except AttributeError:
+                    pass
+
+        self.scroll_x = 0
+
+        if self.text:
+            if self.text.lower().strip() in self.server_list:
+                self.valid(False)
+                disable_next(True)
+
+            # If server is valid, do this
+            else:
+                self.valid(True)
+                disable_next(False)
 
 
 class ServerRenameInput(BaseInput):
@@ -3572,15 +3644,18 @@ class SettingsButton(RelativeLayout):
         super().__init__(**kwargs)
         self.shown = False
 
+        # Parent button to show/hide settings
         self.hide_button = RelativeIconButton('close', {'center_x': 1}, (0, 5), (None, None), 'close-sharp.png', anchor='right', clickable=True, click_func=self.hide, anchor_text='right', text_offset=(-85, 40), force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'])
         self.hide_button.x = -35
 
-        self.settings_button = RelativeIconButton('settings', {'center_x': 1}, (0, 5), (None, None), 'settings-sharp.png', anchor='right', clickable=True, click_func=self.show, anchor_text='right', text_offset=(-20, 0))
+        self.settings_button = RelativeIconButton('settings', {'center_x': 1}, (0, 5), (None, None), 'settings-sharp.png', anchor='right', clickable=True, click_func=self.show, anchor_text='right', text_offset=(-73, 40))
         self.settings_button.x = -35
         self.add_widget(self.settings_button)
 
 
         # Buttons when settings menu is opened
+
+        # Changelog button
         def open_changelog(*a):
             if constants.app_online:
                 url = f'{constants.project_link}/releases/latest'
@@ -3592,6 +3667,8 @@ class SettingsButton(RelativeLayout):
         self.changelog_button.button.disabled = True
         self.add_widget(self.changelog_button)
 
+
+        # Telepath menu button
         def change_telepath_screen(*a):
             screen_manager.current = 'TelepathManagerScreen'
         self.telepath_button = RelativeIconButton('$telepath$', {'center_x': 1}, (0, 5), (None, None), 'telepath.png', anchor='right', clickable=True, click_func=change_telepath_screen, anchor_text='right', text_offset=(-70, 40))
@@ -3601,6 +3678,8 @@ class SettingsButton(RelativeLayout):
         self.telepath_button.button.disabled = True
         self.add_widget(self.telepath_button)
 
+
+        # Locale menu button
         def change_locale_screen(*a):
             screen_manager.current = 'ChangeLocaleScreen'
         self.locale_button = RelativeIconButton(constants.get_locale_string(), {'center_x': 1}, (0, 5), (None, None), 'language.png', anchor='right', clickable=True, click_func=change_locale_screen, anchor_text='right', text_offset=(-55, 40))
@@ -3610,19 +3689,45 @@ class SettingsButton(RelativeLayout):
         self.locale_button.button.disabled = True
         self.add_widget(self.locale_button)
 
+
+        # Discord rich presence toggle
+        class DiscordButton(RelativeIconButton):
+            def on_hover(self, hovered, *a):
+                conn = constants.discord_presence.connected
+                disabled = hovered and conn or not hovered and not conn
+                Clock.schedule_once(lambda *_: self.change_data(
+                    icon = 'discord-strike.png' if disabled else 'discord.png',
+                    text = 'disable rich presence' if disabled else 'enable rich presence'
+                ), 0.05)
+        def toggle_presence():
+            toggle_discord_presence()
+            self.discord_button.on_hover(False)
+            self.hide()
+        self.discord_button = DiscordButton('disable rich presence', {'center_x': 1}, (0, 5), (None, None), 'discord.png', anchor='right', clickable=True, click_func=toggle_presence, anchor_text='right', text_offset=(-15, 40))
+        self.discord_button.on_hover(False)
+        self.discord_button.x = -35
+        self.discord_button.y = 200
+        self.discord_button.opacity = 0
+        self.discord_button.button.disabled = True
+        self.add_widget(self.discord_button)
+
+
     def show(self, *a):
         self.shown = True
-        Animation(opacity=1, duration=0.45).start(self.locale_button)
+        Animation(opacity=1, duration=0.45).start(self.discord_button)
+        Animation(opacity=1, duration=0.4).start(self.locale_button)
         Animation(opacity=1, duration=0.3).start(self.telepath_button)
         Animation(opacity=1, duration=0.15).start(self.changelog_button)
         self.remove_widget(self.settings_button)
         self.add_widget(self.hide_button)
         self.telepath_button.button.disabled = False
         self.locale_button.button.disabled = False
+        self.discord_button.button.disabled = False
         self.changelog_button.button.disabled = False
 
     def hide(self, *a):
         self.shown = False
+        Animation(opacity=0, duration=0.03).start(self.discord_button)
         Animation(opacity=0, duration=0.08).start(self.locale_button)
         Animation(opacity=0, duration=0.16).start(self.telepath_button)
         Animation(opacity=0, duration=0.24).start(self.changelog_button)
@@ -3631,8 +3736,9 @@ class SettingsButton(RelativeLayout):
         def after(*a):
             self.telepath_button.button.disabled = True
             self.locale_button.button.disabled = True
+            self.discord_button.button.disabled = True
             self.changelog_button.button.disabled = True
-        Clock.schedule_once(after, 0.2)
+        Clock.schedule_once(after, 0.25)
 
 
 def footer_label(path, color, progress_screen=False):
@@ -4044,14 +4150,6 @@ class ScrollViewWidget(ScrollView):
                 pass
         return super().on_touch_down(touch)
 
-    # def __del__(self):
-    #     for widget in self.walk():
-    #         self.remove_widget(widget)
-    #         del widget
-    #
-    #     self.clear_widgets()
-    #     gc.collect()
-
 class ScrollItem(RelativeLayout):
     def __init__(self, widget=None, **kwargs):
         super().__init__(**kwargs)
@@ -4131,14 +4229,6 @@ class RecycleViewWidget(RecycleView):
 
     def assign_viewclass(self, view_class, *args):
         self.viewclass = view_class
-
-    # def __del__(self):
-    #     for widget in self.walk():
-    #         self.remove_widget(widget)
-    #         del widget
-    #
-    #     self.clear_widgets()
-    #     gc.collect()
 
 
 
@@ -4669,6 +4759,9 @@ class RelativeIconButton(RelativeLayout):
         if self.text_offset:
             self.text.x += self.text_offset[0]
 
+    def on_hover(self, hovered=False, *a):
+        pass
+
     def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, **kwargs):
         super().__init__(**kwargs)
 
@@ -4761,6 +4854,10 @@ class RelativeIconButton(RelativeLayout):
         if screen_manager.current_screen.name == 'MainMenuScreen':
             Clock.schedule_once(self.text.texture_update, 0)
             Clock.schedule_once(self.resize, 0)
+
+        # Hover hook
+        self.button.bind(on_enter=lambda *_: self.on_hover(True))
+        self.button.bind(on_leave=lambda *_: self.on_hover(False))
 
 class AnimButton(FloatLayout):
 
@@ -5531,13 +5628,16 @@ class DropButton(FloatLayout):
 
 # Figure out where self.change_text is called, and add telepath icon to label
 class TelepathDropButton(DropButton):
-    def __init__(self, telepath_data, type, position, x_offset=0, facing='center', *args, **kwargs):
+    def __init__(self, type, position, x_offset=0, facing='center', *args, **kwargs):
         FloatLayout.__init__(self, *args, **kwargs)
+        telepath_data = constants.server_manager.online_telepath_servers
 
         if type == 'create':
             name = 'create a server on'
         elif type == 'install':
             name = 'install server on'
+        elif type == 'clone':
+            name = 'clone server to'
         else:
             name = 'import server to'
 
@@ -5659,7 +5759,7 @@ class TelepathDropButton(DropButton):
             for k, v in self.options_list.items():
                 if (k == 'this machine' == result) or (v and (('.' in result and result == k) or (result == v['nickname']))):
                     constants.new_server_info['_telepath_data'] = v
-                    if type == 'import':
+                    if type in ['import', 'clone']:
                         constants.import_data['_telepath_data'] = v
 
                     # Change icon color
@@ -5744,7 +5844,7 @@ class ContextMenu(GridLayout):
 
             Clock.schedule_once(delay_anim, delay)
 
-        def __init__(self, sub_data, sub_id, **kw):
+        def __init__(self, sub_data, sub_id, selected=False, **kw):
             super().__init__(**kw)
 
             self.id = sub_data['name']
@@ -5753,6 +5853,7 @@ class ContextMenu(GridLayout):
             self.width = 200
             self.text_x = 0
             self.icon_x = 0
+            self.selected = selected
 
             # Add button
             self.button = HoverButton()
@@ -5761,6 +5862,9 @@ class ContextMenu(GridLayout):
 
             if sub_id == 'list_red_button':
                 self.button.color_id = [(0.1, 0.07, 0.07, 1), (1, 0.6, 0.7, 1)]
+            elif self.selected:
+                self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.76, 0.76, 1, 1)]
+                self.button.background_color = (0.7, 0.7, 0.7, 1)
             else:
                 self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
@@ -5867,6 +5971,7 @@ class ContextMenu(GridLayout):
     def _round_top_left(self, *a):
         b = self.children[-1]
         b.button.id = 'list_start_flip_button'
+        b.button.background_down = os.path.join(constants.gui_assets, f'{b.button.id}_click.png')
         b.button.on_leave()
 
     # Moves menu to cursor, and prevents it from going off-screen
@@ -5990,7 +6095,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     final = FloatLayout()
     final.x += 174 + x_offset
 
-    button = ToggleButton(state='down' if default_state else 'normal')
+    final.button = button = ToggleButton(state='down' if default_state else 'normal')
     button.id = 'toggle_button'
     button.pos_hint = {"center_x": position[0], "center_y": position[1]}
     button.size_hint_max = (82, 42)
@@ -5999,7 +6104,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     button.background_down = button.background_normal if disabled else os.path.join(constants.gui_assets, 'toggle_button_enabled.png')
     button.bind(on_press=functools.partial(on_active, name))
 
-    knob = Image()
+    final.knob = knob = Image()
     knob.id = 'knob'
     knob.source = os.path.join(constants.gui_assets, f'toggle_button_knob{"_enabled" if default_state else ""}.png')
     knob.size = (30, 30)
@@ -6132,7 +6237,11 @@ class PopupWindow(RelativeLayout):
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
-        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        try:
+            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        except:
+            self.blur_background.color = constants.background_color
+            return
 
         # Prevent this from running every resize
         def reset_activity(*args):
@@ -6725,7 +6834,11 @@ class BigPopupWindow(RelativeLayout):
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
-        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        try:
+            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        except:
+            self.blur_background.color = constants.background_color
+            return
 
         # Prevent this from running every resize
         def reset_activity(*args):
@@ -7775,7 +7888,11 @@ class PopupSearch(RelativeLayout):
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
-        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        try:
+            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        except:
+            self.blur_background.color = constants.background_color
+            return
 
         # Prevent this from running every resize
         def reset_activity(*args):
@@ -7837,7 +7954,20 @@ class PopupSearch(RelativeLayout):
 
     def resize(self):
         self.window.size = self.window_background.size
-        self.window.pos = (Window.size[0]/2 - self.window_background.width/2, Window.size[1]/2 - self.window_background.height/2)
+
+        # Shift the popup upward at smaller window heights
+        offset_y = 0
+        if Window.size[1] < 900:
+            offset_y = 75
+        if Window.size[1] < 800:
+            offset_y = 100
+
+        # Add offset_y to the original y-position
+        self.window.pos = (
+            Window.size[0] / 2 - self.window_background.width / 2,
+            Window.size[1] / 2 - self.window_background.height / 2 + offset_y
+        )
+
         if self.shown:
             Clock.schedule_once(self.generate_blur_background, 0.1)
 
@@ -8043,7 +8173,7 @@ class PopupSearch(RelativeLayout):
             self.window_input = BaseInput()
             self.window_input.__translate__ = False
             self.window_input.title_text = ""
-            self.window_input.id = 'search_input'
+            self.window_input.id = 'global_search_input'
             self.window_input.multiline = False
             self.window_input.size_hint_max = (600, 100)
             self.window_input.pos_hint = {"center_x": 0.5, "center_y": 0.5}
@@ -8142,7 +8272,7 @@ def button_action(button_name, button, specific_screen=''):
 
         if button_name.lower() == "quit":
             if not main_app.exit_check():
-                sys.exit(0)
+                exit_app()
         elif button_name.lower() == "back":
             constants.back_clicked = True
             previous_screen()
@@ -8910,6 +9040,12 @@ class MenuBackground(Screen):
             return True
 
 
+        # Quit on macOS
+        elif constants.os_name == 'macos' and (keycode[1] == 'q' and control in modifiers):
+            if not main_app.exit_check():
+                exit_app()
+
+
         # Ignore ESC commands while input focused
         if not self._input_focused and self.name == screen_manager.current_screen.name:
 
@@ -9198,6 +9334,11 @@ class ProgressScreen(MenuBackground):
                 self.execute_error('A critical operation is currently running through a $Telepath$ session.\n\nPlease try again later', reset_close=False)
                 return True
 
+            elif self._telepath_override == '$local':
+                self.telepath = None
+            elif self._telepath_override:
+                self.telepath = self._telepath_override
+
             elif server_obj and server_obj._telepath_data:
                 self.telepath = server_obj._telepath_data
 
@@ -9331,6 +9472,9 @@ class ProgressScreen(MenuBackground):
         def function(*args):
             self.timer.cancel()
 
+            if self._error_callback:
+                self._error_callback()
+
             if log_data:
                 print(log_data)
                 title = f'Error: {log_data[0]}'
@@ -9352,6 +9496,8 @@ class ProgressScreen(MenuBackground):
         self.menu = 'init'
 
         self._ignore_tree = True
+        self._error_callback = None
+        self._telepath_override = None
         self.telepath = None
 
         self.title = None
@@ -9626,6 +9772,8 @@ class MainMenuScreen(MenuBackground):
     def on_enter(self, *args):
         global shown_disk_error
 
+
+        # Show warning if running with elevated permissions, and flag is used
         if constants.is_admin() and constants.bypass_admin_warning:
             def admin_error(*_):
                 self.show_popup(
@@ -9637,6 +9785,8 @@ class MainMenuScreen(MenuBackground):
             Clock.schedule_once(admin_error, 0.5)
             return
 
+
+        # Close if running with elevated permissions, and flag is not used
         elif constants.is_admin():
             def admin_error(*_):
                 self.show_popup(
@@ -9648,6 +9798,21 @@ class MainMenuScreen(MenuBackground):
             Clock.schedule_once(admin_error, 0.5)
             return
 
+
+        # Close on macOS when it's running in DMG
+        elif constants.os_name == 'macos' and (constants.launch_path.startswith('/Volumes/') and constants.app_title in constants.launch_path):
+            def dmg_error(*_):
+                self.show_popup(
+                    "warning",
+                    "Permission Error",
+                    f"Please move $auto-mcs$ to the Applications folder to continue",
+                    Window.close
+                )
+            Clock.schedule_once(dmg_error, 0.5)
+            return
+
+
+        # Show warning when disk is full
         elif not constants.check_free_space() and not shown_disk_error:
             shown_disk_error = True
             def disk_error(*_):
@@ -9937,6 +10102,12 @@ class MainMenuScreen(MenuBackground):
                 else:
                     self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
             return True
+
+
+        # Quit on macOS
+        elif constants.os_name == 'macos' and (keycode[1] == 'q' and control in modifiers):
+            if not main_app.exit_check():
+                exit_app()
 
 
         # Ignore ESC commands while input focused
@@ -10547,7 +10718,7 @@ class CreateServerTemplateScreen(MenuBackground):
             float_layout.add_widget(scroll_bottom)
             float_layout.add_widget(self.page_switcher)
 
-            telepath_data = constants.server_manager.check_telepath_servers()
+            telepath_data = constants.server_manager.online_telepath_servers
             buttons.append(ExitButton('Back', (0.5, 0.11 if telepath_data else 0.14), cycle=True))
 
             for button in buttons:
@@ -10559,7 +10730,7 @@ class CreateServerTemplateScreen(MenuBackground):
 
             # Add telepath button if servers are connected
             if telepath_data:
-                float_layout.add_widget(TelepathDropButton(telepath_data, 'create', (0.5, 0.202)))
+                float_layout.add_widget(TelepathDropButton('create', (0.5, 0.202)))
 
             self.add_widget(float_layout)
 
@@ -10623,6 +10794,9 @@ class CreateServerModeScreen(MenuBackground):
         float_layout.add_widget(generate_title('Create New Server'))
         float_layout.add_widget(generate_footer('Create new server'))
 
+        # Async reload Telepath servers
+        threading.Timer(0, constants.server_manager.check_telepath_servers).start()
+
         self.add_widget(float_layout)
 
 
@@ -10669,9 +10843,8 @@ class CreateServerNameScreen(MenuBackground):
 
 
         # Add telepath button if servers are connected
-        telepath_data = constants.server_manager.check_telepath_servers()
-        if telepath_data:
-            float_layout.add_widget(TelepathDropButton(telepath_data, 'create', (0.5, 0.4)))
+        if constants.server_manager.online_telepath_servers:
+            float_layout.add_widget(TelepathDropButton('create', (0.5, 0.4)))
 
 
         float_layout.add_widget(generate_title('Create New Server'))
@@ -14310,10 +14483,10 @@ class ServerImportScreen(MenuBackground):
 
         # Add telepath button if servers are connected
         offset = 0
-        telepath_data = constants.server_manager.check_telepath_servers()
+        telepath_data = constants.server_manager.online_telepath_servers
         if telepath_data:
             offset = 0.05
-            self.add_widget(TelepathDropButton(telepath_data, 'import', (0.5, 0.45)))
+            self.add_widget(TelepathDropButton('import', (0.5, 0.45)))
 
 
         if input_type == "external":
@@ -14498,10 +14671,9 @@ class ServerImportModpackScreen(MenuBackground):
 
         # Add telepath button if servers are connected
         offset = 0
-        telepath_data = constants.server_manager.check_telepath_servers()
-        if telepath_data:
+        if constants.server_manager.online_telepath_servers:
             offset = 0.05
-            self.add_widget(TelepathDropButton(telepath_data, 'install', (0.5, 0.37)))
+            self.add_widget(TelepathDropButton('install', (0.5, 0.37)))
 
 
         # Regular menus
@@ -16557,7 +16729,7 @@ class PerformancePanel(RelativeLayout):
                     constants.folder_check(constants.tempDir)
                     file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
                     with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
-                        f.write(constants.json.dumps(data['log']))
+                        f.write(json.dumps(data['log']))
 
 
         def update_data(*args):
@@ -16968,13 +17140,13 @@ class PerformancePanel(RelativeLayout):
                     self.recalculate_size()
                     return
 
-                text_width = int(((self.scroll_layout.width // text_width) // 1))
-                self.player_list.cols = text_width
-                self.player_list.rows = round(data_len / text_width) + 3
-                # print(text_width, self.player_list.cols, self.player_list.rows, data_len)
-
                 # Dirty fix to circumvent RecycleView missing data: https://github.com/kivy/kivy/pull/7262
                 try:
+                    text_width = int(((self.scroll_layout.width // text_width) // 1))
+                    self.player_list.cols = text_width
+                    self.player_list.rows = round(data_len / text_width) + 3
+                    # print(text_width, self.player_list.cols, self.player_list.rows, data_len)
+
                     if ((data_len <= self.player_list.cols) and self.player_list.rows <= 5) or data_len + 1 == self.player_list.cols:
                         if self.scroll_layout.data[-1] is not {'text': blank_name}:
                             for x in range(self.player_list.cols):
@@ -17307,7 +17479,7 @@ class ConsolePanel(FloatLayout):
                     constants.folder_check(constants.tempDir)
                     file_name = f"{server_obj._telepath_data['display-name']}, {server_obj.name}-latest.log"
                     with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
-                        f.write(constants.json.dumps(data['log']))
+                        f.write(json.dumps(data['log']))
             Clock.schedule_once(check_for_crash, 1)
 
 
@@ -17331,6 +17503,26 @@ class ConsolePanel(FloatLayout):
 
     # Updates RecycleView text with console text
     def update_text(self, text, force_scroll=False, animate_last=True, *args):
+        current_filter = self.filter_menu.current_filter
+        self._unfiltered_text = text
+
+        # Filterrrr oh yeah
+        if current_filter != 'everything':
+            event_whitelist = ['INIT', 'START', 'STOP', 'SUCCESS']
+
+            if current_filter == 'errors':
+                event_whitelist.extend(['WARN', 'ERROR', 'CRITICAL', 'SEVERE', 'FATAL'])
+
+            elif current_filter == 'players':
+                event_whitelist.extend(['CHAT', 'PLAYER'])
+
+            elif current_filter == 'amscript':
+                event_whitelist.extend(['AMS', 'EXEC'])
+
+            text = [l for l in text if l['text'][1] in event_whitelist]
+
+
+
         original_scroll = self.scroll_layout.scroll_y
         original_len = len(self.scroll_layout.data)
         label_height = 41.8
@@ -17373,7 +17565,7 @@ class ConsolePanel(FloatLayout):
                 except:
                     pass
         if len(text) > original_len and animate_last:
-            Clock.schedule_once(fade_animation, 0)
+            Clock.schedule_once(fade_animation, -1)
 
 
         # Update selection coordinates if they exist
@@ -17394,7 +17586,7 @@ class ConsolePanel(FloatLayout):
 
         self.console_text.width = self.width
 
-        self.input.pos = self.pos
+        self.input.pos = (self.x, self.y)
 
         self.gradient.pos = (self.input.pos[0], self.pos[1] + (self.input.height * 1.2))
         self.gradient.width = self.scroll_layout.width - self.scroll_layout.bar_width
@@ -17441,9 +17633,10 @@ class ConsolePanel(FloatLayout):
             self.controls.maximize_button.pos = (self.width - 90, self.height - 80)
             self.controls.stop_button.pos = (self.width - 142, self.height - 80)
             self.controls.restart_button.pos = (self.width - 194, self.height - 80)
+            self.controls.filter_button.pos = (self.width - 246, self.height - 80)
 
         # Fullscreen shadow
-        self.fullscreen_shadow.y = self.height + self.x - 3
+        self.fullscreen_shadow.y = self.height + self.x - 3 + 25
         self.fullscreen_shadow.width = Window.width
 
         # Controls background
@@ -17473,9 +17666,11 @@ class ConsolePanel(FloatLayout):
         constants.hide_widget(self.controls.maximize_button, False)
         constants.hide_widget(self.controls.stop_button, False)
         constants.hide_widget(self.controls.restart_button, False)
+        constants.hide_widget(self.controls.filter_button, False)
         self.controls.maximize_button.opacity = 0
         self.controls.stop_button.opacity = 0
         self.controls.restart_button.opacity = 0
+        self.controls.filter_button.opacity = 0
 
         self.controls.crash_text.clear_text()
 
@@ -17491,6 +17686,7 @@ class ConsolePanel(FloatLayout):
             self.controls.maximize_button.disabled = False
             self.controls.stop_button.disabled = False
             self.controls.restart_button.disabled = False
+            self.controls.filter_button.disabled = False
             self.controls.remove_widget(self.controls.launch_button)
             self.controls.remove_widget(self.controls.log_button)
             self.controls.remove_widget(self.controls.view_button)
@@ -17501,6 +17697,7 @@ class ConsolePanel(FloatLayout):
                 def anim_delay(*a):
                     function.start(obj)
                 Clock.schedule_once(anim_delay, delay)
+            delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.filter_button, 0.18)
             delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.restart_button, 0.12)
             delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.stop_button, 0.06)
             Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine').start(self.controls.maximize_button)
@@ -17665,7 +17862,7 @@ class ConsolePanel(FloatLayout):
                 constants.folder_check(constants.tempDir)
                 file_name = f"{server_obj.name}-latest.log"
                 with open(os.path.join(constants.tempDir, file_name), 'w+') as f:
-                    f.write(constants.json.dumps(self.run_data['log']))
+                    f.write(json.dumps(self.run_data['log']))
 
 
             self.run_data = None
@@ -17680,6 +17877,7 @@ class ConsolePanel(FloatLayout):
                 constants.hide_widget(self.controls.maximize_button, True)
                 constants.hide_widget(self.controls.stop_button, True)
                 constants.hide_widget(self.controls.restart_button, True)
+                constants.hide_widget(self.controls.filter_button, True)
                 self.controls.control_shadow.opacity = 0
 
 
@@ -17717,6 +17915,7 @@ class ConsolePanel(FloatLayout):
                     Animation(opacity=0, duration=anim_speed).start(self.controls.maximize_button)
                     Animation(opacity=0, duration=anim_speed).start(self.controls.stop_button)
                     Animation(opacity=0, duration=anim_speed).start(self.controls.restart_button)
+                    Animation(opacity=0, duration=anim_speed).start(self.controls.filter_button)
                     Clock.schedule_once(disable_buttons, anim_speed*1.1)
 
                 def after_anim2(*a):
@@ -17724,6 +17923,7 @@ class ConsolePanel(FloatLayout):
                     self.controls.maximize_button.disabled = False
                     self.controls.stop_button.disabled = False
                     self.controls.restart_button.disabled = False
+                    self.controls.filter_button.disabled = False
                     self.scroll_layout.data = []
                     self.controls.control_shadow.opacity = 1
 
@@ -17781,12 +17981,20 @@ class ConsolePanel(FloatLayout):
                 self.controls.view_button.opacity = 0
                 self.controls.add_widget(self.controls.view_button)
 
+                # Filter button
+                self.controls.remove_widget(self.controls.filter_button)
+                del self.controls.filter_button
+                self.controls.filter_button = IconButton('filter', {}, (123, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button.opacity = 0
+                self.controls.add_widget(self.controls.filter_button)
+
                 def after_anim(*a):
                     self.full_screen = True
                     self.ignore_keypress = False
                     Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
                     Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.view_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
 
                 Clock.schedule_once(after_anim, (anim_speed * 1.1))
 
@@ -17818,6 +18026,13 @@ class ConsolePanel(FloatLayout):
                 self.controls.restart_button.opacity = 0
                 self.controls.add_widget(self.controls.restart_button)
 
+                # Filter button
+                self.controls.remove_widget(self.controls.filter_button)
+                del self.controls.filter_button
+                self.controls.filter_button = IconButton('filter', {}, (227, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button.opacity = 0
+                self.controls.add_widget(self.controls.filter_button)
+
                 def after_anim(*a):
                     self.full_screen = True
                     self.ignore_keypress = False
@@ -17826,6 +18041,7 @@ class ConsolePanel(FloatLayout):
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
                     fix_scroll()
 
                 Clock.schedule_once(after_anim, (anim_speed*1.1))
@@ -17861,10 +18077,18 @@ class ConsolePanel(FloatLayout):
             self.controls.restart_button.opacity = 0
             self.controls.add_widget(self.controls.restart_button)
 
+            # Filter button
+            self.controls.remove_widget(self.controls.filter_button)
+            del self.controls.filter_button
+            self.controls.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+            self.controls.filter_button.opacity = 0
+            self.controls.add_widget(self.controls.filter_button)
+
             if not self.run_data:
                 constants.hide_widget(self.controls.maximize_button, True)
                 constants.hide_widget(self.controls.stop_button, True)
                 constants.hide_widget(self.controls.restart_button, True)
+                constants.hide_widget(self.controls.filter_button, True)
 
             def after_anim(*a):
                 self.full_screen = False
@@ -17874,6 +18098,7 @@ class ConsolePanel(FloatLayout):
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
                 fix_scroll()
 
             Clock.schedule_once(after_anim, (anim_speed*1.1))
@@ -17924,7 +18149,8 @@ class ConsolePanel(FloatLayout):
             def change_later(*a):
                 try:
                     with open(file_path, 'r') as f:
-                        self.scroll_layout.data = constants.json.loads(f.read())
+                        self._unfiltered_text = json.loads(f.read())
+                        self.update_text(self._unfiltered_text)
                 except:
                     if constants.debug:
                         print('Failed to load "latest.log"')
@@ -18175,6 +18401,7 @@ class ConsolePanel(FloatLayout):
 
         self.server_name = server_name
         self.server_obj = None
+        self.run_data = None
         self.server_button = server_button
         self.deadlocked = False
         self.log_view = False
@@ -18192,9 +18419,11 @@ class ConsolePanel(FloatLayout):
         self.last_self_touch = None
         self.in_scroll_region = False
 
+        self._unfiltered_text = []
 
         self.button_colors = {
             'maximize': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], ''],
+            'filter': [[(0.05, 0.08, 0.07, 1), (0.251, 0.251, 0.451, 1)], ''],
             'stop': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], 'pink']
         }
 
@@ -18565,7 +18794,7 @@ class ConsolePanel(FloatLayout):
                 self.control_shadow.keep_ratio = False
                 self.control_shadow.color = background_color
                 self.control_shadow.source = os.path.join(constants.gui_assets, 'console_control_shadow.png')
-                self.control_shadow.size_hint_max = (255, 120)
+                self.control_shadow.size_hint_max = (280, 120)
                 self.add_widget(self.control_shadow)
 
                 # Full screen button
@@ -18583,13 +18812,112 @@ class ConsolePanel(FloatLayout):
                 constants.hide_widget(self.restart_button)
                 self.add_widget(self.restart_button)
 
+                # Filter button
+                self.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.panel.button_colors['filter'], click_func=self.panel.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                constants.hide_widget(self.filter_button)
+                self.add_widget(self.filter_button)
+
                 # View log button
                 self.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png', clickable=True, anchor='right', text_offset=(18, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.show_log, True))
                 Clock.schedule_once(self.panel.add_log_button, 0)
 
+        # Scrollable list for configuring console event filtering
+        class FilterMenu(ContextMenu):
+            def __init__(self, panel, **kwargs):
+                super().__init__(**kwargs)
+                self.panel = panel
+                self.change_filter(constants.server_manager.current_server.console_filter)
+
+            def change_filter(self, filter_type):
+                if not filter_type:
+                    filter_type = 'everything'
+
+                self.current_filter = filter_type
+                constants.server_manager.current_server.change_filter(filter_type)
+                filter_button = None
+
+                if self.panel.run_data or self.panel.log_view:
+                    self.panel.update_text(self.panel._unfiltered_text)
+                    filter_button = self.panel.controls.filter_button
+
+                # Change filter icon colors
+                filter_color = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], '']
+                default_color = [[(0.05, 0.08, 0.07, 1), (0.251, 0.251, 0.451, 1)], '']
+
+                if filter_type == 'everything':
+                    self.panel.button_colors['filter'] = default_color
+                    if filter_button:
+                        filter_button.button.color_id = default_color[0]
+                        filter_button.button.on_leave()
+                else:
+                    self.panel.button_colors['filter'] = filter_color
+                    if filter_button:
+                        filter_button.button.color_id = filter_color[0]
+                        filter_button.button.on_leave()
+
+            def _change_options(self, options_list):
+                self.options_list = options_list
+                self.clear_widgets()
+
+                for item in self.options_list:
+                    if not item:
+                        continue
+
+                    selected = self.current_filter in item['name']
+
+                    # Start of the list
+                    if item == self.options_list[0]:
+                        start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected)
+                        self.add_widget(start_btn)
+
+                    # Middle of the list
+                    elif item != self.options_list[-1]:
+                        mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected)
+                        self.add_widget(mid_btn)
+
+                    # Last button
+                    else:
+                        if 'color' in item:
+                            sub_id = f'list_{item["color"]}_button'
+                        else:
+                            sub_id = 'list_end_button'
+                        end_btn = self.ListButton(item, sub_id=sub_id, selected=selected)
+                        self.add_widget(end_btn)
+
+            def _update_pos(self):
+
+                # Set initial position
+                pos = (self.panel.x + self.panel.width - 220, self.panel.controls.y + self.panel.controls.height - 58)
+                self.x = pos[0]
+                self.y = pos[1] - self.height
+                Clock.schedule_once(self._round_top_left, 0)
+
+            def show(self):
+                filters = [
+                    {'name': 'everything', 'icon': 'reader.png', 'action': lambda *_: self.change_filter('everything')},
+                    {'name': 'only errors', 'icon': 'warning.png', 'action': lambda *_: self.change_filter('errors')},
+                    {'name': 'only players', 'icon': 'person.png', 'action': lambda *_: self.change_filter('players')},
+                    {'name': 'amscript', 'icon': 'amscript.png', 'action': lambda *_: self.change_filter('amscript')}
+                ]
+                super().show(widget=self.panel.controls.filter_button.button, options_list=filters)
+
+            def hide(self, animate=True, *args):
+                Clock.schedule_once(self.widget.on_leave, 0.05)
+
+                if animate:
+                    Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
+                    for b in self.children:
+                        b.animate(False)
+                    Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
+                    Clock.schedule_once(lambda *_: self.clear_widgets(), 0.141)
+                else:
+                    self.clear_widgets()
+
+        # Event filter
+        self.filter_menu = FilterMenu(self)
+
 
         # Popen object reference
-        self.run_data = None
         self.scale = 1
         self.auto_scroll = False
 
@@ -18621,7 +18949,7 @@ class ConsolePanel(FloatLayout):
         self.gradient.keep_ratio = False
         self.gradient.size_hint = (None, None)
         self.gradient.color = background_color
-        self.gradient.opacity = 0.9
+        self.gradient.opacity = 0.65
         self.gradient.source = os.path.join(constants.gui_assets, 'scroll_gradient.png')
         self.add_widget(self.gradient)
 
@@ -18647,8 +18975,8 @@ class ConsolePanel(FloatLayout):
         self.fullscreen_shadow = Image()
         self.fullscreen_shadow.allow_stretch = True
         self.fullscreen_shadow.keep_ratio = False
-        self.fullscreen_shadow.size_hint_max = (None, 50)
-        self.fullscreen_shadow.color = (0, 0, 0, 1)
+        self.fullscreen_shadow.size_hint_max = (None, 25)
+        self.fullscreen_shadow.color = background_color
         self.fullscreen_shadow.opacity = 0
         self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
         self.add_widget(self.fullscreen_shadow)
@@ -18697,6 +19025,8 @@ class ConsolePanel(FloatLayout):
         self.corner_mask.add_widget(self.corner_mask.sb)
 
         self.add_widget(self.corner_mask)
+
+        self.add_widget(self.filter_menu)
 
 
         self.bind(pos=self.update_size)
@@ -18906,6 +19236,11 @@ class ServerViewScreen(MenuBackground):
                 if stop_button.opacity == 1:
                     stop_button.button.trigger_action(0.1)
 
+            # Quit on macOS
+            elif constants.os_name == 'macos' and (keycode[1] == 'q' and control in modifiers):
+                if not main_app.exit_check():
+                    exit_app()
+
             # Restart the server if it's currently running
             if ((keycode[1] == 'r' and (control in modifiers and 'shift' in modifiers)) and ('r' not in self._ignore_keys)) and self.server.run_data:
                 restart_button = self.console_panel.controls.restart_button
@@ -19007,6 +19342,7 @@ class ServerBackupScreen(MenuBackground):
         self.open_path_button = None
         self.migrate_path_button = None
         self.download_button = None
+        self.clone_button = None
 
         self.header = None
         self.menu_taskbar = None
@@ -19029,7 +19365,6 @@ class ServerBackupScreen(MenuBackground):
                 continue
 
             if k == 'migrate' and server_obj._telepath_data:
-                v.disable(True)
                 continue
 
             if k == button_name:
@@ -19187,65 +19522,73 @@ class ServerBackupScreen(MenuBackground):
             scroll_layout.add_widget(sub_layout)
 
 
+        # Only apply these buttons on a local server
         else:
-
             # Open back-up directory
             def open_backup_dir(*args):
                 backup_stats = server_obj.backup._backup_stats
                 constants.open_folder(backup_stats['backup-path'])
                 Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
 
+            self.open_path_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_backup_dir, text_offset=(10, 0))
+            float_layout.add_widget(self.open_path_button)
+
+
+            # Migrate back-up directory
+            def change_backup_dir(*args):
+                backup_stats = server_obj.backup._backup_stats
+                current_path = backup_stats['backup-path']
+                new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else constants.backupFolder), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
+                Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
+
+                def run_migrate(*args):
+                    Clock.schedule_once(functools.partial(self.solo_button, 'migrate', True), 0)
+                    final_path = server_obj.backup.set_directory(new_path)
+
+                    # Show banner and update button
+                    Clock.schedule_once(functools.partial(self.solo_button, 'migrate', False), 0)
+
+                    if final_path:
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_banner,
+                                (0.553, 0.902, 0.675, 1),
+                                "Migrated back-up directory successfully",
+                                "checkmark-circle-sharp.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+                    else:
+                        Clock.schedule_once(
+                            functools.partial(
+                                self.show_banner,
+                                (1, 0.53, 0.58, 1),
+                                "Failed to migrate back-up directory",
+                                "close-circle.png",
+                                2.5,
+                                {"center_x": 0.5, "center_y": 0.965}
+                            ), 0
+                        )
+
+
+                # If path was selected, migrate folder
+                if new_path:
+                    threading.Timer(0, run_migrate).start()
+
             sub_layout = ScrollItem()
-            self.open_path_button = WaitButton('Open Back-up Directory', (0.5, 0.5), 'folder-outline.png', click_func=open_backup_dir)
-            sub_layout.add_widget(self.open_path_button)
+            self.migrate_path_button = WaitButton('Migrate Back-up Directory', (0.5, 0.5), 'migrate.png', click_func=change_backup_dir)
+            sub_layout.add_widget(self.migrate_path_button)
             scroll_layout.add_widget(sub_layout)
 
 
-        # Migrate back-up directory
-        def change_backup_dir(*args):
-            backup_stats = server_obj.backup._backup_stats
-            current_path = backup_stats['backup-path']
-            new_path = file_popup("dir", start_dir=(current_path if os.path.exists(current_path) else constants.backupFolder), input_name='migrate_backup_button', select_multiple=False, title="Select a New Back-up Directory")
-            Clock.schedule_once(self.open_path_button.button.on_leave, 0.5)
-
-            def run_migrate(*args):
-                Clock.schedule_once(functools.partial(self.solo_button, 'migrate', True), 0)
-                final_path = server_obj.backup.set_directory(new_path)
-
-                # Show banner and update button
-                Clock.schedule_once(functools.partial(self.solo_button, 'migrate', False), 0)
-
-                if final_path:
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_banner,
-                            (0.553, 0.902, 0.675, 1),
-                            "Migrated back-up directory successfully",
-                            "checkmark-circle-sharp.png",
-                            2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0
-                    )
-                else:
-                    Clock.schedule_once(
-                        functools.partial(
-                            self.show_banner,
-                            (1, 0.53, 0.58, 1),
-                            "Failed to migrate back-up directory",
-                            "close-circle.png",
-                            2.5,
-                            {"center_x": 0.5, "center_y": 0.965}
-                        ), 0
-                    )
-
-
-            # If path was selected, migrate folder
-            if new_path:
-                threading.Timer(0, run_migrate).start()
+        # Clone server button
+        def clone_server(*args):
+            screen_manager.current = 'ServerCloneScreen'
 
         sub_layout = ScrollItem()
-        self.migrate_path_button = WaitButton('Migrate Back-up Directory', (0.5, 0.5), 'migrate.png', click_func=change_backup_dir)
-        sub_layout.add_widget(self.migrate_path_button)
+        self.clone_button = WaitButton('Clone this server', (0.5, 0.5), 'duplicate-outline.png', click_func=clone_server)
+        sub_layout.add_widget(self.clone_button)
         scroll_layout.add_widget(sub_layout)
 
 
@@ -19673,7 +20016,7 @@ class ServerBackupRestoreScreen(MenuBackground):
             float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups, Restore"))
 
         self.add_widget(float_layout)
 
@@ -19880,7 +20223,7 @@ class ServerBackupDownloadScreen(MenuBackground):
             float_layout.add_widget(button)
 
         float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups, Download"))
 
         self.add_widget(float_layout)
 
@@ -19948,6 +20291,138 @@ class ServerBackupRestoreProgressScreen(ProgressScreen):
         function_list = [
             (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
             ('Restoring back-up', functools.partial(constants.restore_server, restore_file, functools.partial(adjust_percentage, 70)), 0),
+        ]
+
+        self.page_contents['function_list'] = tuple(function_list)
+
+class ServerCloneScreen(MenuBackground):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+        self.name_input = None
+
+    def generate_menu(self, **kwargs):
+
+        # Return if no free space or telepath is busy
+        if disk_popup():
+            return
+        if telepath_popup():
+            return
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        constants.new_server_init()
+        constants.import_data = {'name': None, 'path': None}
+        server_obj = constants.server_manager.current_server
+
+        # Regular menu
+        float_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 0.58}))
+        float_layout.add_widget(HeaderText("What would you like to name the copy?", '', (0, 0.76)))
+        self.name_input = ServerNameInput(pos_hint={"center_x": 0.5, "center_y": 0.5}, text=server_obj.name)
+        float_layout.add_widget(self.name_input)
+        def start_clone(*a):
+            screen_manager.current = 'ServerCloneProgressScreen'
+        buttons.append(next_button('Clone', (0.5, 0.24), False, click_func=start_clone))
+        buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+
+        # Add telepath button if servers are connected
+        if constants.server_manager.online_telepath_servers:
+            float_layout.add_widget(TelepathDropButton('clone', (0.5, 0.4)))
+
+        float_layout.add_widget(generate_title(f"Back-up Manager: '{server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{server_obj.name}, Back-ups, Clone"))
+
+        self.add_widget(float_layout)
+        self.name_input.grab_focus()
+        Clock.schedule_once(functools.partial(self.name_input.on_enter, self.name_input.text, False), 0)
+
+
+class ServerCloneProgressScreen(ProgressScreen):
+
+    # Only replace this function when making a child screen
+    # Set fail message in child functions to trigger an error
+    def contents(self):
+        server_name = constants.new_server_info['name']
+        open_after = functools.partial(self.open_server, server_name, True, f"'${server_name}$' was created successfully")
+
+        def before_func(*args):
+
+            if not constants.check_free_space(telepath_data=constants.new_server_info['_telepath_data']):
+                self.execute_error("Your primary disk is almost full\n\nFree up space and try again")
+
+            else:
+                constants.pre_server_create()
+
+        def after_func(*args):
+            constants.post_server_create()
+            open_after()
+
+
+        # Original is percentage before this function, adjusted is a percent of hooked value
+        def adjust_percentage(*args):
+            original = self.last_progress
+            adjusted = args[0]
+            total = args[1] * 0.01
+            final = original + round(adjusted * total)
+            if final < 0:
+                final = original
+            self.progress_bar.update_progress(final)
+
+        self.page_contents = {
+
+            # Page name
+            'title': f"Creating '{server_name}'",
+
+            # Header text
+            'header': "Sit back and relax, it's automation time...",
+
+            # Tuple of tuples for steps (label, function, percent)
+            # Percent of all functions must total 100
+            # Functions must return True, or default error will be executed
+            'default_error': 'There was an issue, please try again later',
+
+            'function_list': (),
+
+            # Function to run before steps (like checking for an internet connection)
+            'before_function': before_func,
+
+            # Function to run after everything is complete (like cleaning up the screen tree) will only run if no error
+            'after_function': after_func,
+
+            # Screen to go to after complete
+            'next_screen': None
+        }
+
+
+        # Create function list
+        server_obj = constants.server_manager.current_server
+        java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
+
+        # If remote data, open remote server after
+        print(constants.new_server_info)
+        if constants.new_server_info['_telepath_data']:
+            self._telepath_override = constants.new_server_info['_telepath_data']
+
+        # If not remote data, restore server manager open server on error
+        else:
+            self._telepath_override = '$local'
+            def restore_server():
+                constants.server_manager.current_server = server_obj
+            self._error_callback = restore_server
+
+        function_list = [
+            (java_text, functools.partial(constants.java_check, functools.partial(adjust_percentage, 30)), 0),
+            ('Saving a back-up', server_obj.backup.save, 10),
+            ('Cloning server', functools.partial(constants.clone_server, server_obj, functools.partial(adjust_percentage, 50)), 0),
+            ('Creating initial back-up', functools.partial(constants.create_backup, True), 10)
         ]
 
         self.page_contents['function_list'] = tuple(function_list)
@@ -20939,12 +21414,20 @@ class ServerAddonScreen(MenuBackground):
             screen_manager.current = 'ServerAddonUpdateScreen'
 
         if addon_count > 0:
+            position = (70 if self.server._telepath_data else 125, 110)
+            vertical_offset = 0 if self.server._telepath_data else 50
             if not self.server.addon.update_required:
                 self.server._view_notif('add-ons', False)
-                float_layout.add_widget(IconButton('up to date', {}, (70, 110), (None, None), 'checkmark-sharp.png', clickable=False, anchor='right', click_func=update_addons))
+                float_layout.add_widget(IconButton('up to date', {}, position, (None, None), 'checkmark-sharp.png', clickable=False, anchor='right', click_func=update_addons, text_offset=(0, vertical_offset)))
             else:
                 self.server._view_notif('add-ons', viewed='update')
-                float_layout.add_widget(IconButton('update add-ons', {}, (70, 110), (None, None), 'arrow-update.png', clickable=True, anchor='right', click_func=update_addons, force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green'], text_offset=(12, 0)))
+                float_layout.add_widget(IconButton('update add-ons', {}, position, (None, None), 'arrow-update.png', clickable=True, anchor='right', click_func=update_addons, force_color=[[(0.05, 0.08, 0.07, 1), (0.5, 0.9, 0.7, 1)], 'green'], text_offset=(12, vertical_offset)))
+
+        if not self.server._telepath_data:
+            def open_dir(*a):
+                constants.folder_check(self.server.addon.addon_path)
+                constants.open_folder(self.server.addon.addon_path)
+            float_layout.add_widget(IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_dir, text_offset=(10, 0)))
 
 
         self.add_widget(float_layout)
@@ -22202,6 +22685,7 @@ class ServerAmscriptScreen(MenuBackground):
 
         self.server = None
         self.reload_button = None
+        self.directory_button = None
         self.path_button = None
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
@@ -22307,29 +22791,30 @@ class ServerAmscriptScreen(MenuBackground):
 
 
         # Buttons in the top right corner
-        def reload_scripts(*a):
-            def timer():
-                self.server.reload_scripts()
-                Clock.schedule_once(
-                    functools.partial(
-                        self.show_banner,
-                        (0.553, 0.902, 0.675, 1),
-                        f"amscript engine was restarted successfully",
-                        "checkmark-circle-sharp.png",
-                        2.5,
-                        {"center_x": 0.5, "center_y": 0.965}
-                    ), 0
-                )
-                Clock.schedule_once(functools.partial(self.gen_search_results, self.server.script_manager.return_single_list()), 0)
-            threading.Timer(0, timer).start()
-        self.reload_button = IconButton('reload scripts', {}, (70, 110), (None, None), 'reload-sharp.png', clickable=self.server.running, anchor='right', click_func=reload_scripts)
-        float_layout.add_widget(self.reload_button)
-
         def open_dir(*a):
             constants.folder_check(constants.scriptDir)
             constants.open_folder(constants.scriptDir)
-        self.reload_button = IconButton('open directory', {}, (125, 110), (None, None), 'folder.png', clickable=True, anchor='right', click_func=open_dir, text_offset=(10, 50))
-        float_layout.add_widget(self.reload_button)
+        self.directory_button = IconButton('open directory', {}, (70, 110), (None, None), 'folder.png', anchor='right', click_func=open_dir, text_offset=(10, 0))
+        float_layout.add_widget(self.directory_button)
+
+        if self.server.running:
+            def reload_scripts(*a):
+                def timer():
+                    self.server.reload_scripts()
+                    Clock.schedule_once(
+                        functools.partial(
+                            self.show_banner,
+                            (0.553, 0.902, 0.675, 1),
+                            f"amscript engine was restarted successfully",
+                            "checkmark-circle-sharp.png",
+                            2.5,
+                            {"center_x": 0.5, "center_y": 0.965}
+                        ), 0
+                    )
+                    Clock.schedule_once(functools.partial(self.gen_search_results, self.server.script_manager.return_single_list()), 0)
+                threading.Timer(0, timer).start()
+            self.reload_button = IconButton('reload scripts', {}, (125, 110), (None, None), 'reload-sharp.png', clickable=self.server.running, anchor='right', click_func=reload_scripts, text_offset=(10, 50))
+            float_layout.add_widget(self.reload_button)
 
 
         # Automatically generate results (installed scripts) on page load
@@ -22664,26 +23149,1007 @@ class ServerAmscriptSearchScreen(MenuBackground):
         Clock.schedule_once(functools.partial(self.search_bar.execute_search, ""), 0)
 
 
+# Edit Config Screens ------------------------------------------------------------------------------------------------
 
-# Server Settings Screen ---------------------------------------------------------------------------------------------
+# Determines the type of config file and open in the proper editor
+def open_config_file(path: str, *a):
+    config_data = {
+        'path': path,
+        'remote_path': None,
+        '_telepath_data': None
+    }
 
-class ServerPropertiesEditScreen(MenuBackground):
+    try:
+        server_obj = constants.server_manager.current_server
+        ext = path.split('.')[-1]
+
+        # First check if file is compatible
+        if ext not in constants.valid_config_formats:
+            return False
+    except:
+        return False
+
+    # If this file is via Telepath, download it first prior to editing
+    config_data['_telepath_data'] = server_obj._telepath_data
+    if server_obj._telepath_data:
+        config_data['remote_path'] = path
+        config_data['path'] = constants.telepath_download(server_obj._telepath_data, path)
+
+    # Check if file exits and pick the correct editor for the format
+    if config_data['path'] and os.path.isfile(config_data['path']):
+        editor_screen = None
+
+        if ext in ['properties', 'ini']:
+            editor_screen = 'ServerPropertiesEditScreen'
+
+        elif ext in ['tml', 'toml']:
+            editor_screen = 'ServerTomlEditScreen'
+
+        elif ext in ['yml', 'yaml']:
+            editor_screen = 'ServerYamlEditScreen'
+
+        elif ext == 'json':
+            editor_screen = 'ServerJsonEditScreen'
+
+        elif ext == 'json5':
+            editor_screen = 'ServerJson5EditScreen'
+
+        else:
+            editor_screen = 'ServerTextEditScreen'
+
+        screen_manager.get_screen(editor_screen).update_path(config_data)
+        screen_manager.current = editor_screen
+
+    return False
+
+def save_config_file(data: dict, content: str):
+
+    # Write content to disk
+    with open(data['path'], 'w', encoding='utf-8', errors='ignore') as f:
+        f.write(content)
+
+    # Upload via Telepath if remote
+    if data['_telepath_data'] and data['remote_path']:
+        telepath_data = data['_telepath_data']
+        upload_path = constants.telepath_upload(telepath_data, data['path'])['path']
+
+        test = constants.api_manager.request(
+            endpoint='/main/update_config_file',
+            host=telepath_data['host'],
+            port=telepath_data['port'],
+            args={
+                'server_name': constants.server_manager.current_server.name,
+                'upload_path': upload_path,
+                'destination_path': data['remote_path']
+            }
+        )
+
+
+# Controller for ConfigFiles containers
+class ConfigFolder(RelativeLayout):
+
+    def __init__(self, path: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Internal properties
+        self.path = path
+        self.files = None
+        self.folded = True
+
+        # Widget properties
+        self.size_hint_max_y = 50
+        self.pos_hint = {'center_y': 1}
+        self.color = (0.6, 0.6, 1, 1)
+        self.original_opacity = 0.7
+        self.hover_delay = 0.1
+        self.opacity = self.original_opacity
+
+        # Click behavior
+        self.button = HoverButton()
+        self.button.opacity = 0
+        self.button.y = -15
+        self.button.on_enter = self.on_enter
+        self.button.on_leave = self.on_leave
+        self.button.on_press = self.on_click
+        self.add_widget(self.button)
+
+        # Folder icon
+        self.icon = Image()
+        self.icon.color = self.color
+        self.icon.opacity = 1
+        self.icon.allow_stretch = True
+        self.icon.keep_ratio = False
+        self.icon.size_hint_max = (35, 35)
+        self.icon.y = 5
+        self.icon.source = os.path.join(constants.gui_assets, 'icons', 'folder.png')
+        self.add_widget(self.icon)
+
+        # Folder text
+        self.text = AlignLabel()
+        self.text.__translate__ = False
+        self.text.halign = "left"
+        self.text.valign = "middle"
+        self.text.color = self.color
+        self.text.markup = True
+        self.text.shorten = True
+        self.text.shorten_from = 'left'
+        self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.text.text = self.generate_name()
+        depth = 1 if self.path.endswith(constants.server_manager.current_server.name) else 2
+        text = constants.cross_platform_path(self.path, depth=depth)
+        self.text.font_size = sp(25 - (0 if len(text) < 25 else (len(text) // 8)))
+        self.text.max_lines = 1
+        self.text.x = 55
+        self.add_widget(self.text)
+
+    def generate_name(self, color='#555599'):
+        depth = 1 if self.path.endswith(constants.server_manager.current_server.name) else 2
+        text = constants.cross_platform_path(self.path, depth=depth)
+        if '/' in text:
+            parent, child = text.rsplit('/', 1)
+            return f'[color={color}]{parent}/[/color]{child}'
+        elif '\\' in text:
+            parent, child = text.rsplit('\\', 1)
+            return f'[color={color}]{parent}\[/color]{child}'
+        else:
+            return text.strip()
+
+    def toggle_fold(self, fold=True, *a):
+        self.folded = fold
+        self.files.hide(fold)
+
+        # Capture old scroll data
+        screen = screen_manager.current_screen
+        old_scroll_ratio = screen.scroll_widget.scroll_y
+        old_content_height = screen.scroll_layout.height
+        viewport_height = screen.scroll_widget.height
+
+        # Adjust folder height
+        new_height = 0 if fold else len(self.files.file_list) * 50
+        self.files.size_hint_min_y = new_height
+
+        # Update icon and text
+        self.icon.source = os.path.join(constants.gui_assets, 'icons', 'folder.png' if self.folded else 'folder-outline.png')
+        Animation(opacity=0.7 if self.folded else 1, duration=0.1).start(self)
+
+        # Force update so the scroll_layout adjusts its height and update scroll position
+        def after_layout(*_):
+            screen.scroll_anchor.do_layout()
+            screen.scroll_layout.do_layout()
+            screen.scroll_anchor.size_hint_min_y = screen.scroll_layout.height
+
+            # Convert old pixel offset to the new scroll ratio
+            new_content_height = screen.scroll_layout.height
+            scrollable = new_content_height - viewport_height
+            if scrollable > 0:
+                # distance from top in pixels
+                old_offset_from_top = (1 - old_scroll_ratio) * (old_content_height - viewport_height)
+                new_ratio = 1 - (old_offset_from_top / scrollable)
+                new_ratio = min(max(new_ratio, 0), 1)
+                screen.scroll_widget.scroll_y = new_ratio
+
+            # No scrolling needed if content < viewport
+            else:
+                screen.scroll_widget.scroll_y = 1
+
+        Clock.schedule_once(after_layout, -1)
+
+    def on_click(self, *a):
+
+        # Open folder on right-click
+        if not constants.server_manager.current_server._telepath_data:
+            try:
+                if self.button.last_touch.button == 'right':
+                    return constants.open_folder(self.path)
+            except:
+                pass
+
+        self.toggle_fold(not self.folded)
+
+    def on_enter(self):
+        Animation.stop_all(self)
+        Animation(opacity=1, duration=self.hover_delay / 2).start(self)
+
+    def on_leave(self):
+        Animation.stop_all(self)
+        Animation(opacity=self.original_opacity if self.folded else 1, duration=self.hover_delay).start(self)
+
+
+# A container for ConfigFile objects that is controlled by ConfigFolder
+class ConfigFiles(GridLayout):
+
+    # A single file representation inside the parent
+    class ConfigFile(RelativeLayout):
+
+        def __init__(self, path: str, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+            # Internal properties
+            self.path = path
+
+            # Widget properties
+            self.size_hint_min_y = 50
+            self.size_hint_max_y = 50
+            self.pos_hint = {'center_y': 1}
+            self.color = (0.6, 0.6, 1, 1)
+            self.original_opacity = 0.5
+            self.hover_delay = 0.15
+            self.padding = 0
+
+            # Background button
+            self.button = HoverButton()
+            self.button.opacity = 0
+            self.button.y = -15
+            self.button.on_enter = self.on_enter
+            self.button.on_leave = self.on_leave
+            self.button.on_press = self.on_click
+            self.button.x = self.padding
+            self.add_widget(self.button)
+
+            # File icon
+            self.icon = Image()
+            self.icon.color = self.color
+            self.icon.opacity = self.original_opacity
+            self.icon.allow_stretch = True
+            self.icon.keep_ratio = False
+            self.icon.size_hint_max = (35, 35)
+            self.icon.source = os.path.join(constants.gui_assets, 'icons', 'document-text-sharp.png')
+            self.icon.y = -5
+            self.icon.x = self.padding
+            self.add_widget(self.icon)
+
+            # File text
+            self.text = AlignLabel()
+            self.text.__translate__ = False
+            self.text.halign = "left"
+            self.text.valign = "bottom"
+            self.text.color = self.color
+            self.text.opacity = self.original_opacity
+            self.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+            self.text.text = constants.cross_platform_path(self.path)
+            self.text.shorten = True
+            self.text.shorten_from = 'left'
+            self.text.font_size = sp(25 - (0 if len(self.text.text) < 20 else (len(self.text.text) // 8)))
+            self.text.max_lines = 1
+            self.text.x = 48 + self.padding
+            self.add_widget(self.text)
+
+        def resize(self, *a):
+            self.padding = 10 if Window.width < 900 else 100
+            self.button.x = self.padding
+            self.icon.x = self.padding
+            self.text.x = 48 + self.padding
+
+        def on_click(self):
+            new_color = (0.75, 0.75, 1, 1)
+            self.text.color = new_color
+            self.icon.color = new_color
+            Animation(color=self.color, duration=self.hover_delay).start(self.text)
+            Animation(color=self.color, duration=self.hover_delay).start(self.icon)
+            Clock.schedule_once(functools.partial(open_config_file, self.path), 0)
+
+        def on_enter(self):
+            Animation.stop_all(self.text)
+            Animation.stop_all(self.icon)
+            Animation(opacity=1, duration=self.hover_delay / 2).start(self.text)
+            Animation(opacity=1, duration=self.hover_delay / 2).start(self.icon)
+
+        def on_leave(self):
+            Animation.stop_all(self.text)
+            Animation.stop_all(self.icon)
+            Animation(opacity=self.original_opacity, duration=self.hover_delay).start(self.text)
+            Animation(opacity=self.original_opacity, duration=self.hover_delay).start(self.icon)
+
+    def resize_files(self, *a):
+        for file in self.children:
+            file.resize()
+
+        self.folder.parent.background.size_hint_min_x = screen_manager.current_screen.max_width + (10 if Window.width < 900 else 60)
+        Animation.stop_all(self.folder.parent.background)
+        Animation(opacity=(0 if self.folder.folded else 1), duration=0.15).start(self.folder.parent.background)
+
+    # Pretty animation :)
+    def hide(self, hide: bool = True):
+        constants.hide_widget(self, hide)
+        if not hide:
+            def animate(c, *a):
+                Animation.stop_all(c)
+                Animation(opacity=1, duration=0.15).start(c)
+            for child in self.children:
+                child.opacity = 0
+            for x, child in enumerate(reversed(self.children), 1):
+                if x > 10:
+                    x = 10
+                Clock.schedule_once(functools.partial(animate, child), x*0.03)
+
+    def __init__(self, folder: ConfigFolder, files: list, fold: bool = True, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Internal properties
+        self.folder = folder
+        self.file_list = files
+        folder.files = self
+
+        # Widget properties
+        self.pos_hint = {'center_y': 1}
+        self.cols = 1
+        self.padding = [0, -35.5, 0, 0]
+
+        # Add files to self
+        for file in self.file_list:
+            self.add_widget(self.ConfigFile(file))
+
+        self.bind(size=self.resize_files, pos=self.resize_files)
+        Clock.schedule_once(self.resize_files, 0)
+        Clock.schedule_once(functools.partial(self.folder.toggle_fold, fold), 0)
+
+# Abstracted file manager to display folders and config files
+class ServerConfigScreen(MenuBackground):
+    class Background(RelativeLayout):
+        def resize(self, *args):
+            self.rectangle1.pos = self.pos
+            self.rectangle1.size = self.size
+            self.rectangle2.pos = self.pos
+            self.rectangle2.size = self.size
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            image = os.path.join(constants.gui_assets, 'head_highlight.png')
+            radius = 25
+
+            with self.canvas:
+                Color(0, 0, 0.05, 0.12)
+                self.rectangle1 = kivy.graphics.RoundedRectangle(source=image, radius=[radius]*4)
+                self.rectangle2 = kivy.graphics.RoundedRectangle(radius=[radius]*4)
+
+            self.bind(pos=self.resize, size=self.resize)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.menu = 'init'
+
+        self.server_obj = None
+        self.scroll_widget = None
+        self.scroll_anchor = None
+        self.scroll_layout = None
+        self.header = None
+        self.filter_text = ''
+        self.search_bar = None
+        self.search_label = None
+        self.back_button = None
+        self._cached = None
+    
+    def on_pre_enter(self, *args):
+        if self.back_button:
+            self.back_button.button.on_leave()
+            self.back_button.button.background_normal = os.path.join(constants.gui_assets, 'exit_button.png')
+        super().on_pre_enter(*args)
+    
+    def filter_files(self, query: str = None):
+        self.filter_text = query
+
+        if not query:
+            return self.server_obj.config_paths
+
+        # Filter by file name matches
+        else:
+            filtered = {}
+            for folder, files in self.server_obj.config_paths.items():
+                for file in files:
+                    if query.lower() in constants.cross_platform_path(file).lower():
+                        if folder not in filtered:
+                            filtered[folder] = []
+                        filtered[folder].append(file)
+
+            return filtered
+
+    def gen_search_results(self, results: dict = None, *a):
+        if results is None:
+            results = self.filter_files()
+        else:
+            self.scroll_layout.opacity = 0
+            self.scroll_layout.clear_widgets()
+
+
+        if results:
+
+            # Hide "no results"
+            if self.search_label.opacity > 0:
+                Animation(opacity=0, duration=0.05).start(self.search_label)
+
+
+            # Create two linked widgets for the folder and the items
+            for folder, files in results.items():
+
+                # Create expand filter
+                expand_filter = False
+                if self.server_obj.config_paths == results:
+                    expand_filter = constants.cross_platform_path(folder) != self.server_obj.name
+
+                folder_obj = ConfigFolder(folder)
+                files_obj = ConfigFiles(folder_obj, files, expand_filter)
+
+                folder_layout = RelativeLayout(size_hint_min_y=50)
+                folder_layout.pos_hint = {'center_y': 1}
+
+                padding = 10
+                folder_layout.background = self.Background()
+                folder_layout.background.size_hint_min_x = self.max_width + (padding * 2)
+                folder_layout.background.pos = (-padding, 11)
+                folder_layout.add_widget(folder_layout.background)
+
+                folder_layout.add_widget(folder_obj)
+
+                self.scroll_layout.add_widget(folder_layout)
+                self.scroll_layout.add_widget(files_obj)
+
+
+        # Show "no results"
+        else:
+            Animation.stop_all(self.search_label)
+            self.search_label.text = f"No results for '{self.filter_text}'"
+            Animation(opacity=1, duration=0.2).start(self.search_label)
+
+
+        # Refresh screen
+        if self.scroll_layout.opacity < 1:
+            def reset_layout(*a):
+                Animation.stop_all(self.scroll_layout)
+                Animation(opacity=1, duration=0.3).start(self.scroll_layout)
+            Clock.schedule_once(reset_layout, 0.1)
+
+    def generate_menu(self, **kwargs):
+        self.server_obj = constants.server_manager.current_server
+
+        # Re-use previously generated widget if the server and language is the same
+        if self._cached and self._cached['server_obj'] == self.server_obj and self._cached['locale'] == constants.app_config.locale:
+            return self.add_widget(self._cached['layout'])
+
+        # Ignore screen if there are no config paths in the current server
+        if not self.server_obj.config_paths:
+            if not self.server_obj.reload_config_paths():
+                return previous_screen()
+
+        # Scroll list
+        self.max_width = 750
+        self.scroll_widget = ScrollViewWidget()
+        self.scroll_widget.pos_hint = {'center_y': 0.485, 'center_x': 0.5}
+        self.scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(
+            cols=2,
+            spacing=10,
+            size_hint_max_x=self.max_width,
+            size_hint_y=None,
+            padding=[0, 80, 0, 60]
+        )
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.5
+            grid_layout.cols = 2
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout, self.scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.79}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.18}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+
+        # Generate buttons on page load
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+
+        # Create header/search bar
+        self.header = HeaderText("Select a configuration file to edit", '', (0, 0.9), no_line=True)
+        self.search_bar = search_input(return_function=self.filter_files, server_info=None, pos_hint={"center_x": 0.5, "center_y": 0.84}, allow_empty=True)
+
+        # Lol search label idek
+        self.search_label = Label()
+        self.search_label.__translate__ = False
+        self.search_label.text = ""
+        self.search_label.halign = "center"
+        self.search_label.valign = "center"
+        self.search_label.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.search_label.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.search_label.font_size = sp(25)
+        self.search_label.color = (0.6, 0.6, 1, 0.35)
+        float_layout.add_widget(self.search_label)
+
+
+        # Append scroll view items
+        self.scroll_anchor.add_widget(self.scroll_layout)
+        self.scroll_widget.add_widget(self.scroll_anchor)
+        float_layout.add_widget(self.scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.header)
+        float_layout.add_widget(self.search_bar)
+
+        self.back_button = ExitButton('Back', (0.5, 0.12), cycle=True)
+        buttons.append(self.back_button)
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        float_layout.add_widget(generate_title(f"Server Settings: '{self.server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{self.server_obj.name}, Settings, Edit config"))
+
+        self._cached = {'server_obj': self.server_obj, 'locale': constants.app_config.locale, 'layout': float_layout}
+        self.add_widget(float_layout)
+
+        self.gen_search_results()
+
+
+# Config file editor
+class EditorRoot(MenuBackground):
+
+    # Base functionality for EditorLines
     class EditorLine(RelativeLayout):
+        class EditorInput(TextInput):
+
+            class OverflowLabel(RelativeLayout):
+                def show(self, show=True):
+                    self.opacity = 1 if show else 0
+                    self.background.opacity = 1 if show else 0
+                    self.text.opacity = 1 if show else 0
+                def __init__(self, side='left', *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.size_hint_max_x = 30
+                    self.side = side
+
+                    self.background = Image(source=os.path.join(constants.gui_assets, 'scroll_overflow.png'))
+                    self.background.color = constants.brighten_color(constants.background_color, -0.1)
+                    self.background.allow_stretch = True
+                    self.background.keep_ratio = False
+                    self.background.size_hint_max_x = (self.size_hint_max_x + 10) * (1 if self.side == 'left' else -1)
+                    self.background.x = (0 if self.side == 'left' else self.size_hint_max_x - 5)
+
+                    self.add_widget(self.background)
+
+                    self.text = Label()
+                    self.text.text = '…'
+                    self.text.color = (0.6, 0.6, 1, 0.6)
+                    self.text.markup = True
+                    self.text.size_hint_max_x = self.size_hint_max_x
+                    self.add_widget(self.text)
+
+                    self.show(False)
+
+            def _update_overflow(self):
+                try:
+                    if self.text:
+                        text_width = self._get_text_width(str(self.text), self.tab_width, self._label_cached)
+                        self.scrollable = text_width > self.width
+
+                        if self.scrollable:
+
+                            # Update text properties
+                            self.ovf_left.text.font_name = self.ovf_right.text.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+                            self.ovf_left.text.font_size = self.ovf_right.text.font_size = self.font_size + 6
+                            self.ovf_left.height = self.ovf_right.height = self.height
+
+                            # Update positions
+                            y_pos = self.y + 7
+                            self.ovf_left.pos = (self.x + 3, y_pos)
+                            self.ovf_right.pos = (Window.width - self._line.input_padding - 16, y_pos)
+
+                            # Update opacity
+                            self.ovf_left.show(self.scroll_x > 0)
+                            self.ovf_right.show(self.scroll_x + self.width <= text_width)
+
+                            return
+
+                except AttributeError:
+                    pass
+
+                self.scrollable = False
+                self.ovf_left.show(False)
+                self.ovf_right.show(False)
+
+            def grab_focus(self, *a):
+                def focus_later(*args):
+                    try:
+                        self.focus = True
+                    except:
+                        return
+                Clock.schedule_once(focus_later, 0)
+
+            def on_focus(self, *args):
+                try:
+                    if self._line.inactive:
+                        self.focused = False
+                        return
+                except:
+                    return
+
+                Animation.stop_all(self._line.eq_label)
+                Animation(opacity=(1 if self.focused else 0.5), duration=0.15).start(self._line.eq_label)
+                try:
+                    Animation(opacity=(1 if self.focused or self._line.line_matched else 0.35), duration=0.15).start(self._line.line_number)
+                except AttributeError:
+                    pass
+
+                if self.focused:
+                    # Use 1-based line index
+                    self._line._screen.current_line = self._line.line
+
+                    # If there's a function to set the editor's index, pass our 1-based line
+                    if self._line.index_func:
+                        # The parent's 0-based index + 1 => 1-based
+                        self._line.index_func(self._line.index + 1)
+
+                    if self._get_text_width(str(self.text), self.tab_width, self._label_cached) > self.width:
+                        self.cursor = (len(self.text), self.cursor[1])
+                        self.scroll_x = self._get_text_width(str(self.text), self.tab_width, self._label_cached) - self.width + 1
+                        Clock.schedule_once(lambda *_: self.do_cursor_movement("cursor_end"), -1)
+
+                        def select_error_handler(*a):
+                            try:
+                                self.select_text(0)
+                            except:
+                                pass
+                        Clock.schedule_once(select_error_handler, 0.01)
+                else:
+                    self.do_cursor_movement("cursor_home")
+                    self.scroll_x = 0
+
+                self._update_overflow()
+
+            # Type color and prediction
+            @staticmethod
+            def _input_validation(text: str):
+
+                # Escape newlines and tabs from pasting
+                if '\n' in text:
+                    text = text.replace('\n', '\\n')
+                if '\r' in text:
+                    text = text.replace('\r', '\\r')
+                if '\t' in text:
+                    text = text.replace('\t', '    ')
+
+                return text
+
+            def on_text(self, *args):
+
+                # Update text in memory
+                if self._line._data:
+                    self._line._data['value'] = self.text
+
+                Animation.stop_all(self)
+                Animation.stop_all(self.search)
+
+                self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+                self.font_size = dp(25)
+                self.foreground_color = (0.408, 0.889, 1, 1)
+                self.cursor_color = (0.358, 0.839, 1, 1)
+                self.selection_color = (0.308, 0.789, 1, 0.4)
+
+                # Structured data detection
+                if self.get_type(self.text) in (list, tuple, dict):
+                    self.foreground_color = (0.2, 1, 0.5, 1)
+                    self.cursor_color = (0.2, 1, 0.5, 1)
+                    self.selection_color = (0.2, 1, 0.5, 0.4)
+
+                # Boolean detection
+                elif self.get_type(self.text.lower()) == bool:
+                    self.text = self.text.lower()
+                    self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-italic"]}')
+                    self.foreground_color = (1, 0.451, 1, 1)
+                    self.cursor_color = (1, 0.401, 1, 1)
+                    self.selection_color = (0.955, 0.351, 1, 0.4)
+                    self.font_size = dp(23.8)
+
+                # Numeric detection (int or float)
+                elif self.get_type(self.text) in (float, int):
+                    self.foreground_color = (0.989, 0.591, 0.254, 1)
+                    self.cursor_color = (0.939, 0.541, 0.254, 1)
+                    self.selection_color = (0.889, 0.511, 0.254, 0.4)
+
+                # Plain-text detection
+                elif self.get_type(self.text) is None:
+                    self.foreground_color = (0.7, 0.7, 1, 1)
+                    self.cursor_color = (0.7, 0.7, 1, 1)
+                    self.selection_color = (0.7, 0.7, 1, 0.4)
+
+                self.last_color = self.foreground_color
+                self.original_text = str(self.text)
+                self.search.text = str(self.text)
+                self.search.color = self.foreground_color
+                self.search.font_size = self.font_size
+                self.search.font_name = self.font_name
+                self.search.text_size = self.search.size
+
+                if self.search.opacity == 1:
+                    self.foreground_color = (0, 0, 0, 0)
+
+                def highlight(*args):
+                    self._original_text = self.text
+                    try:
+                        self._line._screen.check_match(self._line._data, self._line._screen.search_bar.text)
+                        self._line.highlight_text(self._line.last_search)
+                    except AttributeError:
+                        pass
+
+                Clock.schedule_once(highlight, 0)
+
+            def insert_text(self, substring, from_undo=False):
+
+                # Ignore all key presses if search bar is highlighted or not selected line
+                # Check 1-based line vs current_line
+                if self._line._screen.search_bar.focused or self._line.line != self._line._screen.current_line:
+                    self.focused = False
+                    return None
+
+                if self._line._screen.popup_widget:
+                    return None
+
+                substring = self._input_validation(substring)
+
+                super().insert_text(substring, from_undo=from_undo)
+
+            # Add in special key presses
+            def keyboard_on_key_down(self, window, keycode, text, modifiers):
+                if self._line._screen.popup_widget:
+                    return None
+
+                # Ignore all key presses if search bar is highlighted or not selected line
+                if self._line._screen.search_bar.focused or self._line.line != self._line._screen.current_line:
+                    self.focused = False
+                    return None
+
+                # Ignore undo and redo for global effect
+                if (keycode[1] in ['r', 'z', 'y', 'c'] and control in modifiers) or keycode[1] == 'escape':
+                    return None
+
+                # Ignore pressing certain keys
+                elif (keycode[1] == 'super' and control in modifiers) or (control in modifiers and keycode[1] in ['s', 'f']):
+                    pass
+
+                # Undo functionality
+                elif (((not modifiers or bool([m for m in modifiers if m not in keycode[1]])) and (text or keycode[1] in ['backspace', 'delete', 'spacebar'])) or
+                      (keycode[1] in ['v', 'x'] and control in modifiers) or
+                      (keycode[1] == 'backspace' and control in modifiers)):
+                    self.undo_func(save=True)
+
+                # Toggle boolean values with space
+                def replace_text(val, *args):
+                    self.text = val
+
+                if keycode[1] == "spacebar" and self.text == 'true':
+                    Clock.schedule_once(functools.partial(replace_text, 'false'), 0)
+
+                elif keycode[1] == "spacebar" and self.text == 'false':
+                    Clock.schedule_once(functools.partial(replace_text, 'true'), 0)
+
+                if keycode[1] == "backspace" and control in modifiers:
+                    original_index = self.cursor_col
+                    new_text, index = constants.control_backspace(self.text, original_index)
+                    self.select_text(original_index - index, original_index)
+                    self.delete_selection()
+                else:
+                    super().keyboard_on_key_down(window, keycode, text, modifiers)
+
+                # Process override defined behavior
+                override_result = self._line.keyboard_overrides(self, window, keycode, text, modifiers)
+
+
+                # Fix scrolling issues with text input after text updates
+                def fix_scroll(*a):
+                    # Fix overscroll (cursor X pos is less than input position
+                    if self.cursor_pos[0] < (self.x):
+                        self.scroll_x = 0
+
+                    # Fix underscroll (cursor X pos is greater than max width, and cursor is at the end of text)
+                    if (self.cursor_pos[0] >= Window.width - self._line.input_padding) and len(self.text) == self.cursor[0]:
+                        self.scroll_x = self._get_text_width(self.text, self.tab_width, self._label_cached) - self.width + 12
+
+                    # Update ellipses for content that's off-screen
+                    self._update_overflow()
+                Clock.schedule_once(fix_scroll, 0)
+
+
+                if override_result:
+                    return override_result
+
+            def scroll_search(self, *a):
+                offset = 12
+                if self.cursor_offset() - self.width + offset > 0 and self.scroll_x > 0:
+                    offset = self.cursor_offset() - self.width + offset
+                else:
+                    offset = 0
+
+                self.search.x = (self.x + 5.3) - offset
+
+                def highlight(*args):
+                    try:
+                        self._line.highlight_text(self._line.last_search)
+                    except AttributeError:
+                        pass
+
+                Clock.schedule_once(highlight, 0)
+
+            def on_touch_down(self, touch):
+                if self._line._screen.popup_widget:
+                    return
+                else:
+                    return super().on_touch_down(touch)
+
+            def _update_data(self, data: dict):
+                default_value = str(data['value'])
+                self.index_func = self._line.index_func
+                self.undo_func = self._line.undo_func
+                self.get_type = self._line.get_type
+                self.eq = self._line.eq_label
+
+                self.text = self._input_validation(default_value)
+                self.original_text = str(self.text)
+
+                # This was formerly: self.line = self._line.line_number
+                # Renamed to indicate it’s the label widget for the line number
+                self.line_number = self._line.line_number
+
+                # Instead of self.index, rely on self._line.index (0-based)
+                # Instead of self.line, rely on self._line.line (1-based)
+
+                if self._line.line == self._line._screen.current_line:
+                    self.grab_focus()
+                else:
+                    def unfocus_later(*a):
+                        self.focused = False
+                        self.do_cursor_movement("cursor_home")
+                        self.scroll_x = 0
+                        # This seems to have problems with not actually updating when scrolling
+                        self._update_overflow()
+                    Clock.schedule_once(unfocus_later, 0)
+
+            def __init__(self, line, **kwargs):
+                super().__init__(**kwargs)
+                self._line = line
+                self._line._original_text = ''
+
+                with self.canvas.after:
+                    self.search = AlignLabel()
+                    self.search.halign = "left"
+                    self.search.color = (1, 1, 1, 1)
+                    self.search.markup = True
+                    self.search.font_name = self.font_name
+                    self.search.font_size = self.font_size
+                    self.search.text_size = self.search.size
+                    self.search.width = 10000
+                    self.search.font_kerning = False
+
+                    self.ovf_left = self.OverflowLabel('left')
+                    self.ovf_right = self.OverflowLabel('right')
+
+                self.bind(scroll_x=self.scroll_search)
+                self.__translate__ = False
+                self.font_kerning = False
+                self.index_func = None
+                self.undo_func = None
+                self.get_type = None
+                self.text = ''
+                self.original_text = ''
+                self.multiline = False
+                self.background_color = (0, 0, 0, 0)
+                self.cursor_width = dp(3)
+                self.eq = None
+                self.scrollable = False
+
+                # Holds the label widget for the line number, not the numeric index
+                self.line_number = None
+
+                self.last_color = (0, 0, 0, 0)
+                self.valign = 'center'
+
+                self.bind(text=self.on_text)
+                self.bind(focused=self.on_focus)
+                Clock.schedule_once(self.on_text, 0)
+
+                self.size_hint_max = (None, None)
+                self.size_hint_min_y = 40
+
+        class CommentLabel(AlignLabel, HoverBehavior):
+            # Hover stuffies
+            def on_enter(self, *args):
+
+                if self.copyable:
+                    if '[u]' in self.text and '[/u]' in self.text and self.color_tag not in self.text:
+                        self.text = self.text.replace('[u]', f'{self.color_tag}[u]')
+                        self.text = self.text.replace('[/u]', '[/u][/color]')
+
+            def on_leave(self, *args):
+
+                if self.copyable:
+                    if '[u]' in self.text and '[/u]' in self.text and self.color_tag in self.text:
+                        self.text = self.text.replace(f'{self.color_tag}[u]', '[u]')
+                        self.text = self.text.replace('[/u][/color]', '[/u]')
+
+            # Normal stuffies
+            def on_ref_press(self, *args):
+                if not self.disabled:
+                    def click(*a):
+                        webbrowser.open_new_tab(self.url)
+
+                    Clock.schedule_once(click, 0)
+
+            def ref_text(self, *args):
+                if 'http://' in self.text or 'https://' in self.text:
+                    self.copyable = True
+
+                    if '[ref=' not in self.text and '[/ref]' not in self.text and self.copyable:
+                        self.original_text = self.text
+                        url_pattern = r'(https?://[^\s]+)'
+
+                        def replace_url(match):
+                            url = match.group(1)
+                            self.url = url
+                            return f'[u]{url}[/u]'
+
+                        # Use re.sub with the pattern
+                        self.text = '[ref=none]' + re.sub(url_pattern, replace_url, self.text, count=1) + '[/ref]'
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.markup = True
+                self.copyable = False
+                self.url = None
+                self.original_text = ''
+                self.color_tag = '[color=#8F8F8F]'
+                self.bind(text=self.ref_text)
+
+        def __setattr__(self, attr, value):
+            if attr == "data" and value:
+                return self._update_data(value)
+
+            super().__setattr__(attr, value)
+
+        def on_index_update(self):
+            # Custom behavior when the index is updated
+            # self.index is 0-based, so line_number text is index+1 for display
+            self.line_number.text = str(self.index + 1)
+            self.value_label._line.index = self.index  # Keep input's parent index in sync
+            self.line_number.size_hint_max_x = (self.spacing * len(str(self.max_line_count)))
 
         def on_resize(self, *args):
             self.key_label.size_hint_max = self.key_label.texture_size
             self.eq_label.size_hint_max = self.eq_label.texture_size
 
-            self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4) + 10
-            self.eq_label.x = self.key_label.x + self.key_label.size_hint_max[0] + (self.spacing * 1.05)
-            self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * 0.67)
+            self.key_label.x = self.line_number.x + self.line_number.size_hint_max[0] + (self.spacing * 1.4) + 10 + self.indent_space
+            self.eq_label.x = self.key_label.x + self.key_label.size_hint_max[0] + (self.spacing * self.eq_spacing[0])
+            self.value_label.x = self.eq_label.x + self.eq_label.size_hint_max[0] + (self.spacing * self.eq_spacing[1])
             self.value_label.y = -6
-            self.value_label.search.x = self.value_label.x + 5.3
-            self.value_label.search.y = self.value_label.y + (5 if 'italic' in self.value_label.font_name.lower() else 7) + 10
 
-            self.value_label.size_hint_min_x = Window.width - self.value_label.x - 30
-            self.value_label.size_hint_max_x = self.value_label.size_hint_min_x
 
+            # Properly position comments
+            if self.is_comment:
+                self.key_label.size_hint_max_y = self.eq_label.size_hint_max_y
+                self.key_label.size_hint_max_x = Window.width
+
+
+            # Properly position all other inputs to just before the edge of the screen
+            else:
+                self.value_label.size_hint_max_x = self.value_label.size_hint_min_x = Window.width - self.value_label.x - self.input_padding
+                self.value_label._update_overflow()
+
+
+            # Properly position search text
+            vl = self.value_label
+            vl.search.x = vl.x + 6
+            vl.search.y = vl.y + (5 if 'italic' in vl.font_name.lower() else 7) + 10
+
+            # Additional cover elements for ghosting or blocking touches
             try:
                 self.ghost_cover_left.x = -10
                 self.ghost_cover_left.size_hint_max_x = self.value_label.x + 14
@@ -22692,399 +24158,264 @@ class ServerPropertiesEditScreen(MenuBackground):
             except AttributeError:
                 pass
 
-        def highlight_text(self, text):
+        def highlight_text(self, text, animate=True, *a):
+            # Attempt to highlight text in both key and value for searching.
             self.last_search = text
             self.key_label.text = self.key_label.original_text
-            self.line_matched = False
+            self.line_matched = self._data['line_matched']
 
-            # Draws highlight around a match
+            if not animate:
+                Animation.stop_all(self.line_number)
+
             def draw_highlight_box(label, *args):
+                label.canvas.before.clear()
+                if self.key_label.url:
+                    return
+
                 def get_x(lb, ref_x):
-                    """ Return the x value of the ref/anchor relative to the canvas """
                     return lb.center_x - lb.texture_size[0] * 0.5 + ref_x
 
                 def get_y(lb, ref_y):
-                    """ Return the y value of the ref/anchor relative to the canvas """
-                    # Note the inversion of direction, as y values start at the top of
-                    # the texture and increase downwards
                     return lb.center_y + lb.texture_size[1] * 0.5 - ref_y
 
-                # Draw a green surround around the refs. Note the sizes y inversion
-                label.canvas.before.clear()
                 for name, boxes in label.refs.items():
                     for box in boxes:
                         with label.canvas.before:
                             Color(*self.select_color)
-                            Rectangle(pos=(get_x(label, box[0]), get_y(label, box[1])),
-                                      size=(box[2] - box[0], box[1] - box[3]))
+                            Rectangle(pos=(get_x(label, box[0]), get_y(label, box[1])), size=(box[2] - box[0], box[1] - box[3]))
 
-            if text.strip():
-                text = text.strip()
+            text = text.strip()
 
-                if "=" in text:
-                    key_text, value_text = [x.strip() for x in text.split("=", 1)]
-                else:
-                    key_text = ''
-                    value_text = ''
+            if text and not self.key_label.url and self.line_matched:
 
                 # Check if search matches in key label
-                if text in self.key_label.text:
-                    self.key_label.text = f'[color=#000000][ref=0]{text}[/ref][/color]'.join(
-                        [x for x in self.key_label.original_text.split(text)])
-                    self.line_matched = True
-                elif key_text and self.key_label.text.endswith(key_text) and self.value_label.original_text.startswith(
-                        value_text):
-                    self.key_label.text = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join(
-                        [x for x in self.key_label.original_text.rsplit(key_text, 1)])
-                    self.line_matched = True
+                if self.line_matched['key']:
+                    self.key_label.text = self.line_matched['key']
                 else:
-                    self.key_label.text = self.key_label.original_text
                     Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
 
                 # Check if search matches in value input/ghost label
-                if text in self.value_label.text:
-                    self.value_label.search.text = f'[color=#000000][ref=0]{text}[/ref][/color]'.join(
-                        [x for x in self.value_label.text.split(text)])
-                    self.line_matched = True
-                elif value_text and self.value_label.text.startswith(
-                        value_text) and self.key_label.original_text.endswith(key_text):
-                    self.value_label.search.text = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join(
-                        [x for x in self.value_label.text.split(value_text, 1)])
-                    self.line_matched = True
+                if self.line_matched['value']:
+                    self.value_label.search.text = self.line_matched['value']
                 else:
                     self.value_label.search.text = self.value_label.text
                     Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
 
-            # Highlight matches
-            if self.line_matched and self.animate:
+            # Highlight matches if line matched
+            if self.line_matched and self._screen.search_bar.text:
                 self.line_number.text = f'[color=#4CFF99]{self.line}[/color]'
                 self.line_number.opacity = 1
-
                 self.on_resize()
+
                 Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
                 Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
+
                 self.value_label.foreground_color = (0, 0, 0, 0)
                 self.value_label.search.opacity = 1
 
-            # Reset labels
             else:
+                # Reset visuals
                 self.line_number.text = str(self.line)
-                self.line_number.opacity = 1 if self.value_label.focused and self.animate else 0.35
+                self.line_number.opacity = (1 if self.value_label.focused else 0.35)
 
                 self.value_label.search.opacity = 0
                 self.value_label.foreground_color = self.value_label.last_color
 
-                # Reset labels
                 Clock.schedule_once(functools.partial(draw_highlight_box, self.value_label.search), 0)
                 Clock.schedule_once(functools.partial(draw_highlight_box, self.key_label), 0)
+
                 self.value_label.search.text = self.value_label.text
                 self.key_label.text = self.key_label.original_text
 
             return self.line_matched
 
-        def allow_animation(self, *args):
-            self.animate = True
+        def _update_data(self, data: dict):
 
-        def __init__(self, line, key, value, max_value, index_func, undo_func, **kwargs):
+            # Remove all widgets to be added in 'self.render_line'
+            self.clear_widgets()
+
+            # First set self.index (0-based), then self.line (1-based)
+            idx = self._screen.line_list.index({'data': data})
+            self.index = idx
+            self.line = idx + 1
+
+            # Add global 'data' parsing here
+            self._data = data
+
+            # Render line as defined in override
+            self.render_line(data)
+
+            # Internally update the value label
+            self.value_label._update_data(data)
+
+            # Update widget sizes
+            Clock.schedule_once(self.on_resize, -1)
+            Clock.schedule_once(functools.partial(self.highlight_text, self._screen.search_bar.text), -1)
+
+        def __init__(self, *args, **kwargs):
             super().__init__(**kwargs)
-
             background_color = constants.brighten_color(constants.background_color, -0.1)
+            self._screen = screen_manager.current_screen
+            self.index_func = self._screen.set_index
+            self.undo_func = self._screen.undo
 
-            # Defaults
-            self.line = line
-            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+            # Store the 1-based line here
+            self.line = None
+            # Store the 0-based index here
+            self.index = None
+
+            self.last_search = None
             self.font_size = dp(25)
-            self.spacing = dp(16)
-            self.size_hint_min_y = 35
-            self.last_search = ''
             self.line_matched = False
-            self.select_color = (0.3, 1, 0.6, 1)
-            self.animate = False
-            self.size_hint_min_y = 50
+            self._data = None
 
-            # Create main text input
-            class EditorInput(TextInput):
-
-                def grab_focus(self, *a):
-                    def focus_later(*args):
-                        self.focus = True
-
-                    Clock.schedule_once(focus_later, 0)
-
-                def on_focus(self, *args):
-                    Animation.stop_all(self.eq)
-                    Animation(opacity=(1 if self.focused else 0.5), duration=0.15).start(self.eq)
-                    try:
-                        Animation(opacity=(1 if self.focused or self.parent.line_matched else 0.35), duration=0.15).start(self.line)
-                    except AttributeError:
-                        pass
-
-                    if self.focused:
-                        self.index_func(self.index)
-
-                        if (len(self.text) * (self.font_size / 1.85)) > self.width:
-                            self.cursor = (len(self.text), self.cursor[1])
-                            Clock.schedule_once(functools.partial(self.do_cursor_movement, 'cursor_end', True), 0)
-                            Clock.schedule_once(functools.partial(self.select_text, 0), 0.01)
-                    else:
-                        self.scroll_x = 0
-
-                # Type color and prediction
-                def on_text(self, *args):
-                    Animation.stop_all(self)
-                    Animation.stop_all(self.search)
-                    self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
-                    self.font_size = dp(25)
-                    self.foreground_color = (0.408, 0.889, 1, 1)
-                    self.cursor_color = (0.358, 0.839, 1, 1)
-                    self.selection_color = (0.308, 0.789, 1, 0.4)
-
-                    # Input validation
-                    self.text = self.text.replace("\n", "").replace("\r", "")
-
-                    # Boolean type prediction
-                    if self.text.lower() in ['true', 'false']:
-                        self.text = self.text.lower()
-                        self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-italic"]}')
-                        self.foreground_color = (1, 0.451, 1, 1)
-                        self.cursor_color = (1, 0.401, 1, 1)
-                        self.selection_color = (0.955, 0.351, 1, 0.4)
-                        self.font_size = dp(23.8)
-
-                    # Float type prediction
-                    elif self.text.replace(".", "").isnumeric():
-                        self.foreground_color = (0.989, 0.591, 0.254, 1)
-                        self.cursor_color = (0.939, 0.541, 0.254, 1)
-                        self.selection_color = (0.889, 0.511, 0.254, 0.4)
-
-                    self.last_color = self.foreground_color
-                    self.original_text = str(self.text)
-                    self.search.text = str(self.text)
-                    self.search.color = self.foreground_color
-                    self.search.font_size = self.font_size
-                    self.search.font_name = self.font_name
-                    self.search.text_size = self.search.size
-                    if self.scroll_x == 0:
-                        self.search.x = self.x + 5.3
-                    self.search.y = self.y + (5 if 'italic' in self.font_name.lower() else 7)
-
-                    if self.search.opacity == 1:
-                        self.foreground_color = (0, 0, 0, 0)
-
-                    def highlight(*args):
-                        try:
-                            self.parent.highlight_text(self.parent.last_search)
-                        except AttributeError:
-                            pass
-
-                    Clock.schedule_once(highlight, 0)
-
-                # Ignore keypresses when popup exists
-                def insert_text(self, substring, from_undo=False):
-                    if screen_manager.current_screen.popup_widget:
-                        return None
-
-                    super().insert_text(substring, from_undo)
-
-                # Add in special key presses
-                def keyboard_on_key_down(self, window, keycode, text, modifiers):
-
-                    # Ignore undo and redo for global effect
-                    if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
-                        return None
-
-                    # Undo functionality
-                    elif (not modifiers and (text or keycode[1] in ['backspace', 'delete'])) or (
-                            keycode[1] == 'v' and control in modifiers) or (
-                            keycode[1] == 'backspace' and control in modifiers):
-                        self.undo_func(save=True)
-
-                    # Toggle boolean values with space
-                    def replace_text(val, *args):
-                        self.text = val
-
-                    if keycode[1] == "spacebar" and self.text == 'true':
-                        Clock.schedule_once(functools.partial(replace_text, 'false'), 0)
-                        return
-                    elif keycode[1] == "spacebar" and self.text == 'false':
-                        Clock.schedule_once(functools.partial(replace_text, 'true'), 0)
-                        return
-
-                    if keycode[1] == "backspace" and control in modifiers:
-                        original_index = self.cursor_col
-                        new_text, index = constants.control_backspace(self.text, original_index)
-                        self.select_text(original_index - index, original_index)
-                        self.delete_selection()
-                    else:
-                        super().keyboard_on_key_down(window, keycode, text, modifiers)
-
-                    # # Fix overscroll
-                    # if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
-                    #     self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.05))
-
-                    # Fix overscroll
-                    if self.cursor_pos[0] < (self.x):
-                        self.scroll_x = 0
-
-                def scroll_search(self, *a):
-                    offset = 12
-                    if self.cursor_offset() - self.width + offset > 0 and self.scroll_x > 0:
-                        offset = self.cursor_offset() - self.width + offset
-                    else:
-                        offset = 0
-
-                    self.search.x = (self.x + 5.3) - offset
-
-                    def highlight(*args):
-                        try:
-                            self.parent.highlight_text(self.parent.last_search)
-                        except AttributeError:
-                            pass
-
-                    Clock.schedule_once(highlight, 0)
-
-                def __init__(self, default_value, line, index, index_func, undo_func, **kwargs):
-                    super().__init__(**kwargs)
-
-                    with self.canvas.after:
-                        self.search = AlignLabel()
-                        self.search.halign = "left"
-                        self.search.color = (1, 1, 1, 1)
-                        self.search.markup = True
-                        self.search.font_name = self.font_name
-                        self.search.font_size = self.font_size
-                        self.search.text_size = self.search.size
-                        self.search.width = 10000
-                        self.search.font_kerning = False
-
-                    self.bind(scroll_x=self.scroll_search)
-
-                    self.__translate__ = False
-                    self.font_kerning = False
-                    self.index = index
-                    self.index_func = index_func
-                    self.undo_func = undo_func
-                    self.text = str(default_value)
-                    self.original_text = str(default_value)
-                    self.multiline = False
-                    self.background_color = (0, 0, 0, 0)
-                    self.cursor_width = dp(3)
-                    self.eq = line.eq_label
-                    self.line = line.line_number
-                    self.last_color = (0, 0, 0, 0)
-                    self.valign = 'center'
-
-                    self.bind(text=self.on_text)
-                    self.bind(focused=self.on_focus)
-                    Clock.schedule_once(self.on_text, 0)
-
-                    self.size_hint_max = (None, None)
-                    self.size_hint_min_y = 40
-
-                    def set_scroll(*a):
-                        if self.text:
-                            self.grab_focus()
-                            self.focused = False
-                            self.on_focus()
-
-                            def scroll(*b):
-                                self.focused = False
-                                screen_manager.current_screen.current_line = None
-
-                            Clock.schedule_once(scroll, 0)
-
-                    Clock.schedule_once(set_scroll, 0.1)
-
-                # Ignore touch events when popup is present
-                def on_touch_down(self, touch):
-                    popup_widget = screen_manager.current_screen.popup_widget
-                    if popup_widget:
-                        return
-                    else:
-                        return super().on_touch_down(touch)
+            # Overridable attributes
+            self.eq_character = '='
+            self.eq_spacing = (0.75, 0.75)
+            self.indent_space = 0
+            self.input_padding = 100
 
             # Line number
             self.line_number = AlignLabel()
             self.line_number.__translate__ = False
-            self.line_number.text = str(line)
+            self.line_number.text = ''
             self.line_number.halign = 'right'
             self.line_number.markup = True
-            self.line_number.size_hint_max_x = (self.spacing * len(str(max_value)))
-            self.line_number.font_name = self.font_name
-            self.line_number.font_size = self.font_size
-            self.line_number.opacity = 0.35
+            self.line_number.opacity = 0
             self.line_number.color = (0.7, 0.7, 1, 1)
             self.line_number.pos_hint = {'center_y': 0.7}
+            self.line_number.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-medium"]}.otf')
+            self.line_number.font_size = self.font_size
 
-            # Key label
-            self.key_label = Label()
-            self.key_label.__translate__ = False
-            self.key_label.text = ('# ' + key[1:].strip()) if key.startswith('#') else key
-            self.key_label.original_text = ('# ' + key[1:].strip()) if key.startswith('#') else key
-            self.key_label.font_name = self.font_name
-            self.key_label.font_size = self.font_size
-            self.key_label.markup = True
-            self.key_label.default_color = "#636363" if key.startswith('#') else "#5E6BFF"
-            self.key_label.color = self.key_label.default_color
-            self.key_label.text_size[0] = 600 if key.startswith('#') else 260
-            self.key_label.size_hint_max_y = 50
-            self.key_label.pos_hint = {'center_y': 0.5}
+            # Read-only key label
+            self._key_labels = {'comment': self.CommentLabel(halign='left'), 'normal': Label()}
+            self.key_label = self._key_labels['normal']
 
-            # '=' sign
+            # Equals label (for key/value pairs)
             self.eq_label = Label()
             self.eq_label.__translate__ = False
-            self.eq_label.text = '='
             self.eq_label.halign = 'left'
+            self.eq_label.opacity = 0
+            self.eq_label.pos_hint = {'center_y': 0.5}
+
+            # Editable value label (EditorInput)
+            self.value_label = self.EditorInput(self)
+
+            # Ghost covers for left / right
+            self.ghost_cover_left = Image(color=background_color)
+            self.ghost_cover_right = Image(color=background_color)
+
+
+        # Methods available to override
+        def configure(self):
+
+            # This method is meant to be overridden to specify configuration options
+
+            self.eq_character = '='
+            self.eq_spacing = (0.75, 0.75)
+
+        def render_line(self, data: dict):
+            self._data = data
+            max_line_count = len(self._screen.line_list)
+
+            # Determines if the line is skip-able when scrolling
+            self.is_comment = data['is_comment']
+            self.inactive = data['inactive']
+            self.line_matched = data['line_matched']
+            self._finished_rendering = False
+            self._comment_padding = None
+
+            # Defaults
+            font_name = 'mono-medium'
+            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
+            self.spacing = dp(16)
+            self.size_hint_min_y = 50
+            self.last_search = ''
+            self.line_matched = False
+            self.select_color = (0.3, 1, 0.6, 1)
+            self.animate = False
+
+            # Line number
+            self.line_number.text = str(self.line)
+            self.line_number.size_hint_max_x = (self.spacing * len(str(max_line_count)))
+            self.line_number.opacity = 0.35
+
+            # Key label
+            self.key_label.url = None
+            self.key_label.__translate__ = False
+            self.key_label.max_lines = 1
+            self.key_label.markup = True
+            self.key_label.text = ''
+            self.key_label.original_text = ''
+            self.key_label.font_name = self.font_name
+            self.key_label.font_size = self.font_size
+            self.key_label.default_color = "#5E6BFF"
+            self.key_label.color = self.key_label.default_color
+            self.key_label.size_hint_max_y = 50
+            self.key_label.pos_hint = {'center_y': 0.5}
+            self.key_label.text_size[0] = 0
+            self.key_label.opacity = 1
+
+            # Show eq character
+            self.eq_label.text = self.eq_character
             self.eq_label.font_name = self.font_name
             self.eq_label.font_size = self.font_size
-            self.eq_label.color = (1, 1, 1, 1)
+            self.eq_label.color = (0, 0, 0, 0)
             self.eq_label.opacity = 0.5
             self.eq_label.pos_hint = {'center_y': 0.5}
 
-            # Value label
-            self.value_label = EditorInput(default_value=value, line=self, index=(line - 1), index_func=index_func, undo_func=undo_func)
-            if not key.startswith('#'):
-                self.add_widget(self.value_label)
-                self.ghost_cover_left = Image(color=background_color)
-                self.ghost_cover_right = Image(color=background_color)
-                self.add_widget(self.ghost_cover_left)
-                self.add_widget(self.ghost_cover_right)
+            # Re-add all widgets in order of Z layer (bottom to top)
+            self.add_widget(self.value_label)
 
-            # Add everything after value
+            # Ghost covers for left / right
+            self.add_widget(self.ghost_cover_left)
+            self.add_widget(self.ghost_cover_right)
+
+            # Add remaining widgets
+            self.add_widget(self.eq_label)
             self.add_widget(self.line_number)
             self.add_widget(self.key_label)
-            if not key.startswith('#'):
-                self.add_widget(self.eq_label)
 
-            Clock.schedule_once(self.key_label.texture_update, -1)
-            Clock.schedule_once(self.eq_label.texture_update, -1)
+        @staticmethod
+        def get_type(value: str):
+            data_type = str
 
-            self.bind(size=self.on_resize, pos=self.on_resize)
+            # Define custom behavior for determining data types
 
-            Clock.schedule_once(self.on_resize, 0)
-            Clock.schedule_once(self.allow_animation, 1)
+            # Structured data detection
+            if ((value.strip().startswith('{') and value.strip().endswith('}'))
+            or (value.strip().startswith('[') and value.strip().endswith(']'))
+            or (value.strip().startswith('(') and value.strip().endswith(')'))):
+                data_type = dict
 
-    # Search bar input at the bottom
-    class PropertiesSearchInput(TextInput):
+            # Boolean detection
+            elif value.lower() in ['true', 'false']:
+                data_type = bool
 
-        def _on_focus(self, instance, value, *largs):
+            # Numeric detection (int or float)
+            elif value.replace(".", "").replace("-", "").isdigit():
+                data_type = float
 
-            # Update screen focus value on next frame
-            def update_focus(*args):
-                screen_manager.current_screen._input_focused = self.focus
+            return data_type
 
-            Clock.schedule_once(update_focus, 0)
+        @staticmethod
+        def keyboard_overrides(self, window, keycode, text, modifiers):
 
-            super(type(self), self)._on_focus(instance, value)
-            Animation.stop_all(self.parent.input_background)
-            Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
+            # Define more keyboard processing behavior for input
+
+            pass
+
+    # Search bar for editor content
+    class SearchInput(TextInput):
 
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
+            self._screen = screen_manager.current_screen
 
             self.original_text = ''
             self.history_index = 0
 
+            self.size_hint_max_y = 50
             self.multiline = False
             self.halign = "left"
             self.hint_text = "search for text..."
@@ -23101,33 +24432,46 @@ class ServerPropertiesEditScreen(MenuBackground):
 
             self.bind(on_text_validate=self.on_enter)
 
+        def _on_focus(self, instance, value, *largs):
+            def update_focus(*args):
+                self._screen._input_focused = self.focus
+            Clock.schedule_once(update_focus, 0)
+
+            super(type(self), self)._on_focus(instance, value)
+            Animation.stop_all(self.parent.input_background)
+            Animation(opacity=0.9 if self.focus else 0.35, duration=0.2, step=0).start(self.parent.input_background)
+
         def grab_focus(self, *a):
             def focus_later(*args):
                 self.focus = True
-
             Clock.schedule_once(focus_later, 0)
 
         def on_enter(self, value):
             self.grab_focus()
 
-        # Input validation
         def insert_text(self, substring, from_undo=False):
-            if screen_manager.current_screen.popup_widget:
+            if self._screen.popup_widget:
                 return None
-
             substring = substring.replace("\n", "").replace("\r", "")
             return super().insert_text(substring, from_undo=from_undo)
 
         def keyboard_on_key_down(self, window, keycode, text, modifiers):
+            if self.parent.popup_widget:
+                return None
 
-            # Ignore undo and redo for global effect
+            if keycode[1] == 'escape' and self.focused:
+                self.focused = False
+                if self.parent:
+                    self.parent.focus_input()
+                return True
+
             if keycode[1] in ['r', 'z', 'y'] and control in modifiers:
                 return None
 
             if keycode[1] == "backspace" and control in modifiers:
                 original_index = self.cursor_col
-                new_text, index = constants.control_backspace(self.text, original_index)
-                self.select_text(original_index - index, original_index)
+                new_text, idx = constants.control_backspace(self.text, original_index)
+                self.select_text(original_index - idx, original_index)
                 self.delete_selection()
             else:
                 super().keyboard_on_key_down(window, keycode, text, modifiers)
@@ -23136,19 +24480,15 @@ class ServerPropertiesEditScreen(MenuBackground):
             if self.cursor_pos[0] > (self.x + self.width) - (self.width * 0.05):
                 self.scroll_x += self.cursor_pos[0] - ((self.x + self.width) - (self.width * 0.05))
 
-            # Fix overscroll
             if self.cursor_pos[0] < (self.x):
                 self.scroll_x = 0
 
         def fix_overscroll(self, *args):
-
             if self.cursor_pos[0] < (self.x):
                 self.scroll_x = 0
 
-        # Ignore touch events when popup is present
         def on_touch_down(self, touch):
-            popup_widget = screen_manager.current_screen.popup_widget
-            if popup_widget:
+            if self._screen.popup_widget:
                 return
             else:
                 return super().on_touch_down(touch)
@@ -23158,15 +24498,18 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.name = self.__class__.__name__
         self.menu = 'init'
 
+        self._config_data = None
+        self.path = None
+        self.file_name = None
+
+        self.server_obj = None
         self.header = None
-        self.line_list = None
         self.search_bar = None
         self.scroll_widget = None
         self.scroll_layout = None
         self.input_background = None
         self.fullscreen_shadow = None
         self.match_label = None
-        self.server_properties = None
         self.controls_button = None
 
         self.undo_history = []
@@ -23174,7 +24517,11 @@ class ServerPropertiesEditScreen(MenuBackground):
         self.last_search = ''
         self.match_list = []
         self.modified = False
+
+        # EditorRoot.current_line is now consistently 1-based
         self.current_line = None
+
+        self.line_list = []
 
         self.background_color = constants.brighten_color(constants.background_color, -0.1)
 
@@ -23183,385 +24530,485 @@ class ServerPropertiesEditScreen(MenuBackground):
             self.color = Color(*self.background_color, mode='rgba')
             self.rect = Rectangle(pos=self.pos, size=self.size)
 
-    # index_func
+    # Update current file loaded in editor
+    def update_path(self, data: dict):
+        self._config_data = data
+        self.path = self._config_data['path']
+        self.file_name = os.path.basename(self.path)
+
+    # Set current line as 1-based index
     def set_index(self, index, **kwargs):
         self.current_line = index
 
-    def focus_input(self, new_input=None, highlight=False):
+    # Highlight specific input
+    def focus_input(self, new_input=None, highlight=False, force_end=True, grab_focus=False):
         if not new_input:
-            new_input = self.line_list[self.current_line]
+            if self.current_line:
+                return self.scroll_to_line(self.current_line, highlight=highlight, grab_focus=grab_focus)
+            else:
+                return None
 
-        # Highlight focused input
         if highlight:
             original_color = constants.convert_color(new_input.key_label.default_color)['rgb']
             new_input.key_label.color = constants.brighten_color(original_color, 0.2)
             Animation.stop_all(new_input.key_label)
             Animation(color=original_color, duration=0.5).start(new_input.key_label)
 
-        new_input.value_label.grab_focus()
-        self.scroll_widget.scroll_to(new_input.value_label, padding=30, animate=True)
+        if grab_focus:
+            new_input.value_label.grab_focus()
 
-    # Changes input on different keypresses
+        # Force cursor to the end of the line
+        if force_end:
+            Clock.schedule_once(lambda *_: new_input.value_label.do_cursor_movement('cursor_end', True), 0)
+
+        self.set_index(new_input.line)
+
+    # Scroll to any line in RecycleView
+    def scroll_to_line(self, index: int, highlight=False, wrap_around=False, select=True, grab_focus=False):
+        Animation.stop_all(self.scroll_widget, 'scroll_y')
+        line_height = 50
+        padding_lines = 5
+        total_lines = len(self.line_list)
+        content_height = total_lines * line_height
+        viewport_height = self.scroll_widget.height - self.search_bar.height - self.header.height
+
+        # If the content is smaller than or equal to the viewport, don't scroll.
+        if content_height <= viewport_height:
+            new_scroll_y = 1
+        else:
+            max_offset = content_height - viewport_height
+
+            # Compute the top (in pixels) of the target line in the full content.
+            target_line_top = (index - 1) * line_height
+
+            # Set how many lines you want as padding.
+            padding_pixels = padding_lines * line_height
+
+            # Determine where in the viewport the target line should appear.
+            # We choose a position opposite to the direction of travel:
+            # - If scrolling downward (new index > current), position the target line
+            #   near the bottom so that the extra padding appears above it.
+            # - If scrolling upward (new index < current), position it near the top,
+            #   leaving extra space (padding) below it.
+            if self.current_line is not None:
+                if index > self.current_line:
+                    # Scrolling downward: target line should appear near the bottom.
+                    desired_y = viewport_height - padding_pixels
+                elif index < self.current_line:
+                    # Scrolling upward: target line should appear near the top.
+                    desired_y = padding_pixels
+                else:
+                    desired_y = viewport_height / 2
+            else:
+                desired_y = viewport_height / 2
+
+            # Compute the new scroll offset (in pixels) so that the target line’s
+            # position in the viewport becomes the desired_y value.
+            target_offset = target_line_top - desired_y
+
+            # Clamp to valid scroll range.
+            target_offset = max(0, min(target_offset, max_offset))
+            new_scroll_y = 1 - (target_offset / max_offset)
+
+        def after_scroll(*a):
+            [self.focus_input(line, highlight, True, grab_focus) for line in self.scroll_layout.children if line.line == index]
+
+            # If a search term is active, update highlights.
+            if self.search_bar.text:
+                Clock.schedule_once(lambda *_: [line.highlight_text(self.search_bar.text, False) for line in self.scroll_layout.children], 0)
+
+        # Only scroll when there is a scrollbar (i.e. not all lines are generated).
+        if len(self.scroll_layout.children) < total_lines:
+            if select:
+                Animation(scroll_y=new_scroll_y, duration=0.1).start(self.scroll_widget)
+                Clock.schedule_once(after_scroll, 0.4 if wrap_around else 0.11)
+            else:
+                self.scroll_widget.scroll_y = new_scroll_y
+                self.set_index(index)
+        else:
+            if select:
+                after_scroll()
+
+    # Move between inputs with arrow keys
     def switch_input(self, position):
         if self.current_line is None:
-            self.set_index(0)
+            # Default to line 1 if current_line is unset
+            self.set_index(1)
 
+        found_input = False
+        wrap_around = False
+
+        # Keep the original increments to preserve user’s existing navigation behavior
         index = 0
-
-        # Set initial index
         if position == 'up':
-            index = self.current_line - 1
-
+            index = self.current_line - 2
         elif position == 'down':
-            index = self.current_line + 1
-
+            index = self.current_line
         elif position in ['pagedown', 'end']:
             position = 'pagedown'
             index = len(self.line_list) - 1
-
         elif position in ['pageup', 'home']:
             position = 'pageup'
             index = 0
 
-
-        # Loop over indexes until next match to support rollover
-        found_input = False
-        while not found_input:
-            ignore_input = False
-
-            # Rollover indexes
+        # Loop until full circle or input is found
+        attempts = 0
+        while not found_input and attempts <= len(self.line_list):
             if index >= len(self.line_list):
                 index = 0
-            elif index <= 0 and 'page' not in position:
+                wrap_around = True
+            elif index < 0:
                 index = len(self.line_list) - 1
+                wrap_around = True
 
-            new_input = self.line_list[index]
+            new_input = self.line_list[index]['data']
+            ignore_input = False
+            if not new_input['inactive']:
 
+                if self.match_list and self.last_search:
+                    if not new_input['line_matched']:
+                        ignore_input = True
 
-            # Ignore result if not a search match
-            if self.match_list and self.last_search:
-                if not new_input.line_matched:
-                    ignore_input = True
+                if not ignore_input:
+                    try:
+                        # scroll_to_line expects a 1-based index
+                        self.scroll_to_line(index + 1, wrap_around=wrap_around, grab_focus=True)
+                        break
+                    except AttributeError:
+                        pass
 
+            if 'up' in position:
+                index = index - 1
+            else:
+                index = index + 1
 
-            if not new_input.key_label.text.startswith("#") and not ignore_input:
+            attempts += 1
 
-                try:
-                    self.focus_input(new_input)
-                    break
+    # Generate search in background
+    @staticmethod
+    def _check_match_logic(data: dict, search_text: str):
+        # Override logic here to parse search matches with delimiters like ":" or "=" differently
 
-                except AttributeError:
-                    pass
+        key_text = ''
+        value_text = ''
 
-            index = index + (-1 if position == 'up' else 1)
+        return key_text, value_text
+
+    def check_match(self, data: dict, search_text: str):
+        line_matched = False
+        key_matched = False
+        value_matched = False
+
+        if search_text:
+            search_text = kivy.utils.escape_markup(search_text.strip())
+
+            # Detect different types of key/value pairs
+            key_text, value_text = self._check_match_logic(data, search_text)
+
+            key_data = kivy.utils.escape_markup(str(data['key']))
+            value_data = kivy.utils.escape_markup(str(data['value']))
+
+            # Check if search matches in key label
+            if search_text in key_data:
+                key_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join([x for x in key_data.split(search_text)])
+            elif key_text and key_data.endswith(key_text) and value_text.startswith(value_text):
+                key_matched = f'[color=#000000][ref=0]{key_text}[/ref][/color]'.join([x for x in key_data.rsplit(key_text, 1)])
+
+            # Check if search matches in value input/ghost label
+            if search_text in value_data:
+                value_matched = f'[color=#000000][ref=0]{search_text}[/ref][/color]'.join([x for x in value_data.split(search_text)])
+            elif value_text and value_data.startswith(value_text) and key_data.endswith(key_text):
+                value_matched = f'[color=#000000][ref=0]{value_text}[/ref][/color]'.join([x for x in value_data.split(value_text, 1)])
+
+            if key_matched or value_matched:
+                line_matched = {'key': key_matched, 'value': value_matched}
+
+        data['line_matched'] = line_matched
+        return line_matched
 
     def search_text(self, obj, text, *args):
         self.last_search = text
         self.match_list = []
         first_match = None
 
-        for line in self.line_list:
-            result = line.highlight_text(text)
+        # Update search data in background
+        for x, line in enumerate(self.line_list):
+            result = self.check_match(line['data'], text)
             if result:
                 self.match_list.append(line)
-
             if result and not first_match:
                 first_match = line
 
-        if first_match:
-            self.set_index(first_match.line-1)
-            self.scroll_widget.scroll_to(first_match, padding=30, animate=True)
+        # Update all visible widgets
+        if not text:
+            self.scroll_widget.refresh_from_data()
 
-        # Handle match text
+        for line in self.scroll_layout.children:
+            Clock.schedule_once(functools.partial(line.highlight_text, text), -1)
+
+        # Scroll to first match
+        if first_match:
+            index = self.line_list.index(first_match)
+            # scroll_to_line expects 1-based
+            self.scroll_to_line(index + 1, select=False, grab_focus=True)
+
+        # Dirty hack to force focus to search bar
+        for x in range(30):
+            Clock.schedule_once(self.search_bar.grab_focus, 0.01 * x)
+
+        # Show match count
         try:
             Animation.stop_all(self.match_label)
             Animation(opacity=(1 if text and self.match_list else 0.35 if text else 0), duration=0.1).start(self.match_label)
-            if "=" in text:
-                new_text = '='.join([x.strip() for x in text.split("=", 1)]).strip()
-            else:
-                new_text = text.strip()
-            matches = sum([f'{x.key_label.text}={x.value_label.text}'.count(new_text) for x in self.match_list])
-            self.match_label.text = f'{matches} match{"" if matches == 1 else "es"}'
+            matches = 0
+            search_str = text.strip()
+            if search_str:
+                for x in self.match_list:
+                    total_str = str(x['data']['key']) + str(x['data']['value'])
+                    matches += total_str.count(search_str)
+            self.match_label.text = f'{matches} match{"es" if matches != 1 else ""}'
         except AttributeError:
             pass
 
-    # Saves info to self.undo/redo_history, and handles changing values
-    def undo(self, save=False, undo=False):
-        if save:
-            self.redo_history = []
-            line = self.line_list[self.current_line]
-            same_line = False
+    # Undo/redo behavior
+    def _apply_action(self, action, undo=True):
+        """
+        Called to undo or redo a structural action:
+          - 'insert_line': remove or re-insert
+          - 'remove_line': re-insert or remove
+        """
+        a_type = action['type']
+        line_data = action['data']  # either the dict or the (key,value,...) tuple
+        idx = action['index']
 
-            if self.undo_history:
-                if self.undo_history[-1][0] == line.line:
-                    same_line = True
-
-            if not same_line:
-                self.undo_history.append((line.line, line.value_label.original_text))
-
-        else:
+        if a_type == 'insert_line':
             if undo:
-                line = self.undo_history[-1]
-                line_obj = self.line_list[line[0]-1]
-                self.redo_history.append([line[0], line_obj.value_label.original_text])
-                line_obj.value_label.text = line[1]
-                self.undo_history.pop(-1)
-
+                # Undo an insert => remove it
+                self.remove_line(idx, refresh=True)
+                self.scroll_to_line(idx, grab_focus=True)
             else:
-                line = self.redo_history[-1]
-                line_obj = self.line_list[line[0]-1]
-                self.undo_history.append([line[0], line_obj.value_label.original_text])
-                line_obj.value_label.text = line[1]
-                self.redo_history.pop(-1)
-            self.focus_input(line_obj, highlight=True)
+                # Redo an insert => put it back
+                self.insert_line(line_data, idx, refresh=True)
+                self.scroll_to_line(idx + 1, highlight=True, grab_focus=True)
 
-        # print(self.undo_history, self.redo_history)
+        elif a_type == 'remove_line':
+            if undo:
+                # Undo a remove => re-insert it
+                self.insert_line(line_data, idx, refresh=True)
+                self.scroll_to_line(idx + 1, highlight=True, grab_focus=True)
+            else:
+                # Redo a remove => remove again
+                self.remove_line(idx, refresh=True)
+                self.scroll_to_line(idx, grab_focus=True)
 
-    def generate_menu(self, **kwargs):
-        server_obj = constants.server_manager.current_server
-        server_obj.reload_config()
+    def undo(self, save=False, undo=False, action=None):
+        """
+        Handles both structural (insert/remove line) and text changes,
+        with exactly the one-step-per-line logic you had before.
 
-        # Reset values
-        self.match_label = None
-        self.undo_history = []
-        self.redo_history = []
-        self.last_search = ''
-        self.match_list = []
-        self.modified = False
+        - `save=True, action=...` => record a *structural* action
+        - `save=True, action=None` => record a *text-change* action
+        - `undo=True` => perform undo
+        - `undo=False` => perform redo
+        """
 
-        # Get 'server.properties' remotely if needed
-        if server_obj._telepath_data:
-            server_obj._clear_attr_cache()
-            self.server_properties = []
-            for key, value in server_obj.server_properties.items():
-                if not (key or value):
-                    continue
+        # 1) Save a *structural* action
+        if save and action is not None:
+            self.redo_history.clear()
+            self.undo_history.append(action)
+            return
 
-                if key.startswith("#"):
-                    line = "#" + key.strip('#').strip()
-                else:
-                    if isinstance(value, bool):
-                        value = str(value).lower()
-                    line = f"{key}={value}"
+        # 2) Save a *text-change* action
+        if save and action is None:
+            self.redo_history.clear()
+            if self.current_line is not None and 1 <= self.current_line <= len(self.line_list):
 
-                self.server_properties.append(line)
+                # We already store EditorRoot.current_line as 1-based
+                line_num = self.current_line
+
+                # Grab the current line's "original_value" from the data
+                old_text = self.line_list[line_num - 1]['data']['original_value']
+
+                # If the last undo entry is text for the *same line*, update it
+                if self.undo_history and not isinstance(self.undo_history[-1], dict):
+                    last = self.undo_history[-1]  # e.g. (line_num, old_text)
+                    if last[0] == line_num:
+                        # "Update existing action"
+                        self.undo_history[-1] = (line_num, old_text)
+                        return
+
+                # Otherwise, create a new text-based action
+                self.undo_history.append((line_num, old_text))
+
+            return
+
+        # 3) Actually perform Undo or Redo
+        if undo:
+            # UNDO
+            if not self.undo_history:
+                return
+            last_action = self.undo_history.pop()
+
+            if isinstance(last_action, dict):
+                # structural
+                self._apply_action(last_action, undo=True)
+                self.redo_history.append(last_action)
+            else:
+                # text-based => (line_num, old_text)
+                line_num, old_text = last_action
+                if 1 <= line_num <= len(self.line_list):
+                    # Before reverting, store the current text for Redo
+                    current_text = self.line_list[line_num - 1]['data']['value']
+                    self.redo_history.append((line_num, current_text))
+
+                    # Revert to old_text in the data
+                    self.line_list[line_num - 1]['data']['value'] = old_text
+
+                    # Also revert 'original_value' if you want it fully consistent:
+                    self.line_list[line_num - 1]['data']['original_value'] = old_text
+
+                    # Refresh the RecycleView so the UI sees the change
+                    self.scroll_widget.data = self.line_list
+                    self.scroll_widget.refresh_from_data()
+
+                    # Optionally scroll/focus that line
+                    self.scroll_to_line(line_num, highlight=True, grab_focus=True)
 
         else:
-            properties = constants.server_path(server_obj.name, 'server.properties')
-            with open(properties, 'r') as f:
-                self.server_properties = f.read().strip().splitlines()
+            # REDO
+            if not self.redo_history:
+                return
+            last_action = self.redo_history.pop()
 
+            if isinstance(last_action, dict):
+                # structural
+                self._apply_action(last_action, undo=False)
+                self.undo_history.append(last_action)
+            else:
+                # text-based => (line_num, old_text)
+                line_num, old_text = last_action
+                if 1 <= line_num <= len(self.line_list):
+                    # store the current text in Undo before overwriting
+                    current_text = self.line_list[line_num - 1]['data']['value']
+                    self.undo_history.append((line_num, current_text))
 
-        # Scroll list
-        self.scroll_widget = ScrollViewWidget(position=(0.5, 0.5))
-        self.scroll_layout = GridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30])
+                    # revert data
+                    self.line_list[line_num - 1]['data']['value'] = old_text
+                    self.line_list[line_num - 1]['data']['original_value'] = old_text
 
+                    # refresh
+                    self.scroll_widget.data = self.line_list
+                    self.scroll_widget.refresh_from_data()
+                    self.scroll_to_line(line_num, highlight=True, grab_focus=True)
 
-        # Bind / cleanup height on resize
-        def resize_scroll(call_widget, grid_layout, *args):
-            call_widget.height = Window.height // 1.23
+    def _refresh_viewport(self):
+        # Force refresh of all data in the viewport
+        self.scroll_widget.data = self.line_list
+        self.scroll_widget.refresh_from_data()
 
-            self.fullscreen_shadow.y = self.height + self.x - 3
-            self.fullscreen_shadow.width = Window.width
+        # If the content is smaller than or equal to the viewport, don't allow overscroll
+        total_lines = len(self.line_list)
+        content_height = total_lines * 50
+        viewport_height = self.scroll_widget.height - self.search_bar.height
+        self.scroll_widget.always_overscroll = content_height > viewport_height
 
-            search_pos = 47
+    # Line behavior
+    def insert_line(self, data: (tuple, list, dict), index: int = None, refresh=True):
 
-            self.search_bar.pos = (self.x, search_pos)
-            self.input_background.pos = (self.search_bar.pos[0] - 15, self.search_bar.pos[1] + 8)
+        # Override data parsing in child editors for specific line formats
+        if 'data' not in data:
+            data = {'data': data}
 
-            self.search_bar.size_hint_max_x = Window.width - self.search_bar.x - 200
+        if index is not None:
+            self.line_list.insert(index, data)
 
+        else:
+            self.line_list.append(data)
 
+        # Update layout with new data
+        if refresh:
+            self.current_line = None
 
-        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
-        self.resize_bind()
-        Window.bind(on_resize=self.resize_bind)
-        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
-        self.scroll_layout.id = 'scroll_content'
+            for line in self.scroll_layout.children:
+                line.value_label.focused = False
 
+            self._refresh_viewport()
 
-        # Scroll gradient
-        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
-        scroll_top.color = self.background_color
-        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
-        scroll_bottom.color = self.background_color
-        scroll_bottom.y = 115
+        return data
 
+    def remove_line(self, index: int, refresh=True):
+        if index in range(len(self.line_list)):
+            self.current_line = None
 
-        # Generate buttons on page load
-        buttons = []
-        float_layout = FloatLayout()
-        float_layout.id = 'content'
+            for line in self.scroll_layout.children:
+                line.value_label.focused = False
 
+            data = self.line_list.pop(index)
 
-        # Generate editor content
-        props = server_obj.server_properties
-        self.current_line = None
-        self.undo_history = []
-        self.redo_history = []
+            # Update layout with new data
+            if refresh:
+                self._refresh_viewport()
+
+            return data
+
+    # Load/save behavior
+    def load_file(self):
+
+        # Overrides need to open and read 'self.path' and parse it into a data structure for 'self.lines'
+
         self.line_list = []
-        for x, pair in enumerate(props.items(), 1):
-            line = self.EditorLine(line=x, key=pair[0], value=pair[1], max_value=len(props), index_func=self.set_index, undo_func=self.undo)
-            self.line_list.append(line)
-            self.scroll_layout.add_widget(line)
 
+        for line in self.read_from_disk():
+            line = line.rstrip()
 
-        # Append scroll view items
-        self.scroll_widget.add_widget(self.scroll_layout)
-        float_layout.add_widget(self.scroll_widget)
-        float_layout.add_widget(scroll_top)
-        float_layout.add_widget(scroll_bottom)
+            data = {
+                'key': '',
+                'value': line,
+                'original_value': line,
+                'is_comment': False,
+                'inactive': False,
+                'line_matched': False
+            }
 
+            self.insert_line(data, refresh=False)
 
-        # Fullscreen shadow
-        self.fullscreen_shadow = Image()
-        self.fullscreen_shadow.allow_stretch = True
-        self.fullscreen_shadow.keep_ratio = False
-        self.fullscreen_shadow.size_hint_max = (None, 50)
-        self.fullscreen_shadow.color = (0, 0, 0, 1)
-        self.fullscreen_shadow.opacity = 0
-        self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
-        float_layout.add_widget(self.fullscreen_shadow)
+        return self.line_list
 
+    def save_file(self):
 
-        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
+        # Overrides need to convert 'self.lines' back to a multi-line string, and pass it into 'self.write_to_disk()'
 
-        for button in buttons:
-            float_layout.add_widget(button)
-
-        float_layout.add_widget(generate_title(f"Server Settings: '{server_obj.name}'"))
-        float_layout.add_widget(generate_footer(f"{server_obj.name}, Settings, Edit 'server.properties'"))
-
-        self.add_widget(float_layout)
-
-
-        # Add search bar
-        self.search_bar = self.PropertiesSearchInput(size_hint_max_y=50)
-        self.search_bar.bind(text=self.search_text)
-        self.add_widget(self.search_bar)
-
-        # Match label
-        self.match_label = AlignLabel()
-        self.match_label.text = '0 matches'
-        self.match_label.halign = "right"
-        self.match_label.color = (0.6, 0.6, 1, 1)
-        self.match_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
-        self.match_label.font_size = sp(24)
-        self.match_label.y = 60
-        self.match_label.padding_x = 10
-        self.match_label.opacity = 0
-        self.add_widget(self.match_label)
-
-
-        # Input icon
-        self.input_background = Image()
-        self.input_background.default_opacity = 0.35
-        self.input_background.color = self.search_bar.foreground_color
-        self.input_background.opacity = self.input_background.default_opacity
-        self.input_background.allow_stretch = True
-        self.input_background.size_hint = (None, None)
-        self.input_background.height = self.search_bar.size_hint_max_y / 1.45
-        self.input_background.source = os.path.join(constants.gui_assets, 'icons', 'search.png')
-        self.add_widget(self.input_background)
-
-        # Controls button
-        def show_controls():
-
-            controls_text = """This menu allows you to edit additional configuration options provided by the 'server.properties' file. Refer to the Minecraft Wiki for more information. Shortcuts are provided for ease of use:
-
-
-• Press 'CTRL+Z' to undo, and 'CTRL+R'/'CTRL+Y' to redo
-
-• Press 'CTRL+S' to save modifications
-
-• Press 'CTRL-Q' to quit the editor
-
-• Press 'CTRL+F' to search for data
-
-• Press 'SPACE' to toggle boolean values (e.g. true, false)""" if constants.os_name != 'macos' else """This menu allows you to edit additional configuration options provided by the 'server.properties' file. Refer to the Minecraft Wiki for more information. Shortcuts are provided for ease of use:
-
-
-• Press 'CMD+Z' to undo, and 'CMD+R'/'CMD+Y' to redo
-
-• Press 'CMD+S' to save modifications
-
-• Press 'CMD+Q' to quit the editor
-
-• Press 'CMD+F' to search for data
-
-• Press 'SPACE' to toggle boolean values (e.g. true, false)"""
-
-            Clock.schedule_once(
-                functools.partial(
-                    self.show_popup,
-                    "controls",
-                    "Controls",
-                    controls_text,
-                    (None)
-                ),
-                0
-            )
-
-        self.controls_button = IconButton('controls', {}, (70, 110), (None, None), 'question.png', clickable=True, anchor='right', click_func=show_controls)
-        float_layout.add_widget(self.controls_button)
-
-
-        # Header
-        self.header = BannerObject(
-            pos_hint = {"center_x": (0.5), "center_y": 0.9},
-            size = (250, 40),
-            color = (0.4, 0.682, 1, 1),
-            text = "Viewing 'server.properties'",
-            icon = "eye-outline.png"
-        )
-        self.add_widget(self.header)
-
-
-        # Save & quit button
-        self.controls_button = IconButton('save & quit', {}, (120, 110), (None, None), 'save-sharp.png', clickable=True, anchor='right', click_func=self.save_and_quit, text_offset=(-5, 50))
-        float_layout.add_widget(self.controls_button)
-
-
-
-    # Writes config to server.properties file, and reloads it in the server manager if the server is not running
-    def save_config(self):
-        server_obj = constants.server_manager.current_server
-        final_config = {}
+        final_content = ''
 
         for line in self.line_list:
-            key = line.key_label.original_text
-            value = line.value_label.text
+            line = line['data']
+            key_str = ''
+            val_str = str(line['value']).strip()
 
-            if not (key or value):
-                continue
+            final_content += str(f"{key_str}{val_str}".rstrip() + '\n')
 
-            if key.startswith("# "):
-                final_config["#" + key[1:].strip()] = ''
-            else:
-                final_config[key] = value.strip()
+        self.write_to_disk(final_content)
 
-        server_obj.server_properties = final_config
-        server_obj.write_config()
-        server_obj.reload_config()
+    def read_from_disk(self) -> list:
+        with open(self.path, 'r', encoding='utf-8') as f:
+            content = f.read().strip('\r\n')
+            content = content.replace(r'\n', '\\n').replace(r'\r', '\\r')
+            return content.splitlines()
 
-        self.server_properties = []
-        for line in self.line_list:
-            key = line.key_label.original_text
-            value = line.value_label.text
+    def write_to_disk(self, content: str):
+        try:
+            save_config_file(self._config_data, content)
+        except Exception as e:
+            if constants.debug:
+                print("Error saving file:", e)
+            return False
 
-            if not (key or value):
-                continue
+        def set_banner(*a):
+            self.set_banner_status(False)
 
-            if key.startswith("# "):
-                line = "#" + key[1:].strip()
-            else:
-                line = f"{key}={value}"
-            self.server_properties.append(line)
+        Clock.schedule_once(set_banner, 0)
 
-        self.set_banner_status(False)
-
-        # Show banner if server is running
-        if server_obj.running:
+        if self.server_obj.running:
             Clock.schedule_once(
                 functools.partial(
                     screen_manager.current_screen.show_banner,
@@ -23572,19 +25019,19 @@ class ServerPropertiesEditScreen(MenuBackground):
                     {"center_x": 0.5, "center_y": 0.965}
                 ), 0
             )
-
         else:
             Clock.schedule_once(
                 functools.partial(
                     screen_manager.current_screen.show_banner,
                     (0.553, 0.902, 0.675, 1),
-                    "'server.properties' was saved successfully",
+                    f"'${self.file_name}$' was saved successfully",
                     "checkmark-circle-sharp.png",
                     2.5,
                     {"center_x": 0.5, "center_y": 0.965}
                 ), 0
             )
 
+    # Menu navigation
     def quit_to_menu(self, *a):
         for button in self.walk():
             try:
@@ -23595,87 +25042,45 @@ class ServerPropertiesEditScreen(MenuBackground):
                 continue
 
     def save_and_quit(self, *a):
-        self.save_config()
+        self.save_file()
         self.quit_to_menu()
 
-    # Reset results of all cells
     def reset_data(self):
-        server_obj = constants.server_manager.current_server
-        props = server_obj.server_properties
-        self.undo_history = []
-
-        for x, pair in enumerate(props.items(), 0):
-            line = self.line_list[x]
-            key, value = pair
-            if key.startswith("#"):
-                key = key.replace("#", "# ", 1)
-                line.key_label.text = key.strip()
-            else:
-                line.key_label.text = key.strip()
-                if isinstance(value, bool):
-                    value = str(value).lower().strip()
-
-                if line.value_label.text != str(value):
-                    self.redo_history.append((x+1, line.value_label.text))
-
-                line.value_label.text = str(value)
-
+        self.load_file()
         self.set_banner_status(False)
 
-    # Checks if data in editor matches saved file
     def check_data(self):
-
-        for line in self.line_list:
-            key = line.key_label.original_text
-            value = line.value_label.text
-
-            if not (key or value):
-                continue
-
-            if key.startswith("#"):
-                line = "#" + key.strip("#").strip()
-            else:
-                line = f"{key}={value}"
-
-            if line not in self.server_properties:
-                return False
-
-        return True
+        return not self.undo_history
 
     def set_banner_status(self, changed=False):
-
         if changed != self.modified:
-            # Change header
             self.remove_widget(self.header)
             del self.header
 
             if changed:
                 self.header = BannerObject(
-                    pos_hint = {"center_x": (0.5), "center_y": 0.9},
-                    size = (250, 40),
-                    color = "#F3ED61",
-                    text = "Editing 'server.properties'",
-                    icon = "pencil-sharp.png",
-                    animate = True
+                    pos_hint={"center_x": 0.5, "center_y": 0.9},
+                    size=(250, 40),
+                    color="#F3ED61",
+                    text=f"Editing '${self.file_name}$'",
+                    icon="pencil-sharp.png",
+                    animate=True
                 )
                 self.add_widget(self.header)
             else:
                 self.header = BannerObject(
-                    pos_hint = {"center_x": (0.5), "center_y": 0.9},
-                    size = (250, 40),
-                    color = (0.4, 0.682, 1, 1),
-                    text = "Viewing 'server.properties'",
-                    icon = "eye-outline.png",
-                    animate = True
+                    pos_hint={"center_x": 0.5, "center_y": 0.9},
+                    size=(250, 40),
+                    color=(0.4, 0.682, 1, 1),
+                    text=f"Viewing '${self.file_name}$'",
+                    icon="eye-outline.png",
+                    animate=True
                 )
                 self.add_widget(self.header)
 
         self.modified = changed
 
     def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        # print('The key', keycode, 'have been pressed')
-        # print(' - text is %r' % text)
-        # print(' - modifiers are %r' % modifiers)
 
         # Ignore key presses when popup is visible
         if self.popup_widget:
@@ -23710,16 +25115,54 @@ class ServerPropertiesEditScreen(MenuBackground):
 
             if keycode[1] in ['escape', 'n']:
                 try:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.no_button)
+                    self.popup_widget.click_event(self.popup_widget, 'no')
                 except AttributeError:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
+                    self.popup_widget.click_event(self.popup_widget, 'ok')
 
             elif keycode[1] in ['enter', 'return', 'y']:
                 try:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.yes_button)
+                    self.popup_widget.click_event(self.popup_widget, 'yes')
                 except AttributeError:
-                    self.popup_widget.click_event(self.popup_widget, self.popup_widget.ok_button)
-            return False
+                    self.popup_widget.click_event(self.popup_widget, 'ok')
+            return
+
+        if (keycode[1] == 'q' and control in modifiers) or keycode[1] == 'escape':
+            if self.modified:
+                self.show_popup(
+                    "query",
+                    "Unsaved Changes",
+                    f"There are unsaved changes in '${self.file_name}$'.\n\nWould you like to save before quitting?",
+                    [functools.partial(Clock.schedule_once, self.quit_to_menu, 0.25),
+                     functools.partial(Clock.schedule_once, self.save_and_quit, 0.25)]
+                )
+            else:
+                self.quit_to_menu()
+            return True
+
+        if keycode[1] in ['down', 'up', 'pagedown', 'pageup']:
+            return self.switch_input(keycode[1])
+
+        if keycode[1] == 'f' and control in modifiers:
+            if not self.search_bar.focused:
+                self.search_bar.grab_focus()
+            else:
+                if self.current_line is not None:
+                    self.focus_input()
+            return True
+
+        if keycode[1] == 's' and control in modifiers and self.modified:
+            self.save_file()
+            return None
+
+        # Undo/Redo
+        if keycode[1] == 'z' and control in modifiers and self.undo_history:
+            self.undo(save=False, undo=True)
+        elif keycode[1] == 'z' and control in modifiers and not self.undo_history:
+            if not self.check_data():
+                self.reset_data()
+
+        if keycode[1] in ['r', 'y'] and control in modifiers and self.redo_history:
+            self.undo(save=False, undo=False)
 
         # Trigger for showing search bar
         elif keycode[1] == 'shift':
@@ -23740,79 +25183,1306 @@ class ServerPropertiesEditScreen(MenuBackground):
                     self._shift_timer = Clock.schedule_once(self._reset_shift_counter, 0.25)  # Adjust time as needed
             return True
 
-        def return_to_input():
-            if self.current_line is not None:
-                self.focus_input()
-
-        # Keycode is composed of an integer + a string
-        # If we hit escape, release the keyboard
-        # On ESC, click on back button if it exists
-        if not self._input_focused:
-            # if keycode[1] == 'escape' and 'escape' not in self._ignore_keys:
-            #     quit_to_menu()
-            pass
-
-
-        if ((keycode[1] == 'h' and control in modifiers and constants.os_name != 'macos') or (keycode[1] == 'h' and control in modifiers and 'shift' in modifiers and constants.os_name == 'macos')) and not self.popup_widget:
-            self.controls_button.button.trigger_action()
-
-
-        # Exiting search bar
-        elif keycode[1] == 'escape' and screen_manager.current_screen._input_focused:
-            return_to_input()
-
-
-        # Quit and prompt to save if file was changed
-        elif (keycode[1] == 'q' and control in modifiers) or keycode[1] == 'escape':
-            if self.modified:
-                self.show_popup(
-                    "query",
-                    "Unsaved Changes",
-                    'There are unsaved changes in your configuration.\n\nWould you like to save the file before quitting?',
-                    [functools.partial(Clock.schedule_once, self.quit_to_menu, 0.25), functools.partial(Clock.schedule_once, self.save_and_quit, 0.25)]
-                )
-            else:
-                self.quit_to_menu()
-
-
-        # Focus text input if server is started
-        if (keycode[1] in ['down', 'up', 'pagedown', 'pageup']):
-            self.switch_input(keycode[1])
-
-
-        # Ctrl-F to search
-        if keycode[1] == 'f' and control in modifiers:
-            if not self.search_bar.focused:
-                self.search_bar.grab_focus()
-            else:
-                return_to_input()
-
-
-        # Save config file
-        if keycode[1] == 's' and control in modifiers and self.modified:
-            self.save_config()
-
-
-        # Undo / Redo functionality
-        if keycode[1] == 'z' and control in modifiers and self.undo_history:
-            self.undo(save=False, undo=True)
-
-        elif keycode[1] == 'z' and control in modifiers and not self.undo_history:
-            if not self.check_data():
-                self.reset_data()
-
-        if keycode[1] in ['r', 'y'] and control in modifiers and self.redo_history:
-            self.undo(save=False, undo=False)
-
-
-        # Check if data is updated on keypress
         def set_banner(*a):
             self.set_banner_status(not self.check_data())
         Clock.schedule_once(set_banner, 0)
 
-
-        # Return True to accept the key. Otherwise, it will be used by the system.
         return True
+
+    def generate_menu(self, **kwargs):
+        self.server_obj = constants.server_manager.current_server
+
+        # Editor UI
+        self.scroll_widget = RecycleViewWidget(position=(0.5, 0.5), view_class=self.EditorLine)
+        self.scroll_widget.always_overscroll = False
+        self.scroll_layout = RecycleGridLayout(cols=1, size_hint_max_x=1250, size_hint_y=None, padding=[10, 30, 0, 30], default_size=(1250, 50))
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+        def resize_scroll(call_widget, grid_layout, *args):
+            call_widget.height = Window.height // 1.23
+            self.fullscreen_shadow.y = self.height + self.x - 3 + 25
+            self.fullscreen_shadow.width = Window.width
+            search_pos = 47
+            self.search_bar.pos = (self.x, search_pos)
+            self.input_background.pos = (self.search_bar.pos[0] - 15, self.search_bar.pos[1] + 8)
+            self.search_bar.size_hint_max_x = Window.width - self.search_bar.x - 200
+
+        self.resize_bind = lambda *_: Clock.schedule_once(functools.partial(resize_scroll, self.scroll_widget, self.scroll_layout), 0)
+        Window.bind(on_resize=self.resize_bind)
+        self.resize_bind()
+
+        self.scroll_widget.data = self.load_file()
+
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        self.scroll_widget.add_widget(self.scroll_layout)
+        float_layout.add_widget(self.scroll_widget)
+
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.9}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, 60))
+        scroll_top.color = self.background_color
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5}, pos=self.scroll_widget.pos, size=(self.scroll_widget.width // 1.5, -60))
+        scroll_bottom.color = self.background_color
+        scroll_bottom.y = 115
+
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+
+        self.fullscreen_shadow = Image()
+        self.fullscreen_shadow.allow_stretch = True
+        self.fullscreen_shadow.keep_ratio = False
+        self.fullscreen_shadow.size_hint_max = (None, 25)
+        self.fullscreen_shadow.color = self.background_color
+        self.fullscreen_shadow.opacity = 0
+        self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
+        float_layout.add_widget(self.fullscreen_shadow)
+
+        buttons = []
+        buttons.append(ExitButton('Back', (0.5, -1), cycle=True))
+        for b in buttons:
+            float_layout.add_widget(b)
+
+        float_layout.add_widget(generate_title(f"Server Settings: '{self.server_obj.name}'"))
+        float_layout.add_widget(generate_footer(f"{self.server_obj.name}, Settings, Edit '${self.file_name}$'"))
+        self.add_widget(float_layout)
+
+        self.search_bar = self.SearchInput()
+        self.search_bar.bind(text=self.search_text)
+        self.add_widget(self.search_bar)
+
+        self.match_label = AlignLabel()
+        self.match_label.text = '0 matches'
+        self.match_label.halign = "right"
+        self.match_label.color = (0.6, 0.6, 1, 1)
+        self.match_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["mono-bold"]}.otf')
+        self.match_label.font_size = sp(24)
+        self.match_label.y = 60
+        self.match_label.padding_x = 10
+        self.match_label.opacity = 0
+        self.add_widget(self.match_label)
+
+        self.input_background = Image()
+        self.input_background.default_opacity = 0.35
+        self.input_background.color = self.search_bar.foreground_color
+        self.input_background.opacity = self.input_background.default_opacity
+        self.input_background.allow_stretch = True
+        self.input_background.size_hint = (None, None)
+        self.input_background.height = self.search_bar.size_hint_max_y / 1.45
+        self.input_background.source = os.path.join(constants.gui_assets, 'icons', 'search.png')
+        self.add_widget(self.input_background)
+
+        def show_controls():
+            controls_text = """This editor allows you to modify additional server configuration options. Shortcuts are provided for ease of use:
+
+
+• Press 'CTRL+Z' to undo, and 'CTRL+R'/'CTRL+Y' to redo
+
+• Press 'CTRL+S' to save modifications
+
+• Press 'CTRL+Q' to quit the editor
+
+• Press 'CTRL+F' to search for data
+
+• Press 'SPACE' to toggle boolean values (e.g. true, false)""" if constants.os_name != 'macos' else """This editor allows you to modify additional server configuration options. Shortcuts are provided for ease of use:
+
+
+• Press 'CMD+Z' to undo, and 'CMD+R'/'CMD+Y' to redo
+
+• Press 'CMD+S' to save modifications
+
+• Press 'CMD+Q' to quit the editor
+
+• Press 'CMD+F' to search for data
+
+• Press 'SPACE' to toggle boolean values (e.g. true, false)"""
+
+            Clock.schedule_once(
+                functools.partial(
+                    self.show_popup,
+                    "controls",
+                    "Controls",
+                    controls_text,
+                    (None)
+                ),
+                0
+            )
+
+        self.controls_button = IconButton(
+            'controls', {}, (70, 110), (None, None), 'question.png',
+            clickable=True, anchor='right', click_func=show_controls
+        )
+        float_layout.add_widget(self.controls_button)
+
+        self.header = BannerObject(
+            pos_hint={"center_x": 0.5, "center_y": 0.9},
+            size=(250, 40),
+            color=(0.4, 0.682, 1, 1),
+            text=f"Viewing '${self.file_name}$'",
+            icon="eye-outline.png"
+        )
+        self.add_widget(self.header)
+
+        self.controls_button = IconButton(
+            'save & quit', {}, (120, 110), (None, None), 'save-sharp.png',
+            clickable=True, anchor='right',
+            click_func=self.save_and_quit,
+            text_offset=(-5, 50)
+        )
+        float_layout.add_widget(self.controls_button)
+
+# Edit in plain-text mode for fallback
+class ServerTextEditScreen(EditorRoot):
+
+    class EditorLine(EditorRoot.EditorLine):
+        def configure(self):
+            self.eq_character = ':'
+            self.eq_spacing = (1.05, 0.67)
+
+        @staticmethod
+        def get_type(value: str):
+
+            # Define custom behavior for determining data types
+
+            return None
+
+# Edit all *.properties/INI files
+class ServerPropertiesEditScreen(EditorRoot):
+    class EditorLine(EditorRoot.EditorLine):
+        def configure(self):
+            self.eq_character = '='
+            self.eq_spacing = (1.05, 0.67)
+
+        def render_line(self, data: dict):
+            self._data = data
+            key = data['key']
+            is_header = data['is_header']
+            is_comment = data['is_comment']
+            is_blank_line = data['is_blank_line']
+            indent_level = data['indent']
+            max_line_count = len(self._screen.line_list)
+
+
+            # Determines if the line is skip-able when scrolling
+            self.is_header = is_header
+            self.is_comment = is_comment
+            self.is_blank_line = is_blank_line
+            self.inactive = data['inactive']
+            self.line_matched = data['line_matched']
+            self._finished_rendering = False
+            self._comment_padding = None
+
+            # Indentation space
+            self.indent_level = indent_level
+            self.indent_space = dp(25) * self.indent_level
+
+            # Defaults
+            font_name = 'mono-bold' if is_header else 'mono-medium'
+            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
+            self.spacing = dp(16)
+            self.size_hint_min_y = 50
+            self.last_search = ''
+            self.line_matched = False
+            self.select_color = (0.3, 1, 0.6, 1)
+            self.animate = False
+
+            # Line number
+            self.line_number.text = str(self.line)
+            self.line_number.size_hint_max_x = (self.spacing * len(str(max_line_count)))
+            self.line_number.opacity = 0.35
+
+            # Key label
+            self.key_label = self._key_labels['comment' if self.is_comment else 'normal']
+            self.key_label.url = None
+            self.key_label.__translate__ = False
+            self.key_label.max_lines = 1
+            self.key_label.markup = True
+            self.key_label.text = key
+            self.key_label.original_text = key
+            self.key_label.font_name = self.font_name
+            self.key_label.font_size = self.font_size
+            self.key_label.default_color = "#636363" if is_comment else (0.5, 0.5, 1, 1) if is_header else "#5E6BFF"
+            self.key_label.color = self.key_label.default_color
+            self.key_label.size_hint_max_y = 50
+            self.key_label.pos_hint = {'center_y': 0.5}
+            self.key_label.text_size[0] = 1000 if is_comment or is_header else 260
+            self.key_label.opacity = 1
+
+            # Show "=" for *.properties/INI
+            self.eq_label.text = self.eq_character
+            self.eq_label.font_name = self.font_name
+            self.eq_label.font_size = self.font_size
+            self.eq_label.color = (0.6, 0.6, 1, 1) if is_header else (1, 1, 1, 1)
+            self.eq_label.opacity = 0.5
+            self.eq_label.pos_hint = {'center_y': 0.5}
+
+
+            # Dynamically add widgets back
+            if not (is_blank_line or is_comment):
+                if not is_header:
+                    self.add_widget(self.value_label)
+
+            # Ghost covers for left / right
+            self.add_widget(self.ghost_cover_left)
+            self.add_widget(self.ghost_cover_right)
+
+            # Add remaining widgets
+            if not (is_blank_line or is_comment or is_header):
+                self.add_widget(self.eq_label)
+            self.add_widget(self.line_number)
+            self.add_widget(self.key_label)
+
+    # Override logic to parse search matches
+    @staticmethod
+    def _check_match_logic(data: dict, search_text: str):
+        if "=" in search_text:
+            key_text, value_text = [x.strip() for x in search_text.split("=", 1)]
+        else:
+            key_text = ''
+            value_text = ''
+
+        return key_text, value_text
+
+    # *.properties/INI specific features
+    def insert_line(self, line: (tuple, list, dict), index: int = None, refresh=True):
+        if not isinstance(line, dict):
+
+            key, value, is_blank_line, is_comment, is_header = line
+
+            inactive = is_blank_line or is_header or is_comment
+
+            data = {'data': {
+                '__hash__': constants.gen_rstring(4),
+                'key': key,
+                'value': value,
+                'original_value': value,
+                'is_header': is_header,
+                'is_comment': is_comment,
+                'is_blank_line': is_blank_line,
+                'inactive': inactive,
+                'line_matched': False
+            }}
+
+        else:
+            data = line
+
+        return super().insert_line(data, index, refresh)
+
+    def load_file(self):
+        self.line_list = []
+
+        for raw_line in self.read_from_disk():
+            line = raw_line.rstrip('\r\n')
+
+            # Extract leading indentation
+            match = re.match(r'^(\s*)', line)
+            indent_str = match.group(1) if match else ''
+
+            # Strip the indentation and parse the rest
+            stripped_line = line[len(indent_str):]
+
+            is_comment = False
+            is_blank_line = False
+            is_header = False
+            key = ''
+            value = ''
+
+            # Line has no content
+            if not stripped_line.strip():
+                is_blank_line = True
+
+            # Is INI/TOML header
+            elif stripped_line.startswith('[') and stripped_line.endswith(']') and '=' not in stripped_line:
+                key = stripped_line
+                is_header = True
+
+            # Line is a comment
+            elif stripped_line.startswith('#'):
+                key = '# ' + stripped_line.lstrip('#').strip()
+                is_comment = True
+
+            # Normal key=value pair
+            elif '=' in stripped_line:
+                key, value = [x.strip() for x in stripped_line.split('=', 1)]
+
+            # Build the data object
+            data = {
+                '__hash__': constants.gen_rstring(4),
+                'key': key,
+                'value': value,
+                'original_value': value,
+                'is_header': is_header,
+                'is_comment': is_comment,
+                'is_blank_line': is_blank_line,
+                'indent': len(indent_str),
+                'inactive': (is_blank_line or is_header or is_comment),
+                'line_matched': False
+            }
+
+            # Insert data into editor
+            self.insert_line({'data': data}, refresh=False)
+
+        return self.line_list
+
+    def save_file(self):
+        final_content = ''
+
+        for line in self.line_list:
+            line = line['data']
+            indent = "    " * line['indent']
+            key_str = str(line['key']).strip()
+            val_str = str(line['value']).strip()
+
+            if line['is_comment'] or line['is_blank_line']:
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
+
+            elif line['is_header'] or not val_str:
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
+
+            elif key_str and val_str:
+                final_content += str(f"{indent}{key_str}={val_str}".rstrip() + '\n')
+
+            elif key_str:
+                final_content += str(f"{indent}{key_str}=".rstrip() + '\n')
+
+
+        self.write_to_disk(final_content)
+
+        # If "server.properties", reload config
+        if self.file_name == 'server.properties':
+            self.server_obj.reload_config()
+
+# Edit all TOML/TML files
+class ServerTomlEditScreen(ServerPropertiesEditScreen):
+
+    def save_file(self):
+        final_content = ''
+
+        for line in self.line_list:
+            line = line['data']
+            indent = "    " * line['indent']
+            key_str = str(line['key']).strip()
+            val_str = str(line['value']).strip()
+
+            if line['is_comment'] or line['is_blank_line']:
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
+
+            elif line['is_header'] or not val_str:
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
+
+            elif key_str and val_str:
+                final_content += str(f"{indent}{key_str} = {val_str}".rstrip() + '\n')
+
+            elif key_str:
+                final_content += str(f"{indent}{key_str} = ".rstrip() + '\n')
+
+        # return print(final_content)
+        self.write_to_disk(final_content)
+
+# Edit all YAML/YML files
+class ServerYamlEditScreen(EditorRoot):
+    class EditorLine(EditorRoot.EditorLine):
+        def configure(self):
+            self.eq_character = ':'
+            self.eq_spacing = (1.05, 0.67)
+
+        def render_line(self, data: dict):
+            self._data = data
+            line_list = self._screen.line_list
+            key = data['key']
+            indent_level = data['indent']
+            is_header = data['is_header']
+            is_list_header = data['is_list_header']
+            is_multiline_string = data['is_multiline_string']
+            is_list_item = data['is_list_item']
+            is_comment = data['is_comment']
+            is_blank_line = data['is_blank_line']
+            max_line_count = len(line_list)
+
+
+            # Determines if the line is skip-able when scrolling
+            self.is_header = is_header
+            self.is_list_header = is_list_header
+            self.is_list_item = is_list_item
+            self.is_comment = is_comment
+            self.is_blank_line = is_blank_line
+            self.is_multiline_string = is_multiline_string
+            self.inactive = data['inactive']
+            self.line_matched = data['line_matched']
+            self._finished_rendering = False
+            self._comment_padding = None
+
+            # Defaults
+            font_name = 'mono-bold' if is_header or is_list_header else 'mono-medium'
+            self.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts[font_name]}.otf')
+            self.spacing = dp(16)
+            self.size_hint_min_y = 50
+            self.last_search = ''
+            self.line_matched = False
+            self.select_color = (0.3, 1, 0.6, 1)
+            self.animate = False
+
+            # Indentation space
+            self.indent_level = indent_level
+            self.indent_space = dp(25) * self.indent_level
+
+
+            # Line number
+            self.line_number.text = str(self.line)
+            self.line_number.size_hint_max_x = (self.spacing * len(str(max_line_count)))
+            self.line_number.opacity = 0.35
+
+            # Key label
+            self.key_label = self._key_labels['comment' if self.is_comment else 'normal']
+            self.key_label.url = None
+            self.key_label.__translate__ = False
+            self.key_label.max_lines = 1
+            self.key_label.shorten = True
+            self.key_label.shorten_from = 'right'
+            self.key_label.markup = True
+            self.key_label.text = key
+            self.key_label.original_text = key
+            self.key_label.font_name = self.font_name
+            self.key_label.font_size = self.font_size
+            self.key_label.default_color = "#636363" if is_comment else (0.5, 0.5, 1, 1) if is_header else "#5E6BFF"
+            self.key_label.color = self.key_label.default_color
+            self.key_label.size_hint_max_y = 50
+            self.key_label.pos_hint = {'center_y': 0.5}
+            self.key_label.opacity = 0 if is_list_item else 1
+
+            # Show ":" for YAML
+            self.eq_label.text = '-' if is_list_item else ':'
+            self.eq_label.font_name = self.font_name
+            self.eq_label.font_size = self.font_size
+            self.eq_label.color = (0.6, 0.6, 1, 1) if is_header else (1, 1, 1, 1)
+            self.eq_label.opacity = 0.5
+            self.eq_label.pos_hint = {'center_y': 0.5}
+
+
+            if not (is_blank_line or is_comment):
+                if not is_header and not is_list_header:
+                    self.add_widget(self.value_label)
+
+            # Ghost covers for left / right
+            self.add_widget(self.ghost_cover_left)
+            self.add_widget(self.ghost_cover_right)
+
+            # Add remaining widgets
+            if not (is_blank_line or is_comment or is_multiline_string):
+                self.add_widget(self.eq_label)
+            if is_multiline_string:
+                self.key_label.opacity = 0
+            self.add_widget(self.line_number)
+            self.add_widget(self.key_label)
+
+        @staticmethod
+        def get_type(value: str):
+            data_type = str
+
+            # Define custom behavior for determining data types
+
+            # Structured data detection
+            if ((value.strip().startswith('{') and value.strip().endswith('}'))
+            or (value.strip().startswith('[') and value.strip().endswith(']'))
+            or (value.strip().startswith('(') and value.strip().endswith(')'))):
+                data_type = dict
+
+            # Boolean detection
+            elif value.lower() in ['true', 'false', 'yes', 'no']:
+                data_type = bool
+
+            # Numeric detection (int or float)
+            elif value.replace(".", "").replace("-", "").isdigit():
+                data_type = float
+
+
+            return data_type
+
+        @staticmethod
+        def keyboard_overrides(self, window, keycode, text, modifiers):
+
+            # Toggle boolean values with space
+            def replace_text(val, *args):
+                self.text = val
+
+            if keycode[1] == "spacebar":
+                if self.text == 'yes':
+                    Clock.schedule_once(functools.partial(replace_text, 'no'), 0)
+                    return
+                elif self.text == 'no':
+                    Clock.schedule_once(functools.partial(replace_text, 'yes'), 0)
+                    return
+
+            # Add a new multi-line string on pressing "enter" in a current string
+            if ((not self._line.is_list_item and self.text) or (self._line.is_multiline_string and self.text)) and keycode[1] in ['enter', 'return']:
+                parent = self._line.parent
+                if not parent:
+                    return
+
+                data = (
+                    '__string__',
+                    '',
+                    self._line.indent_level + (2 if self._line.is_multiline_string else 1),
+                    False,
+                    False
+                )
+
+                self._line._screen.insert_line(data, self._line.line)
+
+                def deselect(*a):
+                    self._line._screen.current_line = None
+                    self.focused = False
+
+                Clock.schedule_once(deselect, 0)
+
+                # Record the insertion action for undo
+                if self._line.undo_func:
+                    self._line.undo_func(
+                        save=True,
+                        action={
+                            'type': 'insert_line',
+                            'data': data,
+                            'index': self._line.line
+                        }
+                    )
+
+                self._line._screen.scroll_to_line(self._line.line + 1, grab_focus=True)
+
+            # Remove line on backspace if it's empty
+            elif self._line.is_multiline_string and keycode[1] in ['delete', 'backspace'] and not self._original_text:
+                parent = self._line.parent
+                if not parent:
+                    return
+
+                # Attempt to gather last line
+                try:
+                    next_line = self._line._screen.line_list[self._line.line - 1]['data']
+                except:
+                    next_line = {'is_list_item': False, 'eof': True}
+                eof = 'eof' in next_line
+
+                # Record the removal action for undo
+                if self._line.undo_func:
+                    self._line.undo_func(
+                        save=True,
+                        action={
+                            'type': 'remove_line',
+                            'data': self._line._data,
+                            'index': self._line.line - 1
+                        }
+                    )
+
+                self._line._screen.remove_line(self._line.line - 1)
+                self._line._screen.scroll_to_line(self._line.line - 1, grab_focus=not eof)
+
+
+            # Add a new list item on pressing "enter" in a current list
+            elif (not self._line.is_multiline_string) and (((self._line.is_list_item and self.text) or (not self._line.is_list_item and not self.text)) and keycode[1] in ['enter', 'return']):
+                parent = self._line.parent
+                if not parent:
+                    return
+
+                if not self.text and not self._line.is_list_item:
+                    self._line._data['is_list_header'] = True
+                    self._line._update_data(self._line._data)
+
+                data = (
+                    '__list__',
+                    '',
+                    self._line.indent_level,
+                    False,
+                    False
+                )
+                self._line._screen.insert_line(data, self._line.line)
+
+                def deselect(*a):
+                    self._line._screen.current_line = None
+                    self.focused = False
+
+                Clock.schedule_once(deselect, 0)
+
+                # Record the insertion action for undo
+                if self._line.undo_func:
+                    self._line.undo_func(
+                        save=True,
+                        action={
+                            'type': 'insert_line',
+                            'data': data,
+                            'index': self._line.line
+                        }
+                    )
+
+                self._line._screen.scroll_to_line(self._line.line + 1, grab_focus=True)
+
+            # Remove line on backspace if it's empty
+            elif self._line.is_list_item and keycode[1] in ['delete', 'backspace'] and not self._original_text:
+                parent = self._line.parent
+                if not parent:
+                    return
+
+                # Record the removal action for undo
+                if self._line.undo_func:
+                    self._line.undo_func(
+                        save=True,
+                        action={
+                            'type': 'remove_line',
+                            'data': self._line._data,
+                            'index': self._line.line - 1
+                        }
+                    )
+
+                self._line._screen.remove_line(self._line.line - 1)
+
+                # Existing focusing logic
+                try:
+                    previous_line = self._line._screen.line_list[self._line.line - 2]['data']
+                    try:
+                        next_line = self._line._screen.line_list[self._line.line - 1]['data']
+                    except:
+                        next_line = {'is_list_item': False, 'eof': True}
+                    eof = 'eof' in next_line
+
+                    if previous_line['is_list_item']:
+                        self._line._screen.scroll_to_line(self._line.line - 1, grab_focus=True)
+
+                    if not previous_line['is_list_item'] and previous_line['is_list_header'] and not next_line['is_list_item']:
+                        previous_line['is_list_header'] = False
+                        previous_line['inactive'] = False
+                        self._line._screen.scroll_to_line(self._line.line - 1, grab_focus=not eof)
+                        for line in self._line.scroll_layout.children:
+                            line.value_label.focused = False
+                        self._line.scroll_widget.data = self._line.line_list
+                        self._line.scroll_widget.refresh_from_data()
+                except:
+                    pass
+
+    # Override logic to parse search matches
+    @staticmethod
+    def _check_match_logic(data: dict, search_text: str):
+        if "-" in search_text and data['is_list_item']:
+            key_text, value_text = [x.strip() for x in search_text.split("-", 1)]
+        elif ":" in search_text:
+            key_text, value_text = [x.strip() for x in search_text.split(":", 1)]
+        else:
+            key_text = ''
+            value_text = ''
+
+        return key_text, value_text
+
+    # YAML/YML specific features
+    def insert_line(self, line: (tuple, list, dict), index: int = None, refresh=True):
+        if not isinstance(line, dict):
+
+            key, value, indent, is_header, is_list_header = line
+
+            # Format empty values
+            if value in ['""', "''", None]:
+                value = ''
+
+            # Format list_headers
+            if is_list_header:
+                is_header = False
+
+            # Format list items
+            is_list_item = key == '__list__'
+            if is_list_item:
+                key = '-'
+
+            # Format multiline strings
+            is_multiline_string = key == '__string__'
+            if is_multiline_string:
+                key = ''
+
+            # Format multiline strings
+            if is_multiline_string:
+                indent = indent - 2
+                key = '⁎'
+
+            is_comment = key.strip().startswith('#')
+            is_blank_line = not key.strip()
+            inactive = is_header or is_list_header or is_comment or is_blank_line
+
+
+            data = {'data': {
+                '__hash__': constants.gen_rstring(4),
+                'key': key,
+                'value': value,
+                'original_value': value,
+                'indent': indent,
+                'is_header': is_header,
+                'is_list_header': is_list_header,
+                'is_multiline_string': is_multiline_string,
+                'is_comment': is_comment,
+                'is_blank_line': is_blank_line,
+                'is_list_item': is_list_item,
+                'inactive': inactive,
+                'line_matched': False
+            }}
+
+        else:
+            data = line
+
+        return super().insert_line(data, index, refresh)
+
+    def load_file(self):
+
+        def parse_yaml(lines: list):
+            """
+            Parses a YAML-like text line by line and returns a list of tuples in the form:
+              (key, value, indent, is_header, is_list_header)
+
+            Where:
+              - Comments become (full_comment_text, '', indent, False, False)
+              - Blank lines become ('', '', 0, False, False)
+              - Multiline strings become ('__string__', full_line_text, indent, False, False)
+              - List items become ('__list__', item_value, indent, False, False)
+              - Normal key/value lines become (key, value, indent, is_header, is_list_header)
+                * is_header = True if the line ends with a colon and no value,
+                  and the next line is indented more deeply than this line.
+                * is_list_header = True if the line ends with a colon and no value,
+                  and the next non-comment, non-blank line is a list item.
+            """
+
+            # This list will hold dictionaries that we will later convert to tuples
+            parsed_lines = []
+
+            def get_indent(line):
+                """
+                Count leading spaces and convert to an integer "indent level".
+                This example divides the number of leading spaces by 2, assuming 2 spaces = 1 indent level.
+                Adjust if your YAML uses a different convention.
+                """
+                raw_leading_spaces = len(line) - len(line.lstrip(' '))
+                return raw_leading_spaces // 2
+
+            for line in lines:
+                # 1) Identify indentation
+                indent = get_indent(line)
+                stripped = line.lstrip(' ')
+
+                # 2) Check if blank line
+                if not stripped.strip():
+                    # Blank line (indent is forced to 0 in the final structure, per your example)
+                    parsed_lines.append({
+                        'key': '',
+                        'value': '',
+                        'indent': 0,
+                        'is_header': False,
+                        'is_list_header': False
+                    })
+                    continue
+
+                # 3) Check if comment line
+                if stripped.startswith('#'):
+                    # Store the comment as key, no value
+                    # Keep the "calculated" indent—your examples show comments sometimes having >0 indent
+                    parsed_lines.append({
+                        'key': stripped,
+                        'value': '',
+                        'indent': indent,
+                        'is_header': False,
+                        'is_list_header': False
+                    })
+                    continue
+
+                # 4) Check if list item (starts with '-')
+                if stripped.startswith('-'):
+                    # Everything after the dash is the item value
+                    item_value = stripped[1:].strip()
+                    current_line = {
+                        'key': '__list__',
+                        'value': item_value,
+                        'indent': indent,
+                        'is_header': False,
+                        'is_list_header': False
+                    }
+                    parsed_lines.append(current_line)
+
+                    # Check if the previous meaningful line should be flagged as a "multiline list header"
+                    # Condition: the previous line has no value, is not blank or comment or __string__
+                    if len(parsed_lines) > 1:
+                        prev_line = parsed_lines[-2]
+                        # "Meaningful" means not blank line, not comment, not string placeholder
+                        if (
+                                prev_line['value'] == '' and
+                                prev_line['key'] not in ('', '__string__') and
+                                not prev_line['key'].startswith('#')
+                        ):
+                            prev_line['is_list_header'] = True
+
+                    continue
+
+                # 5) Check if we have a proper "key: value"
+                # If there's a colon, split on the first colon + space
+                if ': ' in stripped:
+                    key_part, value_part = stripped.split(': ', 1)
+                    key_part = key_part.strip()
+                    value_part = value_part.strip()
+
+                    current_line = {
+                        'key': key_part,
+                        'value': value_part,
+                        'indent': indent,
+                        'is_header': False,
+                        'is_list_header': False
+                    }
+                    parsed_lines.append(current_line)
+
+                # 6) Check if we have a proper "key:" line
+                elif stripped.endswith(':'):
+                    current_line = {
+                        'key': stripped.rstrip(':'),
+                        'value': '',
+                        'indent': indent,
+                        'is_header': False,
+                        'is_list_header': False
+                    }
+                    parsed_lines.append(current_line)
+
+                else:
+                    # 6) Possibly a multiline string line or a weird line with no colon at all
+                    #    We'll interpret this as a multiline string if it is more indented than the previous line
+                    #    and the previous line is not comment/blank/string
+                    if parsed_lines:
+                        prev_line = parsed_lines[-1]
+                        if (
+                                indent > prev_line['indent'] and
+                                prev_line['key'] not in ('', '__string__') and
+                                not prev_line['key'].startswith('#')
+                        ):
+                            # It's a multiline string line
+                            parsed_lines.append({
+                                'key': '__string__',
+                                'value': stripped,
+                                'indent': indent,
+                                'is_header': False,
+                                'is_list_header': False
+                            })
+                        else:
+                            # Fallback: treat as a "header" with no value
+                            parsed_lines.append({
+                                'key': stripped,
+                                'value': '',
+                                'indent': indent,
+                                'is_header': False,
+                                'is_list_header': False
+                            })
+                    else:
+                        # If it's the first line in the file and has no colon, treat as a header
+                        parsed_lines.append({
+                            'key': stripped,
+                            'value': '',
+                            'indent': indent,
+                            'is_header': False,
+                            'is_list_header': False
+                        })
+
+            # ----------------------------------------------------------------
+            # SECOND PASS:
+            # Mark any line as a 'header' if it has an empty value and the NEXT line is more indented.
+            #
+            # Mark it as a 'header' if:
+            #    - key != '' (not blank)
+            #    - key != '#' (not comment)
+            #    - value = ''
+            #    - next line is more indented
+            #
+            # We already handle list headers in the single pass,
+            # so we only do "is_header" fix-up here.
+            # ----------------------------------------------------------------
+            for i in range(len(parsed_lines) - 1):
+                current_line = parsed_lines[i]
+                next_line = parsed_lines[i + 1]
+
+                # Skip if it's blank, comment, string marker, or has a value
+                if (
+                        current_line['key'] not in ('', '__string__') and
+                        not current_line['key'].startswith('#') and
+                        current_line['value'] == '' and
+                        next_line['indent'] > current_line['indent']
+                ):
+                    current_line['is_header'] = True
+
+            # Finally, convert parsed_lines (list of dicts) to the list of tuples
+            result = [
+                (
+                    d['key'],
+                    d['value'],
+                    d['indent'],
+                    d['is_header'],
+                    d['is_list_header']
+                )
+                for d in parsed_lines
+            ]
+
+            return result
+
+        self.undo_history = []
+        self.redo_history = []
+        self.last_search = ''
+        self.match_list = []
+        self.modified = False
+        self.current_line = None
+
+        # Flatten and insert into the editor
+        self.line_list = []
+        [self.insert_line(line, refresh=False) for line in parse_yaml(self.read_from_disk())]
+
+        return self.line_list
+
+    def save_file(self):
+        final_content = ''
+
+        for line in self.line_list:
+            line = line['data']
+            key_str = str(line['key']).strip()
+            val_str = str(line['value']).strip()
+            base_indent = " " * 2
+
+
+            # Format empty values
+            if val_str in ['""', "''", None]:
+                val_str = ''
+
+            # Ignore empty list items or multiline strings
+            if (line['is_multiline_string'] or line['is_list_item']) and not val_str:
+                continue
+
+            if line['is_comment'] or line['is_blank_line']:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
+
+            elif line['is_list_item'] and val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
+
+            elif line['is_multiline_string'] and val_str:
+                indent = base_indent * (line['indent'] + 2)
+                final_content += str(f"{indent}{val_str}".rstrip() + '\n')
+
+            elif line['is_header'] or line['is_list_header'] or not val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
+
+            elif key_str and val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}: {val_str}".rstrip() + '\n')
+
+            elif key_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
+
+        # return print(final_content)
+        self.write_to_disk(final_content)
+
+# Edit all JSON files
+class ServerJsonEditScreen(ServerYamlEditScreen):
+
+    # Internally convert JSON to YAML for ease of editing
+    def read_from_disk(self) -> list:
+        with open(self.path, 'r', encoding='utf-8') as f:
+            raw_content = f.read()
+            raw_content = raw_content.replace('\\n', '\\\\n').replace('\\r', '\\\\r')
+
+            # Determine format features prior to parsing to preserve when saving
+            self.minified = len(raw_content.splitlines()) <= 1
+
+            json_data = json.loads(raw_content)
+            content = yaml.dump(json_data, sort_keys=False, allow_unicode=True, width=float("inf"))
+
+            content = content.strip('\r\n')
+            return content.splitlines()
+
+    def save_file(self):
+        final_content = ''
+
+        for line in self.line_list:
+            line = line['data']
+            key_str = str(line['key']).strip()
+            val_str = str(line['value']).strip()
+            base_indent = " " * 2
+
+
+            # Format empty values
+            if val_str in ['""', "''", None]:
+                val_str = ''
+
+            # Ignore empty list items or multiline strings
+            if (line['is_multiline_string'] or line['is_list_item']) and not val_str:
+                continue
+
+            if line['is_comment'] or line['is_blank_line']:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
+
+            elif line['is_list_item'] and val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
+
+            elif line['is_multiline_string'] and val_str:
+                indent = base_indent * (line['indent'] + 2)
+                final_content += str(f"{indent}{val_str}".rstrip() + '\n')
+
+            elif line['is_header'] or line['is_list_header'] or not val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
+
+            elif key_str and val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}: {val_str}".rstrip() + '\n')
+
+            elif key_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
+
+
+        # Internally convert YAML back to JSON to retain original file format
+        try:
+            yaml_data = yaml.safe_load(final_content.strip())
+
+            if self.minified:
+                final_content = json.dumps(yaml_data, indent=None, separators=(',', ':')).strip()
+
+            else:
+                final_content = json.dumps(yaml_data, indent=4)
+
+        except Exception as e:
+            if constants.debug:
+                print(f'Failed to save: {e}')
+            return False
+
+        # return print(final_content)
+        self.write_to_disk(final_content)
+
+# Edit all JSON5 files
+class ServerJson5EditScreen(ServerYamlEditScreen):
+
+    @staticmethod
+    def json5_to_yaml(raw_content: str) -> str:
+        """
+        Convert JSON5 content to a YAML-like string preserving comments,
+        blank lines, nesting, and indentation.
+
+        The root scope is not indented—that is, one indent level is subtracted
+        from every key compared to the raw JSON5. (When converting back to JSON5,
+        that indent level is added back.)
+        """
+        lines = raw_content.splitlines()
+        output_lines = []
+        pending_comments = []
+        base_indent = " " * 2  # two spaces per indent level
+        indent_level = 0
+
+        for line in lines:
+            stripped = line.strip()
+
+            # Check for opening or closing braces/brackets (ignoring trailing commas)
+            if stripped.rstrip(",") in ("{", "["):
+                indent_level += 1
+                continue
+            if stripped.rstrip(",") in ("}", "]"):
+                indent_level = max(indent_level - 1, 0)
+                continue
+
+            # Preserve blank lines.
+            if not stripped:
+                output_lines.append("")
+                continue
+
+            # Process comments.
+            if stripped.startswith("//"):
+                comment_text = stripped[2:].strip()
+                pending_comments.append(comment_text)
+                continue
+            if stripped.startswith("/*"):
+                comment_text = stripped.lstrip("/*").rstrip("*/").strip()
+                pending_comments.append(comment_text)
+                continue
+
+            # Process key/value lines.
+            # (Assumes keys are quoted and each key/value is on its own line.)
+            m = re.match(r'^\s*"([^"]+)"\s*:\s*(.+?)(,)?\s*$', line)
+            if m:
+                key = m.group(1)
+                value = m.group(2).strip()
+                # Remove surrounding quotes from a string value.
+                if value.startswith('"') and value.endswith('"'):
+                    value = value[1:-1]
+                # Subtract one indent level for the YAML output.
+                effective_indent = max(indent_level - 1, 0)
+                current_indent = base_indent * effective_indent
+                # Emit any pending comments.
+                for comm in pending_comments:
+                    output_lines.append(current_indent + "# " + comm)
+                pending_comments.clear()
+                # If the value indicates a nested object, output the key alone and increase indent.
+                if value == "{" or value.startswith("{"):
+                    output_lines.append(current_indent + f"{key}:")
+                    indent_level += 1
+                else:
+                    output_lines.append(current_indent + f"{key}: {value}")
+            else:
+                current_indent = base_indent * max(indent_level - 1, 0)
+                output_lines.append(current_indent + line.strip())
+        while output_lines and output_lines[-1] == "":
+            output_lines.pop()
+        return "\n".join(output_lines)
+
+    @staticmethod
+    def yaml_to_json5(yaml_content: str) -> str:
+        """
+        Convert the YAML text (as produced above) back to JSON5, preserving comments,
+        blank lines, nesting, and indentation.
+
+        The YAML file is assumed to have no root indentation (i.e. one indent level was
+        subtracted in the JSON5 → YAML conversion). The build step below adds one indent
+        level back so that JSON5 keys inside the braces are indented appropriately.
+        """
+        lines = yaml_content.splitlines()
+
+        def parse_yaml(lines, start_index=0, current_indent=0):
+            entries = []
+            index = start_index
+            pending_comments = []
+            while index < len(lines):
+                line = lines[index]
+                # Determine the indentation level.
+                line_indent = len(line) - len(line.lstrip(" "))
+                if line_indent < current_indent:
+                    break
+                stripped_line = line.lstrip(" ")
+                if not stripped_line:
+                    index += 1
+                    continue
+                if stripped_line.startswith("#"):
+                    # Collect comment.
+                    comment_text = stripped_line[1:].strip()
+                    pending_comments.append(comment_text)
+                    index += 1
+                    continue
+                # Expect a line in the format: key: [value]
+                m = re.match(r'^([\w\-]+)\s*:(.*)$', stripped_line)
+                if m:
+                    key = m.group(1)
+                    value_str = m.group(2).strip()
+                    index += 1
+                    if value_str == "":
+                        # No immediate value; assume a nested block.
+                        nested_entries, new_index = parse_yaml(lines, index, current_indent + 2)
+                        entry = (pending_comments.copy(), key, nested_entries)
+                        pending_comments.clear()
+                        entries.append(entry)
+                        index = new_index
+                    else:
+                        # A leaf value.
+                        entry = (pending_comments.copy(), key, value_str)
+                        pending_comments.clear()
+                        entries.append(entry)
+                else:
+                    index += 1
+            return entries, index
+
+        parsed_entries, _ = parse_yaml(lines, 0, 0)
+
+        # Build JSON5 text from the parsed structure.
+        json5_lines = []
+        json5_lines.append("{")
+
+        def build_json5(entries, indent_level):
+            result_lines = []
+            json_indent = " " * 4  # 4 spaces per indent level in JSON5 output.
+            for i, (comments, key, value) in enumerate(entries):
+                for comm in comments:
+                    result_lines.append(json_indent * (indent_level + 1) + "// " + comm)
+                if isinstance(value, list):
+                    result_lines.append(json_indent * (indent_level + 1) + f'"{key}": ' + "{")
+                    nested_lines = build_json5(value, indent_level + 1)
+                    result_lines.extend(nested_lines)
+                    closing_line = json_indent * (indent_level + 1) + "}"
+                    comma = "," if i < len(entries) - 1 else ""
+                    result_lines.append(closing_line + comma)
+                else:
+                    # Quote the value if it is not a boolean or numeric.
+                    if not (value in ["true", "false"] or re.match(r'^-?\d+(\.\d+)?$', value)):
+                        if not ((value.startswith('"') and value.endswith('"')) or
+                                (value.startswith("'") and value.endswith("'"))):
+                            value = f'"{value}"'
+                    comma = "," if i < len(entries) - 1 else ""
+                    result_lines.append(json_indent * (indent_level + 1) + f'"{key}": {value}{comma}')
+            return result_lines
+
+        # Start with indent_level 0; build_json5 will add one indent level to root keys.
+        json5_lines.extend(build_json5(parsed_entries, 0))
+        json5_lines.append("}")
+        return "\n".join(json5_lines)
+
+    # Internally convert JSON5 to YAML for ease of editing.
+    def read_from_disk(self) -> list:
+        with open(self.path, 'r', encoding='utf-8') as f:
+            raw_content = f.read()
+            raw_content = raw_content.replace(r'\n', '\\n').replace(r'\r', '\\r')
+
+            # Convert JSON5 to YAML using our custom parser.
+            content = self.json5_to_yaml(raw_content)
+            return content.splitlines()
+
+    def save_file(self):
+        final_content = ''
+
+        for line in self.line_list:
+            line = line['data']
+            key_str = str(line['key']).strip()
+            val_str = str(line['value']).strip()
+            base_indent = " " * 2
+
+
+            # Format empty values
+            if val_str in ['""', "''", None]:
+                val_str = ''
+
+            # Ignore empty list items or multiline strings
+            if (line['is_multiline_string'] or line['is_list_item']) and not val_str:
+                continue
+
+            if line['is_comment'] or line['is_blank_line']:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}".rstrip() + '\n')
+
+            elif line['is_list_item'] and val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}- {val_str}".rstrip() + '\n')
+
+            elif line['is_multiline_string'] and val_str:
+                indent = base_indent * (line['indent'] + 2)
+                final_content += str(f"{indent}{val_str}".rstrip() + '\n')
+
+            elif line['is_header'] or line['is_list_header'] or not val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
+
+            elif key_str and val_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}: {val_str}".rstrip() + '\n')
+
+            elif key_str:
+                indent = base_indent * line['indent']
+                final_content += str(f"{indent}{key_str}:".rstrip() + '\n')
+
+
+        try:
+            # Convert the assembled YAML back into JSON5.
+            json5_content = self.yaml_to_json5(final_content.strip())
+        except Exception as e:
+            if constants.debug:
+                print(f"Failed to save: {e}")
+            return False
+
+        # Write the JSON5 back to disk
+        # return print(json5_content)
+        return self.write_to_disk(json5_content)
+
+
+
+# Server Settings Screen ---------------------------------------------------------------------------------------------
 
 def toggle_proxy(boolean, *args):
     server_obj = constants.server_manager.current_server
@@ -24046,7 +26716,7 @@ class ServerSettingsScreen(MenuBackground):
         self.footer_widget = None
         self.menu_taskbar = None
 
-        self.edit_properties_button = None
+        self.config_button = None
         self.open_path_button = None
         self.update_button = None
         self.update_label = None
@@ -24140,13 +26810,19 @@ class ServerSettingsScreen(MenuBackground):
 
         general_layout = GridLayout(cols=1, spacing=10, size_hint_max_x=1050, size_hint_y=None, padding=[0, 0, 0, 0])
 
-        # Edit properties button
-        def edit_server_properties(*args):
-            screen_manager.current = 'ServerPropertiesEditScreen'
+        if server_obj.type == 'vanilla':
+            # Edit properties button
+            def edit_server_properties(*args):
+                open_config_file(constants.server_path(server_obj.name, 'server.properties'))
+            self.config_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
+        else:
+            # Edit config button
+            def open_config_menu(*args):
+                screen_manager.current = 'ServerConfigScreen'
+            self.config_button = WaitButton("Edit Configuration Files", (0.5, 0.5), 'document-text-outline.png', click_func=open_config_menu)
 
         sub_layout = ScrollItem()
-        self.edit_properties_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
-        sub_layout.add_widget(self.edit_properties_button)
+        sub_layout.add_widget(self.config_button)
         general_layout.add_widget(sub_layout)
 
 
@@ -24994,7 +27670,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
             self.open_server(
                 import_data['name'],
                 True,
-                f"'Updated ${import_data['name']}$' successfully",
+                f"Updated '${import_data['name']}$' successfully",
                 show_readme=import_data['readme']
             )
 
@@ -25058,6 +27734,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
 # ============================================= Telepath Utilities =====================================================
 # <editor-fold desc="Telepath Utilities">
 
+# Telepath instance screen (for a client to view servers it's connected to)
 class InstanceButton(HoverButton):
 
     class NameInput(TextInput):
@@ -25208,26 +27885,18 @@ class InstanceButton(HoverButton):
                 self.background_normal = os.path.join(constants.gui_assets, 'telepath_button_enabled.png')
 
             else:
-                url = f'http://{self.properties["host"]}:{self.properties["port"]}/telepath/check_status'
-                # Check if remote server is online
-                try:
-                    if constants.requests.get(url, timeout=1).json():
-                        self.connect_color = (1, 0.65, 0.65, 1)
-                        self.subtitle.color = self.connect_color
-                        self.subtitle.default_opacity = 0.8
-                        self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+                self.connect_color = (1, 0.65, 0.65, 1)
+                self.subtitle.color = self.connect_color
+                self.subtitle.default_opacity = 0.8
+                self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
 
-                        if self.properties['telepath-version'] != constants.api_manager.version:
-                            self.subtitle.text = 'API version mismatch'
-                        else:
-                            self.subtitle.text = 'Authentication failure'
+                if self.properties['telepath-version'] != constants.api_manager.version:
+                    self.subtitle.text = 'API version mismatch'
+                else:
+                    self.subtitle.text = 'Authentication failure'
 
-                        self.enabled = False
-                        self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
-                    else:
-                        reset()
-                except constants.requests.exceptions.ConnectionError:
-                    reset()
+                self.enabled = False
+                self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
 
         except KeyError:
             reset()
@@ -25336,7 +28005,7 @@ class InstanceButton(HoverButton):
                     pos_hint={"center_x": 1, "center_y": 0.5},
                     size=(100, 30),
                     color=(0.647, 0.839, 0.969, 1),
-                    text= ('   ' + update_banner + '  ') if update_banner.startswith('b-') else update_banner,
+                    text=update_banner,
                     icon="arrow-up-circle.png",
                     icon_side="left"
                 )
@@ -25503,6 +28172,7 @@ class TelepathInstanceScreen(MenuBackground):
         self.scroll_layout = None
         self.blank_label = None
         self.page_switcher = None
+        self.load_layout = None
 
         self.last_results = []
         self.page_size = 10
@@ -25521,8 +28191,11 @@ class TelepathInstanceScreen(MenuBackground):
         if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
             self.switch_page(keycode[1])
 
+    def show_loading(self, show=True, *a):
+        Animation.stop_all(self.load_layout)
+        Animation(opacity=1 if show else 0, duration=0.2).start(self.load_layout)
+
     def generate_menu(self, **kwargs):
-        constants.server_manager.check_telepath_servers()
 
         # Scroll list
         scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
@@ -25582,10 +28255,502 @@ class TelepathInstanceScreen(MenuBackground):
         float_layout.add_widget(generate_title(menu_name))
         float_layout.add_widget(generate_footer(f'Telepath, {menu_name}', no_background=True))
 
+        # Load layout
+        self.load_layout = FloatLayout(opacity=0)
+
+        # Loading icon to swap button
+        self.load_layout.icon = Image()
+        self.load_layout.icon.id = "load_icon"
+        self.load_layout.icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
+        self.load_layout.icon.size_hint_max = (50, 50)
+        self.load_layout.icon.color = (0.6, 0.6, 1, 1)
+        self.load_layout.icon.pos_hint = {"center_y": 0.5, "center_x": 0.4}
+        self.load_layout.icon.allow_stretch = True
+        self.load_layout.icon.anim_delay = constants.anim_speed * 0.02
+        self.load_layout.add_widget(self.load_layout.icon)
+
+        # Load label
+        self.load_layout.text = Label()
+        self.load_layout.text.text = "loading instances..."
+        self.load_layout.text.halign = "center"
+        self.load_layout.text.valign = "center"
+        self.load_layout.text.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
+        self.load_layout.text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.load_layout.text.font_size = sp(25)
+        self.load_layout.text.color = (0.6, 0.6, 1, 0.5)
+        self.load_layout.add_widget(self.load_layout.text)
+
+        self.add_widget(float_layout)
+        self.add_widget(self.load_layout)
+
+        # Async reload Telepath servers
+        def refresh_telepath_instances(*a):
+            Clock.schedule_once(lambda *_: self.show_loading(True), 0)
+            constants.server_manager.check_telepath_servers()
+            Clock.schedule_once(lambda *_: self.show_loading(False), 0)
+            Clock.schedule_once(lambda *_: self.gen_search_results(constants.server_manager.telepath_servers), 0.15)
+        threading.Timer(0, refresh_telepath_instances).start()
+
+
+# Telepath user screen (for a server to view connected clients)
+class UserButton(HoverButton):
+    def animate_button(self, image, color, **kwargs):
+        image_animate = Animation(duration=0.05)
+
+        def f(w):
+            w.background_normal = image
+
+        Animation(color=color, duration=0.06).start(self.title)
+        Animation(color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color), duration=0.06).start(self.subtitle)
+        Animation(color=color, duration=0.06).start(self.type_image.image)
+
+        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
+            Animation(color=color, duration=0.06).start(self.type_image.version_label)
+        Animation(color=color, duration=0.06).start(self.type_image.type_label)
+
+        a = Animation(duration=0.0)
+        a.on_complete = functools.partial(f)
+
+        image_animate += a
+
+        image_animate.start(self)
+
+    def resize_self(self, *args):
+
+        # Title and description
+        padding = 2.17
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - 8.3 + 30, self.y + 31)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78, self.y + 8)
+        offset = 9.55
+
+        self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 8
+        self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
+
+        self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 75
+        self.type_image.type_label.y = self.y + (self.height * 0.15)
+
+        self.disable_layout.pos = (self.x + self.width + 57, self.y - 23)
+
+
+        # Edit button
+        self.edit_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
+        self.edit_layout.pos = (self.pos[0] - 6, self.pos[1] + 13)
+
+    def highlight(self):
+        def next_frame(*args):
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        Clock.schedule_once(next_frame, 0)
+
+    def update_status(self):
+
+        def reset(*a):
+            self.subtitle.copyable = False
+            self.subtitle.color = self.color_id[1]
+            self.subtitle.default_opacity = 0.56
+            self.subtitle.font_name = self.original_font
+            self.subtitle.text = self.original_subtitle
+            self.enabled = False
+            self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+
+        try:
+
+            # User is connected
+            if self.connected:
+                self.connect_color = (0.529, 1, 0.729, 1)
+                self.type_image.image.color = self.type_image.type_label.color = self.connect_color
+                self.type_image.type_label.text = 'connected'
+                self.background_normal = os.path.join(constants.gui_assets, 'telepath_button_enabled.png')
+
+            # User is offline
+            elif not self.access_disabled:
+                self.connect_color = (0.65, 0.65, 1, 1)
+                self.type_image.image.color = self.type_image.type_label.color = self.connect_color
+                self.type_image.type_label.text = 'offline'
+                self.background_normal = os.path.join(constants.gui_assets, 'addon_button.png')
+
+            # User is restricted
+            else:
+                self.connect_color = (1, 0.65, 0.65, 1)
+                self.type_image.image.color = self.type_image.type_label.color = self.connect_color
+                self.type_image.type_label.text = 'restricted'
+                self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+
+        except KeyError:
+            reset()
+
+        self.background_down = self.background_normal
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.connected else [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
+
+    def generate_name(self):
+        return self.properties['user']
+
+    def __init__(self, user_data, click_function=None, fade_in=0.0, connected=False, highlight=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.properties = user_data
+        self.border = (-5, -5, -5, -5)
+        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.65, 0.65, 1, 1), 0.07)]
+        self.connect_color = (0.529, 1, 0.729, 1)
+        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+        self.size_hint_max = (580, 80)
+        self.id = "server_button"
+        self.access_disabled = 'disabled' in self.properties and self.properties['disabled']
+        self.connected = connected
+
+        self.background_normal = os.path.join(constants.gui_assets, 'server_button.png' if self.connected else 'addon_button_disabled.png')
+        self.background_down = self.background_normal
+
+        self.icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+
+
+        # Loading stuffs
+        self.original_subtitle = self.properties["host"] if self.properties["host"] else self.properties["ip"]
+        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Title of user
+        self.title = Label()
+        self.title.__translate__ = False
+        self.title.id = "title"
+        self.title.halign = "left"
+        self.title.color = self.color_id[1]
+        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_size = sp(25)
+        self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
+        self.title.shorten = True
+        self.title.markup = True
+        self.title.shorten_from = "right"
+        self.title.max_lines = 1
+        self.title.text = self.generate_name()
+        self.add_widget(self.title)
+
+
+        # Hostname
+        self.subtitle = Label()
+        self.subtitle.__translate__ = False
+        self.subtitle.size = (300, 30)
+        self.subtitle.id = "subtitle"
+        self.subtitle.halign = "left"
+        self.subtitle.valign = "center"
+        self.subtitle.font_size = sp(21)
+        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.shorten = True
+        self.subtitle.markup = True
+        self.subtitle.shorten_from = "right"
+        self.subtitle.max_lines = 1
+        self.subtitle.text_size[0] = 350
+        self.subtitle.copyable = False
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.default_opacity = 0.65
+        self.subtitle.font_name = self.original_font
+        self.subtitle.text = self.original_subtitle
+
+        self.subtitle.opacity = self.subtitle.default_opacity
+
+        self.add_widget(self.subtitle)
+
+
+        # Edit button
+        self.edit_layout = RelativeLayout()
+        self.edit_button = IconButton('', {}, (0, 0), (None, None), 'unpair.png', anchor='right', click_func=functools.partial(click_function, user_data))
+        self.edit_layout.add_widget(self.edit_button)
+        self.add_widget(self.edit_layout)
+
+
+        # Type icon and info
+        self.type_image = RelativeLayout()
+        self.type_image.width = 400
+
+        user_icon = os.path.join(constants.gui_assets, 'icons', 'big', 'telepath-user.png')
+        self.type_image.image = Image(source=user_icon)
+
+        self.type_image.image.allow_stretch = True
+        self.type_image.image.size_hint_max = (65, 65)
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.add_widget(self.type_image.image)
+
+        def TemplateLabel():
+            template_label = AlignLabel()
+            template_label.__translate__ = False
+            template_label.halign = "right"
+            template_label.valign = "middle"
+            template_label.text_size = template_label.size
+            template_label.font_size = sp(19)
+            template_label.color = self.color_id[1]
+            template_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            template_label.opacity = 0.8
+            template_label.width = 150
+            return template_label
+
+        self.type_image.type_label = TemplateLabel()
+        self.type_image.type_label.font_size = sp(23)
+        self.type_image.add_widget(self.type_image.type_label)
+        self.add_widget(self.type_image)
+        self.update_status()
+
+
+        # Temporary disable switch
+        def disable_user(disable=True):
+            constants.api_manager._disable_user(self.properties['id'], not disable)
+            self.access_disabled = not disable
+            self.update_status()
+
+        # Make this check eventual variable
+        self.disable_layout = RelativeLayout(size_hint_max=(10, 10))
+        self.disable_user = toggle_button('telepath-disable', (0.5, 0.5), default_state=not self.access_disabled, x_offset=-395, custom_func=disable_user)
+        self.disable_layout.size_hint_max = (10, 10)
+        self.disable_layout.add_widget(self.disable_user)
+        self.add_widget(self.disable_layout)
+
+
+        # Animate opacity
+        if fade_in > 0:
+            self.opacity = 0
+            self.title.opacity = 0
+
+            Animation(opacity=1, duration=fade_in).start(self)
+            Animation(opacity=1, duration=fade_in).start(self.title)
+            Animation(opacity=self.subtitle.default_opacity, duration=fade_in).start(self.subtitle)
+
+        self.bind(pos=self.resize_self)
+
+    def on_enter(self, *args):
+        return
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
+
+    def on_leave(self, *args):
+        return
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+
+class TelepathUserScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, new_search=False, fade_in=True, highlight=None, animate_scroll=True, *args):
+
+        # Generate list of online users
+        online_list = []
+        for user in constants.api_manager.current_users.values():
+            user_str = f'{user["host"]}/{user["user"]}'
+            if user_str not in online_list:
+                online_list.append(user_str)
+
+        # Sort users based on if they are online
+        results = sorted(
+            constants.api_manager.authenticated_sessions,
+            key = lambda u: f'{u["host"]}/{u["user"]}' in online_list,
+            reverse = True
+        )
+
+
+        default_scroll = 1
+
+        # Update page counter
+        self.last_results = results
+        self.max_pages = (len(results) / self.page_size).__ceil__()
+        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+        self.scroll_layout.clear_widgets()
+
+
+        # Generate header
+        user_count = len(constants.api_manager.authenticated_sessions)
+        header_content = "Select a user to manage"
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                break
+
+
+        # Show users if they exist
+        if user_count != 0:
+
+            # Clear and add all ServerButtons
+            for x, user in enumerate(page_list, 1):
+
+                # Activated when server is clicked
+                def view_user(data, *a):
+                    if data['host']:
+                        display_name = f"{data['host']}/{data['user']}"
+                    else:
+                        display_name = f"{data['ip']}/{data['user']}"
+
+                    desc = f"Un-pairing this user will prevent them from accessing this instance via $Telepath$ until paired again.\n\nAre you sure you want to un-pair '${display_name}$'?"
+
+                    def unpair(*a):
+                        # Log out if possible
+                        if data['ip'] in constants.api_manager.current_users:
+                            constants.api_manager._force_logout(constants.api_manager.current_users[data['ip']]['session_id'])
+
+                        constants.api_manager._revoke_session(data['id'])
+                        self.gen_search_results()
+                        telepath_banner(f"Un-paired '${display_name}$'", False)
+
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_popup,
+                            "warning_query",
+                            f'Un-pair Instance',
+                            desc,
+                            (None, unpair)
+                        ),
+                        0
+                    )
+
+                # Add-on button click function
+                self.scroll_layout.add_widget(
+                    ScrollItem(
+                        widget = UserButton(
+                            user_data = user,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            click_function = view_user,
+                            connected = f'{user["host"]}/{user["user"]}' in online_list,
+                        )
+                    )
+                )
+
+            self.resize_bind()
+
+        # Go back to main menu if they don't
+        else:
+            screen_manager.current = 'TelepathManagerScreen'
+            constants.screen_tree = ['MainMenuScreen']
+            return
+
+        # Animate scrolling
+        def set_scroll(*args):
+            Animation.stop_all(self.scroll_layout.parent.parent)
+            if animate_scroll:
+                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+            else:
+                self.scroll_layout.parent.parent.scroll_y = default_scroll
+        Clock.schedule_once(set_scroll, 0)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.background_color = constants.brighten_color(constants.background_color, -0.09)
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.page_switcher = None
+        self.load_layout = None
+
+        self.last_results = []
+        self.page_size = 10
+        self.current_page = 0
+        self.max_pages = 0
+        self.anim_speed = 10
+
+        with self.canvas.before:
+            self.color = Color(*self.background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+
+    def show_loading(self, show=True, *a):
+        Animation.stop_all(self.load_layout)
+        Animation(opacity=1 if show else 0, duration=0.2).start(self.load_layout)
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.82
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60), color=self.background_color)
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60), color=self.background_color)
+
+        # Generate buttons on page load
+        header_content = "Select a user to manage"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.page_switcher)
+
+        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = "User Manager"
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(f'Telepath, {menu_name}', no_background=True))
+
         self.add_widget(float_layout)
 
-        # Automatically generate results on page load
-        self.gen_search_results(constants.server_manager.telepath_servers)
+        self.gen_search_results()
 
 
 
@@ -25940,8 +29105,11 @@ class TelepathManagerScreen(MenuBackground):
         self.background_color = constants.brighten_color(constants.background_color, -0.09)
         self.back_button = None
         self.help_button = None
+        self.instances_button = None
+        self.users_button = None
         self.pair_button = None
         self.api_input = None
+        self.api_toggle = None
         self.host_input = None
         self.confirm_input = None
         self.load_icon = None
@@ -26082,6 +29250,42 @@ class TelepathManagerScreen(MenuBackground):
         Animation(opacity=0, duration=self.page_speed).start(self.pair_layout)
         Clock.schedule_once(after, self.page_speed + 0.05)
 
+    def recalculate_buttons(self, *a):
+        try:
+            self.main_layout.remove_widget(self.users_button)
+        except:
+            pass
+        try:
+            self.main_layout.remove_widget(self.instances_button)
+        except:
+            pass
+
+        if constants.api_manager.authenticated_sessions and constants.app_config.telepath_settings['enable-api']:
+            self.main_layout.add_widget(self.users_button)
+
+            pair_pos = (0.5, 0.42)
+            enable_pos = (0.5, 0.29)
+            back_pos = (0.5, 0.13)
+
+        elif constants.server_manager.telepath_servers:
+            self.main_layout.add_widget(self.instances_button)
+
+            pair_pos = (0.5, 0.42)
+            enable_pos = (0.5, 0.29)
+            back_pos = (0.5, 0.13)
+
+        else:
+            pair_pos = (0.5, 0.5)
+            enable_pos = (0.5, 0.35)
+            back_pos = (0.5, 0.17)
+
+        self.pair_button.pos_hint = {'center_x': pair_pos[0], 'center_y': pair_pos[1]}
+        self.api_input.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
+        self.api_toggle.button.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
+        self.api_toggle.knob.pos_hint = {"center_y": enable_pos[1]}
+        self.back_button.text.pos_hint = self.back_button.button.pos_hint = {'center_x': back_pos[0], 'center_y': back_pos[1]}
+        self.back_button.icon.pos_hint = {'center_y': back_pos[1]}
+
     def generate_menu(self, **kwargs):
         self.main_layout = FloatLayout()
         self.main_layout.opacity = 0
@@ -26142,22 +29346,14 @@ Once paired, remote servers will appear in the Server Manager and can be interac
         self.main_layout.add_widget(session_splash)
 
 
-        if constants.server_manager.telepath_servers:
-            def show_manager(*a):
-                screen_manager.current = "TelepathInstanceScreen"
-            self.pair_button = color_button("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png', click_func=show_manager, color=(0.8, 0.8, 1, 1))
-            self.main_layout.add_widget(self.pair_button)
-
-            pair_pos = (0.5, 0.42)
-            enable_pos = (0.5, 0.29)
-            back_pos = (0.5, 0.13)
-
-        else:
-            pair_pos = (0.5, 0.5)
-            enable_pos = (0.5, 0.35)
-            back_pos = (0.5, 0.17)
-
-        self.pair_button = color_button("PAIR A SERVER", position=pair_pos, icon_name='telepath.png', click_func=functools.partial(self.show_pair_input, False), color=(0.8, 0.8, 1, 1))
+        # Logic-driven button visibility
+        def user_manager(*a):
+            screen_manager.current = "TelepathUserScreen"
+        def instance_manager(*a):
+            screen_manager.current = "TelepathInstanceScreen"
+        self.users_button = color_button("MANAGE USERS", position=(0.5, 0.55), icon_name='person-sharp.png', click_func=user_manager, color=(0.8, 0.8, 1, 1))
+        self.instances_button = color_button("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png', click_func=instance_manager, color=(0.8, 0.8, 1, 1))
+        self.pair_button = color_button("PAIR A SERVER", position=(0.5, 0.5), icon_name='telepath.png', click_func=functools.partial(self.show_pair_input, False), color=(0.8, 0.8, 1, 1))
         self.main_layout.add_widget(self.pair_button)
 
 
@@ -26191,19 +29387,22 @@ Once paired, remote servers will appear in the Server Manager and can be interac
 
             self.api_input.hint_text = new_text
         sub_layout = RelativeLayout()
-        self.api_input = blank_input(pos_hint={"center_x": enable_pos[0], "center_y": enable_pos[1]}, hint_text="share this instance")
+        self.api_input = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.35}, hint_text="share this instance")
+        self.api_toggle = toggle_button('api', (0.5, 0.35), default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api)
         sub_layout.add_widget(self.api_input)
-        sub_layout.add_widget(toggle_button('api', enable_pos, default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api))
+        sub_layout.add_widget(self.api_toggle)
         self.main_layout.add_widget(sub_layout)
         if constants.app_config.telepath_settings['enable-api']:
             toggle_api(True, True)
+
+        Clock.schedule_once(self.recalculate_buttons, 0)
 
 
         # Static content on each page
         self.add_widget(generate_footer('$Telepath$', no_background=True))
         self.add_widget(self.main_layout)
         Animation(opacity=1, duration=1).start(self.main_layout)
-        self.back_button = ExitButton('Back', back_pos, cycle=True)
+        self.back_button = ExitButton('Back', (0.5, 0.17), cycle=True)
         self.add_widget(self.back_button)
 
 
@@ -26217,7 +29416,7 @@ class TelepathPair():
         if not self.is_open:
             return
 
-        current_user = constants.api_manager.current_user
+        current_user = constants.api_manager.current_users[self.pair_data['host']['ip']]
         if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
             message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
             color = (0.553, 0.902, 0.675, 1)
@@ -26273,10 +29472,12 @@ constants.telepath_pair = TelepathPair()
 
 # Telepath banner endpoint for sending remote notifications
 def telepath_banner(message: str, finished: bool, play_sound=None):
-    if screen_manager.current_screen.show_banner:
+    screen = screen_manager.current_screen
+
+    if screen.show_banner:
         Clock.schedule_once(
             functools.partial(
-                screen_manager.current_screen.show_banner,
+                screen.show_banner,
                 (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
                 message,
                 "checkmark-circle-sharp.png" if finished else "telepath.png",
@@ -26285,6 +29486,15 @@ def telepath_banner(message: str, finished: bool, play_sound=None):
                 play_sound
             ), 0.1
         )
+
+    # Refresh Telepath home screen
+    if screen.name == 'TelepathManagerScreen':
+        Clock.schedule_once(screen.recalculate_buttons, 0)
+
+    # Refresh user list if visible
+    if screen.name == 'TelepathUserScreen' and not screen.popup_widget:
+        Clock.schedule_once(lambda *_: screen.gen_search_results(fade_in=False), 0)
+
 constants.telepath_banner = telepath_banner
 telepath.create_endpoint(constants.telepath_banner, 'main', True)
 
@@ -26381,6 +29591,10 @@ def check_running(final_func):
     elif final_func:
         final_func()
 
+def exit_app():
+    amseditor.quit_ipc = True
+    sys.exit(0)
+
 class MainApp(App):
 
     # Disable F1 menu when compiled
@@ -26394,7 +29608,7 @@ class MainApp(App):
         constants.last_window = constants.app_config.geometry
         pos = constants.app_config.geometry['pos']
         size = constants.app_config.geometry['size']
-        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50):
+        if (size[0] >= constants.window_size[0] and size[1] >= constants.window_size[1] - 50) and (pos[0] > -5000 and pos[1] > -5000):
             Window.size = size
             Window.left = pos[0]
             Window.top = pos[1]
@@ -26441,7 +29655,12 @@ class MainApp(App):
             Window.close()
             return False
 
-    Window.bind(on_request_close=exit_check)
+    def _close_window_wrapper(self):
+        data = main_app.exit_check()
+        if not data:
+            exit_app()
+        return data
+    Window.bind(on_request_close=_close_window_wrapper)
     Window.bind(on_cursor_enter=save_window_pos, on_cursor_leave=save_window_pos)
     dropped_files = []
     processing_drops = False
@@ -26481,12 +29700,8 @@ class MainApp(App):
 
         # Screen manager override for testing
         # if not constants.app_compiled:
-        #     def open_menu(*a):
-        #         open_server('Beds Rock')
-        #     Clock.schedule_once(open_menu, 0.5)
-        #     def open_menu(*a):
-        #         screen_manager.current = 'ServerPropertiesEditScreen'
-        #     Clock.schedule_once(open_menu, 0.8)
+        #    pass
+
 
 
         # Process --launch flag

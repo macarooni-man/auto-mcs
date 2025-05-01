@@ -97,8 +97,8 @@ class AddonManager():
         # Setup paths
         addon_folder = "plugins" if constants.server_type(self._server['type']) == 'bukkit' else 'mods'
         disabled_addon_folder = str("disabled-" + addon_folder)
-        self.addon_path = constants.server_path(self._server['name'], addon_folder)
-        self.disabled_addon_path = constants.server_path(self._server['name'], disabled_addon_folder)
+        self.addon_path = os.path.join(constants.server_path(self._server['name']), addon_folder)
+        self.disabled_addon_path = os.path.join(constants.server_path(self._server['name']), disabled_addon_folder)
 
         # Set addon hash if server is running
         try:

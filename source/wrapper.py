@@ -200,9 +200,15 @@ if __name__ == '__main__':
                 timer.cancel()
 
         # Close Discord rich presence
-        if constants.discord_presence:
-            if constants.discord_presence.presence:
-                constants.discord_presence.presence.close()
+        try:
+            if constants.discord_presence:
+                if constants.discord_presence.presence:
+                    constants.discord_presence.presence.close()
+        except:
+            pass
+
+        # Close amscript IDE if open on close
+
 
         # Delete live images/temp files on close
         for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
@@ -300,7 +306,6 @@ if __name__ == '__main__':
             exitApp = True
 
             # Use crash handler when app is compiled
-            cleanup_on_close()
             if crash and constants.app_compiled:
 
                 # Destroy init window if macOS
@@ -308,6 +313,8 @@ if __name__ == '__main__':
                     init_window.destroy()
 
                 app_crash(crash)
+
+            cleanup_on_close()
 
             # Normal Python behavior when testing
             if not constants.app_compiled:

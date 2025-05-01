@@ -136,7 +136,7 @@ class BackupManager():
 
     # Moves backup directory to new_path
     def set_directory(self, new_directory: str):
-        path = set_backup_directory(self._server['name'], new_directory)
+        path = set_backup_directory(self._server['name'], new_directory, self.maximum)
         self._update_data()
         return path
 
@@ -435,7 +435,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
 
 
 # Migrate backup directory and backups
-def set_backup_directory(name: str, new_dir: str):
+def set_backup_directory(name: str, new_dir: str, new_amount: str):
 
     cwd = constants.get_cwd()
     config_file = constants.server_config(name)
@@ -491,6 +491,7 @@ def set_backup_directory(name: str, new_dir: str):
                 os.chdir(cwd)
                 constants.safe_delete(constants.tempDir)
                 config_file.set('bkup', 'bkupDir', new_dir)
+                config_file.set('bkup', 'bkupMax', str(new_amount))
                 constants.server_config(name, config_file)
 
                 set_lock(name, False)
@@ -502,55 +503,59 @@ def set_backup_directory(name: str, new_dir: str):
 
 # Migrate backup names when server is renamed
 def rename_backups(name: str, new_name: str):
-
-    cwd = constants.get_cwd()
-    config_file = constants.server_config(new_name)
-    current_dir = config_file.get('bkup', 'bkupDir')
-    current_dir = current_dir.replace(r"/","\\") if constants.os_name == 'windows' else current_dir
-
     if set_lock(name, True, 'migrate'):
-
-        # Migrate backup directory and backups
-        extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
+        config_file = constants.server_config(new_name)
+        current_dir = config_file.get('bkup', 'bkupDir')
+        current_dir = current_dir.replace(r"/", "\\") if constants.os_name == 'windows' else current_dir
 
         # Iterate over each back-up that could be a match in current back-up directory
         for file in glob(os.path.join(current_dir, f"{name}__*")):
-            constants.folder_check(extract_folder)
-            os.chdir(extract_folder)
-
-            # Extract auto-mcs.ini from each match and check the server name just to be sure
-            constants.run_proc(f'tar -xvf "{file}"') # *auto-mcs.ini
-
-            config_files = []
-            config_files.extend(glob(os.path.join(extract_folder, 'auto-mcs.ini')))
-            config_files.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
-
-            for cfg in config_files:
-                config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
-                config.optionxform = str
-                config.read(cfg)
-                if config:
-                    if config.get('general', 'serverName') == name:
-
-                        # Update bkupDir with new_dir in the back-ups' auto-mcs.ini
-                        config.set('general', 'serverName', new_name)
-                        with open(cfg, 'w') as f:
-                            config.write(f)
-
-                        os.remove(file)
-                        constants.run_proc(f'tar -cvf \"{os.path.join(current_dir, os.path.basename(file).replace(f"{name}__",f"{new_name}__"))}\" {"*" if constants.os_name == "windows" else "* .??*"}')
-                        break
-
-            os.chdir(constants.tempDir)
-            constants.safe_delete(extract_folder)
+            rename_backup(file, new_name)
 
         # Cleanup
-        os.chdir(cwd)
         constants.safe_delete(constants.tempDir)
         set_lock(name, False)
 
     set_lock(name, False)
     return None
+def rename_backup(file: str, new_name: str):
+    cwd = constants.get_cwd()
+    current_dir = os.path.dirname(file)
+    name = os.path.basename(file).split('__')[0].strip()
+
+    # Migrate backup directory and backups
+    extract_folder = os.path.join(constants.tempDir, 'bkup_tmp')
+    new_path = None
+
+    constants.folder_check(extract_folder)
+    os.chdir(extract_folder)
+
+    # Extract auto-mcs.ini from each match and check the server name just to be sure
+    constants.run_proc(f'tar -xvf "{file}"')  # *auto-mcs.ini
+
+    config_files = []
+    config_files.extend(glob(os.path.join(extract_folder, 'auto-mcs.ini')))
+    config_files.extend(glob(os.path.join(extract_folder, '.auto-mcs.ini')))
+
+    for cfg in config_files:
+        config = constants.configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+        config.optionxform = str
+        config.read(cfg)
+        if config:
+            if config.get('general', 'serverName') == name:
+                # Update bkupDir with new_dir in the back-ups' auto-mcs.ini
+                config.set('general', 'serverName', new_name)
+                with open(cfg, 'w') as f:
+                    config.write(f)
+
+                os.remove(file)
+                new_path = os.path.join(current_dir, os.path.basename(file).replace(f"{name}__", f"{new_name}__"))
+                constants.run_proc(f'tar -cvf \"{new_path}\" {"*" if constants.os_name == "windows" else "* .??*"}')
+                break
+
+    os.chdir(cwd)
+    constants.safe_delete(extract_folder)
+    return new_path
 
 
 # Sets maximum backup limit

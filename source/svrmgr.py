@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from subprocess import Popen, PIPE, run
 from datetime import datetime as dt
 from threading import Timer
@@ -52,6 +52,7 @@ class ServerObject():
         self.crash_log = None
         self.max_log_size = 2000
         self.run_data = {}
+        self.console_filter = 'everything'
         self.viewed_notifs = {}
         self.taskbar = None
         self._hash = constants.gen_rstring(8)
@@ -72,6 +73,7 @@ class ServerObject():
             self.server_properties = constants.server_properties(server_name)
 
         self.config_file = constants.server_config(server_name)
+        self.config_paths = None
         self.properties_hash = self._get_properties_hash()
 
 
@@ -82,6 +84,10 @@ class ServerObject():
         self.type = self.config_file.get("general", "serverType").lower()
         self.version = self.config_file.get("general", "serverVersion").lower()
         self.build = None
+        try:
+            self.console_filter = self.config_file.get("general", "consoleFilter")
+        except:
+            pass
         try:
             self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
         except:
@@ -204,6 +210,9 @@ class ServerObject():
         def load_scriptmgr(*args):
             self.script_manager = amscript.ScriptManager(self.name)
         Timer(0, load_scriptmgr).start()
+        def load_config_paths(*args):
+            self.reload_config_paths()
+        Timer(0, load_config_paths).start()
 
         if not constants.headless:
             print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
@@ -241,7 +250,7 @@ class ServerObject():
     # Checks if server was initialized remotely
     def _is_telepath_session(self):
         try:
-            return constants.server_manager.remote_server == self
+            return self in constants.server_manager.remote_servers.values()
         except AttributeError:
             pass
         except RecursionError:
@@ -298,6 +307,10 @@ class ServerObject():
         self.write_config()
         self.proxy_enabled = enabled
 
+    # Retrieve a data structure of all config files in the server
+    def reload_config_paths(self):
+        self.config_paths = constants.gather_config_files(self.name)
+        return self.config_paths
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
@@ -315,6 +328,10 @@ class ServerObject():
         self.type = self.config_file.get("general", "serverType").lower()
         self.version = self.config_file.get("general", "serverVersion").lower()
         self.build = None
+        try:
+            self.console_filter = self.config_file.get("general", "consoleFilter")
+        except:
+            pass
         try:
             self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
         except:
@@ -423,6 +440,9 @@ class ServerObject():
             def load_scriptmgr(*args):
                 self.script_manager = amscript.ScriptManager(self.name)
             Timer(0, load_scriptmgr).start()
+            def load_config_paths(*args):
+                self.reload_config_paths()
+            Timer(0, load_config_paths).start()
 
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):
@@ -474,6 +494,10 @@ class ServerObject():
     def update_log(self, text: bytes, *args):
 
         text = text.replace(b'\xa7', b'\xc2\xa7').decode('utf-8', errors='ignore')
+
+        # Ignore terminal warning
+        if "Advanced terminal features are not available in this environment" in text:
+            return
 
         # (date, type, log, color)
         def format_log(line, *args):
@@ -639,9 +663,16 @@ class ServerObject():
 
 
                 # Server stop log
-                elif "Stopping server" in line or "Failed to start the minecraft server" in line:
+                elif "Stopping server" in line:
                     type_label = "STOP"
                     type_color = (0.3, 1, 0.6, 1)
+                    self.check_for_deadlock()
+
+
+                # Server fail to start log
+                elif "Failed to start the minecraft server" in line:
+                    type_label = "FATAL"
+                    type_color = (1, 0.5, 0.65, 1)
                     self.check_for_deadlock()
 
 
@@ -1605,6 +1636,13 @@ class ServerObject():
         self.server_icon = constants.server_path(self.name, 'server-icon.png')
         return data
 
+    # Updates console event filter in config
+    # 'everything', 'errors', 'players', 'amscript'
+    def change_filter(self, filter_type: str):
+        self.config_file = constants.server_config(self.name)
+        self.config_file.set("general", "consoleFilter", filter_type)
+        constants.server_config(self.name, self.config_file)
+
     # Renames server
     def rename(self, new_name: str):
         if not self.running:
@@ -1635,11 +1673,13 @@ class ServerObject():
 
             # Reset server object properties
             backup.rename_backups(original_name, new_name)
-            self.reload_config(reload_objects=True)
 
             # Reset constants properties
             constants.generate_server_list()
             constants.make_update_list()
+
+            # Reload properties
+            self.reload_config(reload_objects=True)
 
     # Deletes server
     def delete(self):
@@ -2086,7 +2126,7 @@ class ServerManager():
 
         self.server_list = create_server_list()
         self.current_server = None
-        self.remote_server = None
+        self.remote_servers = {}
         self.running_servers = {}
 
         # Load telepath servers
@@ -2101,7 +2141,8 @@ class ServerManager():
 
     # Refreshes self.server_list with current info
     def refresh_list(self):
-        self.server_list = create_server_list(self.load_telepath_servers())
+
+        self.server_list = create_server_list(self.online_telepath_servers)
 
     # Sets self.current_server to selected ServerObject
     def open_server(self, name):
@@ -2137,40 +2178,46 @@ class ServerManager():
         return self.current_server
 
     # Sets self.remote_server to selected ServerObject
-    def open_remote_server(self, name):
+    def open_remote_server(self, host: str, name: str):
         try:
             if self.current_server.name == name:
-                self.remote_server = self.current_server
+                self.remote_servers[host] = self.current_server
 
                 if constants.debug:
-                    print(vars(self.remote_server))
+                    print(vars(self.remote_servers[host]))
 
-                return bool(self.remote_server)
+                return host in self.remote_servers
 
         except AttributeError:
             pass
 
-
-        if self.remote_server:
-            crash_info = (self.remote_server.name, self.remote_server.crash_log)
+        if host in self.remote_servers:
+            crash_info = (self.remote_servers[host].name, self.remote_servers[host].crash_log)
+            del self.remote_servers[host]
         else:
             crash_info = (None, None)
 
-        del self.remote_server
-        self.remote_server = None
-
         # Check if server is running
         if name in self.running_servers.keys():
-            self.remote_server = self.running_servers[name]
+            self.remote_servers[host] = self.running_servers[name]
+
         else:
-            self.remote_server = ServerObject(name)
-            if crash_info[0] == name:
-                self.remote_server.crash_log = crash_info[1]
+            # Check if server is already open on another host
+            for server_obj in self.remote_servers.values():
+                if name == server_obj.name:
+                    self.remote_servers[host] = server_obj
+                    break
+
+            # Initialize a new server object
+            else:
+                self.remote_servers[host] = ServerObject(name)
+                if crash_info[0] == name:
+                    self.remote_servers[host].crash_log = crash_info[1]
 
         if constants.debug:
-            print(vars(self.remote_server))
+            print(vars(self.remote_servers[host]))
 
-        return bool(self.remote_server)
+        return host in self.remote_servers
 
     # Reloads self.current_server
     def reload_server(self):
@@ -2192,31 +2239,39 @@ class ServerManager():
     # Checks which servers are alive
     def check_telepath_servers(self):
         new_server_list = {}
-        for host, data in self.telepath_servers.items():
+
+        def check_server(host, data):
             url = f'http://{host}:{data["port"]}/telepath/check_status'
             try:
                 # Check if remote server is online
-                if requests.get(url, timeout=1).json():
-
+                if requests.get(url, timeout=0.5).json():
                     # Attempt to log in
                     login_data = constants.api_manager.login(host, data["port"])
                     if login_data:
-
                         # Update values if host exists
                         if host in self.telepath_servers:
                             for k, v in login_data.items():
-                                if host in self.telepath_servers and v:
+                                if v:
                                     self.telepath_servers[host][k] = v
-
-                        # Otherwise, set the whole thing
                         else:
                             self.telepath_servers[host] = login_data
 
-                        new_server_list[host] = constants.deepcopy(data)
-            except:
+                        return host, constants.deepcopy(data)
+            except Exception:
                 pass
+            return None
 
-        # Add a discovery endpoint at some point here, and only return active servers
+        # Use ThreadPoolExecutor to check multiple servers concurrently
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_host = {executor.submit(check_server, host, data): host for host, data in self.telepath_servers.items()}
+
+            for future in as_completed(future_to_host):
+                result = future.result()
+                if result:
+                    host, data = result
+                    new_server_list[host] = data
+
+        # Update the online servers list
         self.online_telepath_servers = new_server_list
         self.write_telepath_servers(overwrite=True)
         return new_server_list
@@ -2239,12 +2294,14 @@ class ServerManager():
             instance['nickname'] = constants.format_nickname(instance['hostname'])
 
         self.write_telepath_servers(instance)
+        self.check_telepath_servers()
 
     def remove_telepath_server(self, instance: dict):
         if instance['host'] in self.telepath_servers:
             del self.telepath_servers[instance['host']]
 
         self.write_telepath_servers(overwrite=True)
+        self.check_telepath_servers()
 
     def rename_telepath_server(self, instance: dict, new_name: str):
         new_name = constants.format_nickname(new_name)

@@ -1140,7 +1140,7 @@ Imports an `.ams` file to `amscript.script_path`.
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
-| `addon_path*` | `str`, full system path to the `.ams` file |
+| `script_path*` | `str`, full system path to the `.ams` file |
 
 <br>
 
