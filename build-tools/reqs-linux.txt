@@ -31,8 +31,8 @@ json_repair==0.10.1
 fastapi>=0.111.1
 fastapi-cli>=0.0.4
 uvicorn>=0.30.1
-pydantic>=2.5.1
-pydantic_core>=2.14.3
+pydantic==2.11.3
+pydantic_core==2.33.1
 urwid==2.6.15
 PyJWT>=2.9.0
 bcrypt>=4.2.0
