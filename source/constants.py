@@ -4167,6 +4167,11 @@ eula=true"""
                 pass
 
             try:
+                config_file.set('general', 'consoleFilter', str(import_data['config_file'].get('general', 'consoleFilter')).lower())
+            except configparser.NoOptionError:
+                pass
+
+            try:
                 config_file.set('bkup', 'bkupAuto', str(import_data['config_file'].get('bkup', 'bkupAuto')).lower())
             except configparser.NoOptionError:
                 pass
