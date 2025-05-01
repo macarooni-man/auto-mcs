@@ -5952,9 +5952,9 @@ valid_config_formats = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'jso
 def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
     root = server_path(name)
     excludes = [
-        'version_history.json', 'version_list.json', 'usercache.json', 'banned-players.json', 'banned-ips.json',
-        'whitelist.json', 'ops.json', 'ops.txt', 'whitelist.txt', 'banned-players.txt', 'banned-ips.txt', 'eula.txt',
-        'bans.txt', 'modrinth.index.json', 'amscript', server_ini
+        'version_history.json', 'version_list.json', 'usercache.json', 'banned-players.json', 'banned-ips.json'
+        'banned-subnets.json', 'whitelist.json', 'ops.json', 'ops.txt', 'whitelist.txt', 'banned-players.txt',
+        'banned-ips.txt', 'eula.txt', 'bans.txt', 'modrinth.index.json', 'amscript', server_ini
     ]
     final_dict = {}
 
