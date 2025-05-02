@@ -369,6 +369,7 @@ def apply_template(template: dict):
 
     # Get telepath data
     telepath_data = None
+    name_list = server_list_lower
     if new_server_info:
         telepath_data = new_server_info['_telepath_data']
 
@@ -376,11 +377,12 @@ def apply_template(template: dict):
 
     if telepath_data:
         new_server_info['_telepath_data'] = telepath_data
+        name_list = get_remote_var('server_list_lower', telepath_data)
 
     t = template['server']
     s = t['settings']
 
-    new_server_info["name"] = new_server_name(template['template']['name'])
+    new_server_info["name"] = new_server_name(template['template']['name'], name_list)
     new_server_info["type"] = t["type"]
     new_server_info["version"] = t["version"]
     new_server_info['server_settings']["world"] = "world" if not s["world"]["path"] else s["world"]["path"]
@@ -2555,9 +2557,9 @@ def push_new_server(server_info: dict, import_info={}):
 
 
 # Generate new server name
-def new_server_name(existing_server=None, s_list=server_list_lower):
+def new_server_name(existing_server=None, s_list=None):
     pattern = r'\s\(\d+\)$'
-    if not s_list:
+    if s_list is None:
         generate_server_list()
         s_list = server_list_lower
     def iter_name(new_name):
