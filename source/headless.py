@@ -484,6 +484,7 @@ def init_import_server(path):
     return manage_server(constants.import_data['name'], 'import')
 
 def list_servers():
+    constants.generate_server_list()
     if constants.server_list:
         return_text = [('normal', f'Installed Servers'),  ('success', ' * - active'), ('info', f' ({len(constants.server_list)} total):\n\n')]
         line = ''
