@@ -164,9 +164,14 @@ class DiscordPresenceManager():
         self.presence = None
         self.connected = False
         self.updating_presence = False
+        self.splash = constants.session_splash.replace(' ', '')
+        self.id = "1293773204552421429"
+        self.start_time = 0
         if constants.app_config.discord_presence:
-            self.splash = constants.session_splash.replace(' ', '')
-            self.id = "1293773204552421429"
+            self.start()
+
+    def start(self):
+        if not self.connected:
             self.presence = Presence(self.id)
             self.start_time = int(time.time())
             def presence_thread(*a):
@@ -179,6 +184,14 @@ class DiscordPresenceManager():
                     print("Discord Presence: Failed to connect")
             threading.Timer(0, presence_thread).start()
 
+    def stop(self):
+        if self.connected:
+            self.presence.close()
+            self.start_time = None
+            self.presence = None
+            self.connected = False
+            print("Discord Presence: Disconnected")
+
     def get_image(self, file_path: str):
         server_obj = constants.server_manager.current_server
         try:
@@ -189,14 +202,14 @@ class DiscordPresenceManager():
 
         url = 'https://0x0.st'
         files = {'file': open(file_path, 'rb')}
-        response = constants.requests.post(url, files=files)
+        response = constants.requests.post(url, files=files, headers={'User-Agent': f'{constants.app_title}/{constants.app_version}'})
         if response.status_code == 200:
             url = response.text.strip()
 
             # Cache icon for later retrieval
             server_obj.run_data['rich-presence-icon'] = url
             return url
-        else:
+        elif constants.debug:
             print("Upload failed:", response.text)
             return None
 
@@ -308,7 +321,31 @@ class DiscordPresenceManager():
         if not self.updating_presence:
             threading.Timer(0, do_update).start()
 constants.discord_presence = DiscordPresenceManager()
+def toggle_discord_presence():
+    if constants.discord_presence.connected:
+        constants.discord_presence.stop()
+        banner_text = f"$Discord$ rich presence is now disabled"
+        banner_color = (0.937, 0.831, 0.62, 1)
+        banner_icon = "discord-strike.png"
+        constants.app_config.discord_presence = False
+    else:
+        constants.discord_presence.start()
+        constants.discord_presence.update_presence(constants.footer_path)
+        banner_text = f"$Discord$ rich presence is now enabled"
+        banner_color = (0.553, 0.902, 0.675, 1)
+        banner_icon = "discord.png"
+        constants.app_config.discord_presence = True
 
+    Clock.schedule_once(
+        functools.partial(
+            screen_manager.current_screen.show_banner,
+             banner_color,
+            banner_text,
+            banner_icon,
+            2.5,
+            {"center_x": 0.5, "center_y": 0.965}
+        ), 0
+    )
 
 
 # Override Kivy widgets for translation
@@ -3678,15 +3715,18 @@ class SettingsButton(RelativeLayout):
         super().__init__(**kwargs)
         self.shown = False
 
+        # Parent button to show/hide settings
         self.hide_button = RelativeIconButton('close', {'center_x': 1}, (0, 5), (None, None), 'close-sharp.png', anchor='right', clickable=True, click_func=self.hide, anchor_text='right', text_offset=(-85, 40), force_color=[[(0.05, 0.05, 0.1, 1), (0.85, 0.6, 0.9, 1)], 'pink'])
         self.hide_button.x = -35
 
-        self.settings_button = RelativeIconButton('settings', {'center_x': 1}, (0, 5), (None, None), 'settings-sharp.png', anchor='right', clickable=True, click_func=self.show, anchor_text='right', text_offset=(-20, 0))
+        self.settings_button = RelativeIconButton('settings', {'center_x': 1}, (0, 5), (None, None), 'settings-sharp.png', anchor='right', clickable=True, click_func=self.show, anchor_text='right', text_offset=(-73, 40))
         self.settings_button.x = -35
         self.add_widget(self.settings_button)
 
 
         # Buttons when settings menu is opened
+
+        # Changelog button
         def open_changelog(*a):
             if constants.app_online:
                 url = f'{constants.project_link}/releases/latest'
@@ -3698,6 +3738,8 @@ class SettingsButton(RelativeLayout):
         self.changelog_button.button.disabled = True
         self.add_widget(self.changelog_button)
 
+
+        # Telepath menu button
         def change_telepath_screen(*a):
             screen_manager.current = 'TelepathManagerScreen'
         self.telepath_button = RelativeIconButton('$telepath$', {'center_x': 1}, (0, 5), (None, None), 'telepath.png', anchor='right', clickable=True, click_func=change_telepath_screen, anchor_text='right', text_offset=(-70, 40))
@@ -3707,6 +3749,8 @@ class SettingsButton(RelativeLayout):
         self.telepath_button.button.disabled = True
         self.add_widget(self.telepath_button)
 
+
+        # Locale menu button
         def change_locale_screen(*a):
             screen_manager.current = 'ChangeLocaleScreen'
         self.locale_button = RelativeIconButton(constants.get_locale_string(), {'center_x': 1}, (0, 5), (None, None), 'language.png', anchor='right', clickable=True, click_func=change_locale_screen, anchor_text='right', text_offset=(-55, 40))
@@ -3716,19 +3760,45 @@ class SettingsButton(RelativeLayout):
         self.locale_button.button.disabled = True
         self.add_widget(self.locale_button)
 
+
+        # Discord rich presence toggle
+        class DiscordButton(RelativeIconButton):
+            def on_hover(self, hovered, *a):
+                conn = constants.discord_presence.connected
+                disabled = hovered and conn or not hovered and not conn
+                Clock.schedule_once(lambda *_: self.change_data(
+                    icon = 'discord-strike.png' if disabled else 'discord.png',
+                    text = 'disable rich presence' if disabled else 'enable rich presence'
+                ), 0.05)
+        def toggle_presence():
+            toggle_discord_presence()
+            self.discord_button.on_hover(False)
+            self.hide()
+        self.discord_button = DiscordButton('disable rich presence', {'center_x': 1}, (0, 5), (None, None), 'discord.png', anchor='right', clickable=True, click_func=toggle_presence, anchor_text='right', text_offset=(-15, 40))
+        self.discord_button.on_hover(False)
+        self.discord_button.x = -35
+        self.discord_button.y = 200
+        self.discord_button.opacity = 0
+        self.discord_button.button.disabled = True
+        self.add_widget(self.discord_button)
+
+
     def show(self, *a):
         self.shown = True
-        Animation(opacity=1, duration=0.45).start(self.locale_button)
+        Animation(opacity=1, duration=0.45).start(self.discord_button)
+        Animation(opacity=1, duration=0.4).start(self.locale_button)
         Animation(opacity=1, duration=0.3).start(self.telepath_button)
         Animation(opacity=1, duration=0.15).start(self.changelog_button)
         self.remove_widget(self.settings_button)
         self.add_widget(self.hide_button)
         self.telepath_button.button.disabled = False
         self.locale_button.button.disabled = False
+        self.discord_button.button.disabled = False
         self.changelog_button.button.disabled = False
 
     def hide(self, *a):
         self.shown = False
+        Animation(opacity=0, duration=0.03).start(self.discord_button)
         Animation(opacity=0, duration=0.08).start(self.locale_button)
         Animation(opacity=0, duration=0.16).start(self.telepath_button)
         Animation(opacity=0, duration=0.24).start(self.changelog_button)
@@ -3737,8 +3807,9 @@ class SettingsButton(RelativeLayout):
         def after(*a):
             self.telepath_button.button.disabled = True
             self.locale_button.button.disabled = True
+            self.discord_button.button.disabled = True
             self.changelog_button.button.disabled = True
-        Clock.schedule_once(after, 0.2)
+        Clock.schedule_once(after, 0.25)
 
 
 def footer_label(path, color, progress_screen=False):
@@ -4759,6 +4830,9 @@ class RelativeIconButton(RelativeLayout):
         if self.text_offset:
             self.text.x += self.text_offset[0]
 
+    def on_hover(self, hovered=False, *a):
+        pass
+
     def __init__(self, name, pos_hint, position, size_hint, icon_name=None, clickable=True, force_color=None, anchor='left', click_func=None, text_offset=(0, 0), text_hover_color=None, anchor_text=None, **kwargs):
         super().__init__(**kwargs)
 
@@ -4851,6 +4925,10 @@ class RelativeIconButton(RelativeLayout):
         if screen_manager.current_screen.name == 'MainMenuScreen':
             Clock.schedule_once(self.text.texture_update, 0)
             Clock.schedule_once(self.resize, 0)
+
+        # Hover hook
+        self.button.bind(on_enter=lambda *_: self.on_hover(True))
+        self.button.bind(on_leave=lambda *_: self.on_hover(False))
 
 class AnimButton(FloatLayout):
 
@@ -5837,7 +5915,7 @@ class ContextMenu(GridLayout):
 
             Clock.schedule_once(delay_anim, delay)
 
-        def __init__(self, sub_data, sub_id, **kw):
+        def __init__(self, sub_data, sub_id, selected=False, **kw):
             super().__init__(**kw)
 
             self.id = sub_data['name']
@@ -5846,6 +5924,7 @@ class ContextMenu(GridLayout):
             self.width = 200
             self.text_x = 0
             self.icon_x = 0
+            self.selected = selected
 
             # Add button
             self.button = HoverButton()
@@ -5854,6 +5933,9 @@ class ContextMenu(GridLayout):
 
             if sub_id == 'list_red_button':
                 self.button.color_id = [(0.1, 0.07, 0.07, 1), (1, 0.6, 0.7, 1)]
+            elif self.selected:
+                self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.76, 0.76, 1, 1)]
+                self.button.background_color = (0.7, 0.7, 0.7, 1)
             else:
                 self.button.color_id = [(0.05, 0.05, 0.1, 1), (0.6, 0.6, 1, 1)]
 
@@ -5960,6 +6042,7 @@ class ContextMenu(GridLayout):
     def _round_top_left(self, *a):
         b = self.children[-1]
         b.button.id = 'list_start_flip_button'
+        b.button.background_down = os.path.join(constants.gui_assets, f'{b.button.id}_click.png')
         b.button.on_leave()
 
     # Moves menu to cursor, and prevents it from going off-screen
@@ -6083,7 +6166,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     final = FloatLayout()
     final.x += 174 + x_offset
 
-    button = ToggleButton(state='down' if default_state else 'normal')
+    final.button = button = ToggleButton(state='down' if default_state else 'normal')
     button.id = 'toggle_button'
     button.pos_hint = {"center_x": position[0], "center_y": position[1]}
     button.size_hint_max = (82, 42)
@@ -6092,7 +6175,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
     button.background_down = button.background_normal if disabled else os.path.join(constants.gui_assets, 'toggle_button_enabled.png')
     button.bind(on_press=functools.partial(on_active, name))
 
-    knob = Image()
+    final.knob = knob = Image()
     knob.id = 'knob'
     knob.source = os.path.join(constants.gui_assets, f'toggle_button_knob{"_enabled" if default_state else ""}.png')
     knob.size = (30, 30)
@@ -6225,7 +6308,11 @@ class PopupWindow(RelativeLayout):
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
-        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        try:
+            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        except:
+            self.blur_background.color = constants.background_color
+            return
 
         # Prevent this from running every resize
         def reset_activity(*args):
@@ -6824,7 +6911,11 @@ class BigPopupWindow(RelativeLayout):
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
-        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        try:
+            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        except:
+            self.blur_background.color = constants.background_color
+            return
 
         # Prevent this from running every resize
         def reset_activity(*args):
@@ -7875,7 +7966,11 @@ class PopupSearch(RelativeLayout):
 
     def generate_blur_background(self, *args):
         image_path = os.path.join(constants.gui_assets, 'live', 'blur_background.png')
-        constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        try:
+            constants.folder_check(os.path.join(constants.gui_assets, 'live'))
+        except:
+            self.blur_background.color = constants.background_color
+            return
 
         # Prevent this from running every resize
         def reset_activity(*args):
@@ -9763,6 +9858,8 @@ class MainMenuScreen(MenuBackground):
     def on_enter(self, *args):
         global shown_disk_error
 
+
+        # Show warning if running with elevated permissions, and flag is used
         if constants.is_admin() and constants.bypass_admin_warning:
             def admin_error(*_):
                 self.show_popup(
@@ -9774,6 +9871,8 @@ class MainMenuScreen(MenuBackground):
             Clock.schedule_once(admin_error, 0.5)
             return
 
+
+        # Close if running with elevated permissions, and flag is not used
         elif constants.is_admin():
             def admin_error(*_):
                 self.show_popup(
@@ -9785,6 +9884,21 @@ class MainMenuScreen(MenuBackground):
             Clock.schedule_once(admin_error, 0.5)
             return
 
+
+        # Close on macOS when it's running in DMG
+        elif constants.os_name == 'macos' and (constants.launch_path.startswith('/Volumes/') and constants.app_title in constants.launch_path):
+            def dmg_error(*_):
+                self.show_popup(
+                    "warning",
+                    "Permission Error",
+                    f"Please move $auto-mcs$ to the Applications folder to continue",
+                    Window.close
+                )
+            Clock.schedule_once(dmg_error, 0.5)
+            return
+
+
+        # Show warning when disk is full
         elif not constants.check_free_space() and not shown_disk_error:
             shown_disk_error = True
             def disk_error(*_):
@@ -17112,13 +17226,13 @@ class PerformancePanel(RelativeLayout):
                     self.recalculate_size()
                     return
 
-                text_width = int(((self.scroll_layout.width // text_width) // 1))
-                self.player_list.cols = text_width
-                self.player_list.rows = round(data_len / text_width) + 3
-                # print(text_width, self.player_list.cols, self.player_list.rows, data_len)
-
                 # Dirty fix to circumvent RecycleView missing data: https://github.com/kivy/kivy/pull/7262
                 try:
+                    text_width = int(((self.scroll_layout.width // text_width) // 1))
+                    self.player_list.cols = text_width
+                    self.player_list.rows = round(data_len / text_width) + 3
+                    # print(text_width, self.player_list.cols, self.player_list.rows, data_len)
+
                     if ((data_len <= self.player_list.cols) and self.player_list.rows <= 5) or data_len + 1 == self.player_list.cols:
                         if self.scroll_layout.data[-1] is not {'text': blank_name}:
                             for x in range(self.player_list.cols):
@@ -17475,6 +17589,26 @@ class ConsolePanel(FloatLayout):
 
     # Updates RecycleView text with console text
     def update_text(self, text, force_scroll=False, animate_last=True, *args):
+        current_filter = self.filter_menu.current_filter
+        self._unfiltered_text = text
+
+        # Filterrrr oh yeah
+        if current_filter != 'everything':
+            event_whitelist = ['INIT', 'START', 'STOP', 'SUCCESS']
+
+            if current_filter == 'errors':
+                event_whitelist.extend(['WARN', 'ERROR', 'CRITICAL', 'SEVERE', 'FATAL'])
+
+            elif current_filter == 'players':
+                event_whitelist.extend(['CHAT', 'PLAYER'])
+
+            elif current_filter == 'amscript':
+                event_whitelist.extend(['AMS', 'EXEC'])
+
+            text = [l for l in text if l['text'][1] in event_whitelist]
+
+
+
         original_scroll = self.scroll_layout.scroll_y
         original_len = len(self.scroll_layout.data)
         label_height = 41.8
@@ -17517,7 +17651,7 @@ class ConsolePanel(FloatLayout):
                 except:
                     pass
         if len(text) > original_len and animate_last:
-            Clock.schedule_once(fade_animation, 0)
+            Clock.schedule_once(fade_animation, -1)
 
 
         # Update selection coordinates if they exist
@@ -17538,7 +17672,7 @@ class ConsolePanel(FloatLayout):
 
         self.console_text.width = self.width
 
-        self.input.pos = self.pos
+        self.input.pos = (self.x, self.y)
 
         self.gradient.pos = (self.input.pos[0], self.pos[1] + (self.input.height * 1.2))
         self.gradient.width = self.scroll_layout.width - self.scroll_layout.bar_width
@@ -17585,9 +17719,10 @@ class ConsolePanel(FloatLayout):
             self.controls.maximize_button.pos = (self.width - 90, self.height - 80)
             self.controls.stop_button.pos = (self.width - 142, self.height - 80)
             self.controls.restart_button.pos = (self.width - 194, self.height - 80)
+            self.controls.filter_button.pos = (self.width - 246, self.height - 80)
 
         # Fullscreen shadow
-        self.fullscreen_shadow.y = self.height + self.x - 3
+        self.fullscreen_shadow.y = self.height + self.x - 3 + 25
         self.fullscreen_shadow.width = Window.width
 
         # Controls background
@@ -17617,9 +17752,11 @@ class ConsolePanel(FloatLayout):
         constants.hide_widget(self.controls.maximize_button, False)
         constants.hide_widget(self.controls.stop_button, False)
         constants.hide_widget(self.controls.restart_button, False)
+        constants.hide_widget(self.controls.filter_button, False)
         self.controls.maximize_button.opacity = 0
         self.controls.stop_button.opacity = 0
         self.controls.restart_button.opacity = 0
+        self.controls.filter_button.opacity = 0
 
         self.controls.crash_text.clear_text()
 
@@ -17635,6 +17772,7 @@ class ConsolePanel(FloatLayout):
             self.controls.maximize_button.disabled = False
             self.controls.stop_button.disabled = False
             self.controls.restart_button.disabled = False
+            self.controls.filter_button.disabled = False
             self.controls.remove_widget(self.controls.launch_button)
             self.controls.remove_widget(self.controls.log_button)
             self.controls.remove_widget(self.controls.view_button)
@@ -17645,6 +17783,7 @@ class ConsolePanel(FloatLayout):
                 def anim_delay(*a):
                     function.start(obj)
                 Clock.schedule_once(anim_delay, delay)
+            delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.filter_button, 0.18)
             delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.restart_button, 0.12)
             delay(Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine'), self.controls.stop_button, 0.06)
             Animation(opacity=1, duration=(anim_speed*2.7) if animate else 0, transition='in_out_sine').start(self.controls.maximize_button)
@@ -17824,6 +17963,7 @@ class ConsolePanel(FloatLayout):
                 constants.hide_widget(self.controls.maximize_button, True)
                 constants.hide_widget(self.controls.stop_button, True)
                 constants.hide_widget(self.controls.restart_button, True)
+                constants.hide_widget(self.controls.filter_button, True)
                 self.controls.control_shadow.opacity = 0
 
 
@@ -17861,6 +18001,7 @@ class ConsolePanel(FloatLayout):
                     Animation(opacity=0, duration=anim_speed).start(self.controls.maximize_button)
                     Animation(opacity=0, duration=anim_speed).start(self.controls.stop_button)
                     Animation(opacity=0, duration=anim_speed).start(self.controls.restart_button)
+                    Animation(opacity=0, duration=anim_speed).start(self.controls.filter_button)
                     Clock.schedule_once(disable_buttons, anim_speed*1.1)
 
                 def after_anim2(*a):
@@ -17868,6 +18009,7 @@ class ConsolePanel(FloatLayout):
                     self.controls.maximize_button.disabled = False
                     self.controls.stop_button.disabled = False
                     self.controls.restart_button.disabled = False
+                    self.controls.filter_button.disabled = False
                     self.scroll_layout.data = []
                     self.controls.control_shadow.opacity = 1
 
@@ -17925,12 +18067,20 @@ class ConsolePanel(FloatLayout):
                 self.controls.view_button.opacity = 0
                 self.controls.add_widget(self.controls.view_button)
 
+                # Filter button
+                self.controls.remove_widget(self.controls.filter_button)
+                del self.controls.filter_button
+                self.controls.filter_button = IconButton('filter', {}, (123, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button.opacity = 0
+                self.controls.add_widget(self.controls.filter_button)
+
                 def after_anim(*a):
                     self.full_screen = True
                     self.ignore_keypress = False
                     Animation(opacity=0, duration=(anim_speed * 0.1), transition='out_sine').start(self.corner_mask)
                     Animation(opacity=1, duration=(anim_speed * 0.1), transition='out_sine').start(self.fullscreen_shadow)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.view_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
 
                 Clock.schedule_once(after_anim, (anim_speed * 1.1))
 
@@ -17962,6 +18112,13 @@ class ConsolePanel(FloatLayout):
                 self.controls.restart_button.opacity = 0
                 self.controls.add_widget(self.controls.restart_button)
 
+                # Filter button
+                self.controls.remove_widget(self.controls.filter_button)
+                del self.controls.filter_button
+                self.controls.filter_button = IconButton('filter', {}, (227, 150), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(9, 50), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                self.controls.filter_button.opacity = 0
+                self.controls.add_widget(self.controls.filter_button)
+
                 def after_anim(*a):
                     self.full_screen = True
                     self.ignore_keypress = False
@@ -17970,6 +18127,7 @@ class ConsolePanel(FloatLayout):
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
                     fix_scroll()
 
                 Clock.schedule_once(after_anim, (anim_speed*1.1))
@@ -18005,10 +18163,18 @@ class ConsolePanel(FloatLayout):
             self.controls.restart_button.opacity = 0
             self.controls.add_widget(self.controls.restart_button)
 
+            # Filter button
+            self.controls.remove_widget(self.controls.filter_button)
+            del self.controls.filter_button
+            self.controls.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.button_colors['filter'], click_func=self.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+            self.controls.filter_button.opacity = 0
+            self.controls.add_widget(self.controls.filter_button)
+
             if not self.run_data:
                 constants.hide_widget(self.controls.maximize_button, True)
                 constants.hide_widget(self.controls.stop_button, True)
                 constants.hide_widget(self.controls.restart_button, True)
+                constants.hide_widget(self.controls.filter_button, True)
 
             def after_anim(*a):
                 self.full_screen = False
@@ -18018,6 +18184,7 @@ class ConsolePanel(FloatLayout):
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.maximize_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.stop_button)
                     Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.restart_button)
+                    Animation(opacity=1, duration=anim_speed, transition='out_sine').start(self.controls.filter_button)
                 fix_scroll()
 
             Clock.schedule_once(after_anim, (anim_speed*1.1))
@@ -18068,7 +18235,8 @@ class ConsolePanel(FloatLayout):
             def change_later(*a):
                 try:
                     with open(file_path, 'r') as f:
-                        self.scroll_layout.data = json.loads(f.read())
+                        self._unfiltered_text = json.loads(f.read())
+                        self.update_text(self._unfiltered_text)
                 except:
                     if constants.debug:
                         print('Failed to load "latest.log"')
@@ -18319,6 +18487,7 @@ class ConsolePanel(FloatLayout):
 
         self.server_name = server_name
         self.server_obj = None
+        self.run_data = None
         self.server_button = server_button
         self.deadlocked = False
         self.log_view = False
@@ -18336,9 +18505,11 @@ class ConsolePanel(FloatLayout):
         self.last_self_touch = None
         self.in_scroll_region = False
 
+        self._unfiltered_text = []
 
         self.button_colors = {
             'maximize': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], ''],
+            'filter': [[(0.05, 0.08, 0.07, 1), (0.251, 0.251, 0.451, 1)], ''],
             'stop': [[(0.05, 0.08, 0.07, 1), (0.722, 0.722, 1, 1)], 'pink']
         }
 
@@ -18709,7 +18880,7 @@ class ConsolePanel(FloatLayout):
                 self.control_shadow.keep_ratio = False
                 self.control_shadow.color = background_color
                 self.control_shadow.source = os.path.join(constants.gui_assets, 'console_control_shadow.png')
-                self.control_shadow.size_hint_max = (255, 120)
+                self.control_shadow.size_hint_max = (280, 120)
                 self.add_widget(self.control_shadow)
 
                 # Full screen button
@@ -18727,13 +18898,112 @@ class ConsolePanel(FloatLayout):
                 constants.hide_widget(self.restart_button)
                 self.add_widget(self.restart_button)
 
+                # Filter button
+                self.filter_button = RelativeIconButton('filter', {}, (20, 20), (None, None), 'filter-sharp.png', clickable=True, anchor='right', text_offset=(3, 80), force_color=self.panel.button_colors['filter'], click_func=self.panel.filter_menu.show, text_hover_color=(0.722, 0.722, 1, 1))
+                constants.hide_widget(self.filter_button)
+                self.add_widget(self.filter_button)
+
                 # View log button
                 self.view_button = RelativeIconButton('view log', {}, (20, 20), (None, None), 'view-log.png', clickable=True, anchor='right', text_offset=(18, 80), force_color=self.panel.button_colors['maximize'], click_func=functools.partial(self.panel.show_log, True))
                 Clock.schedule_once(self.panel.add_log_button, 0)
 
+        # Scrollable list for configuring console event filtering
+        class FilterMenu(ContextMenu):
+            def __init__(self, panel, **kwargs):
+                super().__init__(**kwargs)
+                self.panel = panel
+                self.change_filter(constants.server_manager.current_server.console_filter)
+
+            def change_filter(self, filter_type):
+                if not filter_type:
+                    filter_type = 'everything'
+
+                self.current_filter = filter_type
+                constants.server_manager.current_server.change_filter(filter_type)
+                filter_button = None
+
+                if self.panel.run_data or self.panel.log_view:
+                    self.panel.update_text(self.panel._unfiltered_text)
+                    filter_button = self.panel.controls.filter_button
+
+                # Change filter icon colors
+                filter_color = [[(0.05, 0.08, 0.07, 1), (0.6, 0.6, 1, 1)], '']
+                default_color = [[(0.05, 0.08, 0.07, 1), (0.251, 0.251, 0.451, 1)], '']
+
+                if filter_type == 'everything':
+                    self.panel.button_colors['filter'] = default_color
+                    if filter_button:
+                        filter_button.button.color_id = default_color[0]
+                        filter_button.button.on_leave()
+                else:
+                    self.panel.button_colors['filter'] = filter_color
+                    if filter_button:
+                        filter_button.button.color_id = filter_color[0]
+                        filter_button.button.on_leave()
+
+            def _change_options(self, options_list):
+                self.options_list = options_list
+                self.clear_widgets()
+
+                for item in self.options_list:
+                    if not item:
+                        continue
+
+                    selected = self.current_filter in item['name']
+
+                    # Start of the list
+                    if item == self.options_list[0]:
+                        start_btn = self.ListButton(item, sub_id='list_start_button', selected=selected)
+                        self.add_widget(start_btn)
+
+                    # Middle of the list
+                    elif item != self.options_list[-1]:
+                        mid_btn = self.ListButton(item, sub_id='list_mid_button', selected=selected)
+                        self.add_widget(mid_btn)
+
+                    # Last button
+                    else:
+                        if 'color' in item:
+                            sub_id = f'list_{item["color"]}_button'
+                        else:
+                            sub_id = 'list_end_button'
+                        end_btn = self.ListButton(item, sub_id=sub_id, selected=selected)
+                        self.add_widget(end_btn)
+
+            def _update_pos(self):
+
+                # Set initial position
+                pos = (self.panel.x + self.panel.width - 220, self.panel.controls.y + self.panel.controls.height - 58)
+                self.x = pos[0]
+                self.y = pos[1] - self.height
+                Clock.schedule_once(self._round_top_left, 0)
+
+            def show(self):
+                filters = [
+                    {'name': 'everything', 'icon': 'reader.png', 'action': lambda *_: self.change_filter('everything')},
+                    {'name': 'only errors', 'icon': 'warning.png', 'action': lambda *_: self.change_filter('errors')},
+                    {'name': 'only players', 'icon': 'person.png', 'action': lambda *_: self.change_filter('players')},
+                    {'name': 'amscript', 'icon': 'amscript.png', 'action': lambda *_: self.change_filter('amscript')}
+                ]
+                super().show(widget=self.panel.controls.filter_button.button, options_list=filters)
+
+            def hide(self, animate=True, *args):
+                Clock.schedule_once(self.widget.on_leave, 0.05)
+
+                if animate:
+                    Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
+                    for b in self.children:
+                        b.animate(False)
+                    Clock.schedule_once(functools.partial(self._deselect_buttons), 0.14)
+                    Clock.schedule_once(lambda *_: self.clear_widgets(), 0.141)
+                else:
+                    self.clear_widgets()
+
+        # Event filter
+        self.filter_menu = FilterMenu(self)
+
 
         # Popen object reference
-        self.run_data = None
         self.scale = 1
         self.auto_scroll = False
 
@@ -18765,7 +19035,7 @@ class ConsolePanel(FloatLayout):
         self.gradient.keep_ratio = False
         self.gradient.size_hint = (None, None)
         self.gradient.color = background_color
-        self.gradient.opacity = 0.9
+        self.gradient.opacity = 0.65
         self.gradient.source = os.path.join(constants.gui_assets, 'scroll_gradient.png')
         self.add_widget(self.gradient)
 
@@ -18791,8 +19061,8 @@ class ConsolePanel(FloatLayout):
         self.fullscreen_shadow = Image()
         self.fullscreen_shadow.allow_stretch = True
         self.fullscreen_shadow.keep_ratio = False
-        self.fullscreen_shadow.size_hint_max = (None, 50)
-        self.fullscreen_shadow.color = (0, 0, 0, 1)
+        self.fullscreen_shadow.size_hint_max = (None, 25)
+        self.fullscreen_shadow.color = background_color
         self.fullscreen_shadow.opacity = 0
         self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
         self.add_widget(self.fullscreen_shadow)
@@ -18841,6 +19111,8 @@ class ConsolePanel(FloatLayout):
         self.corner_mask.add_widget(self.corner_mask.sb)
 
         self.add_widget(self.corner_mask)
+
+        self.add_widget(self.filter_menu)
 
 
         self.bind(pos=self.update_size)
@@ -20142,7 +20414,6 @@ class ServerCloneScreen(MenuBackground):
             screen_manager.current = 'ServerCloneProgressScreen'
         buttons.append(next_button('Clone', (0.5, 0.24), False, click_func=start_clone))
         buttons.append(ExitButton('Back', (0.5, 0.14), cycle=True))
-        float_layout.add_widget(page_counter(1, 7, (0, 0.768)))
 
         for button in buttons:
             float_layout.add_widget(button)
@@ -25016,7 +25287,7 @@ class EditorRoot(MenuBackground):
 
         def resize_scroll(call_widget, grid_layout, *args):
             call_widget.height = Window.height // 1.23
-            self.fullscreen_shadow.y = self.height + self.x - 3
+            self.fullscreen_shadow.y = self.height + self.x - 3 + 25
             self.fullscreen_shadow.width = Window.width
             search_pos = 47
             self.search_bar.pos = (self.x, search_pos)
@@ -25046,8 +25317,8 @@ class EditorRoot(MenuBackground):
         self.fullscreen_shadow = Image()
         self.fullscreen_shadow.allow_stretch = True
         self.fullscreen_shadow.keep_ratio = False
-        self.fullscreen_shadow.size_hint_max = (None, 50)
-        self.fullscreen_shadow.color = (0, 0, 0, 1)
+        self.fullscreen_shadow.size_hint_max = (None, 25)
+        self.fullscreen_shadow.color = self.background_color
         self.fullscreen_shadow.opacity = 0
         self.fullscreen_shadow.source = os.path.join(constants.gui_assets, 'control_fullscreen_gradient.png')
         float_layout.add_widget(self.fullscreen_shadow)
@@ -27549,6 +27820,7 @@ class UpdateModpackProgressScreen(ProgressScreen):
 # ============================================= Telepath Utilities =====================================================
 # <editor-fold desc="Telepath Utilities">
 
+# Telepath instance screen (for a client to view servers it's connected to)
 class InstanceButton(HoverButton):
 
     class NameInput(TextInput):
@@ -28106,6 +28378,467 @@ class TelepathInstanceScreen(MenuBackground):
         threading.Timer(0, refresh_telepath_instances).start()
 
 
+# Telepath user screen (for a server to view connected clients)
+class UserButton(HoverButton):
+    def animate_button(self, image, color, **kwargs):
+        image_animate = Animation(duration=0.05)
+
+        def f(w):
+            w.background_normal = image
+
+        Animation(color=color, duration=0.06).start(self.title)
+        Animation(color=(color if ((self.subtitle.text == self.original_subtitle) or self.hovered) else self.connect_color), duration=0.06).start(self.subtitle)
+        Animation(color=color, duration=0.06).start(self.type_image.image)
+
+        if self.type_image.version_label.__class__.__name__ == "AlignLabel":
+            Animation(color=color, duration=0.06).start(self.type_image.version_label)
+        Animation(color=color, duration=0.06).start(self.type_image.type_label)
+
+        a = Animation(duration=0.0)
+        a.on_complete = functools.partial(f)
+
+        image_animate += a
+
+        image_animate.start(self)
+
+    def resize_self(self, *args):
+
+        # Title and description
+        padding = 2.17
+        self.title.pos = (self.x + (self.title.text_size[0] / padding) - 8.3 + 30, self.y + 31)
+        self.subtitle.pos = (self.x + (self.subtitle.text_size[0] / padding) - 78, self.y + 8)
+        offset = 9.55
+
+        self.type_image.image.x = self.width + self.x - (self.type_image.image.width) - 8
+        self.type_image.image.y = self.y + ((self.height / 2) - (self.type_image.image.height / 2))
+
+        self.type_image.type_label.x = self.width + self.x - (self.padding_x * offset) - self.type_image.width - 75
+        self.type_image.type_label.y = self.y + (self.height * 0.15)
+
+        self.disable_layout.pos = (self.x + self.width + 57, self.y - 23)
+
+
+        # Edit button
+        self.edit_layout.size_hint_max = (self.size_hint_max[0], self.size_hint_max[1])
+        self.edit_layout.pos = (self.pos[0] - 6, self.pos[1] + 13)
+
+    def highlight(self):
+        def next_frame(*args):
+            Animation.stop_all(self.highlight_border)
+            self.highlight_border.opacity = 1
+            Animation(opacity=0, duration=0.7).start(self.highlight_border)
+
+        Clock.schedule_once(next_frame, 0)
+
+    def update_status(self):
+
+        def reset(*a):
+            self.subtitle.copyable = False
+            self.subtitle.color = self.color_id[1]
+            self.subtitle.default_opacity = 0.56
+            self.subtitle.font_name = self.original_font
+            self.subtitle.text = self.original_subtitle
+            self.enabled = False
+            self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+
+        try:
+
+            # User is connected
+            if self.connected:
+                self.connect_color = (0.529, 1, 0.729, 1)
+                self.type_image.image.color = self.type_image.type_label.color = self.connect_color
+                self.type_image.type_label.text = 'connected'
+                self.background_normal = os.path.join(constants.gui_assets, 'telepath_button_enabled.png')
+
+            # User is offline
+            elif not self.access_disabled:
+                self.connect_color = (0.65, 0.65, 1, 1)
+                self.type_image.image.color = self.type_image.type_label.color = self.connect_color
+                self.type_image.type_label.text = 'offline'
+                self.background_normal = os.path.join(constants.gui_assets, 'addon_button.png')
+
+            # User is restricted
+            else:
+                self.connect_color = (1, 0.65, 0.65, 1)
+                self.type_image.image.color = self.type_image.type_label.color = self.connect_color
+                self.type_image.type_label.text = 'restricted'
+                self.background_normal = os.path.join(constants.gui_assets, 'addon_button_disabled.png')
+
+        except KeyError:
+            reset()
+
+        self.background_down = self.background_normal
+        self.subtitle.opacity = self.subtitle.default_opacity
+        self.color_id = [(0.05, 0.05, 0.1, 1), (0.65, 0.65, 1, 1)] if self.connected else [(0.05, 0.1, 0.1, 1), (1, 0.6, 0.7, 1)]
+
+    def generate_name(self):
+        return self.properties['user']
+
+    def __init__(self, user_data, click_function=None, fade_in=0.0, connected=False, highlight=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.properties = user_data
+        self.border = (-5, -5, -5, -5)
+        self.color_id = [(0.05, 0.05, 0.1, 1), constants.brighten_color((0.65, 0.65, 1, 1), 0.07)]
+        self.connect_color = (0.529, 1, 0.729, 1)
+        self.pos_hint = {"center_x": 0.5, "center_y": 0.6}
+        self.size_hint_max = (580, 80)
+        self.id = "server_button"
+        self.access_disabled = 'disabled' in self.properties and self.properties['disabled']
+        self.connected = connected
+
+        self.background_normal = os.path.join(constants.gui_assets, 'server_button.png' if self.connected else 'addon_button_disabled.png')
+        self.background_down = self.background_normal
+
+        self.icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
+
+
+        # Loading stuffs
+        self.original_subtitle = self.properties["host"] if self.properties["host"] else self.properties["ip"]
+        self.original_font = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["regular"]}.ttf')
+
+
+        # Title of user
+        self.title = Label()
+        self.title.__translate__ = False
+        self.title.id = "title"
+        self.title.halign = "left"
+        self.title.color = self.color_id[1]
+        self.title.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["medium"]}.ttf')
+        self.title.font_size = sp(25)
+        self.title.text_size = (self.size_hint_max[0] * 0.58, self.size_hint_max[1])
+        self.title.shorten = True
+        self.title.markup = True
+        self.title.shorten_from = "right"
+        self.title.max_lines = 1
+        self.title.text = self.generate_name()
+        self.add_widget(self.title)
+
+
+        # Hostname
+        self.subtitle = Label()
+        self.subtitle.__translate__ = False
+        self.subtitle.size = (300, 30)
+        self.subtitle.id = "subtitle"
+        self.subtitle.halign = "left"
+        self.subtitle.valign = "center"
+        self.subtitle.font_size = sp(21)
+        self.subtitle.text_size = (self.size_hint_max[0] * 0.91, self.size_hint_max[1])
+        self.subtitle.shorten = True
+        self.subtitle.markup = True
+        self.subtitle.shorten_from = "right"
+        self.subtitle.max_lines = 1
+        self.subtitle.text_size[0] = 350
+        self.subtitle.copyable = False
+        self.subtitle.color = self.color_id[1]
+        self.subtitle.default_opacity = 0.65
+        self.subtitle.font_name = self.original_font
+        self.subtitle.text = self.original_subtitle
+
+        self.subtitle.opacity = self.subtitle.default_opacity
+
+        self.add_widget(self.subtitle)
+
+
+        # Edit button
+        self.edit_layout = RelativeLayout()
+        self.edit_button = IconButton('', {}, (0, 0), (None, None), 'unpair.png', anchor='right', click_func=functools.partial(click_function, user_data))
+        self.edit_layout.add_widget(self.edit_button)
+        self.add_widget(self.edit_layout)
+
+
+        # Type icon and info
+        self.type_image = RelativeLayout()
+        self.type_image.width = 400
+
+        user_icon = os.path.join(constants.gui_assets, 'icons', 'big', 'telepath-user.png')
+        self.type_image.image = Image(source=user_icon)
+
+        self.type_image.image.allow_stretch = True
+        self.type_image.image.size_hint_max = (65, 65)
+        self.type_image.image.color = self.color_id[1]
+        self.type_image.add_widget(self.type_image.image)
+
+        def TemplateLabel():
+            template_label = AlignLabel()
+            template_label.__translate__ = False
+            template_label.halign = "right"
+            template_label.valign = "middle"
+            template_label.text_size = template_label.size
+            template_label.font_size = sp(19)
+            template_label.color = self.color_id[1]
+            template_label.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
+            template_label.opacity = 0.8
+            template_label.width = 150
+            return template_label
+
+        self.type_image.type_label = TemplateLabel()
+        self.type_image.type_label.font_size = sp(23)
+        self.type_image.add_widget(self.type_image.type_label)
+        self.add_widget(self.type_image)
+        self.update_status()
+
+
+        # Temporary disable switch
+        def disable_user(disable=True):
+            constants.api_manager._disable_user(self.properties['id'], not disable)
+            self.access_disabled = not disable
+            self.update_status()
+
+        # Make this check eventual variable
+        self.disable_layout = RelativeLayout(size_hint_max=(10, 10))
+        self.disable_user = toggle_button('telepath-disable', (0.5, 0.5), default_state=not self.access_disabled, x_offset=-395, custom_func=disable_user)
+        self.disable_layout.size_hint_max = (10, 10)
+        self.disable_layout.add_widget(self.disable_user)
+        self.add_widget(self.disable_layout)
+
+
+        # Animate opacity
+        if fade_in > 0:
+            self.opacity = 0
+            self.title.opacity = 0
+
+            Animation(opacity=1, duration=fade_in).start(self)
+            Animation(opacity=1, duration=fade_in).start(self.title)
+            Animation(opacity=self.subtitle.default_opacity, duration=fade_in).start(self.subtitle)
+
+        self.bind(pos=self.resize_self)
+
+    def on_enter(self, *args):
+        return
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button_hover.png'), color=self.color_id[0], hover_action=True)
+
+    def on_leave(self, *args):
+        return
+        if not self.ignore_hover:
+            self.animate_button(image=os.path.join(constants.gui_assets, 'server_button.png' if self.enabled else 'addon_button_disabled.png'), color=self.color_id[1], hover_action=False)
+
+class TelepathUserScreen(MenuBackground):
+
+    def switch_page(self, direction):
+
+        if self.max_pages == 1:
+            return
+
+        if direction == "right":
+            if self.current_page == self.max_pages:
+                self.current_page = 1
+            else:
+                self.current_page += 1
+
+        else:
+            if self.current_page == 1:
+                self.current_page = self.max_pages
+            else:
+                self.current_page -= 1
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        self.gen_search_results(self.last_results)
+
+    def gen_search_results(self, new_search=False, fade_in=True, highlight=None, animate_scroll=True, *args):
+
+        # Generate list of online users
+        online_list = []
+        for user in constants.api_manager.current_users.values():
+            user_str = f'{user["host"]}/{user["user"]}'
+            if user_str not in online_list:
+                online_list.append(user_str)
+
+        # Sort users based on if they are online
+        results = sorted(
+            constants.api_manager.authenticated_sessions,
+            key = lambda u: f'{u["host"]}/{u["user"]}' in online_list,
+            reverse = True
+        )
+
+
+        default_scroll = 1
+
+        # Update page counter
+        self.last_results = results
+        self.max_pages = (len(results) / self.page_size).__ceil__()
+        self.current_page = 1 if self.current_page == 0 or new_search else self.current_page
+
+
+        self.page_switcher.update_index(self.current_page, self.max_pages)
+        page_list = results[(self.page_size * self.current_page) - self.page_size:self.page_size * self.current_page]
+
+        self.scroll_layout.clear_widgets()
+
+
+        # Generate header
+        user_count = len(constants.api_manager.authenticated_sessions)
+        header_content = "Select a user to manage"
+
+        for child in self.header.children:
+            if child.id == "text":
+                child.text = header_content
+                break
+
+
+        # Show users if they exist
+        if user_count != 0:
+
+            # Clear and add all ServerButtons
+            for x, user in enumerate(page_list, 1):
+
+                # Activated when server is clicked
+                def view_user(data, *a):
+                    if data['host']:
+                        display_name = f"{data['host']}/{data['user']}"
+                    else:
+                        display_name = f"{data['ip']}/{data['user']}"
+
+                    desc = f"Un-pairing this user will prevent them from accessing this instance via $Telepath$ until paired again.\n\nAre you sure you want to un-pair '${display_name}$'?"
+
+                    def unpair(*a):
+                        # Log out if possible
+                        if data['ip'] in constants.api_manager.current_users:
+                            constants.api_manager._force_logout(constants.api_manager.current_users[data['ip']]['session_id'])
+
+                        constants.api_manager._revoke_session(data['id'])
+                        self.gen_search_results()
+                        telepath_banner(f"Un-paired '${display_name}$'", False)
+
+
+                    Clock.schedule_once(
+                        functools.partial(
+                            screen_manager.current_screen.show_popup,
+                            "warning_query",
+                            f'Un-pair Instance',
+                            desc,
+                            (None, unpair)
+                        ),
+                        0
+                    )
+
+                # Add-on button click function
+                self.scroll_layout.add_widget(
+                    ScrollItem(
+                        widget = UserButton(
+                            user_data = user,
+                            fade_in = ((x if x <= 8 else 8) / self.anim_speed) if fade_in else 0,
+                            click_function = view_user,
+                            connected = f'{user["host"]}/{user["user"]}' in online_list,
+                        )
+                    )
+                )
+
+            self.resize_bind()
+
+        # Go back to main menu if they don't
+        else:
+            screen_manager.current = 'TelepathManagerScreen'
+            constants.screen_tree = ['MainMenuScreen']
+            return
+
+        # Animate scrolling
+        def set_scroll(*args):
+            Animation.stop_all(self.scroll_layout.parent.parent)
+            if animate_scroll:
+                Animation(scroll_y=default_scroll, duration=0.1).start(self.scroll_layout.parent.parent)
+            else:
+                self.scroll_layout.parent.parent.scroll_y = default_scroll
+        Clock.schedule_once(set_scroll, 0)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = self.__class__.__name__
+        self.background_color = constants.brighten_color(constants.background_color, -0.09)
+        self.menu = 'init'
+        self.header = None
+        self.scroll_layout = None
+        self.blank_label = None
+        self.page_switcher = None
+        self.load_layout = None
+
+        self.last_results = []
+        self.page_size = 10
+        self.current_page = 0
+        self.max_pages = 0
+        self.anim_speed = 10
+
+        with self.canvas.before:
+            self.color = Color(*self.background_color, mode='rgba')
+            self.rect = Rectangle(pos=self.pos, size=self.size)
+
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        super()._on_keyboard_down(keyboard, keycode, text, modifiers)
+
+        # Press arrow keys to switch pages
+        if keycode[1] in ['right', 'left'] and self.name == screen_manager.current_screen.name:
+            self.switch_page(keycode[1])
+
+    def show_loading(self, show=True, *a):
+        Animation.stop_all(self.load_layout)
+        Animation(opacity=1 if show else 0, duration=0.2).start(self.load_layout)
+
+    def generate_menu(self, **kwargs):
+
+        # Scroll list
+        scroll_widget = ScrollViewWidget(position=(0.5, 0.52))
+        scroll_anchor = AnchorLayout()
+        self.scroll_layout = GridLayout(cols=1, spacing=15, size_hint_max_x=1250, size_hint_y=None, padding=[0, 30, 0, 30])
+
+
+        # Bind / cleanup height on resize
+        def resize_scroll(call_widget, grid_layout, anchor_layout, *args):
+            call_widget.height = Window.height // 1.82
+            grid_layout.cols = 2 if Window.width > grid_layout.size_hint_max_x else 1
+            self.anim_speed = 13 if Window.width > grid_layout.size_hint_max_x else 10
+
+            def update_grid(*args):
+                anchor_layout.size_hint_min_y = grid_layout.height
+
+            Clock.schedule_once(update_grid, 0)
+
+
+        self.resize_bind = lambda*_: Clock.schedule_once(functools.partial(resize_scroll, scroll_widget, self.scroll_layout, scroll_anchor), 0)
+        self.resize_bind()
+        Window.bind(on_resize=self.resize_bind)
+        self.scroll_layout.bind(minimum_height=self.scroll_layout.setter('height'))
+        self.scroll_layout.id = 'scroll_content'
+
+
+        # Scroll gradient
+        scroll_top = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.795}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, 60), color=self.background_color)
+        scroll_bottom = scroll_background(pos_hint={"center_x": 0.5, "center_y": 0.26}, pos=scroll_widget.pos, size=(scroll_widget.width // 1.5, -60), color=self.background_color)
+
+        # Generate buttons on page load
+        header_content = "Select a user to manage"
+        self.header = HeaderText(header_content, '', (0, 0.89))
+
+        buttons = []
+        float_layout = FloatLayout()
+        float_layout.id = 'content'
+        float_layout.add_widget(self.header)
+
+        self.page_switcher = PageSwitcher(0, 0, (0.5, 0.887), self.switch_page)
+
+
+        # Append scroll view items
+        scroll_anchor.add_widget(self.scroll_layout)
+        scroll_widget.add_widget(scroll_anchor)
+        float_layout.add_widget(scroll_widget)
+        float_layout.add_widget(scroll_top)
+        float_layout.add_widget(scroll_bottom)
+        float_layout.add_widget(self.page_switcher)
+
+        buttons.append(ExitButton('Back', (0.5, 0.11), cycle=True))
+
+        for button in buttons:
+            float_layout.add_widget(button)
+
+        menu_name = "User Manager"
+        float_layout.add_widget(generate_title(menu_name))
+        float_layout.add_widget(generate_footer(f'Telepath, {menu_name}', no_background=True))
+
+        self.add_widget(float_layout)
+
+        self.gen_search_results()
+
+
 
 
 class TelepathHostInput(CreateServerPortInput):
@@ -28458,8 +29191,11 @@ class TelepathManagerScreen(MenuBackground):
         self.background_color = constants.brighten_color(constants.background_color, -0.09)
         self.back_button = None
         self.help_button = None
+        self.instances_button = None
+        self.users_button = None
         self.pair_button = None
         self.api_input = None
+        self.api_toggle = None
         self.host_input = None
         self.confirm_input = None
         self.load_icon = None
@@ -28600,6 +29336,42 @@ class TelepathManagerScreen(MenuBackground):
         Animation(opacity=0, duration=self.page_speed).start(self.pair_layout)
         Clock.schedule_once(after, self.page_speed + 0.05)
 
+    def recalculate_buttons(self, *a):
+        try:
+            self.main_layout.remove_widget(self.users_button)
+        except:
+            pass
+        try:
+            self.main_layout.remove_widget(self.instances_button)
+        except:
+            pass
+
+        if constants.api_manager.authenticated_sessions and constants.app_config.telepath_settings['enable-api']:
+            self.main_layout.add_widget(self.users_button)
+
+            pair_pos = (0.5, 0.42)
+            enable_pos = (0.5, 0.29)
+            back_pos = (0.5, 0.13)
+
+        elif constants.server_manager.telepath_servers:
+            self.main_layout.add_widget(self.instances_button)
+
+            pair_pos = (0.5, 0.42)
+            enable_pos = (0.5, 0.29)
+            back_pos = (0.5, 0.13)
+
+        else:
+            pair_pos = (0.5, 0.5)
+            enable_pos = (0.5, 0.35)
+            back_pos = (0.5, 0.17)
+
+        self.pair_button.pos_hint = {'center_x': pair_pos[0], 'center_y': pair_pos[1]}
+        self.api_input.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
+        self.api_toggle.button.pos_hint = {'center_x': enable_pos[0], 'center_y': enable_pos[1]}
+        self.api_toggle.knob.pos_hint = {"center_y": enable_pos[1]}
+        self.back_button.text.pos_hint = self.back_button.button.pos_hint = {'center_x': back_pos[0], 'center_y': back_pos[1]}
+        self.back_button.icon.pos_hint = {'center_y': back_pos[1]}
+
     def generate_menu(self, **kwargs):
         self.main_layout = FloatLayout()
         self.main_layout.opacity = 0
@@ -28660,22 +29432,14 @@ Once paired, remote servers will appear in the Server Manager and can be interac
         self.main_layout.add_widget(session_splash)
 
 
-        if constants.server_manager.telepath_servers:
-            def show_manager(*a):
-                screen_manager.current = "TelepathInstanceScreen"
-            self.pair_button = color_button("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png', click_func=show_manager, color=(0.8, 0.8, 1, 1))
-            self.main_layout.add_widget(self.pair_button)
-
-            pair_pos = (0.5, 0.42)
-            enable_pos = (0.5, 0.29)
-            back_pos = (0.5, 0.13)
-
-        else:
-            pair_pos = (0.5, 0.5)
-            enable_pos = (0.5, 0.35)
-            back_pos = (0.5, 0.17)
-
-        self.pair_button = color_button("PAIR A SERVER", position=pair_pos, icon_name='telepath.png', click_func=functools.partial(self.show_pair_input, False), color=(0.8, 0.8, 1, 1))
+        # Logic-driven button visibility
+        def user_manager(*a):
+            screen_manager.current = "TelepathUserScreen"
+        def instance_manager(*a):
+            screen_manager.current = "TelepathInstanceScreen"
+        self.users_button = color_button("MANAGE USERS", position=(0.5, 0.55), icon_name='person-sharp.png', click_func=user_manager, color=(0.8, 0.8, 1, 1))
+        self.instances_button = color_button("MANAGE INSTANCES", position=(0.5, 0.55), icon_name='settings-sharp.png', click_func=instance_manager, color=(0.8, 0.8, 1, 1))
+        self.pair_button = color_button("PAIR A SERVER", position=(0.5, 0.5), icon_name='telepath.png', click_func=functools.partial(self.show_pair_input, False), color=(0.8, 0.8, 1, 1))
         self.main_layout.add_widget(self.pair_button)
 
 
@@ -28709,19 +29473,22 @@ Once paired, remote servers will appear in the Server Manager and can be interac
 
             self.api_input.hint_text = new_text
         sub_layout = RelativeLayout()
-        self.api_input = blank_input(pos_hint={"center_x": enable_pos[0], "center_y": enable_pos[1]}, hint_text="share this instance")
+        self.api_input = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.35}, hint_text="share this instance")
+        self.api_toggle = toggle_button('api', (0.5, 0.35), default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api)
         sub_layout.add_widget(self.api_input)
-        sub_layout.add_widget(toggle_button('api', enable_pos, default_state=constants.app_config.telepath_settings['enable-api'], custom_func=toggle_api))
+        sub_layout.add_widget(self.api_toggle)
         self.main_layout.add_widget(sub_layout)
         if constants.app_config.telepath_settings['enable-api']:
             toggle_api(True, True)
+
+        Clock.schedule_once(self.recalculate_buttons, 0)
 
 
         # Static content on each page
         self.add_widget(generate_footer('$Telepath$', no_background=True))
         self.add_widget(self.main_layout)
         Animation(opacity=1, duration=1).start(self.main_layout)
-        self.back_button = ExitButton('Back', back_pos, cycle=True)
+        self.back_button = ExitButton('Back', (0.5, 0.17), cycle=True)
         self.add_widget(self.back_button)
 
 
@@ -28735,7 +29502,7 @@ class TelepathPair():
         if not self.is_open:
             return
 
-        current_user = constants.api_manager.current_user
+        current_user = constants.api_manager.current_users[self.pair_data['host']['ip']]
         if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
             message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
             color = (0.553, 0.902, 0.675, 1)
@@ -28791,10 +29558,12 @@ constants.telepath_pair = TelepathPair()
 
 # Telepath banner endpoint for sending remote notifications
 def telepath_banner(message: str, finished: bool, play_sound=None):
-    if screen_manager.current_screen.show_banner:
+    screen = screen_manager.current_screen
+
+    if screen.show_banner:
         Clock.schedule_once(
             functools.partial(
-                screen_manager.current_screen.show_banner,
+                screen.show_banner,
                 (0.553, 0.902, 0.675, 1) if finished else (0.937, 0.831, 0.62, 1),
                 message,
                 "checkmark-circle-sharp.png" if finished else "telepath.png",
@@ -28803,6 +29572,15 @@ def telepath_banner(message: str, finished: bool, play_sound=None):
                 play_sound
             ), 0.1
         )
+
+    # Refresh Telepath home screen
+    if screen.name == 'TelepathManagerScreen':
+        Clock.schedule_once(screen.recalculate_buttons, 0)
+
+    # Refresh user list if visible
+    if screen.name == 'TelepathUserScreen' and not screen.popup_widget:
+        Clock.schedule_once(lambda *_: screen.gen_search_results(fade_in=False), 0)
+
 constants.telepath_banner = telepath_banner
 telepath.create_endpoint(constants.telepath_banner, 'main', True)
 
@@ -29013,7 +29791,7 @@ class MainApp(App):
 
         # Screen manager override for testing
         # if not constants.app_compiled:
-        #     pass
+        #    pass
 
 
 

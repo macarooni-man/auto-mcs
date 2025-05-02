@@ -52,6 +52,7 @@ class ServerObject():
         self.crash_log = None
         self.max_log_size = 2000
         self.run_data = {}
+        self.console_filter = 'everything'
         self.viewed_notifs = {}
         self.taskbar = None
         self._hash = constants.gen_rstring(8)
@@ -83,6 +84,10 @@ class ServerObject():
         self.type = self.config_file.get("general", "serverType").lower()
         self.version = self.config_file.get("general", "serverVersion").lower()
         self.build = None
+        try:
+            self.console_filter = self.config_file.get("general", "consoleFilter")
+        except:
+            pass
         try:
             self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
         except:
@@ -245,7 +250,7 @@ class ServerObject():
     # Checks if server was initialized remotely
     def _is_telepath_session(self):
         try:
-            return constants.server_manager.remote_server == self
+            return self in constants.server_manager.remote_servers.values()
         except AttributeError:
             pass
         except RecursionError:
@@ -323,6 +328,10 @@ class ServerObject():
         self.type = self.config_file.get("general", "serverType").lower()
         self.version = self.config_file.get("general", "serverVersion").lower()
         self.build = None
+        try:
+            self.console_filter = self.config_file.get("general", "consoleFilter")
+        except:
+            pass
         try:
             self.viewed_notifs = json.loads(self.config_file.get("general", "viewedNotifs"))
         except:
@@ -485,6 +494,10 @@ class ServerObject():
     def update_log(self, text: bytes, *args):
 
         text = text.replace(b'\xa7', b'\xc2\xa7').decode('utf-8', errors='ignore')
+
+        # Ignore terminal warning
+        if "Advanced terminal features are not available in this environment" in text:
+            return
 
         # (date, type, log, color)
         def format_log(line, *args):
@@ -1623,6 +1636,13 @@ class ServerObject():
         self.server_icon = constants.server_path(self.name, 'server-icon.png')
         return data
 
+    # Updates console event filter in config
+    # 'everything', 'errors', 'players', 'amscript'
+    def change_filter(self, filter_type: str):
+        self.config_file = constants.server_config(self.name)
+        self.config_file.set("general", "consoleFilter", filter_type)
+        constants.server_config(self.name, self.config_file)
+
     # Renames server
     def rename(self, new_name: str):
         if not self.running:
@@ -1653,11 +1673,13 @@ class ServerObject():
 
             # Reset server object properties
             backup.rename_backups(original_name, new_name)
-            self.reload_config(reload_objects=True)
 
             # Reset constants properties
             constants.generate_server_list()
             constants.make_update_list()
+
+            # Reload properties
+            self.reload_config(reload_objects=True)
 
     # Deletes server
     def delete(self):
@@ -2104,7 +2126,7 @@ class ServerManager():
 
         self.server_list = create_server_list()
         self.current_server = None
-        self.remote_server = None
+        self.remote_servers = {}
         self.running_servers = {}
 
         # Load telepath servers
@@ -2156,40 +2178,46 @@ class ServerManager():
         return self.current_server
 
     # Sets self.remote_server to selected ServerObject
-    def open_remote_server(self, name):
+    def open_remote_server(self, host: str, name: str):
         try:
             if self.current_server.name == name:
-                self.remote_server = self.current_server
+                self.remote_servers[host] = self.current_server
 
                 if constants.debug:
-                    print(vars(self.remote_server))
+                    print(vars(self.remote_servers[host]))
 
-                return bool(self.remote_server)
+                return host in self.remote_servers
 
         except AttributeError:
             pass
 
-
-        if self.remote_server:
-            crash_info = (self.remote_server.name, self.remote_server.crash_log)
+        if host in self.remote_servers:
+            crash_info = (self.remote_servers[host].name, self.remote_servers[host].crash_log)
+            del self.remote_servers[host]
         else:
             crash_info = (None, None)
 
-        del self.remote_server
-        self.remote_server = None
-
         # Check if server is running
         if name in self.running_servers.keys():
-            self.remote_server = self.running_servers[name]
+            self.remote_servers[host] = self.running_servers[name]
+
         else:
-            self.remote_server = ServerObject(name)
-            if crash_info[0] == name:
-                self.remote_server.crash_log = crash_info[1]
+            # Check if server is already open on another host
+            for server_obj in self.remote_servers.values():
+                if name == server_obj.name:
+                    self.remote_servers[host] = server_obj
+                    break
+
+            # Initialize a new server object
+            else:
+                self.remote_servers[host] = ServerObject(name)
+                if crash_info[0] == name:
+                    self.remote_servers[host].crash_log = crash_info[1]
 
         if constants.debug:
-            print(vars(self.remote_server))
+            print(vars(self.remote_servers[host]))
 
-        return bool(self.remote_server)
+        return host in self.remote_servers
 
     # Reloads self.current_server
     def reload_server(self):

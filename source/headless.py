@@ -484,6 +484,7 @@ def init_import_server(path):
     return manage_server(constants.import_data['name'], 'import')
 
 def list_servers():
+    constants.generate_server_list()
     if constants.server_list:
         return_text = [('normal', f'Installed Servers'),  ('success', ' * - active'), ('info', f' ({len(constants.server_list)} total):\n\n')]
         line = ''
@@ -598,9 +599,10 @@ def telepath_pair(data=None):
         if timeout >= 60:
             return final_text
 
-    if constants.api_manager.current_user:
-        user = constants.api_manager.current_user
-        final_text = [('normal', 'Successfully paired with '), ('telepath_host', f'{user["host"]}/{user["user"]}:{user["ip"]}')]
+    user = constants.api_manager.current_users[data['host']['ip']]
+    host = user["host"] if user["host"] else "Unknown"
+    if user:
+        final_text = [('normal', 'Successfully paired with '), ('telepath_host', f'{host}/{user["user"]} '), ('help', f'({user["ip"]})')]
 
     constants.api_manager.pair_listen = False
 
@@ -622,15 +624,82 @@ def telepath_users(data=None):
 
     else:
         content = [('normal', f'Authenticated Telepath users'), ('info', f' ({len(constants.api_manager.authenticated_sessions)} total):\n\n')]
-        for x, user in enumerate(constants.api_manager.authenticated_sessions):
-            user_content = [('sub_command', f'ID #{x+1}   '), ('parameter', f'{user["host"]}/{user["user"]}')]
-            if constants.api_manager.current_user and (user["user"] == constants.api_manager.current_user["user"]):
+
+        # Generate list of online users
+        online_list = []
+        for user in constants.api_manager.current_users.values():
+            user_str = f'{user["host"]}/{user["user"]}'
+            if user_str not in online_list:
+                online_list.append(user_str)
+
+        # Sort users based on if they are online
+        results = sorted(
+            constants.api_manager.authenticated_sessions,
+            key = lambda u: f'{u["host"]}/{u["user"]}' in online_list,
+            reverse = True
+        )
+
+        for x, user in enumerate(results):
+            host = user["host"] if user["host"] else user["ip"]
+            user_content = [('sub_command', f'ID #{constants.api_manager.authenticated_sessions.index(user)+1}   '), ('parameter', f'{host}/{user["user"]}')]
+
+            # Check if user is online
+            if constants.api_manager.current_users and f'{user["host"]}/{user["user"]}' in online_list:
                 user_content.append(('command', ' (logged in)'))
+
+            # Check if user is restricted
+            elif 'disabled' in user and user["disabled"]:
+                user_content.append(('fail', ' (restricted)'))
+
             if x+1 < len(constants.api_manager.authenticated_sessions):
                 user_content.append(('info', '\n\n'))
+
             content.extend(user_content)
 
         return content
+
+def telepath_restrict(user_id=None):
+
+    # Input validate user ID
+    if user_id:
+        try:
+            user_id = int(user_id.strip('# ')) - 1
+        except:
+            user_id = None
+
+    if not constants.api_manager.running:
+        return 'Telepath API is not running', 'fail'
+
+    elif not constants.api_manager.authenticated_sessions:
+        return [
+            ("info", "There are no authenticated Telepath users. Please run "),
+            ("command", "telepath "),
+            ("sub_command", "pair "),
+            ("info", "first to pair a client")
+        ], 'fail'
+
+    elif user_id is None or user_id > len(constants.api_manager.authenticated_sessions) - 1 or user_id < 0:
+        return [
+            ("info", "A valid user ID was not specified. Please run "),
+            ("command", "telepath "),
+            ("sub_command", "users "),
+            ("info", "first to locate the ID")
+        ], 'fail'
+
+    else:
+        user = constants.api_manager.authenticated_sessions[user_id]
+        host = user["host"] if user["host"] else user["ip"]
+        disabled = 'disabled' in user and user["disabled"]
+        constants.api_manager._disable_user(user['id'], not disabled)
+
+        if user['ip'] not in constants.api_manager.current_users:
+            verb = 'Unrestricted' if disabled else 'Restricted'
+            return [('normal', f'{verb} Telepath access from '), ('sub_command', f'ID #{user_id+1} '), ('parameter', f'{host}/{user["user"]}')]
+
+        else:
+            return [('info', 'Something went wrong, please try again')], 'fail'
+
+
 def telepath_revoke(user_id=None):
 
     # Input validate user ID
@@ -662,16 +731,19 @@ def telepath_revoke(user_id=None):
 
     else:
         user = constants.api_manager.authenticated_sessions[user_id]
+        host = user["host"] if user["host"] else user["ip"]
 
         # Force logout if they are logged in
-        if constants.api_manager.current_user and (user["user"] == constants.api_manager.current_user["user"]):
-            constants.api_manager._force_logout(constants.api_manager.current_user['session_id'])
+        for session in constants.api_manager.current_users.values():
+            if user['user'] == session['user'] and user['host'] == session['host']:
+                constants.api_manager._force_logout(session['session_id'])
+                break
 
         # Revoke from authenticated sessions
         constants.api_manager._revoke_session(user['id'])
 
         if user not in constants.api_manager.authenticated_sessions:
-            return [('normal', 'Revoked Telepath access from '), ('sub_command', f'ID #{user_id+1} '), ('parameter', f'{user["host"]}/{user["user"]}')]
+            return [('normal', 'Revoked Telepath access from '), ('sub_command', f'ID #{user_id+1} '), ('parameter', f'{host}/{user["user"]}')]
 
         else:
             return [('info', 'Something went wrong, please try again')], 'fail'
@@ -979,6 +1051,11 @@ command_data = {
             'users': {
                 'help': 'lists all paired and connected users',
                 'exec': telepath_users,
+            },
+            'restrict': {
+                'help': 'toggle access restriction from a user by ID',
+                'one-arg': True,
+                'params': {'#ID': lambda user_id: telepath_restrict(user_id)}
             },
             'revoke': {
                 'help': 'revoke access from a user by ID (they will need to re-pair)',
@@ -2718,7 +2795,7 @@ def run_application():
             if not self.is_open:
                 return
 
-            current_user = constants.api_manager.current_user
+            current_user = constants.api_manager.current_users[self.pair_data['host']['ip']]
             if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
                 message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
             else:

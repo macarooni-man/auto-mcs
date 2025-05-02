@@ -1,3 +1,5 @@
+import traceback
+
 from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Request, Depends, status
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -146,7 +148,7 @@ class TelepathManager():
         self.logger = AuditLogger()
 
         # Server side data
-        self.current_user = None
+        self.current_users = {}
         self.pair_data = {}
         self.pair_listen = False
 
@@ -217,10 +219,10 @@ class TelepathManager():
 
         # Remove saved data to prevent duplication
         for session in self.authenticated_sessions:
-            if new_session['id'] == session['id']:
+            if (new_session['id'] == session['id']) or (new_session['user'] == session['user'] and new_session['host'] == session['host']):
                 self.authenticated_sessions.remove(session)
 
-        self.authenticated_sessions.append(new_session)
+        self.authenticated_sessions.append(constants.deepcopy(new_session))
         self.secret_file.write(self.authenticated_sessions)
 
         # Eventually add code here to save and reload this from a file
@@ -244,6 +246,7 @@ class TelepathManager():
     def _reset_session(self):
         self.secret_file.write([])
         self.authenticated_sessions = []
+        self.current_users = {}
         return []
 
     def _create_pair_code(self, host: dict, id: str):
@@ -270,16 +273,48 @@ class TelepathManager():
         threading.Timer((PAIR_CODE_EXPIRE_MINUTES * 60), _clear_pair_code).start()
 
     def _update_user(self, session=None):
-        self.current_user = session
-        self.current_user['last_active'] = dt.now()
-        self.logger.current_user = self.current_user
+        self.current_users[session['ip']] = session
+        self.current_users[session['ip']]['last_active'] = dt.now()
+        self.logger.current_users = self.current_users
 
     # Resets current user
     def _force_logout(self, session_id: str):
-        if session_id == self.current_user['session_id']:
-            del self.current_user
-            self.current_user = {}
-            return True
+        for host, user in self.current_users.items():
+            if session_id == user['session_id']:
+                del self.current_users[host]
+                return True
+
+    # Toggle disabling users
+    def _disable_user(self, user_id: str, disabled: bool):
+
+        # Check if user has been disabled
+        for session in self.authenticated_sessions:
+            if user_id == session['id']:
+                session['disabled'] = disabled
+
+                self.secret_file.write(self.authenticated_sessions)
+
+                # Log out user if they are connected and disabled
+                if disabled:
+                    for user in self.current_users.values():
+                        if user['user'] == session['user'] and user['host'] == session['host']:
+
+                            # Show banner on logout
+                            constants.telepath_banner(f"'${user['host']}/{user['user']}$' logged out", False)
+
+                            return self._force_logout(user['session_id'])
+
+                break
+
+    # Check if session is permitted
+    def _check_permissions(self, session: dict):
+
+        # Do things with the matched user
+        if 'disabled' in session and session['disabled']:
+            return False
+
+        return True
+
 
     def update_config(self, host: str, port: int):
         self.host = host
@@ -437,7 +472,7 @@ class TelepathManager():
                 print(f"[INFO] [telepath] Closed session to '{host}:{data['port']}'")
 
 
-    # -------- Internal endpoints to authenticate with telepath -------- #
+    # -------- Internal endpoints to authenticate with Telepath -------- #
 
     # Returns data for pairing a remote session
     # host = {'host': str, 'user': str}
@@ -511,10 +546,11 @@ class TelepathManager():
                         # Successfully authenticated
 
                         # Reset remote server for permission reasons
-                        constants.server_manager.remote_server = None
+                        if ip in constants.server_manager.remote_servers:
+                            del constants.server_manager.remote_servers[ip]
 
                         # Call function to write this data to a file
-                        session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip}
+                        session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': self.pair_data['id'], 'ip': ip, 'disabled': False}
                         self._save_session(session)
                         self._update_user(session)
                         self.pair_data = {}
@@ -541,7 +577,6 @@ class TelepathManager():
                 detail=f"API versions do not match. Server - v{self.version}"
             )
 
-
         if self.running:
             ip = request.client.host
             id = self.auth._decrypt(id_hash, ip)
@@ -552,21 +587,20 @@ class TelepathManager():
             for session in self.authenticated_sessions:
                 if self._verify_id(id, session['id']):
 
-                    # Check if current user can be removed due to token expiry
-                    if self.current_user and (self.current_user['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
-                        self._force_logout(self.current_user['session_id'])
-
-                    # This can change later, but currently, there can only be one telepath user globally
-                    # (self.current_user['id'] == session['id'] and self.current_user['ip'] == request.client.host)
-                    if self.current_user and not (self.current_user['ip'] == request.client.host):
+                    # Check if user is allowed to log in
+                    if not self._check_permissions(session):
                         raise HTTPException(
-                            status_code=status.HTTP_409_CONFLICT,
-                            detail="Logged in from another session",
-                            headers={"WWW-Authenticate": "Bearer"},
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Permission denied"
                         )
 
+                    # Check if current user can be removed due to token expiry
+                    if ip in self.current_users and (self.current_users[ip]['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
+                        self._force_logout(self.current_users[ip]['session_id'])
+
                     # Reset remote server for permission reasons
-                    constants.server_manager.remote_server = None
+                    if ip in constants.server_manager.remote_servers:
+                        del constants.server_manager.remote_servers[ip]
 
                     # Show banner on login
                     constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
@@ -588,13 +622,14 @@ class TelepathManager():
 
     def _logout(self, host: dict, request: Request):
         ip = request.client.host
-        if self.current_user:
-            if ip == self.current_user['ip'] and host['host'] == self.current_user['host'] and host['user'] == self.current_user['user']:
+        for user in self.current_users.values():
+
+            if ip == user['ip'] and host['host'] == user['host'] and host['user'] == user['user']:
 
                 # Show banner on logout
                 constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged out", False)
 
-                return self._force_logout(self.current_user['session_id'])
+                return self._force_logout(user['session_id'])
 
         return False
 
@@ -852,7 +887,7 @@ class SecretHandler():
 class AuditLogger():
     def __init__(self):
         self.path = os.path.join(constants.telepathDir, 'audit-logs')
-        self.current_user = None
+        self.current_users = {}
         self.max_logs = 50
         self.tags = {
             'ignore': ['_sync_attr', '_sync_telepath_stop', '_telepath_run_data', 'return_single_list', 'hash_changed',
@@ -895,8 +930,8 @@ class AuditLogger():
             return
 
         # Format host
-        if not host and self.current_user:
-            host = self.current_user
+        if isinstance(host, str) and host in self.current_users:
+            host = self.current_users[host]
 
         if host:
             formatted_host = f"{host['host']}/{host['user']} | {host['ip']}"
@@ -987,7 +1022,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
         try:
             decoded_token = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             ip = request.client.host
-            current_user = constants.api_manager.current_user
+            current_user = constants.api_manager.current_users[request.client.host]
 
             # Only allow if machine name matches current user, and the IP is from the same location
             if decoded_token.get('host') == current_user['host'] and ip == current_user['ip']:
@@ -1020,22 +1055,24 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
         # This is to give some leeway for a reconnection before alarm in case the legitimate session expired
 
         # Check if the user failed to log in because the token just expired
-        current_user = deepcopy(constants.api_manager.current_user)
-        if current_user and current_user['ip'] == request.client.host:
+        if request.client.host in constants.api_manager.current_users:
 
-            # Log to telepath logger
-            extra_data = "Connection blocked: session has expired"
-            constants.api_manager.logger._report(endpoint, host=current_user, extra_data=extra_data)
+            current_user = deepcopy(constants.api_manager.current_users[request.client.host])
+            if current_user and current_user['ip'] == request.client.host:
 
-            if 'pending-removal' not in current_user:
-                current_user['pending-removal'] = True
-                constants.api_manager._force_logout(current_user['session_id'])
+                # Log to telepath logger
+                extra_data = "Connection blocked: session has expired"
+                constants.api_manager.logger._report(endpoint, host=current_user, extra_data=extra_data)
 
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session expired, please log in again",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+                if 'pending-removal' not in current_user:
+                    current_user['pending-removal'] = True
+                    constants.api_manager._force_logout(current_user['session_id'])
+
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Session expired, please log in again",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
 
 
         # If it wasn't the last user, report violation to telepath logger
@@ -1059,20 +1096,47 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
 # ---------------------------------------------- Utility Functions -----------------------------------------------------
 
 # Creates an endpoint from a method, tagged, and optionally if it contains parameters, or requires a JWT token
-def create_endpoint(method: Callable, tag: str, params=False, auth_required=True):
-    kwargs = {
-        'methods': ["POST" if params else "GET"],
-        'name': method.__name__,
-        'tags': [tag],
+def create_endpoint(method: Callable, tag: str, params=False, auth_required=True, send_host=False):
+    """
+    Registers `method` under  /{tag}/{method.__name__}
+
+    ─────────────────────────────────────────────────────────────
+    • `params=True`   →  request body (JSON) is unpacked into **kwargs
+    • `send_host=True`→  if `client_ip` is an argument of `method`,
+                         it receives the remote IP address.
+    """
+
+    async def endpoint(request: Request):
+        kwargs = {}
+
+        # 1) JSON body → kwargs (only when requested)
+        if params:
+            try:
+                body = await request.json()
+                if isinstance(body, dict):
+                    kwargs.update(body)
+            except Exception:
+                pass   # silently ignore empty / invalid bodies
+
+        # 2) Caller’s IP → kwargs (opt-in)
+        if send_host and "client_ip" in inspect.signature(method).parameters:
+            kwargs["client_ip"] = request.client.host
+
+        # 3) Call the original function (sync or async)
+        if inspect.iscoroutinefunction(method):
+            return await method(**kwargs)
+        return method(**kwargs)
+
+    # ---------- FastAPI route registration ---------------------
+    route_kwargs = {
+        "methods": ["POST" if params else "GET"],
+        "name":    method.__name__,
+        "tags":    [tag],
     }
     if auth_required:
-        kwargs['dependencies'] = [Depends(authenticate)]
+        route_kwargs["dependencies"] = [Depends(authenticate)]
 
-    app.add_api_route(
-        f"/{tag}/{method.__name__}",
-        return_endpoint(method, create_pydantic_model(method) if params else None),
-        **kwargs
-    )
+    app.add_api_route(f"/{tag}/{method.__name__}", endpoint, **route_kwargs)
 
 
 # Reconstructs a serialized object to "__reconstruct__"
@@ -1145,12 +1209,10 @@ def create_pydantic_model(method: Callable) -> Optional[BaseModel]:
 
 # Create an endpoint from a function
 def return_endpoint(func: Callable, input_model: Optional[BaseModel] = None):
-    async def endpoint(input: input_model = Body(...) if input_model else None):
-        if input_model:
-            result = func(**input.dict())
-        else:
-            result = func()
-        return result
+    async def endpoint(request: Request, input: input_model = Body(...) if input_model else None):
+        kwargs = input.dict() if input_model else {}
+        kwargs["host"] = request.client.host
+        return func(**kwargs)
 
     return endpoint
 
@@ -1180,7 +1242,7 @@ def generate_endpoints(app: FastAPI, instance):
 
 # This will communicate with the endpoints
 # "request" parameter is in context to this particular session, or subjectively, "am I requesting data?"
-def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None, *args, **kwargs):
+def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None, host=None, *args, **kwargs):
     def format_args():
         formatted = {}
         args_list = list(args)
@@ -1218,14 +1280,14 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
 
 
     # If this session is responding to a remote request
-    else:
+    elif host in constants.server_manager.remote_servers:
         # Reconstruct data if available
         if isinstance(kwargs, dict):
             kwargs = {k: reconstruct_object(v) for k, v in kwargs.items()}
 
         # Manipulate strings to execute a function call to the actual server manager
         lookup = {'AclManager': 'acl', 'AddonManager': 'addon', 'ScriptManager': 'script_manager', 'BackupManager': 'backup'}
-        command = 'returned = server_manager.remote_server.'
+        command = 'returned = remote_server.'
         short_name = 'server'
         if obj_name in lookup:
             short_name = lookup[obj_name]
@@ -1233,14 +1295,15 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         command += f'{method_name}'
 
         # Format locals() to include a new "returned" variable which will store the data to be returned
-        exec_memory = {'locals': {'returned': None}, 'globals': {'server_manager': constants.server_manager}}
+        remote_server = constants.server_manager.remote_servers[host]
+        exec_memory = {'locals': {'returned': None}, 'globals': {'remote_server': remote_server}}
         exec(command, exec_memory['globals'], exec_memory['locals'])
 
         # Report event to logger
         formatted_args = ''
         if kwargs:
             formatted_args = ', '.join([f'{k}={v}' for k, v in kwargs.items()])
-        constants.api_manager.logger._report(f'{short_name}.{method_name}', extra_data=formatted_args, server_name=constants.server_manager.remote_server.name)
+        constants.api_manager.logger._report(f'{short_name}.{method_name}', host=host, extra_data=formatted_args, server_name=remote_server.name)
 
         return exec_memory['locals']['returned'](**kwargs)
 
@@ -1329,6 +1392,7 @@ def create_remote_obj(obj: object, request=True):
             '_sync_attr',
             True,
             {'name': (str, ...)},
+            self._telepath_data['host'],
             name
         )
     def _reset_expiry(self, value=None, length=60):
@@ -1380,8 +1444,8 @@ def create_remote_obj(obj: object, request=True):
 
             # Define a wrapper that takes 'self' and calls the original method
             def param_wrapper(func_name, func_params):
-                def method_wrapper(self, *args, **kwargs):
-                    return api_wrapper(self, self._obj_name, func_name, request, func_params, *args, **kwargs)
+                def method_wrapper(self, *args, host=None, **kwargs):
+                    return api_wrapper(self, self._obj_name, func_name, request, func_params, host, *args, **kwargs)
                 return method_wrapper
 
             data['methods'][name] = param_wrapper(name, params)
@@ -1858,7 +1922,7 @@ async def logout(host: dict, request: Request):
     if constants.api_manager:
 
         # Report event to logger
-        constants.api_manager.logger._report('telepath.logout')
+        constants.api_manager.logger._report('telepath.logout', host=request.client.host)
 
         return constants.api_manager._logout(host, request)
 
@@ -1869,19 +1933,19 @@ async def logout(host: dict, request: Request):
 
 # Authenticated and functional endpoints
 @app.post("/main/open_remote_server", tags=['main'], dependencies=[Depends(authenticate)])
-async def open_remote_server(name: str):
+async def open_remote_server(name: str, request: Request):
     if (constants.app_config.telepath_settings['enable-api'] or constants.headless) and constants.server_manager:
 
         # Report event to logger
-        constants.api_manager.logger._report('main.open_remote_server', extra_data=f'Opened: "{name}"')
+        constants.api_manager.logger._report('main.open_remote_server', host=request.client.host, extra_data=f'Opened: "{name}"')
 
-        return constants.server_manager.open_remote_server(name)
+        return constants.server_manager.open_remote_server(request.client.host, name)
 
     return False
 
 # Upload file endpoint
 @app.post("/main/upload_file", tags=['main'], dependencies=[Depends(authenticate)])
-async def upload_file(file: UploadFile = File(...), is_dir=False):
+async def upload_file(request: Request, file: UploadFile = File(...), is_dir=False):
     if isinstance(is_dir, str):
         is_dir = is_dir.lower() == 'true'
 
@@ -1904,7 +1968,7 @@ async def upload_file(file: UploadFile = File(...), is_dir=False):
             destination_path = os.path.join(constants.uploadDir, dir_name)
 
         # Report event to logger
-        constants.api_manager.logger._report('main.upload_file', extra_data=f'Uploaded: "{destination_path}"')
+        constants.api_manager.logger._report('main.upload_file', host=request.client.host, extra_data=f'Uploaded: "{destination_path}"')
 
         return JSONResponse(content={
             "name": file_name,
@@ -1916,7 +1980,7 @@ async def upload_file(file: UploadFile = File(...), is_dir=False):
 
 # Download file endpoint
 @app.post("/main/download_file", tags=['main'], dependencies=[Depends(authenticate)])
-async def download_file(file: str):
+async def download_file(request: Request, file: str):
     denied = HTTPException(status_code=403, detail=f"Access denied")
     blocked_symbols = ['*', '..']
 
@@ -1951,7 +2015,7 @@ async def download_file(file: str):
         raise HTTPException(status_code=500, detail=f"File '{file}' does not exist")
 
     # Report event to logger
-    constants.api_manager.logger._report('main.download_file', extra_data=f'Downloaded: "{path}"')
+    constants.api_manager.logger._report('main.download_file', host=request.client.host, extra_data=f'Downloaded: "{path}"')
 
     # If it exists in a permitted directory, respond with the file
     return FileResponse(path, filename=os.path.basename(path))
@@ -1974,8 +2038,8 @@ create_endpoint(constants.update_config_file, 'main', True)
 # Add-on based functionality outside the add-on manager
 create_endpoint(constants.load_addon_cache, 'addon', True)
 create_endpoint(constants.iter_addons, 'addon', True)
-create_endpoint(constants.pre_addon_update, 'addon', True)
-create_endpoint(constants.post_addon_update, 'addon', True)
+create_endpoint(constants.pre_addon_update, 'addon', True, send_host=True)
+create_endpoint(constants.post_addon_update, 'addon', True, send_host=True)
 
 # Endpoints for updating, server creation, and importing
 create_endpoint(constants.push_new_server, 'create', True)
@@ -1984,8 +2048,8 @@ create_endpoint(constants.install_server, 'create', True)
 create_endpoint(constants.generate_server_files, 'create', True)
 create_endpoint(constants.update_server_files, 'create', True)
 create_endpoint(constants.create_backup, 'create', True)
-create_endpoint(constants.pre_server_update, 'create', True)
-create_endpoint(constants.post_server_update, 'create', True)
+create_endpoint(constants.pre_server_update, 'create', True, send_host=True)
+create_endpoint(constants.post_server_update, 'create', True, send_host=True)
 create_endpoint(constants.pre_server_create, 'create', True)
 create_endpoint(constants.post_server_create, 'create', True)
 
@@ -1994,4 +2058,4 @@ create_endpoint(constants.finalize_import, 'create', True)
 create_endpoint(constants.scan_modpack, 'create', True)
 create_endpoint(constants.finalize_modpack, 'create', True)
 
-create_endpoint(constants.clone_server, 'create', True)
+create_endpoint(constants.clone_server, 'create', True, send_host=True)
