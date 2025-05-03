@@ -163,6 +163,7 @@ json_format_floor = "1.7.6"
 
 # Paths
 is_android = 'ANDROID_PRIVATE' in os.environ
+machine_id = None
 os_name = 'windows' if os.name == 'nt' else 'macos' if system().lower() == 'darwin' else 'linux' if os.name == 'posix' else os.name
 home = os.getenv("ANDROID_PRIVATE") if is_android else os.path.expanduser('~')
 appdata = os.getenv("APPDATA") if os_name == 'windows' else f'{home}/Library/Application Support' if os_name == 'macos' else home
@@ -2731,12 +2732,6 @@ def java_check(progress_func=None):
                 timer.daemon = True
                 timer.start()  # Checks for potential crash
 
-
-            # Detect if running on ARM
-            if os_name == 'linux' and is_arm:
-                os_download = 'linux-arm64'
-            else:
-                os_download = os_name
 
 
             with ThreadPoolExecutor(max_workers=2) as pool:

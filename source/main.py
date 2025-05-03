@@ -13,7 +13,9 @@ if __name__ == '__main__':
 
     # Get the Android activity
     PythonActivity = autoclass('org.kivy.android.PythonActivity')
+    SettingsSecure = autoclass("android.provider.Settings$Secure")
     activity = PythonActivity.mActivity
+    activity.setRequestedOrientation(0) # Force SCREEN_ORIENTATION_LANDSCAPE
 
 
     # Define a PythonJavaClass implementing java/lang/Runnable without overriding __init__
@@ -86,14 +88,19 @@ if __name__ == '__main__':
 
     constants.app_compiled = True
     constants.launch_path = sys.executable
+
+
+    # Set hostname/username properly
+    constants.hostname = 'android'
+    constants.username = 'remote'
     try:
-        constants.username = constants.run_proc('whoami', True).split('\\')[-1].strip()
+        constants.hostname = SettingsSecure.getString(activity.getContentResolver(), "bluetooth_name")
     except:
         pass
-    try:
-        constants.hostname = constants.run_proc('hostname', True).strip()
-    except:
-        pass
+
+
+    # Set machine ID
+    constants.machine_id = SettingsSecure.getString(activity.getContentResolver(), SettingsSecure.ANDROID_ID)
 
     # os.environ["KIVY_NO_CONSOLELOG"] = "1"
     constants.debug = True

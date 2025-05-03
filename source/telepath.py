@@ -1,5 +1,3 @@
-import traceback
-
 from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Request, Depends, status
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -19,7 +17,6 @@ from datetime import datetime as dt
 from datetime import timezone as tz
 from jwt import InvalidTokenError
 from operator import itemgetter
-from functools import partial
 from copy import deepcopy
 from munch import Munch
 from glob import glob
@@ -66,14 +63,18 @@ else:
 SECRET_KEY = os.urandom(64)
 
 # First, try to get the machine ID using the module
-try:
-    import machineid
-    UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
+UNIQUE_ID = None
+if not (constants.is_android or constants.is_docker):
+    try:
+        import machineid
+        UNIQUE_ID = machineid.hashed_id(f'{constants.app_title}::{constants.username}::{ID_HASH}')
+    except:
+        pass
 
-# If machine ID is busted (like on Alpine), do it the good ol' fashioned way
-except:
-    import uuid
-    UNIQUE_ID = str(uuid.getnode()).ljust(64, '0')
+# UUID fallback
+if not UNIQUE_ID:
+    UNIQUE_ID = hashlib.sha256(f"{constants.app_title}::{constants.username}::{ID_HASH}::{constants.machine_id}".encode()).hexdigest()
+
 
 SESSION_ID = codecs.encode(os.urandom(8), 'hex').decode()
 ALGORITHM = "HS256"

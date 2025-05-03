@@ -69,7 +69,42 @@ if constants.is_android:
     # Override debug print statements to Logger
     if constants.debug:
         from kivy.logger import Logger
-        print = lambda *a: Logger.debug(str(a))
+        from jnius import autoclass
+
+        logcat_tag = 'telepath-remote'
+        Log = autoclass('android.util.Log')
+
+
+        # Override stdout and stderr
+        class LogcatStream:
+            def __init__(self, tag=logcat_tag):
+                self.tag = tag
+            def write(self, message):
+                for line in message.strip().splitlines():
+                    if line:
+                        Logger.debug(f"{self.tag}: {line}")
+                        Log.d(self.tag, line)
+            def flush(self):
+                pass
+        sys.stdout = LogcatStream()
+        sys.stderr = LogcatStream()
+
+
+        # Override built-in print
+        def debug_print(*args, **kwargs):
+            message = ' '.join(str(arg) for arg in args)
+            Logger.debug(f"{logcat_tag}: {message}")
+            Log.d(logcat_tag, message)
+        print = debug_print
+
+
+        # Override traceback printing
+        def log_unhandled_exception(exc_type, exc_value, exc_traceback):
+            tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+            for line in tb_lines:
+                print(f"[EXC] {line.rstrip()}")
+        sys.excepthook = log_unhandled_exception
+
 
     Config.set('graphics', 'width', str(constants.window_size[0]))
     Config.set('graphics', 'height', str(constants.window_size[1]))
@@ -643,8 +678,17 @@ class HoverButton(Button, HoverBehavior):
         self.id = ''
 
     def onPressed(self, instance, touch):
+
+        # Override button presses for remote desktop
         if touch.device == "wm_touch":
             touch.button = "left"
+
+        # Override button presses for Android
+        if constants.is_android and not self.button_pressed and self.last_touch:
+            touch = self.last_touch
+            touch.button = 'right' if touch.time_end - touch.time_start >= 0.5 else 'left'
+        elif constants.is_android:
+            touch.button = 'left'
 
         self.button_pressed = touch.button
 
@@ -8345,11 +8389,6 @@ def button_action(button_name, button, specific_screen=''):
 
     # print(button_name)
     # print(button.button_pressed)
-
-    # Format button presses for Android
-    if constants.is_android and button and not button.button_pressed:
-        touch = button.last_touch
-        button.button_pressed = 'right' if touch.time_end - touch.time_start >= 0.5 else 'left'
 
     if button.button_pressed == "left":
 
@@ -18383,8 +18422,14 @@ class ConsolePanel(FloatLayout):
 
     # Check for drag select
     def on_touch_down(self, touch):
+
+        # Override button presses for remote desktop
         if touch.device == "wm_touch":
             touch.button = "left"
+
+        # Override button presses for Android
+        if constants.is_android:
+            touch.button = 'right' if touch.time_end - touch.time_start >= 0.5 else 'left'
 
 
         # Copy when right-clicked
