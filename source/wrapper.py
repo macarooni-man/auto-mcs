@@ -5,6 +5,7 @@ import requests
 import ctypes
 import glob
 import time
+import uuid
 import sys
 import os
 import gc
@@ -361,6 +362,9 @@ if __name__ == '__main__':
     if not constants.app_config.locale:
         constants.app_config.locale = 'en'
 
+
+    # Set machine ID
+    constants.machine_id = str(uuid.getnode())
 
     # Start the app
     launch_automcs()
