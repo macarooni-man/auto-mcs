@@ -28192,6 +28192,8 @@ class TelepathInstanceScreen(MenuBackground):
             self.switch_page(keycode[1])
 
     def show_loading(self, show=True, *a):
+        self.load_layout.text.x = (Window.width / 2) - 100
+        self.load_layout.icon.x = (Window.width / 2) - 140
         Animation.stop_all(self.load_layout)
         Animation(opacity=1 if show else 0, duration=0.2).start(self.load_layout)
 
@@ -28264,18 +28266,20 @@ class TelepathInstanceScreen(MenuBackground):
         self.load_layout.icon.source = os.path.join(constants.gui_assets, 'animations', 'loading_pickaxe.gif')
         self.load_layout.icon.size_hint_max = (50, 50)
         self.load_layout.icon.color = (0.6, 0.6, 1, 1)
-        self.load_layout.icon.pos_hint = {"center_y": 0.5, "center_x": 0.4}
+        self.load_layout.icon.pos_hint = {"center_y": 0.5}
         self.load_layout.icon.allow_stretch = True
         self.load_layout.icon.anim_delay = constants.anim_speed * 0.02
         self.load_layout.add_widget(self.load_layout.icon)
 
         # Load label
-        self.load_layout.text = Label()
+        self.load_layout.text = AlignLabel()
         self.load_layout.text.text = "loading instances..."
         self.load_layout.text.halign = "center"
         self.load_layout.text.valign = "center"
+        self.load_layout.text.size_hint_max = (300, 50)
         self.load_layout.text.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
-        self.load_layout.text.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.load_layout.text.pos_hint = {"center_y": 0.5}
+
         self.load_layout.text.font_size = sp(25)
         self.load_layout.text.color = (0.6, 0.6, 1, 0.5)
         self.load_layout.add_widget(self.load_layout.text)
