@@ -3835,9 +3835,14 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 if "-jar" in output and ".jar" in output:
                     start_script = True
                     file_name = re.search(r'\S+(?=\.jar)', output).group(0)
+                    file_path = os.path.join(str(path), f'{file_name}.jar')
+
+                    # Ignore invalid file names
+                    if not os.path.isfile(file_path):
+                        continue
 
                     # copy jar file to test directory
-                    copy(os.path.join(str(path), f'{file_name}.jar'), test_server)
+                    copy(file_path, test_server)
 
 
                     # Check if server.jar is a valid server
