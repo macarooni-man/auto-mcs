@@ -28284,7 +28284,6 @@ class TelepathInstanceScreen(MenuBackground):
         self.load_layout.text.size_hint_max = (300, 50)
         self.load_layout.text.font_name = os.path.join(constants.gui_assets, 'fonts', constants.fonts['italic'])
         self.load_layout.text.pos_hint = {"center_y": 0.5}
-
         self.load_layout.text.font_size = sp(25)
         self.load_layout.text.color = (0.6, 0.6, 1, 0.5)
         self.load_layout.add_widget(self.load_layout.text)
