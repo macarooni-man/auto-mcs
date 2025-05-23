@@ -16721,6 +16721,11 @@ class PerformancePanel(RelativeLayout):
                 # Close the console if remotely launched, and no logs exist
                 if not server_obj.running or not server_obj.run_data:
                     data = server_obj._sync_telepath_stop()
+
+                    # Prevent closing if data does not exist (Telepath re-authentication issue)
+                    if not data:
+                        return True
+
                     server_obj.crash_log = data['crash']
                     console_panel.update_text(data['log'])
                     console_panel.reset_panel(data['crash'])
