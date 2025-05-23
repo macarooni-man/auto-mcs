@@ -4033,40 +4033,26 @@ eula=true"""
                 # NeoForge
                 elif "@libraries/net/neoforged/neoforge/" in output:
                     start_script = True
+                    version_string = re.search(r'\d+.\d+.\d+', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
+                    version = '1.' + version_string.rsplit('.', 1)[0]
+                    build = version_string.rsplit('.', 1)[-1]
 
-                    version = output.split("@libraries/net/neoforged/neoforge/")[1].rsplit(".", 1)[0]
-
-                    version_list = []
-
-                    for forge_file in glob(os.path.join(str(path), 'libraries', 'net', 'neoforged', 'neoforge', f'{version}*')):
-                        version_list.append(os.path.basename(forge_file))
-
-                        if version_list != 0:
-                            print(f"Determined type '{import_data['type']}':  validating version information...")
-
-                            import_data['type'] = "forge"
-                            import_data['version'] = version_list[0].rsplit(".", 1)[0]
-                            import_data['build'] = str(version_list[0].rsplit(".", 1)[-1])
-                            break
+                    import_data['type'] = "neoforge"
+                    import_data['version'] = version
+                    import_data['build'] = build
+                    print(f"Determined type '{import_data['type']}':  validating version information...")
 
                 # New versions of forge
                 elif "@libraries/net/minecraftforge/forge/" in output:
                     start_script = True
+                    version_string = output.split("@libraries/net/minecraftforge/forge/")[1]
+                    version = version_string.split("-")[0].lower()
+                    build = version_string.split("-")[1]
 
-                    version = output.split("@libraries/net/minecraftforge/forge/")[1].split("-")[0]
-
-                    version_list = []
-
-                    for forge_file in glob(os.path.join(str(path), 'libraries', 'net', 'minecraftforge', 'forge', f'{version}*')):
-                        version_list.append(os.path.basename(forge_file))
-
-                        if version_list != 0:
-                            print(f"Determined type '{import_data['type']}':  validating version information...")
-
-                            import_data['type'] = "forge"
-                            import_data['version'] = version_list[0].split("-")[0].lower()
-                            import_data['build'] = str(version_list[0].split("-")[1])
-                            break
+                    import_data['type'] = "forge"
+                    import_data['version'] = version
+                    import_data['build'] = build
+                    print(f"Determined type '{import_data['type']}':  validating version information...")
 
 
                 # Gather launch flags
