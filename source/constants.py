@@ -41,9 +41,9 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.3"
+app_version = "2.3.1"
 ams_version = "1.4"
-telepath_version = "1.1"
+telepath_version = "1.1.1"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -3833,9 +3833,14 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                 if "-jar" in output and ".jar" in output:
                     start_script = True
                     file_name = re.search(r'\S+(?=\.jar)', output).group(0)
+                    file_path = os.path.join(str(path), f'{file_name}.jar')
+
+                    # Ignore invalid file names
+                    if not os.path.isfile(file_path):
+                        continue
 
                     # copy jar file to test directory
-                    copy(os.path.join(str(path), f'{file_name}.jar'), test_server)
+                    copy(file_path, test_server)
 
 
                     # Check if server.jar is a valid server
@@ -4026,40 +4031,26 @@ eula=true"""
                 # NeoForge
                 elif "@libraries/net/neoforged/neoforge/" in output:
                     start_script = True
+                    version_string = re.search(r'\d+.\d+.\d+', output.split("@libraries/net/neoforged/neoforge/")[1])[0]
+                    version = '1.' + version_string.rsplit('.', 1)[0]
+                    build = version_string.rsplit('.', 1)[-1]
 
-                    version = output.split("@libraries/net/neoforged/neoforge/")[1].rsplit(".", 1)[0]
-
-                    version_list = []
-
-                    for forge_file in glob(os.path.join(str(path), 'libraries', 'net', 'neoforged', 'neoforge', f'{version}*')):
-                        version_list.append(os.path.basename(forge_file))
-
-                        if version_list != 0:
-                            print(f"Determined type '{import_data['type']}':  validating version information...")
-
-                            import_data['type'] = "forge"
-                            import_data['version'] = version_list[0].rsplit(".", 1)[0]
-                            import_data['build'] = str(version_list[0].rsplit(".", 1)[-1])
-                            break
+                    import_data['type'] = "neoforge"
+                    import_data['version'] = version
+                    import_data['build'] = build
+                    print(f"Determined type '{import_data['type']}':  validating version information...")
 
                 # New versions of forge
                 elif "@libraries/net/minecraftforge/forge/" in output:
                     start_script = True
+                    version_string = output.split("@libraries/net/minecraftforge/forge/")[1]
+                    version = version_string.split("-")[0].lower()
+                    build = version_string.split("-")[1]
 
-                    version = output.split("@libraries/net/minecraftforge/forge/")[1].split("-")[0]
-
-                    version_list = []
-
-                    for forge_file in glob(os.path.join(str(path), 'libraries', 'net', 'minecraftforge', 'forge', f'{version}*')):
-                        version_list.append(os.path.basename(forge_file))
-
-                        if version_list != 0:
-                            print(f"Determined type '{import_data['type']}':  validating version information...")
-
-                            import_data['type'] = "forge"
-                            import_data['version'] = version_list[0].split("-")[0].lower()
-                            import_data['build'] = str(version_list[0].split("-")[1])
-                            break
+                    import_data['type'] = "forge"
+                    import_data['version'] = version
+                    import_data['build'] = build
+                    print(f"Determined type '{import_data['type']}':  validating version information...")
 
 
                 # Gather launch flags

@@ -2795,11 +2795,18 @@ def run_application():
             if not self.is_open:
                 return
 
-            current_user = constants.api_manager.current_users[self.pair_data['host']['ip']]
-            if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
-                message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
-            else:
-                message = f'$Telepath$ pair request expired'
+            try:
+                current_user = constants.api_manager.current_users[self.pair_data['host']['ip']]
+                if current_user and current_user['host'] == self.pair_data['host']['host'] and current_user['user'] == self.pair_data['host']['user']:
+                    message = f"Successfully paired with '${current_user['host']}/{current_user['user']}$'"
+                else:
+                    message = f'$Telepath$ pair request expired'
+
+            # Failed to pair
+            except Exception as e:
+                message = f'$Telepath$ pairing failed'
+                if constants.debug:
+                    print(f'Telepath - failed to pair: {e}')
 
             # Reset token if cancelled
             if constants.api_manager.pair_data:

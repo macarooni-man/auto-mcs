@@ -1120,8 +1120,8 @@ def create_endpoint(method: Callable, tag: str, params=False, auth_required=True
                 pass   # silently ignore empty / invalid bodies
 
         # 2) Caller’s IP → kwargs (opt-in)
-        if send_host and "client_ip" in inspect.signature(method).parameters:
-            kwargs["client_ip"] = request.client.host
+        if send_host and "host" in inspect.signature(method).parameters:
+            kwargs["host"] = request.client.host
 
         # 3) Call the original function (sync or async)
         if inspect.iscoroutinefunction(method):
