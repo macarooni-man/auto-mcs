@@ -20,12 +20,12 @@ Pygments==2.16.1
 pyinstaller>=5.10
 pyinstaller-hooks-contrib>=2024.7
 pyparsing==3.0.9
-requests==2.32.0
+requests==2.32.4
 requests-toolbelt==0.10.1
 simpleaudio==1.0.4
 six==1.16.0
 soupsieve==2.3.2.post1
-urllib3==1.26.19
+urllib3==1.26.20
 PyYAML>=6.0.1
 json_repair==0.10.1
 fastapi>=0.111.1

@@ -41,7 +41,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.3.1"
+app_version = "2.3.2"
 ams_version = "1.4"
 telepath_version = "1.1.1"
 app_title = "auto-mcs"
@@ -4118,61 +4118,45 @@ eula=true"""
                         run_proc(f"{'move' if os_name == 'windows' else 'mv'} \"{os.path.join(tmpsvr, os.path.basename(jar))}\" \"{os.path.join(tmpsvr, 'server.jar')}\"")
 
 
-    # print(import_data)
+
     os.chdir(cwd)
     if import_data['type'] and import_data['version']:
 
         # Regenerate auto-mcs.ini
-        # print(import_data)
         config_file = create_server_config(import_data, True)
 
         # Sanitize values from old versions of auto-mcs
         if import_data['config_file']:
 
-            try:
-                config_file.set('general', 'isFavorite', str(import_data['config_file'].get('general', 'isFavorite')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'isFavorite', str(import_data['config_file'].get('general', 'isFavorite')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'updateAuto', str(import_data['config_file'].get('general', 'updateAuto')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'updateAuto', str(import_data['config_file'].get('general', 'updateAuto')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'allocatedMemory', str(import_data['config_file'].get('general', 'allocatedMemory')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'allocatedMemory', str(import_data['config_file'].get('general', 'allocatedMemory')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'customFlags', str(import_data['config_file'].get('general', 'customFlags')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'customFlags', str(import_data['config_file'].get('general', 'customFlags')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'enableGeyser', str(import_data['config_file'].get('general', 'enableGeyser')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'enableGeyser', str(import_data['config_file'].get('general', 'enableGeyser')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'enableProxy', str(import_data['config_file'].get('general', 'enableProxy')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'enableProxy', str(import_data['config_file'].get('general', 'enableProxy')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'consoleFilter', str(import_data['config_file'].get('general', 'consoleFilter')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'isModpack', str(import_data['config_file'].get('general', 'isModpack')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('bkup', 'bkupAuto', str(import_data['config_file'].get('bkup', 'bkupAuto')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'consoleFilter', str(import_data['config_file'].get('general', 'consoleFilter')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('bkup', 'bkupMax', str(import_data['config_file'].get('bkup', 'bkupMax')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('bkup', 'bkupAuto', str(import_data['config_file'].get('bkup', 'bkupAuto')).lower())
+            except configparser.NoOptionError: pass
+
+            try: config_file.set('bkup', 'bkupMax', str(import_data['config_file'].get('bkup', 'bkupMax')).lower())
+            except configparser.NoOptionError: pass
 
             backup_dir = backupFolder
             try:
