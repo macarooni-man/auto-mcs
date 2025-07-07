@@ -2838,6 +2838,8 @@ class CreateServerPortInput(BaseInput):
         self.valid(not self.stinky_text)
 
 class ServerPortInput(CreateServerPortInput):
+    _allow_ip = True
+
     def update_config(self, *a):
         def write(*a):
             server_obj = constants.server_manager.current_server
@@ -2880,14 +2882,17 @@ class ServerPortInput(CreateServerPortInput):
             port_check = ((int(new_port) < 1024) or (int(new_port) > 65535))
         except ValueError:
             port_check = False
-        ip_check = (constants.check_ip(new_ip) and '.' in typed_info)
+        ip_check = (constants.check_ip(new_ip) and '.' in typed_info) and self._allow_ip
         self.stinky_text = ''
         fail = False
 
         if typed_info:
 
             if not ip_check and ("." in typed_info or ":" in typed_info):
-                self.stinky_text = 'Invalid IPv4 address' if not port_check else 'Invalid IPv4 and port'
+                if not self._allow_ip:
+                    self.stinky_text = "Can't use IP with proxy"
+                else:
+                    self.stinky_text = 'Invalid IPv4 address' if not port_check else 'Invalid IPv4 and port'
                 fail = True
 
             elif port_check:
@@ -26493,6 +26498,21 @@ def toggle_proxy(boolean, *args):
     server_obj = constants.server_manager.current_server
     server_obj.enable_proxy(boolean)
 
+    # If enabled, clear the server IP box and in "server.properties"
+    if boolean:
+        server_obj.server_properties['server-ip'] = ''
+        server_obj.properties_hash = server_obj._get_properties_hash()
+        server_obj.write_config()
+
+        if screen_manager.current == 'ServerSettingsScreen':
+            screen_manager.current_screen.ip_input._allow_ip = False
+            screen_manager.current_screen.ip_input.text = str(server_obj.port) if str(server_obj.port) != '25565' else ''
+
+    elif screen_manager.current == 'ServerSettingsScreen':
+        screen_manager.current_screen.ip_input._allow_ip = True
+        screen_manager.current_screen.ip_input.text = process_ip_text(server_obj=server_obj)
+
+
     # Show banner if server is running
     def default_message(*a):
         Clock.schedule_once(
@@ -26726,6 +26746,7 @@ class ServerSettingsScreen(MenuBackground):
         self.update_button = None
         self.update_label = None
         self.proxy_button = None
+        self.ip_input = None
         self.rename_input = None
         self.delete_button = None
         self.world_button = None
@@ -26922,22 +26943,24 @@ class ServerSettingsScreen(MenuBackground):
         network_layout.add_widget(sub_layout)
 
 
+        proxy_state = server_obj.proxy_enabled
+
         # Edit IP/Port input
         sub_layout = ScrollItem()
         sub_layout.add_widget(InputLabel(pos_hint={"center_x": 0.5, "center_y": 1.1}))
-        port_input = ServerPortInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=process_ip_text(server_obj=server_obj))
-        port_input.size_hint_max_x = 435
-        sub_layout.add_widget(port_input)
+        self.ip_input = ServerPortInput(pos_hint={'center_x': 0.5, 'center_y': 0.5}, text=process_ip_text(server_obj=server_obj))
+        self.ip_input._allow_ip = not proxy_state
+        self.ip_input.size_hint_max_x = 435
+        sub_layout.add_widget(self.ip_input)
         network_layout.add_widget(sub_layout)
 
 
         # Playit toggle/install button
         def add_switch(index=0, fade=False, *a):
             sub_layout = ScrollItem()
-            state = server_obj.proxy_enabled
             input_border = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)', disabled=(not constants.app_online))
             sub_layout.add_widget(input_border)
-            sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=server_obj.proxy_enabled, disabled=(not constants.app_online)))
+            sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=proxy_state, disabled=(not constants.app_online)))
             network_layout.add_widget(sub_layout, index)
             if fade:
                 input_border.opacity = 0
