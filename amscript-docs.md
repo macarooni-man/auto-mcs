@@ -173,7 +173,7 @@ if server.version >= '1.8':
 
 #### server.type
  - `str`, type of server, i.e. `'craftbukkit'` or `'vanilla'`
- - Can be `'vanilla'`, `'craftbukkit'`, `'spigot'`, `'paper'`, `'forge'`, or `'fabric'`
+ - Can be `'vanilla'`, `'craftbukkit'`, `'spigot'`, `'paper'`, `'purpur'`, `'forge'`, `'neoforge'`, `'fabric'`, or `'quilt'`
 
 #### server.world
  - `str`, filename of `level-name` from `server.properties`
@@ -184,7 +184,7 @@ if server.version >= '1.8':
 #### server.network
  - `dict`, contains the listening IP and port
  - Structured as `{'ip': ip address, 'port': port}`
- - Can be accessed as `server.network.address` and `server.network.port`
+ - Can be accessed as `server.network.ip` and `server.network.port`
 
 #### server.uptime
  - `datetime.timedelta`, returns the delta between when the server started, to the use of `server.uptime`
