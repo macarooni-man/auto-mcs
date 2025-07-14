@@ -1276,7 +1276,7 @@ Fired upon process termination by auto-mcs, not when `/stop` or a crash is logge
 
 This event is also fired when the amscript engine is restarted, either through the UI or `!ams reload`.
 
-Since engine restarts create a new memory space, this is useful when an asyncronous task such as a GUI window or another server is running in the background and that process needs to be closed when scripts are reloaded or the server is stopped. There are no parameters for this event.
+Since engine restarts create a new memory space, this is useful when an asyncronous task such as a GUI window or another server is running in the background and that process needs to be closed when scripts are reloaded or the server is stopped.
 
 This example demonstrates how to implement a Tkinter UI that will close and re-open when the engine is restarted:
 
@@ -1284,10 +1284,10 @@ This example demonstrates how to implement a Tkinter UI that will close and re-o
 import tkinter as tk
 window = tk.Tk()
 
-@server.on_start(data, delay=0):
+@server.on_start(data):
     window.mainloop()
 
-@server.on_stop():
+@server.on_stop(data):
     window.destroy()
 ```
 
