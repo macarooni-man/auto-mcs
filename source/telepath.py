@@ -19,7 +19,6 @@ from datetime import datetime as dt
 from datetime import timezone as tz
 from jwt import InvalidTokenError
 from operator import itemgetter
-from functools import partial
 from copy import deepcopy
 from munch import Munch
 from glob import glob

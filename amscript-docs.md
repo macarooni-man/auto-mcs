@@ -184,6 +184,10 @@ if server.version >= '1.8':
 #### server.network
  - `dict`, contains the listening IP and port
  - Structured as `{'ip': ip address, 'port': port}`
+ - Can be accessed as `server.network.address` and `server.network.port`
+
+#### server.uptime
+ - `datetime.timedelta`, returns the delta between when the server started, to the use of `server.uptime`
 
 #### server.properties
  - `dict`, current keys in the `server.properties` file
@@ -270,6 +274,9 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.ip_address
  - `str`, currently connected IP address
+
+#### player.playtime
+ - `datetime.timedelta`, returns the delta between when the player logged in, to the use of `player.playtime`. Returns `None` if the player is not currently connected to the server
 
 #### player.is_server
  - `bool`, if current object was created from the console
@@ -1336,11 +1343,13 @@ Fired upon player successfully connecting to the server.
 
 Fired upon player disconnecting from the server.
 
+> Note: `data['playtime']` is the total delta of the player's session length between login and logout. This is necessary since `player.playtime` returns `None` if the player is not connected, and this event is fired after the player has disconnected
+
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
-| `data*` | `dict` of logout data, currently `{'uuid': uuid, 'ip': ip address, 'date': datetime, 'logged-in': False}` |
+| `data*` | `dict` of logout data, currently `{'uuid': uuid, 'ip': ip address, 'date': datetime, 'logged-in': False, 'playtime': datetime.timedelta}` |
 | `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
 
 ```
