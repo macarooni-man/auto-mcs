@@ -26846,6 +26846,7 @@ class ServerSettingsScreen(MenuBackground):
         else:
             # Edit config button
             def open_config_menu(*args):
+                if server_obj._telepath_data: server_obj._refresh_attr('config_paths')
                 screen_manager.current = 'ServerConfigScreen'
             self.config_button = WaitButton("Edit Configuration Files", (0.5, 0.5), 'document-text-outline.png', click_func=open_config_menu)
 

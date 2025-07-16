@@ -506,7 +506,7 @@ class TelepathManager():
             ip = request.client.host
             id = self.auth._decrypt(id_hash, ip)
 
-            if id == UNIQUE_ID or ip in localhost:
+            if id == UNIQUE_ID:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't pair with localhost")
 
             self._create_pair_code(host, id)
@@ -531,7 +531,7 @@ class TelepathManager():
             if not self.pair_listen:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ignoring pair requests")
 
-            if id == UNIQUE_ID or ip in localhost:
+            if id == UNIQUE_ID:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't pair with localhost")
 
             if not self.pair_data:
@@ -580,7 +580,7 @@ class TelepathManager():
             ip = request.client.host
             id = self.auth._decrypt(id_hash, ip)
 
-            if id == UNIQUE_ID or ip in localhost:
+            if id == UNIQUE_ID:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't connect to localhost")
 
             for session in self.authenticated_sessions:
@@ -635,8 +635,6 @@ class TelepathManager():
 
     # --------- Client-side functions to call the endpoints from a remote device -------- #
     def login(self, ip: str, port: int):
-        if ip in localhost:
-            return {}
 
         # Get the server's public key and create an encrypted token
         try:
@@ -686,8 +684,6 @@ class TelepathManager():
         return False
 
     def request_pair(self, ip: str, port: int):
-        if ip in localhost:
-            return None
 
         # Get the server's public key and create an encrypted token
         try:
@@ -711,8 +707,6 @@ class TelepathManager():
         return None
 
     def submit_pair(self, ip: str, port: int, code: str):
-        if ip in localhost:
-            return None
 
         # Get the server's public key and create an encrypted token
         try:
@@ -1324,10 +1318,8 @@ def create_remote_obj(obj: object, request=True):
         if name == 'run_data':
             return self._telepath_run_data()
         if name == 'crash_log':
-            try:
-                return self._sync_telepath_stop()['crash']
-            except:
-                return None
+            try: return self._sync_telepath_stop()['crash']
+            except: return None
 
 
         try:
