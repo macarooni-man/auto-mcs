@@ -23609,9 +23609,13 @@ class ServerConfigScreen(MenuBackground):
 
     def generate_menu(self, **kwargs):
         self.server_obj = constants.server_manager.current_server
+        self.server_obj.reload_config_paths()
+        file_count = sum(len(files) for files in self.server_obj.config_paths.values())
 
-        # Re-use previously generated widget if the server and language is the same
-        if self._cached and self._cached['server_obj'] == self.server_obj and self._cached['locale'] == constants.app_config.locale:
+        # Re-use previously generated widget if the server, file count, and language is the same
+        if (self._cached and self._cached['server_obj'] == self.server_obj
+            and self._cached['file_count'] == file_count
+            and self._cached['locale'] == constants.app_config.locale):
             return self.add_widget(self._cached['layout'])
 
         # Ignore screen if there are no config paths in the current server
@@ -23694,7 +23698,12 @@ class ServerConfigScreen(MenuBackground):
         float_layout.add_widget(generate_title(f"Server Settings: '{self.server_obj.name}'"))
         float_layout.add_widget(generate_footer(f"{self.server_obj.name}, Settings, Edit config"))
 
-        self._cached = {'server_obj': self.server_obj, 'locale': constants.app_config.locale, 'layout': float_layout}
+        self._cached = {
+            'server_obj': self.server_obj,
+            'locale': constants.app_config.locale,
+            'file_count': file_count,
+            'layout': float_layout
+        }
         self.add_widget(float_layout)
 
         self.gen_search_results()
@@ -26846,7 +26855,6 @@ class ServerSettingsScreen(MenuBackground):
         else:
             # Edit config button
             def open_config_menu(*args):
-                if server_obj._telepath_data: server_obj._refresh_attr('config_paths')
                 screen_manager.current = 'ServerConfigScreen'
             self.config_button = WaitButton("Edit Configuration Files", (0.5, 0.5), 'document-text-outline.png', click_func=open_config_menu)
 

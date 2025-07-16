@@ -1,5 +1,3 @@
-import traceback
-
 from fastapi import FastAPI, Body, File, UploadFile, HTTPException, Request, Depends, status
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from slowapi import Limiter, _rate_limit_exceeded_handler
