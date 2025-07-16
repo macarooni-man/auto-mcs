@@ -597,8 +597,8 @@ def translate(text: str):
         return re.sub(r'\$(.*)\$', '\g<1>', text)
 
 
-# Returns False if less than 1GB free
-def check_free_space(telepath_data=None):
+# Returns False if less than 15GB free
+def check_free_space(telepath_data=None, required_free_space: int = 15):
     if telepath_data:
         url = f'http://{telepath_data["host"]}:{telepath_data["port"]}/main/check_free_space'
         try:
@@ -611,7 +611,7 @@ def check_free_space(telepath_data=None):
             return True
 
     free_space = round(disk_usage('/').free / 1048576)
-    return free_space > 1024
+    return free_space > 1024 * required_free_space
 
 def telepath_busy():
     return ignore_close and server_manager.remote_servers
