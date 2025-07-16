@@ -23610,6 +23610,7 @@ class ServerConfigScreen(MenuBackground):
     def generate_menu(self, **kwargs):
         self.server_obj = constants.server_manager.current_server
         self.server_obj.reload_config_paths()
+        if self.server_obj._telepath_data: self.server_obj._refresh_attr('config_paths')
         file_count = sum(len(files) for files in self.server_obj.config_paths.values())
 
         # Re-use previously generated widget if the server, file count, and language is the same
