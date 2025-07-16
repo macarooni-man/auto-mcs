@@ -250,12 +250,12 @@ def allow_close(allow: bool, banner=''):
 discord_presence = None
 
 
-# SSL crap
-if os_name == 'linux':
+# SSL crap when compiled
+if os_name == 'linux' and app_compiled:
     os.environ['SSL_CERT_DIR'] = executable_folder
     os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'ca-bundle.crt')
 
-elif os_name == 'macos':
+elif os_name == 'macos' and app_compiled:
     os.environ['SSL_CERT_DIR'] = os.path.join(executable_folder, 'certifi')
     os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'certifi', 'cacert.pem')
 
