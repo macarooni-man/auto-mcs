@@ -21042,8 +21042,6 @@ class ServerAddonUpdateScreen(ProgressScreen):
             self.steps.label_2.text = "Updates complete!" + f"   [font={icons}]å[/font]"
 
             constants.post_addon_update()
-            if self.telepath:
-                server_obj._clear_all_cache()
 
             if server_obj.running:
                 Clock.schedule_once(
@@ -26839,7 +26837,11 @@ class ServerSettingsScreen(MenuBackground):
         if server_obj.type == 'vanilla':
             # Edit properties button
             def edit_server_properties(*args):
-                open_config_file(constants.server_path(server_obj.name, 'server.properties'))
+                for directory, files in server_obj.config_paths.items():
+                    if directory.endswith(server_obj.name):
+                        for file in files:
+                            if file.endswith('server.properties'):
+                                return open_config_file(file)
             self.config_button = WaitButton("Edit 'server.properties'", (0.5, 0.5), 'document-text-outline.png', click_func=edit_server_properties)
         else:
             # Edit config button

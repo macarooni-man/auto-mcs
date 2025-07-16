@@ -3041,6 +3041,11 @@ def post_addon_update(telepath=False, host=None):
                 port=telepath_data['port'],
                 args={'telepath': True}
             )
+
+            # Clear stale cache
+            if server_obj.__class__.__name__ == 'RemoteServerObject':
+                server_obj._clear_all_cache()
+
             return response
 
 
@@ -3636,6 +3641,11 @@ def post_server_update(telepath=False, host=None):
                 port=telepath_data['port'],
                 args={'telepath': True}
             )
+
+            # Clear stale cache
+            if server_obj.__class__.__name__ == 'RemoteServerObject':
+                server_obj._clear_all_cache()
+
             return response
 
     make_update_list()
