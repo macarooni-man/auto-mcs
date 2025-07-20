@@ -6444,8 +6444,8 @@ class PlayitManager():
     def __init__(self):
         base_path = "https://github.com/playit-cloud/playit-agent/releases"
         self._download_url = {
-            'windows': f'{base_path}/latest/download/playit-windows-x86_64-signed.exe',
-            'linux': f'{base_path}/latest/download/playit-linux-{"aarch" if is_arm else "amd"}64',
+            'windows': f'{base_path}/download/v0.15.26/playit-windows-x86_64-signed.exe',
+            'linux': f'{base_path}/download/v0.15.26/playit-linux-{"aarch" if is_arm else "amd"}64',
             'macos': f'{base_path}/download/v0.15.13/playit-darwin-{"arm" if is_arm else "intel"}'
         }[os_name]
         self._filename = {
