@@ -15679,7 +15679,7 @@ class ServerButton(HoverButton):
                 self.subtitle.color = self.run_color
                 self.subtitle.default_opacity = 0.8
                 self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
-                if 'playit-tunnel' in run_data and run_data['playit-tunnel']:
+                if run_data.get('playit-tunnel', None) or 'ply.gg' in run_data['network']['address']['ip']:
                     text = run_data['network']['address']['ip']
                 else:
                     text = ':'.join(run_data['network']['address'].values())
@@ -15778,7 +15778,7 @@ class ServerButton(HoverButton):
             self.subtitle.default_opacity = 0.8
             self.subtitle.font_name = os.path.join(constants.gui_assets, 'fonts', f'{constants.fonts["italic"]}.ttf')
 
-            if 'playit-tunnel' in server_object.run_data and server_object.run_data['playit-tunnel']:
+            if server_object.run_data.get('playit-tunnel', None) or 'ply.gg' in server_object.run_data['network']['address']['ip']:
                 text = server_object.run_data['network']['address']['ip']
             else:
                 text = ':'.join(server_object.run_data['network']['address'].values())
