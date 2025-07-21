@@ -600,7 +600,6 @@ def translate(text: str):
 # Returns False if less than 15GB free
 def check_free_space(telepath_data=None, required_free_space: int = 15):
     if telepath_data:
-        url = f'http://{telepath_data["host"]}:{telepath_data["port"]}/main/check_free_space'
         try:
             return str(api_manager.request(
                 endpoint='/main/check_free_space',
@@ -608,7 +607,7 @@ def check_free_space(telepath_data=None, required_free_space: int = 15):
                 port=telepath_data['port']
             )).lower() == 'true'
         except:
-            return True
+            return False
 
     free_space = round(disk_usage('/').free / 1048576)
     return free_space > 1024 * required_free_space
