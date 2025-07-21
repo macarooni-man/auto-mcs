@@ -173,7 +173,7 @@ if server.version >= '1.8':
 
 #### server.type
  - `str`, type of server, i.e. `'craftbukkit'` or `'vanilla'`
- - Can be `'vanilla'`, `'craftbukkit'`, `'spigot'`, `'paper'`, `'forge'`, or `'fabric'`
+ - Can be `'vanilla'`, `'craftbukkit'`, `'spigot'`, `'paper'`, `'purpur'`, `'forge'`, `'neoforge'`, `'fabric'`, or `'quilt'`
 
 #### server.world
  - `str`, filename of `level-name` from `server.properties`
@@ -184,6 +184,10 @@ if server.version >= '1.8':
 #### server.network
  - `dict`, contains the listening IP and port
  - Structured as `{'ip': ip address, 'port': port}`
+ - Can be accessed as `server.network.ip` and `server.network.port`
+
+#### server.uptime
+ - `datetime.timedelta`, returns the delta between when the server started, to the use of `server.uptime`
 
 #### server.properties
  - `dict`, current keys in the `server.properties` file
@@ -270,6 +274,9 @@ Useful for command feedback with a [**@player.on_alias**](#playeron_alias) event
 
 #### player.ip_address
  - `str`, currently connected IP address
+
+#### player.playtime
+ - `datetime.timedelta`, returns the delta between when the player logged in, to the use of `player.playtime`. Returns `None` if the player is not currently connected to the server
 
 #### player.is_server
  - `bool`, if current object was created from the console
@@ -1269,7 +1276,7 @@ Fired upon process termination by auto-mcs, not when `/stop` or a crash is logge
 
 This event is also fired when the amscript engine is restarted, either through the UI or `!ams reload`.
 
-Since engine restarts create a new memory space, this is useful when an asyncronous task such as a GUI window or another server is running in the background and that process needs to be closed when scripts are reloaded or the server is stopped. There are no parameters for this event.
+Since engine restarts create a new memory space, this is useful when an asyncronous task such as a GUI window or another server is running in the background and that process needs to be closed when scripts are reloaded or the server is stopped.
 
 This example demonstrates how to implement a Tkinter UI that will close and re-open when the engine is restarted:
 
@@ -1277,10 +1284,10 @@ This example demonstrates how to implement a Tkinter UI that will close and re-o
 import tkinter as tk
 window = tk.Tk()
 
-@server.on_start(data, delay=0):
+@server.on_start(data):
     window.mainloop()
 
-@server.on_stop():
+@server.on_stop(data):
     window.destroy()
 ```
 
@@ -1336,11 +1343,13 @@ Fired upon player successfully connecting to the server.
 
 Fired upon player disconnecting from the server.
 
+> Note: `data['playtime']` is the total delta of the player's session length between login and logout. This is necessary since `player.playtime` returns `None` if the player is not connected, and this event is fired after the player has disconnected
+
 **Accepted parameters**:
 | Parameter | Description |
 | --- | --- |
 | `player*` | [**PlayerScriptObject**](#PlayerScriptObject) sent at execution |
-| `data*` | `dict` of logout data, currently `{'uuid': uuid, 'ip': ip address, 'date': datetime, 'logged-in': False}` |
+| `data*` | `dict` of logout data, currently `{'uuid': uuid, 'ip': ip address, 'date': datetime, 'logged-in': False, 'playtime': datetime.timedelta}` |
 | `delay` | `int` or `float`, waits a specified amount of time in seconds before running |
 
 ```

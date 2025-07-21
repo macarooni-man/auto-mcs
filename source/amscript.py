@@ -1,5 +1,4 @@
 import distutils.sysconfig as sysconfig
-import random
 from datetime import datetime as dt
 from difflib import SequenceMatcher
 from threading import Timer
@@ -12,7 +11,9 @@ import json_repair
 import constants
 import traceback
 import functools
+import datetime
 import requests
+import random
 import base64
 import json
 import time
@@ -1229,6 +1230,7 @@ class ScriptObject():
     # Fires when server starts
     # {'date': date}
     def start_event(self, data):
+        self.server_script_obj._start_time = data['date']
         self.call_event('@server.on_start', (data))
         self.call_event('@server.on_loop', ())
         if constants.debug:
@@ -1240,6 +1242,7 @@ class ScriptObject():
     # {'date': date}
     def shutdown_event(self, data):
         self.server_script_obj._running = False
+        self.server_script_obj._stop_time = data['date']
         self.call_event('@server.on_stop', (data))
         if constants.debug:
             print('server.on_stop')
@@ -1494,6 +1497,8 @@ class ServerScriptObject():
         self._get_players = server_obj.get_players
         self._get_entity_data = server_obj.get_entity_data
         self._parse_tag = server_obj.parse_tag
+        self._start_time: dt = None
+        self._stop_time:  dt = None
 
         # Assign callable functions from main server object
         self.execute = server_obj.silent_command
@@ -1520,10 +1525,10 @@ class ServerScriptObject():
 
         if server_obj.run_data:
             self._performance = server_obj.run_data['performance']
-            self.network = server_obj.run_data['network']['address']
+            self.network = Munch(server_obj.run_data['network']['address'])
         else:
             self._performance = {}
-            self.network = {'ip': None, 'port': None}
+            self.network = Munch({'ip': None, 'port': None})
 
         # Load usercache
         try:
@@ -1681,6 +1686,16 @@ class ServerScriptObject():
         for player in self.player_list:
             yield self.get_player(player)
 
+    # Returns the server's uptime as a timedelta (None if the server hasn't started)
+    @property
+    def uptime(self) -> datetime.timedelta or None:
+        if self._start_time and self._stop_time:
+            return self._stop_time - self._start_time
+        elif self._start_time:
+            return dt.now() - self._start_time
+        else:
+            return None
+
 # Reconfigured ServerObject to be passed in as 'player' variable to amscript events
 class PlayerScriptObject():
     def __init__(self, server_script_obj: ServerScriptObject, player_name: str, _offline=False, _get_player=False, _send_command=True):
@@ -1691,6 +1706,8 @@ class PlayerScriptObject():
         self._server_id = server_script_obj._server_id
         self._execute = server_script_obj.execute
         self._world_path = os.path.join(server_script_obj.directory, server_script_obj.world)
+        self._login_time:  dt = None
+        self._logout_time: dt = None
 
         self._offline = _offline
         self._initialized = False
@@ -2219,7 +2236,21 @@ class PlayerScriptObject():
     # self.is_online: True if player is currently connected
     @property
     def is_online(self):
-        return (self.name in self._server.player_list) and (not self.is_server)
+        if self.name in self._server.player_list and (not self.is_server):
+            return self._server.player_list[self.name].get('logged-in')
+        return False
+
+    # Returns the player's last total playtime as a timedelta (None if the player isn't connected)
+    @property
+    def playtime(self) -> datetime.timedelta or None:
+        data = self._server.player_list.get(self.name)
+        if not data or self.is_server:
+            return None
+
+        login_time = data.get('date')
+        logged_in  = data.get('logged-in')
+        if login_time and logged_in:
+            return dt.now() - login_time
 
     # self.is_operator: True if player is an operator
     @property

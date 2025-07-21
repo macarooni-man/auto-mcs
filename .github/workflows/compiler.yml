@@ -49,7 +49,7 @@ jobs:
   # Compile binaries for every OS
   windows:
     name: Windows Build
-    runs-on: windows-2019
+    runs-on: windows-2022
     needs: [setup-env, test-env]
     steps:
     

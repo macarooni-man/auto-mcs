@@ -41,9 +41,9 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.3.1"
-ams_version = "1.4"
-telepath_version = "1.1.1"
+app_version = "2.3.2"
+ams_version = "1.4.1"
+telepath_version = "1.1.2"
 app_title = "auto-mcs"
 
 dev_version = False
@@ -250,12 +250,12 @@ def allow_close(allow: bool, banner=''):
 discord_presence = None
 
 
-# SSL crap
-if os_name == 'linux':
+# SSL crap when compiled
+if os_name == 'linux' and app_compiled:
     os.environ['SSL_CERT_DIR'] = executable_folder
     os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'ca-bundle.crt')
 
-elif os_name == 'macos':
+elif os_name == 'macos' and app_compiled:
     os.environ['SSL_CERT_DIR'] = os.path.join(executable_folder, 'certifi')
     os.environ['SSL_CERT_FILE'] = os.path.join(executable_folder, 'certifi', 'cacert.pem')
 
@@ -597,8 +597,8 @@ def translate(text: str):
         return re.sub(r'\$(.*)\$', '\g<1>', text)
 
 
-# Returns False if less than 1GB free
-def check_free_space(telepath_data=None):
+# Returns False if less than 15GB free
+def check_free_space(telepath_data=None, required_free_space: int = 15):
     if telepath_data:
         url = f'http://{telepath_data["host"]}:{telepath_data["port"]}/main/check_free_space'
         try:
@@ -611,7 +611,7 @@ def check_free_space(telepath_data=None):
             return True
 
     free_space = round(disk_usage('/').free / 1048576)
-    return free_space > 1024
+    return free_space > 1024 * required_free_space
 
 def telepath_busy():
     return ignore_close and server_manager.remote_servers
@@ -3041,6 +3041,11 @@ def post_addon_update(telepath=False, host=None):
                 port=telepath_data['port'],
                 args={'telepath': True}
             )
+
+            # Clear stale cache
+            if server_obj.__class__.__name__ == 'RemoteServerObject':
+                server_obj._clear_all_cache()
+
             return response
 
 
@@ -3636,6 +3641,11 @@ def post_server_update(telepath=False, host=None):
                 port=telepath_data['port'],
                 args={'telepath': True}
             )
+
+            # Clear stale cache
+            if server_obj.__class__.__name__ == 'RemoteServerObject':
+                server_obj._clear_all_cache()
+
             return response
 
     make_update_list()
@@ -4118,61 +4128,45 @@ eula=true"""
                         run_proc(f"{'move' if os_name == 'windows' else 'mv'} \"{os.path.join(tmpsvr, os.path.basename(jar))}\" \"{os.path.join(tmpsvr, 'server.jar')}\"")
 
 
-    # print(import_data)
+
     os.chdir(cwd)
     if import_data['type'] and import_data['version']:
 
         # Regenerate auto-mcs.ini
-        # print(import_data)
         config_file = create_server_config(import_data, True)
 
         # Sanitize values from old versions of auto-mcs
         if import_data['config_file']:
 
-            try:
-                config_file.set('general', 'isFavorite', str(import_data['config_file'].get('general', 'isFavorite')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'isFavorite', str(import_data['config_file'].get('general', 'isFavorite')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'updateAuto', str(import_data['config_file'].get('general', 'updateAuto')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'updateAuto', str(import_data['config_file'].get('general', 'updateAuto')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'allocatedMemory', str(import_data['config_file'].get('general', 'allocatedMemory')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'allocatedMemory', str(import_data['config_file'].get('general', 'allocatedMemory')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'customFlags', str(import_data['config_file'].get('general', 'customFlags')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'customFlags', str(import_data['config_file'].get('general', 'customFlags')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'enableGeyser', str(import_data['config_file'].get('general', 'enableGeyser')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'enableGeyser', str(import_data['config_file'].get('general', 'enableGeyser')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'enableProxy', str(import_data['config_file'].get('general', 'enableProxy')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'enableProxy', str(import_data['config_file'].get('general', 'enableProxy')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('general', 'consoleFilter', str(import_data['config_file'].get('general', 'consoleFilter')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'isModpack', str(import_data['config_file'].get('general', 'isModpack')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('bkup', 'bkupAuto', str(import_data['config_file'].get('bkup', 'bkupAuto')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('general', 'consoleFilter', str(import_data['config_file'].get('general', 'consoleFilter')).lower())
+            except configparser.NoOptionError: pass
 
-            try:
-                config_file.set('bkup', 'bkupMax', str(import_data['config_file'].get('bkup', 'bkupMax')).lower())
-            except configparser.NoOptionError:
-                pass
+            try: config_file.set('bkup', 'bkupAuto', str(import_data['config_file'].get('bkup', 'bkupAuto')).lower())
+            except configparser.NoOptionError: pass
+
+            try: config_file.set('bkup', 'bkupMax', str(import_data['config_file'].get('bkup', 'bkupMax')).lower())
+            except configparser.NoOptionError: pass
 
             backup_dir = backupFolder
             try:
@@ -6450,8 +6444,8 @@ class PlayitManager():
     def __init__(self):
         base_path = "https://github.com/playit-cloud/playit-agent/releases"
         self._download_url = {
-            'windows': f'{base_path}/latest/download/playit-windows-x86_64-signed.exe',
-            'linux': f'{base_path}/latest/download/playit-linux-{"aarch" if is_arm else "amd"}64',
+            'windows': f'{base_path}/download/v0.15.26/playit-windows-x86_64-signed.exe',
+            'linux': f'{base_path}/download/v0.15.26/playit-linux-{"aarch" if is_arm else "amd"}64',
             'macos': f'{base_path}/download/v0.15.13/playit-darwin-{"arm" if is_arm else "intel"}'
         }[os_name]
         self._filename = {

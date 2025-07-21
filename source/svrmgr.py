@@ -732,12 +732,15 @@ class ServerObject():
                     user = message.split("lost connection: ", 1)[0].strip()
 
                     def add_to_list():
+                        original_date = deepcopy(self.run_data['player-list'][user]['date'])
                         self.run_data['player-list'][user]['date'] = message_date_obj
                         self.run_data['player-list'][user]['logged-in'] = False
                         self.acl._process_log(self.run_data['player-list'][user])
 
                         if self.script_object.enabled:
-                            return functools.partial(self.script_object.leave_event, self.run_data['player-list'][user])
+                            data = deepcopy(self.run_data['player-list'][user])
+                            data['playtime'] = message_date_obj - original_date
+                            return functools.partial(self.script_object.leave_event, data)
 
                     try:
                         if self.run_data['player-list'][user]['date'] < message_date_obj:
@@ -1856,7 +1859,7 @@ class ServerObject():
     # Castrated log function to prevent recursive events, sends only INFO, WARN, ERROR, and SUCC
     # log_type: 'print', 'info', 'warning', 'error', 'success'
     def amscript_log(self, text: str, log_type='info', *args):
-        if not text:
+        if not text or 'log' not in self.run_data:
             return
 
         log_type = log_type if log_type in ('print', 'info', 'warning', 'error', 'success') else 'info'
