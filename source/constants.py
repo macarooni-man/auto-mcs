@@ -322,8 +322,9 @@ def run_proc(cmd: str, return_text=False) -> str or int:
 
     output = result.stdout or result.stderr or ''
     return_code = result.returncode
-    log_content = f'\n{output.strip()}'
-    send_log('constants.run_proc', f'{cmd}: returned exit code {result.returncode} with output:{log_content}', None if return_code == 0 else 'error')
+    run_content = f'\n{output.strip()}'
+    log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
+    send_log('constants.run_proc', f'{cmd}: returned exit code {result.returncode} {log_content}', None if return_code == 0 else 'error')
 
     return output if return_text else return_code
 
@@ -633,9 +634,9 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
     if telepath_data:
         try:
             return str(api_manager.request(
-                endpoint='/main/check_free_space',
-                host=telepath_data['host'],
-                port=telepath_data['port']
+                endpoint = '/main/check_free_space',
+                host = telepath_data['host'],
+                port = telepath_data['port']
             )).lower() == 'true'
         except:
             return False
@@ -1116,10 +1117,10 @@ def clear_uploads() -> bool:
 def get_remote_var(var: str, telepath_data: dict = {}) -> any:
     if telepath_data:
         return api_manager.request(
-            endpoint='/main/get_remote_var',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'var': var}
+            endpoint = '/main/get_remote_var',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'var': var}
         )
 
     else:
@@ -2098,11 +2099,13 @@ def download_update(progress_func=None):
     if not update_url:
         return False
 
-    send_log('constants.download_update', f'downloading {app_title} from: {update_url}', 'info')
-    last_error = None
-
     # Attempt at most 3 times to download auto-mcs
-    fail_count = 0
+    fail_count  = 0
+    new_version = update_data['version']
+    binary_file = None
+    last_error  = None
+    send_log('constants.download_update', f'downloading {app_title} v{new_version} from: {update_url}', 'info')
+
     while fail_count < 3:
 
         safe_delete(downDir)
@@ -2153,8 +2156,8 @@ def download_update(progress_func=None):
             last_error = format_traceback(e)
             fail_count += 1
 
-    if last_error:
-        send_log('constants.download_update', f'failed to download {app_title}: {last_error}', 'error')
+    if last_error: send_log('constants.download_update', f'failed to download {app_title} v{new_version}: {last_error}', 'error')
+    else:          send_log('constants.download_update', f"successfully downloaded {app_title} v{new_version} to: '{binary_file}'", 'info')
     return fail_count < 5
 
 
@@ -2169,10 +2172,10 @@ def load_addon_cache(write=False, telepath=False):
         telepath_data = server_manager.current_server._telepath_data
         if telepath_data:
             response = api_manager.request(
-                endpoint='/addon/load_addon_cache',
-                host=telepath_data['host'],
-                port=telepath_data['port'],
-                args={'write': write, 'telepath': True}
+                endpoint = '/addon/load_addon_cache',
+                host = telepath_data['host'],
+                port = telepath_data['port'],
+                args = {'write': write, 'telepath': True}
             )
             return response
 
@@ -2214,7 +2217,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
     buildNum = server_info['build']
     final_info = [False, {'version': mcVer, 'build': buildNum}, '', None] # [if version acceptable, {version, build}, message]
     url = ""
-    send_log('constants.validate_version', f"attempting to find {mcType} '{mcVer}'", 'info')
+    send_log('constants.validate_version', f"attempting to find {mcType.title()} '{mcVer}'", 'info')
 
     # Remove below 1.6 versions for Forge
     try:
@@ -2441,7 +2444,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                     url = f"https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/{installer}/quilt-installer-{installer}.jar"
                     vanilla_validation[-1] = url
                     vanilla_validation[1]['build'] = loader
-                    send_log('constants.validate_version', f"successfully found {mcType} '{mcVer}': {url}", 'info')
+                    send_log('constants.validate_version', f"successfully found {mcType.title()} '{mcVer}': {url}", 'info')
                     return vanilla_validation
 
 
@@ -2471,11 +2474,11 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
 
                     if modifiedVersion > 0:
                         final_info[2] = f"'${originalRequest}$' could not be found, using '${mcVer}$' instead"
-                        send_log('constants.validate_version', f"{mcType} {final_info[2].replace('$','')}", 'info')
+                        send_log('constants.validate_version', f"{mcType.title()} {final_info[2].replace('$','')}", 'info')
                     originalRequest = ""
 
                     version_loading = False
-                    send_log('constants.validate_version', f"successfully found {mcType} '{mcVer}': {url}", 'info')
+                    send_log('constants.validate_version', f"successfully found {mcType.title()} '{mcVer}': {url}", 'info')
                     return final_info
 
 
@@ -2642,10 +2645,10 @@ def java_check(progress_func=None):
 
     if telepath_data:
         response = api_manager.request(
-            endpoint='/main/java_check',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={}
+            endpoint = '/main/java_check',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {}
         )
         if progress_func and response:
             progress_func(100)
@@ -2656,7 +2659,7 @@ def java_check(progress_func=None):
     max_retries = 3
     retries = 0
     modern_version = 21
-    send_log('constants.java_check', f"validating Java installation...", 'info')
+    send_log('constants.java_check', f"validating Java installations...", 'info')
 
     java_url = {
         'windows': {
@@ -2851,10 +2854,10 @@ def download_jar(progress_func=None, imported=False):
 
     if telepath_data:
         response = api_manager.request(
-            endpoint='/create/download_jar',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'imported': imported}
+            endpoint = '/create/download_jar',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'imported': imported}
         )
         if progress_func:
             progress_func(100)
@@ -2872,7 +2875,13 @@ def download_jar(progress_func=None, imported=False):
         new_server_info['jar_link'] = search_version(new_server_info)[3]
 
     # Attempt at most 5 times to download server.jar
-    fail_count = 0
+    server_data = deepcopy(import_data if imported else new_server_info)
+    fail_count  = 0
+    final_path  = None
+    last_error  = None
+    log_title   = f"{str(server_data['type']).title()} '{server_data['version']}'"
+    send_log('constants.download_jar', f'downloading {log_title} from: {server_data["jar_link"]}', 'info')
+
     while fail_count < 5:
 
         safe_delete(downDir)
@@ -2884,7 +2893,6 @@ def download_jar(progress_func=None, imported=False):
             if progress_func and fail_count > 0:
                 progress_func(0)
 
-            server_data = deepcopy(import_data if imported else new_server_info)
             jar_name = (server_data['type'] if server_data['type'] in ['forge', 'quilt', 'neoforge'] else 'server') + '.jar'
             download_url(server_data['jar_link'], jar_name, downDir, hook)
             jar_path = os.path.join(downDir, jar_name)
@@ -2896,15 +2904,17 @@ def download_jar(progress_func=None, imported=False):
                     progress_func(100)
 
                 fail_count = 0
-                copy(jar_path, os.path.join(tmpsvr, jar_name))
+                final_path = os.path.join(tmpsvr, jar_name)
+                copy(jar_path, final_path)
                 os.remove(jar_path)
                 break
 
         except Exception as e:
-            print(e)
+            last_error = format_traceback(e)
             fail_count += 1
 
-
+    if last_error: send_log('constants.download_jar', f'failed to download {log_title}: {last_error}', 'error')
+    else:          send_log('constants.download_jar', f"successfully downloaded {log_title} to: '{final_path}'", 'info')
     return fail_count < 5
 
 
@@ -2927,10 +2937,10 @@ def iter_addons(progress_func=None, update=False, telepath=False):
 
         if telepath_data:
             response = api_manager.request(
-                endpoint='/addon/iter_addons',
-                host=telepath_data['host'],
-                port=telepath_data['port'],
-                args={'update': update, 'telepath': True}
+                endpoint = '/addon/iter_addons',
+                host = telepath_data['host'],
+                port = telepath_data['port'],
+                args = {'update': update, 'telepath': True}
             )
             if progress_func and response:
                 progress_func(100)
@@ -3050,10 +3060,10 @@ def pre_addon_update(telepath=False, host=None):
         telepath_data = server_obj._telepath_data
         if telepath_data:
             response = api_manager.request(
-                endpoint='/addon/pre_addon_update',
-                host=telepath_data['host'],
-                port=telepath_data['port'],
-                args={'telepath': True}
+                endpoint = '/addon/pre_addon_update',
+                host = telepath_data['host'],
+                port = telepath_data['port'],
+                args = {'telepath': True}
             )
             return response
 
@@ -3081,10 +3091,10 @@ def post_addon_update(telepath=False, host=None):
         telepath_data = server_obj._telepath_data
         if telepath_data:
             response = api_manager.request(
-                endpoint='/addon/post_addon_update',
-                host=telepath_data['host'],
-                port=telepath_data['port'],
-                args={'telepath': True}
+                endpoint = '/addon/post_addon_update',
+                host = telepath_data['host'],
+                port = telepath_data['port'],
+                args = {'telepath': True}
             )
 
             # Clear stale cache
@@ -3128,10 +3138,10 @@ def install_server(progress_func=None, imported=False):
 
     if telepath_data:
         response = api_manager.request(
-            endpoint='/create/install_server',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'imported': imported}
+            endpoint = '/create/install_server',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'imported': imported}
         )
         if progress_func and response:
             progress_func(100)
@@ -3272,10 +3282,10 @@ def generate_server_files(progress_func=None):
 
     if telepath_data:
         response = api_manager.request(
-            endpoint='/create/generate_server_files',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={}
+            endpoint = '/create/generate_server_files',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {}
         )
         if progress_func and response:
             progress_func(100)
@@ -3465,16 +3475,16 @@ def pre_server_create(telepath=False):
             pass
 
         api_manager.request(
-            endpoint='/create/push_new_server',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'server_info': new_info, 'import_info': import_data}
+            endpoint = '/create/push_new_server',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'server_info': new_info, 'import_info': import_data}
         )
         response = api_manager.request(
-            endpoint='/create/pre_server_create',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'telepath': True}
+            endpoint = '/create/pre_server_create',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'telepath': True}
         )
         return response
 
@@ -3511,10 +3521,10 @@ def post_server_create(telepath=False, modpack=False):
 
     if telepath_data and not telepath:
         response = api_manager.request(
-            endpoint='/create/post_server_create',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'telepath': True}
+            endpoint = '/create/post_server_create',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'telepath': True}
         )
         return response
 
@@ -3545,10 +3555,10 @@ def update_server_files(progress_func=None):
 
     if telepath_data:
         response = api_manager.request(
-            endpoint='/create/update_server_files',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={}
+            endpoint = '/create/update_server_files',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {}
         )
         if progress_func and response:
             progress_func(100)
@@ -3619,25 +3629,25 @@ def pre_server_update(telepath=False, host=None):
                     import_data['path'] = telepath_upload(telepath_data, import_data['path'])['path']
 
                     api_manager.request(
-                        endpoint='/create/push_new_server',
-                        host=telepath_data['host'],
-                        port=telepath_data['port'],
-                        args={'server_info': new_server_info, 'import_info': import_data}
+                        endpoint = '/create/push_new_server',
+                        host = telepath_data['host'],
+                        port = telepath_data['port'],
+                        args = {'server_info': new_server_info, 'import_info': import_data}
                     )
                     response = api_manager.request(
-                        endpoint='/create/pre_server_create',
-                        host=telepath_data['host'],
-                        port=telepath_data['port'],
-                        args={'telepath': True}
+                        endpoint = '/create/pre_server_create',
+                        host = telepath_data['host'],
+                        port = telepath_data['port'],
+                        args = {'telepath': True}
                     )
             except KeyError:
                 pass
 
             response = api_manager.request(
-                endpoint='/create/pre_server_update',
-                host=telepath_data['host'],
-                port=telepath_data['port'],
-                args={'telepath': True}
+                endpoint = '/create/pre_server_update',
+                host = telepath_data['host'],
+                port = telepath_data['port'],
+                args = {'telepath': True}
             )
             return response
 
@@ -3681,10 +3691,10 @@ def post_server_update(telepath=False, host=None):
         telepath_data = server_obj._telepath_data
         if telepath_data:
             response = api_manager.request(
-                endpoint='/create/post_server_update',
-                host=telepath_data['host'],
-                port=telepath_data['port'],
-                args={'telepath': True}
+                endpoint = '/create/post_server_update',
+                host = telepath_data['host'],
+                port = telepath_data['port'],
+                args = {'telepath': True}
             )
 
             # Clear stale cache
@@ -3718,10 +3728,10 @@ def create_backup(import_server=False, *args):
 
     if telepath_data:
         response = api_manager.request(
-            endpoint='/create/create_backup',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'import_server': import_server}
+            endpoint = '/create/create_backup',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'import_server': import_server}
         )
         return response
 
@@ -3792,10 +3802,10 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
     if telepath_data:
         response = api_manager.request(
-            endpoint='/create/scan_import',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'bkup_file': bkup_file}
+            endpoint = '/create/scan_import',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'bkup_file': bkup_file}
         )
         if progress_func and response:
             progress_func(100)
@@ -4268,10 +4278,10 @@ def finalize_import(progress_func=None, *args):
 
     if telepath_data:
         response = api_manager.request(
-            endpoint='/create/finalize_import',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={}
+            endpoint = '/create/finalize_import',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {}
         )
         if progress_func and response:
             progress_func(100)
@@ -4375,10 +4385,10 @@ def scan_modpack(update=False, progress_func=None):
 
     if telepath_data:
         response = api_manager.request(
-            endpoint='/create/scan_modpack',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'update': update}
+            endpoint = '/create/scan_modpack',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'update': update}
         )
         if progress_func and response:
             progress_func(100)
@@ -4800,10 +4810,10 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
     if telepath_data:
         response = api_manager.request(
-            endpoint='/create/finalize_modpack',
-            host=telepath_data['host'],
-            port=telepath_data['port'],
-            args={'update': update}
+            endpoint = '/create/finalize_modpack',
+            host = telepath_data['host'],
+            port = telepath_data['port'],
+            args = {'update': update}
         )
         if progress_func and response:
             progress_func(100)
@@ -5053,10 +5063,10 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
 
         # Register clone_server function as an endpoint, and run this function remotely as local -> local
         response = api_manager.request(
-            endpoint='/create/clone_server',
-            host=source_data['host'],
-            port=source_data['port'],
-            args={'server_obj': '$remote'}
+            endpoint = '/create/clone_server',
+            host = source_data['host'],
+            port = source_data['port'],
+            args = {'server_obj': '$remote'}
         )
         if progress_func and response:
             progress_func(100)
@@ -5084,10 +5094,10 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         import_data['path'] = telepath_upload(destination_data, file)['path']
         import_data['_telepath_data'] = None
         api_manager.request(
-            endpoint='/create/push_new_server',
-            host=destination_data['host'],
-            port=destination_data['port'],
-            args={'server_info': new_server_info, 'import_info': import_data}
+            endpoint = '/create/push_new_server',
+            host = destination_data['host'],
+            port = destination_data['port'],
+            args = {'server_info': new_server_info, 'import_info': import_data}
         )
         import_data['_telepath_data'] = destination_data
         if progress_func:
@@ -5121,10 +5131,10 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         import_data['path'] = telepath_upload(destination_data, file)['path']
         import_data['_telepath_data'] = None
         api_manager.request(
-            endpoint='/create/push_new_server',
-            host=destination_data['host'],
-            port=destination_data['port'],
-            args={'server_info': new_server_info, 'import_info': import_data}
+            endpoint = '/create/push_new_server',
+            host = destination_data['host'],
+            port = destination_data['port'],
+            args = {'server_info': new_server_info, 'import_info': import_data}
         )
         import_data['_telepath_data'] = destination_data
         if progress_func:
