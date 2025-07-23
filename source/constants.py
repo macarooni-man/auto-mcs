@@ -2991,6 +2991,9 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     if addon_count == 0:
         return True
 
+    log_content = [addon.name for addon in all_addons]
+    send_log('constants.iter_addons', f"downloading all add-ons to '{tmpsvr}':\n{log_content}", 'info')
+
     addon_folder = "plugins" if server_type(new_server_info['type']) == 'bukkit' else 'mods'
     folder_check(os.path.join(tmpsvr, addon_folder))
     folder_check(os.path.join(tmpsvr, "disabled-" + addon_folder))
@@ -3047,6 +3050,8 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     if progress_func:
         progress_func(100)
 
+    send_log('constants.iter_addons', f"successfully downloaded all add-ons to '{tmpsvr}'", 'info')
+
     return True
 def pre_addon_update(telepath=False, host=None):
     global new_server_info
@@ -3069,6 +3074,7 @@ def pre_addon_update(telepath=False, host=None):
 
 
     # Clear folders beforehand
+    send_log('constants.pre_addon_update', 'initializing state for an add-on update', 'info')
     os.chdir(get_cwd())
     safe_delete(tmpsvr)
     safe_delete(tempDir)
@@ -3104,6 +3110,7 @@ def post_addon_update(telepath=False, host=None):
             return response
 
 
+    send_log('constants.post_addon_update', 'cleaning up state after add-on update', 'info')
     server_obj.addon.update_required = False
 
     # Clear items from addon cache to re-cache
@@ -3159,6 +3166,8 @@ def install_server(progress_func=None, imported=False):
     else:
         jar_version = new_server_info['version']
         jar_type = new_server_info['type']
+
+    send_log('constants.install_server', f"executing installer for {jar_type} '{jar_version}' in '{tmpsvr}'...", 'info')
 
 
     # Install Forge server
@@ -3263,6 +3272,8 @@ def install_server(progress_func=None, imported=False):
     # Change back to original directory
     os.chdir(cwd)
 
+    send_log('constants.install_server', f"successfully installed {jar_type} '{jar_version}' in '{tmpsvr}'", 'info')
+
     return True
 
 
@@ -3292,6 +3303,7 @@ def generate_server_files(progress_func=None):
         return response
 
 
+    send_log('constants.generate_server_files', f"generating pre-launch files in '{tmpsvr}'...", 'info')
     time_stamp = date.today().strftime(f"#%a %b %d ") + dt.now().strftime("%H:%M:%S ") + "MCS" + date.today().strftime(f" %Y")
     world_name = 'world'
 
@@ -3313,7 +3325,9 @@ def generate_server_files(progress_func=None):
 
     # Create start-cmd.tmp for changing gamerules after the server starts
     if new_server_info['server_settings']['keep_inventory'] or new_server_info['server_settings']['daylight_weather_cycle'] or new_server_info['server_settings']['random_tick_speed'] and version_check(new_server_info['version'], '>=', '1.4.2'):
-        with open(os.path.join(tmpsvr, command_tmp), 'w') as f:
+        cmd_temp_path = os.path.join(tmpsvr, command_tmp)
+        send_log('constants.generate_server_files', f"generating '{cmd_temp_path}' for post-launch command execution...", 'info')
+        with open(cmd_temp_path, 'w') as f:
             file = f"gamerule keepInventory {str(new_server_info['server_settings']['keep_inventory']).lower()}\n"
             if version_check(new_server_info['version'], '>=', '1.8'):
                 file += f"gamerule randomTickSpeed {str(new_server_info['server_settings']['random_tick_speed']).lower()}\n"
@@ -3324,6 +3338,8 @@ def generate_server_files(progress_func=None):
                 if version_check(new_server_info['version'], '>=', '1.11'):
                     file += f"gamerule doWeatherCycle {str(new_server_info['server_settings']['daylight_weather_cycle']).lower()}\n"
             f.write(file.strip())
+            send_log('constants.generate_server_files', f"successfully created '{cmd_temp_path}' with the following commands:\n{file.splitlines()}", 'info')
+
 
 
     # Generate ACL rules to temp server
@@ -3337,6 +3353,7 @@ def generate_server_files(progress_func=None):
 
 
     # Generate EULA.txt
+    send_log('constants.generate_server_files', f"generating '{os.path.join(tmpsvr, 'eula.txt')}...'", 'info')
     eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
 {time_stamp}
 eula=true"""
@@ -3346,6 +3363,7 @@ eula=true"""
 
 
     # Generate server.properties
+    send_log('constants.generate_server_files', f"generating minimal '{os.path.join(tmpsvr, 'server.properties')}...'", 'info')
     gamemode_dict = {
         'survival': 0,
         'creative': 1,
@@ -3437,7 +3455,12 @@ max-world-size=29999984"""
                 run_proc(f"attrib +H \"{os.path.join(new_path, command_tmp)}\"")
 
         make_update_list()
+        send_log('constants.generate_server_files', "successfully generated all pre-launch files", 'info')
         return True
+
+    else: send_log('constants.generate_server_files', "something went wrong generating pre-launch files", 'error')
+
+
 def pre_server_create(telepath=False):
     global new_server_info, import_data
 
@@ -5229,15 +5252,12 @@ def server_path(server_name: str, *args):
 # auto-mcs.ini config file function
 # write_object is the configparser object returned from this function
 def server_config(server_name: str, write_object: configparser.ConfigParser = None, config_path: str = None):
-    if config_path:
-        config_file = os.path.abspath(config_path)
-    else:
-        config_file = server_path(server_name, server_ini)
-
+    config_file = os.path.abspath(config_path) if config_path else server_path(server_name, server_ini)
     builds_available = list(latestMC['builds'].keys())
 
     # If write_object, write it to file path
     if write_object:
+        send_log('constants.server_config', f"updating configuration in '{config_file}'...", 'info')
 
         if write_object.get('general', 'serverType').lower() not in builds_available:
             write_object.remove_option('general', 'serverBuild')
@@ -5251,33 +5271,44 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
         if os_name == "windows":
             run_proc(f"attrib +H \"{config_file}\"")
 
+        if os.path.exists(config_path): send_log('constants.server_config', f"successfully updated '{config_file}'", 'info')
+        else:                           send_log('constants.server_config', f"something went wrong updating '{config_file}': no longer exists", 'error')
         return write_object
 
     # Read only if no config object provided
     else:
-        config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
-        config.optionxform = str
-        config.read(config_file)
-        def rename_option(old_name: str, new_name: str):
-            try:
-                if config.get("general", old_name):
-                    config.set("general", new_name, config.get("general", old_name))
-                    config.remove_option("general", old_name)
-            except:
-                pass
+        try:
+            config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+            config.optionxform = str
+            config.read(config_file)
+            send_log('constants.server_config', f"successfully read from '{config_file}'", 'debug')
+            def rename_option(old_name: str, new_name: str):
+                try:
+                    if config.get("general", old_name):
+                        config.set("general", new_name, config.get("general", old_name))
+                        config.remove_option("general", old_name)
+                except:
+                    pass
 
-        if config:
-            if config.get('general', 'serverType').lower() not in builds_available:
-                config.remove_option('general', 'serverBuild')
+            if config:
+                if config.get('general', 'serverType').lower() not in builds_available:
+                    config.remove_option('general', 'serverBuild')
 
-            # Override legacy configuration options
-            rename_option('enableNgrok', 'enableProxy')
+                # Override legacy configuration options
+                rename_option('enableNgrok', 'enableProxy')
 
-        return config
+            return config
+
+        # Failed to read from config file
+        except Exception as e:
+            send_log('constants.server_config', f"error reading from '{config_file}': {format_traceback(e)}", 'error')
 
 
 # Creates new auto-mcs.ini config file
 def create_server_config(properties: dict, temp_server=False, modpack=False):
+    config_path = os.path.join((tmpsvr if temp_server else server_path(properties['name'])), server_ini)
+    send_log('constants.create_server_config', f"generating '{config_path}...'", 'info')
+
 
     # Write default config
     config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
@@ -5293,20 +5324,13 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
     config.set('general', 'isFavorite', 'false')
     config.set('general', 'updateAuto', 'prompt')
     config.set('general', 'allocatedMemory', 'auto')
-    try:
-        config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
-    except:
-        config.set('general', 'enableGeyser', 'false')
-    try:
-        config.set('general', 'enableProxy', str(properties['server_settings']['enable_proxy']).lower())
-    except:
-        config.set('general', 'enableProxy', 'false')
-    try:
-        config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
-    except:
-        pass
-    if modpack:
-        config.set('general', 'isModpack', str(modpack))
+    try:    config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
+    except: config.set('general', 'enableGeyser', 'false')
+    try:    config.set('general', 'enableProxy', str(properties['server_settings']['enable_proxy']).lower())
+    except: config.set('general', 'enableProxy', 'false')
+    try:    config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
+    except: pass
+    if modpack: config.set('general', 'isModpack', str(modpack))
 
     config.add_section('bkup')
     config.set('bkup', 'bkupAuto', 'prompt')
@@ -5315,24 +5339,23 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
 
 
     # Write file to path
-    config_path = os.path.join((tmpsvr if temp_server else server_path(properties['name'])), server_ini)
-
     with open(config_path, 'w') as f:
         config.write(f)
 
     if os_name == "windows":
         run_proc(f"attrib +H \"{config_path}\"")
 
+
+    if os.path.exists(config_path): send_log('constants.create_server_config', f"successfully created '{config_path}'", 'info')
+    else:                           send_log('constants.create_server_config', f"something went wrong creating '{config_path}'", 'error')
     return config
 
 
-# Reconstruct API dict to a configparser object
+# Reconstruct remote API config dict to a local configparser object
 def reconstruct_config(remote_config: dict or configparser.ConfigParser, to_dict=False):
     if to_dict:
-        if isinstance(remote_config, dict):
-            return remote_config
-        else:
-            return {section: dict(remote_config.items(section)) for section in remote_config.sections()}
+        if isinstance(remote_config, dict): return remote_config
+        else: return {section: dict(remote_config.items(section)) for section in remote_config.sections()}
 
     else:
         config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
@@ -5563,16 +5586,19 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
     # Change directory to server path
     cwd = get_cwd()
-    if temp_server:
-        folder_check(tmpsvr)
-        os.chdir(tmpsvr)
-    else:
-        folder_check(server_path(properties['name']))
-        os.chdir(server_path(properties['name']))
+    current_path = tmpsvr if temp_server else server_path(properties['name'])
+    script_name  = f'{start_script_name}.{"bat" if os_name == "windows" else "sh"}'
+    script_path = os.path.join(current_path, script_name)
+    folder_check(current_path)
+    os.chdir(current_path)
 
 
     script = ""
     ram = calculate_ram(properties)
+    formatted_flags = '\n'.join(custom_flags.split(" ")) if custom_flags else ''
+    log_flags = f' with custom flags:\n{formatted_flags}' if custom_flags else ''
+    send_log('constants.generate_run_script', f"generating run script for {properties['type'].title()} '{properties['version']}' as '{script_path}'{log_flags}...", 'info')
+
 
     # Use custom flags, or Aikar's flags if none are provided
     java_override = None
@@ -5656,22 +5682,16 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
 
 
-    script_check = ""
     if script:
-        if os_name == "windows":
-            with open(f"{start_script_name}.bat", "w+") as f:
-                f.write(script)
-            script_check = os.path.abspath(f"{start_script_name}.bat")
-        else:
-            with open(f"{start_script_name}.sh", "w+") as f:
-                f.write(script)
-            run_proc(f"chmod +x {start_script_name}.sh")
-            script_check = os.path.abspath(f"{start_script_name}.sh")
+        with open(script_name, 'w+') as f: f.write(script)
+        if os_name != 'windows': run_proc(f'chmod +x {script_name}')
 
 
     os.chdir(cwd)
+    if os.path.exists(script_path): send_log('constants.generate_run_script', f"successfully written to '{script_path}'", 'info')
+    else:                           send_log('constants.generate_run_script', f"failed to write to '{script_path}'", 'error')
 
-    return script_check
+    return script_path
 
 
 # Return list of every valid server in 'applicationFolder'
