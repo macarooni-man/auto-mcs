@@ -3074,7 +3074,7 @@ def pre_addon_update(telepath=False, host=None):
 
 
     # Clear folders beforehand
-    send_log('constants.pre_addon_update', 'initializing state for an add-on update', 'info')
+    send_log('constants.pre_addon_update', 'initializing environment for an add-on update...', 'info')
     os.chdir(get_cwd())
     safe_delete(tmpsvr)
     safe_delete(tempDir)
@@ -3110,7 +3110,7 @@ def post_addon_update(telepath=False, host=None):
             return response
 
 
-    send_log('constants.post_addon_update', 'cleaning up state after add-on update', 'info')
+    send_log('constants.post_addon_update', 'cleaning up environment after add-on update...', 'info')
     server_obj.addon.update_required = False
 
     # Clear items from addon cache to re-cache
@@ -3471,7 +3471,9 @@ def pre_server_create(telepath=False):
     except KeyError:
         pass
 
+
     if telepath_data and not telepath:
+        send_log('constants.pre_server_create', f"initializing environment for server creation...", 'info')
 
         # Convert ACL object for remote
         new_info = deepcopy(new_server_info)
@@ -3531,7 +3533,6 @@ def pre_server_create(telepath=False):
         prefix = 'Importing: ' if bool('name' in import_data and import_data['name']) else 'Creating: '
         data = new_server_info if new_server_info['name'] else import_data
         api_manager.logger._report(f'create.pre_server_create', extra_data=f'{prefix}{data}')
-
 def post_server_create(telepath=False, modpack=False):
     global new_server_info, import_data
     return_data = {'name': import_data['name'], 'readme': None}
@@ -3554,8 +3555,9 @@ def post_server_create(telepath=False, modpack=False):
     if modpack:
         server_path = os.path.join(serverDir, import_data['name'])
         read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
-        if read_me:
-            return_data['readme'] = read_me[0]
+        if read_me: return_data['readme'] = read_me[0]
+
+    send_log('constants.post_server_create', f"cleaning up environment after server creation...", 'info')
 
     clear_uploads()
     new_server_info = {}
@@ -3588,8 +3590,9 @@ def update_server_files(progress_func=None):
         return response
 
 
-    print(glob(os.path.join(tmpsvr, '*')))
+    new_path = os.path.join(serverDir, new_server_info['name'])
     new_config_path = os.path.join(tmpsvr, server_ini)
+    send_log('constants.update_server_files', f"preparing to patch '{new_path}' with update files from '{tmpsvr}'...", 'info')
 
     # First, generate startup script
     generate_run_script(new_server_info, temp_server=True)
@@ -3623,7 +3626,7 @@ def update_server_files(progress_func=None):
     if (os.path.exists(os.path.join(tmpsvr, 'server.properties')) and os.path.exists(new_config_path) and os.path.exists(os.path.join(tmpsvr, 'eula.txt'))):
 
         # Replace server path with tmpsvr
-        new_path = os.path.join(serverDir, new_server_info['name'])
+        send_log('constants.update_server_files', f"patching '{new_path}'...", 'info')
         safe_delete(new_path)
         os.chdir(get_cwd())
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
@@ -3633,7 +3636,13 @@ def update_server_files(progress_func=None):
         if os_name == "windows":
             run_proc(f"attrib +H \"{os.path.join(new_path, server_ini)}\"")
 
-        return True
+        if os.path.isdir(new_path):
+            send_log('constants.update_server_files', f"successfully patched '{new_path}'", 'info')
+            return True
+
+    send_log('constants.update_server_files', f"something went wrong moving update files from '{tmpsvr}' to '{new_path}'", 'error')
+
+
 def pre_server_update(telepath=False, host=None):
     global new_server_info
     server_obj = server_manager.current_server
@@ -3674,6 +3683,7 @@ def pre_server_update(telepath=False, host=None):
             )
             return response
 
+    send_log('constants.pre_server_update', f"initializing environment for a server update...", 'info')
 
     # First, clean out any existing server in temp folder
     safe_delete(tmpsvr)
@@ -3701,7 +3711,6 @@ def pre_server_update(telepath=False, host=None):
     if telepath:
         data = f'Modifying server.jar: {server_obj.type} {server_obj.version} --> {new_server_info["type"]} {new_server_info["version"]}'
         api_manager.logger._report(f'create.pre_server_update', extra_data=data, server_name=server_obj.name)
-
 def post_server_update(telepath=False, host=None):
     global new_server_info
     server_obj = server_manager.current_server
@@ -3726,6 +3735,7 @@ def post_server_update(telepath=False, host=None):
 
             return response
 
+    send_log('constants.post_server_update', f"cleaning up environment after a server update...", 'info')
     make_update_list()
     server_obj._view_notif('add-ons', False)
     server_obj._view_notif('settings', viewed=new_server_info['version'])
@@ -3835,6 +3845,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
         return response
 
 
+    send_log('constants.scan_import', f"scanning selected server for import metadata detection...", 'info')
     name = import_data['name']
     path = import_data['path']
 
@@ -3847,7 +3858,8 @@ def scan_import(bkup_file=False, progress_func=None, *args):
     import_data['version'] = None
     import_data['build'] = None
 
-    file_name = None
+    file_name   = None
+    script_list = None
 
 
     # If import is from a back-up
@@ -3858,10 +3870,8 @@ def scan_import(bkup_file=False, progress_func=None, *args):
             progress_func(50)
 
         # Delete all startup scripts in directory
-        for script in glob(os.path.join(tmpsvr, "*.bat"), recursive=False):
-            os.remove(script)
-        for script in glob(os.path.join(tmpsvr, "*.sh"), recursive=False):
-            os.remove(script)
+        for script in glob(os.path.join(tmpsvr, "*.bat"), recursive=False): os.remove(script)
+        for script in glob(os.path.join(tmpsvr, "*.sh"), recursive=False): os.remove(script)
 
         # Extract info from auto-mcs.ini
         all_configs = glob(os.path.join(tmpsvr, "auto-mcs.ini*"))
@@ -3869,19 +3879,14 @@ def scan_import(bkup_file=False, progress_func=None, *args):
         config_file = server_config(server_name=None, config_path=all_configs[0])
         import_data['version'] = config_file.get('general', 'serverVersion').lower()
         import_data['type'] = config_file.get('general', 'serverType').lower()
-        try:
-            import_data['build'] = str(config_file.get('general', 'serverBuild'))
-        except:
-            pass
-        try:
-            import_data['launch_flags'] = str(config_file.get('general', 'customFlags'))
-        except:
-            pass
+        try:    import_data['build'] = str(config_file.get('general', 'serverBuild'))
+        except: pass
+        try:    import_data['launch_flags'] = str(config_file.get('general', 'customFlags'))
+        except: pass
         import_data['config_file'] = config_file
 
         # Then delete it for later
-        for item in glob(os.path.join(tmpsvr, "*auto-mcs.ini"), recursive=False):
-            os.remove(item)
+        for item in glob(os.path.join(tmpsvr, "*auto-mcs.ini"), recursive=False): os.remove(item)
 
 
 
@@ -3974,8 +3979,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                 try:
                                     with open(os.path.join(str(path), 'version_history.json'), 'r', encoding='utf-8', errors='ignore') as f:
                                         import_data['build'] = str(json.load(f)['currentVersion'].lower().split('paper-')[1].split(' ')[0].strip())
-                                except:
-                                    pass
+                                except: pass
 
                         # Spigot keywords
                         elif "spigot" in output.lower() or "spigot" in version_output.lower():
@@ -4030,7 +4034,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             progress_func(50)
 
                         ram = calculate_ram(import_data)
-                        print(f"Determined type '{import_data['type']}':  validating version information...")
+                        send_log('constants.scan_import', f"determined type '{import_data['type']}':  validating version information...", 'info')
 
                         if import_data['type'] == "forge":
                             copy_to(os.path.join(str(path), 'libraries'), test_server, 'libraries', True)
@@ -4047,12 +4051,6 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                                 copy(jar, test_server)
                             if os.path.exists(os.path.join(test_server, 'fabric-server-launch.jar')):
                                 file_name = 'fabric-server-launch.jar'
-
-                        # else:
-                        #     if file_name != "server":
-                        #         if os.path.exists("server.jar"):
-                        #             os.remove("server.jar")
-                        #         run_proc(f"{'move' if os_name == 'windows' else 'mv'} {file_name}.jar server.jar")
 
                         time_stamp = date.today().strftime(f"#%a %b %d ") + dt.now().strftime("%H:%M:%S ") + "MCS" + date.today().strftime(f" %Y")
 
@@ -4099,10 +4097,8 @@ eula=true"""
 
                             if "starting minecraft server version" in output.lower():
                                 found_version = True
-                                if os_name == 'windows':
-                                    run_proc(f"taskkill /F /T /PID {server.pid}")
-                                else:
-                                    run_proc(f"kill -9 {server.pid}")
+                                if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
+                                else:                    run_proc(f"kill -9 {server.pid}")
                                 server.kill()
 
                                 for line in output.split("\n"):
@@ -4111,10 +4107,8 @@ eula=true"""
                                 break
 
                             if (timeout > 200) or (server.poll() is not None):
-                                if os_name == 'windows':
-                                    run_proc(f"taskkill /F /T /PID {server.pid}")
-                                else:
-                                    run_proc(f"kill -9 {server.pid}")
+                                if os_name == 'windows': run_proc(f"taskkill /F /T /PID {server.pid}")
+                                else:                    run_proc(f"kill -9 {server.pid}")
                                 server.kill()
                                 break
 
@@ -4128,7 +4122,7 @@ eula=true"""
                     import_data['type'] = "neoforge"
                     import_data['version'] = version
                     import_data['build'] = build
-                    print(f"Determined type '{import_data['type']}':  validating version information...")
+                    send_log('constants.scan_import', f"determined type '{import_data['type']}':  validating version information...", 'info')
 
                 # New versions of forge
                 elif "@libraries/net/minecraftforge/forge/" in output:
@@ -4140,7 +4134,7 @@ eula=true"""
                     import_data['type'] = "forge"
                     import_data['version'] = version
                     import_data['build'] = build
-                    print(f"Determined type '{import_data['type']}':  validating version information...")
+                    send_log('constants.scan_import', f"determined type '{import_data['type']}':  validating version information...", 'info')
 
 
                 # Gather launch flags
@@ -4182,19 +4176,14 @@ eula=true"""
                     progress_func(80)
 
                 safe_delete(tmpsvr)
-                try:
-                    os.rmdir(tmpsvr)
-                except FileNotFoundError:
-                    pass
-                except PermissionError:
-                    pass
+                try: os.rmdir(tmpsvr)
+                except FileNotFoundError: pass
+                except PermissionError: pass
                 copy_to(str(path), tempDir, os.path.basename(tmpsvr))
 
                 # Delete all startup scripts in directory
-                for script in glob(os.path.join(tmpsvr, "*.bat"), recursive=False):
-                    os.remove(script)
-                for script in glob(os.path.join(tmpsvr, "*.sh"), recursive=False):
-                    os.remove(script)
+                for script in glob(os.path.join(tmpsvr, "*.bat"), recursive=False): os.remove(script)
+                for script in glob(os.path.join(tmpsvr, "*.sh"), recursive=False): os.remove(script)
 
                 # Delete all *.jar files in directory
                 for jar in glob(os.path.join(tmpsvr, '*.jar'), recursive=False):
@@ -4209,6 +4198,7 @@ eula=true"""
 
     os.chdir(cwd)
     if import_data['type'] and import_data['version']:
+        send_log('constants.scan_import', f"determined version '{import_data['version']}':  writing to '{tmpsvr}' for further processing...", 'info')
 
         # Regenerate auto-mcs.ini
         config_file = create_server_config(import_data, True)
@@ -4270,10 +4260,8 @@ eula=true"""
 
         # Find command temp if it exists
         for item in glob(os.path.join(tmpsvr, "*start-cmd.tmp")):
-            try:
-                os.rename(item, os.path.join(tmpsvr, command_tmp))
-            except FileExistsError:
-                pass
+            try: os.rename(item, os.path.join(tmpsvr, command_tmp))
+            except FileExistsError: pass
 
         if os_name == "windows" and os.path.exists(os.path.join(tmpsvr, command_tmp)):
             run_proc(f"attrib +H \"{os.path.join(tmpsvr, command_tmp)}\"")
@@ -4286,6 +4274,12 @@ eula=true"""
             if progress_func:
                 progress_func(100)
             return True
+
+
+    # Failed state due to one or more issues locating required data
+    error_text = "type" if not import_data['version'] else "type and version"
+    log_content = f"unable to determine the server's {error_text}:\n'import_data': {import_data}\n'bkup_file': {bkup_file}\n'script_list': {script_list}"
+    send_log('constants.scan_import', log_content, 'error')
 
 
 # Moves tmpsvr to actual server and checks for ACL and other file validity
@@ -5271,8 +5265,8 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
         if os_name == "windows":
             run_proc(f"attrib +H \"{config_file}\"")
 
-        if os.path.exists(config_path): send_log('constants.server_config', f"successfully updated '{config_file}'", 'info')
-        else:                           send_log('constants.server_config', f"something went wrong updating '{config_file}': no longer exists", 'error')
+        if config_file and os.path.exists(config_file): send_log('constants.server_config', f"successfully updated '{config_file}'", 'info')
+        else: send_log('constants.server_config', f"something went wrong updating '{config_file}': no longer exists", 'error')
         return write_object
 
     # Read only if no config object provided
@@ -5281,14 +5275,13 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
             config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
             config.optionxform = str
             config.read(config_file)
-            send_log('constants.server_config', f"successfully read from '{config_file}'", 'debug')
+            send_log('constants.server_config', f"read from '{config_file}'", 'debug')
             def rename_option(old_name: str, new_name: str):
                 try:
                     if config.get("general", old_name):
                         config.set("general", new_name, config.get("general", old_name))
                         config.remove_option("general", old_name)
-                except:
-                    pass
+                except: pass
 
             if config:
                 if config.get('general', 'serverType').lower() not in builds_available:
