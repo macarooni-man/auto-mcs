@@ -2513,7 +2513,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
         final_info = [False, {'version': originalRequest, 'build': buildNum}, f"'${originalRequest}$' doesn't exist, or can't be retrieved", None]
 
     version_loading = False
-    send_log('constants.validate_version', f"successfully found {mcType} '{mcVer}': {url}", 'info')
+    send_log('constants.validate_version', f"successfully found {mcType.title()} '{mcVer}': {url}", 'info')
     return final_info
 def search_version(server_info: dict):
 
@@ -3167,7 +3167,7 @@ def install_server(progress_func=None, imported=False):
         jar_version = new_server_info['version']
         jar_type = new_server_info['type']
 
-    send_log('constants.install_server', f"executing installer for {jar_type} '{jar_version}' in '{tmpsvr}'...", 'info')
+    send_log('constants.install_server', f"executing installer for {jar_type.title()} '{jar_version}' in '{tmpsvr}'...", 'info')
 
 
     # Install Forge server
@@ -3272,7 +3272,7 @@ def install_server(progress_func=None, imported=False):
     # Change back to original directory
     os.chdir(cwd)
 
-    send_log('constants.install_server', f"successfully installed {jar_type} '{jar_version}' in '{tmpsvr}'", 'info')
+    send_log('constants.install_server', f"successfully installed {jar_type.title()} '{jar_version}' in '{tmpsvr}'", 'info')
 
     return True
 
@@ -3845,9 +3845,9 @@ def scan_import(bkup_file=False, progress_func=None, *args):
         return response
 
 
-    send_log('constants.scan_import', f"scanning selected server for import metadata detection...", 'info')
     name = import_data['name']
     path = import_data['path']
+    send_log('constants.scan_import', f"scanning '{path}' to detect metadata...", 'info')
 
     cwd = get_cwd()
     folder_check(tmpsvr)
@@ -4034,7 +4034,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             progress_func(50)
 
                         ram = calculate_ram(import_data)
-                        send_log('constants.scan_import', f"determined type '{import_data['type']}':  validating version information...", 'info')
+                        send_log('constants.scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
 
                         if import_data['type'] == "forge":
                             copy_to(os.path.join(str(path), 'libraries'), test_server, 'libraries', True)
@@ -4122,7 +4122,7 @@ eula=true"""
                     import_data['type'] = "neoforge"
                     import_data['version'] = version
                     import_data['build'] = build
-                    send_log('constants.scan_import', f"determined type '{import_data['type']}':  validating version information...", 'info')
+                    send_log('constants.scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
 
                 # New versions of forge
                 elif "@libraries/net/minecraftforge/forge/" in output:
@@ -4134,7 +4134,7 @@ eula=true"""
                     import_data['type'] = "forge"
                     import_data['version'] = version
                     import_data['build'] = build
-                    send_log('constants.scan_import', f"determined type '{import_data['type']}':  validating version information...", 'info')
+                    send_log('constants.scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
 
 
                 # Gather launch flags
@@ -4198,7 +4198,7 @@ eula=true"""
 
     os.chdir(cwd)
     if import_data['type'] and import_data['version']:
-        send_log('constants.scan_import', f"determined version '{import_data['version']}':  writing to '{tmpsvr}' for further processing...", 'info')
+        send_log('constants.scan_import', f"determined version '{import_data['version']}': writing to '{tmpsvr}' for further processing...", 'info')
 
         # Regenerate auto-mcs.ini
         config_file = create_server_config(import_data, True)
@@ -4280,6 +4280,7 @@ eula=true"""
     error_text = "type" if not import_data['version'] else "type and version"
     log_content = f"unable to determine the server's {error_text}:\n'import_data': {import_data}\n'bkup_file': {bkup_file}\n'script_list': {script_list}"
     send_log('constants.scan_import', log_content, 'error')
+    return False
 
 
 # Moves tmpsvr to actual server and checks for ACL and other file validity
@@ -4306,9 +4307,10 @@ def finalize_import(progress_func=None, *args):
 
 
     if import_data['name']:
+        new_path = os.path.join(serverDir, import_data['name'])
+        send_log('constants.finalize_import', f"installing '{tmpsvr}' to '{new_path}'...", 'error')
 
         # Copy folder to server path and delete tmpsvr
-        new_path = os.path.join(serverDir, import_data['name'])
         os.chdir(get_cwd())
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
         safe_delete(tempDir)
@@ -4328,6 +4330,8 @@ def finalize_import(progress_func=None, *args):
 
         # Check for EULA
         if not (server_path(import_data['name'], 'eula.txt') or server_path(import_data['name'], 'EULA.txt')):
+            send_log('constants.finalize_import', f"generating '{new_server_name(import_data['name'], 'eula.txt')}...'", 'info')
+
             time_stamp = date.today().strftime(f"#%a %b %d ") + dt.now().strftime("%H:%M:%S ") + "MCS" + date.today().strftime(f" %Y")
 
             # Generate EULA.txt
@@ -4384,7 +4388,11 @@ eula=true"""
             make_update_list()
             if progress_func:
                 progress_func(100)
+
+            send_log('constants.finalize_import', f"successfully imported to '{new_path}'", 'info')
             return True
+
+        else: send_log('constants.finalize_import', f"something went wrong importing to '{new_path}'", 'error')
 
 
 # Imports a modpack from a .zip file
@@ -4412,12 +4420,17 @@ def scan_modpack(update=False, progress_func=None):
         return response
 
 
-    # First, download modpack if it's a URL
+    # First, check if the modpack is a URL and needs to be downloaded
     try:
         url = import_data['url']
+
+    # File is not a URL
     except KeyError:
         file_path = import_data['path']
+
+    # Otherwise, download the modpack and use that as the import file
     else:
+        send_log('constants.scan_modpack', f"a URL was provided for '{import_data['name']}', downloading prior to scan from '{url}'...", 'info')
         file_path = import_data['path'] = download_url(url, f"{sanitize_name(import_data['name'])}.{url.rsplit('.',1)[-1]}", downDir)
 
 
@@ -4431,6 +4444,7 @@ def scan_modpack(update=False, progress_func=None):
     os.chdir(tmpsvr)
 
     test_server = os.path.join(tempDir, 'importtest')
+    send_log('constants.scan_modpack', f"extracting '{file_path}' to '{test_server}'...", 'info')
     folder_check(test_server)
     os.chdir(test_server)
 
@@ -4439,6 +4453,8 @@ def scan_modpack(update=False, progress_func=None):
 
     if progress_func:
         progress_func(50)
+
+    send_log('constants.scan_modpack', f"scanning '{test_server}' to detect metadata...", 'info')
 
 
     # Clean-up name
@@ -4520,16 +4536,15 @@ def scan_modpack(update=False, progress_func=None):
                 ]
 
                 def get_mod_url(mod_data):
-                    try:
-                        return cs_download_url(mod_data['url'], mod_data['file_name'], mod_data['destination'])
-                    except Exception as e:
-                        return False
+                    try: return cs_download_url(mod_data['url'], mod_data['file_name'], mod_data['destination'])
+                    except Exception as e: return False
 
                 # Iterate over additional content to see if it's available to be downloaded
                 with ThreadPoolExecutor(max_workers=20) as pool:
                     for result in pool.map(get_mod_url, metadata):
-                        if not result:
-                            return result
+                        if not result: return result
+
+                send_log('constants.scan_modpack', f"determined modpack type 'Modrinth'", 'info')
 
 
     # Approach #2: look for "ServerStarter"
@@ -4617,6 +4632,9 @@ def scan_modpack(update=False, progress_func=None):
                 except KeyError:
                     pass
 
+        send_log('constants.scan_modpack', f"determined modpack type 'ServerStarter'", 'info')
+
+
     # Approach #3: inspect "variables.txt"
     if os.path.exists('variables.txt'):
         with open('variables.txt', 'r', encoding='utf-8', errors='ignore') as f:
@@ -4630,8 +4648,13 @@ def scan_modpack(update=False, progress_func=None):
             data['type'] = variables['modloader'].lower().strip()
             process_flags(variables['java_args'])
 
-    # Approach #4: inspect launch scripts and server.jar
+        send_log('constants.scan_modpack', f"found 'variables.txt'", 'info')
+
+
+    # Approach #4: inspect launch scripts and 'server.jar'
     if not data['version'] or not data['type']:
+        send_log('constants.scan_modpack', f"no valid modpack format found, inspecting launch scripts & 'server.jar'", 'info')
+
 
         # Generate script list and iterate through each one
         file_list = glob(os.path.join(str(test_server), "*.bat"))
@@ -4701,8 +4724,11 @@ def scan_modpack(update=False, progress_func=None):
                         data['build'] = split_match[3].replace('loader.', '')
                         break
 
-    # Approach #3: inspect server files
+
+    # Approach #5: inspect server files
     if not data['version'] or not data['type']:
+        send_log('constants.scan_modpack', f"no valid scripts or 'server.jar', using a manual file scan", 'info')
+
 
         # Generate script list and iterate through each one
         file_list = glob(os.path.join(test_server, "*.txt"))
@@ -4757,6 +4783,8 @@ def scan_modpack(update=False, progress_func=None):
 
     # Get the modpack name
     if not data['name']:
+        send_log('constants.scan_modpack', f"no name was found, scraping from 'server.properties' and filename", 'info')
+
 
         # Get the name from "server.properties"
         for file in glob('*server.properties'):
@@ -4782,6 +4810,7 @@ def scan_modpack(update=False, progress_func=None):
         if not data['name']:
             process_name('Modpack Server')
 
+
     # Look in alternate locations for launch flags
     for file in glob(os.path.join(test_server, '*.*')):
         for key in ['jvm', 'args', 'arguments', 'param']:
@@ -4792,6 +4821,8 @@ def scan_modpack(update=False, progress_func=None):
                         process_flags(match)
                     break
 
+
+    # Success
     os.chdir(cwd)
     if data['type'] and data['version'] and data['name']:
         import_data = {
@@ -4807,8 +4838,15 @@ def scan_modpack(update=False, progress_func=None):
         if progress_func:
             progress_func(100)
 
+        log_content = f"determined '{import_data['name']}' is {import_data['type'].title()} '{import_data['version']}'"
+        send_log('constants.scan_modpack', f"{log_content}: writing to '{tmpsvr}' for further processing...", 'info')
         return data
+
+
+    # Failed state due to one or more issues locating required data
     else:
+        log_content = f"unable to determine all the required metadata:\n'data': {data}"
+        send_log('constants.scan_modpack', log_content, 'error')
         return False
 
 
