@@ -949,9 +949,9 @@ def return_scraper(url_path: str, head=False, params=None):
 
     if not global_scraper:
         global_scraper = cloudscraper.create_scraper(
-            browser={'custom': f'Auto-MCS/{app_version}', 'platform': os_name, 'mobile': False},
-            ecdhCurve='secp384r1',
-            debug=debug
+            browser = {'custom': f'{app_title}/{app_version}', 'platform': os_name, 'mobile': False},
+            # ecdhCurve = 'secp384r1',
+            debug = debug
         )
 
     return global_scraper.head(url_path) if head else global_scraper.get(url_path, params=params)
