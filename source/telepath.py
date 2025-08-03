@@ -50,6 +50,10 @@ import svrmgr
 # This library abstracts auto-mcs functionality to control servers remotely
 # ----------------------------------------------- Global Variables -----------------------------------------------------
 
+# API log wrapper
+def send_log(object_data, message, level=None):
+    return constants.send_log(f'{__name__}.{object_data}', message, level if level else None, 'api')
+
 # Create ID_HASH to use for authentication so the token can be reset
 telepath_settings = constants.app_config.telepath_settings
 if not telepath_settings['id_hash'] or len(telepath_settings['id_hash']) != 64:
@@ -117,6 +121,10 @@ class TelepathManager():
     doc_logo = "https://github.com/macarooni-man/auto-mcs/blob/main/source/gui-assets/logo.png?raw=true"
     default_host = "0.0.0.0"
     default_port = 7001
+
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
         global app
@@ -336,10 +344,9 @@ class TelepathManager():
             threading.Timer(0, self._run_uvicorn).start()
 
             message = f'initialized API on "{self.host}:{self.port}"'
-            if not constants.headless:
-                print(f'[INFO] [telepath] {message}')
-            else:
-                return message
+            self.send_log(message, 'info')
+            return message
+
         elif constants.headless:
             return 'Telepath API is already running'
 
@@ -351,10 +358,9 @@ class TelepathManager():
             self.running = False
 
             message = f'disabled API on "{self.host}:{self.port}"'
-            if not constants.headless:
-                print(f'[INFO] [telepath] {message}')
-            else:
-                return message
+            self.send_log(message, 'info')
+            return message
+
         elif constants.headless:
             return 'Telepath API is not running'
 
@@ -377,8 +383,7 @@ class TelepathManager():
         else:
             session = requests.Session()
             self.sessions[host] = {'port': port, 'session': session}
-            if not constants.headless:
-                print(f"[INFO] [telepath] Opening session to '{host}'")
+            self.send_log(f"opening session to '{host}'", 'info')
         return session
     def _retry_wrapper(self, host: str, port: int, request_func, retry=True):
         try:
@@ -465,8 +470,7 @@ class TelepathManager():
 
             # Close the requests session
             data['session'].close()
-            if not constants.headless:
-                print(f"[INFO] [telepath] Closed session to '{host}:{data['port']}'")
+            self.send_log(f"closed session to '{host}:{data['port']}'", 'info')
 
 
     # -------- Internal endpoints to authenticate with Telepath -------- #
@@ -480,15 +484,13 @@ class TelepathManager():
         error_code = status.HTTP_418_IM_A_TEAPOT if random.randrange(10) == 1 else status.HTTP_409_CONFLICT
         if constants.ignore_close:
             message = "Server is busy, please try again later"
-            if not constants.headless:
-                print(f'[INFO] [telepath] {message}')
+            self.send_log(message, 'error')
             raise HTTPException(status_code=error_code, detail=message)
 
         # Ignore request if there's currently a valid pairing code
         if self.pair_data:
             message = "Please wait for the current code to expire"
-            if not constants.headless:
-                print(f'[INFO] [telepath] {message}')
+            self.send_log(message, 'error')
             raise HTTPException(status_code=error_code, detail=message)
 
         # Ignore an improperly formatted request
@@ -513,12 +515,11 @@ class TelepathManager():
             if constants.telepath_pair:
                 constants.telepath_pair.open(self.pair_data)
 
-            if not constants.headless:
-                print(f"[INFO] [telepath] Generated pairing code: {self.pair_data['code']} for host: {host}")
+            self.send_log(f"generated pairing code: {self.pair_data['code']} for host: {host}", 'info')
             return True
+
         else:
-            if not constants.headless:
-                print(f'[INFO] [telepath] Telepath API is not running')
+            self.send_log('Telepath API is not running', 'error')
             return False
 
     def _submit_pair(self, host: dict, id_hash: bytes, code: str, request: Request):
@@ -674,11 +675,9 @@ class TelepathManager():
         try:
             session = self._get_session(ip, port)
             data = session.post(url, json=host_data, headers=self._get_headers(ip), timeout=3).json()
-            if not constants.headless:
-                print(f"[INFO] [telepath] Logged out from '{ip}:{port}'")
+            self.send_log(f"logged out from '{ip}:{port}'", 'info')
             return data
-        except:
-            pass
+        except: pass
         return False
 
     def request_pair(self, ip: str, port: int):
@@ -746,6 +745,11 @@ class TelepathManager():
 
 # Houses PKI for authentication
 class AuthHandler():
+
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
+
     def __init__(self):
         self.key_pairs = {}
         self.sha256 = hashes.SHA256()
@@ -834,6 +838,10 @@ class AuthHandler():
 # Handles reading and writing from telepath-secrets
 class SecretHandler():
 
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
+
     def __init__(self):
         self.file = constants.telepathSecrets
 
@@ -845,11 +853,9 @@ class SecretHandler():
         return self.fernet.encrypt(data.encode('utf-8'))
 
     def _decrypt(self, data: bytes):
-        try:
-            return self.fernet.decrypt(data)
+        try: return self.fernet.decrypt(data)
         except:
-            if not constants.headless:
-                print("[INFO] [telepath] Failed to load telepath-secrets, resetting...")
+            self.send_log(f"failed to load telepath-secrets, resetting...", 'error')
             return []
 
     def read(self):
@@ -876,6 +882,11 @@ class SecretHandler():
             f.write(encrypted)
 
 class AuditLogger():
+
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
+
     def __init__(self):
         self.path = os.path.join(constants.telepathDir, 'audit-logs')
         self.current_users = {}
@@ -971,9 +982,14 @@ class AuditLogger():
         return log_data
 
     def log(self, message: str):
-        file_name = self._get_file_name()
 
+        # Save to internal logger
+        self.send_log(message)
+
+
+        # Also, write to disk
         mode = 'a+'
+        file_name = self._get_file_name()
         if not os.path.exists(file_name):
             constants.folder_check(os.path.dirname(file_name))
             mode = 'w+'
@@ -1255,8 +1271,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         return formatted
 
     # operation = 'Requesting' if request else 'Responding to'
-    # if not constants.headless:
-    #     print(f"[INFO] [telepath] {operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
+    # send_log('api_wrapper', f"{operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
 
 
     # If this session is requesting data from a remote session
@@ -1345,8 +1360,7 @@ def create_remote_obj(obj: object, request=True):
             return self._refresh_attr(name)
 
         except Exception as e:
-            if constants.debug:
-                print(f'Error (telepath): failed to fetch attribute, {e}')
+            send_log('create_remote_obj', f'failed to fetch attribute: {constants.format_traceback(e)}', 'error')
 
         # If the attribute can't be retrieved, return the default. Error handling in constants.telepath_disconnect()
         return self._defaults[name]['value']
@@ -1458,6 +1472,10 @@ def create_remote_obj(obj: object, request=True):
 # Create objects to import for the rest of the app to request data
 class RemoteServerObject(create_remote_obj(ServerObject)):
 
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
+
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
         self._disconnected = False
@@ -1481,8 +1499,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
 
-        if not constants.headless:
-            print(f"[INFO] [auto-mcs] Server Manager (Telepath): Loaded '{host}/{self.name}'")
+        self.send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
 
     def _is_favorite(self):
         try:
@@ -1612,6 +1629,11 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         )
 
 class RemoteScriptManager(create_remote_obj(ScriptManager)):
+
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
+
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
@@ -1655,6 +1677,11 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
         return super().script_state(*args, **kwargs)
 
 class RemoteAddonManager(create_remote_obj(AddonManager)):
+
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
+
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
@@ -1698,6 +1725,11 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         return super().addon_state(*args, **kwargs)
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
+
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
+
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
@@ -1715,6 +1747,11 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
         return data
 
 class RemoteAclManager(create_remote_obj(AclManager)):
+
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
+
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj

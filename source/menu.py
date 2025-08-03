@@ -35,9 +35,17 @@ import addons
 import backup
 import acl
 
+
+# UI log wrapper
+def send_log(object_data, message, level=None):
+    return constants.send_log(f'{__name__}.{object_data}', message, level if level else None, 'ui')
+
+
+# Import tkinter filedialog here for Windows only
 if constants.os_name == "windows":
     import tkinter as tk
     from tkinter import filedialog
+
 
 # Control modifier for keyboard shortcuts
 control = 'meta' if constants.os_name == "macos" else 'ctrl'
@@ -29942,6 +29950,9 @@ class MainApp(App):
 main_app = None
 def run_application():
     global main_app
+
+    send_log('run_application', 'initializing graphical UI (Kivy)', 'info')
+
     main_app = MainApp(title=constants.app_title)
     try:
         main_app.run()

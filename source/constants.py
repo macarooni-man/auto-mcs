@@ -200,15 +200,23 @@ script_obj  = None
 
 
 # Global logger method
-# DEBUG, INFO, WARNING, ERROR, FATAL
-def send_log(object_data: str, message: str, level: str = None):
+# Levels: 'debug', 'info', 'warning', 'error', 'fatal'
+# Stacks: 'core', 'ui', 'api'
+def send_log(object_data: str, message: str, level: str = None, stack: str = None):
+
+    # Initialize default values
+    if '.' not in object_data: object_data = f'{__name__}.{object_data}'
     if not level: level = 'debug'
+    if not stack: stack = 'core'
+
+
     if enable_logging: # and not (not debug and level == 'debug'):
         for x, line in enumerate(message.splitlines(), 0):
             timestamp = dt.now().strftime('%I:%M:%S %p')
             content = line.strip() if x == 0 else f'   >  {line.strip()}'
-            line = f"[{timestamp}] [{level.upper()}] [{object_data}] {content}"
+            line = f"[{timestamp}] [{level.upper()}] [{stack}: {object_data}] {content}"
             print(line)
+
 
 # Returns full error into a string for logging
 def format_traceback(exception: Exception) -> str:
@@ -277,7 +285,7 @@ def allow_close(allow: bool, banner=''):
     # Log that window was locked/unlocked
     verb        = 'locked' if ignore_close else 'unlocked'
     banner_verb = f'with banner: {banner}' if banner else 'with no banner'
-    send_log('constants.allow_close', f'{verb} GUI window {banner_verb}')
+    send_log('allow_close', f'{verb} GUI window {banner_verb}')
 
     if banner and telepath_banner and app_config.telepath_settings['show-banners']:
         telepath_banner(banner, allow)
@@ -324,7 +332,7 @@ def run_proc(cmd: str, return_text=False) -> str or int:
     return_code = result.returncode
     run_content = f'\n{output.strip()}'
     log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
-    send_log('constants.run_proc', f'{cmd}: returned exit code {result.returncode} {log_content}', None if return_code == 0 else 'error')
+    send_log('run_proc', f'{cmd}: returned exit code {result.returncode} {log_content}', None if return_code == 0 else 'error')
 
     return output if return_text else return_code
 
@@ -336,7 +344,9 @@ def check_docker() -> bool:
         if 'Alpine' in run_proc('uname -v', True).strip():
             return True
     cgroup = Path('/proc/self/cgroup')
-    return Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
+    docker_check = Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
+    if docker_check: send_log('check_docker', f'{app_title} is running inside a Docker container')
+    return docker_check
 is_docker = check_docker()
 
 # Check if OS is ARM
@@ -453,7 +463,7 @@ def apply_template(template: dict):
     from acl import AclManager
     new_server_info['acl_object'] = AclManager(new_server_info['name'])
 
-    send_log('constants.apply_template', f"applied '.ist' template '{template['template']['name']}': {template}")
+    send_log('apply_template', f"applied '.ist' template '{template['template']['name']}': {template}")
 
 
 # Grabs instant server template (.ist) files from GitHub repo
@@ -643,7 +653,7 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
 
     free_space = round(disk_usage('/').free / 1048576)
     enough_space = free_space > 1024 * required_free_space
-    send_log('constants.check_free_space', f'enough free space: {enough_space} - {round(free_space/1024, 2)}GB / {required_free_space}GB', None if enough_space else 'error')
+    send_log('check_free_space', f'enough free space: {enough_space} - {round(free_space/1024, 2)}GB / {required_free_space}GB', None if enough_space else 'error')
     return enough_space
 
 
@@ -679,14 +689,30 @@ def get_refresh_rate() -> float or None:
 
 
 # Check for admin rights
+admin_check_logged = False
 def is_admin() -> bool:
+    global admin_check_logged
     try:
+
+        # Admin check on Windows
         if os_name == 'windows':
             import ctypes
-            return ctypes.windll.shell32.IsUserAnAdmin() == 1
-        else: return os.getuid() == 0
-    except:
-        return False
+            elevated = ctypes.windll.shell32.IsUserAnAdmin() == 1
+
+        # Root user check on Unix-based systems
+        else: elevated = os.getuid() == 0
+
+    # If this check fails, it's not running as admin
+    except:   elevated = False
+
+
+    # Log startup permissions (this only needs to be logged once, but is checked multiple times)
+    if not admin_check_logged:
+        if elevated: send_log('is_admin', f'{app_title} is running with elevated permissions', 'warning')
+        else:        send_log('is_admin', f'{app_title} is running with standard user permissions')
+        admin_check_logged = True
+
+    return elevated
 
 
 # Returns true if latest is greater than current
@@ -724,7 +750,7 @@ def check_app_version(current: str, latest: str, limit=None) -> bool:
 def restart_app(*a):
     executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-reboot'
-    send_log('constants.restart_app', f'attempting to restart {app_title}...', 'warn')
+    send_log('restart_app', f'attempting to restart {app_title}...', 'warn')
 
     # Generate Windows script to restart
     if os_name == "windows":
@@ -774,7 +800,7 @@ def restart_update_app(*a):
     failure_str  = "Something went wrong with the update"
     script_name  = 'auto-mcs-update'
     update_log   = os.path.join(tempDir, 'update-log')
-    send_log('constants.restart_update_app', f'attempting to restart {app_title} and update to v{new_version}...', 'warn')
+    send_log('restart_update_app', f'attempting to restart {app_title} and update to v{new_version}...', 'warn')
     folder_check(tempDir)
 
     # Delete guide cache in case of update
@@ -993,7 +1019,7 @@ def get_url(url: str, return_code=False, only_head=False, return_response=False,
     for retry in range(0, max_retries + 1):
         try:
             html = return_scraper(url, head=(return_code or only_head), params=params)
-            send_log('constants.get_url', f"request to '{url}': {html.status_code}")
+            send_log('get_url', f"request to '{url}': {html.status_code}")
             return html.status_code if return_code \
                 else html if (only_head or return_response) \
                 else BeautifulSoup(html.content, 'html.parser')
@@ -1001,12 +1027,12 @@ def get_url(url: str, return_code=False, only_head=False, return_response=False,
         except cloudscraper.exceptions.CloudflareChallengeError as e:
             global_scraper = None
             if retry >= max_retries:
-                send_log('constants.get_url', f"exceeded max retries to '{url}': {format_traceback(e)}", 'error')
+                send_log('get_url', f"exceeded max retries to '{url}': {format_traceback(e)}", 'error')
                 raise ConnectionRefusedError("The cloudscraper connection has failed")
             else: time.sleep((retry / 3))
 
         except Exception as e:
-            send_log('constants.get_url', f"error requesting '{url}': {format_traceback(e)}", 'error')
+            send_log('get_url', f"error requesting '{url}': {format_traceback(e)}", 'error')
             raise e
 
 
@@ -1014,7 +1040,7 @@ def get_url(url: str, return_code=False, only_head=False, return_response=False,
 def cs_download_url(url: str, file_name: str, destination_path: str) -> bool:
     global global_scraper
     max_retries = 10
-    send_log('constants.cs_download_url', f"requesting from '{url}' to download '{file_name}' to '{destination_path}'...")
+    send_log('cs_download_url', f"requesting from '{url}' to download '{file_name}' to '{destination_path}'...")
     for retry in range(0, max_retries + 1):
         try:
             web_file = return_scraper(url)
@@ -1023,18 +1049,18 @@ def cs_download_url(url: str, file_name: str, destination_path: str) -> bool:
             with open(full_path, 'wb') as file:
                 file.write(web_file.content)
 
-            send_log('constants.cs_download_url', f"download of '{file_name}' complete: '{full_path}'")
+            send_log('cs_download_url', f"download of '{file_name}' complete: '{full_path}'")
             return os.path.exists(full_path)
 
         except cloudscraper.exceptions.CloudflareChallengeError as e:
             global_scraper = None
             if retry >= max_retries:
-                send_log('constants.cs_download_url', f"exceeded max retries to '{url}': {format_traceback(e)}", 'error')
+                send_log('cs_download_url', f"exceeded max retries to '{url}': {format_traceback(e)}", 'error')
                 raise ConnectionRefusedError("The cloudscraper connection has failed")
             else: time.sleep((retry / 3))
 
         except Exception as e:
-            send_log('constants.cs_download_url', f"error requesting '{url}': {format_traceback(e)}", 'error')
+            send_log('cs_download_url', f"error requesting '{url}': {format_traceback(e)}", 'error')
             raise e
 
 
@@ -1055,13 +1081,13 @@ def telepath_upload(telepath_data: dict, path: str) -> any:
         port = telepath_data['port']
         url = f"http://{host}:{port}/main/upload_file?is_dir={is_dir}"
 
-        send_log('constants.telepath_upload', f"uploading '{path}' to '{url}'...")
+        send_log('telepath_upload', f"uploading '{path}' to '{url}'...")
         session = api_manager._get_session(host, port)
         request = lambda: session.post(url, headers=api_manager._get_headers(host, True), files={'file': open(path, 'rb')})
         data = api_manager._retry_wrapper(host, port, request)
 
         if data: return data.json()
-        else: send_log('constants.telepath_upload', f"failed to upload to '{url}'", 'error')
+        else: send_log('telepath_upload', f"failed to upload to '{url}'", 'error')
 
 
 # Downloads a file to a telepath session --> destination path
@@ -1078,7 +1104,7 @@ def telepath_download(telepath_data: dict, path: str, destination=downDir, renam
     port = telepath_data['port']
     url = f"http://{host}:{port}/main/download_file?file={quote(path)}"
 
-    send_log('constants.telepath_download', f"downloading '{url}' to '{destination}'...")
+    send_log('telepath_download', f"downloading '{url}' to '{destination}'...")
     session = api_manager._get_session(host, port)
     request = lambda: session.post(url, headers=api_manager._get_headers(host), stream=True)
     data = api_manager._retry_wrapper(host, port, request)
@@ -1100,16 +1126,16 @@ def telepath_download(telepath_data: dict, path: str, destination=downDir, renam
             for chunk in data.iter_content(chunk_size=8192):
                 file.write(chunk)
 
-        send_log('constants.telepath_download', f"downloaded '{url}' to '{final_path}'")
+        send_log('telepath_download', f"downloaded '{url}' to '{final_path}'")
         return final_path
 
-    else: send_log('constants.telepath_download', f"failed to download '{url}'", 'error')
+    else: send_log('telepath_download', f"failed to download '{url}'", 'error')
 
 
 # Delete all files in Telepath uploads remotely (this is executed from a client)
 def clear_uploads() -> bool:
     safe_delete(uploadDir)
-    send_log('constants.clear_uploads', f"cleared Telepath uploads in '{uploadDir}'")
+    send_log('clear_uploads', f"cleared Telepath uploads in '{uploadDir}'")
     return not os.path.exists(uploadDir)
 
 
@@ -1307,17 +1333,17 @@ def folder_check(directory: str):
     if not os.path.exists(directory):
         try:
             os.makedirs(directory)
-            send_log('constants.folder_check', f"Created '{directory}'")
+            send_log('folder_check', f"Created '{directory}'")
         except FileExistsError:
             pass
     else:
-        send_log('constants.folder_check', f"'{directory}' already exists")
+        send_log('folder_check', f"'{directory}' already exists")
 
 
 # Open folder in default file browser, and highlight if file is passed
 def open_folder(directory: str):
     try:
-        send_log('constants.open_folder', f"opening '{directory}' in file browser")
+        send_log('open_folder', f"opening '{directory}' in file browser")
 
         # Open directory, and highlight a file
         if os.path.isfile(directory):
@@ -1341,7 +1367,7 @@ def open_folder(directory: str):
                 subprocess.Popen(['explorer', directory])
 
     except Exception as e:
-        send_log('constants.open_folder', f"error opening '{directory}': {e}", 'warn')
+        send_log('open_folder', f"error opening '{directory}': {e}", 'warn')
         return False
 
 
@@ -1357,7 +1383,7 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
     archive = None
     archive_type = None
 
-    send_log('constants.extract_archive', f"extracting '{archive_file}' to '{export_path}'...")
+    send_log('extract_archive', f"extracting '{archive_file}' to '{export_path}'...")
 
     try:
         if archive_file.endswith("tar.gz"):
@@ -1381,13 +1407,13 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
                     use_tar = rc == 0
 
                 except Exception as e:
-                    send_log('constants.extract_archive', f"failed to acquire 'tar' provider: {e}", 'warn')
+                    send_log('extract_archive', f"failed to acquire 'tar' provider: {e}", 'warn')
                     use_tar = False
 
 
             # Log provider usage
             provider = 'tar' if use_tar else 'python'
-            send_log('constants.extract_archive', f"using '{provider}' as a provider")
+            send_log('extract_archive', f"using '{provider}' as a provider")
 
 
             # Keep integrity of archive
@@ -1436,12 +1462,12 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
                         zip_info.filename = zip_info.filename[len(root_path):]
                         archive.extract(zip_info, export_path)
 
-            send_log('constants.extract_archive', f"extracted '{archive_file}' to '{export_path}'")
+            send_log('extract_archive', f"extracted '{archive_file}' to '{export_path}'")
 
-        send_log('constants.extract_archive', f"archive '{archive_file}' was not found", 'error')
+        send_log('extract_archive', f"archive '{archive_file}' was not found", 'error')
 
     except Exception as e:
-        send_log('constants.extract_archive', f"error extracting '{archive_file}': {format_traceback(e)}", 'error')
+        send_log('extract_archive', f"error extracting '{archive_file}': {format_traceback(e)}", 'error')
 
     if archive:
         archive.close()
@@ -1453,7 +1479,7 @@ def create_archive(file_path: str, export_path: str, archive_type='tar') -> str 
     archive_name = f'{file_name}.{archive_type}'
     final_path = os.path.join(export_path, archive_name)
 
-    send_log('constants.create_archive', f"compressing '{file_path}' to '{export_path}'...")
+    send_log('create_archive', f"compressing '{file_path}' to '{export_path}'...")
 
     folder_check(export_path)
 
@@ -1464,13 +1490,13 @@ def create_archive(file_path: str, export_path: str, archive_type='tar') -> str 
             use_tar = rc == 0
 
         except Exception as e:
-            send_log('constants.create_archive', f"failed to acquire 'tar' provider: {e}", 'warn')
+            send_log('create_archive', f"failed to acquire 'tar' provider: {e}", 'warn')
             use_tar = False
 
 
         # Log provider usage
         provider = 'tar' if use_tar else 'python'
-        send_log('constants.create_archive', f"using '{provider}' as a provider")
+        send_log('create_archive', f"using '{provider}' as a provider")
 
 
         # Use tar command if available
@@ -1493,10 +1519,10 @@ def create_archive(file_path: str, export_path: str, archive_type='tar') -> str 
 
     # Return file path if it exists
     if os.path.exists(final_path):
-        send_log('constants.create_archive', f"compressed '{file_path}' to '{export_path}'")
+        send_log('create_archive', f"compressed '{file_path}' to '{export_path}'")
         return final_path
 
-    else: send_log('constants.create_archive', f"something went wrong compressing '{file_path}'", 'error')
+    else: send_log('create_archive', f"something went wrong compressing '{file_path}'", 'error')
 
 
 # Check if root is a folder instead of files, and move sub-folders to destination
@@ -1519,12 +1545,12 @@ def move_files_root(source: str, destination: str = None):
 
 # Download file from URL to directory
 def download_url(url: str, file_name: str, output_path: str, progress_func=None) -> str or None:
-    send_log('constants.download_url', f"requesting from '{url}' to download '{file_name}' to '{output_path}'...")
+    send_log('download_url', f"requesting from '{url}' to download '{file_name}' to '{output_path}'...")
     headers = {'User-Agent': 'Mozilla/5.0'}
     response = requests.get(url, headers=headers, stream=True)
     try: response.raise_for_status()
     except Exception as e:
-        send_log('constants.download_url', f"request to '{url}' error: {format_traceback(e)}", 'error')
+        send_log('download_url', f"request to '{url}' error: {format_traceback(e)}", 'error')
         raise e
 
     file_path = os.path.join(output_path, file_name)
@@ -1545,7 +1571,7 @@ def download_url(url: str, file_name: str, output_path: str, progress_func=None)
                     progress_func(chunk, chunk_size, total_length)
 
     if os.path.isfile(file_path):
-        send_log('constants.download_url', f"download of '{file_name}' complete: '{file_path}'")
+        send_log('download_url', f"download of '{file_name}' complete: '{file_path}'")
         return file_path
 
 
@@ -1557,10 +1583,10 @@ def safe_delete(directory: str) -> bool:
     try:
         if os.path.exists(directory):
             rmtree(directory)
-            send_log('constants.safe_delete', f"successfully deleted '{directory}'")
+            send_log('safe_delete', f"successfully deleted '{directory}'")
 
     except OSError as e:
-        send_log('constants.safe_delete', f"could not delete '{directory}': {e}", 'warn')
+        send_log('safe_delete', f"could not delete '{directory}': {e}", 'warn')
 
     return not os.path.exists(directory)
 
@@ -1568,13 +1594,13 @@ def safe_delete(directory: str) -> bool:
 # Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads' and '.auto-mcs\Uploads'
 def cleanup_old_files():
     os_temp_folder = os.path.normpath(executable_folder + os.sep + os.pardir)
-    send_log('constants.cleanup_old_files', f"cleaning up old {app_title} temporary files in '{os_temp_folder}'")
+    send_log('cleanup_old_files', f"cleaning up old {app_title} temporary files in '{os_temp_folder}'")
     for item in glob(os.path.join(os_temp_folder, "*")):
         if (item != executable_folder) and ("_MEI" in os.path.basename(item)):
             if os.path.exists(os.path.join(item, 'gui-assets', 'animations', 'loading_pickaxe.gif')):
                 try:
                     safe_delete(item)
-                    send_log('constants.cleanup_old_files', f"successfully deleted remnants of '{item}'")
+                    send_log('cleanup_old_files', f"successfully deleted remnants of '{item}'")
                 except PermissionError:
                     pass
     safe_delete(os.path.join(os_temp, '.kivy'))
@@ -1641,7 +1667,7 @@ def copy_to(src_dir: str, dst_dir: str, new_name: str, overwrite=True) -> bool:
     if os.path.exists(src_dir) and item_type:
         if (os.path.exists(final_path) and overwrite) or (not os.path.exists(final_path)):
 
-            send_log('constants.copy_to', f"copying '{os.path.basename(src_dir)}' to '{final_path}'...")
+            send_log('copy_to', f"copying '{os.path.basename(src_dir)}' to '{final_path}'...")
             folder_check(dst_dir)
 
             if item_type == "file":
@@ -1652,10 +1678,10 @@ def copy_to(src_dir: str, dst_dir: str, new_name: str, overwrite=True) -> bool:
 
             if final_item:
                 success = True
-                send_log('constants.copy_to', f"successfully copied to '{new_name}'")
+                send_log('copy_to', f"successfully copied to '{new_name}'")
 
     if not success:
-        send_log('constants.copy_to', f"something went wrong copying to '{new_name}'", 'error')
+        send_log('copy_to', f"something went wrong copying to '{new_name}'", 'error')
 
     return success
 
@@ -1756,7 +1782,7 @@ def check_app_updates():
             dev_version = True
 
     except Exception as e:
-        send_log('constants.check_app_updates', f"error checking for updates: {format_traceback(e)}", 'error')
+        send_log('check_app_updates', f"error checking for updates: {format_traceback(e)}", 'error')
 
 
 # Get latest game versions
@@ -1988,7 +2014,7 @@ def get_data_versions() -> dict or None:
 
     if not data or not page_exists:
         status_code = getattr(data, 'status_code', None)
-        send_log('constants.get_data_versions', f'failed to retrieve data versions: {status_code} ({url})', 'error')
+        send_log('get_data_versions', f'failed to retrieve data versions: {status_code} ({url})', 'error')
         return None
 
     soup = BeautifulSoup(data.text, 'html.parser')
@@ -2029,7 +2055,7 @@ def check_data_cache():
 
     # Error out if latest version could not be located
     if latestMC["vanilla"] == "0.0.0":
-        send_log('constants.check_data_cache', 'latest Vanilla version could not be found, skipping check', 'error')
+        send_log('check_data_cache', 'latest Vanilla version could not be found, skipping check', 'error')
         return
 
     if not os.path.isfile(cache_file):
@@ -2105,7 +2131,7 @@ def download_update(progress_func=None):
     new_version = update_data['version']
     binary_file = None
     last_error  = None
-    send_log('constants.download_update', f'downloading {app_title} v{new_version} from: {update_url}', 'info')
+    send_log('download_update', f'downloading {app_title} v{new_version} from: {update_url}', 'info')
 
     while fail_count < 3:
 
@@ -2157,8 +2183,8 @@ def download_update(progress_func=None):
             last_error = format_traceback(e)
             fail_count += 1
 
-    if last_error: send_log('constants.download_update', f'failed to download {app_title} v{new_version}: {last_error}', 'error')
-    else:          send_log('constants.download_update', f"successfully downloaded {app_title} v{new_version} to: '{binary_file}'", 'info')
+    if last_error: send_log('download_update', f'failed to download {app_title} v{new_version}: {last_error}', 'error')
+    else:          send_log('download_update', f"successfully downloaded {app_title} v{new_version} to: '{binary_file}'", 'info')
     return fail_count < 5
 
 
@@ -2218,7 +2244,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
     buildNum = server_info['build']
     final_info = [False, {'version': mcVer, 'build': buildNum}, '', None] # [if version acceptable, {version, build}, message]
     url = ""
-    send_log('constants.validate_version', f"attempting to find {mcType.title()} '{mcVer}'", 'info')
+    send_log('validate_version', f"attempting to find {mcType.title()} '{mcVer}'", 'info')
 
     # Remove below 1.6 versions for Forge
     try:
@@ -2445,7 +2471,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
                     url = f"https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/{installer}/quilt-installer-{installer}.jar"
                     vanilla_validation[-1] = url
                     vanilla_validation[1]['build'] = loader
-                    send_log('constants.validate_version', f"successfully found {mcType.title()} '{mcVer}': {url}", 'info')
+                    send_log('validate_version', f"successfully found {mcType.title()} '{mcVer}': {url}", 'info')
                     return vanilla_validation
 
 
@@ -2475,11 +2501,11 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
 
                     if modifiedVersion > 0:
                         final_info[2] = f"'${originalRequest}$' could not be found, using '${mcVer}$' instead"
-                        send_log('constants.validate_version', f"{mcType.title()} {final_info[2].replace('$','')}", 'info')
+                        send_log('validate_version', f"{mcType.title()} {final_info[2].replace('$','')}", 'info')
                     originalRequest = ""
 
                     version_loading = False
-                    send_log('constants.validate_version', f"successfully found {mcType.title()} '{mcVer}': {url}", 'info')
+                    send_log('validate_version', f"successfully found {mcType.title()} '{mcVer}': {url}", 'info')
                     return final_info
 
 
@@ -2514,7 +2540,7 @@ def validate_version(server_info: dict) -> list[bool, dict[str, str], str, bool]
         final_info = [False, {'version': originalRequest, 'build': buildNum}, f"'${originalRequest}$' doesn't exist, or can't be retrieved", None]
 
     version_loading = False
-    send_log('constants.validate_version', f"successfully found {mcType.title()} '{mcVer}': {url}", 'info')
+    send_log('validate_version', f"successfully found {mcType.title()} '{mcVer}': {url}", 'info')
     return final_info
 def search_version(server_info: dict):
 
@@ -2531,7 +2557,7 @@ def search_version(server_info: dict):
 # Generate new server configuration
 def new_server_init():
     global new_server_info
-    send_log('constants.new_server_init', f"initializing 'constants.new_server_info'", 'info')
+    send_log('new_server_init', f"initializing 'constants.new_server_info'", 'info')
     new_server_info = {
         "_hash": gen_rstring(8),
         '_telepath_data': None,
@@ -2660,7 +2686,7 @@ def java_check(progress_func=None):
     max_retries = 3
     retries = 0
     modern_version = 21
-    send_log('constants.java_check', f"validating Java installations...", 'info')
+    send_log('java_check', f"validating Java installations...", 'info')
 
     java_url = {
         'windows': {
@@ -2692,7 +2718,7 @@ def java_check(progress_func=None):
 
         # If max_retries exceeded, give up
         if retries > max_retries:
-            send_log('constants.java_check', f"Java failed to download or install", 'error')
+            send_log('java_check', f"Java failed to download or install", 'error')
             return False
 
         # Check if installations function before doing anything
@@ -2724,7 +2750,7 @@ def java_check(progress_func=None):
                         "jar": str(os.path.abspath(jar_path))
                     }
 
-                    send_log('constants.java_check', f"valid Java installations detected", 'info')
+                    send_log('java_check', f"valid Java installations detected", 'info')
 
                     if progress_func:
                         progress_func(100)
@@ -2735,7 +2761,7 @@ def java_check(progress_func=None):
         # If valid java installs are not detected, install them to '.auto-mcs\Tools'
         if not (java_executable['modern'] and java_executable['lts'] and java_executable['legacy']):
 
-            send_log('constants.java_check', f"Java is not detected, installing...", 'info')
+            send_log('java_check', f"Java is not detected, installing...", 'info')
 
 
             # On Docker, use apk to install Java instead
@@ -2746,8 +2772,7 @@ def java_check(progress_func=None):
                     move('/usr/lib/jvm/java-21-openjdk', os.path.join(javaDir, 'modern'))
                     move('/usr/lib/jvm/java-17-openjdk', os.path.join(javaDir, 'lts'))
                     move('/usr/lib/jvm/java-1.8-openjdk', os.path.join(javaDir, 'legacy'))
-                except:
-                    pass
+                except: pass
                 continue
 
 
@@ -2881,7 +2906,7 @@ def download_jar(progress_func=None, imported=False):
     final_path  = None
     last_error  = None
     log_title   = f"{str(server_data['type']).title()} '{server_data['version']}'"
-    send_log('constants.download_jar', f'downloading {log_title} from: {server_data["jar_link"]}', 'info')
+    send_log('download_jar', f'downloading {log_title} from: {server_data["jar_link"]}', 'info')
 
     while fail_count < 5:
 
@@ -2914,8 +2939,8 @@ def download_jar(progress_func=None, imported=False):
             last_error = format_traceback(e)
             fail_count += 1
 
-    if last_error: send_log('constants.download_jar', f'failed to download {log_title}: {last_error}', 'error')
-    else:          send_log('constants.download_jar', f"successfully downloaded {log_title} to: '{final_path}'", 'info')
+    if last_error: send_log('download_jar', f'failed to download {log_title}: {last_error}', 'error')
+    else:          send_log('download_jar', f"successfully downloaded {log_title} to: '{final_path}'", 'info')
     return fail_count < 5
 
 
@@ -2993,7 +3018,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
         return True
 
     log_content = [addon.name for addon in all_addons]
-    send_log('constants.iter_addons', f"downloading all add-ons to '{tmpsvr}':\n{log_content}", 'info')
+    send_log('iter_addons', f"downloading all add-ons to '{tmpsvr}':\n{log_content}", 'info')
 
     addon_folder = "plugins" if server_type(new_server_info['type']) == 'bukkit' else 'mods'
     folder_check(os.path.join(tmpsvr, addon_folder))
@@ -3051,7 +3076,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     if progress_func:
         progress_func(100)
 
-    send_log('constants.iter_addons', f"successfully downloaded all add-ons to '{tmpsvr}'", 'info')
+    send_log('iter_addons', f"successfully downloaded all add-ons to '{tmpsvr}'", 'info')
 
     return True
 def pre_addon_update(telepath=False, host=None):
@@ -3075,7 +3100,7 @@ def pre_addon_update(telepath=False, host=None):
 
 
     # Clear folders beforehand
-    send_log('constants.pre_addon_update', 'initializing environment for an add-on update...', 'info')
+    send_log('pre_addon_update', 'initializing environment for an add-on update...', 'info')
     os.chdir(get_cwd())
     safe_delete(tmpsvr)
     safe_delete(tempDir)
@@ -3111,7 +3136,7 @@ def post_addon_update(telepath=False, host=None):
             return response
 
 
-    send_log('constants.post_addon_update', 'cleaning up environment after add-on update...', 'info')
+    send_log('post_addon_update', 'cleaning up environment after add-on update...', 'info')
     server_obj.addon.update_required = False
 
     # Clear items from addon cache to re-cache
@@ -3168,7 +3193,7 @@ def install_server(progress_func=None, imported=False):
         jar_version = new_server_info['version']
         jar_type = new_server_info['type']
 
-    send_log('constants.install_server', f"executing installer for {jar_type.title()} '{jar_version}' in '{tmpsvr}'...", 'info')
+    send_log('install_server', f"executing installer for {jar_type.title()} '{jar_version}' in '{tmpsvr}'...", 'info')
 
 
     # Install Forge server
@@ -3273,7 +3298,7 @@ def install_server(progress_func=None, imported=False):
     # Change back to original directory
     os.chdir(cwd)
 
-    send_log('constants.install_server', f"successfully installed {jar_type.title()} '{jar_version}' in '{tmpsvr}'", 'info')
+    send_log('install_server', f"successfully installed {jar_type.title()} '{jar_version}' in '{tmpsvr}'", 'info')
 
     return True
 
@@ -3304,7 +3329,7 @@ def generate_server_files(progress_func=None):
         return response
 
 
-    send_log('constants.generate_server_files', f"generating pre-launch files in '{tmpsvr}'...", 'info')
+    send_log('generate_server_files', f"generating pre-launch files in '{tmpsvr}'...", 'info')
     time_stamp = date.today().strftime(f"#%a %b %d ") + dt.now().strftime("%H:%M:%S ") + "MCS" + date.today().strftime(f" %Y")
     world_name = 'world'
 
@@ -3327,7 +3352,7 @@ def generate_server_files(progress_func=None):
     # Create start-cmd.tmp for changing gamerules after the server starts
     if new_server_info['server_settings']['keep_inventory'] or new_server_info['server_settings']['daylight_weather_cycle'] or new_server_info['server_settings']['random_tick_speed'] and version_check(new_server_info['version'], '>=', '1.4.2'):
         cmd_temp_path = os.path.join(tmpsvr, command_tmp)
-        send_log('constants.generate_server_files', f"generating '{cmd_temp_path}' for post-launch command execution...", 'info')
+        send_log('generate_server_files', f"generating '{cmd_temp_path}' for post-launch command execution...", 'info')
         with open(cmd_temp_path, 'w') as f:
             file = f"gamerule keepInventory {str(new_server_info['server_settings']['keep_inventory']).lower()}\n"
             if version_check(new_server_info['version'], '>=', '1.8'):
@@ -3339,7 +3364,7 @@ def generate_server_files(progress_func=None):
                 if version_check(new_server_info['version'], '>=', '1.11'):
                     file += f"gamerule doWeatherCycle {str(new_server_info['server_settings']['daylight_weather_cycle']).lower()}\n"
             f.write(file.strip())
-            send_log('constants.generate_server_files', f"successfully created '{cmd_temp_path}' with the following commands:\n{file.splitlines()}", 'info')
+            send_log('generate_server_files', f"successfully created '{cmd_temp_path}' with the following commands:\n{file.splitlines()}", 'info')
 
 
 
@@ -3354,7 +3379,7 @@ def generate_server_files(progress_func=None):
 
 
     # Generate EULA.txt
-    send_log('constants.generate_server_files', f"generating '{os.path.join(tmpsvr, 'eula.txt')}...'", 'info')
+    send_log('generate_server_files', f"generating '{os.path.join(tmpsvr, 'eula.txt')}...'", 'info')
     eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
 {time_stamp}
 eula=true"""
@@ -3364,7 +3389,7 @@ eula=true"""
 
 
     # Generate server.properties
-    send_log('constants.generate_server_files', f"generating minimal '{os.path.join(tmpsvr, 'server.properties')}...'", 'info')
+    send_log('generate_server_files', f"generating minimal '{os.path.join(tmpsvr, 'server.properties')}...'", 'info')
     gamemode_dict = {
         'survival': 0,
         'creative': 1,
@@ -3456,10 +3481,10 @@ max-world-size=29999984"""
                 run_proc(f"attrib +H \"{os.path.join(new_path, command_tmp)}\"")
 
         make_update_list()
-        send_log('constants.generate_server_files', "successfully generated all pre-launch files", 'info')
+        send_log('generate_server_files', "successfully generated all pre-launch files", 'info')
         return True
 
-    else: send_log('constants.generate_server_files', "something went wrong generating pre-launch files", 'error')
+    else: send_log('generate_server_files', "something went wrong generating pre-launch files", 'error')
 
 
 def pre_server_create(telepath=False):
@@ -3474,7 +3499,7 @@ def pre_server_create(telepath=False):
 
 
     if telepath_data and not telepath:
-        send_log('constants.pre_server_create', f"initializing environment for server creation...", 'info')
+        send_log('pre_server_create', f"initializing environment for server creation...", 'info')
 
         # Convert ACL object for remote
         new_info = deepcopy(new_server_info)
@@ -3558,7 +3583,7 @@ def post_server_create(telepath=False, modpack=False):
         read_me = [f for f in glob(os.path.join(server_path, '*.txt')) if 'read' in f.lower()]
         if read_me: return_data['readme'] = read_me[0]
 
-    send_log('constants.post_server_create', f"cleaning up environment after server creation...", 'info')
+    send_log('post_server_create', f"cleaning up environment after server creation...", 'info')
 
     clear_uploads()
     new_server_info = {}
@@ -3593,7 +3618,7 @@ def update_server_files(progress_func=None):
 
     new_path = os.path.join(serverDir, new_server_info['name'])
     new_config_path = os.path.join(tmpsvr, server_ini)
-    send_log('constants.update_server_files', f"preparing to patch '{new_path}' with update files from '{tmpsvr}'...", 'info')
+    send_log('update_server_files', f"preparing to patch '{new_path}' with update files from '{tmpsvr}'...", 'info')
 
     # First, generate startup script
     generate_run_script(new_server_info, temp_server=True)
@@ -3627,7 +3652,7 @@ def update_server_files(progress_func=None):
     if (os.path.exists(os.path.join(tmpsvr, 'server.properties')) and os.path.exists(new_config_path) and os.path.exists(os.path.join(tmpsvr, 'eula.txt'))):
 
         # Replace server path with tmpsvr
-        send_log('constants.update_server_files', f"patching '{new_path}'...", 'info')
+        send_log('update_server_files', f"patching '{new_path}'...", 'info')
         safe_delete(new_path)
         os.chdir(get_cwd())
         copytree(tmpsvr, new_path, dirs_exist_ok=True)
@@ -3638,10 +3663,10 @@ def update_server_files(progress_func=None):
             run_proc(f"attrib +H \"{os.path.join(new_path, server_ini)}\"")
 
         if os.path.isdir(new_path):
-            send_log('constants.update_server_files', f"successfully patched '{new_path}'", 'info')
+            send_log('update_server_files', f"successfully patched '{new_path}'", 'info')
             return True
 
-    send_log('constants.update_server_files', f"something went wrong moving update files from '{tmpsvr}' to '{new_path}'", 'error')
+    send_log('update_server_files', f"something went wrong moving update files from '{tmpsvr}' to '{new_path}'", 'error')
 
 
 def pre_server_update(telepath=False, host=None):
@@ -3684,7 +3709,7 @@ def pre_server_update(telepath=False, host=None):
             )
             return response
 
-    send_log('constants.pre_server_update', f"initializing environment for a server update...", 'info')
+    send_log('pre_server_update', f"initializing environment for a server update...", 'info')
 
     # First, clean out any existing server in temp folder
     safe_delete(tmpsvr)
@@ -3736,7 +3761,7 @@ def post_server_update(telepath=False, host=None):
 
             return response
 
-    send_log('constants.post_server_update', f"cleaning up environment after a server update...", 'info')
+    send_log('post_server_update', f"cleaning up environment after a server update...", 'info')
     make_update_list()
     server_obj._view_notif('add-ons', False)
     server_obj._view_notif('settings', viewed=new_server_info['version'])
@@ -3848,7 +3873,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
 
     name = import_data['name']
     path = import_data['path']
-    send_log('constants.scan_import', f"scanning '{path}' to detect metadata...", 'info')
+    send_log('scan_import', f"scanning '{path}' to detect metadata...", 'info')
 
     cwd = get_cwd()
     folder_check(tmpsvr)
@@ -4035,7 +4060,7 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             progress_func(50)
 
                         ram = calculate_ram(import_data)
-                        send_log('constants.scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
+                        send_log('scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
 
                         if import_data['type'] == "forge":
                             copy_to(os.path.join(str(path), 'libraries'), test_server, 'libraries', True)
@@ -4123,7 +4148,7 @@ eula=true"""
                     import_data['type'] = "neoforge"
                     import_data['version'] = version
                     import_data['build'] = build
-                    send_log('constants.scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
+                    send_log('scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
 
                 # New versions of forge
                 elif "@libraries/net/minecraftforge/forge/" in output:
@@ -4135,7 +4160,7 @@ eula=true"""
                     import_data['type'] = "forge"
                     import_data['version'] = version
                     import_data['build'] = build
-                    send_log('constants.scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
+                    send_log('scan_import', f"determined type '{import_data['type'].title()}':  validating version information...", 'info')
 
 
                 # Gather launch flags
@@ -4199,7 +4224,7 @@ eula=true"""
 
     os.chdir(cwd)
     if import_data['type'] and import_data['version']:
-        send_log('constants.scan_import', f"determined version '{import_data['version']}': writing to '{tmpsvr}' for further processing...", 'info')
+        send_log('scan_import', f"determined version '{import_data['version']}': writing to '{tmpsvr}' for further processing...", 'info')
 
         # Regenerate auto-mcs.ini
         config_file = create_server_config(import_data, True)
@@ -4280,7 +4305,7 @@ eula=true"""
     # Failed state due to one or more issues locating required data
     error_text = "type" if not import_data['version'] else "type and version"
     log_content = f"unable to determine the server's {error_text}:\n'import_data': {import_data}\n'bkup_file': {bkup_file}\n'script_list': {script_list}"
-    send_log('constants.scan_import', log_content, 'error')
+    send_log('scan_import', log_content, 'error')
     return False
 
 
@@ -4309,7 +4334,7 @@ def finalize_import(progress_func=None, *args):
 
     if import_data['name']:
         new_path = os.path.join(serverDir, import_data['name'])
-        send_log('constants.finalize_import', f"installing '{tmpsvr}' to '{new_path}'...", 'info')
+        send_log('finalize_import', f"installing '{tmpsvr}' to '{new_path}'...", 'info')
 
         # Copy folder to server path and delete tmpsvr
         os.chdir(get_cwd())
@@ -4331,7 +4356,7 @@ def finalize_import(progress_func=None, *args):
 
         # Check for EULA
         if not (server_path(import_data['name'], 'eula.txt') or server_path(import_data['name'], 'EULA.txt')):
-            send_log('constants.finalize_import', f"generating '{new_server_name(import_data['name'], 'eula.txt')}...'", 'info')
+            send_log('finalize_import', f"generating '{new_server_name(import_data['name'], 'eula.txt')}...'", 'info')
 
             time_stamp = date.today().strftime(f"#%a %b %d ") + dt.now().strftime("%H:%M:%S ") + "MCS" + date.today().strftime(f" %Y")
 
@@ -4390,10 +4415,10 @@ eula=true"""
             if progress_func:
                 progress_func(100)
 
-            send_log('constants.finalize_import', f"successfully imported to '{new_path}'", 'info')
+            send_log('finalize_import', f"successfully imported to '{new_path}'", 'info')
             return True
 
-        else: send_log('constants.finalize_import', f"something went wrong importing to '{new_path}'", 'error')
+        else: send_log('finalize_import', f"something went wrong importing to '{new_path}'", 'error')
 
 
 # Imports a modpack from a .zip file
@@ -4431,7 +4456,7 @@ def scan_modpack(update=False, progress_func=None):
 
     # Otherwise, download the modpack and use that as the import file
     else:
-        send_log('constants.scan_modpack', f"a URL was provided for '{import_data['name']}', downloading prior to scan from '{url}'...", 'info')
+        send_log('scan_modpack', f"a URL was provided for '{import_data['name']}', downloading prior to scan from '{url}'...", 'info')
         file_path = import_data['path'] = download_url(url, f"{sanitize_name(import_data['name'])}.{url.rsplit('.',1)[-1]}", downDir)
 
 
@@ -4445,7 +4470,7 @@ def scan_modpack(update=False, progress_func=None):
     os.chdir(tmpsvr)
 
     test_server = os.path.join(tempDir, 'importtest')
-    send_log('constants.scan_modpack', f"extracting '{file_path}' to '{test_server}'...", 'info')
+    send_log('scan_modpack', f"extracting '{file_path}' to '{test_server}'...", 'info')
     folder_check(test_server)
     os.chdir(test_server)
 
@@ -4455,7 +4480,7 @@ def scan_modpack(update=False, progress_func=None):
     if progress_func:
         progress_func(50)
 
-    send_log('constants.scan_modpack', f"scanning '{test_server}' to detect metadata...", 'info')
+    send_log('scan_modpack', f"scanning '{test_server}' to detect metadata...", 'info')
 
 
     # Clean-up name
@@ -4545,7 +4570,7 @@ def scan_modpack(update=False, progress_func=None):
                     for result in pool.map(get_mod_url, metadata):
                         if not result: return result
 
-                send_log('constants.scan_modpack', f"determined modpack type 'Modrinth'", 'info')
+                send_log('scan_modpack', f"determined modpack type 'Modrinth'", 'info')
 
 
     # Approach #2: look for "ServerStarter"
@@ -4633,7 +4658,7 @@ def scan_modpack(update=False, progress_func=None):
                 except KeyError:
                     pass
 
-        send_log('constants.scan_modpack', f"determined modpack type 'ServerStarter'", 'info')
+        send_log('scan_modpack', f"determined modpack type 'ServerStarter'", 'info')
 
 
     # Approach #3: inspect "variables.txt"
@@ -4649,12 +4674,12 @@ def scan_modpack(update=False, progress_func=None):
             data['type'] = variables['modloader'].lower().strip()
             process_flags(variables['java_args'])
 
-        send_log('constants.scan_modpack', f"found 'variables.txt'", 'info')
+        send_log('scan_modpack', f"found 'variables.txt'", 'info')
 
 
     # Approach #4: inspect launch scripts and 'server.jar'
     if not data['version'] or not data['type']:
-        send_log('constants.scan_modpack', f"no valid modpack format found, inspecting launch scripts & 'server.jar'", 'info')
+        send_log('scan_modpack', f"no valid modpack format found, inspecting launch scripts & 'server.jar'", 'info')
 
 
         # Generate script list and iterate through each one
@@ -4728,7 +4753,7 @@ def scan_modpack(update=False, progress_func=None):
 
     # Approach #5: inspect server files
     if not data['version'] or not data['type']:
-        send_log('constants.scan_modpack', f"no valid scripts or 'server.jar', using a manual file scan", 'info')
+        send_log('scan_modpack', f"no valid scripts or 'server.jar', using a manual file scan", 'info')
 
 
         # Generate script list and iterate through each one
@@ -4784,7 +4809,7 @@ def scan_modpack(update=False, progress_func=None):
 
     # Get the modpack name
     if not data['name']:
-        send_log('constants.scan_modpack', f"no name was found, scraping from 'server.properties' and filename", 'info')
+        send_log('scan_modpack', f"no name was found, scraping from 'server.properties' and filename", 'info')
 
 
         # Get the name from "server.properties"
@@ -4840,14 +4865,14 @@ def scan_modpack(update=False, progress_func=None):
             progress_func(100)
 
         log_content = f"determined '{import_data['name']}' is {import_data['type'].title()} '{import_data['version']}'"
-        send_log('constants.scan_modpack', f"{log_content}: writing to '{tmpsvr}' for further processing...", 'info')
+        send_log('scan_modpack', f"{log_content}: writing to '{tmpsvr}' for further processing...", 'info')
         return data
 
 
     # Failed state due to one or more issues locating required data
     else:
         log_content = f"unable to determine all the required metadata:\n'data': {data}"
-        send_log('constants.scan_modpack', log_content, 'error')
+        send_log('scan_modpack', log_content, 'error')
         return False
 
 
@@ -4882,7 +4907,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
     if import_data['name'] and os.path.exists(test_server):
         log_content = f"updating '{new_path}' from '{tmpsvr}'..." if update else f"installing '{tmpsvr}' to '{new_path}'..."
-        send_log('constants.finalize_modpack', log_content, 'info')
+        send_log('finalize_modpack', log_content, 'info')
 
 
         # Finish migrating data to tmpsvr
@@ -4896,7 +4921,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
                         im = Image.open(file_name)
                         im.thumbnail((64, 64), Image.LANCZOS)
                         im.save(os.path.join(tmpsvr, 'server-icon.png'), 'png')
-                    except IOError: send_log('constants.finalize_modpack', "couldn't create thumbnail for server icon", 'error')
+                    except IOError: send_log('finalize_modpack', "couldn't create thumbnail for server icon", 'error')
                     continue
 
                 elif file_name == 'server-icon.png':
@@ -5020,12 +5045,12 @@ eula=true"""
                 progress_func(100)
 
             action = 'updated' if update else 'imported to'
-            send_log('constants.finalize_modpack', f"successfully {action} '{new_path}'", 'info')
+            send_log('finalize_modpack', f"successfully {action} '{new_path}'", 'info')
             return True
 
         else:
             action = 'updating' if update else 'importing to'
-            send_log('constants.finalize_import', f"something went wrong {action} '{new_path}'", 'error')
+            send_log('finalize_import', f"something went wrong {action} '{new_path}'", 'error')
 
 
 # Generates new information for a server update
@@ -5034,7 +5059,7 @@ def init_update(telepath=False, host=None):
     else:        server_obj = server_manager.current_server
     new_server_info['name'] = server_obj.name
 
-    send_log('constants.init_update', f"initializing 'new_server_info' to update '{server_obj.name}'...", 'info')
+    send_log('init_update', f"initializing 'new_server_info' to update '{server_obj.name}'...", 'info')
 
     # Check for Geyser and chat reporting, and prep addon objects
     chat_reporting = False
@@ -5068,7 +5093,7 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
 
     else: server_obj = server_manager.current_server
 
-    send_log('constants.update_world', f"importing '{path}' to '{server_obj.name}'...", 'info')
+    send_log('update_world', f"importing '{path}' to '{server_obj.name}'...", 'info')
 
     # First, save a backup
     server_obj.backup.save()
@@ -5077,7 +5102,7 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
     world_path = server_path(server_obj.name, server_obj.world)
     if world_path:
         def delete_world(w: str):
-            send_log('constants.update_world', f"deleting old world '{w}'...", 'info')
+            send_log('update_world', f"deleting old world '{w}'...", 'info')
             if os.path.exists(w):
                 safe_delete(w)
 
@@ -5105,8 +5130,8 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
     server_obj.reload_config()
 
     # Log final changes
-    if os.path.isdir(new_world): send_log('constants.update_world', f"successfully imported '{path}' to '{server_obj.name}'", 'info')
-    else:                        send_log('constants.update_world', f"something went wrong importing '{path}' to '{server_obj.name}'", 'info')
+    if os.path.isdir(new_world): send_log('update_world', f"successfully imported '{path}' to '{server_obj.name}'", 'info')
+    else:                        send_log('update_world', f"something went wrong importing '{path}' to '{server_obj.name}'", 'info')
 
 
 # Clones a server with support for Telepath
@@ -5121,10 +5146,12 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         source_data = server_obj._telepath_data
         destination_data = new_server_info['_telepath_data']
 
+    success = False
 
 
     # Mode 4: remote a -> remote a
     if (source_data and destination_data) and (source_data['host'] == destination_data['host']):
+        send_log('clone_server', f"<mode-4>  remotely cloning '{source_data['host']}/{server_obj.name}' on '{destination_data['host']}'", 'info')
 
         # Register clone_server function as an endpoint, and run this function remotely as local -> local
         response = api_manager.request(
@@ -5135,12 +5162,13 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         )
         if progress_func and response:
             progress_func(100)
-        return response
+        success = response
 
 
 
     # Mode 3: remote a -> remote b
     elif source_data and destination_data:
+        send_log('clone_server', f"<mode-3>  remotely cloning '{source_data['host']}/{server_obj.name}' to remote '{destination_data['host']}/{new_server_info['name']}'", 'info')
 
         # Download back-up from server_obj
         folder_check(downDir)
@@ -5172,12 +5200,13 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         if scan_import(True) and finalize_import():
             if progress_func:
                 progress_func(100)
-            return True
+            success = True
 
 
 
     # Mode 2: local -> remote
     elif not source_data and destination_data:
+        send_log('clone_server', f"<mode-2>  cloning '{server_obj.name}' to remote '{destination_data['host']}/{new_server_info['name']}'", 'info')
 
         # Copy back-up to tempDir
         folder_check(tempDir)
@@ -5209,12 +5238,13 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         if scan_import(True) and finalize_import():
             if progress_func:
                 progress_func(100)
-            return True
+            success = True
 
 
 
     # Mode 1: remote -> local
     elif source_data and not destination_data:
+        send_log('clone_server', f"<mode-1>  cloning remote '{source_data['host']}/{server_obj.name}' to local '{new_server_info['name']}'", 'info')
 
         # Download back-up from server_obj
         folder_check(downDir)
@@ -5235,12 +5265,13 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         if scan_import(True) and finalize_import():
             if progress_func:
                 progress_func(100)
-            return True
+            success = True
 
 
 
     # Mode 0: local -> local
     else:
+        send_log('clone_server', f"<mode-0>  cloning '{server_obj.name}' to '{new_server_info['name']}'", 'info')
 
         # Copy back-up to tempDir
         folder_check(tempDir)
@@ -5261,7 +5292,13 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
         if scan_import(True) and finalize_import():
             if progress_func:
                 progress_func(100)
-            return True
+            success = True
+
+    # Log results
+    if success: send_log('clone_server', f"successfully cloned '{server_obj.name}' to '{new_server_info['name']}'", 'info')
+    else:       send_log('clone_server', f"something went wrong cloning '{server_obj.name}'", 'error')
+
+    return success
 
 
 
@@ -5299,7 +5336,7 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
 
     # If write_object, write it to file path
     if write_object:
-        send_log('constants.server_config', f"updating configuration in '{config_file}'...", 'info')
+        send_log('server_config', f"updating configuration in '{config_file}'...", 'info')
 
         if write_object.get('general', 'serverType').lower() not in builds_available:
             write_object.remove_option('general', 'serverBuild')
@@ -5313,8 +5350,8 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
         if os_name == "windows":
             run_proc(f"attrib +H \"{config_file}\"")
 
-        if config_file and os.path.exists(config_file): send_log('constants.server_config', f"successfully updated '{config_file}'", 'info')
-        else: send_log('constants.server_config', f"something went wrong updating '{config_file}': no longer exists", 'error')
+        if config_file and os.path.exists(config_file): send_log('server_config', f"successfully updated '{config_file}'", 'info')
+        else: send_log('server_config', f"something went wrong updating '{config_file}': no longer exists", 'error')
         return write_object
 
     # Read only if no config object provided
@@ -5323,7 +5360,7 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
             config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
             config.optionxform = str
             config.read(config_file)
-            send_log('constants.server_config', f"read from '{config_file}'")
+            send_log('server_config', f"read from '{config_file}'")
             def rename_option(old_name: str, new_name: str):
                 try:
                     if config.get("general", old_name):
@@ -5342,13 +5379,13 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
 
         # Failed to read from config file
         except Exception as e:
-            send_log('constants.server_config', f"error reading from '{config_file}': {format_traceback(e)}", 'error')
+            send_log('server_config', f"error reading from '{config_file}': {format_traceback(e)}", 'error')
 
 
 # Creates new auto-mcs.ini config file
 def create_server_config(properties: dict, temp_server=False, modpack=False):
     config_path = os.path.join((tmpsvr if temp_server else server_path(properties['name'])), server_ini)
-    send_log('constants.create_server_config', f"generating '{config_path}...'", 'info')
+    send_log('create_server_config', f"generating '{config_path}...'", 'info')
 
 
     # Write default config
@@ -5387,8 +5424,8 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
         run_proc(f"attrib +H \"{config_path}\"")
 
 
-    if os.path.exists(config_path): send_log('constants.create_server_config', f"successfully created '{config_path}'", 'info')
-    else:                           send_log('constants.create_server_config', f"something went wrong creating '{config_path}'", 'error')
+    if os.path.exists(config_path): send_log('create_server_config', f"successfully created '{config_path}'", 'info')
+    else:                           send_log('create_server_config', f"something went wrong creating '{config_path}'", 'error')
     return config
 
 
@@ -5631,7 +5668,7 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     ram = calculate_ram(properties)
     formatted_flags = '\n'.join(custom_flags.split(" ")) if custom_flags else ''
     log_flags = f' with custom flags:\n{formatted_flags}' if custom_flags else ''
-    send_log('constants.generate_run_script', f"generating run script for {properties['type'].title()} '{properties['version']}' as '{script_path}'{log_flags}...", 'info')
+    send_log('generate_run_script', f"generating run script for {properties['type'].title()} '{properties['version']}' as '{script_path}'{log_flags}...", 'info')
 
 
     # Use custom flags, or Aikar's flags if none are provided
@@ -5722,8 +5759,8 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
 
     os.chdir(cwd)
-    if os.path.exists(script_path): send_log('constants.generate_run_script', f"successfully written to '{script_path}'", 'info')
-    else:                           send_log('constants.generate_run_script', f"failed to write to '{script_path}'", 'error')
+    if os.path.exists(script_path): send_log('generate_run_script', f"successfully written to '{script_path}'", 'info')
+    else:                           send_log('generate_run_script', f"failed to write to '{script_path}'", 'error')
 
     return script_path
 
