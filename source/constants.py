@@ -1568,6 +1568,7 @@ def safe_delete(directory: str) -> bool:
 # Delete every '_MEIPASS' folder in case of leftover files, and delete '.auto-mcs\Downloads' and '.auto-mcs\Uploads'
 def cleanup_old_files():
     os_temp_folder = os.path.normpath(executable_folder + os.sep + os.pardir)
+    send_log('constants.cleanup_old_files', f"cleaning up old {app_title} temporary files in '{os_temp_folder}'")
     for item in glob(os.path.join(os_temp_folder, "*")):
         if (item != executable_folder) and ("_MEI" in os.path.basename(item)):
             if os.path.exists(os.path.join(item, 'gui-assets', 'animations', 'loading_pickaxe.gif')):
@@ -4308,7 +4309,7 @@ def finalize_import(progress_func=None, *args):
 
     if import_data['name']:
         new_path = os.path.join(serverDir, import_data['name'])
-        send_log('constants.finalize_import', f"installing '{tmpsvr}' to '{new_path}'...", 'error')
+        send_log('constants.finalize_import', f"installing '{tmpsvr}' to '{new_path}'...", 'info')
 
         # Copy folder to server path and delete tmpsvr
         os.chdir(get_cwd())
@@ -4877,8 +4878,12 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
 
     test_server = os.path.join(tempDir, 'importtest')
+    new_path = os.path.join(serverDir, str(import_data['name']))
 
     if import_data['name'] and os.path.exists(test_server):
+        log_content = f"updating '{new_path}' from '{tmpsvr}'..." if update else f"installing '{tmpsvr}' to '{new_path}'..."
+        send_log('constants.finalize_modpack', log_content, 'info')
+
 
         # Finish migrating data to tmpsvr
         for item in glob(os.path.join(test_server, '*')):
@@ -4891,8 +4896,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
                         im = Image.open(file_name)
                         im.thumbnail((64, 64), Image.LANCZOS)
                         im.save(os.path.join(tmpsvr, 'server-icon.png'), 'png')
-                    except IOError:
-                        print("Error: can't create thumbnail for server icon")
+                    except IOError: send_log('constants.finalize_modpack', "couldn't create thumbnail for server icon", 'error')
                     continue
 
                 elif file_name == 'server-icon.png':
@@ -4901,27 +4905,20 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
                 elif file_name == 'modrinth.index.json':
                     copy(item, tmpsvr)
-                    if os_name == 'windows':
-                        run_proc(f"attrib +H \"{os.path.join(tmpsvr, 'modrinth.index.json')}\"")
-                    else:
-                        os.rename(os.path.join(tmpsvr, 'modrinth.index.json'), os.path.join(tmpsvr, '.modrinth.index.json'))
+                    if os_name == 'windows': run_proc(f"attrib +H \"{os.path.join(tmpsvr, 'modrinth.index.json')}\"")
+                    else: os.rename(os.path.join(tmpsvr, 'modrinth.index.json'), os.path.join(tmpsvr, '.modrinth.index.json'))
                     continue
 
-                elif file_name.endswith('.png'):
-                    continue
+                elif file_name.endswith('.png'): continue
 
-                if file_name.lower() == 'eula.txt':
-                    continue
+                if file_name.lower() == 'eula.txt': continue
 
-                # Recursively copy folders, and simply copy files
-                if os.path.isdir(item):
-                    copytree(item, os.path.join(tmpsvr, file_name), dirs_exist_ok=True)
-                else:
-                    copy(item, tmpsvr)
+                # Recursively copy folders, and simply copy files if it already exists
+                if os.path.isdir(item): copytree(item, os.path.join(tmpsvr, file_name), dirs_exist_ok=True)
+                else: copy(item, tmpsvr)
 
 
         # Copy existing data from modpack if updating
-        new_path = os.path.join(serverDir, str(import_data['name']))
         if update and os.path.isdir(new_path):
             valid_files = ['server.properties', 'eula.txt', 'auto-mcs.ini', '.auto-mcs.ini', 'start-cmd.tmp']
             for item in glob(os.path.join(new_path, '*')):
@@ -4948,8 +4945,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
                 new_config.set('general', 'serverBuild', str(import_data['build']))
             try:
                 new_config.set('general', 'customFlags', ' '.join(import_data['launch_flags']))
-            except:
-                pass
+            except: pass
             new_config.set('general', 'serverType', import_data['type'])
             server_config(import_data['name'], new_config, os.path.join(tmpsvr, server_ini))
 
@@ -4959,8 +4955,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
             # Erase server folder after copying
             safe_delete(new_path)
 
-        else:
-            create_server_config(import_data, True, import_data['pack_type'])
+        else: create_server_config(import_data, True, import_data['pack_type'])
 
 
         # Copy folder to server path and delete tmpsvr
@@ -5020,18 +5015,26 @@ eula=true"""
             safe_delete(tempDir)
             safe_delete(downDir)
             make_update_list()
+
             if progress_func:
                 progress_func(100)
+
+            action = 'updated' if update else 'imported to'
+            send_log('constants.finalize_modpack', f"successfully {action} '{new_path}'", 'info')
             return True
+
+        else:
+            action = 'updating' if update else 'importing to'
+            send_log('constants.finalize_import', f"something went wrong {action} '{new_path}'", 'error')
 
 
 # Generates new information for a server update
 def init_update(telepath=False, host=None):
-    if telepath:
-        server_obj = server_manager.remote_servers[host]
-    else:
-        server_obj = server_manager.current_server
+    if telepath: server_obj = server_manager.remote_servers[host]
+    else:        server_obj = server_manager.current_server
     new_server_info['name'] = server_obj.name
+
+    send_log('constants.init_update', f"initializing 'new_server_info' to update '{server_obj.name}'...", 'info')
 
     # Check for Geyser and chat reporting, and prep addon objects
     chat_reporting = False
@@ -5063,16 +5066,18 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
         # Report to telepath logger
         api_manager.logger._report(f'main.update_world', extra_data=f'Changing world: {path}', server_name=server_obj.name)
 
-    else:
-        server_obj = server_manager.current_server
+    else: server_obj = server_manager.current_server
 
-    # First, save backup
+    send_log('constants.update_world', f"importing '{path}' to '{server_obj.name}'...", 'info')
+
+    # First, save a backup
     server_obj.backup.save()
 
     # Delete current world
     world_path = server_path(server_obj.name, server_obj.world)
     if world_path:
         def delete_world(w: str):
+            send_log('constants.update_world', f"deleting old world '{w}'...", 'info')
             if os.path.exists(w):
                 safe_delete(w)
 
@@ -5082,9 +5087,10 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
 
     # Copy world to server if one is selected
     world_name = 'world'
+    new_world = os.path.join(server_obj.server_path, world_name)
     if path.strip().lower() != "world":
         world_name = os.path.basename(path)
-        copytree(path, os.path.join(server_obj.server_path, world_name))
+        copytree(path, new_world)
 
     # Fix level-type
     if version_check(server_obj.version, '>=', '1.19') and new_type == 'default':
@@ -5097,6 +5103,10 @@ def update_world(path: str, new_type='default', new_seed='', telepath_data={}):
 
     server_obj.write_config()
     server_obj.reload_config()
+
+    # Log final changes
+    if os.path.isdir(new_world): send_log('constants.update_world', f"successfully imported '{path}' to '{server_obj.name}'", 'info')
+    else:                        send_log('constants.update_world', f"something went wrong importing '{path}' to '{server_obj.name}'", 'info')
 
 
 # Clones a server with support for Telepath
@@ -5313,7 +5323,7 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
             config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
             config.optionxform = str
             config.read(config_file)
-            send_log('constants.server_config', f"read from '{config_file}'", 'debug')
+            send_log('constants.server_config', f"read from '{config_file}'")
             def rename_option(old_name: str, new_name: str):
                 try:
                     if config.get("general", old_name):
@@ -5592,22 +5602,15 @@ def calculate_ram(properties):
 
         try:
             ram = round(psutil.virtual_memory().total / 1073741824)
-
-            if ram >= 32:
-                ram = 6
-            elif ram >= 16:
-                ram = 4
-            else:
-                ram = 2
-        except:
-            ram = 2
-            pass
+            if ram >= 32:    ram = 6
+            elif ram >= 16:  ram = 4
+            else:            ram = 2
+        except:              ram = 2
 
         if properties['type'].lower() in ["forge", "neoforge", "fabric", "quilt"]:
             ram = ram + 2
 
-    else:
-        ram = int(config_spec)
+    else: ram = int(config_spec)
 
     return ram
 
@@ -6360,6 +6363,7 @@ def clear_script_cache(script_path):
     except:
         if debug:
             print(f'Failed to remove script cache: "{json_path}"')
+
 
 
 # ---------------------------------------------- Global Config Function ------------------------------------------------
