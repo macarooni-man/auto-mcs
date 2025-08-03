@@ -435,7 +435,7 @@ def get_repo_templates():
                         url = f'https://raw.githubusercontent.com/macarooni-man/auto-mcs/refs/heads/main/{quote(file["path"])}'
                         download_url(url, file_name, templateDir)
         except:
-            ist_data = []
+            ist_data = {}
 
 
     if os.path.exists(templateDir):

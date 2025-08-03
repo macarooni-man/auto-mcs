@@ -2760,12 +2760,13 @@ def open_console(server_name: str, force_start=False):
 # --------------------------------------------------- Launch Menu ------------------------------------------------------
 
 def run_application():
-    # Give an error if elevated
-    # Give an error if elevated
+
+    # Raise an interactive warning if elevated, but bypassed
     if (constants.is_admin() and not constants.is_docker) and constants.bypass_admin_warning:
         print(f"\n\033[31m> Privilege Warning:  Running auto-mcs as {'administrator' if constants.os_name == 'windows' else 'root'} can expose your system to security vulnerabilities\n\nProceed with caution, this configuration is unsupported\033[0m\n\n< press 'ENTER' to continue >")
         null = input()
 
+    # Raise an error if elevated
     elif (constants.is_admin() and not constants.is_docker) and not constants.bypass_admin_warning:
         print(f"\n\033[31m> Privilege Error:  Running auto-mcs as {'administrator' if constants.os_name == 'windows' else 'root'} can expose your system to security vulnerabilities\n\nPlease restart with standard user privileges to continue\033[0m")
         return False
