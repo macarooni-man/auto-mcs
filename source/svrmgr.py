@@ -1010,7 +1010,7 @@ class ServerObject():
 
             # Write Geyser config if it doesn't exist
             if self.geyser_enabled:
-                constants.write_geyser_config(self)
+                constants.create_geyser_config(self)
 
             # Open server script and attempt to launch
             with open(script_path, 'r') as f:

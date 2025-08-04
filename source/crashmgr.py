@@ -1,4 +1,3 @@
-from platform import platform, architecture
 from operator import itemgetter
 from glob import glob
 import functools
@@ -95,19 +94,12 @@ def generate_log(exception, error_info=None):
     header = f'Auto-MCS Exception:    {ame}  '
     splash = constants.generate_splash(True)
 
-    cpu_arch = architecture()
-    if len(cpu_arch) > 1:
-        cpu_arch = cpu_arch[0]
-
     header_len = 42
     calculated_space = 0
     splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)
 
-    formatted_os_name = constants.os_name.title() if constants.os_name != 'macos' else 'macOS'
-    try:
-        is_telepath = bool(constants.server_manager.current_server._telepath_data)
-    except:
-        is_telepath = False
+    try:    is_telepath = bool(constants.server_manager.current_server._telepath_data)
+    except: is_telepath = False
 
     log = f"""{'=' * (header_len * 3)}
 {"||" + (' ' * round((header_len * 1.5) - (len(header) / 2) - 1)) + header + (' ' * round((header_len * 1.5) - (len(header)) + 14)) + "||"}
@@ -119,17 +111,18 @@ def generate_log(exception, error_info=None):
         
         Severity:          {crash_type.title()}
         
-        Version:           {constants.app_version} - {formatted_os_name} ({"Docker, " if constants.is_docker else ""}{platform()})
+        Version:           {constants.app_version} - {constants.format_os()}
         Online:            {constants.app_online}
+        Permissions:       {"Admin-level" if constants.is_admin() else "User-level"}
         UI Language:       {constants.get_locale_string(True)}
-        Headless:          {constants.headless}
+        Headless:          {"True" if constants.headless else "False"}',
         Active servers:    {', '.join([f"{x}: {y.type} {y.version}" for x, y in enumerate(constants.server_manager.running_servers.values(), 1)]) if constants.server_manager.running_servers else "None"}
         Proxy (playit):    {"Active" if constants.playit._tunnels_in_use() else "Inactive"}
         Telepath client:   {"Active" if is_telepath else "Inactive"}
         Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}
 
-        Processor info:    {psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {round((psutil.cpu_freq().max) / 1000, 2)} GHz ({cpu_arch.replace('bit', '-bit')})
-        Used memory:       {round(psutil.virtual_memory().used / 1073741824, 2)} / {round(psutil.virtual_memory().total / 1073741824)} GB
+        Processor info:    {constants.format_cpu()}
+        Used memory:       {constants.format_ram()}
 
 
 

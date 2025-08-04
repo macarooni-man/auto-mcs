@@ -52,7 +52,7 @@ import svrmgr
 
 # API log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level if level else None, 'api')
+    return constants.send_log(f'{__name__}.{object_data}', message, level, 'api')
 
 # Create ID_HASH to use for authentication so the token can be reset
 telepath_settings = constants.app_config.telepath_settings

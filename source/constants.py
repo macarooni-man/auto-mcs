@@ -1,5 +1,6 @@
 from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
+from platform import platform, architecture
 from datetime import datetime as dt, date
 from random import randrange, choices
 from difflib import SequenceMatcher
@@ -199,13 +200,32 @@ command_tmp = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'
 script_obj  = None
 
 
+# Format OS as a string
+def format_os() -> str:
+    formatted_os_name = os_name.title() if os_name != 'macos' else 'macOS'
+    return f'{formatted_os_name} ({"Docker, " if is_docker else ""}{platform()})'
+
+
+# Format CPU as a string
+def format_cpu() -> str:
+    cpu_arch = architecture()
+    if len(cpu_arch) > 1: cpu_arch = cpu_arch[0]
+    return f"{psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {round((psutil.cpu_freq().max) / 1000, 2)} GHz ({cpu_arch.replace('bit', '-bit')})"
+
+
+# Format RAM as a string
+def format_ram() -> str:
+    return f"{round(psutil.virtual_memory().used / 1073741824, 2)} / {round(psutil.virtual_memory().total / 1073741824)} GB"
+
+
 # Global logger method
 # Levels: 'debug', 'info', 'warning', 'error', 'fatal'
 # Stacks: 'core', 'ui', 'api'
 def send_log(object_data: str, message: str, level: str = None, stack: str = None):
 
     # Initialize default values
-    if '.' not in object_data: object_data = f'{__name__}.{object_data}'
+    if '.' not in object_data and object_data not in ['wrapper', 'telepath']: object_data = f'{__name__}.{object_data}'
+    object_data = object_data.strip('. \n')
     if not level: level = 'debug'
     if not stack: stack = 'core'
 
@@ -222,6 +242,31 @@ def send_log(object_data: str, message: str, level: str = None, stack: str = Non
 def format_traceback(exception: Exception) -> str:
     last_trace = traceback.format_exc()
     return f'{exception}\nTraceback:\n{last_trace}'
+
+
+# Creates a boot log for logger
+boot_arguments = None
+def send_boot_log(object_data: str):
+    global boot_arguments, headless
+    log_args = ' '.join([
+        (f'--{k}' if isinstance(v, bool) else f'--{k} "{v}"')
+        for k, v in vars(deepcopy(boot_arguments)).items() if v
+    ])
+
+    data_list = [
+        f'Version:           {app_version} - {format_os()}',
+        f'Launch flags:      {log_args if log_args else None}',
+        f'Online:            {app_online}',
+        f'Permissions:       {"Admin-level" if is_admin() else "User-level"}',
+        f'UI Language:       {get_locale_string(True)}',
+        f'Headless:          {"True" if headless else "False"}',
+        f'Telepath server:   {"Active" if api_manager.running else "Inactive"}',
+        f'Processor info:    {format_cpu()}',
+        f'Used memory:       {format_ram()}'
+    ]
+
+    formatted_properties = "\n".join(data_list)
+    send_log(object_data, f'initializing {app_title} with the following properties:\n{formatted_properties}', 'info')
 
 
 # App/Assets folder
@@ -653,7 +698,8 @@ def check_free_space(telepath_data: dict = None, required_free_space: int = 15) 
 
     free_space = round(disk_usage('/').free / 1048576)
     enough_space = free_space > 1024 * required_free_space
-    send_log('check_free_space', f'enough free space: {enough_space} - {round(free_space/1024, 2)}GB / {required_free_space}GB', None if enough_space else 'error')
+    action = 'has enough' if enough_space else 'does not have enough'
+    send_log('check_free_space', f'primary disk {action} free space: {round(free_space/1024, 2)} GB / {required_free_space} GB', None if enough_space else 'error')
     return enough_space
 
 
@@ -708,8 +754,8 @@ def is_admin() -> bool:
 
     # Log startup permissions (this only needs to be logged once, but is checked multiple times)
     if not admin_check_logged:
-        if elevated: send_log('is_admin', f'{app_title} is running with elevated permissions', 'warning')
-        else:        send_log('is_admin', f'{app_title} is running with standard user permissions')
+        if elevated: send_log('is_admin', f'{app_title} is running with admin-level permissions', 'warning')
+        else:        send_log('is_admin', f'{app_title} is running with user-level permissions')
         admin_check_logged = True
 
     return elevated
@@ -2058,22 +2104,25 @@ def check_data_cache():
         send_log('check_data_cache', 'latest Vanilla version could not be found, skipping check', 'error')
         return
 
-    if not os.path.isfile(cache_file):
-        renew_cache = True
+    if not os.path.isfile(cache_file): renew_cache = True
 
     else:
         with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
-            if latestMC["vanilla"] not in json.load(f):
-                renew_cache = True
+            try:
+                if latestMC["vanilla"] not in json.load(f): renew_cache = True
+            except: renew_cache = True
 
     # Update cache file
     if renew_cache:
+        send_log('check_data_cache', 'renewing data version cache...')
         folder_check(os.path.join(applicationFolder, "Cache"))
         data_versions = get_data_versions()
 
         if data_versions:
             with open(cache_file, 'w+') as f:
                 f.write(json.dumps(data_versions, indent=2))
+
+    send_log('check_data_cache', f"successfully renewed data version cache to '{cache_file}'")
 
 
 # Random splash message
@@ -2557,7 +2606,7 @@ def search_version(server_info: dict):
 # Generate new server configuration
 def new_server_init():
     global new_server_info
-    send_log('new_server_init', f"initializing 'constants.new_server_info'", 'info')
+    send_log('new_server_init', f"initializing '{__name__}.new_server_info'", 'info')
     new_server_info = {
         "_hash": gen_rstring(8),
         '_telepath_data': None,
@@ -3303,6 +3352,13 @@ def install_server(progress_func=None, imported=False):
     return True
 
 
+# Generate a new EULA content, and time stamp
+def generate_eula() -> [str, str]:
+    time_stamp = date.today().strftime(f"#%a %b %d ") + dt.now().strftime("%H:%M:%S ") + "MCS" + date.today().strftime(f" %Y")
+    eula = f"#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).\n{time_stamp}\neula=true"
+    return eula, time_stamp
+
+
 # Configures server via server info in a variety of ways
 def generate_server_files(progress_func=None):
 
@@ -3330,7 +3386,6 @@ def generate_server_files(progress_func=None):
 
 
     send_log('generate_server_files', f"generating pre-launch files in '{tmpsvr}'...", 'info')
-    time_stamp = date.today().strftime(f"#%a %b %d ") + dt.now().strftime("%H:%M:%S ") + "MCS" + date.today().strftime(f" %Y")
     world_name = 'world'
 
 
@@ -3379,17 +3434,14 @@ def generate_server_files(progress_func=None):
 
 
     # Generate EULA.txt
-    send_log('generate_server_files', f"generating '{os.path.join(tmpsvr, 'eula.txt')}...'", 'info')
-    eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
-{time_stamp}
-eula=true"""
-
+    send_log('generate_server_files', f"generating '{os.path.join(tmpsvr, 'eula.txt')}'...", 'info')
+    eula, time_stamp = generate_eula()
     with open(os.path.join(tmpsvr, 'eula.txt'), 'w+') as f:
         f.write(eula)
 
 
     # Generate server.properties
-    send_log('generate_server_files', f"generating minimal '{os.path.join(tmpsvr, 'server.properties')}...'", 'info')
+    send_log('generate_server_files', f"generating minimal '{os.path.join(tmpsvr, 'server.properties')}'...", 'info')
     gamemode_dict = {
         'survival': 0,
         'creative': 1,
@@ -3412,7 +3464,7 @@ eula=true"""
     def bool_str(value):
         return 'true' if value else 'false'
 
-    serverProperties = f"""#Minecraft server properties
+    properties = f"""#Minecraft server properties
 {time_stamp}
 view-distance=10
 max-build-height=256
@@ -3452,13 +3504,13 @@ resource-pack-hash=
 max-world-size=29999984"""
 
     if version_check(new_server_info['version'], ">=", '1.13'):
-        serverProperties += f"\nenforce_whitelist={bool_str(new_server_info['acl_object']._server['whitelist'])}"
+        properties += f"\nenforce_whitelist={bool_str(new_server_info['acl_object']._server['whitelist'])}"
 
     if version_check(new_server_info['version'], ">=", '1.19'):
-        serverProperties += "\nenforce-secure-profile=false"
+        properties += "\nenforce-secure-profile=false"
 
     with open(os.path.join(tmpsvr, 'server.properties'), 'w+') as f:
-        f.write(serverProperties)
+        f.write(properties)
 
 
     # Create auto-mcs.ini
@@ -4078,13 +4130,8 @@ def scan_import(bkup_file=False, progress_func=None, *args):
                             if os.path.exists(os.path.join(test_server, 'fabric-server-launch.jar')):
                                 file_name = 'fabric-server-launch.jar'
 
-                        time_stamp = date.today().strftime(f"#%a %b %d ") + dt.now().strftime("%H:%M:%S ") + "MCS" + date.today().strftime(f" %Y")
-
-                        eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
-{time_stamp}
-eula=true"""
-
                         # EULA
+                        eula, time_stamp = generate_eula()
                         with open(f"eula.txt", "w+") as f:
                             f.write(eula)
 
@@ -4356,15 +4403,10 @@ def finalize_import(progress_func=None, *args):
 
         # Check for EULA
         if not (server_path(import_data['name'], 'eula.txt') or server_path(import_data['name'], 'EULA.txt')):
-            send_log('finalize_import', f"generating '{new_server_name(import_data['name'], 'eula.txt')}...'", 'info')
+            send_log('finalize_import', f"generating '{new_server_name(import_data['name'], 'eula.txt')}'...", 'info')
 
-            time_stamp = date.today().strftime(f"#%a %b %d ") + dt.now().strftime("%H:%M:%S ") + "MCS" + date.today().strftime(f" %Y")
-
-            # Generate EULA.txt
-            eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
-{time_stamp}
-eula=true"""
-
+            # Generate EULA
+            eula, time_stamp = generate_eula()
             with open(os.path.join(server_path(import_data['name']), 'eula.txt'), 'w+') as f:
                 f.write(eula)
 
@@ -5006,13 +5048,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
 
 
             # Write EULA and "server.properties"
-            time_stamp = date.today().strftime(f"#%a %b %d ") + dt.now().strftime("%H:%M:%S ") + "MCS" + date.today().strftime(f" %Y")
-
-            # Generate EULA.txt
-            eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
-{time_stamp}
-eula=true"""
-
+            eula, time_stamp = generate_eula()
             with open(os.path.join(server_path(import_data['name']), 'eula.txt'), 'w+') as f:
                 f.write(eula)
 
@@ -5304,14 +5340,16 @@ def clone_server(server_obj: object or str, progress_func=None, host=None, *args
 
 # ------------------------------------------------ Server Functions ----------------------------------------------------
 
-
 # Toggles favorite status in Server Manager
 def toggle_favorite(server_name: str):
     config_file = server_config(server_name)
     config_file.set('general', 'isFavorite', ('false' if config_file.get('general', 'isFavorite') == 'true' else 'true'))
     server_config(server_name, config_file)
 
-    return bool(config_file.get('general', 'isFavorite') == 'true')
+    is_favorite = bool(config_file.get('general', 'isFavorite') == 'true')
+    action = 'marked' if is_favorite else 'unmarked'
+    send_log('toggle_favorite', f"'server_name' is now {action} as favorite", 'info')
+    return is_favorite
 
 
 # Returns general server type from specific type
@@ -5338,21 +5376,24 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
     if write_object:
         send_log('server_config', f"updating configuration in '{config_file}'...", 'info')
 
-        if write_object.get('general', 'serverType').lower() not in builds_available:
-            write_object.remove_option('general', 'serverBuild')
+        try:
+            if write_object.get('general', 'serverType').lower() not in builds_available:
+                write_object.remove_option('general', 'serverBuild')
 
-        if os_name == "windows":
-            run_proc(f"attrib -H \"{config_file}\"")
+            if os_name == "windows":
+                run_proc(f"attrib -H \"{config_file}\"")
 
-        with open(config_file, 'w') as f:
-            write_object.write(f)
+            with open(config_file, 'w') as f:
+                write_object.write(f)
 
-        if os_name == "windows":
-            run_proc(f"attrib +H \"{config_file}\"")
+            if os_name == "windows":
+                run_proc(f"attrib +H \"{config_file}\"")
 
-        if config_file and os.path.exists(config_file): send_log('server_config', f"successfully updated '{config_file}'", 'info')
-        else: send_log('server_config', f"something went wrong updating '{config_file}': no longer exists", 'error')
+        except Exception as e: send_log('server_config', f"error updating '{config_file}': {format_traceback(e)}", 'error')
+        else:                  send_log('server_config', f"successfully updated '{config_file}'", 'info')
+
         return write_object
+
 
     # Read only if no config object provided
     else:
@@ -5384,48 +5425,50 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
 
 # Creates new auto-mcs.ini config file
 def create_server_config(properties: dict, temp_server=False, modpack=False):
+    config = None
     config_path = os.path.join((tmpsvr if temp_server else server_path(properties['name'])), server_ini)
-    send_log('create_server_config', f"generating '{config_path}...'", 'info')
+    send_log('create_server_config', f"generating '{config_path}'...", 'info')
 
 
     # Write default config
-    config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
-    config.optionxform = str
+    try:
+        config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+        config.optionxform = str
 
-    config.add_section('general')
-    config.set('general', "; DON'T MODIFY THE CONTENTS OF THIS FILE")
-    config.set('general', 'serverName', properties['name'])
-    config.set('general', 'serverVersion', properties['version'])
-    if properties['build']:
-        config.set('general', 'serverBuild', str(properties['build']))
-    config.set('general', 'serverType', properties['type'])
-    config.set('general', 'isFavorite', 'false')
-    config.set('general', 'updateAuto', 'prompt')
-    config.set('general', 'allocatedMemory', 'auto')
-    try:    config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
-    except: config.set('general', 'enableGeyser', 'false')
-    try:    config.set('general', 'enableProxy', str(properties['server_settings']['enable_proxy']).lower())
-    except: config.set('general', 'enableProxy', 'false')
-    try:    config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
-    except: pass
-    if modpack: config.set('general', 'isModpack', str(modpack))
+        config.add_section('general')
+        config.set('general', "; DON'T MODIFY THE CONTENTS OF THIS FILE")
+        config.set('general', 'serverName', properties['name'])
+        config.set('general', 'serverVersion', properties['version'])
+        if properties['build']:
+            config.set('general', 'serverBuild', str(properties['build']))
+        config.set('general', 'serverType', properties['type'])
+        config.set('general', 'isFavorite', 'false')
+        config.set('general', 'updateAuto', 'prompt')
+        config.set('general', 'allocatedMemory', 'auto')
+        try:    config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
+        except: config.set('general', 'enableGeyser', 'false')
+        try:    config.set('general', 'enableProxy', str(properties['server_settings']['enable_proxy']).lower())
+        except: config.set('general', 'enableProxy', 'false')
+        try:    config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
+        except: pass
+        if modpack: config.set('general', 'isModpack', str(modpack))
 
-    config.add_section('bkup')
-    config.set('bkup', 'bkupAuto', 'prompt')
-    config.set('bkup', 'bkupMax', '5')
-    config.set('bkup', 'bkupDir', backupFolder)
-
-
-    # Write file to path
-    with open(config_path, 'w') as f:
-        config.write(f)
-
-    if os_name == "windows":
-        run_proc(f"attrib +H \"{config_path}\"")
+        config.add_section('bkup')
+        config.set('bkup', 'bkupAuto', 'prompt')
+        config.set('bkup', 'bkupMax', '5')
+        config.set('bkup', 'bkupDir', backupFolder)
 
 
-    if os.path.exists(config_path): send_log('create_server_config', f"successfully created '{config_path}'", 'info')
-    else:                           send_log('create_server_config', f"something went wrong creating '{config_path}'", 'error')
+        # Write file to path
+        with open(config_path, 'w') as f:
+            config.write(f)
+
+        if os_name == "windows":
+            run_proc(f"attrib +H \"{config_path}\"")
+
+    except Exception as e: send_log('create_server_config', f"error creating '{config_path}': {format_traceback(e)}", 'error')
+    else:                  send_log('create_server_config', f"successfully created '{config_path}'", 'info')
+
     return config
 
 
@@ -5448,33 +5491,100 @@ def reconstruct_config(remote_config: dict or configparser.ConfigParser, to_dict
     return config
 
 
+# Fixes empty 'server.properties' file, and updates EULA date check
+def fix_empty_properties(name):
+    path = server_path(name)
+    properties_file = os.path.join(path, 'server.properties')
+    send_log('server_properties', f"generating new 'server.properties' for '{name}'...", 'info')
+
+    try:
+        eula, time_stamp = generate_eula()
+
+        # EULA
+        with open(os.path.join(path, 'eula.txt'), "w+") as f:
+            f.write(eula)
+
+        # server.properties
+        properties = f"""#Minecraft server properties
+{time_stamp}
+view-distance=10
+max-build-height=256
+server-ip=
+level-seed=
+gamemode=0
+server-port=25565
+enable-command-block=false
+allow-nether=true
+enable-rcon=false
+op-permission-level=4
+enable-query=false
+generator-settings=
+resource-pack=
+player-idle-timeout=0
+level-name=world
+motd=A Minecraft Server
+announce-player-achievements=true
+force-gamemode=false
+hardcore=false
+white-list=false
+pvp=true
+spawn-npcs=true
+generate-structures=true
+spawn-animals=true
+snooper-enabled=true
+difficulty=1
+network-compression-threshold=256
+level-type=default
+spawn-monsters=true
+max-tick-time=60000
+max-players=20
+spawn-protection=20
+online-mode=true
+allow-flight=true
+resource-pack-hash=
+max-world-size=29999984"""
+
+        with open(properties_file, "w+") as f:
+            f.write(properties)
+
+    except Exception as e: send_log('server_properties', f"error generating '{properties_file}': {format_traceback(e)}", 'error')
+    else:                  send_log('server_properties', f"successfully generated '{properties_file}'", 'info')
+
+
 # server.properties function
 # write_object is the dict object returned from this function
 def server_properties(server_name: str, write_object=None):
     properties_file = server_path(server_name, 'server.properties')
     force_strings = ['level-seed', 'level-name', 'motd', 'resource-pack', 'resource-pack-prompt', 'resource-pack-sha1']
 
+
     # If write_object, write it to file path
     if write_object:
+        send_log('server_properties', f"updating configuration in '{properties_file}'...", 'info')
 
-        with open(properties_file, 'w', encoding='utf-8', errors='ignore') as f:
-            file_contents = ""
+        try:
+            with open(properties_file, 'w', encoding='utf-8', errors='ignore') as f:
+                file_contents = ""
 
-            for key, value in write_object.items():
+                for key, value in write_object.items():
 
-                # Force boolean values
-                if str(value).lower().strip() in ['true', 'false'] and str(key) not in force_strings:
-                    value = str(value).lower().strip()
+                    # Force boolean values
+                    if str(value).lower().strip() in ['true', 'false'] and str(key) not in force_strings:
+                        value = str(value).lower().strip()
 
-                # Force strings to be strings
-                elif str(key) in force_strings:
-                    value = str(value).strip()
+                    # Force strings to be strings
+                    elif str(key) in force_strings:
+                        value = str(value).strip()
 
-                file_contents += f"{key}{'' if key.startswith('#') else ('=' + str(value))}\n"
+                    file_contents += f"{key}{'' if key.startswith('#') else ('=' + str(value))}\n"
 
-            f.write(file_contents)
+                f.write(file_contents)
+
+        except Exception as e: send_log('server_properties', f"error updating '{properties_file}': {format_traceback(e)}", 'error')
+        else:                  send_log('server_properties', f"successfully updated '{properties_file}'", 'info')
 
         return write_object
+
 
     # Read only if no config object provided
     else:
@@ -5483,6 +5593,8 @@ def server_properties(server_name: str, write_object=None):
 
         try:
             with open(properties_file, 'r', encoding='utf-8', errors='ignore') as f:
+                send_log('server_properties', f"read from '{properties_file}'")
+
                 for line in f.readlines():
                     if not line.strip():
                         continue
@@ -5511,46 +5623,45 @@ def server_properties(server_name: str, write_object=None):
                                 config[line_object[0].strip()] = line_object[1].strip()
 
 
-                    except IndexError:
-                        config[line_object[0].strip()] = ""
+                    except IndexError: config[line_object[0].strip()] = ""
 
 
             # Override invalid values
             valid = False
             try:
-                if int(config['max-players']) > 0:
-                    valid = True
-            except:
-                pass
+                if int(config['max-players']) > 0: valid = True
+            except: pass
+
             if not valid:
                 config['max-players'] = 20
                 config = server_properties(server_name, config)
 
 
-        except OSError:
+        except Exception as e:
+            send_log('server_properties', f"error reading from '{properties_file}': {format_traceback(e)}", 'error')
             no_file = True
-        except TypeError:
-            no_file = True
+
 
         # Re-generate 'server.properties' if the file does not exist
         if no_file or not config:
             fix_empty_properties(server_name)
             config = server_properties(server_name)
+            if config: send_log('server_properties', f"read from '{properties_file}'")
+            else:      send_log('server_properties', f"something went wrong re-generating '{properties_file}'", 'error')
 
         return config
 
 
 # Creates a new Geyser config with auto-mcs data
-def write_geyser_config(server_obj: object, reset=False) -> bool:
-    config_name = 'config.yml'
+def create_geyser_config(server_obj: object, reset=False) -> bool:
 
-    if server_obj.type in ['vanilla', 'forge']:
-        return False
-    if server_obj.type == 'fabric':
-        config_path = os.path.join(server_obj.server_path, 'config', 'Geyser-Fabric')
-    else:
-        config_path = os.path.join(server_obj.server_path, 'plugins', 'Geyser-Spigot')
+    # Ascertain which path the config should be in
+    config_name = 'config.yml'
+    if server_obj.type in ['vanilla', 'forge']: return False
+    if server_obj.type == 'fabric': config_path = os.path.join(server_obj.server_path, 'config', 'Geyser-Fabric')
+    else:                           config_path = os.path.join(server_obj.server_path, 'plugins', 'Geyser-Spigot')
     final_path = os.path.join(config_path, config_name)
+    send_log('create_geyser_config', f"writing Geyser config to '{final_path}'...", 'info')
     config_data = f"""# Setup: https://wiki.geysermc.org/geyser/setup/
 bedrock:
   address: 0.0.0.0
@@ -5604,10 +5715,16 @@ disable-compression: true
 config-version: 4
 """
 
-    if not os.path.exists(final_path) or reset:
-        folder_check(config_path)
-        with open(final_path, 'w+') as yml:
-            yml.write(config_data)
+
+    # Write to disk
+    try:
+        if not os.path.exists(final_path) or reset:
+            folder_check(config_path)
+            with open(final_path, 'w+') as yml:
+                yml.write(config_data)
+
+    except Exception as e: send_log('create_geyser_config', f"error creating '{final_path}': {format_traceback(e)}", 'error')
+    else:                  send_log('create_geyser_config', f"successfully created '{final_path}'", 'info')
 
     return os.path.exists(final_path)
 
@@ -5672,96 +5789,98 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
 
 
     # Use custom flags, or Aikar's flags if none are provided
-    java_override = None
+    try:
+        java_override = None
 
-    if no_flags:
-        start_flags = ''
-    elif not custom_flags:
-        start_flags = ' -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
-    else:
-
-        # Override java version with custom flag
-        check_override = re.search(r'^<java\d+>', custom_flags.strip())
-        if check_override:
-            override = check_override[0]
-            custom_flags = custom_flags.replace(override, '').strip()
-            if override == '<java21>':
-                java_override = java_executable['modern']
-            elif override == '<java17>':
-                java_override = java_executable['lts']
-            elif override == '<java8>':
-                java_override = java_executable['legacy']
-
-        # Build start flags
-        start_flags = f' {custom_flags}'
-
-
-    # Do some schennanies for NeoForge
-    if properties['type'] == 'neoforge':
-        if java_override:
-            java = java_override
+        if no_flags:
+            start_flags = ''
+        elif not custom_flags:
+            start_flags = ' -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true'
         else:
-            java = java_executable['modern']
-        version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "neoforged", "neoforge", f"{float(properties['version'][2:])}*")) if os.listdir(file)]
-        arg_file = f"libraries/net/neoforged/neoforge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
-        script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+
+            # Override java version with custom flag
+            check_override = re.search(r'^<java\d+>', custom_flags.strip())
+            if check_override:
+                override = check_override[0]
+                custom_flags = custom_flags.replace(override, '').strip()
+                if override == '<java21>':
+                    java_override = java_executable['modern']
+                elif override == '<java17>':
+                    java_override = java_executable['lts']
+                elif override == '<java8>':
+                    java_override = java_executable['legacy']
+
+            # Build start flags
+            start_flags = f' {custom_flags}'
 
 
-    # Do some schennanies for Forge
-    elif properties['type'] == 'forge':
-
-        # Modern
-        if version_check(properties['version'], ">=", "1.17"):
+        # Do some schennanies for NeoForge
+        if properties['type'] == 'neoforge':
             if java_override:
                 java = java_override
             else:
-                java = java_executable["lts"] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
-            version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*")) if os.listdir(file)]
-            arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
-            script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+                java = java_executable['modern']
+            version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "neoforged", "neoforge", f"{float(properties['version'][2:])}*")) if os.listdir(file)]
+            arg_file = f"libraries/net/neoforged/neoforge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
+            script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram / 2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
 
-        # 1.6 to 1.16
-        elif version_check(properties['version'], ">=", "1.6") and version_check(properties['version'], "<", "1.17"):
+
+        # Do some schennanies for Forge
+        elif properties['type'] == 'forge':
+
+            # Modern
+            if version_check(properties['version'], ">=", "1.17"):
+                if java_override:
+                    java = java_override
+                else:
+                    java = java_executable["lts"] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
+                version_list = [os.path.basename(file) for file in glob(os.path.join("libraries", "net", "minecraftforge", "forge", f"1.{math.floor(float(properties['version'].replace('1.', '', 1)))}*")) if os.listdir(file)]
+                arg_file = f"libraries/net/minecraftforge/forge/{version_list[-1]}/{'win_args.txt' if os_name == 'windows' else 'unix_args.txt'}"
+                script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true @{arg_file} nogui'
+
+            # 1.6 to 1.16
+            elif version_check(properties['version'], ">=", "1.6") and version_check(properties['version'], "<", "1.17"):
+                if java_override:
+                    java = java_override
+                else:
+                    java = java_executable["legacy"]
+                script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+
+
+        # Everything else
+        else:
+            # Make sure this works non-spigot versions
             if java_override:
                 java = java_override
             else:
-                java = java_executable["legacy"]
-            script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G {start_flags} -Dlog4j2.formatMsgNoLookups=true -jar server.jar nogui'
+                java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
 
+            # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
+            script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
 
-    # Everything else
-    else:
-        # Make sure this works non-spigot versions
-        if java_override:
-            java = java_override
-        else:
-            java = java_executable["legacy"] if version_check(properties['version'], '<','1.17') else java_executable['lts'] if version_check(properties['version'], '<', '1.19.3') else java_executable['modern']
+            if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
+                script += ' -DPaper.ignoreJavaVersion=true'
 
-        # On bukkit derivatives, install geysermc, floodgate, and viaversion if version >= 1.13.2 (add -DPaper.ignoreJavaVersion=true if paper < 1.16.5)
-        script = f'"{java}" -Xmx{ram}G -Xms{int(round(ram/2))}G{start_flags} -Dlog4j2.formatMsgNoLookups=true'
+            # Improve performance on Purpur
+            if properties['type'] == 'purpur':
+                script += ' --add-modules=jdk.incubator.vector'
 
-        if version_check(properties['version'], "<", "1.16.5") and properties['type'] in ['paper', 'purpur']:
-            script += ' -DPaper.ignoreJavaVersion=true'
+            jar_name = 'quilt.jar' if properties['type'] == 'quilt' else 'server.jar'
 
-        # Improve performance on Purpur
-        if properties['type'] == 'purpur':
-            script += ' --add-modules=jdk.incubator.vector'
-
-        jar_name = 'quilt.jar' if properties['type'] == 'quilt' else 'server.jar'
-
-        script += f' -jar {jar_name} nogui'
+            script += f' -jar {jar_name} nogui'
 
 
 
-    if script:
-        with open(script_name, 'w+') as f: f.write(script)
-        if os_name != 'windows': run_proc(f'chmod +x {script_name}')
+        if script:
+            with open(script_name, 'w+') as f: f.write(script)
+            if os_name != 'windows': run_proc(f'chmod +x {script_name}')
 
+
+    # Log and return from errors
+    except Exception as e: send_log('generate_run_script', f"error writing to '{script_path}': {format_traceback(e)}", 'error')
+    else:                  send_log('generate_run_script', f"successfully written to '{script_path}'", 'info')
 
     os.chdir(cwd)
-    if os.path.exists(script_path): send_log('generate_run_script', f"successfully written to '{script_path}'", 'info')
-    else:                           send_log('generate_run_script', f"failed to write to '{script_path}'", 'error')
-
     return script_path
 
 
@@ -5778,9 +5897,10 @@ def generate_server_list():
                 server_list.append(os.path.basename(file))
                 server_list_lower.append(os.path.basename(file).lower())
 
-    except FileNotFoundError:
-        pass
+    except Exception as e:
+        send_log('generate_server_list', f'error generating server list: {format_traceback(e)}', 'error')
 
+    send_log('generate_server_list', f"generated server list from valid servers in '{serverDir}':\n{server_list}")
     return server_list
 
 
@@ -5788,25 +5908,22 @@ def generate_server_list():
 def get_modrinth_data(name: str):
     index = os.path.join(server_path(name), f'{"" if os_name == "windows" else "."}modrinth.index.json')
     index_data = {"name": None, "version": '0.0.0', "latest": '0.0.0'}
+    send_log('get_modrinth_data', f"checking the Modrinth API for available updates to '{name}'...")
 
+
+    # Check for 'modrinth.index.json' to get accurate server information
     if index:
-        if os_name == 'windows':
-            run_proc(f"attrib -H \"{index}\"")
+        if os_name == 'windows': run_proc(f"attrib -H \"{index}\"")
 
         with open(index, 'r', encoding='utf-8', errors='ignore') as f:
             data = json.loads(f.read())
 
-            try:
-                index_data['name'] = data['name']
-            except KeyError:
-                pass
-            try:
-                index_data['version'] = data['versionId']
-            except KeyError:
-                pass
+            try: index_data['name'] = data['name']
+            except KeyError: pass
+            try: index_data['version'] = data['versionId']
+            except KeyError: pass
 
-        if os_name == 'windows':
-            run_proc(f"attrib +H \"{index}\"")
+        if os_name == 'windows': run_proc(f"attrib +H \"{index}\"")
 
 
         # Check online for latest version
@@ -5814,8 +5931,9 @@ def get_modrinth_data(name: str):
             online_modpack = addons.get_modpack_url(addons.search_modpacks(index_data['name'])[0])
             index_data['latest'] = online_modpack.download_version
             index_data['download_url'] = online_modpack.download_url
+            send_log('get_modrinth_data', f"update found for '{name}': '{online_modpack.download_url}'")
         except IndexError:
-            pass
+            send_log('get_modrinth_data', f"'{name}' is up to date")
 
 
     return index_data
@@ -5824,15 +5942,13 @@ def get_modrinth_data(name: str):
 # Return list of every valid server update property in 'applicationFolder'
 def make_update_list():
     global update_list
-
     update_list = {}
+    send_log('make_update_list', f"globally checking for server updates...", 'info')
 
     for name in glob(os.path.join(applicationFolder, "Servers", "*")):
 
         name = os.path.basename(name)
-
         serverObject = {name: {"updateAuto": "false", "needsUpdate": "false", "updateString": None, "updateUrl": None}}
-
         configFile = os.path.abspath(os.path.join(applicationFolder, 'Servers', name, server_ini))
 
         if os.path.isfile(configFile) is True:
@@ -5844,17 +5960,14 @@ def make_update_list():
             jarVer = str(config.get("general", "serverVersion"))
             jarType = str(config.get("general", "serverType"))
 
-            try:
-                jarBuild = str(config.get("general", "serverBuild"))
-            except configparser.NoOptionError:
-                jarBuild = ""
+            try: jarBuild = str(config.get("general", "serverBuild"))
+            except configparser.NoOptionError: jarBuild = ""
 
-            try:
-                isModpack = str(config.get("general", "isModpack"))
-            except configparser.NoOptionError:
-                isModpack = ""
+            try: isModpack = str(config.get("general", "isModpack"))
+            except configparser.NoOptionError: isModpack = ""
 
 
+            # Check if modpack needs an update if detected (show only if auto-updates are enabled)
             if isModpack:
                 if isModpack == 'mrpack':
                     modpack_data = get_modrinth_data(name)
@@ -5864,6 +5977,7 @@ def make_update_list():
                         serverObject[name]["updateUrl"] = modpack_data['download_url']
 
 
+            # Check if normal server needs an update (show only if auto-updates are enabled)
             else:
                 new_version = latestMC[jarType.lower()]
                 current_version = jarVer
@@ -5879,15 +5993,27 @@ def make_update_list():
 
         update_list.update(serverObject)
 
+    # Log update list
+    if update_list: send_log('make_update_list', f"updates are available for:\n{str(list(update_list.keys()))}", 'info')
+    else:           send_log('make_update_list', 'all servers are up to date', 'info')
+
     return update_list
 
 
 # Check if port is open on host
 def check_port(ip: str, port: int, timeout=120):
+
+    # Check connectivity
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     result = sock.connect_ex((ip, port))
-    return result == 0
+
+    # Log connectivity
+    success = result == 0
+    if success: send_log('check_port', f"successfully connected to '{ip}:{port}'")
+    else:       send_log('check_port', f"could not connect to '{ip}:{port}': timed out", 'error')
+
+    return success
 
 
 # Assigned from 'menu.py' to update IP text on screens
@@ -6020,64 +6146,6 @@ def get_current_ip(name: str, proxy=False):
     return network_dict
 
 
-# Fixes empty 'server.properties' file
-def fix_empty_properties(name):
-    path = server_path(name)
-
-    timeStamp = date.today().strftime(f"#%a %b %d ") + dt.now().strftime("%H:%M:%S ") + "MCS" + date.today().strftime(f" %Y")
-
-    eula = f"""#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).
-{timeStamp}
-eula=true"""
-
-    # EULA
-    with open(os.path.join(path, 'eula.txt'), "w+") as f:
-        f.write(eula)
-
-    # server.properties
-    serverProperties = f"""#Minecraft server properties
-{timeStamp}
-view-distance=10
-max-build-height=256
-server-ip=
-level-seed=
-gamemode=0
-server-port=25565
-enable-command-block=false
-allow-nether=true
-enable-rcon=false
-op-permission-level=4
-enable-query=false
-generator-settings=
-resource-pack=
-player-idle-timeout=0
-level-name=world
-motd=A Minecraft Server
-announce-player-achievements=true
-force-gamemode=false
-hardcore=false
-white-list=false
-pvp=true
-spawn-npcs=true
-generate-structures=true
-spawn-animals=true
-snooper-enabled=true
-difficulty=1
-network-compression-threshold=256
-level-type=default
-spawn-monsters=true
-max-tick-time=60000
-max-players=20
-spawn-protection=20
-online-mode=true
-allow-flight=true
-resource-pack-hash=
-max-world-size=29999984"""
-
-    with open(os.path.join(path, 'server.properties'), "w+") as f:
-        f.write(serverProperties)
-
-
 # Recursively gathers all config files with a specific depth (default 3)
 # Returns {"dir1": ['match1', 'match2', 'match3', ...]}
 valid_config_formats = ['properties', 'yml', 'yaml', 'tml', 'toml', 'json', 'json5', 'ini', 'txt', 'snbt']
@@ -6090,6 +6158,7 @@ def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
         'banned-ips.txt', 'eula.txt', 'bans.txt', 'modrinth.index.json', 'amscript', server_ini
     ]
     final_dict = {}
+    send_log('gather_config_files', f"recursively retrieving all config files in '{name}'...")
 
     def process_dir(path: str, depth: int = 0):
         basename = os.path.basename(path)
@@ -6118,9 +6187,13 @@ def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
             final_dict[path] = sorted(match_list, key=lambda x: (os.path.basename(x) != 'server.properties', os.path.basename(x)))
 
     process_dir(root)
-    return dict(sorted(final_dict.items(), key=lambda item: (os.path.basename(item[0]) != name, os.path.basename(item[0]))))
+    files = dict(sorted(final_dict.items(), key=lambda item: (os.path.basename(item[0]) != name, os.path.basename(item[0]))))
+    if files: send_log('gather_config_files', f"found {len(files)} config file(s) in '{name}':\n{files}")
+    else:     send_log('gather_config_files', f"no config files were found in '{name}'")
 
-# Replace configuration files via Telepath
+    return files
+
+# Replace configuration files on this instance from a Telepath client
 def update_config_file(server_name: str, upload_path: str, destination_path: str):
 
     # Don't allow move to itself
@@ -6147,6 +6220,7 @@ def update_config_file(server_name: str, upload_path: str, destination_path: str
         return False
 
     # Move file to intended path
+    send_log('update_config_file', f"replacing '{destination_path}' with '{upload_path}'")
     move(upload_path, destination_path)
     clear_uploads()
 
@@ -6250,17 +6324,17 @@ def update_server_icon(server_name: str, new_image: str = False) -> [bool, str]:
     # Delete if no image was provided
     if not new_image or new_image == 'False':
         if os.path.isfile(icon_path):
-            try:
-                os.remove(icon_path)
-            except:
-                pass
+            try: os.remove(icon_path)
+            except: pass
 
+        send_log('update_server_icon', f"successfully cleared the server icon for '{server_name}'", 'info')
         return (True, 'icon removed successfully') if not os.path.exists(icon_path) else (False, 'something went wrong, please try again')
 
 
     # First, check if the image has a valid extension
     extension = new_image.rsplit('.')[-1].lower()
     if f'*.{extension}' not in valid_image_formats:
+        send_log('update_server_icon', f"failed to change server icon for '{server_name}': '{new_image}' is not in valid extensions:\n{valid_image_formats}", 'error')
         return (False, f'".{extension}" is not a valid extension')
 
     # Next, try to convert the image
@@ -6297,10 +6371,10 @@ def update_server_icon(server_name: str, new_image: str = False) -> [bool, str]:
         new_img.save(icon_path, 'PNG')
 
     except Exception as e:
-        if debug:
-            print(f"Failed to convert icon: {e}")
+        send_log('update_server_icon', f"error processing new server icon: {format_traceback(e)}", 'error')
         return (False, 'failed to convert the icon')
 
+    send_log('update_server_icon', f"successfully processed and replaced the server icon for '{server_name}' with '{new_image}'", 'info')
     return (True, 'successfully updated the icon')
 
 
@@ -6319,10 +6393,8 @@ def get_player_head(user: str):
 
         if os.path.exists(final_path):
             age = abs(dt.today().day - dt.fromtimestamp(os.stat(final_path).st_mtime).day)
-            if age < 3:
-                return final_path
-            else:
-                os.remove(final_path)
+            if age < 3: return final_path
+            else:       os.remove(final_path)
 
         elif not check_free_space():
             return default_image
@@ -6336,8 +6408,7 @@ def get_player_head(user: str):
             return default_image
 
     except Exception as e:
-        if debug:
-            print(f"Error retrieving head for '{user}': {e}")
+        send_log(f"error retrieving player head icon for '{user}': {format_traceback(e)}")
         return default_image
 
 
@@ -6364,7 +6435,14 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
         folder_check(icon_cache)
         if os.path.exists(final_path) and overwrite:
             os.remove(final_path)
-        telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
+
+        # Ensure that the server actually has an icon
+        try:
+            telepath_download(telepath_data, telepath_data['icon-path'], icon_cache, rename=name)
+        except TypeError:
+            # send_log('update_server_icon', f"'{telepath_data['host']}/{server_name}' doesn't have a server icon")
+            return None
+
 
         if os.path.exists(final_path):
             return final_path
@@ -6372,8 +6450,7 @@ def get_server_icon(server_name: str, telepath_data: dict, overwrite=False):
             return None
 
     except Exception as e:
-        if debug:
-            print(f"Error retrieving icon for '{server_name}': {e}")
+        send_log('update_server_icon', f"error retrieving icon for '{telepath_data['host']}/{server_name}': {format_traceback(e)}", 'error')
         return None
 
 
@@ -6397,9 +6474,8 @@ def clear_script_cache(script_path):
             os.remove(json_path)
 
     # Log on failure
-    except:
-        if debug:
-            print(f'Failed to remove script cache: "{json_path}"')
+    except Exception as e:
+        send_log('clear_script_cache', f"failed to remove IDE script cache '{json_path}': {format_traceback(e)}", 'error')
 
 
 
