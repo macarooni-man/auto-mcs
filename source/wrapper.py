@@ -231,11 +231,16 @@ if __name__ == '__main__':
         if not update_log or not os.path.exists(update_log):
             constants.safe_delete(constants.tempDir)
 
-    def app_crash(exception):
+    def app_crash(traceback, exception):
         import crashmgr
-        log = crashmgr.generate_log(exception)
-        if not constants.headless:
-            crashmgr.launch_window(*log)
+        exc_code, log_path = crashmgr.generate_log(traceback)
+        send_log('app_crash', f"{constants.app_title} has crashed with exception code:  {exc_code}\nFull crash log available in:  '{log_path}'", 'fatal')
+
+        # Normal Python behavior when testing
+        if not constants.app_compiled: raise exception
+
+        # Otherwise, launch appropriate crash hook
+        crashmgr.launch_window(exc_code, log_path)
 
 
     # Main wrapper
@@ -284,21 +289,19 @@ if __name__ == '__main__':
         while True:
 
             # Exit this thread if the main thread closes, or crashes
-            if exitApp or crash:
-                break
+            if exitApp or crash: break
             else:
 
                 # Check for network changes in the background
                 connect_counter += 1
                 if (connect_counter == 10 and not constants.app_online) or (connect_counter == 3600 and constants.app_online):
-                    try:
-                        constants.check_app_updates()
-                    except Exception as e:
-                        send_log('background', f"error checking for app updates: {constants.format_traceback(e)}", 'error')
-
+                    try: constants.check_app_updates()
+                    except Exception as e: send_log('background', f"error checking for app updates: {constants.format_traceback(e)}", 'error')
                     connect_counter = 0
 
-                time.sleep(1)
+                if not (exitApp or crash): time.sleep(1)
+
+        send_log('background', 'closed background thread', 'debug')
 
     def foreground():
         global exitApp, crash
@@ -315,21 +318,23 @@ if __name__ == '__main__':
         except Exception as e:
             crash = format_exc()
             exitApp = True
+            send_log('foreground', 'UI has exited unexpectedly', 'error')
 
             # Use crash handler when app is compiled
-            if crash and constants.app_compiled:
+            if crash:
 
                 # Destroy init window if macOS
                 if constants.os_name == 'macos':
                     init_window.destroy()
 
-                app_crash(crash)
+                app_crash(crash, e)
 
             cleanup_on_close()
 
-            # Normal Python behavior when testing
-            if not constants.app_compiled:
-                raise e
+
+        # Log if the UI closed properly
+        if not crash: send_log('foreground', 'UI has exited gracefully', 'info')
+
 
         # Destroy init window if macOS
         cleanup_on_close()
@@ -351,10 +356,9 @@ if __name__ == '__main__':
     b = threading.Thread(name='background', target=background)
     b.setDaemon(True)
 
-    # Log errors to file if debug
-    if constants.app_compiled and constants.debug is True:
-        sys.stderr = open("error.log", "a")
-
     b.start()
     foreground()
     b.join()
+
+    # Exit with return code if there's a crash
+    if crash: exit(20)

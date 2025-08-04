@@ -28,7 +28,7 @@ except: pass
 
 # UI log wrapper
 def send_log(object_data, message, level=None):
-    return constants.send_log(f'{__name__}.{object_data}', message, level if level else None, 'ui')
+    return constants.send_log(f'{__name__}.{object_data}', message, level, 'ui')
 
 
 # Overwrite STDOUT to not interfere with the UI

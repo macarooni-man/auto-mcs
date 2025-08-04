@@ -152,23 +152,27 @@ def generate_log(exception, error_info=None):
 {textwrap.indent(trimmed_exception, "        ")}"""
 
 
-    file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
-    with open(file_name, "w") as log_file:
-        log_file.write(log)
+    # Only write to disk if the app is compiled
+    if constants.app_compiled:
+        file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
+        with open(file_name, "w") as log_file:
+            log_file.write(log)
 
-    # Remove old logs
-    keep = 50
+        # Remove old logs
+        keep = 50
 
-    file_data = {}
-    for file in glob(os.path.join(log_dir, "ame-*.log")):
-        file_data[file] = os.stat(file).st_mtime
+        file_data = {}
+        for file in glob(os.path.join(log_dir, "ame-*.log")):
+            file_data[file] = os.stat(file).st_mtime
 
-    sorted_files = sorted(file_data.items(), key=itemgetter(1))
+        sorted_files = sorted(file_data.items(), key=itemgetter(1))
 
-    delete = len(sorted_files) - keep
-    for x in range(0, delete):
-        os.remove(sorted_files[x][0])
+        delete = len(sorted_files) - keep
+        for x in range(0, delete):
+            os.remove(sorted_files[x][0])
 
+    else:
+        file_name = None
 
     return ame, file_name
 
@@ -197,7 +201,7 @@ def launch_window(exc_code, log_path):
 
     # Override if headless
     if constants.headless:
-        print(f'(!)  Uh oh, auto-mcs has crashed:  {exc_code}\n\n> Crash log:  {log_path}')
+        print(f'(!)  Uh oh, {constants.app_title} has crashed:  {exc_code}\n\n> Crash log:  {log_path}')
         return
 
 
