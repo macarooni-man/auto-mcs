@@ -947,8 +947,8 @@ rm \"{os.path.join(tempDir, script_name)}\""""
             )
 
             shell_file.close()
-            with open(shell_path, 'r', encoding='utf-8', errors='ignore') as f:
-                print(f.read())
+            # with open(shell_path, 'r', encoding='utf-8', errors='ignore') as f:
+            #     print(f.read())
             run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
     sys.exit()
 
@@ -3096,8 +3096,7 @@ def iter_addons(progress_func=None, update=False, telepath=False):
                 addons.import_addon(addon_object, new_server_info, tmpsvr=True)
 
         except Exception as e:
-            if debug:
-                print(e)
+            send_log('iter_addons', f"failed to load '{addon_object.name}': {format_traceback(e)}")
 
 
     # Iterate over all addon_objects in ThreadPool
@@ -6064,7 +6063,7 @@ def get_current_ip(name: str, proxy=False):
                 for line in lines:
                     if re.search(r'server-port=', line):
                         lines[lines.index(line)] = f"server-port={updated_port}\n"
-                        print(updated_port)
+                        send_log('get_current_ip', f"temporarily changing port for '{name}' to '*:{updated_port}' due to conflict", 'warning')
                         break
                 f.writelines(lines)
 
@@ -6180,8 +6179,7 @@ def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
                         process_dir(item.path, depth + 1)
 
         except (PermissionError, FileNotFoundError) as e:
-            if debug:
-                print(f"Error accessing {path}: {e}")
+            send_log('gather_config_files', f"error accessing '{path}': {format_traceback(e)}")
 
         if match_list:
             final_dict[path] = sorted(match_list, key=lambda x: (os.path.basename(x) != 'server.properties', os.path.basename(x)))
@@ -6483,6 +6481,11 @@ def clear_script_cache(script_path):
 
 # Handles all operations when writing/reading from global config. Adding attributes changes the config file
 class ConfigManager():
+
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
+
     def __init__(self):
         self._path = os.path.join(configDir, 'app-config.json')
         self._defaults = self._init_defaults()
@@ -6490,7 +6493,8 @@ class ConfigManager():
 
         # Initialize default values
         if os.path.exists(applicationFolder):
-            self.load_config()
+            if self.load_config(): self.send_log(f"initialized ConfigManager successfully", 'info')
+            else:                  self.send_log(f"failed to initialize ConfigManager", 'error')
 
     # Specify default values
     @staticmethod
@@ -6554,17 +6558,22 @@ class ConfigManager():
             with open(self._path, 'r', encoding='utf-8', errors='ignore') as file:
                 try:
                     self._data = json.loads(file.read().replace('ide-settings', 'ide_settings'))
+                    self.send_log(f"successfully loaded global configuration from '{self._path}'")
                     return True
                 except json.decoder.JSONDecodeError:
                     pass
 
-        print('[INFO] [auto-mcs] Failed to read global configuration, resetting...')
+        self.send_log('failed to read global configuration, resetting...', 'error')
         self.reset()
 
     def save_config(self):
-        folder_check(os.path.dirname(self._path))
-        with open(self._path, 'w') as file:
-            json.dump(self._data, file, indent=2)
+        try:
+            folder_check(os.path.dirname(self._path))
+            with open(self._path, 'w') as file:
+                json.dump(self._data, file, indent=2)
+
+        except Exception as e: self.send_log(f"failed to save global configuration to '{self._path}': {format_traceback(e)}", 'error')
+        else:                  self.send_log(f"successfully saved global configuration to '{self._path}'")
 
     def reset(self):
         if os.path.exists(self._path):
@@ -6664,6 +6673,10 @@ class PlayitManager():
         def delete(self):
             self._parent._delete_tunnel(self)
 
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
+
     def __init__(self):
         base_path = "https://github.com/playit-cloud/playit-agent/releases"
         self._download_url = {
@@ -6709,6 +6722,7 @@ class PlayitManager():
     def _load_config(self) -> bool:
         if os.path.exists(self.toml_path):
             with open(self.toml_path, 'r', encoding='utf-8', errors='ignore') as toml:
+                self.send_log(f"loading playit configuration from '{self.toml_path}'")
                 strip_list = "'\" \n"
                 self.config = {
                     k.strip(strip_list): v.strip(strip_list)
@@ -6737,6 +6751,8 @@ class PlayitManager():
             os.remove(ngrok)
 
         # Delete current version first
+        final_path = os.path.join(self.directory, self._filename)
+        self.send_log(f"installing playit agent from '{self._download_url}' to '{final_path}'...", 'info')
         if self._check_agent():
             os.remove(self.exec_path)
 
@@ -6748,7 +6764,11 @@ class PlayitManager():
         if os_name != 'windows':
             run_proc(f'chmod +x "{self.exec_path}"')
 
-        return self._check_agent()
+        success = self._check_agent()
+        if success: self.send_log(f"successfully installed playit agent to '{final_path}'", 'info')
+        else:       self.send_log(f"something went wrong installing playit agent from '{self._download_url}'", 'error')
+
+        return success
 
     # Removes the agent from the filesystem
     def _uninstall_agent(self) -> bool:
@@ -6756,6 +6776,7 @@ class PlayitManager():
             raise RuntimeError("Can't delete while playit is running")
 
         if os.path.exists(self.directory):
+            self.send_log(f"deleting playit agent and configuration from '{self.directory}'", 'info')
             safe_delete(self.directory)
 
         return not self._check_agent()
@@ -6764,17 +6785,17 @@ class PlayitManager():
     def _start_agent(self) -> bool:
         if not self.service:
             self.service = subprocess.Popen(f'"{self.exec_path}" -s --secret_path "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
+            self.send_log(f"launched playit agent with PID {self.service.pid}")
         return bool(self.service.poll())
 
     # Stops the agent and returns output
     def _stop_agent(self) -> str:
         if self.service and self.service.poll() is None:
+            pid = self.service.pid
 
             # Iterate over self and children to find playit process
-            try:
-                parent = psutil.Process(self.service.pid)
-            except KeyError:
-                parent = self.service
+            try:             parent = psutil.Process(self.service.pid)
+            except KeyError: parent = self.service
 
             # Windows
             if os_name == "windows":
@@ -6801,6 +6822,7 @@ class PlayitManager():
                             break
 
             self.service.kill()
+            self.send_log(f"stopped playit agent with PID {pid}")
 
         return_code = self.service.poll() if self.service else 0
         del self.service
@@ -6860,6 +6882,8 @@ class PlayitManager():
         data = self.session.post("https://api.playit.gg/claim/exchange", json={"code": claim_code}).json()
         self.secret_key = data['data']['secret_key']
 
+        # Successfully claimed agent
+        self.send_log(f"successfully claimed playit agent to account")
         self._stop_agent()
         return bool(self.secret_key)
 
@@ -6927,16 +6951,18 @@ class PlayitManager():
             "agent_id": self.agent_id
         }
 
+
+        # Send the request to create a tunnel
         try:
             tunnel_id = self.session.post("https://api.playit.cloud/account", json=tunnel_data).json()['id']
-            if tunnel_id:
-                self.tunnel_cache.add_tunnel(tunnel_id, tunnel_data)
+            if tunnel_id: self.tunnel_cache.add_tunnel(tunnel_id, tunnel_data)
 
             self._retrieve_tunnels()
 
             # Lookup method to reverse search the actual ID
             for tunnel in self.tunnels[protocol]:
                 if tunnel_id == tunnel._data_id:
+                    self.send_log(f"successfully created a tunnel with ID {tunnel.id} ({tunnel.hostname})")
                     return tunnel
 
         except KeyError:
@@ -6948,6 +6974,7 @@ class PlayitManager():
         if tunnel_status['status'] == 'success':
             self.tunnel_cache.remove_tunnel(tunnel._data_id)
             self.tunnels[tunnel.protocol].remove(tunnel)
+            self.send_log(f"successfully deleted a tunnel with ID {tunnel.id} ({tunnel.hostname})")
             return tunnel not in self.tunnels[tunnel.protocol]
         else:
             return False
@@ -6991,12 +7018,12 @@ class PlayitManager():
         data = self.session.post("https://api.playit.gg/agents/rundata").json()
         self.agent_id = data['data']['agent_id']
         self.agent_web_url = f'https://playit.gg/account/agents/{self.agent_id}/tunnels'
-        print(self.agent_web_url)
 
         # Get current tunnels
         self._retrieve_tunnels()
 
         self.initialized = True
+        self.send_log(f"initialized playit agent with account URL: {self.agent_web_url}")
         return self.initialized
 
     # Get a tunnel by port and (optionally type)
@@ -7039,6 +7066,7 @@ class PlayitManager():
             server_obj.run_data['playit-tunnel'] = tunnel
             # Ignore the tunnel with server_obj._telepath_run_data()
             self._start_agent()
+            self.send_log(f"started a tunnel with ID {tunnel.id} ({tunnel.hostname})")
         return tunnel
 
     # Stops the current tunnel of the server object
@@ -7052,6 +7080,7 @@ class PlayitManager():
 
         # Stop agent only if no tunnels are in use
         if not self._tunnels_in_use() and self.service:
+            self.send_log(f"stopped a tunnel with ID {tunnel.id} ({tunnel.hostname})")
             self._stop_agent()
 
 # Global playit.gg manager
@@ -7063,6 +7092,10 @@ playit = PlayitManager()
 
 # Generates content for all global searches
 class SearchManager():
+
+    # Internal log wrapper
+    def send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
 
     def get_server_list(self):
         if server_manager.server_list:
@@ -7118,6 +7151,7 @@ class SearchManager():
     # Cache the guides to a .json file
     def cache_pages(self):
         if not app_online:
+            self.send_log(f"failed to fully initialize SearchManager: {app_title} is offline", 'error')
             return False
 
         def get_html_contents(url: str):
@@ -7137,6 +7171,7 @@ class SearchManager():
         if os.path.exists(cache_file):
             with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
                 self.guide_tree = json.loads(f.read())
+                self.send_log(f"initialized SearchManager from cache in '{cache_file}'", 'info')
                 return True
 
         # If not, scrape the website
@@ -7252,6 +7287,7 @@ class SearchManager():
         with open(cache_file, 'w+') as f:
             f.write(json.dumps(cache_data))
         self.guide_tree = cache_data
+        self.send_log(f"initialized SearchManager from '{base_url}'", 'info')
         return True
 
     # Generates a list of available options based on the current screen
@@ -7330,6 +7366,7 @@ class SearchManager():
 
     # Generate a list of weighted results from a search
     def execute_search(self, current_screen, query):
+        self.send_log(f"searching for '{query}'...")
 
         match_list = {
             'guide': SearchObject(),
@@ -7548,6 +7585,8 @@ class SearchManager():
         match_list['setting'] = tuple(sorted(match_list['setting'], key=lambda x: x.score, reverse=True))
         match_list['screen'] = tuple(sorted(match_list['screen'], key=lambda x: x.score, reverse=True))
         match_list['server'] = tuple(sorted(match_list['server'], key=lambda x: x.score, reverse=True))
+        self.send_log(f"results for '{query}':\n{match_list}")
+
         return match_list
 
 # Base search result
@@ -7555,6 +7594,10 @@ class SearchObject():
     def __init__(self):
         self.type = 'undefined'
         self.score = 0
+
+    def __repr__(self):
+        title = getattr(self, 'title', None)
+        return f'<{self.__class__.__name__} "{title}">'
 
 # Search result that matches a setting
 class SettingResult(SearchObject):
