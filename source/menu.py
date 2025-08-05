@@ -5757,7 +5757,9 @@ class TelepathDropButton(DropButton):
         self.dropdown.opacity = 0
         self.dropdown.min_state_time = 0.13
 
-        for item, telepath_data in self.options_list.items():
+        items = self.options_list.items()
+        send_log(self.__class__.__name__, f"using list of connected Telepath servers:\n{items}")
+        for item, telepath_data in items:
             original_item = item
 
             # Set display name

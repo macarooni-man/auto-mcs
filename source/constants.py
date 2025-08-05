@@ -220,7 +220,7 @@ def format_ram() -> str:
 
 # Global logger method
 # Levels: 'debug', 'info', 'warning', 'error', 'fatal'
-# Stacks: 'core', 'ui', 'api'
+# Stacks: 'core', 'ui', 'api', 'amscript'
 def send_log(object_data: str, message: str, level: str = None, stack: str = None):
 
     # Initialize default values
@@ -6179,7 +6179,7 @@ def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
                         process_dir(item.path, depth + 1)
 
         except (PermissionError, FileNotFoundError) as e:
-            send_log('gather_config_files', f"error accessing '{path}': {format_traceback(e)}")
+            send_log('gather_config_files', f"error accessing '{path}': {format_traceback(e)}", 'error')
 
         if match_list:
             final_dict[path] = sorted(match_list, key=lambda x: (os.path.basename(x) != 'server.properties', os.path.basename(x)))
@@ -6406,7 +6406,7 @@ def get_player_head(user: str):
             return default_image
 
     except Exception as e:
-        send_log(f"error retrieving player head icon for '{user}': {format_traceback(e)}")
+        send_log('get_player_head', f"error retrieving player head icon for '{user}': {format_traceback(e)}", 'error')
         return default_image
 
 
