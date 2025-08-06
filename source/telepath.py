@@ -1496,9 +1496,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.script_manager = RemoteScriptManager(self)
 
         self._clear_all_cache()
-
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
-
         constants.server_manager._send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
 
     def _is_favorite(self):

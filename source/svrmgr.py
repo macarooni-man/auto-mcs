@@ -2137,10 +2137,10 @@ class ServerManager():
         self.telepath_updates = {}
         self.online_telepath_servers = []
 
-        self.server_list = create_server_list()
-        self.current_server = None
-        self.remote_servers = {}
-        self.running_servers = {}
+        self.server_list: list = create_server_list()
+        self.current_server:  ServerObject = None
+        self.remote_servers:  dict[str, ServerObject] = {}
+        self.running_servers: dict[str, ServerObject] = {}
 
         # Load telepath servers
         self.load_telepath_servers()
@@ -2148,6 +2148,13 @@ class ServerManager():
         self._send_log('initialized Server Manager', 'info')
 
     def _init_telepathy(self, telepath_data: dict):
+
+        # Make sure the server isn't already open
+        if self.current_server and self.current_server._telepath_data:
+            new = f"{telepath_data['host']}/{telepath_data['name']}"
+            old = f"{self.current_server._telepath_data['host']}/{self.current_server._telepath_data['name']}"
+            if new == old: return self.current_server
+
         self.current_server = telepath.RemoteServerObject(telepath_data)
         return self.current_server
 
