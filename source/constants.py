@@ -6483,8 +6483,8 @@ def clear_script_cache(script_path):
 class ConfigManager():
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
         self._path = os.path.join(configDir, 'app-config.json')
@@ -6493,8 +6493,8 @@ class ConfigManager():
 
         # Initialize default values
         if os.path.exists(applicationFolder):
-            if self.load_config(): self.send_log(f"initialized ConfigManager successfully", 'info')
-            else:                  self.send_log(f"failed to initialize ConfigManager", 'error')
+            if self.load_config(): self._send_log(f"initialized ConfigManager successfully", 'info')
+            else:                  self._send_log(f"failed to initialize ConfigManager", 'error')
 
     # Specify default values
     @staticmethod
@@ -6558,12 +6558,12 @@ class ConfigManager():
             with open(self._path, 'r', encoding='utf-8', errors='ignore') as file:
                 try:
                     self._data = json.loads(file.read().replace('ide-settings', 'ide_settings'))
-                    self.send_log(f"successfully loaded global configuration from '{self._path}'")
+                    self._send_log(f"successfully loaded global configuration from '{self._path}'")
                     return True
                 except json.decoder.JSONDecodeError:
                     pass
 
-        self.send_log('failed to read global configuration, resetting...', 'error')
+        self._send_log('failed to read global configuration, resetting...', 'error')
         self.reset()
 
     def save_config(self):
@@ -6572,8 +6572,8 @@ class ConfigManager():
             with open(self._path, 'w') as file:
                 json.dump(self._data, file, indent=2)
 
-        except Exception as e: self.send_log(f"failed to save global configuration to '{self._path}': {format_traceback(e)}", 'error')
-        else:                  self.send_log(f"successfully saved global configuration to '{self._path}'")
+        except Exception as e: self._send_log(f"failed to save global configuration to '{self._path}': {format_traceback(e)}", 'error')
+        else:                  self._send_log(f"successfully saved global configuration to '{self._path}'")
 
     def reset(self):
         if os.path.exists(self._path):
@@ -6674,8 +6674,8 @@ class PlayitManager():
             self._parent._delete_tunnel(self)
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
         base_path = "https://github.com/playit-cloud/playit-agent/releases"
@@ -6722,7 +6722,7 @@ class PlayitManager():
     def _load_config(self) -> bool:
         if os.path.exists(self.toml_path):
             with open(self.toml_path, 'r', encoding='utf-8', errors='ignore') as toml:
-                self.send_log(f"loading playit configuration from '{self.toml_path}'")
+                self._send_log(f"loading playit configuration from '{self.toml_path}'")
                 strip_list = "'\" \n"
                 self.config = {
                     k.strip(strip_list): v.strip(strip_list)
@@ -6752,7 +6752,7 @@ class PlayitManager():
 
         # Delete current version first
         final_path = os.path.join(self.directory, self._filename)
-        self.send_log(f"installing playit agent from '{self._download_url}' to '{final_path}'...", 'info')
+        self._send_log(f"installing playit agent from '{self._download_url}' to '{final_path}'...", 'info')
         if self._check_agent():
             os.remove(self.exec_path)
 
@@ -6765,8 +6765,8 @@ class PlayitManager():
             run_proc(f'chmod +x "{self.exec_path}"')
 
         success = self._check_agent()
-        if success: self.send_log(f"successfully installed playit agent to '{final_path}'", 'info')
-        else:       self.send_log(f"something went wrong installing playit agent from '{self._download_url}'", 'error')
+        if success: self._send_log(f"successfully installed playit agent to '{final_path}'", 'info')
+        else:       self._send_log(f"something went wrong installing playit agent from '{self._download_url}'", 'error')
 
         return success
 
@@ -6776,7 +6776,7 @@ class PlayitManager():
             raise RuntimeError("Can't delete while playit is running")
 
         if os.path.exists(self.directory):
-            self.send_log(f"deleting playit agent and configuration from '{self.directory}'", 'info')
+            self._send_log(f"deleting playit agent and configuration from '{self.directory}'", 'info')
             safe_delete(self.directory)
 
         return not self._check_agent()
@@ -6785,7 +6785,7 @@ class PlayitManager():
     def _start_agent(self) -> bool:
         if not self.service:
             self.service = subprocess.Popen(f'"{self.exec_path}" -s --secret_path "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
-            self.send_log(f"launched playit agent with PID {self.service.pid}")
+            self._send_log(f"launched playit agent with PID {self.service.pid}")
         return bool(self.service.poll())
 
     # Stops the agent and returns output
@@ -6822,7 +6822,7 @@ class PlayitManager():
                             break
 
             self.service.kill()
-            self.send_log(f"stopped playit agent with PID {pid}")
+            self._send_log(f"stopped playit agent with PID {pid}")
 
         return_code = self.service.poll() if self.service else 0
         del self.service
@@ -6883,7 +6883,7 @@ class PlayitManager():
         self.secret_key = data['data']['secret_key']
 
         # Successfully claimed agent
-        self.send_log(f"successfully claimed playit agent to account")
+        self._send_log(f"successfully claimed playit agent to account")
         self._stop_agent()
         return bool(self.secret_key)
 
@@ -6962,7 +6962,7 @@ class PlayitManager():
             # Lookup method to reverse search the actual ID
             for tunnel in self.tunnels[protocol]:
                 if tunnel_id == tunnel._data_id:
-                    self.send_log(f"successfully created a tunnel with ID {tunnel.id} ({tunnel.hostname})")
+                    self._send_log(f"successfully created a tunnel with ID {tunnel.id} ({tunnel.hostname})")
                     return tunnel
 
         except KeyError:
@@ -6974,7 +6974,7 @@ class PlayitManager():
         if tunnel_status['status'] == 'success':
             self.tunnel_cache.remove_tunnel(tunnel._data_id)
             self.tunnels[tunnel.protocol].remove(tunnel)
-            self.send_log(f"successfully deleted a tunnel with ID {tunnel.id} ({tunnel.hostname})")
+            self._send_log(f"successfully deleted a tunnel with ID {tunnel.id} ({tunnel.hostname})")
             return tunnel not in self.tunnels[tunnel.protocol]
         else:
             return False
@@ -7023,7 +7023,7 @@ class PlayitManager():
         self._retrieve_tunnels()
 
         self.initialized = True
-        self.send_log(f"initialized playit agent with account URL: {self.agent_web_url}")
+        self._send_log(f"initialized playit agent with account URL: {self.agent_web_url}")
         return self.initialized
 
     # Get a tunnel by port and (optionally type)
@@ -7066,7 +7066,7 @@ class PlayitManager():
             server_obj.run_data['playit-tunnel'] = tunnel
             # Ignore the tunnel with server_obj._telepath_run_data()
             self._start_agent()
-            self.send_log(f"started a tunnel with ID {tunnel.id} ({tunnel.hostname})")
+            self._send_log(f"started a tunnel with ID {tunnel.id} ({tunnel.hostname})")
         return tunnel
 
     # Stops the current tunnel of the server object
@@ -7080,7 +7080,7 @@ class PlayitManager():
 
         # Stop agent only if no tunnels are in use
         if not self._tunnels_in_use() and self.service:
-            self.send_log(f"stopped a tunnel with ID {tunnel.id} ({tunnel.hostname})")
+            self._send_log(f"stopped a tunnel with ID {tunnel.id} ({tunnel.hostname})")
             self._stop_agent()
 
 # Global playit.gg manager
@@ -7094,8 +7094,8 @@ playit = PlayitManager()
 class SearchManager():
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def get_server_list(self):
         if server_manager.server_list:
@@ -7151,7 +7151,7 @@ class SearchManager():
     # Cache the guides to a .json file
     def cache_pages(self):
         if not app_online:
-            self.send_log(f"failed to fully initialize SearchManager: {app_title} is offline", 'error')
+            self._send_log(f"failed to fully initialize SearchManager: {app_title} is offline", 'error')
             return False
 
         def get_html_contents(url: str):
@@ -7171,7 +7171,7 @@ class SearchManager():
         if os.path.exists(cache_file):
             with open(cache_file, 'r', encoding='utf-8', errors='ignore') as f:
                 self.guide_tree = json.loads(f.read())
-                self.send_log(f"initialized SearchManager from cache in '{cache_file}'", 'info')
+                self._send_log(f"initialized SearchManager from cache in '{cache_file}'", 'info')
                 return True
 
         # If not, scrape the website
@@ -7287,7 +7287,7 @@ class SearchManager():
         with open(cache_file, 'w+') as f:
             f.write(json.dumps(cache_data))
         self.guide_tree = cache_data
-        self.send_log(f"initialized SearchManager from '{base_url}'", 'info')
+        self._send_log(f"initialized SearchManager from '{base_url}'", 'info')
         return True
 
     # Generates a list of available options based on the current screen
@@ -7366,7 +7366,7 @@ class SearchManager():
 
     # Generate a list of weighted results from a search
     def execute_search(self, current_screen, query):
-        self.send_log(f"searching for '{query}'...")
+        self._send_log(f"searching for '{query}'...")
 
         match_list = {
             'guide': SearchObject(),
@@ -7585,7 +7585,7 @@ class SearchManager():
         match_list['setting'] = tuple(sorted(match_list['setting'], key=lambda x: x.score, reverse=True))
         match_list['screen'] = tuple(sorted(match_list['screen'], key=lambda x: x.score, reverse=True))
         match_list['server'] = tuple(sorted(match_list['server'], key=lambda x: x.score, reverse=True))
-        self.send_log(f"results for '{query}':\n{match_list}")
+        self._send_log(f"results for '{query}':\n{match_list}")
 
         return match_list
 

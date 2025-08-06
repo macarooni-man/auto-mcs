@@ -109,8 +109,8 @@ from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
 class DiscordPresenceManager():
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
         self.presence = None
@@ -130,10 +130,10 @@ class DiscordPresenceManager():
                 try:
                     self.presence.connect()
                     self.connected = True
-                    self.send_log("initialized Discord Presence: successfully connected", 'info')
+                    self._send_log("initialized Discord Presence: successfully connected", 'info')
                 except Exception as e:
                     self.presence = None
-                    self.send_log(f"failed to initialize Discord Presence: {constants.format_traceback(e)}")
+                    self._send_log(f"failed to initialize Discord Presence: {constants.format_traceback(e)}")
             threading.Timer(0, presence_thread).start()
 
     def stop(self):
@@ -142,7 +142,7 @@ class DiscordPresenceManager():
             self.start_time = None
             self.presence = None
             self.connected = False
-            self.send_log("stopped Discord Presence: successfully disconnected", 'info')
+            self._send_log("stopped Discord Presence: successfully disconnected", 'info')
 
     def get_image(self, file_path: str):
         server_obj = constants.server_manager.current_server
@@ -162,7 +162,7 @@ class DiscordPresenceManager():
             server_obj.run_data['rich-presence-icon'] = url
             return url
         else:
-            self.send_log(f"icon upload to '{url}' failed:\n{response.text}")
+            self._send_log(f"icon upload to '{url}' failed:\n{response.text}")
             return None
 
     def update_presence(self, footer_data: str = None):

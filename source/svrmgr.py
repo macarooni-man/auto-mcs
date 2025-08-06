@@ -26,9 +26,18 @@ import backup
 # Auto-MCS Server Manager API
 # ----------------------------------------------- Server Objects -------------------------------------------------------
 
+# UI log wrapper
+def send_log(object_data, message, level=None):
+    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
+
+
 # Instantiate class with "server_name" (case-sensitive)
 # Big boy mega server object
 class ServerObject():
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(f'{self.__class__.__name__}', f"'{self.name}': {message}", level)
 
     def __init__(self, server_name: str):
         self._telepath_data = None
@@ -214,8 +223,7 @@ class ServerObject():
             self.reload_config_paths()
         Timer(0, load_config_paths).start()
 
-        if not constants.headless:
-            print(f"[INFO] [auto-mcs] Server Manager: Loaded '{server_name}'")
+        constants.server_manager._send_log(f"Server Manager: Loaded '{server_name}'", 'info')
 
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
@@ -859,11 +867,9 @@ class ServerObject():
         for log_line in text.splitlines():
             event = None
             if log_line:
-                try:
-                    log_line, event = format_log(log_line)
+                try: log_line, event = format_log(log_line)
                 except Exception as e:
-                    if constants.debug:
-                        print(e)
+                    self._send_log(f"error processing 'log_line': {constants.format_traceback(e)}\nlog_line: '{log_line}'", 'error')
                     continue
             if text and log_line:
 
@@ -956,9 +962,9 @@ class ServerObject():
 
                         self.run_data['process'].stdin.write(command)
                         self.run_data['process'].stdin.flush()
-                    except:
-                        if constants.debug:
-                            print("Error: Command sent after process shutdown")
+                    except Exception as e:
+                        if not self.running: self._send_log('command sent after process shutdown', 'warning')
+                        else:                self._send_log(f"error sending command '{cmd.strip()}': {constants.format_traceback(e)}")
 
     # Launch server, or reconnect to background server
     def launch(self, return_telepath=False):
@@ -1004,13 +1010,11 @@ class ServerObject():
             self.run_data['properties-hash'] = self._get_properties_hash()
             self.run_data['advanced-hash'] = self._get_advanced_hash()
             self.run_data['addon-hash'] = None
-            if self.addon:
-                self.run_data['addon-hash'] = deepcopy(self.addon._addon_hash)
+            if self.addon: self.run_data['addon-hash'] = deepcopy(self.addon._addon_hash)
             self.run_data['script-hash'] = deepcopy(self.script_manager._script_hash)
 
             # Write Geyser config if it doesn't exist
-            if self.geyser_enabled:
-                constants.create_geyser_config(self)
+            if self.geyser_enabled: constants.create_geyser_config(self)
 
             # Open server script and attempt to launch
             with open(script_path, 'r') as f:
@@ -1049,6 +1053,7 @@ class ServerObject():
                     self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.659, 0.42, 1))})
 
                 # Run server
+                self._send_log('launching server process...', 'info')
                 self.run_data['process'] = Popen(script_content, stdout=PIPE, stdin=PIPE, stderr=PIPE, cwd=self.server_path, shell=True)
 
             self.run_data['pid'] = self.run_data['process'].pid
@@ -1126,8 +1131,7 @@ class ServerObject():
                         self.update_log(line)
 
                     except Exception as e:
-                        if constants.debug:
-                            print(f'Failed to process line: {e}')
+                        self._send_log(f"error processing 'line': {constants.format_traceback(e)}\nline: '{line}'", 'error')
 
                     fail_counter = 0 if line else (fail_counter + 1)
 
@@ -1303,8 +1307,6 @@ class ServerObject():
 
 
                 # Close server
-                if constants.debug:
-                    print(f'Terminating "{self.name}"')
                 self.terminate()
                 return
 
@@ -1364,6 +1366,7 @@ class ServerObject():
 
     # Kill server and delete running configuration
     def terminate(self):
+        if not self.restart_flag: self._send_log('terminating server process...', 'info')
 
         # Kill server process
         try:
@@ -1371,7 +1374,8 @@ class ServerObject():
                 self.run_data['process'].kill()
 
         # Ignore errors stopping the process
-        except:
+        except Exception as e:
+            self._send_log(f'failed to terminate server process: {constants.format_traceback(e)}')
             return
 
         # Reset port back to normal if required
@@ -1432,6 +1436,7 @@ class ServerObject():
             self.run_data.clear()
             self.running = False
             del constants.server_manager.running_servers[self.name]
+            self._send_log('successfully stopped server process', 'info')
             # print(constants.server_manager.running_servers)
 
         # Reboot server if required
@@ -1447,6 +1452,7 @@ class ServerObject():
                 self.silent_command(f"kick {player} Server is restarting", log=False)
         except KeyError:
             pass
+        self._send_log('restarting server process...', 'info')
         self.stop()
 
     # Stops the server
@@ -2122,6 +2128,10 @@ class RemoteViewObject():
 # Houses all server information
 class ServerManager():
 
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        send_log(self.__class__.__name__, message, level)
+
     def __init__(self):
         self.telepath_servers = {}
         self.telepath_updates = {}
@@ -2135,8 +2145,7 @@ class ServerManager():
         # Load telepath servers
         self.load_telepath_servers()
 
-        if not constants.is_docker:
-            print("[INFO] [auto-mcs] Server Manager initialized")
+        self._send_log('initialized Server Manager', 'info')
 
     def _init_telepathy(self, telepath_data: dict):
         self.current_server = telepath.RemoteServerObject(telepath_data)
@@ -2152,8 +2161,7 @@ class ServerManager():
         try:
             if self.remote_server.name == name:
                 self.current_server = self.remote_server
-                if constants.debug:
-                    print(vars(self.current_server))
+                self._send_log(f"opened '{name}' with properties:\n{vars(self.current_server)}")
                 return self.current_server
         except AttributeError:
             pass
@@ -2175,9 +2183,7 @@ class ServerManager():
             if crash_info[0] == name:
                 self.current_server.crash_log = crash_info[1]
 
-        if constants.debug:
-            print(vars(self.current_server))
-
+        self._send_log(f"opened '{name}' with properties:\n{vars(self.current_server)}")
         return self.current_server
 
     # Sets self.remote_server to selected ServerObject
@@ -2186,9 +2192,7 @@ class ServerManager():
             if self.current_server.name == name:
                 self.remote_servers[host] = self.current_server
 
-                if constants.debug:
-                    print(vars(self.remote_servers[host]))
-
+                self._send_log(f"remote '{host}' opened '{name}' with properties:\n{vars(self.remote_servers[host])}")
                 return host in self.remote_servers
 
         except AttributeError:
@@ -2217,9 +2221,7 @@ class ServerManager():
                 if crash_info[0] == name:
                     self.remote_servers[host].crash_log = crash_info[1]
 
-        if constants.debug:
-            print(vars(self.remote_servers[host]))
-
+        self._send_log(f"remote '{host}' opened '{name}' with properties:\n{vars(self.remote_servers[host])}")
         return host in self.remote_servers
 
     # Reloads self.current_server

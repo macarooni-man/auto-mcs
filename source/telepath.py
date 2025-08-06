@@ -123,8 +123,8 @@ class TelepathManager():
     default_port = 7001
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
         global app
@@ -344,7 +344,7 @@ class TelepathManager():
             threading.Timer(0, self._run_uvicorn).start()
 
             message = f'initialized API on "{self.host}:{self.port}"'
-            self.send_log(message, 'info')
+            self._send_log(message, 'info')
             return message
 
         elif constants.headless:
@@ -358,7 +358,7 @@ class TelepathManager():
             self.running = False
 
             message = f'disabled API on "{self.host}:{self.port}"'
-            self.send_log(message, 'info')
+            self._send_log(message, 'info')
             return message
 
         elif constants.headless:
@@ -383,7 +383,7 @@ class TelepathManager():
         else:
             session = requests.Session()
             self.sessions[host] = {'port': port, 'session': session}
-            self.send_log(f"opening session to '{host}'", 'info')
+            self._send_log(f"opening session to '{host}'", 'info')
         return session
     def _retry_wrapper(self, host: str, port: int, request_func, retry=True):
         try:
@@ -470,7 +470,7 @@ class TelepathManager():
 
             # Close the requests session
             data['session'].close()
-            self.send_log(f"closed session to '{host}:{data['port']}'", 'info')
+            self._send_log(f"closed session to '{host}:{data['port']}'", 'info')
 
 
     # -------- Internal endpoints to authenticate with Telepath -------- #
@@ -484,13 +484,13 @@ class TelepathManager():
         error_code = status.HTTP_418_IM_A_TEAPOT if random.randrange(10) == 1 else status.HTTP_409_CONFLICT
         if constants.ignore_close:
             message = "Server is busy, please try again later"
-            self.send_log(message, 'error')
+            self._send_log(message, 'error')
             raise HTTPException(status_code=error_code, detail=message)
 
         # Ignore request if there's currently a valid pairing code
         if self.pair_data:
             message = "Please wait for the current code to expire"
-            self.send_log(message, 'error')
+            self._send_log(message, 'error')
             raise HTTPException(status_code=error_code, detail=message)
 
         # Ignore an improperly formatted request
@@ -515,11 +515,11 @@ class TelepathManager():
             if constants.telepath_pair:
                 constants.telepath_pair.open(self.pair_data)
 
-            self.send_log(f"generated pairing code: {self.pair_data['code']} for host: {host}", 'info')
+            self._send_log(f"generated pairing code: {self.pair_data['code']} for host: {host}", 'info')
             return True
 
         else:
-            self.send_log('Telepath API is not running', 'error')
+            self._send_log('Telepath API is not running', 'error')
             return False
 
     def _submit_pair(self, host: dict, id_hash: bytes, code: str, request: Request):
@@ -675,7 +675,7 @@ class TelepathManager():
         try:
             session = self._get_session(ip, port)
             data = session.post(url, json=host_data, headers=self._get_headers(ip), timeout=3).json()
-            self.send_log(f"logged out from '{ip}:{port}'", 'info')
+            self._send_log(f"logged out from '{ip}:{port}'", 'info')
             return data
         except: pass
         return False
@@ -747,8 +747,8 @@ class TelepathManager():
 class AuthHandler():
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
         self.key_pairs = {}
@@ -839,8 +839,8 @@ class AuthHandler():
 class SecretHandler():
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
         self.file = constants.telepathSecrets
@@ -855,7 +855,7 @@ class SecretHandler():
     def _decrypt(self, data: bytes):
         try: return self.fernet.decrypt(data)
         except:
-            self.send_log(f"failed to load telepath-secrets, resetting...", 'error')
+            self._send_log(f"failed to load telepath-secrets, resetting...", 'error')
             return []
 
     def read(self):
@@ -884,8 +884,8 @@ class SecretHandler():
 class AuditLogger():
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
         self.path = os.path.join(constants.telepathDir, 'audit-logs')
@@ -984,7 +984,7 @@ class AuditLogger():
     def log(self, message: str):
 
         # Save to internal logger
-        self.send_log(message)
+        self._send_log(message)
 
 
         # Also, write to disk
@@ -1473,8 +1473,8 @@ def create_remote_obj(obj: object, request=True):
 class RemoteServerObject(create_remote_obj(ServerObject)):
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
@@ -1499,7 +1499,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
 
-        self.send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
+        self._send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
 
     def _is_favorite(self):
         try:
@@ -1631,8 +1631,8 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 class RemoteScriptManager(create_remote_obj(ScriptManager)):
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
@@ -1679,8 +1679,8 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
 class RemoteAddonManager(create_remote_obj(AddonManager)):
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
@@ -1727,8 +1727,8 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
 class RemoteBackupManager(create_remote_obj(BackupManager)):
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
@@ -1749,8 +1749,8 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
 class RemoteAclManager(create_remote_obj(AclManager)):
 
     # Internal log wrapper
-    def send_log(self, message: str, level: str = None):
-        send_log(self.__class__.__name__, message, level)
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
 
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
