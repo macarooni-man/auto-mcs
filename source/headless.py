@@ -104,6 +104,7 @@ def process_command(cmd: str):
 
             # Process command and return output
             command = commands[cmd]
+            send_log('process_command', f"issued command: '{' '.join(raw)}'", 'info')
             output = command.exec(args)
             if isinstance(output, tuple):
                 success = 'fail' != output[1]
@@ -814,6 +815,7 @@ class ScreenManager():
 class Command:
 
     def exec(self, args=()):
+
         # Combine all arguments into one if one_arg
         if self.one_arg:
             args = ' '.join(args).strip()
