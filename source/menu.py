@@ -3466,8 +3466,8 @@ def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, sele
 
     final_path = ""
     file_icon = os.path.join(constants.gui_assets, "small-icon.ico")
-
     title = constants.translate(title)
+    send_log('file_popup', f"requesting {ask_type} popup '{title}'", 'info')
 
     # Will find the first file start_dir to auto select
     def iter_start_dir(directory):
@@ -3529,6 +3529,7 @@ def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, sele
                     # AppleScript with f-string formatting for dynamically setting parameters
                     script = f"    osascript -e 'set myFolder to choose folder {start_path_command}\nPOSIX path of myFolder'"
                     final_path = constants.run_proc(script, return_text=True).strip()
+                    if final_path.endswith('User canceled. (-128)'): final_path = []
 
     # World screen
     if input_name:
@@ -3560,6 +3561,9 @@ def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, sele
                         child.update_server()
                 break_loop = True
                 break
+
+    if final_path: send_log('file_popup', f"retrieved user selection from {ask_type} popup '{title}':\n'{final_path}'", 'info')
+    else:          send_log('file_popup', f"user cancelled {ask_type} popup '{title}':")
 
     return final_path
 

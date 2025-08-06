@@ -2334,6 +2334,7 @@ class ServerManager():
             return self.telepath_updates[host_data['host']][server_name]
         return {}
 
+
 # --------------------------------------------- General Functions ------------------------------------------------------
 
 # Generates sorted dict of server information for menu
