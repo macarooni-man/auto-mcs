@@ -1499,7 +1499,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
 
-        self._send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
+        constants.server_manager._send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
 
     def _is_favorite(self):
         try:
