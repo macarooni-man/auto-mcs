@@ -350,8 +350,8 @@ elif os_name == 'macos' and app_compiled:
 
 
 # Bigboi server manager
-server_manager = None
-search_manager = None
+server_manager: 'svrmgr.ServerManager' = None
+search_manager: 'SearchManager' = None
 import_data    = {'name': None, 'path': None}
 backup_lock    = {}
 
@@ -6582,7 +6582,7 @@ class ConfigManager():
         self.save_config()
 
 # Global config manager
-app_config = ConfigManager()
+app_config: ConfigManager = ConfigManager()
 
 
 
@@ -6962,7 +6962,7 @@ class PlayitManager():
             # Lookup method to reverse search the actual ID
             for tunnel in self.tunnels[protocol]:
                 if tunnel_id == tunnel._data_id:
-                    self._send_log(f"successfully created a tunnel with ID {tunnel.id} ({tunnel.hostname})")
+                    self._send_log(f"successfully created a tunnel with ID '{tunnel.id}' ({tunnel.hostname})")
                     return tunnel
 
         except KeyError:
@@ -6974,7 +6974,7 @@ class PlayitManager():
         if tunnel_status['status'] == 'success':
             self.tunnel_cache.remove_tunnel(tunnel._data_id)
             self.tunnels[tunnel.protocol].remove(tunnel)
-            self._send_log(f"successfully deleted a tunnel with ID {tunnel.id} ({tunnel.hostname})")
+            self._send_log(f"successfully deleted a tunnel with ID '{tunnel.id}' ({tunnel.hostname})")
             return tunnel not in self.tunnels[tunnel.protocol]
         else:
             return False
@@ -7066,7 +7066,7 @@ class PlayitManager():
             server_obj.run_data['playit-tunnel'] = tunnel
             # Ignore the tunnel with server_obj._telepath_run_data()
             self._start_agent()
-            self._send_log(f"started a tunnel with ID {tunnel.id} ({tunnel.hostname})")
+            self._send_log(f"started a tunnel with ID '{tunnel.id}' ({tunnel.hostname})")
         return tunnel
 
     # Stops the current tunnel of the server object
@@ -7080,7 +7080,7 @@ class PlayitManager():
 
         # Stop agent only if no tunnels are in use
         if not self._tunnels_in_use() and self.service:
-            self._send_log(f"stopped a tunnel with ID {tunnel.id} ({tunnel.hostname})")
+            self._send_log(f"stopped a tunnel with ID '{tunnel.id}' ({tunnel.hostname})")
             self._stop_agent()
 
 # Global playit.gg manager

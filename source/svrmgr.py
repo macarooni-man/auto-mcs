@@ -195,11 +195,11 @@ class ServerObject():
 
         # Special sub-objects, and defer loading in the background
         # Make sure that menus wait until objects are fully loaded before opening
-        self.backup = None
-        self.addon = None
-        self.acl = None
-        self.script_manager = None
-        self.script_object = None
+        self.backup: BackupManager = None
+        self.addon:  AddonManager  = None
+        self.acl:    AclManager    = None
+        self.script_manager: amscript.ScriptManager      = None
+        self.script_object:  amscript.ServerScriptObject = None
 
         def load_backup(*args):
             self.backup = BackupManager(server_name)
@@ -314,6 +314,8 @@ class ServerObject():
         self.config_file.set("general", "enableProxy", str(enabled).lower())
         self.write_config()
         self.proxy_enabled = enabled
+        action = 'enabled' if enabled else 'disabled'
+        self._send_log(f"the playit proxy is now {action} enabled for this server", 'info')
 
     # Retrieve a data structure of all config files in the server
     def reload_config_paths(self):
@@ -322,6 +324,7 @@ class ServerObject():
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False):
+        self._send_log(f"reloading configuration from disk...", 'info')
 
         # Server files
         self.server_icon = constants.server_path(self.name, 'server-icon.png')
@@ -452,6 +455,9 @@ class ServerObject():
                 self.reload_config_paths()
             Timer(0, load_config_paths).start()
 
+        self._send_log(f"successfully reloaded configuration from disk (internal objects may not be ready yet)", 'info')
+
+
     # Returns a dict formatted like 'new_server_info'
     def properties_dict(self):
         properties = {
@@ -497,6 +503,7 @@ class ServerObject():
 
         constants.server_config(self.name, self.config_file)
         constants.server_properties(self.name, self.server_properties)
+        self._send_log(f"updated 'server.properties' and '{constants.server_ini}'")
 
     # Converts stdout of self.run_data['process'] to fancy stuff
     def update_log(self, text: bytes, *args):
@@ -1053,8 +1060,8 @@ class ServerObject():
                     self.run_data['log'].append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'WARN', f"Networking conflict detected: temporarily using '*:{self.run_data['network']['address']['port']}'", (1, 0.659, 0.42, 1))})
 
                 # Run server
-                self._send_log('launching server process...', 'info')
                 self.run_data['process'] = Popen(script_content, stdout=PIPE, stdin=PIPE, stderr=PIPE, cwd=self.server_path, shell=True)
+                self._send_log(f'launching server process with PID {self.run_data["process"].pid}', 'info')
 
             self.run_data['pid'] = self.run_data['process'].pid
             self.run_data['send-command'] = self.send_command
@@ -1336,7 +1343,7 @@ class ServerObject():
 
                 # Fire server start event
                 if self.script_object.enabled:
-                    self.script_object.construct()
+                    loaded_count, total_count = self.script_object.construct()
                     self.script_object.start_event({'date': dt.now()})
 
 
@@ -1395,7 +1402,6 @@ class ServerObject():
         # Fire server stop event
         try:
             if self.script_object.enabled:
-
                 crash_data = None
                 if self.crash_log:
                     with open(self.crash_log, 'r') as f:
@@ -1465,6 +1471,7 @@ class ServerObject():
         # Iterate over self and children to find Java process
         try:
             parent = psutil.Process(self.run_data['process'].pid)
+            self._send_log(f"attempting to kill server process with PID {self.run_data['process'].pid}", 'info')
         except:
             return False
         sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
@@ -1480,17 +1487,17 @@ class ServerObject():
         # macOS
         elif constants.os_name == "macos":
             if parent.name() == "java":
-                constants.run_proc(f"kill {parent.pid}")
+                constants.run_proc(f"kill -9 {parent.pid}")
 
         # Linux
         else:
             if parent.name() == "java":
-                constants.run_proc(f"kill {parent.pid}")
+                constants.run_proc(f"kill -9 {parent.pid}")
             else:
                 children = parent.children(recursive=True)
                 for proc in children:
                     if proc.name() == "java":
-                        constants.run_proc(f"kill {proc.pid}")
+                        constants.run_proc(f"kill -9 {proc.pid}")
                         break
 
 
@@ -1514,6 +1521,7 @@ class ServerObject():
                     self.run_data['deadlocked'] = True
                     if message != self.run_data['log'][-1]['text'][2]:
                         self.send_log(message, 'warning')
+                        self._send_log(f"detected that server process with PID {self.run_data['process'].pid} is deadlocked", 'warning')
                     self.run_data['console-panel'].toggle_deadlock(True)
                 except:
                     pass
@@ -1620,6 +1628,8 @@ class ServerObject():
         self.dedicated_ram = new_value
         constants.server_config(self.name, self.config_file)
 
+        log_value = new_value if new_value == 'auto' else f'{new_value} GB'
+        self._send_log(f"changed memory allocation to: '{log_value}'")
         return new_value
 
     # Sets automatic update configuration
@@ -1630,6 +1640,8 @@ class ServerObject():
         self.auto_update = new_value
         constants.server_config(self.name, self.config_file)
 
+        action = 'enabled' if enabled else 'disabled'
+        self._send_log(f"{action} automatic updates", 'info')
         return enabled
 
     # Updates custom flags
@@ -1638,11 +1650,13 @@ class ServerObject():
         self.config_file.set("general", "customFlags", flags.strip())
         self.custom_flags = flags.strip()
         constants.server_config(self.name, self.config_file)
+        self._send_log(f"changed launch flags to:\n{flags}", 'info')
 
     # Updates the server icon, deletes if "new_icon" is empty
     def update_icon(self, new_icon: str or False):
         data = constants.update_server_icon(self.name, new_icon)
         self.server_icon = constants.server_path(self.name, 'server-icon.png')
+        self._send_log(f"changed icon to '{new_icon}'", 'info')
         return data
 
     # Updates console event filter in config
@@ -1651,12 +1665,15 @@ class ServerObject():
         self.config_file = constants.server_config(self.name)
         self.config_file.set("general", "consoleFilter", filter_type)
         constants.server_config(self.name, self.config_file)
+        self._send_log(f"changed console filter to '{filter_type}'", 'info')
 
     # Renames server
     def rename(self, new_name: str):
         if not self.running:
             original_name = self.name
             new_name = new_name.strip()
+            self._send_log(f"renaming myself: '{original_name}' -> '{new_name}'", 'info')
+
 
             # Change name in config
             self.config_file.set('general', 'serverName', new_name)
@@ -1688,11 +1705,14 @@ class ServerObject():
             constants.make_update_list()
 
             # Reload properties
+            if self.name == new_name: self._send_log(f"successfully renamed myself to '{new_name}'", 'info')
+            else:                     self._send_log(f"something went wrong renaming myself to '{new_name}'", 'error')
             self.reload_config(reload_objects=True)
 
     # Deletes server
     def delete(self):
         if not self.running:
+            self._send_log("I'm deleting myself, please wait :(", 'warning')
 
             # Save a back-up of current server state
             while not self.backup:
@@ -1703,6 +1723,7 @@ class ServerObject():
 
             # Delete server folder
             constants.safe_delete(self.server_path)
+            self._send_log("Mr. Stark, I don't feel so good...", 'warning')
             del self
 
     # Checks for modified 'server.properties'
@@ -1736,8 +1757,10 @@ class ServerObject():
         elif auto_backup == 'true':
             if crash_info:
                 self.send_log("Skipping back-up due to a crash", 'error')
+                self._send_log("skipping back-up due to a crash", 'error')
             elif not constants.check_free_space():
                 self.send_log("Skipping back-up due to insufficient free space", 'error')
+                self._send_log("skipping back-up due to insufficient free space", 'error')
             else:
                 self.send_log(f"Saving a back-up of '{self.name}', please wait...", 'warning')
                 self.backup.save(ignore_running=True)
@@ -1751,6 +1774,8 @@ class ServerObject():
     # Reloads all auto-mcs scripts
     def reload_scripts(self):
         if self.script_object:
+            self._send_log(f"restarting the amscript engine...")
+
             # Delete ScriptObject
             self.script_object.deconstruct()
             del self.script_object
@@ -2007,10 +2032,12 @@ class ServerObject():
         }
         suggestions['enemy.'] = suggestions['player.']
 
+        self._send_log(f"generated IDE auto-complete suggestions:\n{suggestions}")
         return suggestions
 
     # Shows taskbar notifications
     def _view_notif(self, name, add=True, viewed=''):
+        self._send_log(f"set notification view state for '{name}':\nadd: '{add}'\nviewed: '{viewed}'")
         if name and add:
             show_notif = name not in self.viewed_notifs
             if name in self.viewed_notifs:
@@ -2023,8 +2050,7 @@ class ServerObject():
                     pass
 
             if name in self.viewed_notifs:
-                if viewed:
-                    self.viewed_notifs[name] = viewed
+                if viewed: self.viewed_notifs[name] = viewed
             else:
                 self.viewed_notifs[name] = viewed
 
@@ -2098,28 +2124,23 @@ class RemoteViewObject():
         try:
             if self.name in self._telepath_data['added-servers']:
                 return self._telepath_data['added-servers'][self.name]['favorite']
-        except KeyError:
-            pass
+        except KeyError: pass
         return False
 
     def toggle_favorite(self):
-        if self.name not in self._telepath_data['added-servers']:
-            self._telepath_data['added-servers'][self.name] = {}
+        if self.name not in self._telepath_data['added-servers']: self._telepath_data['added-servers'][self.name] = {}
         self._telepath_data['added-servers'][self.name]['favorite'] = not self.favorite
         self.favorite = not self.favorite
         constants.server_manager.write_telepath_servers(self._telepath_data)
 
     def __init__(self, instance_data: dict, server_data: dict):
-        for k, v in server_data.items():
-            setattr(self, k, v)
+        for k, v in server_data.items(): setattr(self, k, v)
 
         self._telepath_data = instance_data
 
         # Set display name
-        if self._telepath_data['nickname']:
-            self._telepath_data['display-name'] = self._telepath_data['nickname']
-        else:
-            self._telepath_data['display-name'] = self._telepath_data['host']
+        if self._telepath_data['nickname']: self._telepath_data['display-name'] = self._telepath_data['nickname']
+        else: self._telepath_data['display-name'] = self._telepath_data['host']
         self._view_name = f"{self._telepath_data['display-name']}/{server_data['name']}"
 
         self.favorite = self._is_favorite()
@@ -2160,7 +2181,6 @@ class ServerManager():
 
     # Refreshes self.server_list with current info
     def refresh_list(self):
-
         self.server_list = create_server_list(self.online_telepath_servers)
 
     # Sets self.current_server to selected ServerObject
@@ -2241,16 +2261,18 @@ class ServerManager():
         # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
         if os.path.exists(constants.telepathFile):
             with open(constants.telepathFile, 'r') as f:
-                try:
-                    self.telepath_servers = json.loads(f.read())
-                except json.decoder.JSONDecodeError:
-                    pass
+                try: self.telepath_servers = json.loads(f.read())
+                except json.decoder.JSONDecodeError: pass
 
         return self.telepath_servers
 
     # Checks which servers are alive
     def check_telepath_servers(self):
+        if not self.telepath_servers:
+            return
+
         new_server_list = {}
+        self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
 
         def check_server(host, data):
             url = f'http://{host}:{data["port"]}/telepath/check_status'
@@ -2286,6 +2308,7 @@ class ServerManager():
         # Update the online servers list
         self.online_telepath_servers = new_server_list
         self.write_telepath_servers(overwrite=True)
+        self._send_log(f"successfully connected to {len(self.online_telepath_servers)} Telepath server(s)", 'info')
         return new_server_list
 
     def write_telepath_servers(self, instance=None, overwrite=False):
@@ -2305,6 +2328,7 @@ class ServerManager():
         if not instance['nickname']:
             instance['nickname'] = constants.format_nickname(instance['hostname'])
 
+        self._send_log(f'added a new Telepath server:\n{instance}')
         self.write_telepath_servers(instance)
         self.check_telepath_servers()
 
@@ -2312,6 +2336,7 @@ class ServerManager():
         if instance['host'] in self.telepath_servers:
             del self.telepath_servers[instance['host']]
 
+        self._send_log(f'removed a Telepath server:\n{instance}')
         self.write_telepath_servers(overwrite=True)
         self.check_telepath_servers()
 
@@ -2321,6 +2346,7 @@ class ServerManager():
         self.telepath_servers[instance['host']]['nickname'] = new_name
         self.telepath_servers[instance['host']]['display-name'] = new_name
 
+        self._send_log(f"renamed a Telepath server to '{new_name}':\n{instance}")
         self.write_telepath_servers(overwrite=True)
 
     # Retrieves remote update list
