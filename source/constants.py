@@ -1,12 +1,10 @@
 from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
-from platform import platform, architecture
 from datetime import datetime as dt, date
 from random import randrange, choices
 from difflib import SequenceMatcher
 from urllib.parse import quote
 from bs4 import BeautifulSoup
-from platform import system
 from threading import Timer
 from copy import deepcopy
 from pathlib import Path
@@ -21,6 +19,7 @@ import subprocess
 import functools
 import threading
 import traceback
+import platform
 import requests
 import tarfile
 import zipfile
@@ -165,7 +164,10 @@ json_format_floor = "1.7.6"
 
 
 # Paths
-os_name = 'windows' if os.name == 'nt' else 'macos' if system().lower() == 'darwin' else 'linux' if os.name == 'posix' else os.name
+os_name = 'windows' if os.name == 'nt' else \
+          'macos' if platform.system().lower() == 'darwin' else \
+          'linux' if os.name == 'posix' else os.name
+
 home    = os.path.expanduser('~')
 appdata = os.getenv("APPDATA") if os_name == 'windows' else f'{home}/Library/Application Support' if os_name == 'macos' else home
 applicationFolder = os.path.join(appdata, ('.auto-mcs' if os_name != 'macos' else 'auto-mcs'))
@@ -202,13 +204,76 @@ script_obj  = None
 
 # Format OS as a string
 def format_os() -> str:
-    formatted_os_name = os_name.title() if os_name != 'macos' else 'macOS'
-    return f'{formatted_os_name} ({"Docker, " if is_docker else ""}{platform()})'
+
+    # System architecture (this app only supports 64-bit) ----------------------------
+    arch_map = {
+        "amd64": "64-bit", "x86_64": "64-bit",
+        "aarch64": "ARM 64-bit", "arm64": "ARM 64-bit"
+    }
+    arch = arch_map.get(platform.machine().lower(), 'Unknown architecture')
+
+    # Windows ------------------------------------------------------------------------
+    def _windows_info() -> (str, str):
+        data = platform.uname()
+        product = data.system
+        if 'server' in data.release.lower(): release = f'Server {data.release.lower().replace("server","").strip()}'
+        else: release = data.release.strip()
+
+        if '.' in data.version: build = data.version.rsplit('.')[-1]
+        else: build = data.version.strip()
+
+        return f'{product} {release}', build
+
+    # macOS --------------------------------------------------------------------------
+    def _mac_info() -> (str, str):
+        version = None
+        build = None
+        for line in subprocess.check_output(["sw_vers"], text=True).strip().splitlines():
+            if line.startswith('ProductVersion:'): version = line.split(':', 1)[-1].strip()
+            if line.startswith('BuildVersion:'): build = line.split(':', 1)[-1].strip()
+
+        if version: product = f'macOS {version}'
+        else: product = 'macOS'
+
+        return product, build
+
+    # Linux --------------------------------------------------------------------------
+    def _linux_info() -> (str, str):
+        distro_name = None
+        distro_id   = None
+        try:
+            with open("/etc/os-release", encoding="utf-8") as fp:
+                for line in fp:
+                    if line.startswith("NAME="): distro_name = line.split("=", 1)[-1].strip().strip('"')
+                    if line.startswith("VERSION_ID="): distro_id = line.split("=", 1)[-1].strip().strip('"')
+        except FileNotFoundError: pass
+
+        if distro_name and distro_id: product = f'{distro_name} {distro_id}'
+        else: product = 'Linux'
+
+        kernel = platform.release()
+        if '-' in kernel: kernel = kernel.split('-', 1)[0]
+        if kernel.count('.') > 2: kernel = '.'.join(kernel.split('.')[:3])
+        return product, kernel
+
+    if os_name == "windows":
+        name, version = _windows_info()
+        return f"{name} (b-{version}, {arch})"
+
+    elif os_name == "macos":
+        name, version = _mac_info()
+        return f"{name} (b-{version}, {arch})"
+
+    elif os_name == "linux":
+        distro, kernel = _linux_info()
+        return f"{distro} (k-{kernel}, {arch})"
+
+    else: return f'Unknown OS ({arch})'
 
 
 # Format CPU as a string
 def format_cpu() -> str:
-    cpu_arch = architecture()
+    cpu_arch = platform.architecture()
     if len(cpu_arch) > 1: cpu_arch = cpu_arch[0]
     return f"{psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {round((psutil.cpu_freq().max) / 1000, 2)} GHz ({cpu_arch.replace('bit', '-bit')})"
 
