@@ -1523,13 +1523,16 @@ def get_uuid(user: str):
     if (constants.app_online) and (not found_item):
 
         try:
-            check_url = f"https://mcuuid.net/?q={user.strip()}"
-            soup = constants.get_url(check_url)
+            check_url = f"https://playerdb.co/api/player/minecraft/{user.strip()}"
+            response = constants.get_url(check_url, return_response=True)
 
-            final_dict = {
-                'uuid': soup.find('input', id='results_id').get('value'),
-                'name': soup.find('input', id='results_username').get('value')
-            }
+            if response.status_code == 200:
+                data = response.json()
+                if data['code'] == 'player.found':
+                    final_dict = {
+                        'uuid': data['data']['player']['id'],
+                        'name': data['data']['player']['username']
+                    }
 
             if not final_dict['name'] and not user_is_uuid:
                 final_dict['name'] = user
