@@ -1496,16 +1496,14 @@ def get_uuid(user: str):
         try:
             with open(uuid_db, "r") as f:
                 content = f.read()
-                try:
-                    file = json.loads(content)
+                try: file = json.loads(content)
                 except:
 
                     # If failure, try to repair the json file
                     try:
                         print("Attempting to fix 'uuid-db.json' due to formatting error")
                         file = json_repair.loads(content)
-                        if not file:
-                            raise TypeError
+                        if not file: raise TypeError
                     except:
                         print("'uuid-db.json' reset due to formatting error")
                         file = None
@@ -1525,6 +1523,7 @@ def get_uuid(user: str):
         try:
             check_url = f"https://playerdb.co/api/player/minecraft/{user.strip()}"
             response = constants.get_url(check_url, return_response=True)
+            final_dict = {'uuid': None, 'name': None}
 
             if response.status_code == 200:
                 data = response.json()
@@ -1541,11 +1540,8 @@ def get_uuid(user: str):
                 temp_folder = os.path.join(cache_folder, 'uuid-temp')
                 constants.folder_check(temp_folder)
 
-                with open(
-                    os.path.join(temp_folder, f"uuid-{final_dict['uuid'].lower().replace('-', '')}.json"),
-                    "w"
-                ) as f:
-
+                temp_path = os.path.join(temp_folder, f"uuid-{final_dict['uuid'].lower().replace('-', '')}.json")
+                with open(temp_path, "w") as f:
                     f.write(json.dumps(final_dict, indent=2))
 
         except ConnectionRefusedError:
