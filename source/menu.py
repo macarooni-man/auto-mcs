@@ -9927,10 +9927,10 @@ class MainMenuScreen(MenuBackground):
         version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
         splash.add_widget(version)
 
-        seperator = Label(pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
-        seperator.__translate__ = False
-        seperator.text = "_" * 50
-        splash.add_widget(seperator)
+        separator = Label(pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+        separator.__translate__ = False
+        separator.text = "_" * 50
+        splash.add_widget(separator)
 
         session_splash = Label(pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
         session_splash.__translate__ = False
