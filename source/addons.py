@@ -103,7 +103,7 @@ class AddonManager():
         # Set addon hash if server is running
         try:
             if self._server['name'] in constants.server_manager.running_servers:
-                constants.server_manager.running_servers['name'].run_data['addon-hash'] = deepcopy(self._addon_hash)
+                constants.server_manager.running_servers[self._server['name']].run_data['addon-hash'] = deepcopy(self._addon_hash)
         except:
             pass
 
