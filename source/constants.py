@@ -300,7 +300,8 @@ def send_log(object_data: str, message: str, level: str = None, stack: str = Non
             timestamp = dt.now().strftime('%I:%M:%S %p')
             content = line.strip() if x == 0 else f'   >  {line.strip()}'
             line = f"[{timestamp}] [{level.upper()}] [{stack}: {object_data}] {content}"
-            formatted = line.encode(sys.stdout.encoding, errors="ignore").decode(sys.stdout.encoding)
+            encoding = (sys.stdout and sys.stdout.encoding) or "utf-8"
+            formatted = line.encode(encoding, errors="ignore").decode(encoding, errors="ignore")
             print(formatted)
 
 
