@@ -115,7 +115,7 @@ def generate_log(exception, error_info=None):
         Online:            {constants.app_online}
         Permissions:       {"Admin-level" if constants.is_admin() else "User-level"}
         UI Language:       {constants.get_locale_string(True)}
-        Headless:          {"True" if constants.headless else "False"},
+        Headless:          {"True" if constants.headless else "False"}
         Active servers:    {', '.join([f"{x}: {y.type} {y.version}" for x, y in enumerate(constants.server_manager.running_servers.values(), 1)]) if constants.server_manager.running_servers else "None"}
         Proxy (playit):    {"Active" if constants.playit._tunnels_in_use() else "Inactive"}
         Telepath client:   {"Active" if is_telepath else "Inactive"}
