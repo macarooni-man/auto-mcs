@@ -6434,16 +6434,16 @@ class PopupWindow(RelativeLayout):
             return
 
         def delete(*args):
-
-            try:
-                for widget in self.parent.children:
-                    if "Popup" in widget.__class__.__name__:
-                        self.parent.popup_widget = None
-                        self.parent.canvas.after.clear()
-                        self.parent.remove_widget(widget)
-                        self.canvas.after.clear()
-            except AttributeError as e:
-                send_log(self.__class__.__name__, f"failed to delete popup as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
+            if self.parent:
+                try:
+                    for widget in self.parent.children:
+                        if "Popup" in widget.__class__.__name__:
+                            self.parent.popup_widget = None
+                            self.parent.canvas.after.clear()
+                            self.parent.remove_widget(widget)
+                            self.canvas.after.clear()
+                except AttributeError as e:
+                    send_log(self.__class__.__name__, f"failed to delete popup as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
 
         if animate:
             self.animate(False)
@@ -7055,16 +7055,16 @@ class BigPopupWindow(RelativeLayout):
             return
 
         def delete(*args):
-
-            try:
-                for widget in self.parent.children:
-                    if "Popup" in widget.__class__.__name__:
-                        self.parent.popup_widget = None
-                        self.parent.canvas.after.clear()
-                        self.parent.remove_widget(widget)
-                        self.canvas.after.clear()
-            except AttributeError as e:
-                send_log(self.__class__.__name__, f"failed to delete popup as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
+            if self.parent:
+                try:
+                    for widget in self.parent.children:
+                        if "Popup" in widget.__class__.__name__:
+                            self.parent.popup_widget = None
+                            self.parent.canvas.after.clear()
+                            self.parent.remove_widget(widget)
+                            self.canvas.after.clear()
+                except AttributeError as e:
+                    send_log(self.__class__.__name__, f"failed to delete popup as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
 
         if animate:
             self.animate(False)
@@ -8060,16 +8060,16 @@ class PopupSearch(RelativeLayout):
             return
 
         def delete(*args):
-
-            try:
-                for widget in self.parent.children:
-                    if "Popup" in widget.__class__.__name__:
-                        self.parent.popup_widget = None
-                        self.parent.canvas.after.clear()
-                        self.parent.remove_widget(widget)
-                        self.canvas.after.clear()
-            except AttributeError as e:
-                send_log(self.__class__.__name__, f"failed to delete popup as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
+            if self.parent:
+                try:
+                    for widget in self.parent.children:
+                        if "Popup" in widget.__class__.__name__:
+                            self.parent.popup_widget = None
+                            self.parent.canvas.after.clear()
+                            self.parent.remove_widget(widget)
+                            self.canvas.after.clear()
+                except AttributeError as e:
+                    send_log(self.__class__.__name__, f"failed to delete popup as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
 
         if animate:
             self.animate(False)
@@ -9460,7 +9460,7 @@ class ProgressScreen(MenuBackground):
 
             # If it failed, execute default error
             if not test:
-                self.execute_error(self.page_contents['default_error'], exception=exception, log_data=(crash_log, file_path))
+                self.execute_error(self.page_contents['default_error'], exception=exception, log_data=(crash_log, file_path) if crash_log else None)
                 return
 
             self.progress_bar.update_progress(self.progress_bar.value + step[2])
