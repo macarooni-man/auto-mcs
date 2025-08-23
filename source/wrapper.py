@@ -10,6 +10,7 @@ import os
 import gc
 
 
+
 if __name__ == '__main__':
 
     # Modify garbage collector
@@ -30,25 +31,34 @@ if __name__ == '__main__':
     import constants
     import telepath
 
+
+    # Logging wrapper
+    def send_log(object_data, message, level=None):
+        return constants.send_log(f'wrapper.{object_data}', message, level)
+
+
     # Open devnull to stdout on Windows
     if constants.os_name == 'windows' and constants.app_compiled:
         sys.stdout = open(os.devnull, 'w')
 
-    constants.launch_path = sys.executable if constants.app_compiled else __file__
-    try:
-        constants.username = constants.run_proc('whoami', True).split('\\')[-1].strip()
-    except:
-        pass
-    try:
-        if constants.is_docker:
-            constants.hostname = constants.app_title
-        else:
-            constants.hostname = constants.run_proc('hostname', True).strip()
-    except:
-        pass
 
-    if constants.app_compiled:
-        os.environ["KIVY_NO_CONSOLELOG"] = "1"
+    # Set launch path, username
+    constants.launch_path = sys.executable if constants.app_compiled else __file__
+
+    # Set username
+    try: constants.username = constants.run_proc('whoami', True).split('\\')[-1].strip()
+    except: pass
+
+    # Set hostname
+    try:
+        if constants.is_docker: constants.hostname = constants.app_title
+        else:                   constants.hostname = constants.run_proc('hostname', True).strip()
+    except: pass
+
+
+    # Disable Kivy logs in console when app is compiled
+    if constants.app_compiled: os.environ["KIVY_NO_CONSOLELOG"] = "1"
+
 
     # Check for update log
     update_log = None
@@ -57,7 +67,7 @@ if __name__ == '__main__':
         if os.path.exists(update_log):
             with open(update_log, 'r') as f:
                 constants.update_data['reboot-msg'] = f.read().strip().split("@")
-            print('Update complete: ', constants.update_data['reboot-msg'])
+            send_log('', f"update complete: '{constants.update_data['reboot-msg']}'", 'info')
     except:
         pass
 
@@ -77,9 +87,9 @@ if __name__ == '__main__':
             parser.add_argument('-s', '--headless', default='', help='launch without initializing the UI and enable the Telepath API', action='store_true')
 
 
-        args = parser.parse_args()
 
         # Assign parsed arguments to global variables
+        args = constants.boot_arguments = parser.parse_args()
         constants.debug = args.debug
         reset_config = args.reset
         constants.bypass_admin_warning = args.bypass_admin_warning
@@ -106,12 +116,11 @@ if __name__ == '__main__':
                     server = constants.server_list[constants.server_list_lower.index(server.lower())]
                     constants.boot_launches.append(server)
                 else:
-                    print(f'--launch: server "{server}" does not exist')
+                    send_log('', f"--launch: '{server}' does not exist", 'fatal')
                     sys.exit(-1)
 
-    except AttributeError:
-        if constants.debug:
-            print("argparse error: failed to process commandline arguments")
+    except AttributeError as e:
+        send_log('', f"error processing CLI arguments: {constants.format_traceback(e)}", 'error')
 
 
     # Check if application is already open (Unless running in Docker)
@@ -125,14 +134,14 @@ if __name__ == '__main__':
                     if not user32.IsZoomed(hwnd):
                         user32.ShowWindow(hwnd, 1)
                     user32.SetForegroundWindow(hwnd)
-                print('Closed: auto-mcs is already open')
+                send_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal')
                 sys.exit(10)
 
         elif constants.os_name == "macos":
             command = f'ps -e | grep .app/Contents/MacOS/{os.path.basename(constants.launch_path)}'
             response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2:
-                print('Closed: auto-mcs is already open')
+                send_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal')
                 sys.exit(10)
 
         # Linux
@@ -140,7 +149,7 @@ if __name__ == '__main__':
             command = f'ps -e | grep {os.path.basename(constants.launch_path)}'
             response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2:
-                print('Closed: auto-mcs is already open')
+                send_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal')
                 sys.exit(10)
 
 
@@ -162,21 +171,24 @@ if __name__ == '__main__':
 
     # Get default system language
     try:
-        if constants.os_name == 'macos':
-            system_locale = constants.run_proc("osascript -e 'user locale of (get system info)'", True)
+        if constants.os_name == 'macos': system_locale = constants.run_proc("osascript -e 'user locale of (get system info)'", True)
+
         else:
             from locale import getdefaultlocale
             system_locale = getdefaultlocale()[0]
+
         if '_' in system_locale:
             system_locale = system_locale.split('_')[0]
+
         for v in constants.available_locales.values():
             if system_locale.startswith(v['code']):
-                if not constants.app_config.locale:
-                    constants.app_config.locale = v['code']
+                if not constants.app_config.locale: constants.app_config.locale = v['code']
                 break
+
     except Exception as e:
         if not constants.is_docker:
-            print(f'Failed to determine locale: {e}')
+            send_log('', f'failed to determine locale: {e}', 'error')
+
     if not constants.app_config.locale:
         constants.app_config.locale = 'en'
 
@@ -219,16 +231,22 @@ if __name__ == '__main__':
         if not update_log or not os.path.exists(update_log):
             constants.safe_delete(constants.tempDir)
 
-    def app_crash(exception):
+    def app_crash(traceback, exception):
         import crashmgr
-        log = crashmgr.generate_log(exception)
-        if not constants.headless:
-            crashmgr.launch_window(*log)
+        exc_code, log_path = crashmgr.generate_log(traceback)
+        send_log('app_crash', f"{constants.app_title} has crashed with exception code:  {exc_code}\nFull crash log available in:  '{log_path}'", 'fatal')
+
+        # Normal Python behavior when testing
+        if not constants.app_compiled: raise exception
+
+        # Otherwise, launch appropriate crash hook
+        crashmgr.launch_window(exc_code, log_path)
 
 
     # Main wrapper
     def background():
         global exitApp, crash
+        send_log('background', 'initializing background thread', 'debug')
 
         # Check for updates
         constants.check_app_updates()
@@ -250,8 +268,7 @@ if __name__ == '__main__':
             try:
                 func()
             except Exception as e:
-                if constants.debug:
-                    print(f'Error running {func}: {e}')
+                send_log('background.background_launch', f"error running background task '{func}': {constants.format_traceback(e)}", 'error')
 
         # Find latest game versions and update data cache
         def get_public_ip(*a):
@@ -272,29 +289,26 @@ if __name__ == '__main__':
         while True:
 
             # Exit this thread if the main thread closes, or crashes
-            if exitApp or crash:
-                break
+            if exitApp or crash: break
             else:
 
                 # Check for network changes in the background
                 connect_counter += 1
                 if (connect_counter == 10 and not constants.app_online) or (connect_counter == 3600 and constants.app_online):
-                    try:
-                        constants.check_app_updates()
-                    except Exception as e:
-                        if constants.debug:
-                            print(e)
-
+                    try: constants.check_app_updates()
+                    except Exception as e: send_log('background', f"error checking for app updates: {constants.format_traceback(e)}", 'error')
                     connect_counter = 0
 
-                time.sleep(1)
+                if not (exitApp or crash): time.sleep(1)
+
+        send_log('background', 'closed background thread', 'debug')
 
     def foreground():
         global exitApp, crash
 
         # Main thread
         try:
-            main.mainLoop()
+            main.ui_loop()
             exitApp = True
 
         except SystemExit:
@@ -304,21 +318,23 @@ if __name__ == '__main__':
         except Exception as e:
             crash = format_exc()
             exitApp = True
+            send_log('foreground', 'UI has exited unexpectedly', 'error')
 
             # Use crash handler when app is compiled
-            if crash and constants.app_compiled:
+            if crash:
 
                 # Destroy init window if macOS
                 if constants.os_name == 'macos':
                     init_window.destroy()
 
-                app_crash(crash)
+                app_crash(crash, e)
 
             cleanup_on_close()
 
-            # Normal Python behavior when testing
-            if not constants.app_compiled:
-                raise e
+
+        # Log if the UI closed properly
+        if not crash: send_log('foreground', 'UI has exited gracefully', 'info')
+
 
         # Destroy init window if macOS
         cleanup_on_close()
@@ -340,10 +356,9 @@ if __name__ == '__main__':
     b = threading.Thread(name='background', target=background)
     b.setDaemon(True)
 
-    # Log errors to file if debug
-    if constants.app_compiled and constants.debug is True:
-        sys.stderr = open("error.log", "a")
-
     b.start()
     foreground()
     b.join()
+
+    # Exit with return code if there's a crash
+    if crash: exit(20)
