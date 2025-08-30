@@ -37,7 +37,7 @@ class ServerObject():
 
     # Internal log wrapper
     def _send_log(self, message: str, level: str = None):
-        return send_log(f'{self.__class__.__name__}', f"'{self.name}': {message}", level)
+        return send_log(self.__class__.__name__, f"'{self.name}': {message}", level)
 
     def __init__(self, server_name: str):
         self._telepath_data = None
@@ -503,7 +503,7 @@ class ServerObject():
 
         constants.server_config(self.name, self.config_file)
         constants.server_properties(self.name, self.server_properties)
-        self._send_log(f"updated 'server.properties' and '{constants.server_ini}'")
+        self._send_log(f"updated 'server.properties' and '{constants.server_ini}'", 'info')
 
     # Converts stdout of self.run_data['process'] to fancy stuff
     def update_log(self, text: bytes, *args):

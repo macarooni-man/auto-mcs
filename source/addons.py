@@ -97,7 +97,7 @@ class AddonManager():
 
     # Internal log wrapper
     def _send_log(self, message: str, level: str = None):
-        return send_log(f'{self.__class__.__name__}', f"'{self._server['name']}': {message}", level)
+        return send_log(self.__class__.__name__, f"'{self._server['name']}': {message}", level)
 
     def __init__(self, server_name: str):
         self._server = dump_config(server_name)
@@ -227,7 +227,7 @@ class AddonManager():
             return None
 
         success = False
-        self._send_log(f"downloading '{addon}'...")
+        self._send_log(f"downloading '{addon}'...", 'info')
 
         # If AddonWebObject was provided
         if not isinstance(addon, str):
@@ -573,10 +573,9 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
                     constants.safe_delete(addon_tmp)
 
-            # If there's an issue with decompilation
+            # If there's an issue with de-compilation
             except Exception as e:
-                if constants.debug:
-                    print(e)
+                send_log('get_addon_file', f"error decompiling '{addon_path}': {constants.format_traceback(e)}")
 
                 if not addon_version:
                     addon_version = None
@@ -643,7 +642,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
     except TypeError:
         return False
 
-    send_log('import_addon', f"importing '{addon_path}' to '{server_properties['name']}'...\n{f'tmpsvr: True' if tmpsvr else ''}".strip())
+    send_log('import_addon', f"importing '{addon_path}' to '{server_properties['name']}'...\n{f'tmpsvr: True' if tmpsvr else ''}".strip(), 'info')
 
 
     addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
@@ -662,7 +661,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
             # Copy addon to proper folder if it exists
             if addon:
                 constants.folder_check(destination_path)
-                send_log('import_addon', f"successfully imported '{addon_path}' to '{server_properties['name']}'")
+                send_log('import_addon', f"successfully imported '{addon_path}' to '{server_properties['name']}'", 'info')
                 return constants.copy_to(addon.path, destination_path, str(constants.sanitize_name(addon.name, True) + ".jar"), overwrite=True)
 
     except Exception as e: send_log('import_addon', f"failed to import '{addon_path}' to '{server_properties['name']}': {constants.format_traceback(e)}", 'error')
@@ -690,7 +689,7 @@ def search_addons(query: str, server_properties, *args):
     results = []
     server_type = constants.server_type(server_properties['type'])
     log_tag = f"'{query.strip()}' ({server_type})"
-    send_log('search_addons', f"searching for {log_tag}...")
+    send_log('search_addons', f"searching for {log_tag}...", 'info')
 
 
     # If 'server_type' is bukkit
@@ -751,8 +750,8 @@ def search_addons(query: str, server_properties, *args):
         except Exception as e:
             send_log('search_addons', f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
 
-    if results: send_log('search_addons', f"found {len(results)} add-on(s) for {log_tag}:\n{results}")
-    else:       send_log('search_addons', f"no add-ons were found for {log_tag}")
+    if results: send_log('search_addons', f"found {len(results)} add-on(s) for {log_tag}:\n{results}", 'info')
+    else:       send_log('search_addons', f"no add-ons were found for {log_tag}", 'info')
 
     return results
 
@@ -1025,7 +1024,7 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
     file_name = constants.sanitize_name(addon.name if len(addon.name) < 35 else addon.name.split(' ')[0], True) + ".jar"
     total_path = os.path.join(destination_path, file_name)
 
-    send_log('download_addon', f"downloading '{addon}' to '{destination_path}'...")
+    send_log('download_addon', f"downloading '{addon}' to '{destination_path}'...", 'info')
 
 
     # Download addon to "destination_path + file_name"
@@ -1053,7 +1052,7 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
             constants.safe_delete(addon_download)
 
     except Exception as e: send_log('download_addon', f"error downloading '{addon}' to '{destination_path}': {constants.format_traceback(e)}", 'error')
-    else: send_log('download_addon', f"successfully downloaded '{addon}' to '{destination_path}'...")
+    else: send_log('download_addon', f"successfully downloaded '{addon}' to '{destination_path}'", 'info')
 
     return os.path.exists(total_path)
 
@@ -1135,6 +1134,7 @@ def enumerate_addons(server_properties, single_list=False):
 # AddonFileObject
 def addon_state(addon: AddonFileObject, server_properties, enabled=True):
     log_prefix = 'en' if enabled else 'dis'
+    server_name = server_properties['name']
 
     # Define folder paths based on server info
     addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
@@ -1155,7 +1155,7 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True):
             os.rename(addon.path, new_path)
 
         except PermissionError as e:
-            send_log('addon_state', f'error {log_prefix}abling {addon}: {constants.format_traceback(e)}', 'error')
+            send_log('addon_state', f"'{server_name}': error {log_prefix}abling {addon}: {constants.format_traceback(e)}", 'error')
             return False
 
         addon.path = new_path
@@ -1170,13 +1170,13 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True):
             os.rename(addon.path, new_path)
 
         except PermissionError as e:
-            send_log('addon_state', f'error {log_prefix}abling {addon}: {constants.format_traceback(e)}', 'error')
+            send_log('addon_state', f"'{server_name}': error {log_prefix}abling {addon}: {constants.format_traceback(e)}", 'error')
             return False
 
         addon.path = new_path
 
 
-    send_log('addon_state', f'successfully {log_prefix}abled {addon}')
+    send_log('addon_state', f"'{server_name}': successfully {log_prefix}abled {addon}", 'info')
     return addon
 
 
@@ -1307,7 +1307,7 @@ def search_modpacks(query: str, *a):
     results = []
 
     log_tag = f"'{query.strip()}'"
-    send_log('search_modpacks', f"searching for {log_tag}...")
+    send_log('search_modpacks', f"searching for {log_tag}...", 'info')
 
 
     # Grab every modpack from search result and return results dict
@@ -1334,9 +1334,9 @@ def search_modpacks(query: str, *a):
 
     if results:
         results = sorted(results, key=lambda x: x.score, reverse=True)
-        send_log('search_modpacks', f"found {len(results)} modpack(s) for {log_tag}:\n{results}")
+        send_log('search_modpacks', f"found {len(results)} modpack(s) for {log_tag}:\n{results}", 'info')
     else:
-        send_log('search_modpacks', f"no modpacks were found for {log_tag}")
+        send_log('search_modpacks', f"no modpacks were found for {log_tag}", 'info')
 
 
     return results

@@ -5427,7 +5427,7 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
 
     # If write_object, write it to file path
     if write_object:
-        send_log('server_config', f"updating configuration in '{config_file}'...", 'info')
+        send_log('server_config', f"updating configuration in '{config_file}'...")
 
         try:
             if write_object.get('general', 'serverType').lower() not in builds_available:
@@ -5443,7 +5443,7 @@ def server_config(server_name: str, write_object: configparser.ConfigParser = No
                 run_proc(f"attrib +H \"{config_file}\"")
 
         except Exception as e: send_log('server_config', f"error updating '{config_file}': {format_traceback(e)}", 'error')
-        else:                  send_log('server_config', f"successfully updated '{config_file}'", 'info')
+        else:                  send_log('server_config', f"successfully updated '{config_file}'")
 
         return write_object
 
@@ -5613,7 +5613,7 @@ def server_properties(server_name: str, write_object=None):
 
     # If write_object, write it to file path
     if write_object:
-        send_log('server_properties', f"updating configuration in '{properties_file}'...", 'info')
+        send_log('server_properties', f"updating configuration in '{properties_file}'...")
 
         try:
             with open(properties_file, 'w', encoding='utf-8', errors='ignore') as f:
@@ -5634,7 +5634,7 @@ def server_properties(server_name: str, write_object=None):
                 f.write(file_contents)
 
         except Exception as e: send_log('server_properties', f"error updating '{properties_file}': {format_traceback(e)}", 'error')
-        else:                  send_log('server_properties', f"successfully updated '{properties_file}'", 'info')
+        else:                  send_log('server_properties', f"successfully updated '{properties_file}'")
 
         return write_object
 

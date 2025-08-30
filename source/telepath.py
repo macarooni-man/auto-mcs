@@ -181,6 +181,8 @@ class TelepathManager():
         if constants.headless:
             logging.disable(logging.CRITICAL)
 
+        self._send_log(f'initialized Telepath Manager v{self.version}')
+
     def _run_uvicorn(self):
         self.server = uvicorn.Server(self.config)
         self.server.run()
