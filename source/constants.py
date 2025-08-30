@@ -3102,13 +3102,6 @@ def iter_addons(progress_func=None, update=False, telepath=False):
     # If geyser is enabled, add proper addons to list
     if new_server_info['server_settings']['geyser_support']:
 
-        # Add vault for permissions
-        if server_type(new_server_info['type']) == 'bukkit':
-            vault = addons.find_addon('vault', new_server_info)
-            if vault:
-                if vault not in all_addons:
-                    all_addons.append(vault)
-
         # Add Geyser, Floodgate, and ViaVersion
         for addon in addons.geyser_addons(new_server_info):
             all_addons.append(addon)
@@ -3118,12 +3111,6 @@ def iter_addons(progress_func=None, update=False, telepath=False):
         fabric_api = addons.find_addon('Fabric API', new_server_info)
         if fabric_api:
             all_addons.append(fabric_api)
-
-    # Install QSL alongside Quilt
-    # if new_server_info['type'] == 'quilt':
-    #     quilt_api = addons.find_addon('qsl', new_server_info)
-    #     if quilt_api:
-    #         all_addons.append(quilt_api)
 
 
     addon_count = len(all_addons)

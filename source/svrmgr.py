@@ -26,7 +26,7 @@ import backup
 # Auto-MCS Server Manager API
 # ----------------------------------------------- Server Objects -------------------------------------------------------
 
-# UI log wrapper
+# Log wrapper
 def send_log(object_data, message, level=None):
     return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
 

@@ -631,7 +631,7 @@ class HoverButton(Button, HoverBehavior):
             else:
                 interaction = str(self.id)
             if widget_text:
-                interaction += f" ({widget_text.title().replace('Mcs', 'MCS')})"
+                interaction += f" ({widget_text.title().replace('Mcs', 'MCS').strip()})"
             constants.last_widget = interaction + f" @ {constants.format_now()}"
             send_log('navigation', f"interaction: '{interaction}'")
         except:
@@ -7262,13 +7262,7 @@ class PopupFile(BigPopupWindow):
 # Addon popup
 class PopupAddon(BigPopupWindow):
     def body_button_click(self):
-        if self.addon_object:
-            if self.addon_object.type in ["forge", "neoforge", "fabric", "quilt", "modpack"]:
-                url = self.addon_object.url
-            else:
-                url = "https://dev.bukkit.org" + self.addon_object.url
-
-            webbrowser.open_new_tab(url)
+        if self.addon_object: webbrowser.open_new_tab(self.addon_object.url)
 
     def __init__(self, addon_object=None, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
