@@ -22,10 +22,13 @@ constants.script_obj = amscript.ScriptObject()
 # Check if advanced terminal features are supported
 advanced_term = False
 try:
-    if os.environ['TERM'].endswith('-256color'):
-        advanced_term = True
-except:
-    pass
+    if os.environ['TERM'].endswith('-256color'): advanced_term = True
+except: pass
+
+
+# UI log wrapper
+def send_log(object_data, message, level=None):
+    return constants.send_log(f'{__name__}.{object_data}', message, level, 'ui')
 
 
 # Overwrite STDOUT to not interfere with the UI
@@ -101,6 +104,7 @@ def process_command(cmd: str):
 
             # Process command and return output
             command = commands[cmd]
+            send_log('process_command', f"issued command: '{' '.join(raw)}'", 'info')
             output = command.exec(args)
             if isinstance(output, tuple):
                 success = 'fail' != output[1]
@@ -811,6 +815,7 @@ class ScreenManager():
 class Command:
 
     def exec(self, args=()):
+
         # Combine all arguments into one if one_arg
         if self.one_arg:
             args = ' '.join(args).strip()
@@ -2760,6 +2765,7 @@ def open_console(server_name: str, force_start=False):
 # --------------------------------------------------- Launch Menu ------------------------------------------------------
 
 def run_application():
+    send_log('run_application', 'initializing headless UI (urwid)', 'info')
 
     # Raise an interactive warning if elevated, but bypassed
     if (constants.is_admin() and not constants.is_docker) and constants.bypass_admin_warning:
