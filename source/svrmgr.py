@@ -1061,7 +1061,7 @@ class ServerObject():
 
                 # Run server
                 self.run_data['process'] = Popen(script_content, stdout=PIPE, stdin=PIPE, stderr=PIPE, cwd=self.server_path, shell=True)
-                self._send_log(f'launching server process with PID {self.run_data["process"].pid}', 'info')
+                self._send_log(f'launching the server process with PID {self.run_data["process"].pid}', 'info')
 
             self.run_data['pid'] = self.run_data['process'].pid
             self.run_data['send-command'] = self.send_command
@@ -1373,7 +1373,7 @@ class ServerObject():
 
     # Kill server and delete running configuration
     def terminate(self):
-        if not self.restart_flag: self._send_log('terminating server process...', 'info')
+        if not self.restart_flag: self._send_log('terminating the server process...', 'info')
 
         # Kill server process
         try:
@@ -1382,7 +1382,7 @@ class ServerObject():
 
         # Ignore errors stopping the process
         except Exception as e:
-            self._send_log(f'failed to terminate server process: {constants.format_traceback(e)}')
+            self._send_log(f'failed to terminate the server process: {constants.format_traceback(e)}')
             return
 
         # Reset port back to normal if required
@@ -1442,7 +1442,7 @@ class ServerObject():
             self.run_data.clear()
             self.running = False
             del constants.server_manager.running_servers[self.name]
-            self._send_log('successfully stopped server process', 'info')
+            self._send_log('successfully stopped the server process', 'info')
             # print(constants.server_manager.running_servers)
 
         # Reboot server if required
@@ -1458,7 +1458,7 @@ class ServerObject():
                 self.silent_command(f"kick {player} Server is restarting", log=False)
         except KeyError:
             pass
-        self._send_log('restarting server process...', 'info')
+        self._send_log('restarting the server process...', 'info')
         self.stop()
 
     # Stops the server
@@ -1471,7 +1471,7 @@ class ServerObject():
         # Iterate over self and children to find Java process
         try:
             parent = psutil.Process(self.run_data['process'].pid)
-            self._send_log(f"attempting to kill server process with PID {self.run_data['process'].pid}", 'info')
+            self._send_log(f"attempting to kill the server process with PID {self.run_data['process'].pid}", 'info')
         except:
             return False
         sys_mem = round(psutil.virtual_memory().total / 1048576, 2)
@@ -1515,13 +1515,13 @@ class ServerObject():
             if self.running and self.name not in constants.backup_lock and not self.restart_flag:
                 try:
                     # Delay if CPU usage is higher than expected
-                    if self.run_data['performance']['cpu'] > 0.5:
+                    if self.run_data['performance']['cpu'] > 0.3:
                         time.sleep(15)
                     message = f"'{self.name}' is deadlocked, please kill it above to continue..."
                     self.run_data['deadlocked'] = True
                     if message != self.run_data['log'][-1]['text'][2]:
                         self.send_log(message, 'warning')
-                        self._send_log(f"detected that server process with PID {self.run_data['process'].pid} is deadlocked", 'warning')
+                        self._send_log(f"detected that the server process with PID {self.run_data['process'].pid} is deadlocked", 'warning')
                     self.run_data['console-panel'].toggle_deadlock(True)
                 except:
                     pass

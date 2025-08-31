@@ -246,7 +246,7 @@ if __name__ == '__main__':
     # Main wrapper
     def background():
         global exitApp, crash
-        send_log('background', 'initializing background thread', 'debug')
+        send_log('background', 'initializing the background thread', 'debug')
 
         # Check for updates
         constants.check_app_updates()
@@ -301,7 +301,7 @@ if __name__ == '__main__':
 
                 if not (exitApp or crash): time.sleep(1)
 
-        send_log('background', 'closed background thread', 'debug')
+        send_log('background', 'closed the background thread', 'debug')
 
     def foreground():
         global exitApp, crash
