@@ -21,9 +21,15 @@ from amscript import PlayerScriptObject
 # Auto-MCS Access Control API
 # ----------------------------------------------- Global Variables -----------------------------------------------------
 
+# Log wrapper
+def send_log(object_data, message, level=None):
+    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
+
 cache_folder = constants.cacheDir
 uuid_db = os.path.join(cache_folder, "uuid-db.json")
 global_acl_file = os.path.join(constants.configDir, "global-acl.json")
+
+
 
 # ------------------------------------------------- ACL Objects --------------------------------------------------------
 
@@ -77,6 +83,10 @@ class AclManager():
         final_data['rules'] = {k: [i._to_json() for i in v] for k, v in final_data['rules'].items()}
         return final_data
 
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, f"'{self._server['name']}': {message}", level)
+
     def __init__(self, server_name: str):
 
         # Check if config file exists to determine new server status
@@ -89,6 +99,8 @@ class AclManager():
         self.list_items = self._gen_list_items()
         self.whitelist_enabled = self._server['whitelist']
         self.displayed_rule = None
+
+        self._send_log('initialized AclManager', 'info')
 
     # Inherit get_uuid method
     def get_uuid(self, *args, **kwargs):
@@ -566,6 +578,8 @@ class AclManager():
 
     # Generates AclRule objects from server files
     def _load_acl(self, list_type=None, force_version=None, new_server=False, temp_server=False):
+        log_list_type = list_type if list_type else 'all'
+        acl_dict: dict = None
 
         # If it's a new server, generate acl_dict from only the global rules
         if new_server:
@@ -599,7 +613,11 @@ class AclManager():
 
         # Get normal ACL dict from server files
         else:
-            acl_dict = load_acl(self._server['name'], list_type, force_version, temp_server=temp_server)
+            try:
+                acl_dict = load_acl(self._server['name'], list_type, force_version, temp_server=temp_server)
+                self._send_log(f"successfully loaded list '{log_list_type}' from disk")
+            except Exception as e:
+                self._send_log(f"error loading list '{log_list_type}' from disk: {constants.format_traceback(e)}", 'error')
 
         self.list_items = self._gen_list_items()
         return acl_dict
@@ -852,6 +870,7 @@ class AclManager():
         if server_obj.running:
             for player in rule_list:
                 server_obj.silent_command(f'kick {player}{reason}')
+                self._send_log(f'kicked {player}: {reason}', 'info')
             return True
         return False
 
@@ -870,8 +889,14 @@ class AclManager():
 
         # Normal behavior
         else:
-            op_list = op_user(self._server['name'], rule_list, remove, force_version, True, temp_server)
-            self.rules['ops'] = op_list
+            log_verb = 'removing' if remove else 'granting'
+            try:
+                op_list = op_user(self._server['name'], rule_list, remove, force_version, True, temp_server)
+                self.rules['ops'] = op_list
+                self._send_log(f"success {log_verb} '{rule_list}' operator permissions", 'info')
+
+            except Exception as e:
+                self._send_log(f"error {log_verb} operator permissions from '{rule_list}': {constants.format_traceback(e)}", 'error')
 
         self.list_items = self._gen_list_items()
         return self.rules
@@ -898,9 +923,15 @@ class AclManager():
 
         # Normal behavior
         else:
-            ban_list, subnet_list = ban_user(self._server['name'], rule_list, remove, force_version, True, temp_server, reason, length)
-            self.rules['bans'] = ban_list
-            self.rules['subnets'] = subnet_list
+            log_verb = 'pardoning' if remove else 'banning'
+            try:
+                ban_list, subnet_list = ban_user(self._server['name'], rule_list, remove, force_version, True, temp_server, reason, length)
+                self.rules['bans'] = ban_list
+                self.rules['subnets'] = subnet_list
+                self._send_log(f"success {log_verb} '{rule_list}'")
+
+            except Exception as e:
+                self._send_log(f"error {log_verb} '{rule_list}': {constants.format_traceback(e)}")
 
         self.list_items = self._gen_list_items()
         return self.rules
@@ -921,11 +952,15 @@ class AclManager():
 
         # Normal behavior
         else:
-            wl_list, op_list = wl_user(self._server['name'], rule_list, remove, force_version, True, temp_server)
-            self.rules['wl'] = wl_list
+            log_verb = 'removing' if remove else 'adding'
+            try:
+                wl_list, op_list = wl_user(self._server['name'], rule_list, remove, force_version, True, temp_server)
+                self.rules['wl'] = wl_list
+                if op_list: self.rules['ops'] = op_list
+                self._send_log(f"success {log_verb} '{rule_list}' in the whitelist", 'info')
 
-            if op_list:
-                self.rules['ops'] = op_list
+            except Exception as e:
+                self._send_log(f"error {log_verb} '{rule_list}' in the whitelist: {constants.format_traceback(e)}", 'error')
 
         self.list_items = self._gen_list_items()
         return self.rules
@@ -933,63 +968,74 @@ class AclManager():
     # Toggles whitelist on or off
     def enable_whitelist(self, enabled=True):
         if isinstance(enabled, bool):
+            log_verb = 'en' if enabled else 'dis'
+            try:
+                if not self._new_server:
+                    new_properties = constants.server_properties(self._server['name'])
+                    new_properties['white-list'] = enabled
+                    try: new_properties['enforce-whitelist'] = enabled
+                    except KeyError: pass
+                    constants.server_properties(self._server['name'], new_properties)
 
-            if not self._new_server:
-                new_properties = constants.server_properties(self._server['name'])
-                new_properties['white-list'] = enabled
-                try:
-                    new_properties['enforce-whitelist'] = enabled
-                except KeyError:
-                    pass
-                constants.server_properties(self._server['name'], new_properties)
+                self._server['whitelist'] = enabled
+                self.whitelist_enabled = enabled
 
-            self._server['whitelist'] = enabled
-            self.whitelist_enabled = enabled
+                # If server is running, reload whitelist settings in memory
+                if self._server['name'] in constants.server_manager.running_servers:
+                    server_obj = constants.server_manager.running_servers[self._server['name']]
+                    if server_obj.running:
+                        server_obj.silent_command(f'whitelist {"on" if enabled else "off"}', log=False)
+                        server_obj.silent_command(f'whitelist reload', log=False)
 
-            # If server is running, reload whitelist settings in memory
-            if self._server['name'] in constants.server_manager.running_servers:
-                server_obj = constants.server_manager.running_servers[self._server['name']]
-                if server_obj.running:
-                    server_obj.silent_command(f'whitelist {"on" if enabled else "off"}', log=False)
-                    server_obj.silent_command(f'whitelist reload', log=False)
+                self._send_log(f'successfully {log_verb}abled the whitelist', 'info')
+
+            except Exception as e:
+                self._send_log(f"error {log_verb}abling the whitelist: {constants.format_traceback(e)}", 'error')
 
     # Adds rule list to global ACL, then to every server (use similar to the *_user functions)
     # add_global_rule("BlUe_KAZoo, kchicken, test", list_type="ops", remove=False) --> self.rules
     # List Types: ops, bans, wl
     def add_global_rule(self, rule_list: str or list or PlayerScriptObject, list_type: str, remove=False):
-        rule_list = convert_obj_to_str(rule_list)
+        log_verb = 'remov' if remove else 'add'
 
-        add_global_rule(rule_list, list_type, remove)
+        try:
+            rule_list = convert_obj_to_str(rule_list)
 
-        if self._new_server:
-            self.edit_list(rule_list, list_type, remove, overwrite=True)
-            self.edit_list(rule_list, list_type, remove)
+            add_global_rule(rule_list, list_type, remove)
 
-        else:
+            if self._new_server:
+                self.edit_list(rule_list, list_type, remove, overwrite=True)
+                self.edit_list(rule_list, list_type, remove)
 
-            if list_type in ['bans', 'subnets']:
-                self.rules['bans'] = self._load_acl('bans')
-                self.rules['subnets'] = self._load_acl('subnets')
             else:
-                self.rules[list_type] = self._load_acl(list_type)
 
-        self.list_items = self._gen_list_items()
-        return self.rules
+                if list_type in ['bans', 'subnets']:
+                    self.rules['bans'] = self._load_acl('bans')
+                    self.rules['subnets'] = self._load_acl('subnets')
+                else:
+                    self.rules[list_type] = self._load_acl(list_type)
+
+            self.list_items = self._gen_list_items()
+            self._send_log(f"successfully {log_verb}ed '{rule_list}' to the global '{list_type}' list", 'info')
+            return self.rules
+
+        except Exception as e:
+            self._send_log(f"error {log_verb}ing '{rule_list}' in the global '{list_type}' list: {constants.format_traceback(e)}", 'error')
 
 
     # Reloads ACL contents
     # List Types: ops, bans, wl
     def reload_list(self, list_type=None):
+        log_list_type = list_type if list_type else 'all'
+        self._send_log(f"reloaded list {log_list_type}")
 
         if list_type == 'ops' or not list_type:
             self.rules['ops'] = self._load_acl('ops')
-            if list_type:
-                return
+            if list_type: return
 
         if list_type == 'wl' or not list_type:
             self.rules['wl'] = self._load_acl('wl')
-            if list_type:
-                return
+            if list_type: return
 
         if list_type in ['bans', 'subnets'] or not list_type:
             self.rules['bans'] = self._load_acl('bans')
@@ -1046,11 +1092,6 @@ class AclManager():
                         self.rules[list_type].append(acl_object)
 
 
-        # # Dirty fix to prevent IPs from filling ban list for some reason
-        # if list_type == 'bans':
-        #     self.rules['bans'] = [rule for rule in self.rules['bans'] if rule.rule.count(".") < 3]
-
-
     # Writes self.rules to appropriate files in server path (primarily for new servers)
     def write_rules(self):
 
@@ -1073,6 +1114,8 @@ class AclManager():
             self.whitelist_player(', '.join([rule.rule for rule in self.rules['wl']]), force_version=self._server['version'], temp_server=new_server)
 
         self._new_server = new_server
+
+
 
 # ---------------------------------------------- General Functions -----------------------------------------------------
 
@@ -2608,6 +2651,7 @@ def convert_obj_to_str(rule_list: str or list or PlayerScriptObject):
     elif isinstance(rule_list, PlayerScriptObject):
         rule_list = rule_list.name
     return rule_list
+
 
 
 # ---------------------------------------------- Usage Examples --------------------------------------------------------

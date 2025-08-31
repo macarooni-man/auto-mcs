@@ -240,7 +240,7 @@ class AddonManager():
             if addon: success = download_addon(addon, self._server)
 
 
-        if success: self._send_log(f"successfully downloaded add-on '{addon}'", 'info')
+        if success: self._send_log(f"successfully downloaded add-on '{addon}'")
         else:       self._send_log(f"something went wrong downloading add-on '{addon}'", 'error')
 
         self._refresh_addons()
@@ -661,7 +661,7 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
             # Copy addon to proper folder if it exists
             if addon:
                 constants.folder_check(destination_path)
-                send_log('import_addon', f"successfully imported '{addon_path}' to '{server_properties['name']}'", 'info')
+                send_log('import_addon', f"successfully imported '{addon_path}' to '{server_properties['name']}'")
                 return constants.copy_to(addon.path, destination_path, str(constants.sanitize_name(addon.name, True) + ".jar"), overwrite=True)
 
     except Exception as e: send_log('import_addon', f"failed to import '{addon_path}' to '{server_properties['name']}': {constants.format_traceback(e)}", 'error')
