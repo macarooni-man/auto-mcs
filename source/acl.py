@@ -71,6 +71,9 @@ class AclRule():
     def __str__(self):
         return str(self.rule)
 
+    def __repr__(self):
+        return f"<{__name__}.{self.__class__.__name__}{' (global)' if self.rule_scope == 'global' else ''} {'IP' if self.rule_type == 'ip' else 'player'} '{self.rule}' in '{self.acl_group}'>"
+
 
 # Instantiate class with "server_name" (case-sensitive)
 # Server ACL object to house AclRules with manipulative functions
@@ -453,11 +456,20 @@ class AclManager():
             with ThreadPoolExecutor(max_workers=3) as pool:
                 pool.map(create_list, ['ops', 'bans', 'wl'])
 
-        # # Test print
-        # if list_dict['ops'] or list_dict['bans'] or list_dict['wl']:
-        #     for item in list_dict.keys():
-        #         print('enabled', item, [rule.rule for rule in list_dict[item]['enabled']], '\n')
-        #         print('disabled', item, [rule.rule for rule in list_dict[item]['disabled']], '\n\n\n')
+        # Debug print to console
+        if any(bool(v) for v in list_dict.values()):
+            log_content = 'generated new rule lists:'
+
+            for item in list_dict.keys():
+                enabled  = list_dict[item]['enabled']
+                disabled = list_dict[item]['disabled']
+
+                if enabled or disabled:
+                    log_content += f"\n'{item}' list"
+                    if enabled:  log_content += f"\n- enabled:  {enabled}"
+                    if disabled: log_content += f"\n- disabled: {disabled}"
+
+            self._send_log(log_content)
 
         return list_dict
 
@@ -470,8 +482,8 @@ class AclManager():
 
         final_list = {'global': [], 'local': []}
         cache_lookup = None
+        self._send_log(f"processing query of '{search_list}' in '{list_type}'...")
 
-        # Adds items to final_list without collisions
         def add_entry(rule):
 
             if global_rule:
@@ -486,92 +498,99 @@ class AclManager():
                 if rule.lower() not in [item.lower() for item in final_list['local']]:
                     final_list['local'].append(rule)
 
-        # Input validation for each entry in search_list
-        if isinstance(search_list, str):
-            new_rules = [rule.strip() for rule in search_list.split(",")]
-        else:
-            new_rules = [rule.strip() for rule in search_list]
 
-        for entry in new_rules:
-            global_rule = False
-            whitelist = False
-            rule_type = "player"
-
-            # Check for global flag
-            if "!g" in entry:
-                entry = entry.replace('!g', '', 1).strip()
-                global_rule = True
-
-            # Check for whitelist tag
-            if "!w" in entry:
-                entry = entry.replace('!w', '', 1).strip()
-                whitelist = True
-
-            # Check if entry is an IP address
-            if entry.count(".") >= 3:
-                test_entry = entry.strip()
-
-                if "-" in test_entry:
-                    test_entry = min_network(test_entry)
-                    entry = test_entry
-
-                if constants.check_ip(test_entry, False) or constants.check_subnet(test_entry):
-                    rule_type = 'ip'
-
-                # Fix invalid subnets
-                if "/" in entry and entry.count(".") == 3:
-                    new_network = ipaddress.ip_network(entry, False)
-                    entry = f"{new_network.network_address}/{new_network.prefixlen}"
-
-
-            # Filter IP addresses
-            if rule_type == 'ip':
-
-                entry = re.sub('[^0-9./-]', '', entry).strip()
-
-                # Ignore IPs outside a ban list, else find a username in usercache.json
-                if list_type not in ['bans', 'subnets']:
-
-                    if not cache_lookup:
-                        with open(uuid_db, 'r') as f:
-                            cache_lookup = json.loads(f.read())
-
-                    for item in cache_lookup:
-                        try:
-                            found_ip = item['latest-ip'] if ":" not in item['latest-ip'] else item['latest-ip'].split(':')[0]
-
-                            if ipaddress.IPv4Address(found_ip) in ipaddress.ip_network(entry, False):
-                                add_entry(item['name'])
-
-                        except KeyError:
-                            pass
-
-                    continue
-
-            # Filter player names
+        # Adds items to final_list without collisions
+        try:
+            # Input validation for each entry in search_list
+            if isinstance(search_list, str):
+                new_rules = [rule.strip() for rule in search_list.split(",")]
             else:
-                is_geyser_user = entry.startswith('.')
-                entry = re.sub('[^a-zA-Z0-9 _]', '', entry).strip()
-                if is_geyser_user:
-                    entry = f'.{entry}'
+                new_rules = [rule.strip() for rule in search_list]
 
-            # Add entries to final_list
-            if whitelist and rule_type == "ip":
-                entry = "!w" + entry
-            add_entry(entry)
+            for entry in new_rules:
+                global_rule = False
+                whitelist = False
+                rule_type = "player"
+
+                # Check for global flag
+                if "!g" in entry:
+                    entry = entry.replace('!g', '', 1).strip()
+                    global_rule = True
+
+                # Check for whitelist tag
+                if "!w" in entry:
+                    entry = entry.replace('!w', '', 1).strip()
+                    whitelist = True
+
+                # Check if entry is an IP address
+                if entry.count(".") >= 3:
+                    test_entry = entry.strip()
+
+                    if "-" in test_entry:
+                        test_entry = min_network(test_entry)
+                        entry = test_entry
+
+                    if constants.check_ip(test_entry, False) or constants.check_subnet(test_entry):
+                        rule_type = 'ip'
+
+                    # Fix invalid subnets
+                    if "/" in entry and entry.count(".") == 3:
+                        new_network = ipaddress.ip_network(entry, False)
+                        entry = f"{new_network.network_address}/{new_network.prefixlen}"
 
 
-        # Process rules by list_type
-        if final_list['global']:
-            self.add_global_rule(', '.join(final_list['global']), list_type=list_type)
+                # Filter IP addresses
+                if rule_type == 'ip':
 
-        if final_list['local']:
-            if list_type in ['bans', 'subnets']:
-                self.ban_player(', '.join(final_list['local']))
-            elif list_type == 'ops':
-                self.op_player(', '.join(final_list['local']))
-            elif list_type == 'wl':
-                self.whitelist_player(', '.join(final_list['local']))
+                    entry = re.sub('[^0-9./-]', '', entry).strip()
+
+                    # Ignore IPs outside a ban list, else find a username in usercache.json
+                    if list_type not in ['bans', 'subnets']:
+
+                        if not cache_lookup:
+                            with open(uuid_db, 'r') as f:
+                                cache_lookup = json.loads(f.read())
+
+                        for item in cache_lookup:
+                            try:
+                                found_ip = item['latest-ip'] if ":" not in item['latest-ip'] else item['latest-ip'].split(':')[0]
+
+                                if ipaddress.IPv4Address(found_ip) in ipaddress.ip_network(entry, False):
+                                    add_entry(item['name'])
+
+                            except KeyError:
+                                pass
+
+                        continue
+
+                # Filter player names
+                else:
+                    is_geyser_user = entry.startswith('.')
+                    entry = re.sub('[^a-zA-Z0-9 _]', '', entry).strip()
+                    if is_geyser_user:
+                        entry = f'.{entry}'
+
+                # Add entries to final_list
+                if whitelist and rule_type == "ip":
+                    entry = "!w" + entry
+                add_entry(entry)
+
+
+            # Process rules by list_type
+            if final_list['global']:
+                self.add_global_rule(', '.join(final_list['global']), list_type=list_type)
+
+            if final_list['local']:
+                if list_type in ['bans', 'subnets']:
+                    self.ban_player(', '.join(final_list['local']))
+                elif list_type == 'ops':
+                    self.op_player(', '.join(final_list['local']))
+                elif list_type == 'wl':
+                    self.whitelist_player(', '.join(final_list['local']))
+
+
+        except Exception as e:
+            self._send_log(f"error processing query of '{search_list}' in '{list_type}': {constants.format_traceback(e)}")
 
         return final_list
 
@@ -1047,73 +1066,80 @@ class AclManager():
     # Operates similarly to *_user rules, but only edits self.rules[list_type]
     # List Types: ops, bans, wl
     def edit_list(self, rule_list: str or list or PlayerScriptObject, list_type: str, remove=False, overwrite=False):
+        log_verb = 'remov' if remove else 'add'
         rule_list = convert_obj_to_str(rule_list)
-
         list_type = 'bans' if list_type == 'subnets' else list_type
 
-        if isinstance(rule_list, str):
-            new_rules = [rule.strip() for rule in rule_list.split(",")]
-        else:
-            new_rules = [rule.strip() for rule in rule_list]
+        if isinstance(rule_list, str): new_rules = [rule.strip() for rule in rule_list.split(",")]
+        else:                          new_rules = [rule.strip() for rule in rule_list]
 
         global_acl = load_global_acl()
 
 
         # Iterate over all rules in rule_list
-        if new_rules:
-            for rule in new_rules:
+        try:
+            if new_rules:
+                for rule in new_rules:
 
-                # If rule is an IP, edit subnet list
-                if rule.count('.') >= 3:
-                    if list_type == 'bans':
-                        rule_in_list = self.rule_in_acl(rule, 'subnets')
+                    # If rule is an IP, edit subnet list
+                    if rule.count('.') >= 3:
+                        if list_type == 'bans':
+                            rule_in_list = self.rule_in_acl(rule, 'subnets')
+
+                            if (remove or overwrite) and rule_in_list:
+                                self.rules['subnets'].remove(rule_in_list)
+
+                            if (not remove and not rule_in_list) or overwrite:
+                                acl_object = AclRule(rule, acl_group='subnets')
+                                self.rules['subnets'].append(check_global_acl(global_acl, acl_object))
+
+
+                    # If rule is a player, edit list_type
+                    else:
+                        rule_in_list = self.rule_in_acl(rule, list_type)
 
                         if (remove or overwrite) and rule_in_list:
-                            self.rules['subnets'].remove(rule_in_list)
+                            self.rules[list_type].remove(rule_in_list)
 
                         if (not remove and not rule_in_list) or overwrite:
-                            acl_object = AclRule(rule, acl_group='subnets')
-                            self.rules['subnets'].append(check_global_acl(global_acl, acl_object))
+                            user = get_uuid(rule)
+                            acl_object = check_global_acl(global_acl, AclRule(rule=user['name'], acl_group=list_type))
+                            for data in user.keys():
+                                acl_object.extra_data[data] = user[data]
 
+                            self.rules[list_type].append(acl_object)
 
-                # If rule is a player, edit list_type
-                else:
-                    rule_in_list = self.rule_in_acl(rule, list_type)
+                self._send_log(f"successfully {log_verb}ed '{rule_list}' in '{list_type}' in memory", 'info')
 
-                    if (remove or overwrite) and rule_in_list:
-                        self.rules[list_type].remove(rule_in_list)
-
-                    if (not remove and not rule_in_list) or overwrite:
-                        user = get_uuid(rule)
-                        acl_object = check_global_acl(global_acl, AclRule(rule=user['name'], acl_group=list_type))
-                        for data in user.keys():
-                            acl_object.extra_data[data] = user[data]
-
-                        self.rules[list_type].append(acl_object)
-
+        except Exception as e:
+            self._send_log(f"error {log_verb}ing '{rule_list}' in '{list_type}' in memory: {constants.format_traceback(e)}", 'error')
 
     # Writes self.rules to appropriate files in server path (primarily for new servers)
     def write_rules(self):
-
-        constants.folder_check(constants.tmpsvr if self._new_server else self._server['path'])
+        acl_folder = constants.tmpsvr if self._new_server else self._server['path']
+        constants.folder_check(acl_folder)
 
         # Override write functionality for new server
         new_server = bool(self._new_server)
         self._new_server = False
 
+        try:
+            if self.rules['bans'] or self.rules['subnets']:
+                ban_list = [rule.rule for rule in self.rules['bans']]
+                ban_list.extend([rule.rule for rule in self.rules['subnets']])
+                self.ban_player(', '.join(ban_list), force_version=self._server['version'], temp_server=new_server)
 
-        if self.rules['bans'] or self.rules['subnets']:
-            ban_list = [rule.rule for rule in self.rules['bans']]
-            ban_list.extend([rule.rule for rule in self.rules['subnets']])
-            self.ban_player(', '.join(ban_list), force_version=self._server['version'], temp_server=new_server)
+            if self.rules['ops']:
+                self.op_player(', '.join([rule.rule for rule in self.rules['ops']]), force_version=self._server['version'], temp_server=new_server)
 
-        if self.rules['ops']:
-            self.op_player(', '.join([rule.rule for rule in self.rules['ops']]), force_version=self._server['version'], temp_server=new_server)
+            if self.rules['wl']:
+                self.whitelist_player(', '.join([rule.rule for rule in self.rules['wl']]), force_version=self._server['version'], temp_server=new_server)
 
-        if self.rules['wl']:
-            self.whitelist_player(', '.join([rule.rule for rule in self.rules['wl']]), force_version=self._server['version'], temp_server=new_server)
+            self._new_server = new_server
+            self._send_log(f"successfully wrote rules to disk in '{acl_folder}'", 'info')
 
-        self._new_server = new_server
+        except Exception as e:
+            self._send_log(f"error writing rules to disk in '{acl_folder}'", 'error')
 
 
 
@@ -1347,22 +1373,18 @@ def print_acl(acl_object: AclManager):
         print('    ' + '\n    '.join([str(vars(rule)) for rule in acl_dict['subnets']]), end="\n\n\n")
 
 
-# Check if user is online
+# Check if user is online on any server in this instance
 def check_online(user):
 
     def pool_func(server, *args):
-        print(server.run_data['player-list'])
         test = False
-        try:
-            test = bool(server.run_data['player-list'][user]['logged-in'])
-        except KeyError:
-            pass
+        try: test = bool(server.run_data['player-list'][user]['logged-in'])
+        except KeyError: pass
         return test
 
     with ThreadPoolExecutor(max_workers=10) as pool:
         for item in pool.map(pool_func, [server for server in constants.server_manager.running_servers.values() if server.running]):
-            if item:
-                return True
+            if item: return True
         return False
 
 
@@ -1379,9 +1401,14 @@ def load_global_acl():
         'subnets': []
     }
 
-    if os.path.isfile(global_acl_file):
-        with open(global_acl_file, 'r') as f:
-            global_acl = json.load(f)
+    try:
+        if os.path.isfile(global_acl_file):
+            with open(global_acl_file, 'r') as f:
+                global_acl = json.load(f)
+                send_log('load_global_acl', f"successfully loaded '{global_acl_file}'")
+
+    except Exception as e:
+        send_log('load_global_acl', f"error loading '{global_acl_file}': {constants.format_traceback(e)}")
 
     return global_acl
 
@@ -1514,7 +1541,15 @@ def add_global_rule(rule_list: str or list, list_type: str, remove=False):
         pool.map(iter_server, server_list)
 
 
-    # print(global_acl)
+    # Debug print to console
+    if any(bool(v) for v in global_acl.values()):
+        log_content = 'generated new global rule lists:'
+
+        for item, rules in global_acl.items():
+            if rules: log_content += f"\n'{item}' list\n{rules}"
+
+        send_log('add_global_rule', log_content)
+
     concat_db()
     return global_acl
 
@@ -1540,17 +1575,20 @@ def get_uuid(user: str):
             with open(uuid_db, "r") as f:
                 content = f.read()
                 try: file = json.loads(content)
-                except:
+                except Exception as e:
 
                     # If failure, try to repair the json file
                     try:
-                        print("Attempting to fix 'uuid-db.json' due to formatting error")
+                        send_log('get_uuid', f"Attempting to fix '{uuid_db}' due to formatting error: {constants.format_traceback(e)}", 'error')
                         file = json_repair.loads(content)
                         if not file: raise TypeError
-                    except:
-                        print("'uuid-db.json' reset due to formatting error")
+
+                    except Exception as e:
+                        send_log('get_uuid', f"'{uuid_db}' reset due to formatting error: {constants.format_traceback(e)}", 'error')
                         file = None
-        except OSError:
+
+        except OSError as e:
+            send_log('get_uuid', f"error writing to '{uuid_db}': {constants.format_traceback(e)}", 'error')
             file = None
 
         if file:
@@ -1561,10 +1599,10 @@ def get_uuid(user: str):
 
 
     # If the user has not been found, check the internet
-    if (constants.app_online) and (not found_item):
+    if constants.app_online and (not found_item):
+        check_url = f"https://playerdb.co/api/player/minecraft/{user.strip()}"
 
         try:
-            check_url = f"https://playerdb.co/api/player/minecraft/{user.strip()}"
             response = constants.get_url(check_url, return_response=True)
             final_dict = {'uuid': None, 'name': None}
 
@@ -1587,8 +1625,8 @@ def get_uuid(user: str):
                 with open(temp_path, "w") as f:
                     f.write(json.dumps(final_dict, indent=2))
 
-        except ConnectionRefusedError:
-            pass
+        except Exception as e:
+            send_log('get_uuid', f"error connecting to '{check_url}': {constants.format_traceback(e)}")
 
     if final_dict['uuid'] is None:
         final_dict['uuid'] = ""
@@ -1610,19 +1648,20 @@ def concat_db(only_delete=False):
         try:
             with open(uuid_db, "r") as f:
                 content = f.read()
-                try:
-                    current_db = json.loads(content)
+                try: current_db = json.loads(content)
                 except:
 
                     # If failure, try to repair the json file
                     try:
-                        print("Attempting to fix 'uuid-db.json' due to formatting error")
+                        send_log(f"attempting to fix '{uuid_db}' due to a formatting error...", 'warning')
                         current_db = json_repair.loads(content)
-                        if not current_db:
-                            raise TypeError
-                    except:
-                        print("'uuid-db.json' reset due to formatting error")
+                        if not current_db: raise TypeError
+                        send_log(f"successfully loaded a repaired version of '{uuid_db}'", 'info')
+
+                    except Exception as e:
+                        send_log(f"'{uuid_db}' was reset due to a formatting error: {constants.format_traceback(e)}", 'error')
                         current_db = {}
+
                 uuid_list = [item['uuid'] for item in current_db]
 
         except OSError:
@@ -1635,6 +1674,7 @@ def concat_db(only_delete=False):
         if os.path.exists(temp_file):
             for item in glob(os.path.join(temp_file, 'uuid-*.json')):
 
+                # Add to database
                 if not only_delete:
                     try:
                         with open(item, 'r') as f:
@@ -1644,6 +1684,7 @@ def concat_db(only_delete=False):
                             if user['uuid'] in uuid_list:
                                 found_user = final_db[uuid_list.index(user['uuid'])]
                                 found_user['name'] = user['name']
+
                                 try:
                                     found_user['latest-ip'] = user['latest-ip']
                                     found_user['latest-login'] = user['latest-login']
@@ -1654,16 +1695,17 @@ def concat_db(only_delete=False):
                             else:
                                 final_db.append(user)
                                 uuid_list = [item['uuid'] for item in final_db]
+
                     except Exception as e:
-                        if constants.debug:
-                            print(e)
+                        send_log('concat_db', f"error adding cache file: {constants.format_traceback(e)}", 'error')
 
-                try:
-                    os.remove(item)
-                except PermissionError:
-                    if constants.debug:
-                        print("Error: could not delete cache")
 
+                # Delete cache file even if it wasn't added to the database
+                try: os.remove(item)
+                except Exception as e:
+                    send_log('concat_db', f"error deleting cache file: {constants.format_traceback(e)}", 'error')
+
+            # Write to database
             with open(uuid_db, "w+") as f:
                 f.write(json.dumps(final_db, indent=2))
 
@@ -1695,8 +1737,8 @@ def concat_db(only_delete=False):
                         add_global_rule(user['name'], list_type='wl', remove=True)
                         add_global_rule(updated_user['name'], list_type='wl')
 
-    except FileNotFoundError:
-        pass
+    except Exception as e:
+        send_log('concat_db', f"error adding UUID files to database: {constants.format_traceback(e)}", 'error')
 
 
 # Generates AclRule objects from server files
@@ -2335,19 +2377,6 @@ def ban_user(server_name: str, rule_list: str or list, remove=False, force_versi
 
                     # Normal subnet
                     else:
-                        # Possibly logic to simplify repetitive subnets
-                        # already_included = any(
-                        #     [
-                        #         (
-                        #             ipaddress.IPv4Network(sn.rule.replace("!w", "")).broadcast_address in ipaddress.ip_network(user.replace("!w", "")) and
-                        #             ipaddress.IPv4Network(sn.rule.replace("!w", "")).network_address in ipaddress.ip_network(user.replace("!w", ""))
-                        #         )
-                        #         for sn in subnet_list if "/" in sn.rule
-                        #     ]
-                        # )
-                        #
-                        # print(already_included, print(user))
-
                         user = user.replace("!w", "").strip()
                         if constants.check_subnet(user):
                             user = str(ipaddress.ip_network(user.lower(), strict=False))
