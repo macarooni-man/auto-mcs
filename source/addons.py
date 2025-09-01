@@ -6,6 +6,7 @@ from glob import glob
 import constants
 import requests
 import hashlib
+import math
 import json
 import os
 import re
@@ -854,14 +855,12 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
                 else: page_url += f'&offset={page_size * (page - 1)}'
                 return constants.get_url(page_url, return_response=True).json()
 
+            # Process a single page
+            def process_page(page_content):
+                nonlocal retrieved, page_size, total, current_page
 
-            # Iterate through every page until a match is found
-            while retrieved < total and current_page < loop_limit:
-
-                # Retrieve page content
-                page_content = get_content(current_page)
-                results      = page_content.get('result', [])
-                pagination   = page_content.get('pagination', {})
+                results    = page_content.get('result', [])
+                pagination = page_content.get('pagination', {})
                 if pagination and results:
 
                     # Learn server provided pagination on first load
@@ -870,14 +869,13 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
                         total     = pagination.get('count') or pagination.get('total') or len(results)
                         retrieved = 0
 
-
                     # Create a map of download links to Minecraft versions
                     for data in results:
                         paper = (data.get('downloads') or {}).get('PAPER')
-                        if not paper: continue
+                        if not paper: return
 
                         url = paper.get('downloadUrl') or paper.get('externalUrl')
-                        if not url: continue
+                        if not url: return
 
                         # Minecraft versions supported by this release
                         versions = (data.get('platformDependencies') or {}).get('PAPER', [])
@@ -888,11 +886,33 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
                                 link_list[version] = url
                                 version_list[version] = addon_version
 
-
                     retrieved += len(results)
                     current_page += 1
 
-                else: break
+                # Stop on no results
+                else: raise StopIteration
+
+
+            # First page sync to learn pagination
+            try:
+                first_page = get_content(current_page)
+                process_page(first_page)
+            except StopIteration:
+                pass
+
+            # Load remaining pages via thread pool merged in order
+            if retrieved < total and current_page < loop_limit:
+                num_pages = math.ceil(total / page_size) if page_size else 0
+                last_page = min(loop_limit, num_pages)
+
+                if last_page >= current_page + 1:
+                    pages = range(current_page + 0, last_page + 1)
+
+                    with ThreadPoolExecutor(max_workers=10) as pool:
+                        for page_content in pool.map(get_content, pages):
+                            try: process_page(page_content)
+                            except StopIteration:
+                                break
 
 
         # If addon type is forge or fabric
