@@ -225,6 +225,9 @@ class ServerObject():
 
         constants.server_manager._send_log(f"Server Manager: Loaded '{server_name}'", 'info')
 
+    def __repr__(self):
+        return f"<{__name__}.{self.__class__.__name__} '{self.name}' at '{self.server_path}'>"
+
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
         if name == 'run_data':
@@ -1045,13 +1048,16 @@ class ServerObject():
 
                 # Launch playit if proxy is enabled
                 if self.proxy_enabled and constants.app_online and self.proxy_installed():
+
                     try:
                         self.run_data['playit-tunnel'] = constants.playit.start_tunnel(self)
                         hostname = self.run_data['playit-tunnel'].hostname
                         self.run_data['network']['address']['ip'] = hostname
                         self.run_data['network']['public_ip'] = hostname
                         self.send_log(f"Initialized playit connection '{hostname}'", 'success')
-                    except:
+
+                    except Exception as e:
+                        constants.playit._send_log(f'error starting playit service: {constants.format_traceback(e)}', 'error')
                         self.send_log(f"The playit service is currently unavailable", 'warning')
                         self.run_data['playit-tunnel'] = None
 
@@ -2117,6 +2123,8 @@ class ViewObject():
         self.server_path = constants.server_path(server_name)
         self.last_modified = os.path.getmtime(self.server_path)
 
+    def __repr__(self):
+        return f"<{__name__}.{self.__class__.__name__} '{self.name}' at '{self.server_path}'>"
 
 # Loads remote server data locally for a ViewClass in the Server Manager screen
 class RemoteViewObject():
@@ -2145,6 +2153,8 @@ class RemoteViewObject():
 
         self.favorite = self._is_favorite()
 
+    def __repr__(self):
+        return f"<{__name__}.{self.__class__.__name__} '{self._view_name}' at '{self._telepath_data['host']}'>"
 
 # Houses all server information
 class ServerManager():
