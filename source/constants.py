@@ -6545,9 +6545,10 @@ class LoggingManager():
 
         # Branding banner
         self.header_len = 50
-        header = f"┏{'━' * round(self.header_len / 2)}  auto-mcs v{app_version}  {'━'* round(self.header_len / 2)}┓"
-        logo   = '\n'.join([f'┃   {i.ljust(len(header) - 5, " ")}┃' for i in text_logo])
-        footer = f"┗{'━' * (len(header) - 2)}┛"
+        box = ('│', '—', '—', '—', '—', '—') if os_name == 'windows' else ('┃', '━', '┏', '┓', '┗', '┛')
+        header = f"{box[2]}{box[1] * round(self.header_len / 2)}  auto-mcs v{app_version}  {box[1]* round(self.header_len / 2)}{box[3]}"
+        logo   = '\n'.join([f'{box[0]}   {i.ljust(len(header) - 5, " ")}{box[0]}' for i in text_logo])
+        footer = f"{box[4]}{box[1] * (len(header) - 2)}{box[5]}"
         self._send_log(f'{Style.BRIGHT}{header}\n{logo}\n{footer}{Style.RESET_ALL}', 'info', _raw=True)
 
     # Receive from the rest of the app
