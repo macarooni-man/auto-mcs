@@ -4,8 +4,8 @@ import constants
 
 
 # Logging wrapper
-def send_log(message, level=None):
-    return constants.send_log(__name__, message, level)
+def send_log(object_data, message, level=None):
+    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
 
 # Run app, eventually in wrapper
