@@ -10,6 +10,81 @@ import os
 import gc
 
 
+def setup_windows_debug_console(
+    app_title: str = "auto-mcs (console)",
+    redirect_non_debug_to_devnull: bool = True
+):
+    """
+    On Windows (PyInstaller windowed build), show a console in --debug mode
+    and route all STDIO there; otherwise silence STDIO by redirecting to NUL.
+    """
+    is_windows = (os.name == "nt")
+    is_compiled = bool(getattr(sys, "frozen", False))  # PyInstaller/py2exe style
+    args = sys.argv
+    debug = any(a in ("-d", "--debug") for a in args)
+    console_opened = False
+    devnull_redirected = False
+
+    # Ignore on other operating systems as they have STDIO
+    if not is_windows:
+        return
+
+    # Ignore if running as Python, since it has STDIO
+    if not is_compiled:
+        return
+
+    # Attach a console and wire stdio to it
+    if debug:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        ATTACH_PARENT_PROCESS = -1
+
+        # Try to attach to parent console first; if none, allocate a new one.
+        attached = bool(k32.AttachConsole(ATTACH_PARENT_PROCESS))
+        if not attached:
+            allocated = bool(k32.AllocConsole())
+            if not allocated:
+                # If we can't get a console, just return without redirecting.
+                return {"is_windows": True, "is_compiled": is_compiled, "debug": True,
+                        "console_opened": False, "devnull_redirected": False}
+
+        # UTF-8 code page
+        k32.SetConsoleCP(65001)
+        k32.SetConsoleOutputCP(65001)
+
+        # Enable ANSI escape sequences (VT) for colors
+        STD_OUTPUT_HANDLE = -11
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        hOut = k32.GetStdHandle(STD_OUTPUT_HANDLE)
+        mode = ctypes.c_uint()
+        if k32.GetConsoleMode(hOut, ctypes.byref(mode)):
+            k32.SetConsoleMode(hOut, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+
+        # Bind Python stdio to the console
+        sys.stdout = open("CONOUT$", "w", encoding="utf-8", buffering=1)
+        sys.stderr = open("CONOUT$", "w", encoding="utf-8", buffering=1)
+        sys.stdin  = open("CONIN$",  "r", encoding="utf-8", buffering=1)
+
+        # Optional niceties
+        try: ctypes.windll.kernel32.SetConsoleTitleW(str(app_title))
+        except Exception: pass
+        try:
+            import colorama
+            colorama.just_fix_windows_console()
+        except Exception: pass
+
+        console_opened = True
+
+    else:
+        if redirect_non_debug_to_devnull:
+            # Silence stdio for non-debug runs so the GUI app stays quiet
+            sys.stdout = open(os.devnull, "w", encoding="utf-8", buffering=1)
+            sys.stderr = open(os.devnull, "w", encoding="utf-8", buffering=1)
+            devnull_redirected = True
+
+    return {"is_windows": True, "is_compiled": is_compiled, "debug": debug, "console_opened": console_opened, "devnull_redirected": devnull_redirected}
+
+
 
 if __name__ == '__main__':
 
@@ -25,6 +100,10 @@ if __name__ == '__main__':
     # If running in a spawned process, don't initialize anything
     if multiprocessing.parent_process():
         sys.exit()
+
+
+    # Open debug console for Windows windowed builds (or silence stdio otherwise)
+    setup_windows_debug_console()
 
 
     # Import constants and set variables
