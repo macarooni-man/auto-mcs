@@ -33,19 +33,11 @@ def send_log(object_data, message, level=None):
 
 # Overwrite STDOUT to not interfere with the UI
 class NullWriter:
+    encoding = None
     def write(self, *args, **kwargs):
         pass
     def flush(self):
         pass
-
-logo = ["                           _                                 ",
-        "   ▄▄████▄▄     __ _ _   _| |_ ___       _ __ ___   ___ ___  ",
-        "  ▄█  ██  █▄   / _` | | | | __/ _ \  __ | '_ ` _ \ / __/ __| ",
-        "  ███▀  ▀███  | (_| | |_| | || (_) |(__)| | | | | | (__\__ \ ",
-        "  ▀██ ▄▄ ██▀   \__,_|\__,_|\__\___/     |_| |_| |_|\___|___/ ",
-        "   ▀▀████▀▀                                                  ",
-        ""
-        ]
 
 
 # Handle keyboard inputs from console
@@ -1108,7 +1100,7 @@ commands = {n: Command(n, d) if isinstance(d, dict) else d for n, d in command_d
 # Display messages
 command_header = '   ' if advanced_term else ' >>  '
 response_header = '❯ ' if advanced_term else '> '
-logo_widget = urwid.Text([('command', '\n'.join(logo))], align='center')
+logo_widget = urwid.Text([('command', '\n'.join(constants.text_logo))], align='center')
 splash_widget = urwid.Text([('info', f"{constants.session_splash}\n")], align='center')
 telepath_content = urwid.Text([('info', 'Initializing...')])
 

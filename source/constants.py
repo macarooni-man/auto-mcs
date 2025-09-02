@@ -1,6 +1,7 @@
 from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt, date
+from colorama import Fore, Back, Style
 from random import randrange, choices
 from difflib import SequenceMatcher
 from urllib.parse import quote
@@ -27,6 +28,7 @@ import hashlib
 import string
 import psutil
 import socket
+import queue
 import time
 import json
 import math
@@ -201,6 +203,16 @@ server_ini  = 'auto-mcs.ini' if os_name == "windows" else '.auto-mcs.ini'
 command_tmp = 'start-cmd.tmp' if os_name == "windows" else '.start-cmd.tmp'
 script_obj  = None
 
+text_logo = [
+    "                           _                                 ",
+    "   ▄▄████▄▄     __ _ _   _| |_ ___       _ __ ___   ___ ___  ",
+    "  ▄█  ██  █▄   / _` | | | | __/ _ \  __ | '_ ` _ \ / __/ __| ",
+    "  ███▀  ▀███  | (_| | |_| | || (_) |(__)| | | | | | (__\__ \ ",
+    "  ▀██ ▄▄ ██▀   \__,_|\__,_|\__\___/     |_| |_| |_|\___|___/ ",
+    "   ▀▀████▀▀                                                  ",
+    ""
+]
+
 
 # Format OS as a string
 def format_os() -> str:
@@ -281,28 +293,6 @@ def format_cpu() -> str:
 # Format RAM as a string
 def format_ram() -> str:
     return f"{round(psutil.virtual_memory().used / 1073741824, 2)} / {round(psutil.virtual_memory().total / 1073741824)} GB"
-
-
-# Global logger method
-# Levels: 'debug', 'info', 'warning', 'error', 'fatal'
-# Stacks: 'core', 'ui', 'api', 'amscript'
-def send_log(object_data: str, message: str, level: str = None, stack: str = None):
-
-    # Initialize default values
-    if '.' not in object_data and object_data not in ['wrapper', 'telepath']: object_data = f'{__name__}.{object_data}'
-    object_data = object_data.strip('. \n')
-    if not level: level = 'debug'
-    if not stack: stack = 'core'
-
-
-    if enable_logging: # and not (not debug and level == 'debug'):
-        for x, line in enumerate(message.splitlines(), 0):
-            timestamp = dt.now().strftime('%I:%M:%S %p')
-            content = line.strip() if x == 0 else f'   >  {line.strip()}'
-            line = f"[{timestamp}] [{level.upper()}] [{stack}: {object_data}] {content}"
-            encoding = (sys.stdout and sys.stdout.encoding) or "utf-8"
-            formatted = line.encode(encoding, errors="ignore").decode(encoding, errors="ignore")
-            print(formatted)
 
 
 # Returns full error into a string for logging
@@ -444,7 +434,7 @@ def run_proc(cmd: str, return_text=False) -> str or int:
     return_code = result.returncode
     run_content = f'\n{output.strip()}'
     log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
-    send_log('run_proc', f'{cmd}: returned exit code {result.returncode} {log_content}', None if return_code == 0 else 'error')
+    send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}", None if return_code == 0 else 'error')
 
     return output if return_text else return_code
 
@@ -459,14 +449,14 @@ def check_docker() -> bool:
     docker_check = Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
     if docker_check: send_log('check_docker', f'{app_title} is running inside a Docker container')
     return docker_check
-is_docker = check_docker()
+is_docker: bool
 
 # Check if OS is ARM
 def check_arm() -> bool:
     command = 'echo %PROCESSOR_ARCHITECTURE%' if os_name == 'windows' else 'uname -m'
     arch = run_proc(command, True).strip()
     return arch in ['aarch64', 'arm64']
-is_arm = check_arm()
+is_arm: bool
 
 
 
@@ -6528,6 +6518,178 @@ def clear_script_cache(script_path):
     # Log on failure
     except Exception as e:
         send_log('clear_script_cache', f"failed to remove IDE script cache '{json_path}': {format_traceback(e)}", 'error')
+
+
+
+# --------------------------------------------- Global Logging Function ------------------------------------------------
+
+class LoggingManager():
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None, **kw):
+        return self._dispatch(self.__class__.__name__, message, level, **kw)
+
+    def __init__(self, qsize: int = 2048):
+        self._log_db = []
+        self._db_lock = threading.Lock()  # protect _log_db
+        self._io_lock = threading.Lock()  # serialize stdout writes to avoid interweaving
+        self._line_header = '   >  '
+
+        # Async pipeline
+        # CHANGED: queue now carries raw fields, not a prebuilt dict
+        #          (object_data, message, level, stack, _raw)
+        self._q: "queue.Queue[tuple[str, str, str, str, bool]]" = queue.Queue(maxsize=qsize)  # CHANGED
+        self._stop = threading.Event()
+        self._writer = threading.Thread(target=self._worker, name="log-writer", daemon=True)
+        self._writer.start()
+
+        # Branding banner
+        self.header_len = 50
+        header = f"┏{'━' * round(self.header_len / 2)}  auto-mcs v{app_version}  {'━'* round(self.header_len / 2)}┓"
+        logo   = '\n'.join([f'┃   {i.ljust(len(header) - 5, " ")}┃' for i in text_logo])
+        footer = f"┗{'━' * (len(header) - 2)}┛"
+        self._send_log(f'{Style.BRIGHT}{header}\n{logo}\n{footer}{Style.RESET_ALL}', 'info', _raw=True)
+
+    # Receive from the rest of the app
+    def _dispatch(self, object_data: str, message: str, level: str = None, stack: str = None, _raw=False):
+        if '.' not in object_data and object_data not in ['wrapper', 'telepath']:
+            object_data = f'{__name__}.{object_data}'
+        object_data = object_data.strip('. \n')
+        if not level: level = 'debug'
+        if not stack: stack = 'core'
+
+        # Enqueue raw fields
+        payload = (object_data, message, level, stack, _raw)
+
+        # Enqueue line for background write
+        try:
+            # Prefer dropping general level data if the queue is full
+            if self._q.full() and level in ('debug', 'info'):
+                try:
+                    self._q.get_nowait(); self._q.task_done()
+                except queue.Empty: pass
+            self._q.put_nowait(payload)
+
+        except queue.Full:
+
+            # For warnings/errors/fatal, block briefly to avoid loss
+            try: self._q.put(payload, timeout=0.25)
+
+            # Last resort: block until there is space so critical logs still go through the worker
+            except queue.Full: self._q.put(payload)
+
+    def _add_entry(self, object_data: str, message: str, level: str, stack: str):
+        data = {'time': dt.now(), 'object_data': object_data, 'level': level, 'stack': stack, 'message': message}
+        with self._db_lock: self._log_db.append(data)
+        return data
+
+    def _worker(self):
+
+        # Drain until stop is set and queue is empty
+        while not self._stop.is_set() or not self._q.empty():
+            try: object_data, message, level, stack, _raw = self._q.get(timeout=0.2)
+            except queue.Empty: continue
+
+            try:
+                # Build the entry on the worker thread
+                data = self._add_entry(object_data, message, level, stack)
+                self._print(data, _raw)
+
+            except Exception as e: sys.__stderr__.write(f"Logging worker error: {format_traceback(e)}")
+            finally: self._q.task_done()
+
+    def _print(self, data: dict, _raw: bool = False):
+
+        object_data = data['object_data']
+        message = data['message']
+        level = data['level']
+        stack = data['stack']
+        time_obj = data['time']
+
+
+        # Only send messages if logging is enabled, and only log debug messages in debug mode
+        if not (enable_logging and not (not debug and level == 'debug')):
+            return
+
+        # Treat low-level Kivy logs as "debug"
+        if stack == 'kivy' and (not debug and level in ('debug', 'info', 'warning')):
+            return
+
+
+        level_color = {
+            'debug': Fore.MAGENTA,
+            'info': Fore.GREEN,
+            'warning': Fore.YELLOW,
+            'error': Fore.RED,
+            'fatal': Fore.RED,
+        }
+
+        object_color = {
+            'debug': Fore.CYAN,
+            'info': Fore.CYAN,
+            'warning': Fore.LIGHTYELLOW_EX,
+            'error': Fore.LIGHTRED_EX,
+            'fatal': Fore.LIGHTRED_EX,
+        }
+
+        text_color = {
+            'debug': Fore.RESET,
+            'info': Fore.RESET,
+            'warning': Fore.YELLOW,
+            'error': Fore.RED,
+            'fatal': Fore.RED,
+        }
+
+        def fmt_block(text: str, color: Fore = Fore.CYAN):
+            return f'{Style.BRIGHT}{Fore.LIGHTBLACK_EX}[{color}{text}{Fore.LIGHTBLACK_EX}]{Style.RESET_ALL}'
+
+        with self._io_lock:
+            for x, line in enumerate(message.splitlines(), 0):
+
+                if not _raw:
+                    object_width = 37 - len(level)
+                    timestamp = time_obj.strftime('%I:%M:%S %p')
+                    tc = text_color.get(level, Fore.CYAN)
+                    content = f'{tc}{line.strip()}' if x == 0 else f'{Fore.LIGHTBLACK_EX}{self._line_header}{tc}{line.strip()}'
+                    line = (
+                        f"{fmt_block(timestamp, Fore.WHITE)} "
+                        f"{fmt_block(level.upper(), level_color.get(level, Fore.CYAN))} "
+                        f"{fmt_block(f'{stack}: {object_data}'.ljust(object_width), object_color.get(level, Fore.CYAN))} "
+                        f"{content}"
+                    )
+
+                else: line = line.strip()
+
+                encoding = (sys.stdout and sys.stdout.encoding) or "utf-8"
+                formatted = line.encode(encoding, errors="ignore").decode(encoding, errors="ignore")
+                print(formatted)
+
+    # Wait until all queued logs are written
+    def flush(self, timeout: float = None):
+        start = time.monotonic()
+        self._q.join()
+        if timeout is not None and (time.monotonic() - start) > timeout:
+            return False
+        return True
+
+    # Stop the writer thread and flush
+    def close(self, graceful: bool = True):
+        if graceful:
+            self._stop.set()
+            self.flush()
+        else:
+            self._stop.set()
+
+# Global logger wrapper
+# Levels: 'debug', 'info', 'warning', 'error', 'fatal'
+# Stacks: 'core', 'ui', 'api', 'amscript'
+log_manager = LoggingManager()
+send_log    = log_manager._dispatch
+
+
+# Check for Docker/ARM architecture (required after logger is created)
+is_docker = check_docker()
+is_arm    = check_arm()
 
 
 

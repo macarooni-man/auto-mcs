@@ -13,6 +13,7 @@ import webbrowser
 import traceback
 import functools
 import threading
+import logging
 import inspect
 import random
 import json
@@ -56,6 +57,31 @@ if constants.app_compiled and constants.debug is False:
     constants.folder_check(kivy_folder)
     os.environ['KIVY_HOME'] = kivy_folder
 
+# 1) Tell Kivy to not install its own handlers and to propagate to root
+os.environ.setdefault("KIVY_LOG_MODE", "PYTHON")  # Kivy won't add handlers; logs go to root
+
+# Optional: ensure Kivy doesn't also write file/console (you'll own output)
+os.environ.setdefault("KIVY_NO_FILELOG", "1")
+os.environ.setdefault("KIVY_NO_CONSOLELOG", "1")
+
+# 2) Attach your forwarder to the *root* logger
+class KivyToAppHandler(logging.Handler):
+    def __init__(self, mgr):
+        super().__init__()
+        self.mgr = mgr
+    def emit(self, record: logging.LogRecord):
+        try:
+            msg = record.getMessage()
+            level = (record.levelname or "INFO").lower()
+            tag = getattr(record, "tag", None) or getattr(record, "ctx", None)
+            obj = tag or (f"{record.module}.{record.funcName}" if record.funcName and record.module else record.name)
+            self.mgr._dispatch(obj.replace("__init__.", ""), msg, level=level, stack="kivy", _raw=False)
+        except Exception:
+            self.handleError(record)
+
+root = logging.getLogger()
+root.setLevel(logging.DEBUG)
+root.addHandler(KivyToAppHandler(constants.log_manager))
 
 os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug" if constants.debug else "info"
 os.environ["KIVY_IMAGE"] = "pil,sdl2"
@@ -102,6 +128,8 @@ from kivy.core.clipboard import Clipboard
 from kivy.uix.image import Image, AsyncImage
 from kivy.uix.floatlayout import FloatLayout
 from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
+
+
 
 
 

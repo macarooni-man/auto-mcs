@@ -4,7 +4,6 @@ import functools
 import datetime
 import textwrap
 import hashlib
-import psutil
 import os
 
 import constants

@@ -56,10 +56,6 @@ if __name__ == '__main__':
     except: pass
 
 
-    # Disable Kivy logs in console when app is compiled
-    if constants.app_compiled: os.environ["KIVY_NO_CONSOLELOG"] = "1"
-
-
     # Check for update log
     update_log = None
     try:
