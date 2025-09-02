@@ -6558,8 +6558,15 @@ class LoggingManager():
         if not level: level = 'debug'
         if not stack: stack = 'core'
 
+
+        # Reject Kivy debug logs
+        if stack == 'kivy' and level == 'debug':
+            return
+
+
+
         # Enqueue raw fields
-        payload = (object_data, message, level, stack, _raw)
+        payload = (str(object_data), str(message), str(level), str(stack), _raw)
 
         # Enqueue line for background write
         try:

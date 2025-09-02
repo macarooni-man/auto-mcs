@@ -751,7 +751,8 @@ def search_addons(query: str, server_properties, *args):
         except Exception as e:
             send_log('search_addons', f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
 
-    if results: send_log('search_addons', f"found {len(results)} add-on(s) for {log_tag}:\n{results}", 'info')
+    debug_only = f':\n{results}' if constants.debug else ''
+    if results: send_log('search_addons', f"found {len(results)} add-on(s) for {log_tag}{debug_only}", 'info')
     else:       send_log('search_addons', f"no add-ons were found for {log_tag}", 'info')
 
     return results
@@ -1354,7 +1355,8 @@ def search_modpacks(query: str, *a):
 
     if results:
         results = sorted(results, key=lambda x: x.score, reverse=True)
-        send_log('search_modpacks', f"found {len(results)} modpack(s) for {log_tag}:\n{results}", 'info')
+        debug_only = f':\n{results}' if constants.debug else ''
+        send_log('search_modpacks', f"found {len(results)} modpack(s) for {log_tag}{debug_only}", 'info')
     else:
         send_log('search_modpacks', f"no modpacks were found for {log_tag}", 'info')
 
