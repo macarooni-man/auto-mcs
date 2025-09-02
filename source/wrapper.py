@@ -115,11 +115,6 @@ if __name__ == '__main__':
         return constants.send_log(f'wrapper.{object_data}', message, level)
 
 
-    # Open devnull to stdout on Windows
-    if constants.os_name == 'windows' and constants.app_compiled and not constants.debug:
-        sys.stdout = open(os.devnull, 'w')
-
-
     # Set launch path, username
     constants.launch_path = sys.executable if constants.app_compiled else __file__
 
@@ -169,6 +164,12 @@ if __name__ == '__main__':
         constants.bypass_admin_warning = args.bypass_admin_warning
         if constants.os_name != 'windows' or not constants.app_compiled:
             constants.headless = args.headless
+
+
+        # Delete STDIO on Windows
+        if constants.os_name == 'windows' and constants.app_compiled and not constants.debug:
+            sys.stdout = open(os.devnull, 'w')
+            sys.stderr = open(os.devnull, 'w')
 
 
         # Force headless if display is not set on Linux
