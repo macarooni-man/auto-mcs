@@ -22,8 +22,8 @@ def setup_windows_debug_console(
     is_compiled = bool(getattr(sys, "frozen", False))  # PyInstaller/py2exe style
     args = sys.argv
     debug = any(a in ("-d", "--debug") for a in args)
-    console_opened = False
-    devnull_redirected = False
+    headless = any(a in ("-s", "--headless") for a in args)
+
 
     # Ignore on other operating systems as they have STDIO
     if not is_windows:
@@ -32,6 +32,11 @@ def setup_windows_debug_console(
     # Ignore if running as Python, since it has STDIO
     if not is_compiled:
         return
+
+    # Ignore if headless
+    if headless:
+        return
+
 
     # Attach a console and wire stdio to it
     if debug:
@@ -45,8 +50,7 @@ def setup_windows_debug_console(
             allocated = bool(k32.AllocConsole())
             if not allocated:
                 # If we can't get a console, just return without redirecting.
-                return {"is_windows": True, "is_compiled": is_compiled, "debug": True,
-                        "console_opened": False, "devnull_redirected": False}
+                return
 
         # UTF-8 code page
         k32.SetConsoleCP(65001)
@@ -73,16 +77,11 @@ def setup_windows_debug_console(
             colorama.just_fix_windows_console()
         except Exception: pass
 
-        console_opened = True
-
     else:
         if redirect_non_debug_to_devnull:
             # Silence stdio for non-debug runs so the GUI app stays quiet
             sys.stdout = open(os.devnull, "w", encoding="utf-8", buffering=1)
             sys.stderr = open(os.devnull, "w", encoding="utf-8", buffering=1)
-            devnull_redirected = True
-
-    return {"is_windows": True, "is_compiled": is_compiled, "debug": debug, "console_opened": console_opened, "devnull_redirected": devnull_redirected}
 
 
 
@@ -117,7 +116,7 @@ if __name__ == '__main__':
 
 
     # Open devnull to stdout on Windows
-    if constants.os_name == 'windows' and constants.app_compiled:
+    if constants.os_name == 'windows' and constants.app_compiled and not constants.debug:
         sys.stdout = open(os.devnull, 'w')
 
 
