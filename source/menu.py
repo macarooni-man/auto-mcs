@@ -21889,7 +21889,9 @@ def edit_script(edit_button, server_obj, script_path, download=True):
     # Passed to parent IPC receiver
     ipc_functions = {
         'api_manager': constants.api_manager,
-        'telepath_upload': constants.telepath_upload
+        'telepath_upload': constants.telepath_upload,
+        'format_traceback': constants.format_traceback,
+        '_send_log': constants.send_log
     }
 
     Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict, ipc_functions), 0.1)
