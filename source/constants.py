@@ -5,6 +5,7 @@ from colorama import Fore, Back, Style
 from random import randrange, choices
 from difflib import SequenceMatcher
 from urllib.parse import quote
+from collections import deque
 from bs4 import BeautifulSoup
 from threading import Timer
 from copy import deepcopy
@@ -190,6 +191,8 @@ templateDir = os.path.join(toolDir, 'templates')
 configDir   = os.path.join(applicationFolder, 'Config')
 javaDir     = os.path.join(toolDir, 'java')
 os_temp     = os.getenv("TEMP") if os_name == "windows" else "/tmp"
+
+max_log_count = 25
 
 telepathDir       = os.path.join(toolDir, 'telepath')
 telepathFile      = os.path.join(telepathDir, 'telepath-servers.json')
@@ -6529,27 +6532,37 @@ class LoggingManager():
     def _send_log(self, message: str, level: str = None, **kw):
         return self._dispatch(self.__class__.__name__, message, level, **kw)
 
-    def __init__(self, qsize: int = 2048):
-        self._log_db = []
+    def __init__(self):
+
+        # Identify this launch (timestamp + pid -> short hash)
+        self._launch_ts  = dt.now()
+        self._launch_id  = hashlib.sha1(f"{self._launch_ts.isoformat()}-{os.getpid()}".encode("utf-8")).hexdigest()[:10]
+
+        # Initialize db stuff
+        self._log_db = deque(maxlen=2500)
         self._db_lock = threading.Lock()  # protect _log_db
         self._io_lock = threading.Lock()  # serialize stdout writes to avoid interweaving
         self._line_header = '   >  '
+        self._max_run_logs = 3
+        self._path = os.path.join(applicationFolder, "Logs", "application")
 
         # Async pipeline
-        # CHANGED: queue now carries raw fields, not a prebuilt dict
-        #          (object_data, message, level, stack, _raw)
-        self._q: "queue.Queue[tuple[str, str, str, str, bool]]" = queue.Queue(maxsize=qsize)  # CHANGED
+        self._q: "queue.Queue[tuple[str, str, str, str, bool]]" = queue.Queue(maxsize=100)
         self._stop = threading.Event()
         self._writer = threading.Thread(target=self._worker, name="log-writer", daemon=True)
         self._writer.start()
 
         # Branding banner
+        self._title = self._generate_title()
+        self._send_log(f'{Style.BRIGHT}{self._title}{Style.RESET_ALL}', 'info', _raw=True)
+
+    def _generate_title(self):
         self.header_len = 50
         box = ('│', '—', '—', '—', '—', '—') if os_name == 'windows' else ('┃', '━', '┏', '┓', '┗', '┛')
         header = f"{box[2]}{box[1] * round(self.header_len / 2)}  auto-mcs v{app_version}  {box[1]* round(self.header_len / 2)}{box[3]}"
         logo   = '\n'.join([f'{box[0]}   {i.ljust(len(header) - 5, " ")}{box[0]}' for i in text_logo])
         footer = f"{box[4]}{box[1] * (len(header) - 2)}{box[5]}"
-        self._send_log(f'{Style.BRIGHT}{header}\n{logo}\n{footer}{Style.RESET_ALL}', 'info', _raw=True)
+        return f'{header}\n{logo}\n{footer}'
 
     # Receive from the rest of the app
     def _dispatch(self, object_data: str, message: str, level: str = None, stack: str = None, _raw=False):
@@ -6605,6 +6618,16 @@ class LoggingManager():
 
             except Exception as e: sys.__stderr__.write(f"Logging worker error: {format_traceback(e)}")
             finally: self._q.task_done()
+
+    def _prune_logs(self):
+        files = sorted(
+            (p for p in glob(os.path.join(self._path, "auto-mcs_*.log")) if os.path.isfile(p)),
+            key = os.path.getmtime,
+            reverse = True
+        )
+        for p in files[self._max_run_logs:]:
+            try: os.remove(p)
+            except OSError: pass
 
     def _print(self, data: dict, _raw: bool = False):
 
@@ -6687,6 +6710,65 @@ class LoggingManager():
             self.flush()
         else:
             self._stop.set()
+
+    # Flush the queue and write the entire in-memory log to a file, and clear the db
+    def dump_to_disk(self) -> str:
+
+        # Ensure background thread has printed/added everything it has
+        self.flush()
+
+        # File path
+        folder_check(self._path)
+        ts = self._launch_ts.strftime("%Y-%m-%d_%H-%M-%S")
+        filename = f"auto-mcs_{ts}_{self._launch_id}.log"
+        path = os.path.join(self._path, filename)
+
+        self._send_log(f"flushing logger to '{path}'")
+
+        # Snapshot and clear
+        with self._db_lock:
+            entries = list(self._log_db)
+            self._log_db.clear()
+
+        # Write plain text, no ANSI
+        if not os.path.exists(path):
+            with open(path, "a+", encoding="utf-8", newline="\n") as f:
+                f.write(f"# {ts} (pid {os.getpid()}) id={self._launch_id}\n\n")
+
+        with open(path, "a+", encoding="utf-8", newline="\n") as f:
+            for e in entries:
+                time_obj    = e["time"]
+                object_data = e["object_data"]
+                message     = e["message"]
+                level       = e["level"]
+                stack       = e["stack"]
+
+                # Replace title log with formatting-free one
+                if self._title in message:
+                    f.write(self._title + '\n')
+                    continue
+
+                # Only write messages if logging is enabled, and only log debug messages in debug mode
+                if not (enable_logging and not (not debug and level == 'debug')):
+                    continue
+
+                # Treat low-level Kivy logs as "debug"
+                if stack == 'kivy' and (not debug and level in ('debug', 'info', 'warning')):
+                    continue
+
+
+                # Format lines like print method
+                object_width = 37 - len(level)
+                timestamp = time_obj.strftime("%I:%M:%S %p")
+                block = f"{stack}: {object_data}".ljust(object_width)
+
+                lines = str(message).splitlines() or [""]
+                for i, line in enumerate(lines):
+                    if i == 0: f.write(f"[{timestamp}] [{level.upper()}] [{block}] {line.strip()}\n")
+                    else: f.write(f"{self._line_header}{line.strip()}\n")
+
+        self._prune_logs()
+        return path
 
 # Global logger wrapper
 # Levels: 'debug', 'info', 'warning', 'error', 'fatal'

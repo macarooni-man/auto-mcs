@@ -115,6 +115,38 @@ if __name__ == '__main__':
         return constants.send_log(f'wrapper.{object_data}', message, level)
 
 
+    # Migrate old logs (<2.3.3) to new location
+
+    # Move old error logs
+    old_log_dir = os.path.join(constants.applicationFolder, "Logs")
+    log_dir = os.path.join(constants.applicationFolder, "Logs", "errors")
+    error_logs = glob.glob(os.path.join(old_log_dir, "ame-error*.log"))
+    if error_logs:
+        send_log('', f"migrating old error logs to '{log_dir}'", 'warning')
+        constants.folder_check(log_dir)
+        [constants.move(file, os.path.join(log_dir, os.path.basename(file))) for file in error_logs]
+
+    # Move old crash logs
+    old_log_dir = os.path.join(constants.applicationFolder, "Logs")
+    log_dir = os.path.join(constants.applicationFolder, "Logs", "crashes")
+    error_logs = glob.glob(os.path.join(old_log_dir, "ame-fatal*.log"))
+    if error_logs:
+        send_log('', f"migrating old crash logs to '{log_dir}'", 'warning')
+        constants.folder_check(log_dir)
+        [constants.move(file, os.path.join(log_dir, os.path.basename(file))) for file in error_logs]
+
+    # Move old Telepath logs
+    old_log_dir = os.path.join(constants.telepathDir, 'audit-logs')
+    log_dir = os.path.join(constants.applicationFolder, 'Logs', 'telepath')
+    audit_logs = glob.glob(os.path.join(old_log_dir, "session-audit_*.log"))
+    if audit_logs:
+        send_log('', f"migrating old Telepath audit-logs to '{log_dir}'", 'warning')
+        constants.folder_check(log_dir)
+        [constants.move(file, os.path.join(log_dir, os.path.basename(file))) for file in audit_logs]
+        constants.safe_delete(old_log_dir)
+
+
+
     # Set launch path, username
     constants.launch_path = sys.executable if constants.app_compiled else __file__
 
@@ -278,31 +310,28 @@ if __name__ == '__main__':
 
     # Functions
     def cleanup_on_close():
+
+        # Shut down Telepath API
         constants.api_manager.stop()
         constants.api_manager.close_sessions()
 
         # Cancel all token expiry timers to prevent hanging on close
         for timer in telepath.expire_timers:
-            if timer.is_alive():
-                timer.cancel()
+            if timer.is_alive(): timer.cancel()
 
         # Close Discord rich presence
         try:
             if constants.discord_presence:
-                if constants.discord_presence.presence:
-                    constants.discord_presence.presence.close()
-        except:
-            pass
+                if constants.discord_presence.presence: constants.discord_presence.presence.close()
+        except: pass
 
-        # Close amscript IDE if open on close
-
+        # Write logger to disk
+        constants.log_manager.dump_to_disk()
 
         # Delete live images/temp files on close
         for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
-            try:
-                os.remove(img)
-            except OSError:
-                pass
+            try: os.remove(img)
+            except OSError: pass
         if not update_log or not os.path.exists(update_log):
             constants.safe_delete(constants.tempDir)
 
@@ -361,6 +390,7 @@ if __name__ == '__main__':
 
         # Update variables in the background
         connect_counter = 0
+        log_counter = 0
         while True:
 
             # Exit this thread if the main thread closes, or crashes
@@ -369,10 +399,19 @@ if __name__ == '__main__':
 
                 # Check for network changes in the background
                 connect_counter += 1
-                if (connect_counter == 10 and not constants.app_online) or (connect_counter == 3600 and constants.app_online):
+                if (connect_counter >= 10 and not constants.app_online) or (connect_counter >= 3600 and constants.app_online):
                     try: constants.check_app_updates()
                     except Exception as e: send_log('background', f"error checking for app updates: {constants.format_traceback(e)}", 'error')
                     connect_counter = 0
+
+
+                # Write logs in memory to disk every 3 minutes
+                log_counter += 1
+                if log_counter >= 180:
+                    try: constants.log_manager.dump_to_disk()
+                    except Exception as e: send_log('background', f"error writing application log to disk: {constants.format_traceback(e)}", 'error')
+                    log_counter = 0
+
 
                 if not (exitApp or crash): time.sleep(1)
 

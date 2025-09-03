@@ -70,8 +70,8 @@ def generate_log(exception, error_info=None):
 
     exception_summary = trimmed_exception[-1].strip() + f'\n    ({last_line.strip()})'
     exception_code = trimmed_exception[-1].strip() + f' ({last_line.split(",", 1)[0].strip()} - {last_line.split(",")[-1].strip()})'
-    # print(exception_code)
     trimmed_exception = "\n".join(trimmed_exception)
+    # print(exception_code)
 
 
     # Create AME code
@@ -82,7 +82,8 @@ def generate_log(exception, error_info=None):
 
     # Check for 'Logs' folder in application directory
     # If it doesn't exist, create a new folder called 'Logs'
-    log_dir = os.path.join(constants.applicationFolder, "Logs")
+    folder = 'errors' if crash_type == 'error' else 'crashes'
+    log_dir = os.path.join(constants.applicationFolder, "Logs", folder)
     constants.folder_check(log_dir)
 
     # Timestamp
@@ -151,22 +152,20 @@ def generate_log(exception, error_info=None):
 {textwrap.indent(trimmed_exception, "        ")}"""
 
 
-    # Only write to disk if the app is compiled
-    if constants.app_compiled:
+    # Only write to disk if the app is compiled and logging is enabled
+    if constants.app_compiled and constants.enable_logging:
         file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
         with open(file_name, "w") as log_file:
             log_file.write(log)
 
         # Remove old logs
-        keep = 50
-
         file_data = {}
         for file in glob(os.path.join(log_dir, "ame-*.log")):
             file_data[file] = os.stat(file).st_mtime
 
         sorted_files = sorted(file_data.items(), key=itemgetter(1))
 
-        delete = len(sorted_files) - keep
+        delete = len(sorted_files) - constants.max_log_count
         for x in range(0, delete):
             os.remove(sorted_files[x][0])
 
@@ -225,8 +224,7 @@ def launch_window(exc_code, log_path):
     try:
         img = PhotoImage(file=file_icon)
         root.tk.call('wm', 'iconphoto', root._w, img)
-    except:
-        pass
+    except: pass
 
     root.configure(bg=background_color)
     root.resizable(False, False)
@@ -338,10 +336,8 @@ def launch_window(exc_code, log_path):
     button.pack(pady=0, anchor='s', side='bottom')
 
     # Play crash sound
-    try:
-        crash_sound.play()
-    except:
-        pass
+    try: crash_sound.play()
+    except: pass
 
     # When window is closed
     def on_closing():

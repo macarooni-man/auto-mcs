@@ -890,9 +890,9 @@ class AuditLogger():
         return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
-        self.path = os.path.join(constants.telepathDir, 'audit-logs')
+        self.path = os.path.join(constants.applicationFolder, 'Logs', 'telepath')
         self.current_users = {}
-        self.max_logs = 50
+        self.max_logs = constants.max_log_count
         self.tags = {
             'ignore': ['_sync_attr', '_sync_telepath_stop', '_telepath_run_data', 'return_single_list', 'hash_changed',
                        '_view_notif', 'reload_config', 'retrieve_suggestions', 'get_rule', 'properties_dict'
@@ -987,6 +987,9 @@ class AuditLogger():
 
         # Save to internal logger
         self._send_log(message)
+
+        # Don't write to disk if logger is disabled
+        if not constants.enable_logging: return
 
 
         # Also, write to disk
