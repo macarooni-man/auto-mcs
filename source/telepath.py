@@ -923,15 +923,18 @@ class AuditLogger():
 
     # Purge old logs
     def _purge_logs(self):
-        file_data = {}
-        for file in glob(os.path.join(self.path, "session-audit_*.log")):
-            file_data[file] = os.stat(file).st_mtime
+        file_list = glob(os.path.join(self.path, "session-audit_*.log"))
+        if len(file_list) > self.max_logs:
 
-        sorted_files = sorted(file_data.items(), key=itemgetter(1))
+            file_data = {}
+            for file in file_list:
+                file_data[file] = os.stat(file).st_mtime
 
-        delete = len(sorted_files) - self.max_logs
-        for x in range(0, delete):
-            os.remove(sorted_files[x][0])
+            sorted_files = sorted(file_data.items(), key=itemgetter(1))
+
+            delete = len(sorted_files) - self.max_logs
+            for x in range(0, delete):
+                os.remove(sorted_files[x][0])
 
     # Returns formatted name of file, with the date
     def _get_file_name(self):
@@ -1018,6 +1021,7 @@ class AuditLogger():
 
         with open(file_name, mode, errors='ignore') as f:
             f.write(f'{message}\n')
+        self._purge_logs()
 
 class Token(BaseModel):
     access_token: str
