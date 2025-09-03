@@ -956,10 +956,8 @@ class AuditLogger():
         if isinstance(host, str) and host in self.current_users:
             host = self.current_users[host]
 
-        if host:
-            formatted_host = f"{host['host']}/{host['user']} | {host['ip']}"
-        else:
-            formatted_host = 'Unknown host'
+        if host: formatted_host = f"{host['host']}/{host['user']} | {host['ip']}"
+        else:    formatted_host = 'Unknown host'
 
         # Format date and event
         date_label = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
@@ -979,7 +977,7 @@ class AuditLogger():
                             event_tag = t
                             break
 
-        formatted_message = f'[{event_tag.upper()}] [{date_label}] [user: {formatted_host}] {formatted_event}'
+        formatted_message = f'[{date_label}] [{event_tag.upper()}] [user: {formatted_host}] {formatted_event}'
         if extra_data:
             formatted_message += f' > {extra_data}'
 
