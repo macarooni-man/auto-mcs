@@ -6959,7 +6959,7 @@ class ConfigManager():
             if os.path.exists(self._path):
                 try: os.remove(self._path)
                 except Exception: pass
-            self._data = copy.deepcopy(self._defaults)
+            self._data = deepcopy(self._defaults)
             self.save_config()
 
     # Atomic write helper
