@@ -1114,7 +1114,7 @@ def return_scraper(url_path: str, head=False, params=None) -> requests.Response:
         global_scraper = cloudscraper.create_scraper(
             browser = {'custom': f'{app_title}/{app_version}', 'platform': os_name, 'mobile': False},
             # ecdhCurve = 'secp384r1',
-            debug = debug
+            # debug = debug
         )
 
     return global_scraper.head(url_path) if head else global_scraper.get(url_path, params=params)
@@ -6551,6 +6551,9 @@ class LoggingManager():
         self._max_run_logs = 3
         self._path = os.path.join(applicationFolder, "Logs", "application")
 
+        # All stacks listed here are not logged unless "debug" is enabled
+        self.debug_stacks = ('kivy', 'uvicorn')
+
         # Log since last UI action
         self._since_ui = deque(maxlen=1000)
 
@@ -6581,8 +6584,8 @@ class LoggingManager():
         if not stack: stack = 'core'
 
 
-        # Reject Kivy debug logs
-        if stack == 'kivy' and level == 'debug':
+        # Reject debug log stacks
+        if stack in self.debug_stacks and level == 'debug':
             return
 
 
@@ -6657,8 +6660,8 @@ class LoggingManager():
         if not (enable_logging and not (not debug and level == 'debug')):
             return
 
-        # Treat low-level Kivy logs as "debug"
-        if stack == 'kivy' and (not debug and level in ('debug', 'info', 'warning')):
+        # Treat low-priority stack logs as "debug"
+        if stack in self.debug_stacks and (not debug and level in ('debug', 'info', 'warning')):
             return
 
 
@@ -6709,6 +6712,7 @@ class LoggingManager():
                 encoding = (sys.stdout and sys.stdout.encoding) or "utf-8"
                 formatted = line.encode(encoding, errors="ignore").decode(encoding, errors="ignore")
                 print(formatted)
+
 
     # Wait until all queued logs are written
     def flush(self, timeout: float = None):
@@ -6768,8 +6772,8 @@ class LoggingManager():
                 if not (enable_logging and not (not debug and level == 'debug')):
                     continue
 
-                # Treat low-level Kivy logs as "debug"
-                if stack == 'kivy' and (not debug and level in ('debug', 'info', 'warning')):
+                # Treat low-priority stack logs as "debug"
+                if stack in self.debug_stacks and (not debug and level in ('debug', 'info', 'warning')):
                     continue
 
 

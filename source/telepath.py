@@ -54,6 +54,21 @@ import svrmgr
 def send_log(object_data, message, level=None):
     return constants.send_log(f'{__name__}.{object_data}', message, level, 'api')
 
+# Attach forwarder to the custom logger
+class UvicornToLoggerHandler(logging.Handler):
+    def __init__(self, mgr):
+        super().__init__()
+        self.mgr = mgr
+    def emit(self, record: logging.LogRecord):
+        try:
+            msg = record.getMessage()
+            level = (record.levelname or "INFO").lower()
+            tag = getattr(record, "tag", None) or getattr(record, "ctx", None)
+            obj = tag or (f"{record.module}.{record.funcName}" if record.funcName and record.module else record.name)
+            self.mgr._dispatch(obj.replace("__init__.", ""), msg, level=level, stack="uvicorn", _raw=False)
+        except Exception:
+            self.handleError(record)
+
 # Create ID_HASH to use for authentication so the token can be reset
 telepath_settings = constants.app_config.telepath_settings
 if not telepath_settings['id_hash'] or len(telepath_settings['id_hash']) != 64:
@@ -162,24 +177,6 @@ class TelepathManager():
         self._read_session()
         # [{'host1': str, 'user': str, 'id': str}, {'host2': str, 'user': str, 'id': str}]
         # .....
-
-        # Disable low importance uvicorn logging
-        if not constants.debug:
-            logging.getLogger("uvicorn").handlers = []
-            logging.getLogger("uvicorn").propagate = False
-            logging.getLogger("uvicorn").setLevel(logging.WARNING)
-            logging.getLogger("uvicorn.error").handlers = []
-            logging.getLogger("uvicorn.error").propagate = False
-            logging.getLogger('uvicorn.error').setLevel(logging.WARNING)
-            logging.getLogger("uvicorn.access").handlers = []
-            logging.getLogger("uvicorn.access").propagate = False
-            logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
-            logging.getLogger("uvicorn.asgi").handlers = []
-            logging.getLogger("uvicorn.asgi").propagate = False
-            logging.getLogger('uvicorn.asgi').setLevel(logging.WARNING)
-
-        if constants.headless:
-            logging.disable(logging.CRITICAL)
 
         self._send_log(f'initialized Telepath Manager v{self.version}')
 
@@ -322,15 +319,37 @@ class TelepathManager():
 
         return True
 
+    # Override uvicorn logging with custom implementation
+    def _gen_log_config(self):
+        return {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "handlers": {
+                "uvicorn_to_logger": {
+                    "()": UvicornToLoggerHandler,
+                    "level": "INFO",
+                    "mgr": constants.log_manager,
+                },
+            },
+
+            # Route uvicorn logs only to LoggingManager, and with no propagation to root
+            "loggers": {
+                "uvicorn": {"handlers": ["uvicorn_to_logger"], "level": "INFO", "propagate": False},
+                "uvicorn.error": {"handlers": ["uvicorn_to_logger"], "level": "INFO", "propagate": False},
+                "uvicorn.access": {"handlers": ["uvicorn_to_logger"], "level": "INFO", "propagate": False},
+                "uvicorn.asgi": {"handlers": ["uvicorn_to_logger"], "level": "INFO", "propagate": False},
+            },
+        }
 
     def update_config(self, host: str, port: int):
         self.host = host
         self.port = port
         self.config = uvicorn.Config(
-            app=app,
-            host=host,
-            port=port,
-            headers=[("server", constants.app_title)]
+            app = app,
+            host = host,
+            port = port,
+            headers = [("server", constants.app_title)],
+            log_config = self._gen_log_config()
             # workers=1,
             # limit_concurrency=1,
             # limit_max_requests=1

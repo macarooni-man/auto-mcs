@@ -51,21 +51,16 @@ if constants.os_name == "windows":
 # Control modifier for keyboard shortcuts
 control = 'meta' if constants.os_name == "macos" else 'ctrl'
 
-# Disable Kivy logging if debug is off and app is compiled
-if constants.app_compiled and constants.debug is False:
-    kivy_folder = os.path.join(constants.os_temp, ".kivy")
-    constants.folder_check(kivy_folder)
-    os.environ['KIVY_HOME'] = kivy_folder
-
-# 1) Tell Kivy to not install its own handlers and to propagate to root
-os.environ.setdefault("KIVY_LOG_MODE", "PYTHON")  # Kivy won't add handlers; logs go to root
-
-# Optional: ensure Kivy doesn't also write file/console (you'll own output)
+# Disable Kivy logging from their way
+kivy_folder = os.path.join(constants.os_temp, ".kivy")
+constants.folder_check(kivy_folder)
+os.environ['KIVY_HOME'] = kivy_folder
+os.environ.setdefault("KIVY_LOG_MODE", "PYTHON")
 os.environ.setdefault("KIVY_NO_FILELOG", "1")
 os.environ.setdefault("KIVY_NO_CONSOLELOG", "1")
 
-# 2) Attach your forwarder to the *root* logger
-class KivyToAppHandler(logging.Handler):
+# Attach forwarder to the custom logger
+class KivyToLoggerHandler(logging.Handler):
     def __init__(self, mgr):
         super().__init__()
         self.mgr = mgr
@@ -81,7 +76,8 @@ class KivyToAppHandler(logging.Handler):
 
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
-root.addHandler(KivyToAppHandler(constants.log_manager))
+root.addHandler(KivyToLoggerHandler(constants.log_manager))
+
 
 os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug" if constants.debug else "info"
 os.environ["KIVY_IMAGE"] = "pil,sdl2"
