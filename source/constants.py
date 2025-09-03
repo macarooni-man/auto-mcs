@@ -11,6 +11,7 @@ from threading import Timer
 from copy import deepcopy
 from pathlib import Path
 from munch import Munch
+import multiprocessing
 from glob import glob
 from PIL import Image
 from nbt import nbt
@@ -74,6 +75,7 @@ back_clicked    = False
 session_splash  = ''
 boot_launches   = []
 bypass_admin_warning = False
+is_child_process = multiprocessing.current_process().name != "MainProcess"
 
 
 # Global debug mode and app_compiled, set debug to false before release
@@ -1136,6 +1138,9 @@ def get_url(url: str, return_code=False, only_head=False, return_response=False,
                 send_log('get_url', f"exceeded max retries to '{url}': {format_traceback(e)}", 'error')
                 raise ConnectionRefusedError("The cloudscraper connection has failed")
             else: time.sleep((retry / 3))
+
+        except requests.exceptions.MissingSchema:
+            pass
 
         except Exception as e:
             send_log('get_url', f"error requesting '{url}': {format_traceback(e)}", 'error')
@@ -6546,6 +6551,9 @@ class LoggingManager():
         self._max_run_logs = 3
         self._path = os.path.join(applicationFolder, "Logs", "application")
 
+        # Log since last UI action
+        self._since_ui = deque(maxlen=1000)
+
         # Async pipeline
         self._q: "queue.Queue[tuple[str, str, str, str, bool]]" = queue.Queue(maxsize=100)
         self._stop = threading.Event()
@@ -6601,7 +6609,14 @@ class LoggingManager():
 
     def _add_entry(self, object_data: str, message: str, level: str, stack: str):
         data = {'time': dt.now(), 'object_data': object_data, 'level': level, 'stack': stack, 'message': message}
-        with self._db_lock: self._log_db.append(data)
+        with self._db_lock:
+            self._log_db.append(data)
+
+            # Reset the "since UI" window only on UI actions
+            if stack == 'ui' and ('interaction:' in message or 'view:' in message):
+                self._since_ui.clear()
+            self._since_ui.append(data)
+
         return data
 
     def _worker(self):
@@ -6737,6 +6752,7 @@ class LoggingManager():
 
         with open(path, "a+", encoding="utf-8", newline="\n") as f:
             for e in entries:
+
                 time_obj    = e["time"]
                 object_data = e["object_data"]
                 message     = e["message"]
@@ -6770,11 +6786,52 @@ class LoggingManager():
         self._prune_logs()
         return path
 
+    # Get everything since the last UI action
+    def since_last_interaction(self) -> list:
+
+        # Ensure background thread has printed/added everything it has
+        self.flush()
+
+        # Snapshot and clear
+        with self._db_lock:
+            entries = list(self._since_ui)
+
+        log_list = []
+        for e in entries:
+
+            time_obj    = e["time"]
+            object_data = e["object_data"]
+            message     = e["message"]
+            level       = e["level"]
+            stack       = e["stack"]
+
+            # Skip title log with formatting-free one
+            if self._title in message:
+                continue
+
+
+            # Format lines like print method
+            object_width = 37 - len(level)
+            timestamp = time_obj.strftime("%I:%M:%S %p")
+            block = f"{stack}: {object_data}".ljust(object_width)
+
+            lines = str(message).splitlines() or [""]
+            for i, line in enumerate(lines):
+                if i == 0: log_line = f"[{timestamp}] [{level.upper()}] [{block}] {line.strip()}\n"
+                else:      log_line = f"{self._line_header}{line.strip()}\n"
+                log_list.append(log_line)
+
+        return log_list
+
 # Global logger wrapper
 # Levels: 'debug', 'info', 'warning', 'error', 'fatal'
 # Stacks: 'core', 'ui', 'api', 'amscript'
-log_manager = LoggingManager()
-send_log    = log_manager._dispatch
+if is_child_process:
+    log_manager = None
+    send_log = lambda *_: None
+else:
+    log_manager: LoggingManager = LoggingManager()
+    send_log    = log_manager._dispatch
 
 
 # Check for Docker/ARM architecture (required after logger is created)

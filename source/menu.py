@@ -456,6 +456,8 @@ def view_file(path: str, title=None):
     if not title and constants.server_manager.current_server:
         title = constants.server_manager.current_server.name
 
+    send_log('view_file', f"opening in log viewer:\n'{path}'", 'info')
+
     Clock.schedule_once(
         functools.partial(
             logviewer.open_log,
@@ -21888,6 +21890,8 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         telepath_data['headers'] = constants.api_manager._get_headers(telepath_data['host'], True)
         if download:
             script_path = constants.telepath_download(server_obj._telepath_data, script_path, os.path.join(constants.telepathScriptDir, server_obj._telepath_data['host']))
+
+    send_log('edit_script', f"opening in amscript IDE:\n'{script_path}'", 'info')
 
     # Update Discord rich presence
     constants.discord_presence.update_presence(f"amscript IDE > Editing '{os.path.basename(script_path)}'")

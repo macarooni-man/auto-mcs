@@ -98,6 +98,9 @@ def generate_log(exception, error_info=None):
     calculated_space = 0
     splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)
 
+    # Last interaction
+    last_interaction = '\n'.join(i.strip() for i in constants.log_manager.since_last_interaction())
+
     try:    is_telepath = bool(constants.server_manager.current_server._telepath_data)
     except: is_telepath = False
 
@@ -149,11 +152,16 @@ def generate_log(exception, error_info=None):
         Exception Summary:
     {textwrap.indent(exception_summary, "        ")}
 
-{textwrap.indent(trimmed_exception, "        ")}"""
+{textwrap.indent(trimmed_exception, "        ")}
+
+    
+    Logging since last interaction:
+    
+{textwrap.indent(last_interaction, "        ")}"""
 
 
     # Only write to disk if the app is compiled and logging is enabled
-    if constants.app_compiled and constants.enable_logging:
+    if constants.enable_logging:
         file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
         with open(file_name, "w") as log_file:
             log_file.write(log)
