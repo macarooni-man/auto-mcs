@@ -364,7 +364,7 @@ class TelepathManager():
             self.running = True
             threading.Timer(0, self._run_uvicorn).start()
 
-            message = f'initialized API on "{self.host}:{self.port}"'
+            message = f"initialized API on '{self.host}:{self.port}'"
             self._send_log(message, 'info')
             return message
 
@@ -378,7 +378,7 @@ class TelepathManager():
             self.server = None
             self.running = False
 
-            message = f'disabled API on "{self.host}:{self.port}"'
+            message = f"disabled API on '{self.host}:{self.port}'"
             self._send_log(message, 'info')
             return message
 
