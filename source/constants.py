@@ -6687,7 +6687,7 @@ class LoggingManager():
                         f"{fmt_block(level.upper(), level_color.get(level, Fore.CYAN))} "
                         f"{fmt_block(f'{stack}: {object_data}'.ljust(object_width), object_color.get(level, Fore.CYAN))} "
                         f"{content}"
-                    )
+                    ) if x == 0 else content
 
                 else: line = line.strip()
 
