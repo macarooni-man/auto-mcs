@@ -6542,7 +6542,7 @@ class LoggingManager():
 
         # Identify this launch (timestamp + pid -> short hash)
         self._launch_ts  = dt.now()
-        self._launch_id  = hashlib.sha1(f"{self._launch_ts.isoformat()}-{os.getpid()}".encode("utf-8")).hexdigest()[:10]
+        self._launch_id  = hashlib.sha1(f"{self._launch_ts.isoformat()}-{os.getpid()}".encode("utf-8")).hexdigest()[:6]
 
         # Initialize db stuff
         self._log_db = deque(maxlen=2500)
@@ -6739,8 +6739,8 @@ class LoggingManager():
 
         # File path
         folder_check(self._path)
-        ts = self._launch_ts.strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"auto-mcs_{ts}_{self._launch_id}.log"
+        timestamp = dt.now().strftime(fmt_date("%#m-%#d-%y"))
+        filename = f"auto-mcs_{timestamp}_{self._launch_id}.log"
         path = os.path.join(self._path, filename)
 
         self._send_log(f"flushing logger to '{path}'")
@@ -6753,7 +6753,8 @@ class LoggingManager():
         # Write plain text, no ANSI
         if not os.path.exists(path):
             with open(path, "a+", encoding="utf-8", newline="\n") as f:
-                f.write(f"# {ts} (pid {os.getpid()}) id={self._launch_id}\n\n")
+                launch_stamp = self._launch_ts.strftime(fmt_date("%#I:%M:%S %p %#m/%#d/%Y"))
+                f.write(f"# {launch_stamp} (pid {os.getpid()}) id={self._launch_id}\n\n")
 
         with open(path, "a+", encoding="utf-8", newline="\n") as f:
             for e in entries:
