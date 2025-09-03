@@ -6239,8 +6239,9 @@ def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
 
     process_dir(root)
     files = dict(sorted(final_dict.items(), key=lambda item: (os.path.basename(item[0]) != name, os.path.basename(item[0]))))
-    if files: send_log('gather_config_files', f"found {len(files)} config file(s) in '{name}':\n{files}")
-    else:     send_log('gather_config_files', f"no config files were found in '{name}'")
+    debug_only = f':\n{files}' if debug else ''
+    if files: send_log('gather_config_files', f"found {len(files)} config file(s) in '{name}'{debug_only}", 'info')
+    else:     send_log('gather_config_files', f"no config files were found in '{name}'", 'info')
 
     return files
 
@@ -6539,6 +6540,9 @@ class LoggingManager():
         return self._dispatch(self.__class__.__name__, message, level, **kw)
 
     def __init__(self):
+        self._line_header = '   >  '
+        self._max_run_logs = 3
+        self._path = os.path.join(applicationFolder, "Logs", "application")
 
         # Identify this launch (timestamp + pid -> short hash)
         self._launch_ts  = dt.now()
@@ -6548,21 +6552,19 @@ class LoggingManager():
         self._log_db = deque(maxlen=2500)
         self._db_lock = threading.Lock()  # protect _log_db
         self._io_lock = threading.Lock()  # serialize stdout writes to avoid interweaving
-        self._line_header = '   >  '
-        self._max_run_logs = 3
-        self._path = os.path.join(applicationFolder, "Logs", "application")
-
-        # All stacks listed here are not logged unless "debug" is enabled
-        self.debug_stacks = ('kivy', 'uvicorn')
 
         # Log since last UI action
         self._since_ui = deque(maxlen=1000)
 
         # Async pipeline
-        self._q: "queue.Queue[tuple[str, str, str, str, bool]]" = queue.Queue(maxsize=100)
+        self._q: 'queue.Queue[tuple[str, str, str, str, bool]]' = queue.Queue(maxsize=100)
         self._stop = threading.Event()
         self._writer = threading.Thread(target=self._worker, name="log-writer", daemon=True)
         self._writer.start()
+
+        # All stacks listed here are not logged unless "debug" is enabled
+        self.debug_stacks = ('kivy', 'uvicorn')
+
 
         # Branding banner
         self._title = self._generate_title()
@@ -6598,8 +6600,7 @@ class LoggingManager():
         try:
             # Prefer dropping general level data if the queue is full
             if self._q.full() and level in ('debug', 'info'):
-                try:
-                    self._q.get_nowait(); self._q.task_done()
+                try: self._q.get_nowait(); self._q.task_done()
                 except queue.Empty: pass
             self._q.put_nowait(payload)
 
@@ -6790,6 +6791,7 @@ class LoggingManager():
                     else: f.write(f"{self._line_header}{line.strip()}\n")
 
         self._prune_logs()
+        api_manager.logger.dump_to_disk()
         return path
 
     # Get everything since the last UI action

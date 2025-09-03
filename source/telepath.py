@@ -17,6 +17,7 @@ from datetime import datetime as dt
 from datetime import timezone as tz
 from jwt import InvalidTokenError
 from operator import itemgetter
+from collections import deque
 from copy import deepcopy
 from munch import Munch
 from glob import glob
@@ -31,6 +32,7 @@ import random
 import bcrypt
 import string
 import base64
+import queue
 import json
 import time
 import jwt
@@ -372,7 +374,6 @@ class TelepathManager():
             return 'Telepath API is already running'
 
     def stop(self):
-        # This still doesn't work for whatever reason?
         if self.running:
             self._kill_uvicorn()
             self.server = None
@@ -921,8 +922,19 @@ class AuditLogger():
             'high': ['delete', 'import_script', 'script_state']
         }
 
-    # Purge old logs
-    def _purge_logs(self):
+        # Initialize db stuff
+        self._db_lock = threading.Lock()  # protects _audit_db
+        self._io_lock = threading.Lock()  # serialize stdout writes to avoid interweaving
+        self._audit_db = deque(maxlen=2500)
+
+        # Async pipeline
+        self._q: 'queue.Queue[tuple[str, str, str, str]]' = queue.Queue(maxsize=100)
+        self._stop = threading.Event()
+        self._writer = threading.Thread(target=self._worker, name="audit-writer", daemon=True)
+        self._writer.start()
+
+    # Prune old logs
+    def _prune_logs(self):
         file_list = glob(os.path.join(self.path, "session-audit_*.log"))
         if len(file_list) > self.max_logs:
 
@@ -941,13 +953,33 @@ class AuditLogger():
         time_stamp = dt.now().strftime(constants.fmt_date("%#m-%#d-%y"))
         return os.path.abspath(os.path.join(self.path, f"session-audit_{time_stamp}.log"))
 
-    # Used for reporting internal events to self.log() and tagging them
-    def _report(self, event: str, host: str = '', extra_data: str = '', server_name: str = ''):
+    # Used for reporting internal events; now a thin wrapper that just enqueues raw fields
+    def _dispatch(self, event: str, host: str = '', extra_data: str = '', server_name: str = ''):
+        payload = (str(event), host, str(extra_data), str(server_name))
+
+        # Enqueue line for background write
+        try:
+            # Prefer dropping general level data if the queue is full
+            if self._q.full():
+                try: self._q.get_nowait(); self._q.task_done()
+                except queue.Empty: pass
+            self._q.put_nowait(payload)
+
+        except queue.Full:
+
+            # For warnings/errors/fatal, block briefly to avoid loss
+            try: self._q.put(payload, timeout=0.25)
+
+            # Last resort: block until there is space so critical logs still go through the worker
+            except queue.Full: self._q.put(payload)
+
+    # Heavy work happens here on the worker thread; returns a fully formatted line or None to drop
+    def _add_entry(self, event: str, host, extra_data: str, server_name: str):
         threat = False
         event_tag = 'info'
 
         # Prioritize threats
-        if extra_data.lower().strip().startswith('potential threat blocked:'):
+        if isinstance(extra_data, str) and extra_data.lower().strip().startswith('potential threat blocked:'):
             threat = True
             event_tag = 'high'
 
@@ -969,33 +1001,60 @@ class AuditLogger():
             formatted_event = f'Server: "{server_name}" > {formatted_event.replace("Server > ", "", 1)}'
             formatted_event = formatted_event.replace('object', ' Object', 1)
 
-        # Get tag level from tag list
+        # Get tag level from tag list if it's not a threat
         if not threat:
             for t, events in self.tags.items():
                 for e in events:
                     if event.endswith(e.lower()):
-                        if t == 'ignore':
-                            return
-                        else:
-                            event_tag = t
-                            break
+                        if t == 'ignore': return
+                        event_tag = t
+                        break
 
-        formatted_message = f'[{date_label}] [{event_tag.upper()}] [user: {formatted_host}] {formatted_event}'
-        if extra_data:
-            formatted_message += f' > {extra_data}'
+        no_date_message = f'[{event_tag.upper()}] [user: {formatted_host}] {formatted_event}'
+        formatted_message = f'[{date_label}] {no_date_message}'
+        if extra_data: formatted_message += f' > {extra_data}'
 
 
         # Format sessions
-        if (event.endswith('login') or event.endswith('submit_pair')) and 'success' in extra_data.lower():
+        if (event.endswith('login') or event.endswith('submit_pair')) and isinstance(extra_data, str) and 'success' in extra_data.lower():
             formatted_message = f'<< Session Start - {formatted_host} >>\n{formatted_message}'
         elif event.endswith('logout') and not threat:
             formatted_message = f'{formatted_message}\n-- Session End - {formatted_host} --'
 
-        self.log(formatted_message)
+        self._send_log(no_date_message)
+        return formatted_message
+
+    def _worker(self):
+
+        # Drain until stop is set and queue is empty
+        while not self._stop.is_set() or not self._q.empty():
+            try: payload = self._q.get(timeout=0.2)
+            except queue.Empty: continue
+
+            try:
+                # Handle tuple payloads from _dispatch
+                if isinstance(payload, tuple) and len(payload) == 4:
+                    event, host, extra_data, server_name = payload
+                    line = self._add_entry(event, host, extra_data, server_name)
+                    if not line: continue
+
+                # If a preformatted string ever gets enqueued
+                elif isinstance(payload, str): line = payload
+                else: continue
+
+                # Append to in-memory buffer
+                with self._db_lock: self._audit_db.append({'time': dt.now(), 'line': line})
+
+            except Exception as e: self._send_log(f"Audit logging worker error: {constants.format_traceback(e)}", 'error')
+            finally: self._q.task_done()
 
 
     # Format list of dictionaries for UI
     def read(self):
+
+        # Make sure background enqueues are flushed or processed to disk before reading
+        self.flush()
+
         log_data = []
         file_name = self._get_file_name()
         if os.path.exists(file_name):
@@ -1003,25 +1062,55 @@ class AuditLogger():
                 log_data = f.readlines()
         return log_data
 
-    def log(self, message: str):
+    # Wait until all queued audit lines are in _audit_db
+    def flush(self, timeout: float = None):
+        start = time.monotonic()
+        self._q.join()
+        if timeout is not None and (time.monotonic() - start) > timeout:
+            return False
+        return True
 
-        # Save to internal logger
-        self._send_log(message)
+    # Stop the writer thread
+    def close(self, graceful: bool = True):
+        if graceful:
+            self._stop.set()
+            self.flush()
+        else:
+            self._stop.set()
 
-        # Don't write to disk if logger is disabled
-        if not constants.enable_logging: return
+    # Flush queue and write the entire in-memory audit buffer to disk and clear the buffer
+    def dump_to_disk(self) -> str:
+        # Ensure background thread has appended everything to _audit_db
+        self.flush()
 
-
-        # Also, write to disk
-        mode = 'a+'
         file_name = self._get_file_name()
+
+        # Don’t write if logging disabled, but still return the path for consistency
+        if not constants.enable_logging:
+            with self._db_lock:
+                self._audit_db.clear()
+            return file_name
+
+        self._send_log(f"flushing logger to '{file_name}'")
+
+        # Ensure file/dir exists
+        mode = 'a+'
         if not os.path.exists(file_name):
             constants.folder_check(os.path.dirname(file_name))
             mode = 'w+'
 
-        with open(file_name, mode, errors='ignore') as f:
-            f.write(f'{message}\n')
-        self._purge_logs()
+        # Snapshot & clear buffer
+        with self._db_lock:
+            entries = list(self._audit_db)
+            self._audit_db.clear()
+
+        # Write plain text (your messages are already formatted)
+        with open(file_name, mode, encoding="utf-8", newline="\n", errors='ignore') as f:
+            for e in entries:
+                f.write(f"{e['line'].rstrip()}\n")
+
+        self._prune_logs()
+        return file_name
 
 class Token(BaseModel):
     access_token: str
@@ -1095,7 +1184,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
 
                 # Log to telepath logger
                 extra_data = "Connection blocked: session has expired"
-                constants.api_manager.logger._report(endpoint, host=current_user, extra_data=extra_data)
+                constants.api_manager.logger._dispatch(endpoint, host=current_user, extra_data=extra_data)
 
                 if 'pending-removal' not in current_user:
                     current_user['pending-removal'] = True
@@ -1116,7 +1205,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
             extra_data = "Potential threat blocked: attempted to use a valid token from another session"
         else:
             extra_data = "Potential threat blocked: attempted to authenticate with invalid credentials"
-        constants.api_manager.logger._report(endpoint, host=user, extra_data=extra_data)
+        constants.api_manager.logger._dispatch(endpoint, host=user, extra_data=extra_data)
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1335,7 +1424,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         formatted_args = ''
         if kwargs:
             formatted_args = ', '.join([f'{k}={v}' for k, v in kwargs.items()])
-        constants.api_manager.logger._report(f'{short_name}.{method_name}', host=host, extra_data=formatted_args, server_name=remote_server.name)
+        constants.api_manager.logger._dispatch(f'{short_name}.{method_name}', host=host, extra_data=formatted_args, server_name=remote_server.name)
 
         return exec_memory['locals']['returned'](**kwargs)
 
@@ -1914,7 +2003,7 @@ async def request_pair(host: dict, id_hash: dict, request: Request):
         # Report event to logger
         extra_data = 'Requested to pair'
         host['ip'] = request.client.host
-        constants.api_manager.logger._report('telepath.request_pair', host=host, extra_data=extra_data)
+        constants.api_manager.logger._dispatch('telepath.request_pair', host=host, extra_data=extra_data)
 
         return constants.api_manager._request_pair(host, id_hash, request)
 
@@ -1937,7 +2026,7 @@ async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
         # Report event to logger
         host['ip'] = request.client.host
         extra_data = "Successfully authenticated" if 'detail' not in data else "Failed to authenticate"
-        constants.api_manager.logger._report('telepath.submit_pair', host=host, extra_data=extra_data)
+        constants.api_manager.logger._dispatch('telepath.submit_pair', host=host, extra_data=extra_data)
 
         return data
 
@@ -1960,7 +2049,7 @@ async def login(host: dict, id_hash: dict, request: Request):
         # Report event to logger
         host['ip'] = request.client.host
         extra_data = "Successfully authenticated" if data else "Failed to authenticate"
-        constants.api_manager.logger._report('telepath.login', host=host, extra_data=extra_data)
+        constants.api_manager.logger._dispatch('telepath.login', host=host, extra_data=extra_data)
 
         return data
 
@@ -1972,7 +2061,7 @@ async def logout(host: dict, request: Request):
     if constants.api_manager:
 
         # Report event to logger
-        constants.api_manager.logger._report('telepath.logout', host=request.client.host)
+        constants.api_manager.logger._dispatch('telepath.logout', host=request.client.host)
 
         return constants.api_manager._logout(host, request)
 
@@ -1987,7 +2076,7 @@ async def open_remote_server(name: str, request: Request):
     if (constants.app_config.telepath_settings['enable-api'] or constants.headless) and constants.server_manager:
 
         # Report event to logger
-        constants.api_manager.logger._report('main.open_remote_server', host=request.client.host, extra_data=f'Opened: "{name}"')
+        constants.api_manager.logger._dispatch('main.open_remote_server', host=request.client.host, extra_data=f'Opened: "{name}"')
 
         return constants.server_manager.open_remote_server(request.client.host, name)
 
@@ -2018,7 +2107,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), is_dir=Fal
             destination_path = os.path.join(constants.uploadDir, dir_name)
 
         # Report event to logger
-        constants.api_manager.logger._report('main.upload_file', host=request.client.host, extra_data=f'Uploaded: "{destination_path}"')
+        constants.api_manager.logger._dispatch('main.upload_file', host=request.client.host, extra_data=f'Uploaded: "{destination_path}"')
 
         return JSONResponse(content={
             "name": file_name,
@@ -2065,7 +2154,7 @@ async def download_file(request: Request, file: str):
         raise HTTPException(status_code=500, detail=f"File '{file}' does not exist")
 
     # Report event to logger
-    constants.api_manager.logger._report('main.download_file', host=request.client.host, extra_data=f'Downloaded: "{path}"')
+    constants.api_manager.logger._dispatch('main.download_file', host=request.client.host, extra_data=f'Downloaded: "{path}"')
 
     # If it exists in a permitted directory, respond with the file
     return FileResponse(path, filename=os.path.basename(path))
