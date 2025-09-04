@@ -399,9 +399,9 @@ if __name__ == '__main__':
                     connect_counter = 0
 
 
-                # Write logs in memory to disk every 3 minutes
+                # Write logs in memory to disk every 5 minutes
                 log_counter += 1
-                if log_counter >= 180:
+                if log_counter >= 300:
                     try: constants.log_manager.dump_to_disk()
                     except Exception as e: send_log('background', f"error writing application log to disk: {constants.format_traceback(e)}", 'error')
                     log_counter = 0
