@@ -6571,7 +6571,7 @@ class LoggingManager():
 
     def _generate_title(self, box_drawing=True):
         self.header_len = 50
-        box = ('│', '—', '—', '—', '—', '—') if not box_drawing else ('┃', '━', '┏', '┓', '┗', '┛')
+        box = ('┃', '━', '┏', '┓', '┗', '┛') if box_drawing else ('│', '—', '—', '—', '—', '—')
         header = f"{box[2]}{box[1] * round(self.header_len / 2)}  auto-mcs v{app_version}  {box[1]* round(self.header_len / 2)}{box[3]}"
         logo   = '\n'.join([f'{box[0]}   {i.ljust(len(header) - 5, " ")}{box[0]}' for i in text_logo])
         footer = f"{box[4]}{box[1] * (len(header) - 2)}{box[5]}"
@@ -6747,8 +6747,8 @@ class LoggingManager():
 
         # File path
         folder_check(self._path)
-        timestamp = dt.now().strftime(fmt_date("%#m-%#d-%y"))
-        filename = f"auto-mcs_{timestamp}_{self._launch_id}.log"
+        timestamp = dt.now().strftime(fmt_date("%#H-%M-%S_%#m-%#d-%y"))
+        filename = f"auto-mcs_{timestamp}.log"
         path = os.path.join(self._path, filename)
 
         self._send_log(f"flushing logger to '{path}'")
@@ -6774,7 +6774,7 @@ class LoggingManager():
                 stack       = e["stack"]
 
                 # Replace title log with formatting-free one
-                if self._title in message:
+                if f' {app_title} v{app_version} ' in message and "█" in message:
                     f.write(self._title + '\n')
                     continue
 
