@@ -6672,6 +6672,7 @@ class LoggingManager():
             'info': Fore.GREEN,
             'warning': Fore.YELLOW,
             'error': Fore.RED,
+            'critical': Fore.RED,
             'fatal': Fore.RED,
         }
 
@@ -6680,6 +6681,7 @@ class LoggingManager():
             'info': Fore.CYAN,
             'warning': Fore.LIGHTYELLOW_EX,
             'error': Fore.LIGHTRED_EX,
+            'critical': Fore.LIGHTRED_EX,
             'fatal': Fore.LIGHTRED_EX,
         }
 
@@ -6688,6 +6690,7 @@ class LoggingManager():
             'info': Fore.RESET,
             'warning': Fore.YELLOW,
             'error': Fore.RED,
+            'critical': Fore.RED,
             'fatal': Fore.RED,
         }
 
