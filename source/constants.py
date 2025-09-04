@@ -2195,30 +2195,29 @@ def check_data_cache():
 def generate_splash(crash=False):
     global session_splash, headless
 
-    splashes = ["Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
-            "Did you know: you were born on your birthday.", "Okay, I'm here. What are your other two wishes?",
-            "Sometimes when you close your eyes, you may not be able to see.",
-            "Common sense is the most limited of all natural resources.", "Ah, yes. That will be $69,420.00",
-            "Some mints can be very dangerous.", "Paper grows on trees.",
-            "You forgot? No problem. It's USERNAME PASSWORD123.", "This is just like my Yamaha Motorcycle!",
-            "n o t  c o o l  m a n!", "Existing is prohibited from the premises.", "no", "Oh no, the monster died!",
-            "Black holes are essentially God divided by 0",
-            "If you try and don't succeed, you probably shouldn't skydive",
-            "On the other hand, you have different fingers.", "A day without sunshine is like night.",
-            "?What are you doing here stranger¿", "Get outta my swamp!", "Whoever put the word fun in funeral?",
-            "A new day is like a new day.", "Everywhere is within walking distance if you have the time.",
-            "empty blank", "Money doesn’t buy happiness, but it does buy everything else.",
-            "Congratulations! It's a pizza!",
-            "Silence is golden, but duck tape is silver.", "Welcome to flavortown!",
-            "I get enough exercise pushing my luck.",
-            "Unicorns ARE real, they’re just fat, grey, and we call them rhinos.",
-            "I’d like to help you out. Which way did you come in?", "There are too many dogs in your inventory.",
-            "Careful man, there's a beverage present.", "Fool me once, fool me twice, fool me chicken soup with rice.",
-            "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
-            "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
-            "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
-            "You can't run away from all your problems…\n            Not when they have ender pearls.",
-            "[!] bite hazard [!]", "How are you doing today Bob/Steve/Kyle?"]
+    splashes = [
+        "Nothing is impossible, unless you can't do it.", "Every 60 seconds in Africa, a minute goes by.",
+        "Did you know: you were born on your birthday.", "Okay, I'm here. What are your other two wishes?",
+        "Sometimes when you close your eyes, you may not be able to see.",
+        "Common sense is the most limited of all natural resources.", "Ah, yes. That will be $69,420.00",
+        "Some mints can be very dangerous.", "Paper grows on trees.",
+        "You forgot? No problem. It's USERNAME PASSWORD123.", "This is just like my Yamaha Motorcycle!",
+        "n o t  c o o l  m a n!", "Existing is prohibited from the premises.", "no", "Oh no, the monster died!",
+        "Black holes are essentially God divided by 0", "If you try and don't succeed, you probably shouldn't skydive",
+        "On the other hand, you have different fingers.", "A day without sunshine is like night.",
+        "?What are you doing here stranger¿", "Get outta my swamp!", "Whoever put the word fun in funeral?",
+        "A new day is like a new day.", "Everywhere is within walking distance if you have the time.",
+        "empty blank", "Money doesn’t buy happiness, but it does buy everything else.",
+        "Congratulations! It's a pizza!", "Silence is golden, but duck tape is silver.", "Welcome to flavortown!",
+        "I get enough exercise pushing my luck.", "Unicorns ARE real, they’re just fat, grey, and we call them rhinos.",
+        "I’d like to help you out. Which way did you come in?", "There are too many dogs in your inventory.",
+        "Careful man, there's a beverage present.", "Fool me once, fool me twice, fool me chicken soup with rice.",
+        "60% of the time, it works EVERYTIME!", "Imagine how is touch the sky.",
+        "I can't find my keyboard, it must be here somewhere...", "The quick brown fox jumped over the lazy dog.",
+        "No, this is Patrick.", "My spirit animal will eat yours.", "Roses are red, violets are blue, lmao XD UWU!",
+        "You can't run away from all your problems…\n            Not when they have ender pearls.",
+        "[!] bite hazard [!]", "How are you doing today Bob/Steve/Kyle?", "Only uses 69% CPU!!!"
+    ]
 
     if crash:
         exp = re.sub('\s+',' ',splashes[randrange(len(splashes))]).strip()
