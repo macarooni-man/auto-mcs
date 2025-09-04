@@ -236,6 +236,7 @@ class TelepathManager():
     def _revoke_session(self, user_id: int):
         for session in self.authenticated_sessions:
             if user_id == session['id']:
+                self._send_log(f"access from client '{session['host']}/{session['user']}' is now revoked", 'warning')
                 self.authenticated_sessions.remove(session)
                 break
 
@@ -288,6 +289,7 @@ class TelepathManager():
         for host, user in self.current_users.items():
             if session_id == user['session_id']:
                 del self.current_users[host]
+                self._send_log(f"'{user['host']}/{user['user']}' has successfully logged out from '{user['ip']}'", 'info')
                 return True
 
     # Toggle disabling users
@@ -299,6 +301,8 @@ class TelepathManager():
                 session['disabled'] = disabled
 
                 self.secret_file.write(self.authenticated_sessions)
+                log_verb = 'disabled' if disabled else 'enabled'
+                self._send_log(f"client '{session['host']}/{session['user']}' is {log_verb}", 'info')
 
                 # Log out user if they are connected and disabled
                 if disabled:
@@ -602,36 +606,42 @@ class TelepathManager():
             id = self.auth._decrypt(id_hash, ip)
 
             if id == UNIQUE_ID:
+                self._send_log(f"stopped a login from '{ip}' as it's local (this instance can't connect to itself)", 'warning')
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't connect to localhost")
 
-            for session in self.authenticated_sessions:
-                if self._verify_id(id, session['id']):
+            try:
+                for session in self.authenticated_sessions:
+                    if self._verify_id(id, session['id']):
 
-                    # Check if user is allowed to log in
-                    if not self._check_permissions(session):
-                        raise HTTPException(
-                            status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Permission denied"
-                        )
+                        # Check if user is allowed to log in
+                        if not self._check_permissions(session):
+                            raise HTTPException(
+                                status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Permission denied"
+                            )
 
-                    # Check if current user can be removed due to token expiry
-                    if ip in self.current_users and (self.current_users[ip]['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
-                        self._force_logout(self.current_users[ip]['session_id'])
+                        # Check if current user can be removed due to token expiry
+                        if ip in self.current_users and (self.current_users[ip]['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
+                            self._force_logout(self.current_users[ip]['session_id'])
 
-                    # Reset remote server for permission reasons
-                    if ip in constants.server_manager.remote_servers:
-                        del constants.server_manager.remote_servers[ip]
+                        # Reset remote server for permission reasons
+                        if ip in constants.server_manager.remote_servers:
+                            del constants.server_manager.remote_servers[ip]
 
-                    # Show banner on login
-                    constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
+                        # Show banner on login
+                        constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
 
-                    # Update session with the ID
-                    session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': session['id'], 'ip': ip}
-                    self._update_user(session)
+                        # Update session with the ID
+                        session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': session['id'], 'ip': ip}
+                        self._update_user(session)
 
-                    # Return data without the ID
-                    returned_session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'ip': ip}
-                    return self._return_token(returned_session)
+                        # Return data without the ID
+                        returned_session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'ip': ip}
+                        self._send_log(f"'{host['host']}/{host['user']}' has successfully logged in from '{ip}'", 'info')
+                        return self._return_token(returned_session)
+
+            except Exception as e:
+                self._send_log(f"'{host['host']}/{host['user']}' failed to login from '{ip}': {constants.format_traceback(e)}", 'error')
 
 
             raise HTTPException(
@@ -642,14 +652,18 @@ class TelepathManager():
 
     def _logout(self, host: dict, request: Request):
         ip = request.client.host
-        for user in self.current_users.values():
+        try:
+            for user in self.current_users.values():
 
-            if ip == user['ip'] and host['host'] == user['host'] and host['user'] == user['user']:
+                if ip == user['ip'] and host['host'] == user['host'] and host['user'] == user['user']:
 
-                # Show banner on logout
-                constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged out", False)
+                    # Show banner on logout
+                    constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged out", False)
 
-                return self._force_logout(user['session_id'])
+                    return self._force_logout(user['session_id'])
+
+        except Exception as e:
+            self._send_log(f"'{host['host']}/{host['user']}' failed to logout from '{ip}': {constants.format_traceback(e)}", 'error')
 
         return False
 
@@ -658,9 +672,9 @@ class TelepathManager():
     def login(self, ip: str, port: int):
 
         # Get the server's public key and create an encrypted token
-        try:
-            token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
-        except AttributeError:
+        try: token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
+        except AttributeError as e:
+            self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
             return {}
 
         url = f"http://{ip}:{port}/telepath/login"
@@ -685,8 +699,10 @@ class TelepathManager():
                 return return_data
             else:
                 return {}
-        except:
-            pass
+
+        except Exception as e:
+            self._send_log(f"failed to login to '{ip}:{port}': {constants.format_traceback(e)}", 'error')
+
         return {}
 
     def logout(self, ip: str, port: int):
@@ -699,7 +715,10 @@ class TelepathManager():
             data = session.post(url, json=host_data, headers=self._get_headers(ip), timeout=3).json()
             self._send_log(f"logged out from '{ip}:{port}'", 'info')
             return data
-        except: pass
+
+        except Exception as e:
+            self._send_log(f"failed to logout from '{ip}:{port}': {constants.format_traceback(e)}")
+
         return False
 
     def request_pair(self, ip: str, port: int):
@@ -721,8 +740,10 @@ class TelepathManager():
         try:
             data = requests.post(url, json=host_data, timeout=5).json()
             return data
-        except:
-            pass
+
+        except Exception as e:
+            self._send_log(f"failed to initiate a pair request to '{ip}:{port}': {constants.format_traceback(e)}", 'error')
+
         return None
 
     def submit_pair(self, ip: str, port: int, code: str):
@@ -730,7 +751,8 @@ class TelepathManager():
         # Get the server's public key and create an encrypted token
         try:
             token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
-        except AttributeError:
+        except AttributeError as e:
+            self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
             return None
 
         url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
@@ -740,9 +762,8 @@ class TelepathManager():
         }
 
         # Eventually add a retry algorithm
-
-        data = requests.post(url, json=host_data).json()
         try:
+            data = requests.post(url, json=host_data).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
                 return_data = deepcopy(data)
@@ -757,8 +778,10 @@ class TelepathManager():
                     constants.server_manager.add_telepath_server(return_data)
 
                 return return_data
-        except:
-            pass
+
+        except Exception as e:
+            self._send_log(f"failed to submit a pair code to '{ip}:{port}': {constants.format_traceback(e)}", 'error')
+
         return None
 
 
@@ -775,6 +798,7 @@ class AuthHandler():
     def __init__(self):
         self.key_pairs = {}
         self.sha256 = hashes.SHA256()
+        self._send_log('initialized AuthHandler')
 
     # Server side functionality
     def _create_key_pair(self, ip: str):
@@ -788,6 +812,7 @@ class AuthHandler():
                     del self.key_pairs[ip]
         threading.Timer(AUTH_KEYPAIR_EXPIRE_SECONDS, expire_keypair).start()
 
+        self._send_log(f"created new key pair for '{ip}'")
         return private_key.public_key()
 
     def _get_public_key(self, ip: str, expire_immediately=False):
@@ -843,16 +868,16 @@ class AuthHandler():
         pem = requests.get(f"http://{ip}:{port}/telepath/get_public_key").json()
         public_key = serialization.load_pem_public_key(
             pem.encode('utf-8'),
-            backend=default_backend()
+            backend = default_backend()
         )
 
         # Return content encrypted with the public key
         cipher_text = public_key.encrypt(
             content.encode('utf-8'),
             padding.OAEP(
-                mgf=padding.MGF1(algorithm=self.sha256),
-                algorithm=self.sha256,
-                label=None
+                mgf = padding.MGF1(algorithm=self.sha256),
+                algorithm = self.sha256,
+                label = None
             )
         )
         return {'token': base64.b64encode(cipher_text).decode()}
@@ -870,6 +895,7 @@ class SecretHandler():
         # Create a fernet key from the hardware ID
         key = hashlib.sha256(UNIQUE_ID.encode()).digest()
         self.fernet = Fernet(base64.urlsafe_b64encode(key).decode('utf-8'))
+        self._send_log('initialized SecretHandler')
 
     def _encrypt(self, data: str):
         return self.fernet.encrypt(data.encode('utf-8'))
@@ -932,6 +958,7 @@ class AuditLogger():
         self._stop = threading.Event()
         self._writer = threading.Thread(target=self._worker, name="audit-writer", daemon=True)
         self._writer.start()
+        self._send_log('initialized AuditLogger')
 
     # Prune old logs
     def _prune_logs(self):
@@ -951,7 +978,8 @@ class AuditLogger():
     # Returns formatted name of file, with the date
     def _get_file_name(self):
         time_stamp = dt.now().strftime(constants.fmt_date("%#m-%#d-%y"))
-        return os.path.abspath(os.path.join(self.path, f"session-audit_{time_stamp}.log"))
+        file_name  = f"session-audit_{time_stamp}.log"
+        return os.path.abspath(os.path.join(self.path, file_name))
 
     # Used for reporting internal events; now a thin wrapper that just enqueues raw fields
     def _dispatch(self, event: str, host: str = '', extra_data: str = '', server_name: str = ''):
@@ -1080,23 +1108,23 @@ class AuditLogger():
 
     # Flush queue and write the entire in-memory audit buffer to disk and clear the buffer
     def dump_to_disk(self) -> str:
+
         # Ensure background thread has appended everything to _audit_db
         self.flush()
+        path = self._get_file_name()
 
-        file_name = self._get_file_name()
+        # Don’t write if logging is disabled or deque is empty, but still return the path for consistency
+        if not constants.enable_logging or not self._audit_db:
+            with self._db_lock: self._audit_db.clear()
+            return path
 
-        # Don’t write if logging disabled, but still return the path for consistency
-        if not constants.enable_logging:
-            with self._db_lock:
-                self._audit_db.clear()
-            return file_name
 
-        self._send_log(f"flushing logger to '{file_name}'")
+        self._send_log(f"flushing logger to '{path}'")
 
         # Ensure file/dir exists
         mode = 'a+'
-        if not os.path.exists(file_name):
-            constants.folder_check(os.path.dirname(file_name))
+        if not os.path.exists(path):
+            constants.folder_check(os.path.dirname(path))
             mode = 'w+'
 
         # Snapshot & clear buffer
@@ -1105,12 +1133,13 @@ class AuditLogger():
             self._audit_db.clear()
 
         # Write plain text (your messages are already formatted)
-        with open(file_name, mode, encoding="utf-8", newline="\n", errors='ignore') as f:
+        constants.folder_check(self.path)
+        with open(path, mode, encoding="utf-8", newline="\n", errors='ignore') as f:
             for e in entries:
                 f.write(f"{e['line'].rstrip()}\n")
 
         self._prune_logs()
-        return file_name
+        return path
 
 class Token(BaseModel):
     access_token: str
@@ -1124,12 +1153,12 @@ auth_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 def create_access_token(data: dict, expires_delta: td = None):
     to_encode = data.copy()
-    if expires_delta:
-        expire = dt.now(tz.utc) + expires_delta
-    else:
-        expire = dt.now(tz.utc) + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    if expires_delta: expire = dt.now(tz.utc) + expires_delta
+    else:             expire = dt.now(tz.utc) + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+    send_log('create_access_token', f"created a JWT access token for '{data['host']}/{data['user']}'")
     return encoded_jwt
 
 @limiter.limit('500/minute')
@@ -2059,9 +2088,10 @@ async def login(host: dict, id_hash: dict, request: Request):
 @app.post("/telepath/logout", tags=['telepath'], dependencies=[Depends(authenticate)])
 async def logout(host: dict, request: Request):
     if constants.api_manager:
+        if not host.get('ip', None): host['ip'] = request.client.host
 
         # Report event to logger
-        constants.api_manager.logger._dispatch('telepath.logout', host=request.client.host)
+        constants.api_manager.logger._dispatch('telepath.logout', host=host)
 
         return constants.api_manager._logout(host, request)
 

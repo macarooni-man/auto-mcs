@@ -6541,7 +6541,7 @@ class LoggingManager():
     def __init__(self):
         self._line_header = '   >  '
         self._max_run_logs = 3
-        self._path = os.path.join(applicationFolder, "Logs", "application")
+        self.path = os.path.join(applicationFolder, "Logs", "application")
 
         # Identify this launch (timestamp + pid -> short hash)
         self._launch_ts  = dt.now()
@@ -6640,13 +6640,18 @@ class LoggingManager():
 
     def _prune_logs(self):
         files = sorted(
-            (p for p in glob(os.path.join(self._path, "auto-mcs_*.log")) if os.path.isfile(p)),
+            (p for p in glob(os.path.join(self.path, "auto-mcs_*.log")) if os.path.isfile(p)),
             key = os.path.getmtime,
             reverse = True
         )
         for p in files[self._max_run_logs:]:
             try: os.remove(p)
             except OSError: pass
+
+    def _get_file_name(self):
+        time_stamp = dt.now().strftime(fmt_date("%#H-%M-%S_%#m-%#d-%y"))
+        file_name  = f"auto-mcs_{time_stamp}.log"
+        return os.path.join(self.path, file_name)
 
     def _print(self, data: dict, _raw: bool = False):
 
@@ -6744,12 +6749,13 @@ class LoggingManager():
 
         # Ensure background thread has printed/added everything it has
         self.flush()
+        path = self._get_file_name()
 
-        # File path
-        folder_check(self._path)
-        timestamp = dt.now().strftime(fmt_date("%#H-%M-%S_%#m-%#d-%y"))
-        filename = f"auto-mcs_{timestamp}.log"
-        path = os.path.join(self._path, filename)
+        # Don’t write if logging is disabled or deque is empty, but still return the path for consistency
+        if not enable_logging or not self._log_db:
+            with self._db_lock: self._log_db.clear()
+            return path
+
 
         self._send_log(f"flushing logger to '{path}'")
 
@@ -6760,6 +6766,7 @@ class LoggingManager():
 
         # Write plain text, no ANSI
         if not os.path.exists(path):
+            folder_check(self.path)
             with open(path, "a+", encoding="utf-8", newline="\n") as f:
                 launch_stamp = self._launch_ts.strftime(fmt_date("%#I:%M:%S %p %#m/%#d/%Y"))
                 f.write(f"# {launch_stamp} (pid {os.getpid()}) id={self._launch_id}\n\n")
@@ -6778,8 +6785,8 @@ class LoggingManager():
                     f.write(self._title + '\n')
                     continue
 
-                # Only write messages if logging is enabled, and only log debug messages in debug mode
-                if not (enable_logging and not (not debug and level == 'debug')):
+                # Only log debug messages in debug mode
+                if not debug and level == 'debug':
                     continue
 
                 # Treat low-priority stack logs as "debug"
@@ -6946,11 +6953,11 @@ class ConfigManager():
                         self._data = json.loads(file.read().replace('ide-settings', 'ide_settings'))
                         self._send_log(f"successfully loaded global configuration from '{self._path}'")
                         return True
+
                     except json.decoder.JSONDecodeError:
-                        try:
-                            os.replace(self._path, self._path + ".corrupt.bak")
-                        except Exception:
-                            pass
+                        try: os.replace(self._path, self._path + ".corrupt.bak")
+                        except Exception as e: self._send_log(f'error decoding global configuration: {format_traceback(e)}', 'error')
+
 
             self._send_log('failed to read global configuration, resetting...', 'error')
             self.reset()
