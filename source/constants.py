@@ -6570,9 +6570,9 @@ class LoggingManager():
         self._title = self._generate_title()
         self._send_log(f'{Style.BRIGHT}{self._title}{Style.RESET_ALL}', 'info', _raw=True)
 
-    def _generate_title(self):
+    def _generate_title(self, box_drawing=True):
         self.header_len = 50
-        box = ('│', '—', '—', '—', '—', '—') if os_name == 'windows' else ('┃', '━', '┏', '┓', '┗', '┛')
+        box = ('│', '—', '—', '—', '—', '—') if not box_drawing else ('┃', '━', '┏', '┓', '┗', '┛')
         header = f"{box[2]}{box[1] * round(self.header_len / 2)}  auto-mcs v{app_version}  {box[1]* round(self.header_len / 2)}{box[3]}"
         logo   = '\n'.join([f'{box[0]}   {i.ljust(len(header) - 5, " ")}{box[0]}' for i in text_logo])
         footer = f"{box[4]}{box[1] * (len(header) - 2)}{box[5]}"
@@ -6698,6 +6698,11 @@ class LoggingManager():
             return f'{Style.BRIGHT}{Fore.LIGHTBLACK_EX}[{color}{text}{Fore.LIGHTBLACK_EX}]{Style.RESET_ALL}'
 
         with self._io_lock:
+
+            # Make sure start logo displays correctly on Windows
+            if _raw and (f' {app_title} v{app_version} ' in message) and (os_name == 'windows'):
+                message = self._generate_title(False)
+
             for x, line in enumerate(message.splitlines(), 0):
 
                 if not _raw:

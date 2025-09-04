@@ -10,14 +10,10 @@ import os
 import gc
 
 
-def setup_windows_debug_console(
-    app_title: str = "auto-mcs (console)",
-    redirect_non_debug_to_devnull: bool = True
-):
-    """
-    On Windows (PyInstaller windowed build), show a console in --debug mode
-    and route all STDIO there; otherwise silence STDIO by redirecting to NUL.
-    """
+# Show a console in '--debug' mode on Windows if compiled
+def setup_windows_debug_console(redirect_to_devnull: bool = True):
+
+    app_title = "auto-mcs (console)"
     is_windows = (os.name == "nt")
     is_compiled = bool(getattr(sys, "frozen", False))  # PyInstaller/py2exe style
     args = sys.argv
@@ -44,13 +40,13 @@ def setup_windows_debug_console(
         k32 = ctypes.windll.kernel32
         ATTACH_PARENT_PROCESS = -1
 
-        # Try to attach to parent console first; if none, allocate a new one.
+        # Try to attach to parent console first, or allocate a new one
         attached = bool(k32.AttachConsole(ATTACH_PARENT_PROCESS))
         if not attached:
             allocated = bool(k32.AllocConsole())
-            if not allocated:
-                # If we can't get a console, just return without redirecting.
-                return
+
+            # If a console can't be acquired, don't redirect
+            if not allocated: return
 
         # UTF-8 code page
         k32.SetConsoleCP(65001)
@@ -64,12 +60,12 @@ def setup_windows_debug_console(
         if k32.GetConsoleMode(hOut, ctypes.byref(mode)):
             k32.SetConsoleMode(hOut, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
 
-        # Bind Python stdio to the console
+        # Bind Python STDIO to the console
         sys.stdout = open("CONOUT$", "w", encoding="utf-8", buffering=1)
         sys.stderr = open("CONOUT$", "w", encoding="utf-8", buffering=1)
         sys.stdin  = open("CONIN$",  "r", encoding="utf-8", buffering=1)
 
-        # Optional niceties
+        # OH YEAH BUSTER, IT'S COLOR TIME
         try: ctypes.windll.kernel32.SetConsoleTitleW(str(app_title))
         except Exception: pass
         try:
@@ -77,9 +73,10 @@ def setup_windows_debug_console(
             colorama.just_fix_windows_console()
         except Exception: pass
 
+
+    # Silence STDIO for non-debug runs so the UI app stays quiet
     else:
-        if redirect_non_debug_to_devnull:
-            # Silence stdio for non-debug runs so the GUI app stays quiet
+        if redirect_to_devnull:
             sys.stdout = open(os.devnull, "w", encoding="utf-8", buffering=1)
             sys.stderr = open(os.devnull, "w", encoding="utf-8", buffering=1)
 
@@ -169,8 +166,7 @@ if __name__ == '__main__':
             with open(update_log, 'r') as f:
                 constants.update_data['reboot-msg'] = f.read().strip().split("@")
             send_log('', f"update complete: '{constants.update_data['reboot-msg']}'", 'info')
-    except:
-        pass
+    except: pass
 
 
 
@@ -358,8 +354,7 @@ if __name__ == '__main__':
 
         # Try to log into telepath servers automatically
         if os.path.exists(constants.telepathFile):
-            while not constants.server_manager:
-                time.sleep(0.1)
+            while not constants.server_manager: time.sleep(0.1)
             if constants.server_list_lower:
                 constants.server_manager.check_telepath_servers()
 
@@ -369,8 +364,7 @@ if __name__ == '__main__':
             if exitApp or crash:
                 return
 
-            try:
-                func()
+            try: func()
             except Exception as e:
                 send_log('background.background_launch', f"error running background task '{func}': {constants.format_traceback(e)}", 'error')
 
