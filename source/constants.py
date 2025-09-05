@@ -447,33 +447,6 @@ def run_proc(cmd: str, return_text=False) -> str or int:
     return output if return_text else return_code
 
 
-# Spawns a new detached process
-def run_detached(script_path: str):
-    send_log('run_proc', f"executing '{script_path}'...")
-
-    if os_name == 'windows':
-        return subprocess.Popen(
-            ['cmd', '/c', script_path],
-            stdout = subprocess.DEVNULL,
-            stderr = subprocess.DEVNULL,
-            stdin = subprocess.DEVNULL,
-            creationflags = 0x00000008
-        )
-
-    # macOS & Linux
-    os.chmod(script_path, stat.S_IRWXU)
-    args = ['bash', script_path]
-    if os_name != 'macos': args.insert(0, 'setsid')
-    subprocess.Popen(
-        args,
-        stdout = subprocess.DEVNULL,
-        stderr = subprocess.DEVNULL,
-        stdin = subprocess.DEVNULL,
-        start_new_session = True,
-        close_fds = True
-    )
-
-
 # Check if running in Docker
 def check_docker() -> bool:
     if os_name == 'linux':
@@ -928,7 +901,7 @@ del \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_detached(script_path)
+        run_proc(f"\"{script_path}\" > nul 2>&1")
 
 
 
@@ -942,7 +915,6 @@ del \"{script_path}\"""")
             script_content = (
 
 f"""#!/bin/bash
-trap '' HUP
 PID={os.getpid()}
 
 # Kill the process
@@ -961,14 +933,14 @@ if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null
 fi
 
-# Launch the original executable and exit
-nohup {escaped_launch_path}{flags} </dev/null >/dev/null 2>&1 &
+# Launch the original executable
+exec {escaped_launch_path}{flags} &
 rm \"{script_path}\"""")
 
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_detached(script_path)
+        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
 
     sys.exit()
 
@@ -1040,7 +1012,7 @@ del \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_detached(script_path)
+        run_proc(f"\"{script_path}\" > nul 2>&1")
 
 
 
@@ -1055,7 +1027,6 @@ del \"{script_path}\"""")
             script_content = (
 
 f"""#!/bin/bash
-trap '' HUP
 PID={os.getpid()}
 
 # Kill the process
@@ -1088,13 +1059,13 @@ fi
 hdiutil unmount /Volumes/auto-mcs
 rm -rf "{dmg_path}"
 chmod +x "{launch_path}"
-nohup {escaped_launch_path}{flags} </dev/null >/dev/null 2>&1 &
+exec {escaped_launch_path}{flags} &
 rm \"{script_path}\"""")
 
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_detached(script_path)
+        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
 
 
 
@@ -1109,7 +1080,6 @@ rm \"{script_path}\"""")
             script_content = (
 
 f"""#!/bin/bash
-trap '' HUP
 PID={os.getpid()}
 
 # Kill the process
@@ -1139,13 +1109,13 @@ fi
 
 # Launch the new executable
 chmod +x "{launch_path}"
-nohup {escaped_launch_path}{flags} </dev/null >/dev/null 2>&1 &
+exec {escaped_launch_path}{flags} &
 rm \"{script_path}\"""")
 
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_detached(script_path)
+        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
 
     sys.exit()
 
