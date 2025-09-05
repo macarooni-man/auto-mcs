@@ -31,6 +31,7 @@ import hashlib
 import string
 import psutil
 import socket
+import shlex
 import queue
 import stat
 import time
@@ -451,19 +452,25 @@ def run_detached(script_path: str):
     send_log('run_proc', f"executing '{script_path}'...")
 
     if os_name == 'windows':
-        args = ['cmd', '/c', script_path]
+        return subprocess.Popen(
+            ['cmd', '/c', script_path],
+            stdout = subprocess.DEVNULL,
+            stderr = subprocess.DEVNULL,
+            stdin = subprocess.DEVNULL,
+            creationflags = 0x00000008
+        )
 
     # macOS & Linux
-    else:
-        os.chmod(script_path, stat.S_IRWXU)
-        args = ['bash', script_path]
-
-    # Create a new session
+    os.chmod(script_path, stat.S_IRWXU)
+    args = ['bash', script_path]
+    if os_name != 'macos': args.insert(0, 'setsid')
     subprocess.Popen(
         args,
         stdout = subprocess.DEVNULL,
         stderr = subprocess.DEVNULL,
-        start_new_session = True
+        stdin = subprocess.DEVNULL,
+        start_new_session = True,
+        close_fds = True
     )
 
 
@@ -929,12 +936,13 @@ del \"{script_path}\"""")
     else:
         script_name = f'{script_name}.sh'
         script_path = os.path.join(tempDir, script_name)
-        escaped_launch_path = launch_path.replace(" ", "\ ")
+        escaped_launch_path = shlex.quote(launch_path)
 
         with open(script_path, 'w+') as script:
             script_content = (
 
 f"""#!/bin/bash
+trap '' HUP
 PID={os.getpid()}
 
 # Kill the process
@@ -953,8 +961,8 @@ if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" 2>/dev/null
 fi
 
-# Launch the original executable
-exec {escaped_launch_path}{flags} &
+# Launch the original executable and exit
+nohup {escaped_launch_path}{flags} </dev/null >/dev/null 2>&1 &
 rm \"{script_path}\"""")
 
             script.write(script_content)
@@ -1040,13 +1048,14 @@ del \"{script_path}\"""")
     elif os_name == 'macos':
         script_name = f'{script_name}.sh'
         script_path = os.path.join(tempDir, script_name)
-        escaped_path = launch_path.replace(" ", "\ ")
+        escaped_launch_path = shlex.quote(launch_path)
         dmg_path = os.path.join(downDir, 'auto-mcs.dmg')
 
         with open(script_path, 'w+') as script:
             script_content = (
 
 f"""#!/bin/bash
+trap '' HUP
 PID={os.getpid()}
 
 # Kill the process
@@ -1079,7 +1088,7 @@ fi
 hdiutil unmount /Volumes/auto-mcs
 rm -rf "{dmg_path}"
 chmod +x "{launch_path}"
-exec {escaped_path}{flags} &
+nohup {escaped_launch_path}{flags} </dev/null >/dev/null 2>&1 &
 rm \"{script_path}\"""")
 
             script.write(script_content)
@@ -1093,13 +1102,14 @@ rm \"{script_path}\"""")
     else:
         script_name = f'{script_name}.sh'
         script_path = os.path.join(tempDir, script_name)
-        escaped_path = launch_path.replace(" ", "\ ")
+        escaped_launch_path = shlex.quote(launch_path)
         new_executable = os.path.join(downDir, 'auto-mcs')
 
         with open(script_path, 'w+') as script:
             script_content = (
 
 f"""#!/bin/bash
+trap '' HUP
 PID={os.getpid()}
 
 # Kill the process
@@ -1129,7 +1139,7 @@ fi
 
 # Launch the new executable
 chmod +x "{launch_path}"
-exec {escaped_path}{flags} &
+nohup {escaped_launch_path}{flags} </dev/null >/dev/null 2>&1 &
 rm \"{script_path}\"""")
 
             script.write(script_content)
@@ -6837,7 +6847,7 @@ class LoggingManager():
                     object_width = 37 - len(level)
                     timestamp = time_obj.strftime('%I:%M:%S %p')
                     tc = text_color.get(level, Fore.CYAN)
-                    content = f'{tc}{line.rstrip()}' if x == 0 else f'{Fore.LIGHTBLACK_EX}{self._line_header}{tc}{line.strip()}'
+                    content = f'{tc}{line.strip()}' if x == 0 else f'{Fore.LIGHTBLACK_EX}{self._line_header}{tc}{line.rstrip()}'
                     line = (
                         f"{fmt_block(timestamp, Fore.WHITE)} "
                         f"{fmt_block(level.upper(), level_color.get(level, Fore.CYAN))} "
