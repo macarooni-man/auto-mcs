@@ -333,7 +333,7 @@ def send_boot_log(object_data: str):
 
 
 # App/Assets folder
-launch_path = None
+launch_path: str = None
 try:
     if hasattr(sys, '_MEIPASS'):
         executable_folder = sys._MEIPASS
@@ -858,112 +858,193 @@ def check_app_version(current: str, latest: str, limit=None) -> bool:
 
 # Restarts auto-mcs by dynamically generating a script
 def restart_app(*a):
+    if not app_compiled:
+        send_log('restart_app', "can't restart in script mode", 'warning')
+        sys.exit()
+
+    # Setup environment
+    retry_wait = 30
     executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-reboot'
-    send_log('restart_app', f'attempting to restart {app_title}...', 'warn')
+    flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
+    folder_check(tempDir)
+    send_log('restart_app', f'attempting to restart {app_title}...', 'warning')
+
+
 
     # Generate Windows script to restart
     if os_name == "windows":
         script_name = f'{script_name}.bat'
-        folder_check(tempDir)
-        batch_path = os.path.join(tempDir, script_name)
-        batch_file = open(batch_path, 'w+')
+        script_path = os.path.join(tempDir, script_name)
 
-        if app_compiled:  # Running as compiled
-            batch_file.write(
-f"""taskkill /f /im \"{executable}\"
-start \"\" \"{launch_path}\"{' --headless' if headless else ''}
-del \"{os.path.join(tempDir, script_name)}\""""
-            )
+        with open(script_path, 'w+') as script:
+            script_content = (
 
-            batch_file.close()
-            run_proc(f"\"{batch_path}\" > nul 2>&1")
+f""":: Kill the process
+taskkill /f /im \"{executable}\"
+
+:: Wait for it to exit (max {retry_wait}s)
+set /a count=0
+:waitloop
+tasklist /fi "imagename eq {executable}" | find /i \"{executable}\" >nul
+if %errorlevel%==0 (
+    timeout /t 1 /nobreak >nul
+    set /a count+=1
+    if %count% LSS {retry_wait} goto waitloop
+)
+
+:: Launch the original executable
+start \"\" \"{launch_path}\"{flags}
+del \"{script_path}\"""")
+
+            script.write(script_content)
+            send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
+
+        run_proc(f"\"{script_path}\" > nul 2>&1")
+
 
 
     # Generate Linux/macOS script to restart
     else:
         script_name = f'{script_name}.sh'
-        folder_check(tempDir)
-        shell_path = os.path.join(tempDir, script_name)
-        shell_file = open(shell_path, 'w+')
-        escaped_path = launch_path.replace(" ", "\ ")
+        script_path = os.path.join(tempDir, script_name)
+        escaped_launch_path = launch_path.replace(" ", "\ ")
 
-        if app_compiled:  # Running as compiled
-            shell_file.write(
+        with open(script_path, 'w+') as script:
+            script_content = (
+
 f"""#!/bin/bash
-kill {os.getpid()}
-sleep 3
-exec {escaped_path}{' --headless' if headless else ''} &
-rm \"{os.path.join(tempDir, script_name)}\""""
-            )
+PID={os.getpid()}
 
-            shell_file.close()
-            run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
+# Kill the process
+kill "$PID"
+
+# Wait for it to exit (max {retry_wait}s)
+for i in {{1..{retry_wait}}}; do
+    if ! kill -0 "$PID" 2>/dev/null; then
+        break
+    fi
+    sleep 1
+done
+
+# Force kill if it's still not closed
+if kill -0 "$PID" 2>/dev/null; then
+    kill -9 "$PID" 2>/dev/null
+fi
+
+# Launch the original executable
+exec {escaped_launch_path}{flags} &
+rm \"{script_path}\"""")
+
+            script.write(script_content)
+            send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
+
+        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
+
     sys.exit()
 
 
 # Restarts and updates auto-mcs by dynamically generating a script
 def restart_update_app(*a):
-    executable   = os.path.basename(launch_path)
+    if not app_compiled:
+        send_log('restart_update_app', "can't restart in script mode", 'warning')
+        sys.exit()
+
+    # Setup environment
+    retry_wait = 30
+    executable = os.path.basename(launch_path)
+    script_name = 'auto-mcs-update'
+    flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
+    folder_check(tempDir)
+
     new_version  = update_data['version']
     success_str  = f"auto-mcs was updated to v${new_version}$ successfully!"
     success_unix = f"auto-mcs was updated to v\${new_version}\$ successfully!"
     failure_str  = "Something went wrong with the update"
     script_name  = 'auto-mcs-update'
     update_log   = os.path.join(tempDir, 'update-log')
-    send_log('restart_update_app', f'attempting to restart {app_title} and update to v{new_version}...', 'warn')
-    folder_check(tempDir)
+    send_log('restart_update_app', f'attempting to restart {app_title} and update to v{new_version}...', 'warning')
 
-    # Delete guide cache in case of update
+
+    # Delete guide cache for the next update
     guide_cache = os.path.join(cacheDir, 'guide-cache.json')
     if os.path.exists(guide_cache):
-        try:
-            os.remove(guide_cache)
-        except:
-            pass
+        try: os.remove(guide_cache)
+        except: pass
+
+
 
     # Generate Windows script to restart
     if os_name == "windows":
         script_name = f'{script_name}.bat'
-        folder_check(tempDir)
-        batch_path = os.path.join(tempDir, script_name)
-        batch_file = open(batch_path, 'w+')
+        script_path = os.path.join(tempDir, script_name)
+        new_executable = os.path.join(downDir, 'auto-mcs.exe')
 
-        if app_compiled:  # Running as compiled
-            batch_file.write(
-f"""taskkill /f /im \"{executable}\"
-timeout /t 3 /nobreak
+        with open(script_path, 'w+') as script:
+            script_content = (
 
-copy /b /v /y "{os.path.join(downDir, 'auto-mcs.exe')}" "{launch_path}"
+f""":: Kill the process
+taskkill /f /im \"{executable}\"
+
+:: Wait for it to exit (max {retry_wait}s)
+set /a count=0
+:waitloop
+tasklist /fi "imagename eq {executable}" | find /i \"{executable}\" >nul
+if %errorlevel%==0 (
+    timeout /t 1 /nobreak >nul
+    set /a count+=1
+    if %count% LSS {retry_wait} goto waitloop
+)
+
+:: Copy new update file to original path
+copy /b /v /y "{new_executable}" "{launch_path}"
 if exist "{launch_path}" if %ERRORLEVEL% EQU 0 (
     echo banner-success@{success_str} > "{update_log}"
 ) else (
     echo banner-failure@{failure_str} > "{update_log}"
 )
 
-start \"\" \"{launch_path}\"{' --headless' if headless else ''}
-del \"{os.path.join(tempDir, script_name)}\""""
-            )
+:: Launch the new executable
+start \"\" \"{launch_path}\"{flags}
+del \"{script_path}\"""")
 
-            batch_file.close()
-            run_proc(f"\"{batch_path}\" > nul 2>&1")
+            script.write(script_content)
+            send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
+
+        run_proc(f"\"{script_path}\" > nul 2>&1")
+
 
 
     # Generate macOS script to restart
     elif os_name == 'macos':
         script_name = f'{script_name}.sh'
-        folder_check(tempDir)
-        shell_path = os.path.join(tempDir, script_name)
-        shell_file = open(shell_path, 'w+')
+        script_path = os.path.join(tempDir, script_name)
         escaped_path = launch_path.replace(" ", "\ ")
         dmg_path = os.path.join(downDir, 'auto-mcs.dmg')
 
-        if app_compiled:  # Running as compiled
-            shell_file.write(
-                f"""#!/bin/bash
-kill {os.getpid()}
-sleep 2
+        with open(script_path, 'w+') as script:
+            script_content = (
 
+f"""#!/bin/bash
+PID={os.getpid()}
+
+# Kill the process
+kill "$PID"
+
+# Wait for it to exit (max {retry_wait}s)
+for i in {{1..{retry_wait}}}; do
+    if ! kill -0 "$PID" 2>/dev/null; then
+        break
+    fi
+    sleep 1
+done
+
+# Force kill if it's still not closed
+if kill -0 "$PID" 2>/dev/null; then
+    kill -9 "$PID" 2>/dev/null
+fi
+
+# Utilize rsync to update the old app contents in place
 hdiutil mount "{dmg_path}"
 rsync -a /Volumes/auto-mcs/auto-mcs.app/ "{os.path.join(os.path.dirname(launch_path), '../..')}"
 errorlevel=$?
@@ -973,32 +1054,51 @@ else
     echo banner-failure@{failure_str} > "{update_log}"
 fi
 
+# Remove the update disk and launch the new executable
 hdiutil unmount /Volumes/auto-mcs
 rm -rf "{dmg_path}"
 chmod +x "{launch_path}"
-exec {escaped_path}{' --headless' if headless else ''} &
-rm \"{os.path.join(tempDir, script_name)}\""""
-            )
+exec {escaped_path}{flags} &
+rm \"{script_path}\"""")
 
-            shell_file.close()
-            run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
+            script.write(script_content)
+            send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
+
+        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
+
 
 
     # Generate Linux script to restart
     else:
         script_name = f'{script_name}.sh'
-        folder_check(tempDir)
-        shell_path = os.path.join(tempDir, script_name)
-        shell_file = open(shell_path, 'w+')
+        script_path = os.path.join(tempDir, script_name)
         escaped_path = launch_path.replace(" ", "\ ")
+        new_executable = os.path.join(downDir, 'auto-mcs')
 
-        if app_compiled:  # Running as compiled
-            shell_file.write(
+        with open(script_path, 'w+') as script:
+            script_content = (
+
 f"""#!/bin/bash
-kill {os.getpid()}
-sleep 3
+PID={os.getpid()}
 
-/bin/cp -rf "{os.path.join(downDir, 'auto-mcs')}" "{launch_path}"
+# Kill the process
+kill "$PID"
+
+# Wait for it to exit (max {retry_wait}s)
+for i in {{1..{retry_wait}}}; do
+    if ! kill -0 "$PID" 2>/dev/null; then
+        break
+    fi
+    sleep 1
+done
+
+# Force kill if it's still not closed
+if kill -0 "$PID" 2>/dev/null; then
+    kill -9 "$PID" 2>/dev/null
+fi
+
+# Copy new update file to original path
+/bin/cp -rf "{new_executable}" "{launch_path}"
 errorlevel=$?
 if [ -f "{launch_path}" ] && [ $errorlevel -eq 0 ]; then
     echo banner-success@{success_unix} > "{update_log}"
@@ -1006,13 +1106,16 @@ else
     echo banner-failure@{failure_str} > "{update_log}"
 fi
 
+# Launch the new executable
 chmod +x "{launch_path}"
-exec {escaped_path}{' --headless' if headless else ''} &
-rm \"{os.path.join(tempDir, script_name)}\""""
-            )
+exec {escaped_path}{flags} &
+rm \"{script_path}\"""")
 
-            shell_file.close()
-            run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
+            script.write(script_content)
+            send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
+
+        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
+
     sys.exit()
 
 
@@ -1479,7 +1582,7 @@ def open_folder(directory: str):
                 subprocess.Popen(['explorer', directory])
 
     except Exception as e:
-        send_log('open_folder', f"error opening '{directory}': {e}", 'warn')
+        send_log('open_folder', f"error opening '{directory}': {e}", 'warning')
         return False
 
 
@@ -1519,7 +1622,7 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
                     use_tar = rc == 0
 
                 except Exception as e:
-                    send_log('extract_archive', f"failed to acquire 'tar' provider: {e}", 'warn')
+                    send_log('extract_archive', f"failed to acquire 'tar' provider: {e}", 'warning')
                     use_tar = False
 
 
@@ -1602,7 +1705,7 @@ def create_archive(file_path: str, export_path: str, archive_type='tar') -> str 
             use_tar = rc == 0
 
         except Exception as e:
-            send_log('create_archive', f"failed to acquire 'tar' provider: {e}", 'warn')
+            send_log('create_archive', f"failed to acquire 'tar' provider: {e}", 'warning')
             use_tar = False
 
 
@@ -1698,7 +1801,7 @@ def safe_delete(directory: str) -> bool:
             send_log('safe_delete', f"successfully deleted '{directory}'")
 
     except OSError as e:
-        send_log('safe_delete', f"could not delete '{directory}': {e}", 'warn')
+        send_log('safe_delete', f"could not delete '{directory}': {e}", 'warning')
 
     return not os.path.exists(directory)
 
