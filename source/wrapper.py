@@ -154,8 +154,12 @@ if __name__ == '__main__':
     # Set hostname
     try:
         if constants.is_docker: constants.hostname = constants.app_title
-        else:                   constants.hostname = constants.run_proc('hostname', True).strip()
-    except: pass
+        else:
+            hostname = constants.run_proc('hostname', True).strip()
+            if 'hostname: command not found' in hostname: hostname = constants.app_title
+            constants.hostname = hostname
+    except:
+        constants.hostname = constants.app_title
 
 
     # Check for update log

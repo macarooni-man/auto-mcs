@@ -48,6 +48,12 @@ if constants.os_name == "windows":
     from tkinter import filedialog
 
 
+# Check for Wayland support on Linux and try to launch it by default
+if constants.os_name == "linux":
+    if constants.run_proc('echo $XDG_SESSION_TYPE', return_text=True) == 'wayland':
+        os.environ['SDL_VIDEODRIVER'] = 'wayland'
+
+
 # Control modifier for keyboard shortcuts
 control = 'meta' if constants.os_name == "macos" else 'ctrl'
 

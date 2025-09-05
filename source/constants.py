@@ -773,6 +773,7 @@ def telepath_busy() -> bool:
 
 # Retrieves the refresh rate of the display to calculate consistent animation speed
 def get_refresh_rate() -> float or None:
+    if headless: return
     global refresh_rate, anim_speed
 
     try:
@@ -6649,7 +6650,7 @@ class LoggingManager():
             except OSError: pass
 
     def _get_file_name(self):
-        time_stamp = dt.now().strftime(fmt_date("%#H-%M-%S_%#m-%#d-%y"))
+        time_stamp = self._launch_ts.strftime(fmt_date("%#H-%M-%S_%#m-%#d-%y"))
         file_name  = f"auto-mcs_{time_stamp}.log"
         return os.path.join(self.path, file_name)
 
