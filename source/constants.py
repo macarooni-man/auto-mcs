@@ -892,6 +892,7 @@ del \"{os.path.join(tempDir, script_name)}\""""
             shell_file.write(
 f"""#!/bin/bash
 kill {os.getpid()}
+sleep 3
 exec {escaped_path}{' --headless' if headless else ''} &
 rm \"{os.path.join(tempDir, script_name)}\""""
             )
@@ -995,7 +996,7 @@ rm \"{os.path.join(tempDir, script_name)}\""""
             shell_file.write(
 f"""#!/bin/bash
 kill {os.getpid()}
-sleep 2
+sleep 3
 
 /bin/cp -rf "{os.path.join(downDir, 'auto-mcs')}" "{launch_path}"
 errorlevel=$?
@@ -1011,8 +1012,6 @@ rm \"{os.path.join(tempDir, script_name)}\""""
             )
 
             shell_file.close()
-            # with open(shell_path, 'r', encoding='utf-8', errors='ignore') as f:
-            #     print(f.read())
             run_proc(f"chmod +x \"{shell_path}\" && bash \"{shell_path}\"")
     sys.exit()
 
