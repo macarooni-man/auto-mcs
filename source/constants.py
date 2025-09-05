@@ -939,7 +939,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
+        run_proc(f"chmod +x \"{script_path}\" && nohup bash \"{script_path}\" > /dev/null 2>&1 &")
 
     sys.exit()
 
@@ -1064,7 +1064,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
+        run_proc(f"chmod +x \"{script_path}\" && nohup bash \"{script_path}\" > /dev/null 2>&1 &")
 
 
 
@@ -1114,7 +1114,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
+        run_proc(f"chmod +x \"{script_path}\" && nohup bash \"{script_path}\" > /dev/null 2>&1 &")
 
     sys.exit()
 
@@ -6816,7 +6816,7 @@ class LoggingManager():
                     object_width = 37 - len(level)
                     timestamp = time_obj.strftime('%I:%M:%S %p')
                     tc = text_color.get(level, Fore.CYAN)
-                    content = f'{tc}{line.strip()}' if x == 0 else f'{Fore.LIGHTBLACK_EX}{self._line_header}{tc}{line.strip()}'
+                    content = f'{tc}{line.rstrip()}' if x == 0 else f'{Fore.LIGHTBLACK_EX}{self._line_header}{tc}{line.strip()}'
                     line = (
                         f"{fmt_block(timestamp, Fore.WHITE)} "
                         f"{fmt_block(level.upper(), level_color.get(level, Fore.CYAN))} "
