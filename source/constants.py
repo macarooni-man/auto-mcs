@@ -32,6 +32,7 @@ import string
 import psutil
 import socket
 import queue
+import stat
 import time
 import json
 import math
@@ -444,6 +445,25 @@ def run_proc(cmd: str, return_text=False) -> str or int:
 
     return output if return_text else return_code
 
+
+# Spawns a new detached process
+def run_detached(script_path: str):
+    send_log('run_proc', f"executing '{script_path}'...")
+
+    if os_name == 'windows':
+        args = ['cmd', '/c', script_path]
+
+    # macOS & Linux
+    else:
+        os.chmod(script_path, stat.S_IRWXU)
+        args = ['bash', script_path]
+
+    subprocess.Popen(
+        args,
+        stdout = subprocess.DEVNULL,
+        stderr = subprocess.DEVNULL,
+        preexec_fn = os.setsid
+    )
 
 
 # Check if running in Docker
@@ -900,7 +920,7 @@ del \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"\"{script_path}\" > nul 2>&1")
+        run_detached(script_path)
 
 
 
@@ -939,7 +959,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && nohup bash \"{script_path}\" > /dev/null 2>&1 &")
+        run_detached(script_path)
 
     sys.exit()
 
@@ -1011,7 +1031,7 @@ del \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"\"{script_path}\" > nul 2>&1")
+        run_detached(script_path)
 
 
 
@@ -1064,7 +1084,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && nohup bash \"{script_path}\" > /dev/null 2>&1 &")
+        run_detached(script_path)
 
 
 
@@ -1114,7 +1134,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && nohup bash \"{script_path}\" > /dev/null 2>&1 &")
+        run_detached(script_path)
 
     sys.exit()
 
