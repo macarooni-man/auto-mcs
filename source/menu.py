@@ -50,8 +50,10 @@ if constants.os_name == "windows":
 
 # Check for Wayland support on Linux and try to launch it by default
 if constants.os_name == "linux":
-    if constants.run_proc('echo $XDG_SESSION_TYPE', return_text=True) == 'wayland':
-        os.environ['SDL_VIDEODRIVER'] = 'wayland'
+    output = constants.run_proc('echo $XDG_SESSION_TYPE', return_text=True).strip().lower()
+    if output == 'wayland':
+        send_log('main', 'Wayland was detected, using it as a provider')
+        os.environ["SDL_VIDEODRIVER"] = "wayland"
 
 
 # Control modifier for keyboard shortcuts
