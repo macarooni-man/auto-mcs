@@ -458,11 +458,12 @@ def run_detached(script_path: str):
         os.chmod(script_path, stat.S_IRWXU)
         args = ['bash', script_path]
 
+    # Create a new session
     subprocess.Popen(
         args,
         stdout = subprocess.DEVNULL,
         stderr = subprocess.DEVNULL,
-        preexec_fn = os.setsid
+        start_new_session = True
     )
 
 
