@@ -943,7 +943,8 @@ def check_app_version(current: str, latest: str, limit=None) -> bool:
 # Restarts auto-mcs by dynamically generating a script
 def restart_app(*a):
     if not app_compiled:
-        return send_log('restart_app', "can't restart in script mode", 'warning')
+        send_log('restart_app', "can't restart in script mode", 'warning')
+        raise SystemExit()
 
     # Setup environment
     retry_wait = 30
@@ -1030,12 +1031,14 @@ rm \"{script_path}\"""")
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
     if script_path: close_hooks.append(lambda *_: run_detached(script_path))
+    raise SystemExit()
 
 
 # Restarts and updates auto-mcs by dynamically generating a script
 def restart_update_app(*a):
     if not app_compiled:
-        return send_log('restart_update_app', "can't restart in script mode", 'warning')
+        send_log('restart_update_app', "can't restart in script mode", 'warning')
+        raise SystemExit()
 
     # Setup environment
     retry_wait = 30
@@ -1216,6 +1219,7 @@ rm \"{script_path}\"""")
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
     if script_path: close_hooks.append(lambda *_: run_detached(script_path))
+    raise SystemExit()
 
 
 # Format date string to be cross-platform compatible
