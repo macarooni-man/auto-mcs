@@ -336,7 +336,8 @@ if __name__ == '__main__':
         for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
             try: os.remove(img)
             except OSError: pass
-        if not update_log or not os.path.exists(update_log):
+
+        if (not update_log or not os.path.exists(update_log)) and not constants.close_hooks:
             constants.safe_delete(constants.tempDir)
 
     def app_crash(traceback, exception):
