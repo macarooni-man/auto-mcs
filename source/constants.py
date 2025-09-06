@@ -87,7 +87,7 @@ def run_close_hooks():
     if close_hooks:
         unloaded = deepcopy(close_hooks)
         close_hooks = []
-        [f() for f in close_hooks]
+        [f() for f in unloaded]
 
 
 # Global debug mode and app_compiled, set debug to false before release
