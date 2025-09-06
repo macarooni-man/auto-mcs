@@ -87,6 +87,7 @@ def run_close_hooks():
     if close_hooks:
         unloaded = deepcopy(close_hooks)
         for func in unloaded:
+            send_log('run_close_hooks', f"executed '{func}'", 'debug')
             close_hooks.remove(func)
             func()
 
