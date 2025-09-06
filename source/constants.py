@@ -7082,9 +7082,6 @@ class ConfigManager():
         self._defaults = self._init_defaults()
         self._data = Munch({})
 
-        # For thread reentrancy with nested saves
-        self._lock = threading.RLock()
-
         # Initialize default values
         if os.path.exists(applicationFolder):
             if self.load_config(): self._send_log(f"initialized ConfigManager successfully", 'info')
@@ -7118,101 +7115,66 @@ class ConfigManager():
     def __setattr__(self, key, value):
         if key.startswith('_'):
             super().__setattr__(key, value)
-        elif key not in getattr(self, '_defaults', {}):
+        elif key not in self._defaults:
             raise AttributeError(f"'{self.__class__.__name__}' does not support '{key}'")
         else:
-            with self._lock:
-                self._data[key] = value
-                self.save_config()
+            self._data[key] = value
+            self.save_config()
 
     def __getattr__(self, key):
         if key == '__setstate__':
-            with self._lock:
-                self._data = Munch({})
-                self._path = os.path.join(configDir, 'app-config.json')
-                self._defaults = self._init_defaults()
-                self.load_config()
-            return
+            self._data = Munch({})
+            self._path = os.path.join(configDir, 'app-config.json')
+            self._defaults = self._init_defaults()
+            self.load_config()
 
-        with self._lock:
-            if key in self._data:
+        if key in self._data:
 
-                # First, fix empty dictionaries
-                if isinstance(self._data[key], dict):
-                    for k, v in self._defaults[key].items():
-                        if k not in self._data[key]:
-                            self._data[key][k] = v
+            # First, fix empty dictionaries
+            if isinstance(self._data[key], dict):
+                for k, v in self._defaults[key].items():
+                    if k not in self._data[key]:
+                        self._data[key][k] = v
 
-                # Then return the value
-                return self._data[key]
+            # Then return the value
+            return self._data[key]
 
-            elif key in self._defaults:
-                return self._defaults[key]
+        elif key in self._defaults:
+            return self._defaults[key]
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
 
 
     def load_config(self):
-        with self._lock:
-            if os.path.exists(self._path):
-                with open(self._path, 'r', encoding='utf-8', errors='ignore') as file:
-                    try:
-                        self._data = json.loads(file.read().replace('ide-settings', 'ide_settings'))
-                        self._send_log(f"successfully loaded global configuration from '{self._path}'")
-                        return True
+        if os.path.exists(self._path):
+            with open(self._path, 'r', encoding='utf-8', errors='ignore') as file:
+                try:
+                    self._data = json.loads(file.read().replace('ide-settings', 'ide_settings'))
+                    self._send_log(f"successfully loaded global configuration from '{self._path}'")
+                    return True
+                except json.decoder.JSONDecodeError:
+                    pass
 
-                    except json.decoder.JSONDecodeError:
-                        try: os.replace(self._path, self._path + ".corrupt.bak")
-                        except Exception as e: self._send_log(f'error decoding global configuration: {format_traceback(e)}', 'error')
-
-
-            self._send_log('failed to read global configuration, resetting...', 'error')
-            self.reset()
-            return False
+        self._send_log('failed to read global configuration, resetting...', 'error')
+        self.reset()
 
     def save_config(self):
-        with self._lock:
-            try:
-                folder_check(os.path.dirname(self._path))
-                self._atomic_write_json(self._data, self._path)
-            except Exception as e: self._send_log(f"failed to save global configuration to '{self._path}': {format_traceback(e)}", 'error')
-            else:                  self._send_log(f"successfully saved global configuration to '{self._path}'")
+        try:
+            folder_check(os.path.dirname(self._path))
+            with open(self._path, 'w') as file:
+                json.dump(self._data, file, indent=2)
+
+        except Exception as e: self._send_log(f"failed to save global configuration to '{self._path}': {format_traceback(e)}", 'error')
+        else:                  self._send_log(f"successfully saved global configuration to '{self._path}'")
 
     def reset(self):
-        with self._lock:
-            if os.path.exists(self._path):
-                try: os.remove(self._path)
-                except Exception: pass
-            self._data = deepcopy(self._defaults)
-            self.save_config()
-
-    # Atomic write helper
-    @staticmethod
-    def _atomic_write_json(data, path):
-        d = os.path.dirname(path) or "."
-        fd, tmp_path = tempfile.mkstemp(prefix=".tmp-", dir=d, text=True)
-        try:
-            with os.fdopen(fd, mode="w", encoding="utf-8", newline="\n") as f:
-                json.dump(data, f, indent=2)
-                f.write("\n")
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp_path, path)
-
-            # Ensure directory entry hits disk
-            try:
-                dir_fd = os.open(d, getattr(os, "O_DIRECTORY", 0))
-                try: os.fsync(dir_fd)
-                finally: os.close(dir_fd)
-            except Exception:
-                pass
-
-        except Exception:
-            try: os.unlink(tmp_path)
-            except Exception: pass
-            raise
+        if os.path.exists(self._path):
+            os.remove(self._path)
+        self._data = self._defaults.copy()
+        self.save_config()
 
 # Global config manager
-app_config: ConfigManager = ConfigManager()
+if is_child_process: app_config = None
+else:                app_config: ConfigManager = ConfigManager()
 
 
 
@@ -7714,7 +7676,8 @@ class PlayitManager():
             self._stop_agent()
 
 # Global playit.gg manager
-playit = PlayitManager()
+if is_child_process: playit = None
+else:                playit: PlayitManager = PlayitManager()
 
 
 
