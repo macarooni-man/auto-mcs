@@ -448,6 +448,33 @@ def run_proc(cmd: str, return_text=False) -> str or int:
     return output if return_text else return_code
 
 
+# Spawns a detached process with new process group
+def run_detached(script_path: str):
+    send_log('run_detached', f"executing '{script_path}'...")
+
+    if os_name == 'windows':
+        return subprocess.Popen(
+            ['cmd', '/c', script_path],
+            stdout = subprocess.DEVNULL,
+            stderr = subprocess.DEVNULL,
+            stdin = subprocess.DEVNULL,
+            creationflags = 0x00000008
+        )
+
+    # macOS & Linux
+    os.chmod(script_path, stat.S_IRWXU)
+    args = ['bash', script_path]
+    if os_name != 'macos': args.insert(0, 'setsid')
+    subprocess.Popen(
+        args,
+        stdout = subprocess.DEVNULL,
+        stderr = subprocess.DEVNULL,
+        stdin = subprocess.DEVNULL,
+        start_new_session = True,
+        close_fds = True
+    )
+
+
 # Check if running in Docker
 def check_docker() -> bool:
     if os_name == 'linux':
@@ -867,6 +894,7 @@ def restart_app(*a):
     retry_wait = 30
     executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-reboot'
+    script_path = None
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
     folder_check(tempDir)
     send_log('restart_app', f'attempting to restart {app_title}...', 'warning')
@@ -900,8 +928,6 @@ del \"{script_path}\"""")
 
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
-
-        close_hooks.append(lambda *_: run_proc(f"\"{script_path}\" > nul 2>&1"))
 
 
 
@@ -940,7 +966,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-        close_hooks.append(lambda *_: run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\""))
+    if script_path: close_hooks.append(lambda *_: run_detached(script_path))
 
 
 # Restarts and updates auto-mcs by dynamically generating a script
@@ -952,6 +978,7 @@ def restart_update_app(*a):
     retry_wait = 30
     executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-update'
+    script_path = None
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
     folder_check(tempDir)
 
@@ -1009,8 +1036,6 @@ del \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        close_hooks.append(lambda *_: run_proc(f"\"{script_path}\" > nul 2>&1"))
-
 
 
     # Generate macOS script to restart
@@ -1062,8 +1087,6 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        close_hooks.append(lambda *_: run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\""))
-
 
 
     # Generate Linux script to restart
@@ -1112,7 +1135,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        close_hooks.append(lambda *_: run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\""))
+    if script_path: close_hooks.append(lambda *_: run_detached(script_path))
 
 
 # Format date string to be cross-platform compatible
@@ -6900,8 +6923,8 @@ class LoggingManager():
 
                 lines = str(message).splitlines() or [""]
                 for i, line in enumerate(lines):
-                    if i == 0: f.write(f"[{timestamp}] [{level.upper()}] [{block}] {line.strip()}\n")
-                    else: f.write(f"{self._line_header}{line.strip()}\n")
+                    if i == 0: f.write(f"[{timestamp}] [{level.upper()}] [{block}] {line.rstrip()}\n")
+                    else: f.write(f"{self._line_header}{line.rstrip()}\n")
 
         self._prune_logs()
         api_manager.logger.dump_to_disk()
