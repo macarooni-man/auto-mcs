@@ -22,27 +22,22 @@ constants.script_obj = amscript.ScriptObject()
 # Check if advanced terminal features are supported
 advanced_term = False
 try:
-    if os.environ['TERM'].endswith('-256color'):
-        advanced_term = True
-except:
-    pass
+    if os.environ['TERM'].endswith('-256color'): advanced_term = True
+except: pass
+
+
+# UI log wrapper
+def send_log(object_data, message, level=None):
+    return constants.send_log(f'{__name__}.{object_data}', message, level, 'ui')
 
 
 # Overwrite STDOUT to not interfere with the UI
 class NullWriter:
+    encoding = None
     def write(self, *args, **kwargs):
         pass
     def flush(self):
         pass
-
-logo = ["                           _                                 ",
-        "   ▄▄████▄▄     __ _ _   _| |_ ___       _ __ ___   ___ ___  ",
-        "  ▄█  ██  █▄   / _` | | | | __/ _ \  __ | '_ ` _ \ / __/ __| ",
-        "  ███▀  ▀███  | (_| | |_| | || (_) |(__)| | | | | | (__\__ \ ",
-        "  ▀██ ▄▄ ██▀   \__,_|\__,_|\__\___/     |_| |_| |_|\___|___/ ",
-        "   ▀▀████▀▀                                                  ",
-        ""
-        ]
 
 
 # Handle keyboard inputs from console
@@ -101,6 +96,7 @@ def process_command(cmd: str):
 
             # Process command and return output
             command = commands[cmd]
+            send_log('process_command', f"issued command: '{' '.join(raw)}'", 'info')
             output = command.exec(args)
             if isinstance(output, tuple):
                 success = 'fail' != output[1]
@@ -811,6 +807,7 @@ class ScreenManager():
 class Command:
 
     def exec(self, args=()):
+
         # Combine all arguments into one if one_arg
         if self.one_arg:
             args = ' '.join(args).strip()
@@ -1103,7 +1100,7 @@ commands = {n: Command(n, d) if isinstance(d, dict) else d for n, d in command_d
 # Display messages
 command_header = '   ' if advanced_term else ' >>  '
 response_header = '❯ ' if advanced_term else '> '
-logo_widget = urwid.Text([('command', '\n'.join(logo))], align='center')
+logo_widget = urwid.Text([('command', '\n'.join(constants.text_logo))], align='center')
 splash_widget = urwid.Text([('info', f"{constants.session_splash}\n")], align='center')
 telepath_content = urwid.Text([('info', 'Initializing...')])
 
@@ -2760,6 +2757,7 @@ def open_console(server_name: str, force_start=False):
 # --------------------------------------------------- Launch Menu ------------------------------------------------------
 
 def run_application():
+    send_log('run_application', 'initializing headless UI (urwid)', 'info')
 
     # Raise an interactive warning if elevated, but bypassed
     if (constants.is_admin() and not constants.is_docker) and constants.bypass_admin_warning:

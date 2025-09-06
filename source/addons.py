@@ -6,6 +6,7 @@ from glob import glob
 import constants
 import requests
 import hashlib
+import math
 import json
 import os
 import re
@@ -13,6 +14,10 @@ import re
 
 # Auto-MCS Add-on API
 # ----------------------------------------------- Addon Objects --------------------------------------------------------
+
+# Log wrapper
+def send_log(object_data, message, level=None):
+    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
 # Base AddonObject for others
 class AddonObject():
@@ -55,6 +60,9 @@ class AddonWebObject(AddonObject):
             self.download_url = None
             self.download_version = None
 
+    def __repr__(self):
+        return f"<{__name__}.{self.__class__.__name__} '{self.name}' at '{self.url}'>"
+
 # AddonObject for housing imported addons
 class AddonFileObject(AddonObject):
     def __init__(self, addon_name, addon_type='', addon_author='', addon_subtitle='', addon_path='', addon_id='', addon_version=''):
@@ -78,12 +86,19 @@ class AddonFileObject(AddonObject):
             hash_data = int(hashlib.md5(f'{os.path.getsize(addon_path)}/{os.path.basename(addon_path)}'.encode()).hexdigest(), 16)
             self.hash = str(hash_data)[:8]
 
+    def __repr__(self):
+        return f"<{__name__}.{self.__class__.__name__} '{self.name}' at '{self.path}'>"
+
 # AddonObject for housing downloadable modpacks
 class ModpackWebObject(AddonWebObject):
     pass
 
 # Server addon manager object for ServerManager()
 class AddonManager():
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, f"'{self._server['name']}': {message}", level)
 
     def __init__(self, server_name: str):
         self._server = dump_config(server_name)
@@ -103,12 +118,13 @@ class AddonManager():
         # Set addon hash if server is running
         try:
             if self._server['name'] in constants.server_manager.running_servers:
-                constants.server_manager.running_servers['name'].run_data['addon-hash'] = deepcopy(self._addon_hash)
+                constants.server_manager.running_servers[self._server['name']].run_data['addon-hash'] = deepcopy(self._addon_hash)
         except:
             pass
 
         # Write addons to cache
         constants.load_addon_cache(True)
+        self._send_log('initialized AddonManager', 'info')
 
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
@@ -145,9 +161,11 @@ class AddonManager():
 
     def _install_geyser(self, install=True):
         if install:
+            self._send_log('installing Geyser...', 'info')
             with ThreadPoolExecutor(max_workers=3) as pool:
                 pool.map(self.download_addon, geyser_addons(self._server))
         else:
+            self._send_log('uninstalling Geyser...', 'info')
             for addon in self.return_single_list():
                 if is_geyser_addon(addon) or addon.name.lower() == 'viaversion':
                     self.delete_addon(addon)
@@ -158,8 +176,14 @@ class AddonManager():
             return None
 
         addon = get_addon_file(addon_path, self._server)
-        import_addon(addon, self._server)
+        self._send_log(f"importing add-on '{addon_path}'...", 'info')
+        success = import_addon(addon, self._server)
         self._refresh_addons()
+
+
+        if success: self._send_log(f"successfully imported add-on '{addon_path}'", 'info')
+        else:       self._send_log(f"something went wrong importing add-on '{addon_path}'", 'error')
+
         return addon
 
     # Searches for downloadable addons, returns a list of AddonWebObjects
@@ -168,10 +192,8 @@ class AddonManager():
             return []
 
         addon_list = search_addons(query, self._server)
-        if addon_list:
-            return addon_list
-        else:
-            return []
+        if addon_list: return addon_list
+        else: return []
 
     # Filters locally installed AddonFileObjects
     def filter_addons(self, query: str, *args):
@@ -205,18 +227,23 @@ class AddonManager():
         if not self._addons_supported:
             return None
 
+        success = False
+        self._send_log(f"downloading '{addon}'...", 'info')
+
         # If AddonWebObject was provided
         if not isinstance(addon, str):
-            if not addon.download_url:
-                addon = get_addon_url(addon, self._server)
-            if addon:
-                download_addon(addon, self._server)
+            if not addon.download_url: addon = get_addon_url(addon, self._server)
+            if addon: success = download_addon(addon, self._server)
 
         # If addon was provided with a name
         else:
             addon = find_addon(addon, self._server)
-            if addon:
-                download_addon(addon, self._server)
+            if addon: success = download_addon(addon, self._server)
+
+
+        if success: self._send_log(f"successfully downloaded add-on '{addon}'")
+        else:       self._send_log(f"something went wrong downloading add-on '{addon}'", 'error')
+
         self._refresh_addons()
 
     # Enables/Disables installed addons
@@ -237,8 +264,11 @@ class AddonManager():
         try:
             os.remove(addon.path)
             removed = True
-        except OSError:
+            self._send_log(f"successfully deleted '{addon}'", 'info')
+
+        except OSError as e:
             removed = False
+            self._send_log(f"failed to delete '{addon}': {constants.format_traceback(e)}", 'error')
 
         self._refresh_addons()
         return removed
@@ -278,7 +308,8 @@ class AddonManager():
         if self.update_required:
             return True
 
-        # print("Checking for updates!!!")
+        self._send_log('checking for updates...', 'info')
+
         if constants.app_online:
             for addon in self.installed_addons['enabled']:
                 try:
@@ -291,7 +322,6 @@ class AddonManager():
                                     # print(addon.name, addon.addon_version, update.addon_version)
                                     self.update_required = True
                                 return True
-
                         else:
                             continue
 
@@ -301,7 +331,8 @@ class AddonManager():
                         # print(addon.name, addon.addon_version, update.addon_version)
                         self.update_required = True
                         return True
-                except:
+
+                except Exception as e:
                     continue
 
         return False
@@ -321,6 +352,7 @@ class AddonManager():
             return 'geyser' in [addon.id.lower() for addon in self.return_single_list()]
         else:
             return False
+
 
 
 # -------------------------------------------- Addon File Functions ----------------------------------------------------
@@ -542,10 +574,9 @@ def get_addon_file(addon_path: str, server_properties, enabled=False):
 
                     constants.safe_delete(addon_tmp)
 
-            # If there's an issue with decompilation
+            # If there's an issue with de-compilation
             except Exception as e:
-                if constants.debug:
-                    print(e)
+                send_log('get_addon_file', f"error decompiling '{addon_path}': {constants.format_traceback(e)}")
 
                 if not addon_version:
                     addon_version = None
@@ -612,22 +643,29 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
     except TypeError:
         return False
 
+    send_log('import_addon', f"importing '{addon_path}' to '{server_properties['name']}'...\n{f'tmpsvr: True' if tmpsvr else ''}".strip(), 'info')
+
+
     addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
     destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(constants.server_path(server_properties['name']), addon_folder)
 
     # Make sure the addon_path and destination_path are not the same
-    if addon_path != destination_path and jar_name.endswith(".jar"):
+    try:
+        if addon_path != destination_path and jar_name.endswith(".jar"):
 
-        # Convert addon_path into AddonFileObject
-        if isinstance(addon_path, AddonFileObject):
-            addon = addon_path
-        else:
-            addon = get_addon_file(addon_path, server_properties)
+            # Convert addon_path into AddonFileObject
+            if isinstance(addon_path, AddonFileObject):
+                addon = addon_path
+            else:
+                addon = get_addon_file(addon_path, server_properties)
 
-        # Copy addon to proper folder if it exists
-        if addon:
-            constants.folder_check(destination_path)
-            return constants.copy_to(addon.path, destination_path, str(constants.sanitize_name(addon.name, True) + ".jar"), overwrite=True)
+            # Copy addon to proper folder if it exists
+            if addon:
+                constants.folder_check(destination_path)
+                send_log('import_addon', f"successfully imported '{addon_path}' to '{server_properties['name']}'")
+                return constants.copy_to(addon.path, destination_path, str(constants.sanitize_name(addon.name, True) + ".jar"), overwrite=True)
+
+    except Exception as e: send_log('import_addon', f"failed to import '{addon_path}' to '{server_properties['name']}': {constants.format_traceback(e)}", 'error')
 
     return False
 
@@ -639,12 +677,9 @@ def import_addon(addon_path: str or AddonFileObject, server_properties, tmpsvr=F
 # Query --> AddonWebObject
 def search_addons(query: str, server_properties, *args):
 
-    # Manually weighted search results
-    prioritized = ("fabric-api", "worldedit for bukkit", "vault", "essentials", "essentialsx", "worldguard", "anticheat", "zombie_striker_dev", "sleakes", "sk89q", "permissionsex", "multiverse-core", "shopkeepers")
-
     # filter-sort=5 is filtered by number of downloads
     search_urls = {
-        "bukkit": "https://dev.bukkit.org/search?projects-page=1&projects-sort=-project&providerIdent=projects&search=",
+        "bukkit": "https://hangar.papermc.io/",
         "forge": "https://modrinth.com/mod/",
         "fabric": "https://modrinth.com/mod/",
         "quilt": "https://modrinth.com/mod/",
@@ -652,101 +687,73 @@ def search_addons(query: str, server_properties, *args):
     }
 
     # Determine which addons to search for
+    results = []
     server_type = constants.server_type(server_properties['type'])
+    log_tag = f"'{query.strip()}' ({server_type})"
+    send_log('search_addons', f"searching for {log_tag}...", 'info')
 
 
-    # If server_type is bukkit
+    # If 'server_type' is bukkit
+    # Use Hangar provider
     if server_type == "bukkit":
-        results_unsorted = []
 
         # Grab every addon from search result and return results dict
-        url = search_urls[server_type] + query.replace(' ', '+')
-        results = []
-        page_content = constants.get_url(url)
-
-
-        # Function to be used in ThreadPool
-        def get_page(page_number):
-
-            # Skip loading URL twice if page is already loaded
-            if page_number == 1:
-                new_page_content = page_content
-            else:
-                new_page_content = constants.get_url(url.replace('projects-page=1', f'projects-page={page_number}'))
-
-            # Filter result content
-            table = new_page_content.find('table', 'listing listing-project project-listing b-table b-table-a').find('tbody')
-            # for row in table.find_all('tr', 'results'):
-            for x, row in enumerate(table.find_all('tr', 'results'), 1):
-
-                try:
-                    date = row.find('abbr', 'tip standard-date standard-datetime').get('data-epoch')
-                except AttributeError:
-                    date = 0
-
-                result_dict = {
-                    'name': row.find('div', 'results-name').a.text.strip(),
-                    'author': row.find('td', 'results-owner').a.text.strip(),
-                    'subtitle': row.find('div', 'results-summary').text.strip(),
-                    'link': row.find('div', 'results-name').a.get('href'),
-                    'date': int(date),
-                    'position': float(f"{page_number}.{x:04}")
-                }
-
-                # Manually weight popular plugins
-                if result_dict['author'].lower() in prioritized or result_dict['name'].lower() in prioritized:
-                    result_dict['position'] = 0.0
-
-                results_unsorted.append(result_dict)
-
-        # Get all pages
         try:
-            pages = [int(item.text) for item in page_content.find('div', 'listing-header').find_all('a', 'b-pagination-item')]
-            pages = 1 if not pages else max(pages)
+            url = f'https://hangar.papermc.io/api/v1/projects?query={query}&limit=100'
+            page_content = constants.get_url(url, return_response=True).json()
 
-            # If there's a single page, use already retrieved results
-            if pages == 1:
-                get_page(1)
+            for plugin in page_content['result']:
+                if 'supportedPlatforms' in plugin and 'PAPER' in plugin['supportedPlatforms']:
+                    name = plugin['name']
+                    author = plugin['namespace']['owner']
+                    subtitle = plugin['description'].split("\n", 1)[0]
+                    file_name = plugin['namespace']['slug']
+                    link = search_urls[server_type] + f'{author}/{file_name}'
 
-            # If not, make a threadpool of total pages
-            else:
-                with ThreadPoolExecutor(max_workers=10) as pool:
-                    pool.map(get_page, range(1, pages+1))
+                    if link:
+                        addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
+                        addon_obj.versions = [v for v in reversed(plugin['supportedPlatforms']['PAPER']) if (v.startswith("1.") and "-" not in v)]
+                        addon_obj.description = plugin['mainPageContent']
+                        get_addon_info(addon_obj, server_properties)
+                        results.append(addon_obj)
 
-            # Sort list and add it to results
-            for addon_dict in list(sorted(results_unsorted, key=lambda d: d['position'])):
-                if addon_dict['link']:
-                    results.append(AddonWebObject(addon_dict['name'], server_type, addon_dict['author'], addon_dict['subtitle'], addon_dict['link'], None, None))
-
-        # If no results
-        except AttributeError:
-            pass
+        except Exception as e:
+            send_log('search_addons', f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
 
 
-    # If server_type is forge, fabric, quilt, or neoforged
+
+    # If 'server_type' is forge, fabric, quilt, or neoforge
+    # Use Modrinth provider
     else:
+
         # Grab every addon from search result and return results dict
-        url = f'https://api.modrinth.com/v2/search?facets=[["categories:{server_type}"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
-        results = []
-        page_content = constants.get_url(url, return_response=True).json()
+        try:
+            url = f'https://api.modrinth.com/v2/search?facets=[["categories:{server_type}"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
+            page_content = constants.get_url(url, return_response=True).json()
 
-        if server_type == 'quilt':
-            url = f'https://api.modrinth.com/v2/search?facets=[["categories:fabric"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
-            page_content['hits'].extend(constants.get_url(url, return_response=True).json()['hits'])
+            if server_type == 'quilt':
+                url = f'https://api.modrinth.com/v2/search?facets=[["categories:fabric"],["server_side:optional","server_side:required"]]&limit=100&query={query}'
+                page_content['hits'].extend(constants.get_url(url, return_response=True).json()['hits'])
 
-        for mod in page_content['hits']:
-            if 'project_type' in mod and mod['project_type'] == 'mod':
-                name = mod['title']
-                author = mod['author']
-                subtitle = mod['description'].split("\n", 1)[0]
-                link = search_urls[server_type] + mod['slug']
-                file_name = mod['slug']
+            for mod in page_content['hits']:
+                if 'project_type' in mod and mod['project_type'] == 'mod':
+                    name = mod['title']
+                    author = mod['author']
+                    subtitle = mod['description'].split("\n", 1)[0]
+                    file_name = mod['slug']
+                    link = search_urls[server_type] + file_name
 
-                if link:
-                    addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
-                    addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
-                    results.append(addon_obj)
+                    if link:
+                        addon_obj = AddonWebObject(name, server_type, author, subtitle, link, file_name, None)
+                        addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                        results.append(addon_obj)
 
+        except Exception as e:
+            send_log('search_addons', f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
+
+    debug_only = f':\n{results}' if constants.debug else ''
+    if results: send_log('search_addons', f"found {len(results)} add-on(s) for {log_tag}{debug_only}", 'info')
+    else:       send_log('search_addons', f"no add-ons were found for {log_tag}", 'info')
 
     return results
 
@@ -756,61 +763,33 @@ def search_addons(query: str, server_properties, *args):
 def get_addon_info(addon: AddonWebObject, server_properties):
 
     # For cleaning up description formatting
-    emoji_pattern = re.compile("["
-                               u"\U0001F600-\U0001F64F"  # emoticons
-                               u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-                               u"\U0001F680-\U0001F6FF"  # transport & map symbols
-                               u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                               "]+", flags=re.UNICODE)
+    emoji_pattern = re.compile(
+        "["
+        u"\U0001F600-\U0001F64F"  # emoticons
+        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+        u"\U0001F680-\U0001F6FF"  # transport & map symbols
+        u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+        "]+",
+        flags = re.UNICODE
+    )
 
     if addon.supported == "unknown":
-        versions = []
 
-        # Run specific actions for bukkit plugins
+        # Run specific actions for Hangar plugins
         if addon.type == "bukkit":
+            description = ''
 
-            # Find addon information
-            item_link = constants.get_url(f"https://dev.bukkit.org{addon.url}", return_response=True).url
-            file_link = f"{item_link}/files"
+            if addon.description:
 
-            # Replace numeric project id's with redirected string
-            addon.id = item_link.split("/")[-1]
-            addon.url = item_link.split("https://dev.bukkit.org")[1]
-
-            with ThreadPoolExecutor(max_workers=10) as pool:
-                addon_map = list(pool.map(constants.get_url, [item_link, file_link]))
-
-            # Find description
-            description = addon_map[0].find("div", "project-description").text
-            description = emoji_pattern.sub(r'', description)  # no emoji
-            description = re.sub(r'(\n\s*)+\n', '\n\n', description)
-
-            # Get list of available versions
-            select = addon_map[1].find('select', attrs={'name': 'filter-game-version'})
-
-            try:
-                select.find('option')
-            except AttributeError:
-                return None
-
-            for option in select.findAll('option'):
-
-                version = ""
-
-                if addon.type == "bukkit":
-                    if "1." in option.text.strip():
-                        version = option.text.strip().replace("CB ", "").split("-")[0]
-                else:
-                    if option.text.strip().startswith("1."):
-                        version = option.text.strip()
-
-                if version not in versions and version:
-                    versions.append(version)
-
-            addon.versions = versions
+                # Format existing addon description from "mainPageContent"
+                page_content = addon.description
+                description = emoji_pattern.sub(r'', page_content).replace("*","").replace("#","").replace('&nbsp;', ' ')
+                description = '\n' + re.sub(r'(\n\s*)+\n', '\n\n', re.sub(r'<[^>]*>', '', description)).strip()
+                description = re.sub(r'!?\[?\[(.+?)\]\(.*\)', lambda x: x.group(1), description).replace("![","")
+                description = re.sub(r'\]\(*.+\)', '', description)
 
 
-        # Run specific actions for forge and fabric mods
+        # Run specific actions for Modrinth mods
         else:
 
             # Find addon information
@@ -829,7 +808,7 @@ def get_addon_info(addon: AddonWebObject, server_properties):
 
 
 # Return the latest available supported download link
-# - compat_mode: allows older addon versions to be selected as a download if the MC version is not available
+# - compat_mode: allows older addon versions to be selected as a download if the Minecraft version is not available
 # - force_available: if the server is older than the oldest addon version, use the oldest one available
 # AddonWebObject
 def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, force_available=False):
@@ -845,9 +824,7 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
             raw_version = raw_version.replace('beta', '.').replace('alpha', '.').replace('u', '.').replace('b','.').replace('a', '.')
             raw_version = re.sub("[^0-9|.]", "", raw_version)
             raw_version = re.search(r'\d+(\.\d+)+', raw_version).group(0)
-            # print(addon_version)
-        except:
-            raw_version = None
+        except: raw_version = None
         return raw_version
 
     # Instantiate required variables
@@ -857,117 +834,118 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
     final_version = None
     final_addon_version = None
     server_version = server_properties["version"]
+    log_tag = f"'{addon.name}' ({addon.type} {server_version})"
+    send_log('get_addon_url', f"retrieving download link for {log_tag}...\ncompat_mode: {compat_mode}")
 
-    pages = 1
 
     # If addon is bukkit type, use alternate link
-    if addon.type == "bukkit":
+    try:
+        if addon.type == "bukkit":
 
-        # Iterate through every page until a match is found
-        if not addon.id:
-            item_link = constants.get_url(f"https://dev.bukkit.org{addon.url}", return_response=True).url
+            # Value can be 1-25 (API enforced)
+            loop_limit   = 25
+            page_size    = 10
+            current_page = 1
+            total        = 0
+            retrieved    = -1
 
-            # Replace numeric project id's with redirected string
-            addon.id = item_link.split("/")[-1]
-            addon.url = item_link.split("https://dev.bukkit.org")[1]
+            # Get data from the API per page
+            def get_content(page: int = 1):
+                page_url = f'https://hangar.papermc.io/api/v1/projects/{addon.id}/versions?limit={page_size}'
+                if page < 1: page = 1
+                else: page_url += f'&offset={page_size * (page - 1)}'
+                return constants.get_url(page_url, return_response=True).json()
 
-        item_link = f"https://dev.bukkit.org{addon.url}/files"
-        page_content = constants.get_url(item_link)
+            # Process a single page
+            def process_page(page_content):
+                nonlocal retrieved, page_size, total, current_page
 
+                results    = page_content.get('result', [])
+                pagination = page_content.get('pagination', {})
+                if pagination and results:
 
-        # Iterate through every page
-        try:
-            if page_content.find('div', 'listing-header').find('a', 'b-pagination-item'):
-                pages = max([int(item.text) for item in page_content.find('div', 'listing-header').find_all('a', 'b-pagination-item')])
-        except AttributeError:
-            pass
+                    # Learn server provided pagination on first load
+                    if not (retrieved and total):
+                        page_size = pagination.get('limit', page_size)
+                        total     = pagination.get('count') or pagination.get('total') or len(results)
+                        retrieved = 0
 
-        for page in range(1, pages + 1):
+                    # Create a map of download links to Minecraft versions
+                    for data in results:
+                        paper = (data.get('downloads') or {}).get('PAPER')
+                        if not paper: return
 
-            if page != 1:
-                item_link = f"https://dev.bukkit.org{addon.url}/files?page={page}"
-                page_content = constants.get_url(item_link)
+                        url = paper.get('downloadUrl') or paper.get('externalUrl')
+                        if not url: return
 
-            # compile table into version & dl link
-            table = page_content.find('table', attrs={'class': 'listing listing-project-file project-file-listing b-table b-table-a'})
-            table_body = table.find('tbody')
-            rows = table_body.find_all('tr')
+                        # Minecraft versions supported by this release
+                        versions = (data.get('platformDependencies') or {}).get('PAPER', [])
+                        addon_version = format_version(data.get('name', ''))
 
-            for row in rows:
-                version = row.find('span', "version-label")  # game version
-                link = row.find('a', attrs={'data-action': 'file-link'})
+                        for version in versions:
+                            if isinstance(version, str) and version.startswith("1.") and "-" not in version and version not in link_list:
+                                link_list[version] = url
+                                version_list[version] = addon_version
 
-                try:
-                    if "1." in version.text.strip():
-                        version = version.text.strip().replace("CB ", "").split("-")[0]
+                    retrieved += len(results)
+                    current_page += 1
 
-                    # Add the latest version of each plugin to link list
-                    if version not in link_list.keys() and isinstance(version, str):
-                        download_url = f"https://dev.bukkit.org{link.get('href')}/download"
-
-                        try:
-                            addon_version = format_version(row.find(attrs={'data-name': True}).get('data-name'))
-                        except:
-                            addon_version = None
-
-                        link_list[version] = download_url
-                        version_list[version] = addon_version
-
-
-                    # Handle mislabeled versions if proper version is in the title
-                    if (server_version in link.text) and (server_version not in link_list.keys()) and (isinstance(version, str)) and compat_mode:
-
-                        # Compare main build numbers to be sure this doesn't trigger from the addon version
-                        version_a = version
-                        if version.count(".") > 1:
-                            version_a = version.rsplit('.', 1)[0]
-
-                        version_b = server_version
-                        if server_version.count(".") > 1:
-                            version_b = server_version.rsplit('.', 1)[0]
-
-                        if version_a == version_b:
-                            download_url = f"https://dev.bukkit.org{link.get('href')}/download"
-                            addon_version = format_version(link.text)
-                            link_list[server_version] = download_url
-                            version_list[server_version] = addon_version
-
-                except ValueError:
-                    pass
-
-            if server_version in link_list:
-                final_link = link_list[server_version]
-                final_version = server_version
-                final_addon_version = version_list[server_version]
-                break
+                # Stop on no results
+                else: raise StopIteration
 
 
-    # If addon type is forge or fabric
-    else:
+            # First page sync to learn pagination
+            try:
+                first_page = get_content(current_page)
+                process_page(first_page)
+            except StopIteration:
+                pass
 
-        # Iterate through every page until a match is found
-        file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
-        page_content = constants.get_url(file_link, return_response=True).json()
+            # Load remaining pages via thread pool merged in order
+            if retrieved < total and current_page < loop_limit:
+                num_pages = math.ceil(total / page_size) if page_size else 0
+                last_page = min(loop_limit, num_pages)
 
-        # Workaround for Fabric mods on Quilt
-        if not page_content and addon.type == 'quilt':
-            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["fabric"]'
+                if last_page >= current_page + 1:
+                    pages = range(current_page + 0, last_page + 1)
+
+                    with ThreadPoolExecutor(max_workers=10) as pool:
+                        for page_content in pool.map(get_content, pages):
+                            try: process_page(page_content)
+                            except StopIteration:
+                                break
+
+
+        # If addon type is forge or fabric
+        else:
+
+            # Iterate through every page until a match is found
+            file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["{addon.type}"]'
             page_content = constants.get_url(file_link, return_response=True).json()
 
-        for data in page_content:
-            files = data['files']
-            if files:
-                url = files[0]['url']
-                for version in data['game_versions']:
-                    if version not in link_list.keys() and version.startswith("1.") and "-" not in version:
-                        addon_version = None
-                        for gv in data['game_versions']:
-                            gv_str = f'-{gv}-'
-                            if gv_str in data['version_number']:
-                                addon_version = format_version(data['version_number'].split(gv_str)[-1])
-                                break
-                        link_list[version] = url
-                        version_list[version] = addon_version
+            # Workaround for Fabric mods on Quilt
+            if not page_content and addon.type == 'quilt':
+                file_link = f'https://api.modrinth.com/v2/project/{addon.id}/version?loaders=["fabric"]'
+                page_content = constants.get_url(file_link, return_response=True).json()
+
+            # Create a map of download links to Minecraft versions
+            for data in page_content:
+                files = data['files']
+                if files:
+                    url = files[0]['url']
+                    for version in data['game_versions']:
+                        if version not in link_list.keys() and version.startswith("1.") and "-" not in version:
+                            addon_version = None
+                            for gv in data['game_versions']:
+                                gv_str = f'-{gv}-'
+                                if gv_str in data['version_number']:
+                                    addon_version = format_version(data['version_number'].split(gv_str)[-1])
+                                    break
+                            link_list[version] = url
+                            version_list[version] = addon_version
+
+    except Exception as e:
+        send_log('get_addon_url', f"error retrieving download link for {log_tag}: {constants.format_traceback(e)}", 'error')
 
 
     # In case a link is not found, find the latest compatible version
@@ -993,6 +971,9 @@ def get_addon_url(addon: AddonWebObject, server_properties, compat_mode=True, fo
     addon.download_version = final_version
     addon.addon_version = final_addon_version
 
+    if final_link: send_log('get_addon_url', f"{final_link} add-on(s) for {log_tag}:\n{final_link}")
+    else:          send_log('get_addon_url', f"no download was found for {log_tag}", 'error')
+
     return addon
 
 
@@ -1003,15 +984,13 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
     new_addon = None
 
     # Force type
-    if force_type:
-        new_type = constants.server_type(force_type)
-    else:
-        new_type = addon.type
+    if force_type: new_type = constants.server_type(force_type)
+    else: new_type = addon.type
 
     # Possibly upgrade plugin to proper server type in case there's a mismatch
 
     project_urls = {
-        "bukkit": "https://dev.bukkit.org/projects/",
+        "bukkit": "https://hangar.papermc.io/api/v1/projects/",
         "forge": "https://modrinth.com/mod/",
         "fabric": "https://modrinth.com/mod/"
     }
@@ -1042,7 +1021,6 @@ def get_update_url(addon: AddonFileObject, new_version: str, force_type=None):
 
     # Only return AddonWebObject if url was acquired
     if addon_url and not new_addon:
-        addon_url = addon_url if new_type != "bukkit" else addon_url.split(".org")[1]
         new_addon = AddonWebObject(addon.name, new_type, addon.author, addon.subtitle, addon_url, addon.id, None)
 
     # If new_addon has an object, request download link
@@ -1064,30 +1042,38 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
     addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
     destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(constants.server_path(server_properties['name']), addon_folder)
 
-    # Download addon to "destination_path + file_name"
     file_name = constants.sanitize_name(addon.name if len(addon.name) < 35 else addon.name.split(' ')[0], True) + ".jar"
     total_path = os.path.join(destination_path, file_name)
+
+    send_log('download_addon', f"downloading '{addon}' to '{destination_path}'...", 'info')
+
+
+    # Download addon to "destination_path + file_name"
     try:
-        constants.cs_download_url(addon.download_url, file_name, destination_path)
-    except requests.exceptions.SSLError:
-        constants.download_url(addon.download_url, file_name, destination_path)
+        try:
+            constants.cs_download_url(addon.download_url, file_name, destination_path)
+        except requests.exceptions.SSLError:
+            constants.download_url(addon.download_url, file_name, destination_path)
 
-    # Check if addon is contained in a .zip file
-    zip_file = False
-    addon_download = os.path.join(constants.tempDir, "addon-download")
-    with ZipFile(total_path, 'r') as jar_file:
-        for item in [file for file in jar_file.namelist() if "/" not in file]:
-            if item.endswith(".jar"):
-                constants.folder_check(addon_download)
-                jar_file.extract(item, addon_download)
-                zip_file = True
-                break
+        # Check if addon is contained in a .zip file
+        zip_file = False
+        addon_download = os.path.join(constants.tempDir, "addon-download")
+        with ZipFile(total_path, 'r') as jar_file:
+            for item in [file for file in jar_file.namelist() if "/" not in file]:
+                if item.endswith(".jar"):
+                    constants.folder_check(addon_download)
+                    jar_file.extract(item, addon_download)
+                    zip_file = True
+                    break
 
-    if zip_file:
-        new_file_name = glob(os.path.join(addon_download, "*.jar"))[0]
-        os.remove(total_path)
-        os.rename(new_file_name, total_path)
-        constants.safe_delete(addon_download)
+        if zip_file:
+            new_file_name = glob(os.path.join(addon_download, "*.jar"))[0]
+            os.remove(total_path)
+            os.rename(new_file_name, total_path)
+            constants.safe_delete(addon_download)
+
+    except Exception as e: send_log('download_addon', f"error downloading '{addon}' to '{destination_path}': {constants.format_traceback(e)}", 'error')
+    else: send_log('download_addon', f"successfully downloaded '{addon}' to '{destination_path}'", 'info')
 
     return os.path.exists(total_path)
 
@@ -1148,6 +1134,13 @@ def enumerate_addons(server_properties, single_list=False):
                     disabled_addons.append(addon)
             pool.map(disabled, glob(os.path.join(disabled_addon_folder, "*")))
 
+    if enabled_addons or disabled_addons:
+        log_message = f"generated add-on list:"
+        if enabled_addons:  log_message += f'\nenabled: {enabled_addons}'
+        if disabled_addons: log_message += f'\ndisabled: {disabled_addons}'
+        send_log('enumerate_addons', log_message)
+
+
     if single_list:
         new_list = constants.deepcopy(enabled_addons)
         new_list.extend(constants.deepcopy(disabled_addons))
@@ -1161,6 +1154,8 @@ def enumerate_addons(server_properties, single_list=False):
 # Toggles addon state, alternate between normal and disabled folder
 # AddonFileObject
 def addon_state(addon: AddonFileObject, server_properties, enabled=True):
+    log_prefix = 'en' if enabled else 'dis'
+    server_name = server_properties['name']
 
     # Define folder paths based on server info
     addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
@@ -1170,30 +1165,39 @@ def addon_state(addon: AddonFileObject, server_properties, enabled=True):
 
     addon_path, addon_name = os.path.split(addon.path)
 
+
     # Enable addon if it's disabled
     if enabled and (addon_path == disabled_addon_folder):
         constants.folder_check(addon_folder)
         new_path = os.path.join(addon_folder, addon_name)
+
         try:
-            if os.path.exists(new_path):
-                os.remove(new_path)
+            if os.path.exists(new_path): os.remove(new_path)
             os.rename(addon.path, new_path)
-        except PermissionError:
+
+        except PermissionError as e:
+            send_log('addon_state', f"'{server_name}': error {log_prefix}abling {addon}: {constants.format_traceback(e)}", 'error')
             return False
+
         addon.path = new_path
 
     # Disable addon if it's enabled
     elif not enabled and (addon_path == addon_folder):
         constants.folder_check(disabled_addon_folder)
         new_path = os.path.join(disabled_addon_folder, addon_name)
+
         try:
-            if os.path.exists(new_path):
-                os.remove(new_path)
+            if os.path.exists(new_path): os.remove(new_path)
             os.rename(addon.path, new_path)
-        except PermissionError:
+
+        except PermissionError as e:
+            send_log('addon_state', f"'{server_name}': error {log_prefix}abling {addon}: {constants.format_traceback(e)}", 'error')
             return False
+
         addon.path = new_path
 
+
+    send_log('addon_state', f"'{server_name}': successfully {log_prefix}abled {addon}", 'info')
     return addon
 
 
@@ -1222,10 +1226,8 @@ def dump_config(server_name: str):
         if server_name == server_config.get("general", "serverName"):
             server_dict['version'] = server_config.get("general", "serverVersion")
             server_dict['type'] = server_config.get("general", "serverType").lower()
-            try:
-                server_dict['is_modpack'] = server_config.get("general", "isModpack").lower()
-            except:
-                pass
+            try: server_dict['is_modpack'] = server_config.get("general", "isModpack").lower()
+            except: pass
 
 
     return server_dict
@@ -1314,13 +1316,6 @@ def geyser_addons(server_properties):
             addon = get_addon_url(results[0], server_properties, compat_mode=True, force_available=True)
             final_list.append(addon)
 
-        # ViaVersion fabric
-        # url = requests.get('https://api.github.com/repos/ViaVersion/ViaFabric/releases/latest').json()['assets'][-1]['browser_download_url']
-        # addon = AddonWebObject('ViaFabric', 'fabric', 'ViaVersion', 'Allows newer clients to connect to legacy servers', url, 'viafabric')
-        # addon.download_url = url
-        # addon.download_url = url
-        # final_list.append(addon)
-
 
     return final_list
 
@@ -1329,30 +1324,42 @@ def geyser_addons(server_properties):
 # Query --> ModpackWebObject
 def search_modpacks(query: str, *a):
 
-    # Manually weighted search results
-    prioritized = ()
-
-    # Grab every modpack from search result and return results dict
     url = f'https://api.modrinth.com/v2/search?facets=[["project_type:modpack"]]&limit=100&query={query}'
     results = []
-    page_content = constants.get_url(url, return_response=True).json()
 
-    for mod in page_content['hits']:
-        name = mod['title']
-        author = mod['author']
-        subtitle = mod['description'].split("\n", 1)[0]
-        link = f"https://modrinth.com/modpack/{mod['slug']}"
-        file_name = mod['slug']
-        score = constants.similarity(query.strip().lower(), name.strip().lower())
+    log_tag = f"'{query.strip()}'"
+    send_log('search_modpacks', f"searching for {log_tag}...", 'info')
 
-        if link:
-            addon_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
-            addon_obj.score = score
-            addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
-            results.append(addon_obj)
+
+    # Grab every modpack from search result and return results dict
+    try:
+        page_content = constants.get_url(url, return_response=True).json()
+
+        for mod in page_content['hits']:
+            name = mod['title']
+            author = mod['author']
+            subtitle = mod['description'].split("\n", 1)[0]
+            link = f"https://modrinth.com/modpack/{mod['slug']}"
+            file_name = mod['slug']
+            score = constants.similarity(query.strip().lower(), name.strip().lower())
+
+            if link:
+                addon_obj = ModpackWebObject(name, 'modpack', author, subtitle, link, file_name, None)
+                addon_obj.score = score
+                addon_obj.versions = [v for v in reversed(mod['versions']) if (v.startswith("1.") and "-" not in v)]
+                results.append(addon_obj)
+
+    except Exception as e:
+        send_log('search_modpacks', f"error searching for {log_tag}: {constants.format_traceback(e)}", 'error')
+
 
     if results:
         results = sorted(results, key=lambda x: x.score, reverse=True)
+        debug_only = f':\n{results}' if constants.debug else ''
+        send_log('search_modpacks', f"found {len(results)} modpack(s) for {log_tag}{debug_only}", 'info')
+    else:
+        send_log('search_modpacks', f"no modpacks were found for {log_tag}", 'info')
+
 
     return results
 
@@ -1362,12 +1369,15 @@ def search_modpacks(query: str, *a):
 def get_modpack_info(modpack: ModpackWebObject, *a):
 
     # For cleaning up description formatting
-    emoji_pattern = re.compile("["
-                               u"\U0001F600-\U0001F64F"  # emoticons
-                               u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-                               u"\U0001F680-\U0001F6FF"  # transport & map symbols
-                               u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                               "]+", flags=re.UNICODE)
+    emoji_pattern = re.compile(
+        "["
+        u"\U0001F600-\U0001F64F"  # emoticons
+        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+        u"\U0001F680-\U0001F6FF"  # transport & map symbols
+        u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+        "]+",
+        flags = re.UNICODE
+    )
 
     versions = []
 

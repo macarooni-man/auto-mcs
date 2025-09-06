@@ -475,7 +475,7 @@ if os.name == 'nt':
         if (width * scale) < 2000:
             windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
     except:
-        print('Error: failed to set DPI context')
+        pass  # print('Error: failed to set DPI context')
 
 
 

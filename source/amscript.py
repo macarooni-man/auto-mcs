@@ -27,56 +27,9 @@ import gc
 # Auto-MCS Scripting API
 # ------------------------------------------------- Script Object ------------------------------------------------------
 
-# House an .ams file and relevant details
-class AmsFileObject():
-    def __init__(self, path, enabled=False):
-        self.script_object_type = 'file'
-        self.path = path
-        self.file_name = os.path.basename(path)
-        self.title = self.file_name.replace(".ams","")
-        self.author = None
-        self.version = None
-        self.description = None
-        self.enabled = enabled
-
-
-        # Try and grab header information from .ams file
-        try:
-            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                header_data = [line.replace("#","").strip() for line in f.read().split("#!")[1].splitlines() if line]
-                for line in header_data:
-
-                    # Get title of script
-                    if line.lower().startswith("title:"):
-                        self.title = line.split("title:", 1)[1].strip()
-                        continue
-
-                    # Get author of script
-                    elif line.lower().startswith("author:") and not self.author:
-                        self.author = line.split("author:", 1)[1].strip()
-                        continue
-
-                    # Get version of script
-                    elif line.lower().startswith("version:") and not self.version:
-                        self.version = line.split("version:", 1)[1].strip()
-                        continue
-
-                    # Get description of script
-                    elif line.lower().startswith("description:") and not self.description:
-                        self.description = line.split("description:", 1)[1].strip()
-                        continue
-
-        except:
-            pass
-
-        if not self.author:
-            self.author = "Unknown"
-        if not self.version:
-            self.version = "Unknown"
-        if not self.description:
-            self.description = "No description"
-
-        self.hash = base64.b64encode(f'{self.title}/{self.author}/{self.version}'.encode())
+# Log wrapper
+def send_log(object_data, message, level=None):
+    return constants.send_log(f'{__name__}.{object_data}', message, level, 'core')
 
 # House an .ams file in the online repository
 class AmsWebObject():
@@ -133,8 +86,68 @@ class AmsWebObject():
         if not self.description:
             self.description = "No description"
 
+    def __repr__(self):
+        return f"<{__name__}.{self.__class__.__name__} '{self.title}' at '{self.url}'>"
+
+# House an .ams file and relevant details
+class AmsFileObject():
+    def __init__(self, path, enabled=False):
+        self.script_object_type = 'file'
+        self.path = path
+        self.file_name = os.path.basename(path)
+        self.title = self.file_name.replace(".ams", "")
+        self.author = None
+        self.version = None
+        self.description = None
+        self.enabled = enabled
+
+        # Try and grab header information from .ams file
+        try:
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                header_data = [line.replace("#", "").strip() for line in f.read().split("#!")[1].splitlines() if line]
+                for line in header_data:
+
+                    # Get title of script
+                    if line.lower().startswith("title:"):
+                        self.title = line.split("title:", 1)[1].strip()
+                        continue
+
+                    # Get author of script
+                    elif line.lower().startswith("author:") and not self.author:
+                        self.author = line.split("author:", 1)[1].strip()
+                        continue
+
+                    # Get version of script
+                    elif line.lower().startswith("version:") and not self.version:
+                        self.version = line.split("version:", 1)[1].strip()
+                        continue
+
+                    # Get description of script
+                    elif line.lower().startswith("description:") and not self.description:
+                        self.description = line.split("description:", 1)[1].strip()
+                        continue
+
+        except:
+            pass
+
+        if not self.author:
+            self.author = "Unknown"
+        if not self.version:
+            self.version = "Unknown"
+        if not self.description:
+            self.description = "No description"
+
+        self.hash = base64.b64encode(f'{self.title}/{self.author}/{self.version}'.encode())
+
+    def __repr__(self):
+        return f"<{__name__}.{self.__class__.__name__} '{self.title}' at '{self.path}'>"
+
 # For managing .ams files and toggling them in the menu
 class ScriptManager():
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(f'{self.__class__.__name__}', f"'{self._server_name}': {message}", level)
 
     def __init__(self, server_name):
         self._server_name = server_name
@@ -145,6 +158,7 @@ class ScriptManager():
         self._online_scripts = constants.ams_web_list
         self._script_hash = None
         self._enumerate_scripts()
+        self._send_log('initialized ScriptManager', 'info')
 
     # Returns the value of the requested attribute (for remote)
     def _sync_attr(self, name):
@@ -218,6 +232,7 @@ class ScriptManager():
         success = False
         source_dir = os.path.dirname(script)
         source_name = os.path.basename(script)
+        self._send_log(f"importing script '{script}'...", 'info')
 
         # Make sure the addon_path and destination_path are not the same
         if source_dir != constants.scriptDir and source_name.endswith(".ams"):
@@ -227,10 +242,13 @@ class ScriptManager():
                 constants.copy_to(script, constants.scriptDir, source_name)
                 success = AmsFileObject(os.path.join(constants.scriptDir, source_name))
                 self.script_state(success, enabled=True)
-            except OSError:
-                pass
+
+            except OSError as e:
+                self._send_log(f"error importing '{script}': {constants.format_traceback(e)}", 'error')
+
 
         self._enumerate_scripts()
+        if success: self._send_log(f'successfully imported {success}', 'info')
         return success
 
     # Checks online to view scripts from GitHub
@@ -279,22 +297,29 @@ class ScriptManager():
     
     # Downloads script and enables it
     def download_script(self, script: AmsWebObject or str):
+        self._send_log(f"downloading '{script}'...", 'info')
 
         # If string was provided
         if isinstance(script, str):
             script = self.get_script(script, online=True)
 
-        constants.folder_check(constants.scriptDir)
-        constants.download_url(script.download_url, script.file_name, constants.scriptDir)
-        new_script = AmsFileObject(os.path.join(constants.scriptDir, script.file_name))
-        self.script_state(new_script, enabled=True)
+        try:
+            constants.folder_check(constants.scriptDir)
+            constants.download_url(script.download_url, script.file_name, constants.scriptDir)
+            new_script = AmsFileObject(os.path.join(constants.scriptDir, script.file_name))
+            self.script_state(new_script, enabled=True)
 
-        if script.libs:
-            lib_dir = os.path.join(constants.scriptDir, 'libs')
-            constants.folder_check(constants.downDir)
-            constants.folder_check(lib_dir)
-            constants.download_url(script.libs, 'libs.zip', constants.downDir)
-            constants.extract_archive(os.path.join(constants.downDir, 'libs.zip'), lib_dir)
+            if script.libs:
+                lib_dir = os.path.join(constants.scriptDir, 'libs')
+                constants.folder_check(constants.downDir)
+                constants.folder_check(lib_dir)
+                constants.download_url(script.libs, 'libs.zip', constants.downDir)
+                constants.extract_archive(os.path.join(constants.downDir, 'libs.zip'), lib_dir)
+
+            self._send_log(f'successfully downloaded {new_script}', 'info')
+
+        except Exception as e:
+            self._send_log(f'error downloading {script}: {constants.format_traceback(e)}', 'error')
 
     # Enables/Disables scripts
     def script_state(self, script: AmsFileObject, enabled=True):
@@ -317,8 +342,11 @@ class ScriptManager():
         try:
             os.remove(script.path)
             removed = True
-        except OSError:
+            self._send_log(f"successfully deleted '{script}'", 'info')
+
+        except OSError as e:
             removed = False
+            self._send_log(f"failed to delete '{script}': {constants.format_traceback(e)}", 'error')
 
         self._enumerate_scripts()
         return removed
@@ -359,11 +387,17 @@ class ScriptManager():
 # Pass in svrmgr.ServerObject
 class ScriptObject():
 
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        if self.server: return send_log(self.__class__.__name__, f"'{self.server.name}': {message}", level)
+
+
     # ------------------------- Management -------------------------
 
     def __init__(self, server_obj=None):
         # Server stuffs
         self.enabled = True
+        self.server = None
 
         if server_obj:
             self.server = server_obj
@@ -400,6 +434,8 @@ class ScriptObject():
         self.aliases = {}
         self.src_dict = {}
         self.function_dict = {}
+
+        self._send_log(f'initialized amscript runtime engine v{constants.ams_version}', 'info')
 
 
     def __del__(self):
@@ -545,7 +581,7 @@ class ScriptObject():
     # 2. Run 'gbl' string in exec() to check for functional errors, and send final memory space to 'variables' dict
     # 3. Pull out every @event and send them to the src_dict and function_dict for further processing
     # 4. Wrap @server.on_loop and @player.on_alias events with special code to ensure proper functionality
-    def convert_script(self, script_path):
+    def convert_script(self, script_path: str):
 
         def enum_error(e, find=None):
             s = os.path.basename(script_path)
@@ -1046,25 +1082,36 @@ class ScriptObject():
 
         # Process all script files
         total_count = loaded_count = len(self.scripts) - 1
+        only_base = False
 
         if total_count > 0:
-            self.server.amscript_log(f'[amscript v{constants.ams_version}] amscript is compiling, please wait...', 'info')
+            self.server.amscript_log(f'[amscript v{constants.ams_version}] compiling {len(self.scripts)} scripts, please wait...', 'info')
+            self._send_log(f'compiling {len(self.scripts)} scripts...', 'info')
+        else:
+            only_base = True
+            self._send_log(f"compiling the amscript base library...", 'info')
 
         for script in self.scripts:
             success = process_file(script)
-            if not success:
-                loaded_count -= 1
+            if not success: loaded_count -= 1
+            if success and only_base: self._send_log(f"successfully compiled the amscript base library...", 'info')
 
         # Report stats to console
         if total_count > 0:
             if loaded_count < total_count:
-                self.server.amscript_log(f'Loaded ({loaded_count}/{total_count}) script(s): check errors above for more info', 'warning')
+                message = f'loaded ({loaded_count}/{total_count}) script(s): check errors above for more info'
+                self._send_log(message, 'warning')
+                self.server.amscript_log(message[0].upper() + message[1:], 'warning')
 
             elif loaded_count == 0:
-                self.server.amscript_log(f'No scripts were loaded: check errors above for more info', 'error')
+                message = 'no scripts were loaded: check errors above for more info'
+                self._send_log(message, 'error')
+                self.server.amscript_log(message[0].upper() + message[1:], 'error')
 
             else:
-                self.server.amscript_log(f'Loaded ({loaded_count}/{total_count}) script(s) successfully!', 'success')
+                message = f'loaded ({loaded_count}/{total_count}) script(s) successfully!'
+                self._send_log(message, 'info')
+                self.server.amscript_log(message[0].upper() + message[1:], 'success')
 
         return loaded_count, total_count
 
@@ -1073,6 +1120,7 @@ class ScriptObject():
     def deconstruct(self, crash_data=None):
 
         self.shutdown_event({'date': dt.now(), 'crash': crash_data})
+        self._send_log('shutting down amscript engine...', 'info')
 
         # Write persistent data before doing anything
         self.server_script_obj._persistent_config.write_config()
@@ -1100,9 +1148,14 @@ class ScriptObject():
         self.aliases = {}
         gc.collect()
 
+        self._send_log('successfully stopped the amscript engine', 'info')
+
 
     # Runs specified event with parameters
     def call_event(self, event: str, args: tuple, delay=0):
+        log_content = f"firing event '{event}' with: {args}"
+        if delay > 0: log_content += f' and a delay of {delay}s'
+        self._send_log(log_content)
 
         if self.function_dict and event in self.valid_events:
             for script in tuple(self.function_dict.items()):
@@ -1217,12 +1270,17 @@ class ScriptObject():
     # Logs error to console from generated error dict
     def log_error(self, error_dict: dict):
         # print(error_dict)
-        self.server.amscript_log(f"Exception in '{error_dict['file']}': {error_dict['message']}", 'error')
+
         if error_dict['code'].startswith("from itertools import zip_longest") and error_dict['line'] == 1:
             return
+
         if error_dict['code'].startswith("Unknown") and error_dict['line'] == 0:
             return
-        self.server.amscript_log(f"[Line {error_dict['line']}]  {error_dict['code']}", 'error')
+
+        message = f"exception in '{error_dict['file']}': {error_dict['message']}"
+        message += f"\n[Line {error_dict['line']}]  {error_dict['code']}"
+        self._send_log(message, 'error')
+        self.server.amscript_log(message[0].upper() + message[1:], 'error')
 
 
     # ----------------------- Server Events ------------------------
@@ -1233,9 +1291,6 @@ class ScriptObject():
         self.server_script_obj._start_time = data['date']
         self.call_event('@server.on_start', (data))
         self.call_event('@server.on_loop', ())
-        if constants.debug:
-            print('server.on_start')
-            print(data)
 
     # Fires when server starts
     # Eventually add return code to see if it crashed
@@ -1244,9 +1299,6 @@ class ScriptObject():
         self.server_script_obj._running = False
         self.server_script_obj._stop_time = data['date']
         self.call_event('@server.on_stop', (data))
-        if constants.debug:
-            print('server.on_stop')
-            print(data)
 
 
     # ----------------------- Player Events ------------------------
@@ -1258,20 +1310,12 @@ class ScriptObject():
 
             if player_obj['user'] not in self.server_script_obj.player_list:
                 self.server_script_obj.player_list[player_obj['user']] = player_obj
-                # print(self.server_script_obj.player_list)
-                # print(self.server.run_data['player-list'])
 
             self.call_event('@player.on_join', (PlayerScriptObject(self.server_script_obj, player_obj['user'], _send_command=False), player_obj))
 
             if player_obj['user'] not in self.server_script_obj.usercache:
-                try:
-                    self.server_script_obj.usercache[player_obj['user']] = player_obj['uuid']
-                except KeyError:
-                    self.server_script_obj.usercache[player_obj['user']] = None
-
-            if constants.debug:
-                print('player.on_join')
-                print(player_obj)
+                try:             self.server_script_obj.usercache[player_obj['user']] = player_obj['uuid']
+                except KeyError: self.server_script_obj.usercache[player_obj['user']] = None
 
         Timer(0, thread).start()
 
@@ -1287,12 +1331,6 @@ class ScriptObject():
 
             if player_obj['user'] in self.server_script_obj.player_list:
                 del self.server_script_obj.player_list[player_obj['user']]
-                # print(self.server_script_obj.player_list)
-                # print(self.server.run_data['player-list'])
-
-            if constants.debug:
-                print('player.on_leave')
-                print(player_obj)
 
         Timer(0, thread).start()
 
@@ -1304,19 +1342,15 @@ class ScriptObject():
             msg_obj['content'] = msg_obj['content'].replace("&bl;", "[").replace("&br;", "]")
             if msg_obj['content'].strip().split(" ",1)[0].strip() in self.aliases.keys():
                 self.alias_event(msg_obj)
+
             elif msg_obj['content'].startswith('!'):
                 player = PlayerScriptObject(self.server_script_obj, msg_obj['user'])
                 message = 'Unknown command. Type "!help" for a list of commands.'
-                if player.is_server:
-                    self.server_script_obj.log(message)
-                else:
-                    player.log_error(message)
+                if player.is_server: self.server_script_obj.log(message)
+                else:                player.log_error(message)
+
             elif msg_obj['user'] != self.server_id:
                 self.call_event('@player.on_message', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), msg_obj['content']))
-
-                if constants.debug:
-                    print('player.on_message')
-                    print(msg_obj)
 
         Timer(0, thread).start()
 
@@ -1336,10 +1370,6 @@ class ScriptObject():
 
                 self.call_event('@player.on_death', (PlayerScriptObject(self.server_script_obj, msg_obj['user']), enemy, msg_obj['content']))
 
-                if constants.debug:
-                    print('player.on_death')
-                    print(msg_obj)
-
         Timer(0, thread).start()
 
     # Fires event when a player earns an achievement
@@ -1348,9 +1378,6 @@ class ScriptObject():
         def thread():
 
             self.call_event('@player.on_achieve', (PlayerScriptObject(self.server_script_obj, msg_obj['user'], _send_command=False), msg_obj['advancement']))
-
-            if constants.debug:
-                print('player.on_achieve')
 
         Timer(0, thread).start()
 
@@ -1369,10 +1396,6 @@ class ScriptObject():
                 permission = 'anyone'
 
             self.call_event('@player.on_alias', (PlayerScriptObject(self.server_script_obj, player_obj['user']), player_obj['content'], permission))
-
-            if constants.debug:
-                print('player.on_alias')
-                print(player_obj)
 
         Timer(0, thread).start()
 
@@ -1545,6 +1568,9 @@ class ServerScriptObject():
 
     def __del__(self):
         self._running = False
+
+    def __repr__(self):
+        return f"<{__name__}.{self.__class__.__name__} '{self.name}'>"
 
     # If self is printed, show string of server name instead
     def __str__(self):
@@ -1840,6 +1866,8 @@ class PlayerScriptObject():
 
         self._server.execute(command)
 
+    def __repr__(self):
+        return f"<{__name__}.{self.__class__.__name__} '{self.name}': {self.uuid}>"
 
     def __hash__(self):
         return hash(self.name)
@@ -2941,36 +2969,43 @@ def json_regex(match):
 
 # Enables or disables script for a specific server
 def script_state(server_name: str, script: AmsFileObject, enabled=True):
+    log_prefix = 'en' if enabled else 'dis'
     json_path = os.path.join(constants.server_path(server_name), 'amscript', json_name)
 
     # Get script whitelist data if it exists
     json_data = {'enabled': []}
     constants.folder_check(os.path.join(constants.server_path(server_name), 'amscript'))
-    if os.path.isfile(json_path):
-        with open(json_path, 'r') as f:
-            json_data = json.loads(f.read())
+    try:
+        if os.path.isfile(json_path):
+            with open(json_path, 'r') as f:
+                json_data = json.loads(f.read())
 
-    # print(script.file_name, json_data)
+        # Add file to json list
+        if enabled:
+            if script.file_name not in json_data['enabled']:
+                json_data['enabled'].append(script.file_name)
 
-    # Add file to json list
-    if enabled:
-        if script.file_name not in json_data['enabled']:
-            json_data['enabled'].append(script.file_name)
+        # Remove file from json list
+        else:
+            if script.file_name in json_data['enabled']:
+                json_data['enabled'].remove(script.file_name)
 
-    # Remove file from json list
-    else:
-        if script.file_name in json_data['enabled']:
-            json_data['enabled'].remove(script.file_name)
+            # Delete file if it's empty
+            if not json_data['enabled']:
+                if os.path.isfile(json_path):
+                    os.remove(json_path)
 
-        # Delete file if it's empty
-        if not json_data['enabled']:
-            if os.path.isfile(json_path):
-                os.remove(json_path)
+        # Write to json file if there are scripts
+        if json_data['enabled']:
+            with open(json_path, 'w+') as f:
+                f.write(json.dumps(json_data, indent=2))
 
-    # Write to json file if there are scripts
-    if json_data['enabled']:
-        with open(json_path, 'w+') as f:
-            f.write(json.dumps(json_data, indent=2))
+        send_log('script_state', f"'{server_name}': successfully {log_prefix}abled {script}", 'info')
+
+
+    except PermissionError as e:
+        send_log('script_state', f"'{server_name}': error {log_prefix}abling {script}: {constants.format_traceback(e)}", 'error')
+        return False
 
 # Gets and formats value for old NBT values
 def fmt(obj):
@@ -3809,6 +3844,10 @@ class PersistenceManager():
                 raise AttributeError(f"Root attribute '{key}' must be a dictionary, assign '{value}' to a key instead")
             return super().__setitem__(key, value)
 
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(f'{self.__class__.__name__}', f"'{self._name}': {message}", level)
+
     def __init__(self, server_name):
         # The server's persistent configuration will reside in the 'server' key
         # Individual players will have their own dictionary in the 'player' key
@@ -3833,19 +3872,18 @@ class PersistenceManager():
             self._data = self.PersistenceObject({"server": {}, "player": {}})
 
         self.clean_keys()
+        self._send_log('initialized amscript PersistenceManager', 'info')
 
 
     # Fixes deleted keys
     def clean_keys(self):
         try:
-            if not self._data['server']:
-                self._data.update({'server': {}})
+            if not self._data['server']: self._data.update({'server': {}})
         except KeyError:
             self._data.update({'server': {}})
 
         try:
-            if not self._data['player']:
-                self._data.update({'player': {}})
+            if not self._data['player']: self._data.update({'player': {}})
         except KeyError:
             self._data.update({'player': {}})
 
@@ -3858,12 +3896,14 @@ class PersistenceManager():
         if not self._data['server'] and not self._data['player']:
             if os.path.exists(self._path):
                 os.remove(self._path)
+                self._send_log('deleted persistence for server')
 
         # If they do exist, write to file
         else:
             constants.folder_check(self._config_path)
             with open(self._path, 'w+') as f:
                 json.dump(self._data, f, indent=4)
+                self._send_log(f"updated persistence in '{self._path}'")
 
 
     # Resets data, and deletes file on disk

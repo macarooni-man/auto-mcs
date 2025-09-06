@@ -1329,8 +1329,7 @@ def launch_window(path: str, data: dict, *a):
                     # If setting fails, retry
                     if attempts < max_attempts:
                         self.textwidget.after(delay, lambda: self.restore_cursor_pos(desired_pos, attempts + 1, max_attempts, delay))
-                    else:
-                        print(f"Failed to restore cursor position after {max_attempts} attempts. Error: {e}")
+                    # else: print(f"Failed to restore cursor position after {max_attempts} attempts. Error: {e}")
 
             def redraw(self, *_) -> None:
 
@@ -1358,16 +1357,6 @@ def launch_window(path: str, data: dict, *a):
                         block['folded'] = self.folding_states[line]
                     else:
                         block['folded'] = False  # Default to unfolded if no state is stored
-
-                # Remove invalid data from cache
-                # if self.loaded_from_cache:
-                #     new_folding_states = {}
-                #     for line, folded in self.folding_states.items():
-                #         print(line, folded, self.folded_blocks)
-                #         if line in self.folded_blocks and folded:
-                #             new_folding_states[line] = folded
-                #     self.folding_states = new_folding_states
-                #     self.loaded_from_cache = False
 
 
                 # Sort the blocks by their start line in ascending order
@@ -1481,10 +1470,8 @@ def launch_window(path: str, data: dict, *a):
 
                     # Determine the color based on search matches or errors
                     search_match = False
-                    try:
-                        search_match = lineno in code_editor.match_list
-                    except:
-                        pass
+                    try: search_match = lineno in code_editor.match_list
+                    except: pass
 
                     # Create the line number text
                     self.create_text(
@@ -4755,29 +4742,32 @@ tmdata = None
 def edit_script(script_path: str, data: dict, ipc_functions: dict, *args):
     global process, wlist, tmdata
 
+    # UI log wrapper
+    def send_log(object_data, message, level=None):
+        return ipc_functions['_send_log'](f'{__name__}.{object_data}', message, level, 'ui')
+    ipc_functions['send_log'] = send_log
+
     if script_path:
 
         # Establish if the IDE is running
-        try:
-            running = process.is_alive()
-        except:
-            running = False
+        try:    running = process.is_alive()
+        except: running = False
 
         # If not, start a new process/IPC pipe
         if not running:
 
             # Create  and start listener
             parent_conn, child_conn = multiprocessing.Pipe()
-            ipc_start_listener(parent_conn, data, ipc_functions)
+            ipc_listener(parent_conn, data, ipc_functions)
 
             # Initialize process
             mgr = multiprocessing.Manager()
             wlist = mgr.Value('window_list', '')
             tmdata = mgr.Value('telepath_map_data', '')
             process = multiprocessing.Process(
-                target=functools.partial(create_root, data),
-                args=(wlist, tmdata, child_conn),
-                daemon=True
+                target = functools.partial(create_root, data),
+                args   = (wlist, tmdata, child_conn),
+                daemon = True
             )
             process.start()
 
@@ -4787,9 +4777,9 @@ def edit_script(script_path: str, data: dict, ipc_functions: dict, *args):
 
 # IPC functions (these run in the context of the main process, and "data" is passed in)
 quit_ipc = False
-def ipc_start_listener(connection: multiprocessing.connection.Connection, start_data: dict, ipc_functions: dict):
+def ipc_listener(connection: multiprocessing.connection.Connection, start_data: dict, ipc_functions: dict):
     global quit_ipc
-    print("[amscript IDE] IPC connection opened")
+    ipc_functions['send_log']('ipc_listener', "IPC connection opened", 'info')
 
     # Process child commands and execute parent functions
     def process_command(data: dict):
@@ -4820,7 +4810,7 @@ def ipc_start_listener(connection: multiprocessing.connection.Connection, start_
             pass
 
         # Close the IPC connection, as the child is closed
-        print("[amscript IDE] IPC connection closed")
+        ipc_functions['send_log']('ipc_listener', "IPC connection closed", 'info')
         connection.close()
 
     Timer(0, listener).start()
@@ -4832,10 +4822,8 @@ def ipc_save_script(cache_dir: str, script_path: str, script_contents: str, ipc_
                 os.makedirs(cache_dir)
 
             file_name = os.path.basename(script_path).split('.')[0] + '.json'
-            if telepath_data:
-                json_dir = os.path.join(cache_dir, 'ide', 'fold-regions', 'telepath')
-            else:
-                json_dir = os.path.join(cache_dir, 'ide', 'fold-regions', 'local')
+            if telepath_data: json_dir = os.path.join(cache_dir, 'ide', 'fold-regions', 'telepath')
+            else:             json_dir = os.path.join(cache_dir, 'ide', 'fold-regions', 'local')
 
             if not os.path.exists(json_dir):
                 os.makedirs(json_dir)
@@ -4851,8 +4839,10 @@ def ipc_save_script(cache_dir: str, script_path: str, script_contents: str, ipc_
     try:
         with open(script_path, 'w+', encoding='utf-8', errors='ignore') as f:
             f.write(script_contents)
+            ipc_functions['send_log']('ipc_save_script', f"successfully saved to '{script_path}'", 'info')
+
     except Exception as e:
-        print(e)
+        ipc_functions['send_log']('ipc_save_script', f"error saving to '{script_path}': {ipc_functions['format_traceback'](e)}", 'error')
 
 
     # If telepath data, upload and import remotely
@@ -4880,7 +4870,7 @@ if os.name == 'nt':
         if (width * scale) < 2000:
             windll.user32.SetProcessDpiAwarenessContext(c_int64(-4))
     except:
-        print('Error: failed to set DPI context')
+        pass  # Error: failed to set DPI context
 
     default_font_size = 14
     font_size = 13

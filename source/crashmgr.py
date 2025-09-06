@@ -1,11 +1,9 @@
-from platform import platform, architecture
 from operator import itemgetter
 from glob import glob
 import functools
 import datetime
 import textwrap
 import hashlib
-import psutil
 import os
 
 import constants
@@ -72,8 +70,8 @@ def generate_log(exception, error_info=None):
 
     exception_summary = trimmed_exception[-1].strip() + f'\n    ({last_line.strip()})'
     exception_code = trimmed_exception[-1].strip() + f' ({last_line.split(",", 1)[0].strip()} - {last_line.split(",")[-1].strip()})'
-    # print(exception_code)
     trimmed_exception = "\n".join(trimmed_exception)
+    # print(exception_code)
 
 
     # Create AME code
@@ -84,7 +82,8 @@ def generate_log(exception, error_info=None):
 
     # Check for 'Logs' folder in application directory
     # If it doesn't exist, create a new folder called 'Logs'
-    log_dir = os.path.join(constants.applicationFolder, "Logs")
+    folder = 'errors' if crash_type == 'error' else 'crashes'
+    log_dir = os.path.join(constants.applicationFolder, "Logs", folder)
     constants.folder_check(log_dir)
 
     # Timestamp
@@ -95,19 +94,15 @@ def generate_log(exception, error_info=None):
     header = f'Auto-MCS Exception:    {ame}  '
     splash = constants.generate_splash(True)
 
-    cpu_arch = architecture()
-    if len(cpu_arch) > 1:
-        cpu_arch = cpu_arch[0]
-
     header_len = 42
     calculated_space = 0
     splash_line = ("||" + (' ' * (round((header_len * 1.5) - (len(splash) / 2)) - 2)) + splash)
 
-    formatted_os_name = constants.os_name.title() if constants.os_name != 'macos' else 'macOS'
-    try:
-        is_telepath = bool(constants.server_manager.current_server._telepath_data)
-    except:
-        is_telepath = False
+    # Last interaction
+    last_interaction = '\n'.join(i.strip() for i in constants.log_manager.since_last_interaction())
+
+    try:    is_telepath = bool(constants.server_manager.current_server._telepath_data)
+    except: is_telepath = False
 
     log = f"""{'=' * (header_len * 3)}
 {"||" + (' ' * round((header_len * 1.5) - (len(header) / 2) - 1)) + header + (' ' * round((header_len * 1.5) - (len(header)) + 14)) + "||"}
@@ -119,17 +114,18 @@ def generate_log(exception, error_info=None):
         
         Severity:          {crash_type.title()}
         
-        Version:           {constants.app_version} - {formatted_os_name} ({"Docker, " if constants.is_docker else ""}{platform()})
+        Version:           {constants.app_version} - {constants.format_os()}
         Online:            {constants.app_online}
+        Permissions:       {"Admin-level" if constants.is_admin() else "User-level"}
         UI Language:       {constants.get_locale_string(True)}
-        Headless:          {constants.headless}
+        Headless:          {"True" if constants.headless else "False"}
         Active servers:    {', '.join([f"{x}: {y.type} {y.version}" for x, y in enumerate(constants.server_manager.running_servers.values(), 1)]) if constants.server_manager.running_servers else "None"}
         Proxy (playit):    {"Active" if constants.playit._tunnels_in_use() else "Inactive"}
         Telepath client:   {"Active" if is_telepath else "Inactive"}
         Telepath server:   {"Active" if constants.api_manager.running else "Inactive"}
 
-        Processor info:    {psutil.cpu_count(False)} ({psutil.cpu_count()}) C/T @ {round((psutil.cpu_freq().max) / 1000, 2)} GHz ({cpu_arch.replace('bit', '-bit')})
-        Used memory:       {round(psutil.virtual_memory().used / 1073741824, 2)} / {round(psutil.virtual_memory().total / 1073741824)} GB
+        Processor info:    {constants.format_cpu()}
+        Used memory:       {constants.format_ram()}
 
 
 
@@ -156,26 +152,33 @@ def generate_log(exception, error_info=None):
         Exception Summary:
     {textwrap.indent(exception_summary, "        ")}
 
-{textwrap.indent(trimmed_exception, "        ")}"""
+{textwrap.indent(trimmed_exception, "        ")}
+
+    
+    Logging since last interaction:
+    
+{textwrap.indent(last_interaction, "        ")}"""
 
 
-    file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
-    with open(file_name, "w") as log_file:
-        log_file.write(log)
+    # Only write to disk if the app is compiled and logging is enabled
+    if constants.enable_logging:
+        file_name = os.path.abspath(os.path.join(log_dir, f"ame-{crash_type}_{time_stamp}.log"))
+        with open(file_name, "w") as log_file:
+            log_file.write(log)
 
-    # Remove old logs
-    keep = 50
+        # Remove old logs
+        file_data = {}
+        for file in glob(os.path.join(log_dir, "ame-*.log")):
+            file_data[file] = os.stat(file).st_mtime
 
-    file_data = {}
-    for file in glob(os.path.join(log_dir, "ame-*.log")):
-        file_data[file] = os.stat(file).st_mtime
+        sorted_files = sorted(file_data.items(), key=itemgetter(1))
 
-    sorted_files = sorted(file_data.items(), key=itemgetter(1))
+        delete = len(sorted_files) - constants.max_log_count
+        for x in range(0, delete):
+            os.remove(sorted_files[x][0])
 
-    delete = len(sorted_files) - keep
-    for x in range(0, delete):
-        os.remove(sorted_files[x][0])
-
+    else:
+        file_name = None
 
     return ame, file_name
 
@@ -204,7 +207,7 @@ def launch_window(exc_code, log_path):
 
     # Override if headless
     if constants.headless:
-        print(f'(!)  Uh oh, auto-mcs has crashed:  {exc_code}\n\n> Crash log:  {log_path}')
+        print(f'(!)  Uh oh, {constants.app_title} has crashed:  {exc_code}\n\n> Crash log:  {log_path}')
         return
 
 
@@ -229,8 +232,7 @@ def launch_window(exc_code, log_path):
     try:
         img = PhotoImage(file=file_icon)
         root.tk.call('wm', 'iconphoto', root._w, img)
-    except:
-        pass
+    except: pass
 
     root.configure(bg=background_color)
     root.resizable(False, False)
@@ -328,13 +330,17 @@ def launch_window(exc_code, log_path):
     )
     text_info.place(relx=0.5, y=210-(dp(16)/6), anchor=CENTER)
 
+    # When window is closed
+    def on_closing():
+        root.close = True
+        root.destroy()
 
     # Quit button (Bottom to top)
-    button = HoverButton('quit_button', click_func=root.destroy)
+    button = HoverButton('quit_button', click_func=on_closing)
     button.pack(pady=(20, 35), anchor='s', side='bottom')
 
     # Restart button
-    button = HoverButton('restart_button', click_func=constants.restart_app)
+    button = HoverButton('restart_button', click_func=lambda *_: (on_closing(), constants.restart_app()))
     button.pack(pady=20, anchor='s', side='bottom')
 
     # Log button
@@ -342,18 +348,10 @@ def launch_window(exc_code, log_path):
     button.pack(pady=0, anchor='s', side='bottom')
 
     # Play crash sound
-    try:
-        crash_sound.play()
-    except:
-        pass
-
-    # When window is closed
-    def on_closing():
-        root.close = True
-        root.destroy()
+    try: crash_sound.play()
+    except: pass
 
     root.protocol("WM_DELETE_WINDOW", on_closing)
-
     root.mainloop()
 
 

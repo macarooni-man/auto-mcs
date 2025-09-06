@@ -1,7 +1,8 @@
 altgraph==0.17.3
-asyncio-dgram==2.1.2
+asyncio-dgram>=2.1.2
 beautifulsoup4==4.11.1
 bs4==0.0.1
+colorama>=0.4.6
 certifi>=2024.7.4
 charset-normalizer==2.1.1
 cloudscraper>=1.2.71
