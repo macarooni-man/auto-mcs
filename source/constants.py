@@ -943,8 +943,7 @@ def check_app_version(current: str, latest: str, limit=None) -> bool:
 # Restarts auto-mcs by dynamically generating a script
 def restart_app(*a):
     if not app_compiled:
-        send_log('restart_app', "can't restart in script mode", 'warning')
-        raise SystemExit()
+        return send_log('restart_app', "can't restart in script mode", 'warning')
 
     # Setup environment
     retry_wait = 30
@@ -1031,14 +1030,12 @@ rm \"{script_path}\"""")
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
     if script_path: close_hooks.append(lambda *_: run_detached(script_path))
-    raise SystemExit()
 
 
 # Restarts and updates auto-mcs by dynamically generating a script
 def restart_update_app(*a):
     if not app_compiled:
-        send_log('restart_update_app', "can't restart in script mode", 'warning')
-        raise SystemExit()
+        return send_log('restart_update_app', "can't restart in script mode", 'warning')
 
     # Setup environment
     retry_wait = 30
@@ -1219,7 +1216,6 @@ rm \"{script_path}\"""")
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
     if script_path: close_hooks.append(lambda *_: run_detached(script_path))
-    raise SystemExit()
 
 
 # Format date string to be cross-platform compatible
@@ -6765,6 +6761,7 @@ class LoggingManager():
         self._q: 'queue.Queue[tuple[str, str, str, str, bool]]' = queue.Queue(maxsize=100)
         self._stop = threading.Event()
         self._writer = threading.Thread(target=self._worker, name="log-writer", daemon=True)
+        self._writer.setDaemon(True)
         self._writer.start()
 
         # All stacks listed here are not logged unless "debug" is enabled
@@ -7173,8 +7170,7 @@ class ConfigManager():
         self.save_config()
 
 # Global config manager
-if is_child_process: app_config = None
-else:                app_config: ConfigManager = ConfigManager()
+app_config: ConfigManager = ConfigManager()
 
 
 
@@ -7676,8 +7672,7 @@ class PlayitManager():
             self._stop_agent()
 
 # Global playit.gg manager
-if is_child_process: playit = None
-else:                playit: PlayitManager = PlayitManager()
+playit: PlayitManager = PlayitManager()
 
 
 

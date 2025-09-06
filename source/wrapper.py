@@ -343,7 +343,7 @@ if __name__ == '__main__':
     def app_crash(traceback, exception):
         import crashmgr
         exc_code, log_path = crashmgr.generate_log(traceback)
-        send_log('app_crash', f"{constants.app_title} has crashed with exception code:  {exc_code}\nFull crash log available in:  '{log_path}'", 'fatal')
+        send_log('app_crash', f"{constants.app_title} has crashed with exception code:  {exc_code}\n{constants.format_traceback(exception)}\nFull crash log available in:  '{log_path}'", 'fatal')
 
         # Normal Python behavior when testing
         if not constants.app_compiled: raise exception

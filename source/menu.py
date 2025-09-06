@@ -10241,7 +10241,12 @@ class UpdateAppProgressScreen(ProgressScreen):
         def after_func(*args):
             icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
             self.steps.label_2.text = "Update complete! Restarting..." + f"   [font={icons}]å[/font]"
-            Clock.schedule_once(constants.restart_update_app, 1)
+
+            def process_update_and_close(*a):
+                constants.restart_update_app()
+                exit_app()
+
+            Clock.schedule_once(process_update_and_close, 1)
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -29691,8 +29696,8 @@ def check_running(final_func):
     elif final_func:
         final_func()
 
-def exit_app():
-    amseditor.quit_ipc = True
+def exit_app(*a, **kw):
+    main_app.exit_check(force_close=True)
     sys.exit(0)
 
 class MainApp(App):
@@ -29725,7 +29730,7 @@ class MainApp(App):
         Window.size = (dp(size[0]), dp(size[1]))
         Window.top = top
         Window.left = left
-    Window.on_request_close = functools.partial(sys.exit)
+    Window.on_request_close = exit_app
 
     Window.minimum_width = constants.window_size[0]
     Window.minimum_height = constants.window_size[1] - 50
@@ -29742,6 +29747,7 @@ class MainApp(App):
 
         if force_close:
             Window.close()
+            amseditor.quit_ipc = True
             return False
 
         if constants.ignore_close:
@@ -29753,12 +29759,12 @@ class MainApp(App):
 
         else:
             Window.close()
+            amseditor.quit_ipc = True
             return False
 
     def _close_window_wrapper(self):
         data = main_app.exit_check()
-        if not data:
-            exit_app()
+        if not data: exit_app()
         return data
     Window.bind(on_request_close=_close_window_wrapper)
     Window.bind(on_cursor_enter=save_window_pos, on_cursor_leave=save_window_pos)
@@ -29992,12 +29998,14 @@ def run_application():
 
     send_log('run_application', 'initializing graphical UI (Kivy)', 'info')
     main_app = MainApp(title=constants.app_title)
+
     try:
         main_app.run()
         if constants.os_name == 'macos':
             Window.close()
     except ArgumentError:
         pass
+
     except Exception as e:
         Window.close()
         raise e

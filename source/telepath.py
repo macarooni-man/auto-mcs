@@ -957,6 +957,7 @@ class AuditLogger():
         self._q: 'queue.Queue[tuple[str, str, str, str]]' = queue.Queue(maxsize=100)
         self._stop = threading.Event()
         self._writer = threading.Thread(target=self._worker, name="audit-writer", daemon=True)
+        self._writer.setDaemon(True)
         self._writer.start()
         self._send_log('initialized AuditLogger')
 
