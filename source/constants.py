@@ -475,6 +475,61 @@ def run_detached(script_path: str):
     )
 
 
+# Retrieves the best-guess TTY device path to the terminal that launched it
+def get_parent_tty() -> str or None:
+    # Windows doesn't have a terminal
+    if os_name == 'windows': return None
+
+    # If there's a TTY in STDIO, just use that
+    for fd in (1, 0, 2):
+        try:
+            if os.isatty(fd): return shlex.quote(os.ttyname(fd))
+        except Exception: pass
+
+    # On Linux, try '/proc/self/fd' symlinks
+    if os_name == 'linux' and os.path.exists('/proc/self/fd'):
+        for fd in (1, 0, 2):
+            try:
+                p = os.readlink(f'/proc/self/fd/{fd}')
+                if p.startswith('/dev/'): return shlex.quote(p)
+            except Exception: pass
+
+    # If that doesn't work, ask 'ps' for TTY of this PID and walk up the process tree
+    def _ps_col(pid: int, col: str):
+        try:
+            out = subprocess.check_output(['ps', '-o', f'{col}=', '-p', str(pid)], stderr=subprocess.DEVNULL, text=True).strip()
+            if out: return shlex.quote(out)
+            return None
+        except Exception: return None
+
+    def _ps_tty(pid: int):
+        t = _ps_col(pid, 'tty')
+        if t and t != '?' and t.lower() != 'ttys??':
+            # ps returns like 'pts/3' or 'ttys002'
+            return shlex.quote(t) if t.startswith('/dev/') else f'/dev/{t}'
+        return None
+
+    # Try current process and then a few ancestors
+    pid = os.getpid()
+    tty = _ps_tty(pid)
+    if tty: return shlex.quote(tty)
+    ppid_seen = set()
+    ppid = os.getppid()
+
+    # Don't walk indefinitely
+    for _ in range(5):
+        if not ppid or ppid in ppid_seen: break
+        ppid_seen.add(ppid)
+        tty = _ps_tty(ppid)
+        if tty: return shlex.quote(tty)
+
+        p = _ps_col(ppid, 'ppid')
+        try: ppid = int(p) if p else None
+        except Exception: ppid = None
+
+    return None
+
+
 # Check if running in Docker
 def check_docker() -> bool:
     if os_name == 'linux':
@@ -892,6 +947,7 @@ def restart_app(*a):
 
     # Setup environment
     retry_wait = 30
+    tty = get_parent_tty()
     executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-reboot'
     script_path = None
@@ -960,7 +1016,14 @@ if kill -0 "$PID" 2>/dev/null; then
 fi
 
 # Launch the original executable
-exec {escaped_launch_path}{flags} &
+TTY={tty}
+if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
+    # Reuse the original terminal for STDIO
+    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+else
+    # Original terminal wasn't found, background quietly
+    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
+fi
 rm \"{script_path}\"""")
 
             script.write(script_content)
@@ -976,6 +1039,7 @@ def restart_update_app(*a):
 
     # Setup environment
     retry_wait = 30
+    tty = get_parent_tty()
     executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-update'
     script_path = None
@@ -1077,11 +1141,20 @@ else
     echo banner-failure@{failure_str} > "{update_log}"
 fi
 
-# Remove the update disk and launch the new executable
+# Remove the update disk
 hdiutil unmount /Volumes/auto-mcs
 rm -rf "{dmg_path}"
+
+# Launch the new executable
 chmod +x "{launch_path}"
-exec {escaped_launch_path}{flags} &
+TTY={tty}
+if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
+    # Reuse the original terminal for STDIO
+    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+else
+    # Original terminal wasn't found, background quietly
+    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
+fi
 rm \"{script_path}\"""")
 
             script.write(script_content)
@@ -1129,7 +1202,14 @@ fi
 
 # Launch the new executable
 chmod +x "{launch_path}"
-exec {escaped_launch_path}{flags} &
+TTY={tty}
+if [ -n "$TTY" ] && [ -e "$TTY" ] && [ -w "$TTY" ]; then
+    # Reuse the original terminal for STDIO
+    exec {escaped_launch_path}{flags} <"$TTY" >"$TTY" 2>&1 &
+else
+    # Original terminal wasn't found, background quietly
+    exec {escaped_launch_path}{flags} >/dev/null 2>&1 &
+fi
 rm \"{script_path}\"""")
 
             script.write(script_content)
