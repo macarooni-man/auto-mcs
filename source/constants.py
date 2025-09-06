@@ -80,17 +80,6 @@ boot_launches   = []
 bypass_admin_warning = False
 is_child_process = multiprocessing.current_process().name != "MainProcess"
 
-close_hooks = []
-def run_close_hooks():
-    global close_hooks
-
-    if close_hooks:
-        unloaded = deepcopy(close_hooks)
-        for func in unloaded:
-            send_log('run_close_hooks', f"executed '{func}'", 'debug')
-            close_hooks.remove(func)
-            func()
-
 
 # Global debug mode and app_compiled, set debug to false before release
 debug          = False
@@ -1039,7 +1028,8 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-    if script_path: close_hooks.append(lambda *_: run_detached(script_path))
+    run_detached(script_path)
+    sys.exit(0)
 
 
 # Restarts and updates auto-mcs by dynamically generating a script
@@ -1225,7 +1215,8 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-    if script_path: close_hooks.append(lambda *_: run_detached(script_path))
+    run_detached(script_path)
+    sys.exit(0)
 
 
 # Format date string to be cross-platform compatible
