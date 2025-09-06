@@ -77,6 +77,7 @@ screen_tree     = []
 back_clicked    = False
 session_splash  = ''
 boot_launches   = []
+close_hooks     = []
 bypass_admin_warning = False
 is_child_process = multiprocessing.current_process().name != "MainProcess"
 
@@ -860,8 +861,7 @@ def check_app_version(current: str, latest: str, limit=None) -> bool:
 # Restarts auto-mcs by dynamically generating a script
 def restart_app(*a):
     if not app_compiled:
-        send_log('restart_app', "can't restart in script mode", 'warning')
-        sys.exit()
+        return send_log('restart_app', "can't restart in script mode", 'warning')
 
     # Setup environment
     retry_wait = 30
@@ -901,7 +901,7 @@ del \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"\"{script_path}\" > nul 2>&1")
+        close_hooks.append(lambda *_: run_proc(f"\"{script_path}\" > nul 2>&1"))
 
 
 
@@ -940,16 +940,13 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
-
-    sys.exit()
+        close_hooks.append(lambda *_: run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\""))
 
 
 # Restarts and updates auto-mcs by dynamically generating a script
 def restart_update_app(*a):
     if not app_compiled:
-        send_log('restart_update_app', "can't restart in script mode", 'warning')
-        sys.exit()
+        return send_log('restart_update_app', "can't restart in script mode", 'warning')
 
     # Setup environment
     retry_wait = 30
@@ -1012,7 +1009,7 @@ del \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"\"{script_path}\" > nul 2>&1")
+        close_hooks.append(lambda *_: run_proc(f"\"{script_path}\" > nul 2>&1"))
 
 
 
@@ -1065,7 +1062,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
+        close_hooks.append(lambda *_: run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\""))
 
 
 
@@ -1115,9 +1112,7 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
-
-    sys.exit()
+        close_hooks.append(lambda *_: run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\""))
 
 
 # Format date string to be cross-platform compatible

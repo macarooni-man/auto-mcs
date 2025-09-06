@@ -474,3 +474,6 @@ if __name__ == '__main__':
 
     # Exit with return code if there's a crash
     if crash: sys.exit(20)
+
+    # Execute any remaining close hooks
+    if constants.close_hooks: [f() for f in constants.close_hooks]
