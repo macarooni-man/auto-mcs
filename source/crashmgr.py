@@ -330,13 +330,17 @@ def launch_window(exc_code, log_path):
     )
     text_info.place(relx=0.5, y=210-(dp(16)/6), anchor=CENTER)
 
+    # When window is closed
+    def on_closing():
+        root.close = True
+        root.destroy()
 
     # Quit button (Bottom to top)
-    button = HoverButton('quit_button', click_func=root.destroy)
+    button = HoverButton('quit_button', click_func=on_closing)
     button.pack(pady=(20, 35), anchor='s', side='bottom')
 
     # Restart button
-    button = HoverButton('restart_button', click_func=constants.restart_app)
+    button = HoverButton('restart_button', click_func=lambda *_: (on_closing(), constants.restart_app()))
     button.pack(pady=20, anchor='s', side='bottom')
 
     # Log button
@@ -347,13 +351,7 @@ def launch_window(exc_code, log_path):
     try: crash_sound.play()
     except: pass
 
-    # When window is closed
-    def on_closing():
-        root.close = True
-        root.destroy()
-
     root.protocol("WM_DELETE_WINDOW", on_closing)
-
     root.mainloop()
 
 

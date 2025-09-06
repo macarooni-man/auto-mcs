@@ -5,6 +5,12 @@
 # Global variables
 shopt -s expand_aliases
 python_path="/opt/python/3.9.18"
+
+# If /usr/bin/python3.9 exists and is executable, prefer /usr
+if [[ -x /usr/bin/python3.9 ]]; then
+  python_path="/usr"
+fi
+
 python=$python_path"/bin/python3.9"
 library_path=$( ldconfig -v 2>/dev/null | cut -d'/' -f1-3 | head -n1 )
 ssl_path="/opt/openssl"

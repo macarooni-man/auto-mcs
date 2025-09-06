@@ -112,6 +112,14 @@ if __name__ == '__main__':
         return constants.send_log(f'wrapper.{object_data}', message, level)
 
 
+    # Exits after a delay so that the logger has time to write on its thread
+    def exit_with_log(*a, exit_code: int = 0, **kw):
+        send_log(*a, **kw)
+        time.sleep(0.1)
+        sys.exit(exit_code)
+
+
+
     # Migrate old logs (<2.3.3) to new location
 
     # Move old error logs
@@ -223,8 +231,7 @@ if __name__ == '__main__':
                     server = constants.server_list[constants.server_list_lower.index(server.lower())]
                     constants.boot_launches.append(server)
                 else:
-                    send_log('', f"--launch: '{server}' does not exist", 'fatal')
-                    sys.exit(-1)
+                    exit_with_log('', f"--launch: '{server}' does not exist", 'fatal', exit_code=-1)
 
     except AttributeError as e:
         send_log('', f"error processing CLI arguments: {constants.format_traceback(e)}", 'error')
@@ -241,23 +248,20 @@ if __name__ == '__main__':
                     if not user32.IsZoomed(hwnd):
                         user32.ShowWindow(hwnd, 1)
                     user32.SetForegroundWindow(hwnd)
-                send_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal')
-                sys.exit(10)
+                exit_with_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal', exit_code=10)
 
         elif constants.os_name == "macos":
             command = f'ps -e | grep .app/Contents/MacOS/{os.path.basename(constants.launch_path)}'
             response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2:
-                send_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal')
-                sys.exit(10)
+                exit_with_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal', exit_code=10)
 
         # Linux
         else:
             command = f'ps -e | grep {os.path.basename(constants.launch_path)}'
             response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2:
-                send_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal')
-                sys.exit(10)
+                exit_with_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal', exit_code=10)
 
 
 
@@ -473,7 +477,7 @@ if __name__ == '__main__':
     b.join()
 
     # Exit with return code if there's a crash
-    if crash: sys.exit(20)
+    if crash and not constants.close_hooks: sys.exit(20)
 
-    # Execute any remaining close hooks
+    # Execute any defined close hooks
     if constants.close_hooks: [f() for f in constants.close_hooks]
