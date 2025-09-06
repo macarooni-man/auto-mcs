@@ -10244,7 +10244,7 @@ class UpdateAppProgressScreen(ProgressScreen):
 
             def process_update_and_close(*a):
                 constants.restart_update_app()
-                exit_app()
+                main_app.exit_check(force_close=True)
 
             Clock.schedule_once(process_update_and_close, 1)
 
