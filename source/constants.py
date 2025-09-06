@@ -77,9 +77,17 @@ screen_tree     = []
 back_clicked    = False
 session_splash  = ''
 boot_launches   = []
-close_hooks     = []
 bypass_admin_warning = False
 is_child_process = multiprocessing.current_process().name != "MainProcess"
+
+close_hooks = []
+def run_close_hooks():
+    global close_hooks
+
+    if close_hooks:
+        unloaded = deepcopy(close_hooks)
+        close_hooks = []
+        [f() for f in close_hooks]
 
 
 # Global debug mode and app_compiled, set debug to false before release

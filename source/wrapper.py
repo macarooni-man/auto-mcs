@@ -340,6 +340,9 @@ if __name__ == '__main__':
         if (not update_log or not os.path.exists(update_log)) and not constants.close_hooks:
             constants.safe_delete(constants.tempDir)
 
+        # Execute any defined close hooks
+        constants.run_close_hooks()
+
     def app_crash(traceback, exception):
         import crashmgr
         exc_code, log_path = crashmgr.generate_log(traceback)
@@ -479,6 +482,3 @@ if __name__ == '__main__':
 
     # Exit with return code if there's a crash
     if crash and not constants.close_hooks: sys.exit(20)
-
-    # Execute any defined close hooks
-    if constants.close_hooks: [f() for f in constants.close_hooks]
