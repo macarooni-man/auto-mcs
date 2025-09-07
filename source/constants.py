@@ -984,6 +984,9 @@ del \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
+        run_proc(f"\"{script_path}\" > nul 2>&1")
+        sys.exit(0)
+
 
 
     # Generate Linux/macOS script to restart
@@ -1099,6 +1102,9 @@ del \"{script_path}\"""")
 
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
+
+        run_proc(f"\"{script_path}\" > nul 2>&1")
+        sys.exit(0)
 
 
 
