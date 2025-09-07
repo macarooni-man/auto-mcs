@@ -337,7 +337,7 @@ if __name__ == '__main__':
             try: os.remove(img)
             except OSError: pass
 
-        if (not update_log or not os.path.exists(update_log)) and not constants.close_hooks:
+        if (not update_log or not os.path.exists(update_log)):
             constants.safe_delete(constants.tempDir)
 
     def app_crash(traceback, exception):
