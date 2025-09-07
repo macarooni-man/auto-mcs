@@ -478,4 +478,4 @@ if __name__ == '__main__':
     b.join()
 
     # Exit with return code if there's a crash
-    if crash and not constants.close_hooks: sys.exit(20)
+    if crash: sys.exit(20)
