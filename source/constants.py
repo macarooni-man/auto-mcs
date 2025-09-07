@@ -447,33 +447,6 @@ def run_proc(cmd: str, return_text=False) -> str or int:
     return output if return_text else return_code
 
 
-# Spawns a detached process with new process group
-def run_detached(script_path: str):
-    send_log('run_detached', f"executing '{script_path}'...")
-
-    if os_name == 'windows':
-        return subprocess.Popen(
-            ['cmd', '/c', script_path],
-            stdout = subprocess.DEVNULL,
-            stderr = subprocess.DEVNULL,
-            stdin = subprocess.DEVNULL,
-            creationflags = 0x00000008
-        )
-
-    # macOS & Linux
-    os.chmod(script_path, stat.S_IRWXU)
-    args = ['bash', script_path]
-    if os_name != 'macos': args.insert(0, 'setsid')
-    subprocess.Popen(
-        args,
-        stdout = subprocess.DEVNULL,
-        stderr = subprocess.DEVNULL,
-        stdin = subprocess.DEVNULL,
-        start_new_session = True,
-        close_fds = True
-    )
-
-
 # Retrieves the best-guess TTY device path to the terminal that launched it
 def get_parent_tty() -> str or None:
     # Windows doesn't have a terminal
@@ -984,6 +957,8 @@ del \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
+        run_proc(f"\"{script_path}\" > nul 2>&1")
+
 
 
     # Generate Linux/macOS script to restart
@@ -1028,7 +1003,8 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_app', f"writing to '{script_path}':\n{script_content}")
 
-    run_detached(script_path)
+        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
+
     sys.exit(0)
 
 
@@ -1100,6 +1076,8 @@ del \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
+        run_proc(f"\"{script_path}\" > nul 2>&1")
+
 
 
     # Generate macOS script to restart
@@ -1160,6 +1138,8 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
+        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
+
 
 
     # Generate Linux script to restart
@@ -1215,7 +1195,8 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
-    run_detached(script_path)
+        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\"")
+
     sys.exit(0)
 
 
