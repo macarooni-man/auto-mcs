@@ -1160,6 +1160,9 @@ rm \"{script_path}\"""")
             script.write(script_content)
             send_log('restart_update_app', f"writing to '{script_path}':\n{script_content}")
 
+        run_proc(f"chmod +x \"{script_path}\" && bash \"{script_path}\" > ~/Desktop/update.log")
+        sys.exit(0)
+
 
 
     # Generate Linux script to restart
