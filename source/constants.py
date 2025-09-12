@@ -942,6 +942,8 @@ def check_app_version(current: str, latest: str, limit=None) -> bool:
 
 # Restarts auto-mcs by dynamically generating a script
 def restart_app(*a):
+    global restart_flag
+
     if not app_compiled:
         return send_log('restart_app', "can't restart in script mode", 'warning')
 
@@ -1039,6 +1041,8 @@ rm \"{script_path}\"""")
 
 # Restarts and updates auto-mcs by dynamically generating a script
 def restart_update_app(*a):
+    global restart_flag
+
     if not app_compiled:
         return send_log('restart_update_app', "can't restart in script mode", 'warning')
 
@@ -1904,6 +1908,8 @@ def download_url(url: str, file_name: str, output_path: str, progress_func=None)
 
 # Will attempt to delete a directory tree without error
 def safe_delete(directory: str) -> bool:
+    global restart_flag
+
     if not directory:
         return False
 
