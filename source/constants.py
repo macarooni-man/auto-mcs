@@ -1788,7 +1788,7 @@ def extract_archive(archive_file: str, export_path: str, skip_root=False):
 
             send_log('extract_archive', f"extracted '{archive_file}' to '{export_path}'")
 
-        send_log('extract_archive', f"archive '{archive_file}' was not found", 'error')
+        else: send_log('extract_archive', f"archive '{archive_file}' was not found", 'error')
 
     except Exception as e:
         send_log('extract_archive', f"error extracting '{archive_file}': {format_traceback(e)}", 'error')
