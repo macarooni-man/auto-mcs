@@ -77,6 +77,7 @@ screen_tree     = []
 back_clicked    = False
 session_splash  = ''
 boot_launches   = []
+restart_flag    = False
 bypass_admin_warning = False
 is_child_process = multiprocessing.current_process().name != "MainProcess"
 
@@ -950,6 +951,7 @@ def restart_app(*a):
     executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-reboot'
     script_path = None
+    restart_flag = True
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
     folder_check(tempDir)
     send_log('restart_app', f'attempting to restart {app_title}...', 'warning')
@@ -1046,6 +1048,7 @@ def restart_update_app(*a):
     executable = os.path.basename(launch_path)
     script_name = 'auto-mcs-update'
     script_path = None
+    restart_flag = True
     flags = f"{' --debug' if debug else ''}{' --headless' if headless else ''}"
     folder_check(tempDir)
 
@@ -1902,7 +1905,11 @@ def download_url(url: str, file_name: str, output_path: str, progress_func=None)
 # Will attempt to delete a directory tree without error
 def safe_delete(directory: str) -> bool:
     if not directory:
-        return
+        return False
+
+    # Guard restart scripts and update log from deletion until restart
+    if directory == tempDir and restart_flag:
+        return False
 
     try:
         if os.path.exists(directory):
