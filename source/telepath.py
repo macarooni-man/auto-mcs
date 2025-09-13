@@ -17,6 +17,7 @@ from datetime import datetime as dt
 from datetime import timezone as tz
 from jwt import InvalidTokenError
 from operator import itemgetter
+from collections import deque
 from copy import deepcopy
 from munch import Munch
 from glob import glob
@@ -31,6 +32,7 @@ import random
 import bcrypt
 import string
 import base64
+import queue
 import json
 import time
 import jwt
@@ -49,6 +51,25 @@ import svrmgr
 # Auto-MCS Telepath API
 # This library abstracts auto-mcs functionality to control servers remotely
 # ----------------------------------------------- Global Variables -----------------------------------------------------
+
+# API log wrapper
+def send_log(object_data, message, level=None):
+    return constants.send_log(f'{__name__}.{object_data}', message, level, 'api')
+
+# Attach forwarder to the custom logger
+class UvicornToLoggerHandler(logging.Handler):
+    def __init__(self, mgr):
+        super().__init__()
+        self.mgr = mgr
+    def emit(self, record: logging.LogRecord):
+        try:
+            msg = record.getMessage()
+            level = (record.levelname or "INFO").lower()
+            tag = getattr(record, "tag", None) or getattr(record, "ctx", None)
+            obj = tag or (f"{record.module}.{record.funcName}" if record.funcName and record.module else record.name)
+            self.mgr._dispatch(obj.replace("__init__.", ""), msg, level=level, stack="uvicorn", _raw=False)
+        except Exception:
+            self.handleError(record)
 
 # Create ID_HASH to use for authentication so the token can be reset
 telepath_settings = constants.app_config.telepath_settings
@@ -118,6 +139,10 @@ class TelepathManager():
     default_host = "0.0.0.0"
     default_port = 7001
 
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
     def __init__(self):
         global app
 
@@ -155,23 +180,7 @@ class TelepathManager():
         # [{'host1': str, 'user': str, 'id': str}, {'host2': str, 'user': str, 'id': str}]
         # .....
 
-        # Disable low importance uvicorn logging
-        if not constants.debug:
-            logging.getLogger("uvicorn").handlers = []
-            logging.getLogger("uvicorn").propagate = False
-            logging.getLogger("uvicorn").setLevel(logging.WARNING)
-            logging.getLogger("uvicorn.error").handlers = []
-            logging.getLogger("uvicorn.error").propagate = False
-            logging.getLogger('uvicorn.error').setLevel(logging.WARNING)
-            logging.getLogger("uvicorn.access").handlers = []
-            logging.getLogger("uvicorn.access").propagate = False
-            logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
-            logging.getLogger("uvicorn.asgi").handlers = []
-            logging.getLogger("uvicorn.asgi").propagate = False
-            logging.getLogger('uvicorn.asgi').setLevel(logging.WARNING)
-
-        if constants.headless:
-            logging.disable(logging.CRITICAL)
+        self._send_log(f'initialized Telepath Manager v{self.version}')
 
     def _run_uvicorn(self):
         self.server = uvicorn.Server(self.config)
@@ -227,6 +236,7 @@ class TelepathManager():
     def _revoke_session(self, user_id: int):
         for session in self.authenticated_sessions:
             if user_id == session['id']:
+                self._send_log(f"access from client '{session['host']}/{session['user']}' is now revoked", 'warning')
                 self.authenticated_sessions.remove(session)
                 break
 
@@ -279,6 +289,7 @@ class TelepathManager():
         for host, user in self.current_users.items():
             if session_id == user['session_id']:
                 del self.current_users[host]
+                self._send_log(f"'{user['host']}/{user['user']}' has successfully logged out from '{user['ip']}'", 'info')
                 return True
 
     # Toggle disabling users
@@ -290,6 +301,8 @@ class TelepathManager():
                 session['disabled'] = disabled
 
                 self.secret_file.write(self.authenticated_sessions)
+                log_verb = 'disabled' if disabled else 'enabled'
+                self._send_log(f"client '{session['host']}/{session['user']}' is {log_verb}", 'info')
 
                 # Log out user if they are connected and disabled
                 if disabled:
@@ -312,15 +325,37 @@ class TelepathManager():
 
         return True
 
+    # Override uvicorn logging with custom implementation
+    def _gen_log_config(self):
+        return {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "handlers": {
+                "uvicorn_to_logger": {
+                    "()": UvicornToLoggerHandler,
+                    "level": "INFO",
+                    "mgr": constants.log_manager,
+                },
+            },
+
+            # Route uvicorn logs only to LoggingManager, and with no propagation to root
+            "loggers": {
+                "uvicorn": {"handlers": ["uvicorn_to_logger"], "level": "INFO", "propagate": False},
+                "uvicorn.error": {"handlers": ["uvicorn_to_logger"], "level": "INFO", "propagate": False},
+                "uvicorn.access": {"handlers": ["uvicorn_to_logger"], "level": "INFO", "propagate": False},
+                "uvicorn.asgi": {"handlers": ["uvicorn_to_logger"], "level": "INFO", "propagate": False},
+            },
+        }
 
     def update_config(self, host: str, port: int):
         self.host = host
         self.port = port
         self.config = uvicorn.Config(
-            app=app,
-            host=host,
-            port=port,
-            headers=[("server", constants.app_title)]
+            app = app,
+            host = host,
+            port = port,
+            headers = [("server", constants.app_title)],
+            log_config = self._gen_log_config()
             # workers=1,
             # limit_concurrency=1,
             # limit_max_requests=1
@@ -335,26 +370,23 @@ class TelepathManager():
             self.running = True
             threading.Timer(0, self._run_uvicorn).start()
 
-            message = f'initialized API on "{self.host}:{self.port}"'
-            if not constants.headless:
-                print(f'[INFO] [telepath] {message}')
-            else:
-                return message
+            message = f"initialized API on '{self.host}:{self.port}'"
+            self._send_log(message, 'info')
+            return message
+
         elif constants.headless:
             return 'Telepath API is already running'
 
     def stop(self):
-        # This still doesn't work for whatever reason?
         if self.running:
             self._kill_uvicorn()
             self.server = None
             self.running = False
 
-            message = f'disabled API on "{self.host}:{self.port}"'
-            if not constants.headless:
-                print(f'[INFO] [telepath] {message}')
-            else:
-                return message
+            message = f"disabled API on '{self.host}:{self.port}'"
+            self._send_log(message, 'info')
+            return message
+
         elif constants.headless:
             return 'Telepath API is not running'
 
@@ -377,8 +409,7 @@ class TelepathManager():
         else:
             session = requests.Session()
             self.sessions[host] = {'port': port, 'session': session}
-            if not constants.headless:
-                print(f"[INFO] [telepath] Opening session to '{host}'")
+            self._send_log(f"opening session to '{host}'", 'info')
         return session
     def _retry_wrapper(self, host: str, port: int, request_func, retry=True):
         try:
@@ -465,8 +496,7 @@ class TelepathManager():
 
             # Close the requests session
             data['session'].close()
-            if not constants.headless:
-                print(f"[INFO] [telepath] Closed session to '{host}:{data['port']}'")
+            self._send_log(f"closed session to '{host}:{data['port']}'", 'info')
 
 
     # -------- Internal endpoints to authenticate with Telepath -------- #
@@ -480,15 +510,13 @@ class TelepathManager():
         error_code = status.HTTP_418_IM_A_TEAPOT if random.randrange(10) == 1 else status.HTTP_409_CONFLICT
         if constants.ignore_close:
             message = "Server is busy, please try again later"
-            if not constants.headless:
-                print(f'[INFO] [telepath] {message}')
+            self._send_log(message, 'error')
             raise HTTPException(status_code=error_code, detail=message)
 
         # Ignore request if there's currently a valid pairing code
         if self.pair_data:
             message = "Please wait for the current code to expire"
-            if not constants.headless:
-                print(f'[INFO] [telepath] {message}')
+            self._send_log(message, 'error')
             raise HTTPException(status_code=error_code, detail=message)
 
         # Ignore an improperly formatted request
@@ -513,12 +541,11 @@ class TelepathManager():
             if constants.telepath_pair:
                 constants.telepath_pair.open(self.pair_data)
 
-            if not constants.headless:
-                print(f"[INFO] [telepath] Generated pairing code: {self.pair_data['code']} for host: {host}")
+            self._send_log(f"generated pairing code: {self.pair_data['code']} for host: {host}", 'info')
             return True
+
         else:
-            if not constants.headless:
-                print(f'[INFO] [telepath] Telepath API is not running')
+            self._send_log('Telepath API is not running', 'error')
             return False
 
     def _submit_pair(self, host: dict, id_hash: bytes, code: str, request: Request):
@@ -579,36 +606,42 @@ class TelepathManager():
             id = self.auth._decrypt(id_hash, ip)
 
             if id == UNIQUE_ID:
+                self._send_log(f"stopped a login from '{ip}' as it's local (this instance can't connect to itself)", 'warning')
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't connect to localhost")
 
-            for session in self.authenticated_sessions:
-                if self._verify_id(id, session['id']):
+            try:
+                for session in self.authenticated_sessions:
+                    if self._verify_id(id, session['id']):
 
-                    # Check if user is allowed to log in
-                    if not self._check_permissions(session):
-                        raise HTTPException(
-                            status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Permission denied"
-                        )
+                        # Check if user is allowed to log in
+                        if not self._check_permissions(session):
+                            raise HTTPException(
+                                status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Permission denied"
+                            )
 
-                    # Check if current user can be removed due to token expiry
-                    if ip in self.current_users and (self.current_users[ip]['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
-                        self._force_logout(self.current_users[ip]['session_id'])
+                        # Check if current user can be removed due to token expiry
+                        if ip in self.current_users and (self.current_users[ip]['last_active'] + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) < dt.now()):
+                            self._force_logout(self.current_users[ip]['session_id'])
 
-                    # Reset remote server for permission reasons
-                    if ip in constants.server_manager.remote_servers:
-                        del constants.server_manager.remote_servers[ip]
+                        # Reset remote server for permission reasons
+                        if ip in constants.server_manager.remote_servers:
+                            del constants.server_manager.remote_servers[ip]
 
-                    # Show banner on login
-                    constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
+                        # Show banner on login
+                        constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged in", True)
 
-                    # Update session with the ID
-                    session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': session['id'], 'ip': ip}
-                    self._update_user(session)
+                        # Update session with the ID
+                        session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'id': session['id'], 'ip': ip}
+                        self._update_user(session)
 
-                    # Return data without the ID
-                    returned_session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'ip': ip}
-                    return self._return_token(returned_session)
+                        # Return data without the ID
+                        returned_session = {'host': host['host'], 'user': host['user'], 'session_id': host['session_id'], 'ip': ip}
+                        self._send_log(f"'{host['host']}/{host['user']}' has successfully logged in from '{ip}'", 'info')
+                        return self._return_token(returned_session)
+
+            except Exception as e:
+                self._send_log(f"'{host['host']}/{host['user']}' failed to login from '{ip}': {constants.format_traceback(e)}", 'error')
 
 
             raise HTTPException(
@@ -619,14 +652,18 @@ class TelepathManager():
 
     def _logout(self, host: dict, request: Request):
         ip = request.client.host
-        for user in self.current_users.values():
+        try:
+            for user in self.current_users.values():
 
-            if ip == user['ip'] and host['host'] == user['host'] and host['user'] == user['user']:
+                if ip == user['ip'] and host['host'] == user['host'] and host['user'] == user['user']:
 
-                # Show banner on logout
-                constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged out", False)
+                    # Show banner on logout
+                    constants.telepath_banner(f"'${host['host']}/{host['user']}$' logged out", False)
 
-                return self._force_logout(user['session_id'])
+                    return self._force_logout(user['session_id'])
+
+        except Exception as e:
+            self._send_log(f"'{host['host']}/{host['user']}' failed to logout from '{ip}': {constants.format_traceback(e)}", 'error')
 
         return False
 
@@ -635,9 +672,9 @@ class TelepathManager():
     def login(self, ip: str, port: int):
 
         # Get the server's public key and create an encrypted token
-        try:
-            token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
-        except AttributeError:
+        try: token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
+        except AttributeError as e:
+            self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
             return {}
 
         url = f"http://{ip}:{port}/telepath/login"
@@ -662,8 +699,10 @@ class TelepathManager():
                 return return_data
             else:
                 return {}
-        except:
-            pass
+
+        except Exception as e:
+            self._send_log(f"failed to login to '{ip}:{port}': {constants.format_traceback(e)}", 'error')
+
         return {}
 
     def logout(self, ip: str, port: int):
@@ -674,11 +713,12 @@ class TelepathManager():
         try:
             session = self._get_session(ip, port)
             data = session.post(url, json=host_data, headers=self._get_headers(ip), timeout=3).json()
-            if not constants.headless:
-                print(f"[INFO] [telepath] Logged out from '{ip}:{port}'")
+            self._send_log(f"logged out from '{ip}:{port}'", 'info')
             return data
-        except:
-            pass
+
+        except Exception as e:
+            self._send_log(f"failed to logout from '{ip}:{port}': {constants.format_traceback(e)}")
+
         return False
 
     def request_pair(self, ip: str, port: int):
@@ -700,8 +740,10 @@ class TelepathManager():
         try:
             data = requests.post(url, json=host_data, timeout=5).json()
             return data
-        except:
-            pass
+
+        except Exception as e:
+            self._send_log(f"failed to initiate a pair request to '{ip}:{port}': {constants.format_traceback(e)}", 'error')
+
         return None
 
     def submit_pair(self, ip: str, port: int, code: str):
@@ -709,7 +751,8 @@ class TelepathManager():
         # Get the server's public key and create an encrypted token
         try:
             token = self.auth.public_encrypt(ip, port, UNIQUE_ID)
-        except AttributeError:
+        except AttributeError as e:
+            self._send_log(f"failed to get a public key from '{ip}:{port}': {constants.format_traceback(e)}", 'error')
             return None
 
         url = f"http://{ip}:{port}/telepath/submit_pair?code={code}"
@@ -719,9 +762,8 @@ class TelepathManager():
         }
 
         # Eventually add a retry algorithm
-
-        data = requests.post(url, json=host_data).json()
         try:
+            data = requests.post(url, json=host_data).json()
             if 'access-token' in data:
                 self.jwt_tokens[ip] = data['access-token']
                 return_data = deepcopy(data)
@@ -736,8 +778,10 @@ class TelepathManager():
                     constants.server_manager.add_telepath_server(return_data)
 
                 return return_data
-        except:
-            pass
+
+        except Exception as e:
+            self._send_log(f"failed to submit a pair code to '{ip}:{port}': {constants.format_traceback(e)}", 'error')
+
         return None
 
 
@@ -746,9 +790,15 @@ class TelepathManager():
 
 # Houses PKI for authentication
 class AuthHandler():
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
     def __init__(self):
         self.key_pairs = {}
         self.sha256 = hashes.SHA256()
+        self._send_log('initialized AuthHandler')
 
     # Server side functionality
     def _create_key_pair(self, ip: str):
@@ -762,6 +812,7 @@ class AuthHandler():
                     del self.key_pairs[ip]
         threading.Timer(AUTH_KEYPAIR_EXPIRE_SECONDS, expire_keypair).start()
 
+        self._send_log(f"created new key pair for '{ip}'")
         return private_key.public_key()
 
     def _get_public_key(self, ip: str, expire_immediately=False):
@@ -817,16 +868,16 @@ class AuthHandler():
         pem = requests.get(f"http://{ip}:{port}/telepath/get_public_key").json()
         public_key = serialization.load_pem_public_key(
             pem.encode('utf-8'),
-            backend=default_backend()
+            backend = default_backend()
         )
 
         # Return content encrypted with the public key
         cipher_text = public_key.encrypt(
             content.encode('utf-8'),
             padding.OAEP(
-                mgf=padding.MGF1(algorithm=self.sha256),
-                algorithm=self.sha256,
-                label=None
+                mgf = padding.MGF1(algorithm=self.sha256),
+                algorithm = self.sha256,
+                label = None
             )
         )
         return {'token': base64.b64encode(cipher_text).decode()}
@@ -834,22 +885,25 @@ class AuthHandler():
 # Handles reading and writing from telepath-secrets
 class SecretHandler():
 
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
     def __init__(self):
         self.file = constants.telepathSecrets
 
         # Create a fernet key from the hardware ID
         key = hashlib.sha256(UNIQUE_ID.encode()).digest()
         self.fernet = Fernet(base64.urlsafe_b64encode(key).decode('utf-8'))
+        self._send_log('initialized SecretHandler')
 
     def _encrypt(self, data: str):
         return self.fernet.encrypt(data.encode('utf-8'))
 
     def _decrypt(self, data: bytes):
-        try:
-            return self.fernet.decrypt(data)
+        try: return self.fernet.decrypt(data)
         except:
-            if not constants.headless:
-                print("[INFO] [telepath] Failed to load telepath-secrets, resetting...")
+            self._send_log(f"failed to load telepath-secrets, resetting...", 'error')
             return []
 
     def read(self):
@@ -876,10 +930,15 @@ class SecretHandler():
             f.write(encrypted)
 
 class AuditLogger():
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
     def __init__(self):
-        self.path = os.path.join(constants.telepathDir, 'audit-logs')
+        self.path = os.path.join(constants.applicationFolder, 'Logs', 'telepath')
         self.current_users = {}
-        self.max_logs = 50
+        self.max_logs = constants.max_log_count
         self.tags = {
             'ignore': ['_sync_attr', '_sync_telepath_stop', '_telepath_run_data', 'return_single_list', 'hash_changed',
                        '_view_notif', 'reload_config', 'retrieve_suggestions', 'get_rule', 'properties_dict'
@@ -889,30 +948,67 @@ class AuditLogger():
             'high': ['delete', 'import_script', 'script_state']
         }
 
-    # Purge old logs
-    def _purge_logs(self):
-        file_data = {}
-        for file in glob(os.path.join(self.path, "session-audit_*.log")):
-            file_data[file] = os.stat(file).st_mtime
+        # Initialize db stuff
+        self._db_lock = threading.Lock()  # protects _audit_db
+        self._io_lock = threading.Lock()  # serialize stdout writes to avoid interweaving
+        self._audit_db = deque(maxlen=2500)
 
-        sorted_files = sorted(file_data.items(), key=itemgetter(1))
+        # Async pipeline
+        self._q: 'queue.Queue[tuple[str, str, str, str]]' = queue.Queue(maxsize=100)
+        self._stop = threading.Event()
+        self._writer = threading.Thread(target=self._worker, name="audit-writer", daemon=True)
+        self._writer.setDaemon(True)
+        self._writer.start()
+        self._send_log('initialized AuditLogger')
 
-        delete = len(sorted_files) - self.max_logs
-        for x in range(0, delete):
-            os.remove(sorted_files[x][0])
+    # Prune old logs
+    def _prune_logs(self):
+        file_list = glob(os.path.join(self.path, "session-audit_*.log"))
+        if len(file_list) > self.max_logs:
+
+            file_data = {}
+            for file in file_list:
+                file_data[file] = os.stat(file).st_mtime
+
+            sorted_files = sorted(file_data.items(), key=itemgetter(1))
+
+            delete = len(sorted_files) - self.max_logs
+            for x in range(0, delete):
+                os.remove(sorted_files[x][0])
 
     # Returns formatted name of file, with the date
     def _get_file_name(self):
         time_stamp = dt.now().strftime(constants.fmt_date("%#m-%#d-%y"))
-        return os.path.abspath(os.path.join(self.path, f"session-audit_{time_stamp}.log"))
+        file_name  = f"session-audit_{time_stamp}.log"
+        return os.path.abspath(os.path.join(self.path, file_name))
 
-    # Used for reporting internal events to self.log() and tagging them
-    def _report(self, event: str, host: str = '', extra_data: str = '', server_name: str = ''):
+    # Used for reporting internal events; now a thin wrapper that just enqueues raw fields
+    def _dispatch(self, event: str, host: str = '', extra_data: str = '', server_name: str = ''):
+        payload = (str(event), host, str(extra_data), str(server_name))
+
+        # Enqueue line for background write
+        try:
+            # Prefer dropping general level data if the queue is full
+            if self._q.full():
+                try: self._q.get_nowait(); self._q.task_done()
+                except queue.Empty: pass
+            self._q.put_nowait(payload)
+
+        except queue.Full:
+
+            # For warnings/errors/fatal, block briefly to avoid loss
+            try: self._q.put(payload, timeout=0.25)
+
+            # Last resort: block until there is space so critical logs still go through the worker
+            except queue.Full: self._q.put(payload)
+
+    # Heavy work happens here on the worker thread; returns a fully formatted line or None to drop
+    def _add_entry(self, event: str, host, extra_data: str, server_name: str):
         threat = False
         event_tag = 'info'
 
         # Prioritize threats
-        if extra_data.lower().strip().startswith('potential threat blocked:'):
+        if isinstance(extra_data, str) and extra_data.lower().strip().startswith('potential threat blocked:'):
             threat = True
             event_tag = 'high'
 
@@ -924,10 +1020,8 @@ class AuditLogger():
         if isinstance(host, str) and host in self.current_users:
             host = self.current_users[host]
 
-        if host:
-            formatted_host = f"{host['host']}/{host['user']} | {host['ip']}"
-        else:
-            formatted_host = 'Unknown host'
+        if host: formatted_host = f"{host['host']}/{host['user']} | {host['ip']}"
+        else:    formatted_host = 'Unknown host'
 
         # Format date and event
         date_label = dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11)
@@ -936,33 +1030,60 @@ class AuditLogger():
             formatted_event = f'Server: "{server_name}" > {formatted_event.replace("Server > ", "", 1)}'
             formatted_event = formatted_event.replace('object', ' Object', 1)
 
-        # Get tag level from tag list
+        # Get tag level from tag list if it's not a threat
         if not threat:
             for t, events in self.tags.items():
                 for e in events:
                     if event.endswith(e.lower()):
-                        if t == 'ignore':
-                            return
-                        else:
-                            event_tag = t
-                            break
+                        if t == 'ignore': return
+                        event_tag = t
+                        break
 
-        formatted_message = f'[{event_tag.upper()}] [{date_label}] [user: {formatted_host}] {formatted_event}'
-        if extra_data:
-            formatted_message += f' > {extra_data}'
+        no_date_message = f'[{event_tag.upper()}] [user: {formatted_host}] {formatted_event}'
+        formatted_message = f'[{date_label}] {no_date_message}'
+        if extra_data: formatted_message += f' > {extra_data}'
 
 
         # Format sessions
-        if (event.endswith('login') or event.endswith('submit_pair')) and 'success' in extra_data.lower():
+        if (event.endswith('login') or event.endswith('submit_pair')) and isinstance(extra_data, str) and 'success' in extra_data.lower():
             formatted_message = f'<< Session Start - {formatted_host} >>\n{formatted_message}'
         elif event.endswith('logout') and not threat:
             formatted_message = f'{formatted_message}\n-- Session End - {formatted_host} --'
 
-        self.log(formatted_message)
+        self._send_log(no_date_message)
+        return formatted_message
+
+    def _worker(self):
+
+        # Drain until stop is set and queue is empty
+        while not self._stop.is_set() or not self._q.empty():
+            try: payload = self._q.get(timeout=0.2)
+            except queue.Empty: continue
+
+            try:
+                # Handle tuple payloads from _dispatch
+                if isinstance(payload, tuple) and len(payload) == 4:
+                    event, host, extra_data, server_name = payload
+                    line = self._add_entry(event, host, extra_data, server_name)
+                    if not line: continue
+
+                # If a preformatted string ever gets enqueued
+                elif isinstance(payload, str): line = payload
+                else: continue
+
+                # Append to in-memory buffer
+                with self._db_lock: self._audit_db.append({'time': dt.now(), 'line': line})
+
+            except Exception as e: self._send_log(f"Audit logging worker error: {constants.format_traceback(e)}", 'error')
+            finally: self._q.task_done()
 
 
     # Format list of dictionaries for UI
     def read(self):
+
+        # Make sure background enqueues are flushed or processed to disk before reading
+        self.flush()
+
         log_data = []
         file_name = self._get_file_name()
         if os.path.exists(file_name):
@@ -970,16 +1091,56 @@ class AuditLogger():
                 log_data = f.readlines()
         return log_data
 
-    def log(self, message: str):
-        file_name = self._get_file_name()
+    # Wait until all queued audit lines are in _audit_db
+    def flush(self, timeout: float = None):
+        start = time.monotonic()
+        self._q.join()
+        if timeout is not None and (time.monotonic() - start) > timeout:
+            return False
+        return True
 
+    # Stop the writer thread
+    def close(self, graceful: bool = True):
+        if graceful:
+            self._stop.set()
+            self.flush()
+        else:
+            self._stop.set()
+
+    # Flush queue and write the entire in-memory audit buffer to disk and clear the buffer
+    def dump_to_disk(self) -> str:
+
+        # Ensure background thread has appended everything to _audit_db
+        self.flush()
+        path = self._get_file_name()
+
+        # Don’t write if logging is disabled or deque is empty, but still return the path for consistency
+        if not constants.enable_logging or not self._audit_db:
+            with self._db_lock: self._audit_db.clear()
+            return path
+
+
+        self._send_log(f"flushing logger to '{path}'")
+
+        # Ensure file/dir exists
         mode = 'a+'
-        if not os.path.exists(file_name):
-            constants.folder_check(os.path.dirname(file_name))
+        if not os.path.exists(path):
+            constants.folder_check(os.path.dirname(path))
             mode = 'w+'
 
-        with open(file_name, mode, errors='ignore') as f:
-            f.write(f'{message}\n')
+        # Snapshot & clear buffer
+        with self._db_lock:
+            entries = list(self._audit_db)
+            self._audit_db.clear()
+
+        # Write plain text (your messages are already formatted)
+        constants.folder_check(self.path)
+        with open(path, mode, encoding="utf-8", newline="\n", errors='ignore') as f:
+            for e in entries:
+                f.write(f"{e['line'].rstrip()}\n")
+
+        self._prune_logs()
+        return path
 
 class Token(BaseModel):
     access_token: str
@@ -993,12 +1154,12 @@ auth_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 def create_access_token(data: dict, expires_delta: td = None):
     to_encode = data.copy()
-    if expires_delta:
-        expire = dt.now(tz.utc) + expires_delta
-    else:
-        expire = dt.now(tz.utc) + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    if expires_delta: expire = dt.now(tz.utc) + expires_delta
+    else:             expire = dt.now(tz.utc) + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+    send_log('create_access_token', f"created a JWT access token for '{data['host']}/{data['user']}'")
     return encoded_jwt
 
 @limiter.limit('500/minute')
@@ -1053,7 +1214,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
 
                 # Log to telepath logger
                 extra_data = "Connection blocked: session has expired"
-                constants.api_manager.logger._report(endpoint, host=current_user, extra_data=extra_data)
+                constants.api_manager.logger._dispatch(endpoint, host=current_user, extra_data=extra_data)
 
                 if 'pending-removal' not in current_user:
                     current_user['pending-removal'] = True
@@ -1074,7 +1235,7 @@ async def authenticate(token: str = Depends(auth_scheme), request: Request = Non
             extra_data = "Potential threat blocked: attempted to use a valid token from another session"
         else:
             extra_data = "Potential threat blocked: attempted to authenticate with invalid credentials"
-        constants.api_manager.logger._report(endpoint, host=user, extra_data=extra_data)
+        constants.api_manager.logger._dispatch(endpoint, host=user, extra_data=extra_data)
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1255,8 +1416,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         return formatted
 
     # operation = 'Requesting' if request else 'Responding to'
-    # if not constants.headless:
-    #     print(f"[INFO] [telepath] {operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
+    # send_log('api_wrapper', f"{operation} API method '{obj_name}.{method_name}' with args: {args} and kwargs: {kwargs}")
 
 
     # If this session is requesting data from a remote session
@@ -1294,7 +1454,7 @@ def api_wrapper(self, obj_name: str, method_name: str, request=True, params=None
         formatted_args = ''
         if kwargs:
             formatted_args = ', '.join([f'{k}={v}' for k, v in kwargs.items()])
-        constants.api_manager.logger._report(f'{short_name}.{method_name}', host=host, extra_data=formatted_args, server_name=remote_server.name)
+        constants.api_manager.logger._dispatch(f'{short_name}.{method_name}', host=host, extra_data=formatted_args, server_name=remote_server.name)
 
         return exec_memory['locals']['returned'](**kwargs)
 
@@ -1345,8 +1505,7 @@ def create_remote_obj(obj: object, request=True):
             return self._refresh_attr(name)
 
         except Exception as e:
-            if constants.debug:
-                print(f'Error (telepath): failed to fetch attribute, {e}')
+            send_log('create_remote_obj', f'failed to fetch attribute: {constants.format_traceback(e)}', 'error')
 
         # If the attribute can't be retrieved, return the default. Error handling in constants.telepath_disconnect()
         return self._defaults[name]['value']
@@ -1458,6 +1617,10 @@ def create_remote_obj(obj: object, request=True):
 # Create objects to import for the rest of the app to request data
 class RemoteServerObject(create_remote_obj(ServerObject)):
 
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
     def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
         self._disconnected = False
@@ -1478,11 +1641,8 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         self.script_manager = RemoteScriptManager(self)
 
         self._clear_all_cache()
-
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
-
-        if not constants.headless:
-            print(f"[INFO] [auto-mcs] Server Manager (Telepath): Loaded '{host}/{self.name}'")
+        constants.server_manager._send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
 
     def _is_favorite(self):
         try:
@@ -1612,6 +1772,11 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
         )
 
 class RemoteScriptManager(create_remote_obj(ScriptManager)):
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
@@ -1655,6 +1820,11 @@ class RemoteScriptManager(create_remote_obj(ScriptManager)):
         return super().script_state(*args, **kwargs)
 
 class RemoteAddonManager(create_remote_obj(AddonManager)):
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
@@ -1698,6 +1868,11 @@ class RemoteAddonManager(create_remote_obj(AddonManager)):
         return super().addon_state(*args, **kwargs)
 
 class RemoteBackupManager(create_remote_obj(BackupManager)):
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
@@ -1715,6 +1890,11 @@ class RemoteBackupManager(create_remote_obj(BackupManager)):
         return data
 
 class RemoteAclManager(create_remote_obj(AclManager)):
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
     def __init__(self, server_obj: RemoteServerObject):
         self._telepath_data = server_obj._telepath_data
         self.parent = server_obj
@@ -1853,7 +2033,7 @@ async def request_pair(host: dict, id_hash: dict, request: Request):
         # Report event to logger
         extra_data = 'Requested to pair'
         host['ip'] = request.client.host
-        constants.api_manager.logger._report('telepath.request_pair', host=host, extra_data=extra_data)
+        constants.api_manager.logger._dispatch('telepath.request_pair', host=host, extra_data=extra_data)
 
         return constants.api_manager._request_pair(host, id_hash, request)
 
@@ -1876,7 +2056,7 @@ async def submit_pair(host: dict, id_hash: dict, code: str, request: Request):
         # Report event to logger
         host['ip'] = request.client.host
         extra_data = "Successfully authenticated" if 'detail' not in data else "Failed to authenticate"
-        constants.api_manager.logger._report('telepath.submit_pair', host=host, extra_data=extra_data)
+        constants.api_manager.logger._dispatch('telepath.submit_pair', host=host, extra_data=extra_data)
 
         return data
 
@@ -1899,7 +2079,7 @@ async def login(host: dict, id_hash: dict, request: Request):
         # Report event to logger
         host['ip'] = request.client.host
         extra_data = "Successfully authenticated" if data else "Failed to authenticate"
-        constants.api_manager.logger._report('telepath.login', host=host, extra_data=extra_data)
+        constants.api_manager.logger._dispatch('telepath.login', host=host, extra_data=extra_data)
 
         return data
 
@@ -1909,9 +2089,10 @@ async def login(host: dict, id_hash: dict, request: Request):
 @app.post("/telepath/logout", tags=['telepath'], dependencies=[Depends(authenticate)])
 async def logout(host: dict, request: Request):
     if constants.api_manager:
+        if not host.get('ip', None): host['ip'] = request.client.host
 
         # Report event to logger
-        constants.api_manager.logger._report('telepath.logout', host=request.client.host)
+        constants.api_manager.logger._dispatch('telepath.logout', host=host)
 
         return constants.api_manager._logout(host, request)
 
@@ -1926,7 +2107,7 @@ async def open_remote_server(name: str, request: Request):
     if (constants.app_config.telepath_settings['enable-api'] or constants.headless) and constants.server_manager:
 
         # Report event to logger
-        constants.api_manager.logger._report('main.open_remote_server', host=request.client.host, extra_data=f'Opened: "{name}"')
+        constants.api_manager.logger._dispatch('main.open_remote_server', host=request.client.host, extra_data=f'Opened: "{name}"')
 
         return constants.server_manager.open_remote_server(request.client.host, name)
 
@@ -1957,7 +2138,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), is_dir=Fal
             destination_path = os.path.join(constants.uploadDir, dir_name)
 
         # Report event to logger
-        constants.api_manager.logger._report('main.upload_file', host=request.client.host, extra_data=f'Uploaded: "{destination_path}"')
+        constants.api_manager.logger._dispatch('main.upload_file', host=request.client.host, extra_data=f'Uploaded: "{destination_path}"')
 
         return JSONResponse(content={
             "name": file_name,
@@ -2004,7 +2185,7 @@ async def download_file(request: Request, file: str):
         raise HTTPException(status_code=500, detail=f"File '{file}' does not exist")
 
     # Report event to logger
-    constants.api_manager.logger._report('main.download_file', host=request.client.host, extra_data=f'Downloaded: "{path}"')
+    constants.api_manager.logger._dispatch('main.download_file', host=request.client.host, extra_data=f'Downloaded: "{path}"')
 
     # If it exists in a permitted directory, respond with the file
     return FileResponse(path, filename=os.path.basename(path))
