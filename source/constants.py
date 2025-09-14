@@ -427,7 +427,7 @@ total_ram  = round(psutil.virtual_memory().total / 1073741824)
 max_memory = int(round(total_ram - (total_ram / 4)))
 
 # Replacement for os.system to prevent CMD flashing, and also for debug logging
-def run_proc(cmd: str, return_text=False) -> str or int:
+def run_proc(cmd: str, return_text=False, log_only_in_debug=False) -> str or int:
     std_setting = subprocess.PIPE
 
     result = subprocess.run(
@@ -443,7 +443,11 @@ def run_proc(cmd: str, return_text=False) -> str or int:
     return_code = result.returncode
     run_content = f'\n{output.strip()}'
     log_content = f'with output:{run_content}' if run_content.strip() else 'with no output'
-    send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}", None if return_code == 0 else 'error')
+
+    if return_code != 0 and (debug or not log_only_in_debug):
+        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}", 'error')
+    else:
+        send_log('run_proc', f"'{cmd}': returned exit code {result.returncode} {log_content}")
 
     return output if return_text else return_code
 
@@ -862,18 +866,18 @@ def get_refresh_rate() -> float or None:
 
     try:
         if os_name == "windows":
-            rate = run_proc('powershell Get-WmiObject win32_videocontroller | findstr "CurrentRefreshRate"', True)
+            rate = run_proc('powershell Get-WmiObject win32_videocontroller | findstr "CurrentRefreshRate"', True, log_only_in_debug=True)
             if "CurrentRefreshRate" in rate:
                 refresh_rate = round(float(rate.splitlines()[0].split(":")[1].strip()))
 
         elif os_name == 'macos':
-            rate = run_proc('system_profiler SPDisplaysDataType | grep Hz', True)
+            rate = run_proc('system_profiler SPDisplaysDataType | grep Hz', True, log_only_in_debug=True)
             if "@ " in rate and "Hz" in rate:
                 refresh_rate = round(float(re.search(r'(?<=@ ).*(?=Hz)', rate.strip())[0]))
 
         # Linux
         else:
-            rate = run_proc('xrandr | grep "*"', True)
+            rate = run_proc('xrandr | grep "*"', True, log_only_in_debug=True)
             if rate.strip().endswith("*"):
                 refresh_rate = round(float(rate.splitlines()[0].strip().split(" ", 1)[1].strip().replace("*","")))
 
