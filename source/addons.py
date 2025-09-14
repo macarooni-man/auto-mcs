@@ -1042,7 +1042,7 @@ def download_addon(addon: AddonWebObject, server_properties, tmpsvr=False):
     addon_folder = "plugins" if constants.server_type(server_properties['type']) == 'bukkit' else 'mods'
     destination_path = os.path.join(constants.tmpsvr, addon_folder) if tmpsvr else os.path.join(constants.server_path(server_properties['name']), addon_folder)
 
-    file_name = constants.sanitize_name(addon.name if len(addon.name) < 35 else addon.name.split(' ')[0], True) + ".jar"
+    file_name = constants.sanitize_name(addon.name if len(addon.name) < 35 else ' '.join(addon.name.split(' ')[:2]), True) + ".jar"
     total_path = os.path.join(destination_path, file_name)
 
     send_log('download_addon', f"downloading '{addon}' to '{destination_path}'...", 'info')
