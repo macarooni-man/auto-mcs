@@ -27025,8 +27025,34 @@ class ServerSettingsScreen(MenuBackground):
             sub_layout = ScrollItem()
             input_border = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)', disabled=(not constants.app_online))
             sub_layout.add_widget(input_border)
+
+            def open_login(*a):
+                def _thread():
+                    if not constants.playit.initialized: constants.playit.initialize()
+                    webbrowser.open_new_tab(constants.playit.agent_web_url)
+
+                Clock.schedule_once(
+                    functools.partial(
+                        self.show_popup,
+                        "query",
+                        "Open playit panel",
+                        "This will redirect you to playit's web panel.\n\nClick 'continue as guest' to get started",
+                        (None, threading.Timer(0, _thread).start)
+                    ),
+                    0
+                )
+
+            # Open playit web panel button
+            open_panel_button = RelativeIconButton('open panel', {'center_x': 0.683, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50))
+            open_panel_button.opacity = 0.8
+            open_panel_button.text.text = '\n\n\nopen panel'
+            sub_layout.add_widget(open_panel_button)
+
+            # Add toggle button to enable/disable widget
             sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=proxy_state, disabled=(not constants.app_online)))
+
             network_layout.add_widget(sub_layout, index)
+
             if fade:
                 input_border.opacity = 0
                 Animation(opacity=1, duration=0.5).start(input_border)

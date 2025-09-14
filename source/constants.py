@@ -3706,7 +3706,7 @@ def generate_server_files(progress_func=None):
 
     # Install playit if specified
     if new_server_info['server_settings']['enable_proxy'] and not playit._check_agent():
-        playit._install_agent()
+        playit.install_agent()
 
 
     # Generate EULA.txt
@@ -6287,7 +6287,7 @@ def check_port(ip: str, port: int, timeout=120):
     # Log connectivity
     success = result == 0
     if success: send_log('check_port', f"successfully connected to '{ip}:{port}'")
-    else:       send_log('check_port', f"could not connect to '{ip}:{port}': timed out", 'error')
+    elif debug: send_log('check_port', f"could not connect to '{ip}:{port}': timed out", 'error')
 
     return success
 
@@ -7187,8 +7187,7 @@ class ConfigManager():
         else:                  self._send_log(f"successfully saved global configuration to '{self._path}'")
 
     def reset(self):
-        if os.path.exists(self._path):
-            os.remove(self._path)
+        if os.path.exists(self._path): os.remove(self._path)
         self._data = self._defaults.copy()
         self.save_config()
 
@@ -7222,6 +7221,12 @@ class PlayitManager():
             with open(self._path, 'w+') as f:
                 f.write(json.dumps(self._data))
 
+
+        # Delete the cache file and reset
+        def clear_cache(self):
+            if os.path.exists(self._path): os.remove(self._path)
+            self._data = {}
+
         # Write a tunnel's data to the cache
         def add_tunnel(self, tunnel_id: str, data: dict) -> bool:
             self._data[tunnel_id] = data
@@ -7243,34 +7248,53 @@ class PlayitManager():
 
     # Houses all tunnel data
     class Tunnel():
+        _parent:     'PlayitManager' = None
+        _cost:       str  = None
+
+        id:          str  = None
+        status:      str  = None
+        in_use:      bool = None
+        region:      str  = None
+        type:        str  = None
+        protocol:    str  = None
+        port:        int  = None
+        host:        str  = None
+        domain:      str  = None
+        remote_port: int  = None
+        hostname:    str  = None
+        created:     dt   = None
+
         def __init__(self, _parent: 'PlayitManager', tunnel_data: dict):
             self._parent = _parent
-            self._data_id = tunnel_data['alloc']['data']['id']
             self._cost = tunnel_data['port_count']
-
-            # Format networking data
-            self.region = tunnel_data['alloc']['data']['region']
+            self.id = tunnel_data['id']
             self.type = tunnel_data['tunnel_type'] if tunnel_data['tunnel_type'] else 'both'
             self.protocol = tunnel_data['port_type']
 
+            # if Tunnel is not ready
+            self.status = tunnel_data['alloc']['status']
+            if self.status == 'pending': return
+
+            # Format networking data
+            self.region = tunnel_data['alloc']['data']['region']
+
             # Mechanism to load data from cache if it's missing from the API
             try:
-                self.port = tunnel_data['origin']['data']['local_port']
+                self.port = int(tunnel_data['origin']['data']['local_port'])
                 self.host = tunnel_data['origin']['data']['local_ip']
             except:
 
                 # If tunnel is not cached and port is unknown, delete itself
                 try:
-                    cached_data = self._parent.tunnel_cache.get_tunnel(self._data_id)
-                    self.port = cached_data['local_port']
+                    cached_data = self._parent.tunnel_cache.get_tunnel(self.id)
+                    self.port = int(cached_data['local_port'])
                     self.host = cached_data['local_ip']
                 except:
                     self.delete()
 
             # Format playit tunnel data
-            self.id = tunnel_data['id']
             self.domain = tunnel_data['alloc']['data']['assigned_domain']
-            self.remote_port = tunnel_data['alloc']['data']['port_start']
+            self.remote_port = int(tunnel_data['alloc']['data']['port_start'])
             self.hostname = f'{self.domain}:{self.remote_port}' if self.type == 'both' else self.domain
 
 
@@ -7278,8 +7302,11 @@ class PlayitManager():
             timezone = dt.now().astimezone().tzinfo
             self.created = date_object.astimezone(timezone)
 
-            # If tunnel is assigned to a server object
+            # If this tunnel is currently assigned to a ServerObject
             self.in_use = False
+
+        def __repr__(self):
+            return f"<PlayitManager.{self.__class__.__name__} '{self.hostname}'>"
 
         def delete(self):
             self._parent._delete_tunnel(self)
@@ -7289,16 +7316,26 @@ class PlayitManager():
         return send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
-        base_path = "https://github.com/playit-cloud/playit-agent/releases"
-        self._download_url = {
-            'windows': f'{base_path}/download/v0.15.26/playit-windows-x86_64-signed.exe',
-            'linux': f'{base_path}/download/v0.15.26/playit-linux-{"aarch" if is_arm else "amd"}64',
-            'macos': f'{base_path}/download/v0.15.13/playit-darwin-{"arm" if is_arm else "intel"}'
+        self._git_base = "https://github.com/playit-cloud/playit-agent/releases"
+        self._api_base = "https://api.playit.gg"
+        self._web_base = "https://playit.gg"
+
+        self._exec_version = {
+            'windows': '0.16.2',
+            'linux':   '0.16.2',
+            'macos':   '0.15.13'
         }[os_name]
+
+        self._download_url = {
+            'windows': f'{self._git_base}/download/v{self._exec_version}/playit-windows-x86_64-signed.exe',
+            'linux':   f'{self._git_base}/download/v{self._exec_version}/playit-linux-{"aarch" if is_arm else "amd"}64',
+            'macos':   f'{self._git_base}/download/v{self._exec_version}/playit-darwin-{"arm" if is_arm else "intel"}'
+        }[os_name]
+
         self._filename = {
             'windows': 'playit.exe',
-            'linux': 'playit',
-            'macos': 'playit'
+            'linux':   'playit',
+            'macos':   'playit'
         }[os_name]
 
 
@@ -7317,17 +7354,20 @@ class PlayitManager():
 
         # Client info
         self.agent_web_url = None
-        self.agent_id = None
-        self.secret_key = None
         self.max_tunnels = 4
         self.tunnels = {'tcp': [], 'udp': [], 'both': []}
+
+        self._agent_id    = None   # Installed agent ID (executable)
+        self._proto_key   = None   # Protocol registry key
+        self._session_key = None   # For login URL to guest account
+        self._secret_key  = None   # For authentication to guest account
 
 
 
     # ----- OS/filesystem handling -----
     # Check if the agent is installed
     def _check_agent(self) -> bool:
-        return os.path.exists(self.exec_path)
+        return os.path.isfile(self.exec_path)
 
     # Load playit.toml into an attribute
     def _load_config(self) -> bool:
@@ -7346,15 +7386,28 @@ class PlayitManager():
         if os.path.exists(self.toml_path):
             os.remove(self.toml_path)
 
-        self.config = {}
-        return not os.path.exists(self.toml_path)
+        reset = not os.path.exists(self.toml_path)
+
+        if reset:
+            self.config = {}
+            self._send_log('successfully reset playit configuration')
+        else: self._send_log('failed to reset playit configuration', 'error')
+
+        return reset
 
     # Download and install the agent
-    def _install_agent(self, progress_func: callable = None) -> bool:
+    def install_agent(self, progress_func: callable = None) -> bool:
+
         if not app_online:
-            raise ConnectionError('Downloading playit requires an internet connection')
+            log_content = "Downloading playit requires an internet connection"
+            self._send_log(log_content, 'error')
+            raise ConnectionError(log_content)
+
         if self.service:
-            raise RuntimeError("Can't re-install while playit is running")
+            log_content = "Can't re-install while playit is running"
+            self._send_log(log_content, 'error')
+            raise RuntimeError(log_content)
+
 
         # If ngrok is present, delete it
         ngrok = os.path.join(applicationFolder, 'Tools', ('ngrok-v3.exe' if os_name == 'windows' else 'ngrok-v3'))
@@ -7375,6 +7428,7 @@ class PlayitManager():
         if os_name != 'windows':
             run_proc(f'chmod +x "{self.exec_path}"')
 
+
         success = self._check_agent()
         if success: self._send_log(f"successfully installed playit agent to '{final_path}'", 'info')
         else:       self._send_log(f"something went wrong installing playit agent from '{self._download_url}'", 'error')
@@ -7382,25 +7436,54 @@ class PlayitManager():
         return success
 
     # Removes the agent from the filesystem
-    def _uninstall_agent(self) -> bool:
+    def uninstall_agent(self, keep_config=True) -> bool:
+
+        if not self._check_agent():
+            self._send_log("can't uninstall as playit isn't installed")
+            return True
+
         if self.service:
-            raise RuntimeError("Can't delete while playit is running")
+            log_content = "Can't delete while playit is running"
+            self._send_log(log_content, 'error')
+            raise RuntimeError(log_content)
 
         if os.path.exists(self.directory):
             self._send_log(f"deleting playit agent and configuration from '{self.directory}'", 'info')
-            safe_delete(self.directory)
+            os.remove(self.exec_path) if keep_config else safe_delete(self.directory)
 
         return not self._check_agent()
 
+    # Updates the agent to the latest version
+    def update_agent(self) -> bool:
+        success = False
+
+        if self._check_agent():
+            try:
+                uninstalled = self.uninstall_agent()
+                self.tunnel_cache.clear_cache()
+                installed   = self.install_agent()
+                success = uninstalled and installed
+
+            except Exception as e:
+                self._send_log(f'failed to update the playit client: {format_traceback(e)}', 'error')
+
+            if success: self._send_log('successfully updated the playit client ', 'info')
+
+        return success
+
     # Starts the agent and returns status
     def _start_agent(self) -> bool:
+
         if not self.service:
             self.service = subprocess.Popen(f'"{self.exec_path}" -s --secret_path "{self.toml_path}"', stdout=subprocess.PIPE, shell=True)
             self._send_log(f"launched playit agent with PID {self.service.pid}")
-        return bool(self.service.poll())
+
+        return self.service is not None and self.service.poll() is None
 
     # Stops the agent and returns output
     def _stop_agent(self) -> str:
+
+        # Kill service if it's currently running
         if self.service and self.service.poll() is None:
             pid = self.service.pid
 
@@ -7449,7 +7532,7 @@ class PlayitManager():
         if self.service:
 
             # Loop over output for claim code
-            url = 'https://playit.gg/claim/'
+            url = f'{self._web_base}/claim/'
             code = None
 
             # Be careful with this, it could potentially wait for a new line forever
@@ -7466,19 +7549,19 @@ class PlayitManager():
         claim_code = self._get_claim_code()
 
         # First, retrieve guest auth cookie for agent
-        url_claim = f"https://playit.gg/login/create?redirect=/claim/{claim_code}?type=self-managed&_data=routes/login.create"
+        url_claim = f"{self._web_base}/login/create?redirect=/claim/{claim_code}?type=self-managed&_data=routes/login.create"
         body = {'email': "", 'password': "", 'confirm-password': "", '_action': "guest"}
         response = self.session.post(url_claim, data=body)
         cookie = response.headers['set-cookie'].split(';')[0]
         response.headers['Cookie'] = cookie
 
         # Wait until agent is claimed
-        url_claim_code = f"https://playit.gg/claim/{claim_code}?type=self-managed&_data=routes%2Fclaim%2F%24claimCode"
+        url_claim_code = f"{self._web_base}/claim/{claim_code}?type=self-managed&_data=routes%2Fclaim%2F%24claimCode"
         while self.session.get(url_claim_code).json()['status'] == 'fail':
             time.sleep(1)
 
         # Accept claim and send to agent
-        url_accept = f"https://playit.gg/claim/{claim_code}/accept?type=self-managed&_data=routes/claim/$claimCode/accept"
+        url_accept = f"{self._web_base}/claim/{claim_code}/accept?type=self-managed&_data=routes/claim/$claimCode/accept"
         self.session.post(
             url_accept,
             data = {
@@ -7490,22 +7573,45 @@ class PlayitManager():
         )
 
         # Retrieve secret key
-        data = self.session.post("https://api.playit.gg/claim/exchange", json={"code": claim_code}).json()
-        self.secret_key = data['data']['secret_key']
+        data = self._request('claim/exchange', json={"code": claim_code})
+        self._secret_key = data['data']['secret_key']
 
         # Successfully claimed agent
         self._send_log(f"successfully claimed playit agent to account")
         self._stop_agent()
-        return bool(self.secret_key)
+        return bool(self._secret_key)
 
+    # Register client protocol version with the server
+    def _proto_register(self) -> bool:
+        proto_data = {
+            'agent_version': {
+                'official': True,
+                'details_website': None,
+                'version': {
+                    'platform': os_name,
+                    'version': self._exec_version
+                }
+            },
+            'client_addr': '0.0.0.0:0',
+            'tunnel_addr': '0.0.0.0:0'
+        }
+
+        response = self._request('proto/register', json=proto_data)
+        if 'status' in response and response['status'] == 'success':
+            self._proto_key = response['data']['key']
+
+        return bool(self._proto_key)
 
 
     # ----- API tunnel handling -----
+    def _request(self, endpoint: str, *args, **kwargs):
+        return self.session.post(f"{self._api_base}/{endpoint.strip('/')}", *args, **kwargs).json()
+
     # Creates two lists of all tunnels, sorted by protocol
     def _retrieve_tunnels(self) -> dict:
         self.tunnels = {'tcp': [], 'udp': [], 'both': []}
 
-        data = self.session.post("https://api.playit.gg/tunnels/list", json={"agent_id": self.agent_id}).json()
+        data = self._request('tunnels/list', json={"agent_id": self._agent_id})
         if data['status'] == 'success':
 
             # Update maximum tunnels allowed by account (seems to be inaccurate)
@@ -7545,50 +7651,66 @@ class PlayitManager():
 
         # Can't exceed maximum tunnels specified
         if not self._check_tunnel_limit():
-            raise self.TunnelException(f"Your account can't create more than {self.max_tunnels} tunnels")
+            raise self.TunnelException(f"This account can't create more than {self.max_tunnels} tunnel(s)")
 
         tunnel_type = {
             'tcp': 'minecraft-java',
             'udp': 'minecraft-bedrock',
             'both': None
         }[protocol]
+
         tunnel_data = {
-            "type": "create-tunnel",
+            "name": f'{tunnel_type}_{gen_rstring(4).lower()}',
             "tunnel_type": tunnel_type,
             "port_type": protocol,
             "port_count": 2 if protocol == 'both' else 1,
-            "local_ip": "127.0.0.1",
-            "local_port": port,
-            "agent_id": self.agent_id
+            "enabled": True,
+            "origin": {
+                "type": "agent",
+                "data": {
+                    "agent_id": self._agent_id,
+                    "local_ip": '127.0.0.1',
+                    "local_port": port,
+                },
+            },
         }
 
 
         # Send the request to create a tunnel
         try:
-            tunnel_id = self.session.post("https://api.playit.cloud/account", json=tunnel_data).json()['id']
-            if tunnel_id: self.tunnel_cache.add_tunnel(tunnel_id, tunnel_data)
+            data = self._request('tunnels/create', json=tunnel_data)
+            tunnel_id = data['data']['id']
 
-            self._retrieve_tunnels()
+            # Success
+            if tunnel_id:
+                self.tunnel_cache.add_tunnel(tunnel_id, tunnel_data)
 
-            # Lookup method to reverse search the actual ID
-            for tunnel in self.tunnels[protocol]:
-                if tunnel_id == tunnel._data_id:
-                    self._send_log(f"successfully created a tunnel with ID '{tunnel.id}' ({tunnel.hostname})")
-                    return tunnel
+                # Wait until tunnel is live (up to 15s)
+                for _ in range(15):
+                    self._retrieve_tunnels()
 
-        except KeyError:
-            pass
+                    # Lookup method to reverse search the actual ID
+                    for tunnel in self.tunnels[protocol]:
+                        if tunnel.status != 'pending' and tunnel_id == tunnel.id:
+                            self._send_log(f"successfully created a tunnel with ID '{tunnel.id}' ({tunnel.hostname})")
+                            return tunnel
+
+                    time.sleep(1)
+
+        except Exception as e:
+            self._send_log(f"failed to create a tunnel for '{protocol}:{port}': {format_traceback(e)}")
 
     # Delete a tunnel with the object
     def _delete_tunnel(self, tunnel: Tunnel) -> bool:
-        tunnel_status = self.session.post("https://api.playit.gg/tunnels/delete", json={'tunnel_id': tunnel.id}).json()
+        tunnel_status = self._request('tunnels/delete', json={'tunnel_id': tunnel.id})
+
         if tunnel_status['status'] == 'success':
-            self.tunnel_cache.remove_tunnel(tunnel._data_id)
+            self.tunnel_cache.remove_tunnel(tunnel.id)
             self.tunnels[tunnel.protocol].remove(tunnel)
             self._send_log(f"successfully deleted a tunnel with ID '{tunnel.id}' ({tunnel.hostname})")
             return tunnel not in self.tunnels[tunnel.protocol]
-        else:
-            return False
+
+        return False
 
     # Deletes all tunnels
     def _clear_tunnels(self) -> dict:
@@ -7611,13 +7733,13 @@ class PlayitManager():
             self._claim_agent()
             if not os.path.exists(self.toml_path):
                 with open(self.toml_path, 'w+') as f:
-                    f.write(f'secret_key = "{self.secret_key}"\n')
+                    f.write(f'secret_key = "{self._secret_key}"\n')
 
         # Otherwise, get the secret key from .toml
         else:
             try:
                 self._load_config()
-                self.secret_key = self.config['secret_key']
+                self._secret_key = self.config['secret_key']
 
             # If the key couldn't be retrieved, delete .toml and try again
             except KeyError:
@@ -7625,16 +7747,23 @@ class PlayitManager():
                 self._initialize()
 
         # Agent ID
-        self.session.headers['Authorization'] = f'agent-key {self.secret_key}'
-        data = self.session.post("https://api.playit.gg/agents/rundata").json()
-        self.agent_id = data['data']['agent_id']
-        self.agent_web_url = f'https://playit.gg/account/agents/{self.agent_id}/tunnels'
+        self.session.headers['Authorization'] = f'agent-key {self._secret_key}'
+        agent_data = self._request('agents/rundata')
+        self._agent_id = agent_data['data']['agent_id']
+
+        # Get login URL
+        guest_data = self._request('login/guest')
+        self._session_key = guest_data['data']['session_key']
+        self.agent_web_url = f'{self._web_base}/login/guest-account/{self._session_key}'
+
+        # Register client protocol
+        self._proto_register()
 
         # Get current tunnels
         self._retrieve_tunnels()
 
         self.initialized = True
-        self._send_log(f"initialized playit agent with account URL: {self.agent_web_url}")
+        self._send_log(f"initialized playit agent, login from this url (select 'continue as guest'):\n{self.agent_web_url}", 'info')
         return self.initialized
 
     # Get a tunnel by port and (optionally type)
@@ -7644,7 +7773,7 @@ class PlayitManager():
         self._retrieve_tunnels()
 
         for tunnel in self.tunnels[protocol]:
-            if int(tunnel.port) == int(port) and not tunnel.in_use:
+            if tunnel.port == int(port) and not tunnel.in_use:
                 return tunnel
 
         # If ensure is True, create the tunnel if it doesn't exist

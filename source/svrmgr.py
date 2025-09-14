@@ -312,7 +312,7 @@ class ServerObject():
     def proxy_installed(self):
         return constants.playit._check_agent()
     def install_proxy(self):
-        return constants.playit._install_agent()
+        return constants.playit.install_agent()
     def enable_proxy(self, enabled: bool):
         self.config_file.set("general", "enableProxy", str(enabled).lower())
         self.write_config()
@@ -1671,7 +1671,7 @@ class ServerObject():
         self.config_file = constants.server_config(self.name)
         self.config_file.set("general", "consoleFilter", filter_type)
         constants.server_config(self.name, self.config_file)
-        self._send_log(f"changed console filter to '{filter_type}'", 'info')
+        self._send_log(f"changed console filter to '{filter_type}'")
 
     # Renames server
     def rename(self, new_name: str):

@@ -171,12 +171,14 @@ if __name__ == '__main__':
 
 
     # Check for update log
-    update_log = None
+    update_log  = None
+    was_updated = False
     try:
         update_log = os.path.join(constants.tempDir, 'update-log')
         if os.path.exists(update_log):
             with open(update_log, 'r') as f:
                 constants.update_data['reboot-msg'] = f.read().strip().split("@")
+                was_updated = True
             send_log('', f"update complete: '{constants.update_data['reboot-msg']}'", 'info')
     except: pass
 
@@ -353,12 +355,15 @@ if __name__ == '__main__':
 
     # Main wrapper
     def background():
-        global exitApp, crash
-        send_log('background', 'initializing the background thread', 'debug')
+        global exitApp, crash, was_updated
+        send_log('background', 'initializing the background thread')
 
         # Check for updates
         constants.check_app_updates()
         constants.search_manager = constants.SearchManager()
+
+        # If app was just updated, re-install playit if it's installed
+        if was_updated: constants.playit.update_agent()
 
         # Try to log into telepath servers automatically
         if os.path.exists(constants.telepathFile):
