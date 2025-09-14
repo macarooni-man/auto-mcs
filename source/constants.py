@@ -5736,7 +5736,8 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
         # Ensure non-mrpack modpacks aren't updated automatically
         if modpack:
             config.set('general', 'isModpack', str(modpack))
-            if str(modpack) != 'mrpack': config.set('general', 'updateAuto', 'false')
+            value = 'prompt' if str(modpack) == 'mrpack' else 'false'
+            config.set('general', 'updateAuto', value)
 
         else: config.set('general', 'updateAuto', 'prompt')
 
