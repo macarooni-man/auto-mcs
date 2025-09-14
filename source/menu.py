@@ -17797,7 +17797,7 @@ class ConsolePanel(FloatLayout):
 
             text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7,0.7,0.7,1))}]
 
-            if server_obj.proxy_enabled and server_obj.proxy_installed() and not constants.playit.initialized:
+            if server_obj.proxy_enabled and server_obj.proxy_installed():
                 text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6,0.6,1,1))})
 
             self.update_text(text=text_list)
