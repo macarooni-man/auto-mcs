@@ -27043,7 +27043,9 @@ class ServerSettingsScreen(MenuBackground):
                 )
 
             # Open playit web panel button
-            open_panel_button = RelativeIconButton('open panel', {'center_x': 0.683, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50))
+            open_panel_button = RelativeIconButton('open panel', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50), anchor='right')
+            open_panel_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+            open_panel_button.size_hint_max = (50, 50)
             open_panel_button.opacity = 0.8
             open_panel_button.text.text = '\n\n\nopen panel'
             sub_layout.add_widget(open_panel_button)
