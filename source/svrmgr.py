@@ -88,7 +88,6 @@ class ServerObject():
 
         # Server properties
         self.favorite = self.config_file.get("general", "isFavorite").lower() == 'true'
-        self.auto_update = str(self.config_file.get("general", "updateAuto").lower())
         self.dedicated_ram = str(self.config_file.get("general", "allocatedMemory").lower())
         self.type = self.config_file.get("general", "serverType").lower()
         self.version = self.config_file.get("general", "serverVersion").lower()
@@ -146,6 +145,13 @@ class ServerObject():
             geyser_timer = threading.Timer(0.1, thread)
             geyser_timer.daemon = True
             geyser_timer.start()
+
+
+        # Ensure automatic updates are disabled for non-mrpack modpacks
+        if self.is_modpack and self.is_modpack != 'mrpack':
+            self.auto_update = 'false'
+        else:
+            self.auto_update = str(self.config_file.get("general", "updateAuto").lower())
 
 
         # Check update properties for UI stuff
@@ -337,7 +343,6 @@ class ServerObject():
 
         # Server properties
         self.favorite = self.config_file.get("general", "isFavorite").lower() == 'true'
-        self.auto_update = str(self.config_file.get("general", "updateAuto").lower())
         self.dedicated_ram = str(self.config_file.get("general", "allocatedMemory").lower())
         self.type = self.config_file.get("general", "serverType").lower()
         self.version = self.config_file.get("general", "serverVersion").lower()
@@ -388,6 +393,13 @@ class ServerObject():
             self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
             if not self.update_string and self.build:
                 self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
+
+        
+        # Ensure automatic updates are disabled for non-mrpack modpacks
+        if self.is_modpack and self.is_modpack != 'mrpack':
+            self.auto_update = 'false'
+        else:
+            self.auto_update = str(self.config_file.get("general", "updateAuto").lower())
 
 
         if self.update_string:

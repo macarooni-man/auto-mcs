@@ -4858,9 +4858,6 @@ def scan_modpack(update=False, progress_func=None):
         'pack_type': 'zip'
     }
 
-    if import_data['name'] and not update:
-        data['name'] = new_server_name(process_name(import_data['name']))
-
 
     # Approach #1: Look for "modrinth.index.json"
     if file_path.endswith('.mrpack'):
@@ -5169,6 +5166,11 @@ def scan_modpack(update=False, progress_func=None):
     # Success
     os.chdir(cwd)
     if data['type'] and data['version'] and data['name']:
+
+        # If the server isn't being updated, make sure it creates a new server
+        if data['name'] and not update:
+            data['name'] = new_server_name(process_name(data['name']))
+
         import_data = {
             'name': data['name'],
             'path': import_data['path'],
@@ -5719,7 +5721,6 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
             config.set('general', 'serverBuild', str(properties['build']))
         config.set('general', 'serverType', properties['type'])
         config.set('general', 'isFavorite', 'false')
-        config.set('general', 'updateAuto', 'prompt')
         config.set('general', 'allocatedMemory', 'auto')
         try:    config.set('general', 'enableGeyser', str(properties['server_settings']['geyser_support']).lower())
         except: config.set('general', 'enableGeyser', 'false')
@@ -5727,7 +5728,14 @@ def create_server_config(properties: dict, temp_server=False, modpack=False):
         except: config.set('general', 'enableProxy', 'false')
         try:    config.set('general', 'customFlags', ' '.join(properties['launch_flags']))
         except: pass
-        if modpack: config.set('general', 'isModpack', str(modpack))
+
+        # Ensure non-mrpack modpacks aren't updated automatically
+        if modpack:
+            config.set('general', 'isModpack', str(modpack))
+            if str(modpack) != 'mrpack': config.set('general', 'updateAuto', 'false')
+
+        else: config.set('general', 'updateAuto', 'prompt')
+
 
         config.add_section('bkup')
         config.set('bkup', 'bkupAuto', 'prompt')
