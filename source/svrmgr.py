@@ -326,6 +326,11 @@ class ServerObject():
         action = 'enabled' if enabled else 'disabled'
         self._send_log(f"the playit proxy is now {action} enabled for this server", 'info')
 
+    # Telepath-compatible method to retrieve the login URL for the playit web UI
+    def get_playit_url(self):
+        if not constants.playit.initialized: constants.playit.initialize()
+        return constants.playit.agent_web_url
+
     # Retrieve a data structure of all config files in the server
     def reload_config_paths(self):
         self.config_paths = constants.gather_config_files(self.name)

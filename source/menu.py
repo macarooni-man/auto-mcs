@@ -27028,8 +27028,8 @@ class ServerSettingsScreen(MenuBackground):
 
             def open_login(*a):
                 def _thread():
-                    if not constants.playit.initialized: constants.playit.initialize()
-                    webbrowser.open_new_tab(constants.playit.agent_web_url)
+                    url = server_obj.get_playit_url()
+                    if url: webbrowser.open_new_tab(url)
 
                 Clock.schedule_once(
                     functools.partial(
