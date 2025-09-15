@@ -12,6 +12,7 @@ idna==3.7
 ipaddress==1.0.23
 munch==3.0.0
 NBT==1.5.1
+nbtlib==2.0.4
 Pillow==10.3.0
 psutil>=6.0.0
 pyinstaller>=5.10
