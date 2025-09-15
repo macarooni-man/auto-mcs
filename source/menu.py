@@ -27043,12 +27043,13 @@ class ServerSettingsScreen(MenuBackground):
                 )
 
             # Open playit web panel button
-            open_panel_button = RelativeIconButton('open panel', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50), anchor='right')
-            open_panel_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-            open_panel_button.size_hint_max = (50, 50)
-            open_panel_button.opacity = 0.8
-            open_panel_button.text.text = '\n\n\nopen panel'
-            sub_layout.add_widget(open_panel_button)
+            if not server_obj._telepath_data:
+                open_panel_button = RelativeIconButton('open panel', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50), anchor='right')
+                open_panel_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                open_panel_button.size_hint_max = (50, 50)
+                open_panel_button.opacity = 0.8
+                open_panel_button.text.text = '\n\n\nopen panel'
+                sub_layout.add_widget(open_panel_button)
 
             # Add toggle button to enable/disable widget
             sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=proxy_state, disabled=(not constants.app_online)))
