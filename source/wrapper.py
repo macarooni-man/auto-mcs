@@ -156,14 +156,14 @@ if __name__ == '__main__':
     constants.launch_path = sys.executable if constants.app_compiled else __file__
 
     # Set username
-    try: constants.username = constants.run_proc('whoami', True).split('\\')[-1].strip()
+    try: constants.username = constants.run_proc('whoami', True, log_only_in_debug=True).split('\\')[-1].strip()
     except: pass
 
     # Set hostname
     try:
         if constants.is_docker: constants.hostname = constants.app_title
         else:
-            hostname = constants.run_proc('hostname', True).strip()
+            hostname = constants.run_proc('hostname', True, log_only_in_debug=True).strip()
             if 'hostname: command not found' in hostname: hostname = constants.app_title
             constants.hostname = hostname
     except:
@@ -243,7 +243,7 @@ if __name__ == '__main__':
     if not constants.is_docker:
         if constants.os_name == "windows":
             command = f'tasklist | findstr {os.path.basename(constants.launch_path)}'
-            response = [line for line in constants.run_proc(command, True).strip().splitlines() if ((command not in line) and ('tasklist' not in line) and (line.endswith(' K')))]
+            response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if ((command not in line) and ('tasklist' not in line) and (line.endswith(' K')))]
             if len(response) > 2:
                 user32 = ctypes.WinDLL('user32')
                 if hwnd := user32.FindWindowW(None, constants.app_title):
@@ -254,14 +254,14 @@ if __name__ == '__main__':
 
         elif constants.os_name == "macos":
             command = f'ps -e | grep .app/Contents/MacOS/{os.path.basename(constants.launch_path)}'
-            response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and 'grep' not in line and line]
+            response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2:
                 exit_with_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal', exit_code=10)
 
         # Linux
         else:
             command = f'ps -e | grep {os.path.basename(constants.launch_path)}'
-            response = [line for line in constants.run_proc(command, True).strip().splitlines() if command not in line and 'grep' not in line and line]
+            response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2:
                 exit_with_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal', exit_code=10)
 
@@ -284,7 +284,7 @@ if __name__ == '__main__':
 
     # Get default system language
     try:
-        if constants.os_name == 'macos': system_locale = constants.run_proc("osascript -e 'user locale of (get system info)'", True)
+        if constants.os_name == 'macos': system_locale = constants.run_proc("osascript -e 'user locale of (get system info)'", True, log_only_in_debug=True)
 
         else:
             from locale import getdefaultlocale

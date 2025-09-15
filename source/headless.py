@@ -161,21 +161,52 @@ def manage_server(name: str, action: str):
         constants.new_server_info['acl_object'] = acl.AclManager(name)
 
         # Run things and stuff
+        action_list = []
+        download_addons = False
+        needs_installed = False
+
+        if constants.new_server_info['type'] != 'vanilla':
+            download_addons = constants.new_server_info['addon_objects'] or constants.new_server_info['server_settings']['disable_chat_reporting'] or constants.new_server_info['server_settings']['geyser_support'] or (constants.new_server_info['type'] in ['fabric', 'quilt'])
+            needs_installed = constants.new_server_info['type'] in ['forge', 'neoforge', 'fabric', 'quilt']
+
         verb = 'Validating' if os.path.exists(constants.javaDir) else 'Installing'
-        update_console(f'(1/5) {verb} Java')
-        constants.java_check()
+        action_list.append((
+            f'{verb} Java',
+            constants.java_check
+        ))
 
-        update_console(f"(2/5) Downloading 'server.jar'")
-        constants.download_jar()
+        action_list.append((
+            "Downloading 'server.jar'",
+            constants.download_jar
+        ))
 
-        update_console(f"(3/5) Installing {constants.new_server_info['type'].title().replace('forge','Forge')}")
-        constants.install_server()
+        if needs_installed:
+            action_list.append((
+                f"Installing {constants.new_server_info['type'].title().replace('forge','Forge')}",
+                constants.install_server
+            ))
 
-        update_console(f"(4/5) Applying server configuration")
-        constants.generate_server_files()
+        if download_addons:
+            action_list.append((
+                'Add-oning add-ons',
+                constants.iter_addons
+            ))
 
-        update_console(f"(5/5) Creating initial back-up")
-        constants.create_backup()
+        action_list.append((
+            f"Applying server configuration",
+            constants.generate_server_files,
+        ))
+
+        action_list.append((
+            "Creating initial back-up",
+            constants.create_backup
+        ))
+
+
+        # Actually run things and stuff
+        for x, (text, func) in enumerate(action_list, 1):
+            update_console(f"({x}/{len(action_list)}) {text}")
+            func()
 
         constants.generate_server_list()
 
@@ -1092,9 +1123,9 @@ command_data = {
 }
 if not constants.is_docker:
     command_data['update']['sub-commands']['install'] = {
-                'help': 'install a pending update and restart',
-                'exec': lambda *_: update_app()
-            }
+        'help': 'install a pending update and restart',
+        'exec': lambda *_: update_app()
+    }
 commands = {n: Command(n, d) if isinstance(d, dict) else d for n, d in command_data.items()}
 
 # Display messages
@@ -1279,10 +1310,8 @@ class CommandInput(urwid.Edit):
             sub_command = ''
             if self.hint_params != 1:
                 sub_command = original_text.split(' ')[1]
-                try:
-                    sub_command = sub_command + re.search(r'\s+', original_text[len(command + sub_command):])[0]
-                except:
-                    pass
+                try: sub_command = sub_command + re.search(r'\s+', original_text[len(command + sub_command):])[0]
+                except: pass
 
             param = ''
             if 0 < self.hint_params <= original_text.strip().count(' '):
@@ -1398,16 +1427,16 @@ class CommandInput(urwid.Edit):
             return None
 
 
-        # Ignore excess spaces
-        if key == ' ' and not self.text:
-            return
-        try:
-            if key == ' ' and self.text[self.cursor_x(size)] != ' ':
+        # Allow spaces, but block leading and consecutive spaces
+        if key == ' ':
+            pos = self.cursor_x(size)
+            txt = self.text
+            # no leading space
+            if pos == 0:
                 return
-        except IndexError:
-            pass
-        if key == ' ' and self.get_edit_text().endswith(' '):
-            return
+            # no consecutive spaces (left of cursor)
+            if pos > 0 and txt[pos - 1] == ' ':
+                return
 
 
         # Show help content with "?"

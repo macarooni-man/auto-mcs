@@ -9433,7 +9433,7 @@ class ProgressScreen(MenuBackground):
         icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
 
         self.allow_close(False)
-        send_log(self.__class__.__name__, f"initializing '{screen_manager.current_screen.name}': '{self.page_contents['title']}'...", 'info')
+        send_log(self.__class__.__name__, f"initializing '{screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}...", 'info')
 
         # Execute before function
         if self.page_contents['before_function']:
@@ -9501,7 +9501,7 @@ class ProgressScreen(MenuBackground):
         # Switch to next_page after it's done
         self.allow_close(True)
         if not self.error and self.page_contents['next_screen']:
-            send_log(self.__class__.__name__, f"successfully executed '{screen_manager.current_screen.name}': '{self.page_contents['title']}'", 'info')
+            send_log(self.__class__.__name__, f"successfully executed '{screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}", 'info')
             def next_screen(*args):
                 constants.back_clicked = True
                 screen_manager.current = self.page_contents['next_screen']

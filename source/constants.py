@@ -534,10 +534,11 @@ def get_parent_tty() -> str or None:
     return None
 
 
+
 # Check if running in Docker
 def check_docker() -> bool:
     if os_name == 'linux':
-        if 'Alpine' in run_proc('uname -v', True).strip():
+        if 'Alpine' in run_proc('uname -v', True, log_only_in_debug=True).strip():
             return True
     cgroup = Path('/proc/self/cgroup')
     docker_check = Path('/.dockerenv').is_file() or cgroup.is_file() and 'docker' in cgroup.read_text()
@@ -548,7 +549,7 @@ is_docker: bool
 # Check if OS is ARM
 def check_arm() -> bool:
     command = 'echo %PROCESSOR_ARCHITECTURE%' if os_name == 'windows' else 'uname -m'
-    arch = run_proc(command, True).strip()
+    arch = run_proc(command, True, log_only_in_debug=True).strip()
     return arch in ['aarch64', 'arm64']
 is_arm: bool
 
@@ -3292,8 +3293,10 @@ hook_lock = False
 def iter_addons(progress_func=None, update=False, telepath=False):
     global hook_lock
 
-    # If telepath, update addons remotely
-    if telepath:
+    # If Telepath, update addons remotely
+    # 'telepath_data' is filled only when this is a client that is connected to a remote server
+    # 'telepath' is only True when this is the server, and a client requested this method via the API
+    if not telepath:
         telepath_data = None
         if server_manager.current_server:
             telepath_data = server_manager.current_server._telepath_data
