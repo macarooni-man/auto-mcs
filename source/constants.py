@@ -49,7 +49,7 @@ import amscript
 
 # ---------------------------------------------- Global Variables ------------------------------------------------------
 
-app_version = "2.3.3"
+app_version = "2.3.4"
 ams_version = "1.4.1"
 telepath_version = "1.1.2"
 app_title = "auto-mcs"
@@ -287,7 +287,8 @@ def format_os() -> str:
 
     elif os_name == "linux":
         distro, kernel = _linux_info()
-        return f"{distro} (k-{kernel}, {arch})"
+        docker_info = ', Docker' if is_docker else ''
+        return f"{distro} (k-{kernel}, {arch}{docker_info})"
 
     else: return f'Unknown OS ({arch})'
 

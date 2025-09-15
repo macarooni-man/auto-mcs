@@ -2840,7 +2840,7 @@ class CreateServerPortInput(BaseInput):
 
         # interpret typed information
         if ":" in typed_info:
-            constants.new_server_info['ip'], constants.new_server_info['port'] = typed_info.split(":")
+            constants.new_server_info['ip'], constants.new_server_info['port'] = typed_info.split(":")[-2:]
         else:
             if "." in typed_info:
                 constants.new_server_info['ip'] = typed_info.replace(":", "")
@@ -2905,7 +2905,7 @@ class ServerPortInput(CreateServerPortInput):
 
         # interpret typed information
         if ":" in typed_info:
-            new_ip, new_port = typed_info.split(":")
+            new_ip, new_port = typed_info.split(":")[-2:]
         else:
             if "." in typed_info or not new_port:
                 new_ip = typed_info.replace(":", "")
@@ -27043,13 +27043,12 @@ class ServerSettingsScreen(MenuBackground):
                 )
 
             # Open playit web panel button
-            if not server_obj._telepath_data:
-                open_panel_button = RelativeIconButton('open panel', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50), anchor='right')
-                open_panel_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-                open_panel_button.size_hint_max = (50, 50)
-                open_panel_button.opacity = 0.8
-                open_panel_button.text.text = '\n\n\nopen panel'
-                sub_layout.add_widget(open_panel_button)
+            open_panel_button = RelativeIconButton('open panel', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50), anchor='right')
+            open_panel_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+            open_panel_button.size_hint_max = (50, 50)
+            open_panel_button.opacity = 0.8
+            open_panel_button.text.text = '\n\n\nopen panel'
+            sub_layout.add_widget(open_panel_button)
 
             # Add toggle button to enable/disable widget
             sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=proxy_state, disabled=(not constants.app_online)))
@@ -28886,6 +28885,7 @@ class TelepathHostInput(CreateServerPortInput):
         self.port = ''
         super().__init__(**kwargs)
         self.checking = False
+        self.hint_text = f"enter IPv4  (default port :{constants.api_manager.default_port})"
         self.bind(on_text_validate=self.check_connection)
 
     def check_connection(self, *a):
@@ -28965,7 +28965,7 @@ class TelepathHostInput(CreateServerPortInput):
 
         # interpret typed information
         if ":" in typed_info:
-            new_ip, new_port = typed_info.split(":")
+            new_ip, new_port = typed_info.split(":")[-2:]
         else:
             if "." in typed_info or not new_port:
                 new_ip = typed_info.replace(":", "")
