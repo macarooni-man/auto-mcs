@@ -1968,16 +1968,15 @@ class PlayerScriptObject():
                 # Otherwise, attempt to grab it from the console as SNBT
                 else:
                     log_data = self._get_entity_data(self.name)
-                    print(log_data)
 
                     def normalize(obj):
 
                         # Looks like a namespaced ID: "minecraft:item"
-                        _namespace = re.compile(r'^[a-z0-9_.-]+:[a-z0-9_./-]+$')
+                        _namespace_re = re.compile(r'^[a-z0-9_.-]+:[a-z0-9_./-]+$')
 
                         # Keep only the right side of a namespace ID
                         def _strip_ns(s: str) -> str:
-                            return s.split(':', 1)[1] if _namespace.match(s) else s
+                            return s.split(':', 1)[1] if _namespace_re.match(s) else s
 
                         if isinstance(obj, dict):
                             out = {}
