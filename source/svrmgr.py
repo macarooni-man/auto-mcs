@@ -394,7 +394,7 @@ class ServerObject():
             if not self.update_string and self.build:
                 self.update_string = ('b-' + str(constants.latestMC['builds'][self.type])) if (tuple(map(int, (str(constants.latestMC['builds'][self.type]).split(".")))) > tuple(map(int, (str(self.build).split("."))))) else ""
 
-        
+
         # Ensure automatic updates are disabled for non-mrpack modpacks
         if self.is_modpack and self.is_modpack != 'mrpack':
             self.auto_update = 'false'
@@ -1070,7 +1070,10 @@ class ServerObject():
 
                     except Exception as e:
                         constants.playit._send_log(f'error starting playit service: {constants.format_traceback(e)}', 'error')
-                        self.send_log(f"The playit service is currently unavailable", 'warning')
+
+                        # Temporary warning notice for Geyser
+                        if self.geyser_enabled: self.send_log(f"The internal playit service doesn't currently support Geyser, playit will need to be set up manually", 'warning')
+                        else:                   self.send_log(f"The internal playit service is currently unavailable", 'warning')
                         self.run_data['playit-tunnel'] = None
 
                 # If port was changed, use that instead
