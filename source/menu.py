@@ -13,6 +13,7 @@ import webbrowser
 import traceback
 import functools
 import threading
+import logging
 import inspect
 import random
 import json
@@ -35,18 +36,47 @@ import addons
 import backup
 import acl
 
+
+# UI log wrapper
+def send_log(object_data, message, level=None):
+    return constants.send_log(f'{__name__}.{object_data}', message, level, 'ui')
+
+
+# Import tkinter filedialog here for Windows only
 if constants.os_name == "windows":
     import tkinter as tk
     from tkinter import filedialog
 
+
 # Control modifier for keyboard shortcuts
 control = 'meta' if constants.os_name == "macos" else 'ctrl'
 
-# Disable Kivy logging if debug is off and app is compiled
-if constants.app_compiled and constants.debug is False:
-    kivy_folder = os.path.join(constants.os_temp, ".kivy")
-    constants.folder_check(kivy_folder)
-    os.environ['KIVY_HOME'] = kivy_folder
+# Disable Kivy logging from their way
+kivy_folder = os.path.join(constants.os_temp, ".kivy")
+constants.folder_check(kivy_folder)
+os.environ['KIVY_HOME'] = kivy_folder
+os.environ.setdefault("KIVY_LOG_MODE", "PYTHON")
+os.environ.setdefault("KIVY_NO_FILELOG", "1")
+os.environ.setdefault("KIVY_NO_CONSOLELOG", "1")
+
+# Attach forwarder to the custom logger
+class KivyToLoggerHandler(logging.Handler):
+    def __init__(self, mgr):
+        super().__init__()
+        self.mgr = mgr
+    def emit(self, record: logging.LogRecord):
+        try:
+            msg = record.getMessage()
+            level = (record.levelname or "INFO").lower()
+            tag = getattr(record, "tag", None) or getattr(record, "ctx", None)
+            obj = tag or (f"{record.module}.{record.funcName}" if record.funcName and record.module else record.name)
+            self.mgr._dispatch(obj.replace("__init__.", ""), msg, level=level, stack="kivy", _raw=False)
+        except Exception:
+            self.handleError(record)
+
+root = logging.getLogger()
+root.setLevel(logging.DEBUG)
+root.addHandler(KivyToLoggerHandler(constants.log_manager))
 
 
 os.environ["KCFG_KIVY_LOG_LEVEL"] = "debug" if constants.debug else "info"
@@ -97,8 +127,15 @@ from kivy.properties import BooleanProperty, ObjectProperty, ListProperty
 
 
 
+
+
 # Discord rich presence
 class DiscordPresenceManager():
+
+    # Internal log wrapper
+    def _send_log(self, message: str, level: str = None):
+        return send_log(self.__class__.__name__, message, level)
+
     def __init__(self):
         self.presence = None
         self.connected = False
@@ -117,10 +154,10 @@ class DiscordPresenceManager():
                 try:
                     self.presence.connect()
                     self.connected = True
-                    print("Discord Presence: Connected")
-                except:
+                    self._send_log("initialized Discord Presence: successfully connected", 'info')
+                except Exception as e:
                     self.presence = None
-                    print("Discord Presence: Failed to connect")
+                    self._send_log(f"failed to initialize Discord Presence: {constants.format_traceback(e)}")
             threading.Timer(0, presence_thread).start()
 
     def stop(self):
@@ -129,7 +166,7 @@ class DiscordPresenceManager():
             self.start_time = None
             self.presence = None
             self.connected = False
-            print("Discord Presence: Disconnected")
+            self._send_log("stopped Discord Presence: successfully disconnected", 'info')
 
     def get_image(self, file_path: str):
         server_obj = constants.server_manager.current_server
@@ -148,8 +185,8 @@ class DiscordPresenceManager():
             # Cache icon for later retrieval
             server_obj.run_data['rich-presence-icon'] = url
             return url
-        elif constants.debug:
-            print("Upload failed:", response.text)
+        else:
+            self._send_log(f"icon upload to '{url}' failed:\n{response.text}")
             return None
 
     def update_presence(self, footer_data: str = None):
@@ -395,10 +432,8 @@ class TextInput(TextInput):
             value = filter_text(value)
 
         if key in ['focus', 'focused']:
-            try:
-                super().__setattr__(key, value)
-            except:
-                pass
+            try: super().__setattr__(key, value)
+            except: pass
         else:
             super().__setattr__(key, value)
 
@@ -416,6 +451,8 @@ def view_file(path: str, title=None):
 
     if not title and constants.server_manager.current_server:
         title = constants.server_manager.current_server.name
+
+    send_log('view_file', f"opening in log viewer:\n'{path}'", 'info')
 
     Clock.schedule_once(
         functools.partial(
@@ -620,8 +657,9 @@ class HoverButton(Button, HoverBehavior):
             else:
                 interaction = str(self.id)
             if widget_text:
-                interaction += f" ({widget_text.title().replace('Mcs', 'MCS')})"
+                interaction += f" ({widget_text.title().replace('Mcs', 'MCS').strip()})"
             constants.last_widget = interaction + f" @ {constants.format_now()}"
+            send_log('navigation', f"interaction: '{interaction}'")
         except:
             pass
 
@@ -734,6 +772,7 @@ class BaseInput(TextInput):
                 if self.title.text:
                     interaction += f" ({self.title.text.title()})"
                 constants.last_widget = interaction + f" @ {constants.format_now()}"
+                send_log('navigation', f"interaction: '{interaction}'")
             except:
                 pass
 
@@ -2133,7 +2172,7 @@ class CreateServerSeedInput(BaseInput):
                             continue
 
         except Exception as e:
-            print(f"Warning: Failed to focus input box ({e})")
+            send_log(self.__class__.__name__, f"failed to focus input box: {constants.format_traceback(e)}", 'warning')
 
     def on_enter(self, value):
 
@@ -2234,7 +2273,7 @@ class ServerSeedInput(BaseInput):
                             continue
 
         except Exception as e:
-            print(f"Warning: Failed to focus input box ({e})")
+            send_log(self.__class__.__name__, f"failed to focus input box: {constants.format_traceback(e)}", 'warning')
 
     def on_enter(self, value):
 
@@ -3453,8 +3492,8 @@ def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, sele
 
     final_path = ""
     file_icon = os.path.join(constants.gui_assets, "small-icon.ico")
-
     title = constants.translate(title)
+    send_log('file_popup', f"requesting {ask_type} popup '{title}'", 'info')
 
     # Will find the first file start_dir to auto select
     def iter_start_dir(directory):
@@ -3516,6 +3555,7 @@ def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, sele
                     # AppleScript with f-string formatting for dynamically setting parameters
                     script = f"    osascript -e 'set myFolder to choose folder {start_path_command}\nPOSIX path of myFolder'"
                     final_path = constants.run_proc(script, return_text=True).strip()
+                    if final_path.endswith('User canceled. (-128)'): final_path = []
 
     # World screen
     if input_name:
@@ -3547,6 +3587,9 @@ def file_popup(ask_type, start_dir=constants.home, ext=[], input_name=None, sele
                         child.update_server()
                 break_loop = True
                 break
+
+    if final_path: send_log('file_popup', f"retrieved user selection from {ask_type} popup '{title}':\n'{final_path}'", 'info')
+    else:          send_log('file_popup', f"user cancelled {ask_type} popup '{title}':")
 
     return final_path
 
@@ -3843,9 +3886,13 @@ def generate_footer(menu_path, color="9999FF", func_dict=None, progress_screen=F
         constants.footer_path = menu_path.split(", ")[0].split("'")[0] + "Server" + " > ".join(menu_path.split(", ")[1:])
     else:
         constants.footer_path = " > ".join(menu_path.split(", "))
+    constants.footer_path = constants.footer_path.replace('$', '')
 
     # Update Discord rich presence
     constants.discord_presence.update_presence(constants.footer_path)
+
+    # Log menu change
+    send_log('navigation', f"view: '{constants.footer_path}'")
 
     # Add time modified
     constants.footer_path += f" @ {constants.format_now()}"
@@ -5740,7 +5787,9 @@ class TelepathDropButton(DropButton):
         self.dropdown.opacity = 0
         self.dropdown.min_state_time = 0.13
 
-        for item, telepath_data in self.options_list.items():
+        items = self.options_list.items()
+        send_log(self.__class__.__name__, f"using list of connected Telepath servers:\n{items}")
+        for item, telepath_data in items:
             original_item = item
 
             # Set display name
@@ -5954,9 +6003,8 @@ class ContextMenu(GridLayout):
                     if "ContextMenu" in widget.__class__.__name__:
                         self.parent.context_menu = None
                         self.parent.remove_widget(widget)
-            except AttributeError:
-                if constants.debug:
-                    print("Window ContextMenu Error: Failed to delete menu as the parent window doesn't exist")
+            except AttributeError as e:
+                send_log(self.__class__.__name__, f"failed to delete menu as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
 
         if animate:
             Animation(opacity=0, size_hint_max_x=150, duration=0.13, transition='in_out_sine').start(self)
@@ -6065,6 +6113,7 @@ def toggle_button(name, position, default_state=True, x_offset=0, custom_func=No
             if name:
                 interaction += f" ({name})"
             constants.last_widget = interaction + f" @ {constants.format_now()}"
+            send_log('navigation', f"interaction: '{interaction}'")
         except:
             pass
 
@@ -6200,6 +6249,7 @@ class NumberSlider(FloatLayout):
                     if input_name:
                         interaction += f" ({input_name})"
                     constants.last_widget = interaction + f" @ {constants.format_now()}"
+                    send_log('navigation', f"interaction: '{interaction}'")
                 except:
                     pass
 
@@ -6410,17 +6460,16 @@ class PopupWindow(RelativeLayout):
             return
 
         def delete(*args):
-
-            try:
-                for widget in self.parent.children:
-                    if "Popup" in widget.__class__.__name__:
-                        self.parent.popup_widget = None
-                        self.parent.canvas.after.clear()
-                        self.parent.remove_widget(widget)
-                        self.canvas.after.clear()
-            except AttributeError:
-                if constants.debug:
-                    print("Window Popup Error: Failed to delete popup as the parent window doesn't exist")
+            if self.parent:
+                try:
+                    for widget in self.parent.children:
+                        if "Popup" in widget.__class__.__name__:
+                            self.parent.popup_widget = None
+                            self.parent.canvas.after.clear()
+                            self.parent.remove_widget(widget)
+                            self.canvas.after.clear()
+                except AttributeError as e:
+                    send_log(self.__class__.__name__, f"failed to delete popup as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
 
         if animate:
             self.animate(False)
@@ -7032,17 +7081,16 @@ class BigPopupWindow(RelativeLayout):
             return
 
         def delete(*args):
-
-            try:
-                for widget in self.parent.children:
-                    if "Popup" in widget.__class__.__name__:
-                        self.parent.popup_widget = None
-                        self.parent.canvas.after.clear()
-                        self.parent.remove_widget(widget)
-                        self.canvas.after.clear()
-            except AttributeError:
-                if constants.debug:
-                    print("Window Popup Error: Failed to delete popup as the parent window doesn't exist")
+            if self.parent:
+                try:
+                    for widget in self.parent.children:
+                        if "Popup" in widget.__class__.__name__:
+                            self.parent.popup_widget = None
+                            self.parent.canvas.after.clear()
+                            self.parent.remove_widget(widget)
+                            self.canvas.after.clear()
+                except AttributeError as e:
+                    send_log(self.__class__.__name__, f"failed to delete popup as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
 
         if animate:
             self.animate(False)
@@ -7240,13 +7288,7 @@ class PopupFile(BigPopupWindow):
 # Addon popup
 class PopupAddon(BigPopupWindow):
     def body_button_click(self):
-        if self.addon_object:
-            if self.addon_object.type in ["forge", "neoforge", "fabric", "quilt", "modpack"]:
-                url = self.addon_object.url
-            else:
-                url = "https://dev.bukkit.org" + self.addon_object.url
-
-            webbrowser.open_new_tab(url)
+        if self.addon_object: webbrowser.open_new_tab(self.addon_object.url)
 
     def __init__(self, addon_object=None, **kwargs):
         self.window_color = (0.42, 0.475, 1, 1)
@@ -8038,17 +8080,16 @@ class PopupSearch(RelativeLayout):
             return
 
         def delete(*args):
-
-            try:
-                for widget in self.parent.children:
-                    if "Popup" in widget.__class__.__name__:
-                        self.parent.popup_widget = None
-                        self.parent.canvas.after.clear()
-                        self.parent.remove_widget(widget)
-                        self.canvas.after.clear()
-            except AttributeError:
-                if constants.debug:
-                    print("Window Popup Error: Failed to delete popup as the parent window doesn't exist")
+            if self.parent:
+                try:
+                    for widget in self.parent.children:
+                        if "Popup" in widget.__class__.__name__:
+                            self.parent.popup_widget = None
+                            self.parent.canvas.after.clear()
+                            self.parent.remove_widget(widget)
+                            self.canvas.after.clear()
+                except AttributeError as e:
+                    send_log(self.__class__.__name__, f"failed to delete popup as the parent window doesn't exist: {constants.format_traceback(e)}", 'error')
 
         if animate:
             self.animate(False)
@@ -8370,7 +8411,7 @@ def button_action(button_name, button, specific_screen=''):
             else:
                 change_screen(specific_screen)
 
-            print(constants.new_server_info)
+            if screen_manager.current.startswith('CreateServer'): send_log('CreateServer', f"menu progress:\n{constants.new_server_info}", 'info')
 
         # Main menu reconnect button
         elif "no connection" in button_name.lower():
@@ -8751,6 +8792,7 @@ class MenuBackground(Screen):
             try:
                 interaction = f"PopupWidget ({popup_type}: {title})"
                 constants.last_widget = interaction + f" @ {constants.format_now()}"
+                send_log('navigation', f"interaction: '{interaction}'")
             except:
                 pass
 
@@ -8840,6 +8882,7 @@ class MenuBackground(Screen):
         try:
             interaction = f"PopupWidget (GlobalSearch)"
             constants.last_widget = interaction + f" @ {constants.format_now()}"
+            send_log('navigation', f"interaction: '{interaction}'")
         except:
             pass
 
@@ -9390,6 +9433,7 @@ class ProgressScreen(MenuBackground):
         icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
 
         self.allow_close(False)
+        send_log(self.__class__.__name__, f"initializing '{screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}...", 'info')
 
         # Execute before function
         if self.page_contents['before_function']:
@@ -9405,6 +9449,9 @@ class ProgressScreen(MenuBackground):
             if self.error:
                 return
 
+            step_info = f"'{screen_manager.current_screen.name}' executing step {x + 1} / {len(self.page_contents['function_list'])} - '{step[0]}'"
+            send_log(self.__class__.__name__, step_info, 'info')
+
             if x != 0:
                 if "[font=" not in self.steps.label_2.text:
                     self.steps.label_2.text = self.steps.label_2.text.split('(')[0].strip() + f"   [font={icons}]å[/font]"
@@ -9415,25 +9462,25 @@ class ProgressScreen(MenuBackground):
             self.last_progress = self.progress_bar.value
             exception = None
             crash_log = None
+            file_path = None
             try:
                 test = step[1]()
 
             # On error, log it and prompt user to open it
             except Exception as e:
                 exception = e
-                error_info = f"'{screen_manager.current_screen.name}' failed on step {x+1}: {step[0]}"
+                error_info = f"'{screen_manager.current_screen.name}' failed on step {x+1} / {len(self.page_contents['function_list'])} - '{step[0]}'"
 
-                crash_log = crashmgr.generate_log(traceback.format_exc(), error_info=error_info)
+                crash_log, file_path = crashmgr.generate_log(traceback.format_exc(), error_info=error_info)
                 test = False
 
-                print(error_info)
-                traceback.print_exc()
+                send_log(self.__class__.__name__, f"{error_info}: {constants.format_traceback(e)}", 'error')
 
             time.sleep(0.2)
 
             # If it failed, execute default error
             if not test:
-                self.execute_error(self.page_contents['default_error'], exception=exception, log_data=crash_log)
+                self.execute_error(self.page_contents['default_error'], exception=exception, log_data=(crash_log, file_path) if crash_log else None)
                 return
 
             self.progress_bar.update_progress(self.progress_bar.value + step[2])
@@ -9454,6 +9501,7 @@ class ProgressScreen(MenuBackground):
         # Switch to next_page after it's done
         self.allow_close(True)
         if not self.error and self.page_contents['next_screen']:
+            send_log(self.__class__.__name__, f"successfully executed '{screen_manager.current_screen.name}': {self.page_contents['title'].replace('$','')}", 'info')
             def next_screen(*args):
                 constants.back_clicked = True
                 screen_manager.current = self.page_contents['next_screen']
@@ -9481,15 +9529,18 @@ class ProgressScreen(MenuBackground):
                 self._error_callback()
 
             if log_data:
-                print(log_data)
-                title = f'Error: {log_data[0]}'
                 log_path = log_data[1]
+                send_log(self.__class__.__name__, f"'{screen_manager.current_screen.name}' exited with exception code:  {log_data[0]}\nFull error log available in:  '{log_path}'", 'error')
+                title = f'Error: {log_data[0]}'
                 def open_log():
                     view_file(log_path, title)
                     close()
                 self.show_popup('error_log', 'Error', msg, (close, open_log))
 
+            # This eventually also needs to be type 'error_log' with the following functionality:
+            #   - ability to view everything in the log since the first event when this page was loaded
             else:
+                send_log(self.__class__.__name__, f"'{screen_manager.current_screen.name}' exited with error:\n{msg}", 'error')
                 self.show_popup('warning', 'Error', msg, (close))
 
         Clock.schedule_once(function, 0)
@@ -9518,9 +9569,6 @@ class ProgressScreen(MenuBackground):
 
 
     def update_steps(self, current, num):
-
-        print(f"Progress {current} {num}")
-
         icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
         yummy_label = f"   ({num+1}/{len(self.page_contents['function_list'])})"
         end_label = f"{len(self.page_contents['function_list'])})"
@@ -9899,10 +9947,10 @@ class MainMenuScreen(MenuBackground):
         version.text = f"v{version_text}{(7 - len(version_text)) * '  '}"
         splash.add_widget(version)
 
-        seperator = Label(pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
-        seperator.__translate__ = False
-        seperator.text = "_" * 50
-        splash.add_widget(seperator)
+        separator = Label(pos_hint={"center_y": 0.7}, color=(0.6, 0.6, 1, 0.1), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
+        separator.__translate__ = False
+        separator.text = "_" * 50
+        splash.add_widget(separator)
 
         session_splash = Label(pos_hint={"center_y": 0.65}, color=(0.6, 0.6, 1, 0.5), font_name=os.path.join(constants.gui_assets, 'fonts', 'LLBI.otf'), font_size=sp(25))
         session_splash.__translate__ = False
@@ -10193,7 +10241,12 @@ class UpdateAppProgressScreen(ProgressScreen):
         def after_func(*args):
             icons = os.path.join(constants.gui_assets, 'fonts', constants.fonts['icons'])
             self.steps.label_2.text = "Update complete! Restarting..." + f"   [font={icons}]å[/font]"
-            Clock.schedule_once(constants.restart_update_app, 1)
+
+            def process_update_and_close(*a):
+                constants.restart_update_app()
+                main_app.exit_check(force_close=True)
+
+            Clock.schedule_once(process_update_and_close, 1)
 
         # Original is percentage before this function, adjusted is a percent of hooked value
         def adjust_percentage(*args):
@@ -11062,9 +11115,8 @@ class CreateServerWorldScreen(MenuBackground):
                                     try:
                                         if constants.version_check(server_version, '>=', "1.1"):
                                             child.remove_widget([relative for relative in child.children if relative.__class__.__name__ == 'DropButton'][0])
-                                    except IndexError:
-                                        if constants.debug:
-                                            print("Error: 'DropButton' does not exist, can't remove")
+                                    except IndexError as e:
+                                        send_log(f'{self.__class__.__name__}.toggle_new', "'DropButton' does not exist, can't remove", 'error')
 
                             elif item.id == 'Create new world instead':
                                 current_input = 'button'
@@ -14064,7 +14116,7 @@ def server_demo_input(pos_hint, properties):
     demo_input.type_image.type_label.text = properties['type'].lower().replace("craft", "")
     demo_input.type_image.image.source = os.path.join(constants.gui_assets, 'icons', 'big', f'{properties["type"].lower()}_small.png')
 
-    print(properties)
+    if screen_manager.current.startswith('CreateServer'): send_log('CreateServer', f"menu progress:\n{properties}", 'info')
     if properties['_telepath_data']:
         if properties['_telepath_data']['nickname']:
             head = properties['_telepath_data']['nickname']
@@ -16406,6 +16458,7 @@ class MenuTaskbar(RelativeLayout):
                             try:
                                 interaction = f"TaskbarButton ({self.data[0].title()})"
                                 constants.last_widget = interaction + f" @ {constants.format_now()}"
+                                send_log('navigation', f"interaction: '{interaction}'")
                             except:
                                 pass
 
@@ -17744,7 +17797,7 @@ class ConsolePanel(FloatLayout):
 
             text_list = [{'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INIT', boot_text, (0.7,0.7,0.7,1))}]
 
-            if server_obj.proxy_enabled and server_obj.proxy_installed() and not constants.playit.initialized:
+            if server_obj.proxy_enabled and server_obj.proxy_installed():
                 text_list.append({'text': (dt.now().strftime(constants.fmt_date("%#I:%M:%S %p")).rjust(11), 'INFO', 'Initializing playit agent...', (0.6,0.6,1,1))})
 
             self.update_text(text=text_list)
@@ -18161,9 +18214,8 @@ class ConsolePanel(FloatLayout):
                     with open(file_path, 'r') as f:
                         self._unfiltered_text = json.loads(f.read())
                         self.update_text(self._unfiltered_text)
-                except:
-                    if constants.debug:
-                        print('Failed to load "latest.log"')
+                except Exception as e:
+                    send_log(self.__class__.__name__, f"error loading 'latest.log': {constants.format_traceback(e)}", 'error')
             Clock.schedule_once(change_later, 0)
 
             self.controls.remove_widget(self.controls.view_button)
@@ -18633,6 +18685,7 @@ class ConsolePanel(FloatLayout):
                     try:
                         interaction = f"ConsoleInput (Sub-server {list(constants.server_manager.running_servers.keys()).index(self.parent.server_name)+1})"
                         constants.last_widget = interaction + f" @ {constants.format_now()}"
+                        send_log('navigation', f"interaction: '{interaction}'")
                     except:
                         pass
 
@@ -20417,7 +20470,7 @@ class ServerCloneProgressScreen(ProgressScreen):
         java_text = 'Verifying Java Installation' if os.path.exists(constants.javaDir) else 'Installing Java'
 
         # If remote data, open remote server after
-        print(constants.new_server_info)
+        # print(constants.new_server_info)
         if constants.new_server_info['_telepath_data']:
             self._telepath_override = constants.new_server_info['_telepath_data']
 
@@ -21839,6 +21892,8 @@ def edit_script(edit_button, server_obj, script_path, download=True):
         if download:
             script_path = constants.telepath_download(server_obj._telepath_data, script_path, os.path.join(constants.telepathScriptDir, server_obj._telepath_data['host']))
 
+    send_log('edit_script', f"opening in amscript IDE:\n'{script_path}'", 'info')
+
     # Update Discord rich presence
     constants.discord_presence.update_presence(f"amscript IDE > Editing '{os.path.basename(script_path)}'")
 
@@ -21867,7 +21922,9 @@ def edit_script(edit_button, server_obj, script_path, download=True):
     # Passed to parent IPC receiver
     ipc_functions = {
         'api_manager': constants.api_manager,
-        'telepath_upload': constants.telepath_upload
+        'telepath_upload': constants.telepath_upload,
+        'format_traceback': constants.format_traceback,
+        '_send_log': constants.send_log
     }
 
     Clock.schedule_once(functools.partial(amseditor.edit_script, script_path, data_dict, ipc_functions), 0.1)
@@ -25017,8 +25074,7 @@ class EditorRoot(MenuBackground):
         try:
             save_config_file(self._config_data, content)
         except Exception as e:
-            if constants.debug:
-                print("Error saving file:", e)
+            send_log(self.__class__.__name__, f"error saving '{self.path}': {constants.format_traceback(e)}", 'error')
             return False
 
         def set_banner(*a):
@@ -26264,8 +26320,7 @@ class ServerJsonEditScreen(ServerYamlEditScreen):
                 final_content = json.dumps(yaml_data, indent=4)
 
         except Exception as e:
-            if constants.debug:
-                print(f'Failed to save: {e}')
+            send_log(self.__class__.__name__, f"error saving '{self.path}': {constants.format_traceback(e)}", 'error')
             return False
 
         # return print(final_content)
@@ -26490,8 +26545,7 @@ class ServerJson5EditScreen(ServerYamlEditScreen):
             # Convert the assembled YAML back into JSON5.
             json5_content = self.yaml_to_json5(final_content.strip())
         except Exception as e:
-            if constants.debug:
-                print(f"Failed to save: {e}")
+            send_log(self.__class__.__name__, f"error saving '{self.path}': {constants.format_traceback(e)}", 'error')
             return False
 
         # Write the JSON5 back to disk
@@ -26704,9 +26758,8 @@ class ServerWorldScreen(MenuBackground):
                                     try:
                                         if constants.version_check(server_version, '>=', "1.1"):
                                             child.remove_widget([relative for relative in child.children if relative.__class__.__name__ == 'DropButton'][0])
-                                    except IndexError:
-                                        if constants.debug:
-                                            print("Error: 'DropButton' does not exist, can't remove")
+                                    except IndexError as e:
+                                        send_log(f'{self.__class__.__name__}.toggle_new', "'DropButton' does not exist, can't remove", 'error')
 
                             elif item.id == 'Create new world instead':
                                 current_input = 'button'
@@ -26972,8 +27025,37 @@ class ServerSettingsScreen(MenuBackground):
             sub_layout = ScrollItem()
             input_border = blank_input(pos_hint={"center_x": 0.5, "center_y": 0.5}, hint_text='enable proxy (playit)', disabled=(not constants.app_online))
             sub_layout.add_widget(input_border)
+
+            def open_login(*a):
+                def _thread():
+                    if not constants.playit.initialized: constants.playit.initialize()
+                    webbrowser.open_new_tab(constants.playit.agent_web_url)
+
+                Clock.schedule_once(
+                    functools.partial(
+                        self.show_popup,
+                        "query",
+                        "Open playit panel",
+                        "This will redirect you to playit's web panel.\n\nClick 'continue as guest' to get started",
+                        (None, threading.Timer(0, _thread).start)
+                    ),
+                    0
+                )
+
+            # Open playit web panel button
+            if not server_obj._telepath_data:
+                open_panel_button = RelativeIconButton('open panel', {'center_x': 2.65, 'center_y': 0.5}, (0, 0), (None, None), 'open.png', clickable=True, click_func=open_login, text_offset=(20, 50), anchor='right')
+                open_panel_button.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+                open_panel_button.size_hint_max = (50, 50)
+                open_panel_button.opacity = 0.8
+                open_panel_button.text.text = '\n\n\nopen panel'
+                sub_layout.add_widget(open_panel_button)
+
+            # Add toggle button to enable/disable widget
             sub_layout.add_widget(toggle_button('proxy', (0.5, 0.5), custom_func=toggle_proxy, default_state=proxy_state, disabled=(not constants.app_online)))
+
             network_layout.add_widget(sub_layout, index)
+
             if fade:
                 input_border.opacity = 0
                 Animation(opacity=1, duration=0.5).start(input_border)
@@ -29476,8 +29558,7 @@ class TelepathPair():
             message = f'$Telepath$ pairing failed'
             color = (0.937, 0.831, 0.62, 1)
             sound = 'popup_warning.wav'
-            if constants.debug:
-                print(f'Telepath - failed to pair: {e}')
+            send_log(self.__class__.__name__, f'failed to pair: {constants.format_traceback(e)}', 'error')
 
         # Reset token if cancelled
         if constants.api_manager.pair_data:
@@ -29644,8 +29725,8 @@ def check_running(final_func):
     elif final_func:
         final_func()
 
-def exit_app():
-    amseditor.quit_ipc = True
+def exit_app(*a, **kw):
+    main_app.exit_check(force_close=True)
     sys.exit(0)
 
 class MainApp(App):
@@ -29678,7 +29759,7 @@ class MainApp(App):
         Window.size = (dp(size[0]), dp(size[1]))
         Window.top = top
         Window.left = left
-    Window.on_request_close = functools.partial(sys.exit)
+    Window.on_request_close = exit_app
 
     Window.minimum_width = constants.window_size[0]
     Window.minimum_height = constants.window_size[1] - 50
@@ -29695,6 +29776,7 @@ class MainApp(App):
 
         if force_close:
             Window.close()
+            amseditor.quit_ipc = True
             return False
 
         if constants.ignore_close:
@@ -29706,12 +29788,12 @@ class MainApp(App):
 
         else:
             Window.close()
+            amseditor.quit_ipc = True
             return False
 
     def _close_window_wrapper(self):
         data = main_app.exit_check()
-        if not data:
-            exit_app()
+        if not data: exit_app()
         return data
     Window.bind(on_request_close=_close_window_wrapper)
     Window.bind(on_cursor_enter=save_window_pos, on_cursor_leave=save_window_pos)
@@ -29942,13 +30024,17 @@ class MainApp(App):
 main_app = None
 def run_application():
     global main_app
+
+    send_log('run_application', 'initializing graphical UI (Kivy)', 'info')
     main_app = MainApp(title=constants.app_title)
+
     try:
         main_app.run()
         if constants.os_name == 'macos':
             Window.close()
     except ArgumentError:
         pass
+
     except Exception as e:
         Window.close()
         raise e
