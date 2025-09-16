@@ -1,9 +1,10 @@
 from datetime import datetime as dt
 from functools import reduce
 from glob import glob
-import constants
 import time
 import os
+
+from source.core import constants
 
 
 # Auto-MCS Back-up API

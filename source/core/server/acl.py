@@ -8,14 +8,14 @@ from glob import glob
 import json_repair
 import threading
 import ipaddress
-import constants
 import socket
 import time
 import json
 import re
 import os
 
-from amscript import PlayerScriptObject
+from source.core.server.amscript import PlayerScriptObject
+from source.core import constants
 
 
 # Auto-MCS Access Control API

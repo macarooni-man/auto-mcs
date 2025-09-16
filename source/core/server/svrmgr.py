@@ -14,13 +14,11 @@ import json
 import os
 import re
 
-from acl import AclManager, get_uuid, check_online
-from backup import BackupManager
-from addons import AddonManager
-import constants
-import telepath
-import amscript
-import backup
+from source.core.server.acl import AclManager, get_uuid, check_online
+from source.core.server.backup import BackupManager
+from source.core.server.addons import AddonManager
+from source.core.server import amscript, backup
+from source.core import constants, telepath
 
 
 # Auto-MCS Server Manager API

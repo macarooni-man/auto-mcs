@@ -3,13 +3,14 @@ from difflib import SequenceMatcher
 from zipfile import ZipFile
 from copy import deepcopy
 from glob import glob
-import constants
 import requests
 import hashlib
 import math
 import json
 import os
 import re
+
+from source.core import constants
 
 
 # Auto-MCS Add-on API

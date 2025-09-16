@@ -39,13 +39,13 @@ import jwt
 import os
 
 # Local imports
-from amscript import AmsFileObject, ScriptManager
-from addons import AddonFileObject, AddonManager
-from acl import AclManager, AclRule
-from backup import BackupManager
-from svrmgr import ServerObject
-import constants
-import svrmgr
+from source.core.server.amscript import AmsFileObject, ScriptManager
+from source.core.server.addons import AddonFileObject, AddonManager
+from source.core.server.acl import AclManager, AclRule
+from source.core.server.backup import BackupManager
+from source.core.server.svrmgr import ServerObject
+from source.core.server import svrmgr
+from source.core import constants
 
 
 # Auto-MCS Telepath API

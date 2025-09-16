@@ -22,7 +22,7 @@ jobs:
         run: |
           get_env() {
               local key="$1"
-              local path="source/constants.py"
+              local path="source/core/constants.py"
               value=$(python3 -c "with open('$path', 'r') as f: print([l for l in f.readlines() if '$key'.lower() in l][0].split(' = ')[1][1:-2].strip())")
               echo "$key=$value" >> $GITHUB_OUTPUT
           }
@@ -190,7 +190,7 @@ jobs:
           source ./venv/bin/activate
           pip install -r reqs-linux.txt
           python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
-          cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
+          cp -f ../source/ui/assets/fonts/Consolas* /usr/share/fonts
           fc-cache -f
           # python locale-gen.py
 
@@ -205,6 +205,7 @@ jobs:
           cd $current
           cp $spec_file ../source
           cd ../source
+          chmod +x $current/upx/linux/*
           pyinstaller $spec_file --upx-dir $current/upx/linux --clean
           cd $current
           rm -rf ../source/$spec_file
@@ -271,7 +272,7 @@ jobs:
               . ./venv/bin/activate
               pip install -r reqs-linux.txt
               python -m kivy.tools.packaging.pyinstaller_hooks hook ./venv/lib/python3.9/site-packages/kivy/tools/packaging/pyinstaller_hooks/kivy-hook.py
-              cp -f ../source/gui-assets/fonts/Consolas* /usr/share/fonts
+              cp -f ../source/ui/assets/fonts/Consolas* /usr/share/fonts
               fc-cache -f
               # python locale-gen.py
 
@@ -347,7 +348,7 @@ jobs:
             cd $current
             cp $spec_file ../source
             cd ../source
-            pyinstaller $spec_file --upx-dir $current/upx/linux --clean
+            pyinstaller $spec_file --clean
             cd $current
             rm -rf ../source/$spec_file
             mv -f ../source/dist .
@@ -416,7 +417,7 @@ jobs:
           cd $current
           cp $spec_file ../source
           cd ../source
-          pyinstaller $spec_file --upx-dir $current/upx/linux --clean
+          pyinstaller $spec_file --clean
           cd $current
           rm -rf ../source/$spec_file
           mv -f ../source/dist .

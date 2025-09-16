@@ -7,10 +7,8 @@ import sys
 import re
 import os
 
-import constants
-import telepath
-import amscript
-import acl
+from source.core.server import amscript, acl
+from source.core import constants, telepath
 
 import warnings
 warnings.filterwarnings('ignore')
