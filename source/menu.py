@@ -29834,8 +29834,8 @@ class MainApp(App):
 
 
         # Screen manager override for testing
-        # if not constants.app_compiled:
-        #    pass
+        if not constants.app_compiled:
+           constants.server_manager.open_server
 
 
 

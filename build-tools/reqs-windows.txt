@@ -16,6 +16,7 @@ kivy-deps.sdl2==0.4.5
 Kivy-Garden==0.1.5
 munch==3.0.0
 NBT==1.5.1
+nbtlib==2.0.4
 pefile==2022.5.30
 Pillow==10.3.0
 plyer>=2.1.0

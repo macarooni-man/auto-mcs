@@ -6,7 +6,6 @@ from textwrap import indent
 from copy import deepcopy
 from munch import Munch
 from glob import glob
-from nbt import nbt
 import json_repair
 import constants
 import traceback
@@ -22,6 +21,11 @@ import sys
 import os
 import re
 import gc
+
+# For SNBT string parsing
+from nbtlib import parse_nbt
+# For filesystem playerdata parsing
+from nbt import nbt
 
 
 # Auto-MCS Scripting API
@@ -1892,149 +1896,116 @@ class PlayerScriptObject():
 
         # If newer version, use "/data get" to gather updated playerdata
         if self._server.version >= '1.13' and not self._offline:
-
-            # Attempt to intercept player's entity data
             try:
+
+                # Scrape the player's playerdata file if the console isn't accepting commands
                 if not self._send_command:
-                    try:
-                        new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
+                    try: new_nbt = nbt.NBTFile(os.path.join(self._world_path, 'playerdata', f'{self.uuid}.dat'), 'rb')
                     except FileNotFoundError:
                         return None
                     except PermissionError:
                         return None
 
-                    try:
-                        self.position = CoordinateObject({'x': fmt(new_nbt['Pos'][0]), 'y': fmt(new_nbt['Pos'][1]), 'z': fmt(new_nbt['Pos'][2])})
+                    # Parse player attributes
+                    try: self.position = CoordinateObject({'x': fmt(new_nbt['Pos'][0]), 'y': fmt(new_nbt['Pos'][1]), 'z': fmt(new_nbt['Pos'][2])})
+                    except: pass
+
+                    try: self.rotation = CoordinateObject({'x': fmt(new_nbt['Rotation'][0]), 'y': fmt(new_nbt['Rotation'][1])})
+                    except: pass
+
+                    try: self.motion = CoordinateObject({'x': fmt(new_nbt['Motion'][0]), 'y': fmt(new_nbt['Motion'][1]), 'z': fmt(new_nbt['Motion'][2])})
+                    except: pass
+
+                    try: self.spawn_position = CoordinateObject({'x': fmt(new_nbt['SpawnX']), 'y': fmt(new_nbt['SpawnY']), 'z': fmt(new_nbt['SpawnZ'])})
+                    except: pass
+
+                    try: self.health = int(new_nbt['Health'].value)
+                    except: pass
+
+                    try: self.hunger_level = int(new_nbt['foodLevel'].value)
+                    except: pass
+
+                    try: self.gamemode = ['survival', 'creative', 'adventure', 'spectator'][int(new_nbt['playerGameType'].value)]
+                    except: pass
+
+                    try: self.xp = round(float(new_nbt['XpLevel'].value) + float(new_nbt['XpP'].value), 3)
+                    except: pass
+
+                    try: self.hurt_time = int(new_nbt['HurtTime'].value)
+                    except: pass
+
+                    try: self.death_time = int(new_nbt['DeathTime'].value)
+                    except: pass
+
+                    try: self.on_fire = (int(new_nbt['Fire'].value) > 0)
+                    except: pass
+
+                    try: self.is_flying = (int(new_nbt['abilities']['flying'].value) == 1)
+                    except: pass
+
+                    try: self.is_sleeping = (int(new_nbt['Sleeping'].value) == 1)
+                    except: pass
+
+                    try: self.is_drowning = (int(new_nbt['Air'].value) < 1)
+                    except: pass
+
+                    try: self.dimension = {0: 'overworld', -1: 'the_nether', 1: 'the_end'}.get(int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:', '')
+                    except: pass
+
+                    try: self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['active_effects'].tags}
                     except:
-                        pass
+                        try: self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['ActiveEffects'].tags}
+                        except: pass
 
+                    # Parse the inventory
                     try:
-                        self.rotation = CoordinateObject({'x': fmt(new_nbt['Rotation'][0]), 'y': fmt(new_nbt['Rotation'][1])})
-                    except:
-                        pass
-
-                    try:
-                        self.motion = CoordinateObject({'x': fmt(new_nbt['Motion'][0]), 'y': fmt(new_nbt['Motion'][1]), 'z': fmt(new_nbt['Motion'][2])})
-                    except:
-                        pass
-
-                    try:
-                        self.spawn_position = CoordinateObject(
-                            {'x': fmt(new_nbt['SpawnX']), 'y': fmt(new_nbt['SpawnY']), 'z': fmt(new_nbt['SpawnZ'])})
-                    except:
-                        pass
-
-                    try:
-                        self.health = int(new_nbt['Health'].value)
-                    except:
-                        pass
-
-                    try:
-                        self.hunger_level = int(new_nbt['foodLevel'].value)
-                    except:
-                        pass
-
-                    try:
-                        self.gamemode = ['survival', 'creative', 'adventure', 'spectator'][
-                            int(new_nbt['playerGameType'].value)]
-                    except:
-                        pass
-
-                    try:
-                        self.xp = round(float(new_nbt['XpLevel'].value) + float(new_nbt['XpP'].value), 3)
-                    except:
-                        pass
-
-                    try:
-                        self.hurt_time = int(new_nbt['HurtTime'].value)
-                    except:
-                        pass
-
-                    try:
-                        self.death_time = int(new_nbt['DeathTime'].value)
-                    except:
-                        pass
-
-                    try:
-                        self.on_fire = (int(new_nbt['Fire'].value) > 0)
-                    except:
-                        pass
-
-                    try:
-                        self.is_flying = (int(new_nbt['abilities']['flying'].value) == 1)
-                    except:
-                        pass
-
-                    try:
-                        self.is_sleeping = (int(new_nbt['Sleeping'].value) == 1)
-                    except:
-                        pass
-
-                    try:
-                        self.is_drowning = (int(new_nbt['Air'].value) < 1)
-                    except:
-                        pass
-
-                    try:
-                        self.dimension = {0: 'overworld', -1: 'the_nether', 1: 'the_end'}.get(int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:', '')
-                    except:
-                        pass
-
-                    try:
-                        self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['active_effects'].tags}
-                    except:
-                        try:
-                            self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['ActiveEffects'].tags}
-                        except:
-                            pass
-
-
-                    try:
-                        try:
-                            selected_item = (new_nbt['SelectedItem'], int(new_nbt['SelectedItemSlot'].value))
-                        except KeyError:
-                            selected_item = None
+                        try:             selected_item = (new_nbt['SelectedItem'], int(new_nbt['SelectedItemSlot'].value))
+                        except KeyError: selected_item = None
                         self.inventory = InventoryObject(self, new_nbt['Inventory'], selected_item)
-                    except:
-                        pass
+                    except: pass
+
+
+                # Otherwise, attempt to grab it from the console as SNBT
                 else:
                     log_data = self._get_entity_data(self.name)
-                    nbt_data = log_data.split("following entity data: ")[1].strip()
+
+                    def normalize(obj):
+
+                        # Looks like a namespaced ID: "minecraft:item"
+                        _namespace_re = re.compile(r'^[a-z0-9_.-]+:[a-z0-9_./-]+$')
+
+                        # Keep only the right side of a namespace ID
+                        def _strip_ns(s: str) -> str:
+                            return s.split(':', 1)[1] if _namespace_re.match(s) else s
+
+                        if isinstance(obj, dict):
+                            out = {}
+
+                            # Normalize key: lowercase, then strip namespace if present
+                            for k, v in obj.items():
+
+                                nk = k.lower()
+                                if ':' in nk: nk = _strip_ns(nk)
+                                out[nk] = normalize(v)
+
+                            return out
+
+                        elif isinstance(obj, list): return [normalize(v) for v in obj]
+
+                        elif isinstance(obj, str):
+
+                            # Normalize value: strip namespace if present
+                            return _strip_ns(obj)
+
+                        else: return obj
 
                     try:
-                        # Remove ANSI escape codes
-                        ansi_escape = re.compile(r'''
-                            \x1B  # ESC character
-                            \[    # literal [
-                            [0-?]*  # zero or more chars between 0 and ?
-                            [ -/]*  # zero or more chars between space and /
-                            [@-~]   # one char between @ and ~
-                        ''', re.VERBOSE)
-                        nbt_data = ansi_escape.sub('', nbt_data)
-                    except:
-                        pass
+                        snbt_data = log_data.split("following entity data: ")[1].strip()
+                        new_nbt = parse_nbt(snbt_data).unpack()
+                        new_nbt = normalize(new_nbt)
 
-                    # Make sure that strings are escaped with quotes, and json quotes are escaped with \"
-                    try:
-
-                        # Handle unquoted keys and values
-                        nbt_data = re.sub(
-                            r'(:?"[^"]*")|([A-Za-z_\-\d.?\d]\w*\.*\d*\w*)',
-                            lambda x: json_regex(x),
-                            nbt_data.replace('I;', '"I",')  # remove invalid UUID tags for parsing
-                        )
-
-                        # Replace semicolons with commas, fix brackets
-                        nbt_data = nbt_data.replace(";", ",").replace("'{", '"{').replace("}'", '}"')
-
-                        # Escape internal JSON quotes
-                        new_nbt = re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), nbt_data)
-
-                        # Attempt to fix any errors that might arise
-                        new_nbt = json_repair.loads(re.sub(r'(?<="{)(.*?)(?=}")', lambda x: x.group(1).replace('"', '\\"'), new_nbt))
-                    except:
-                        if constants.debug:
-                            print('Failed to process NBT data')
+                    except Exception as e:
+                        send_log(f'{__name__}.{self.__class__.__name__}', f'failed to parse SNBT data: {constants.format_traceback(e)}', 'error')
 
             # If log doesn't contain entity content, revert NBT
             except IndexError:
@@ -2042,97 +2013,64 @@ class PlayerScriptObject():
 
             # Process NBT if there's no error
             else:
-                try:
-                    self.position = CoordinateObject({'x': new_nbt['pos'][0], 'y': new_nbt['pos'][1], 'z': new_nbt['pos'][2]})
-                except:
-                    pass
+
+                # Parse player attributes
+                try: self.position = CoordinateObject({'x': new_nbt['pos'][0], 'y': new_nbt['pos'][1], 'z': new_nbt['pos'][2]})
+                except: pass
+
+                try: self.rotation = CoordinateObject({'x': new_nbt['rotation'][0], 'y': new_nbt['rotation'][1]})
+                except: pass
+
+                try: self.motion = CoordinateObject({'x': new_nbt['motion'][0], 'y': new_nbt['motion'][1], 'z': new_nbt['motion'][2]})
+                except: pass
+
+                try: self.spawn_position = CoordinateObject({'x': new_nbt['spawnx'], 'y': new_nbt['spawny'], 'z': new_nbt['spawnz']})
+                except: pass
+
+                try: self.health = int(new_nbt['health'])
+                except: pass
+
+                try: self.hunger_level = int(new_nbt['foodlevel'])
+                except: pass
+
+                try: self.gamemode = ['survival', 'creative', 'adventure', 'spectator'][int(new_nbt['playergametype'])]
+                except: pass
+
+                try: self.xp = round(float(new_nbt['xplevel']) + float(new_nbt['xpp']), 3)
+                except: pass
+
+                try: self.on_fire = (int(new_nbt['fire']) > 0)
+                except: pass
+
+                try: self.is_flying = (int(new_nbt['abilities']['flying']) == 1)
+                except: pass
+
+                try: self.is_sleeping = (int(new_nbt['sleeptimer']) > 0)
+                except: pass
+
+                try: self.is_drowning = (int(new_nbt['air']) < 1)
+                except: pass
+
+                try: self.hurt_time = int(new_nbt['hurttime'])
+                except: pass
+
+                try: self.death_time = int(new_nbt['deathtime'])
+                except: pass
+
+                try: self.dimension = str(new_nbt['dimension']).replace('minecraft:','')
+                except: pass
 
                 try:
-                    self.rotation = CoordinateObject({'x': new_nbt['rotation'][0], 'y': new_nbt['rotation'][1]})
-                except:
-                    pass
+                    if 'activeeffects' in new_nbt:    self.active_effects = {id_dict['effect'].get(effect['id'], effect['id']).replace('minecraft:',''): {k.replace("show","show_"): bool(v) if "show" in k else v for k, v in effect.items()}for effect in new_nbt['activeeffects']}
+                    elif 'active_effects' in new_nbt: self.active_effects = {effect['id']: {(k.replace("show","show_") if "_" not in k else k): bool(v) if "show" in k else v for k, v in effect.items()} for effect in new_nbt['active_effects']}
+                except: pass
 
+                # Parse the inventory
                 try:
-                    self.motion = CoordinateObject({'x': new_nbt['motion'][0], 'y': new_nbt['motion'][1], 'z': new_nbt['motion'][2]})
-                except:
-                    pass
-
-                try:
-                    self.spawn_position = CoordinateObject({'x': new_nbt['spawnx'], 'y': new_nbt['spawny'], 'z': new_nbt['spawnz']})
-                except:
-                    pass
-
-                try:
-                    self.health = int(new_nbt['health'])
-                except:
-                    pass
-
-                try:
-                    self.hunger_level = int(new_nbt['foodlevel'])
-                except:
-                    pass
-
-                try:
-                    self.gamemode = ['survival', 'creative', 'adventure', 'spectator'][int(new_nbt['playergametype'])]
-                except:
-                    pass
-
-                try:
-                    self.xp = round(float(new_nbt['xplevel']) + float(new_nbt['xpp']), 3)
-                except:
-                    pass
-
-                try:
-                    self.on_fire = (int(new_nbt['fire']) > 0)
-                except:
-                    pass
-
-                try:
-                    self.is_flying = (int(new_nbt['abilities']['flying']) == 1)
-                except:
-                    pass
-
-                try:
-                    self.is_sleeping = (int(new_nbt['sleeptimer']) > 0)
-                except:
-                    pass
-
-                try:
-                    self.is_drowning = (int(new_nbt['air']) < 1)
-                except:
-                    pass
-
-                try:
-                    self.hurt_time = int(new_nbt['hurttime'])
-                except:
-                    pass
-
-                try:
-                    self.death_time = int(new_nbt['deathtime'])
-                except:
-                    pass
-
-                try:
-                    self.dimension = str(new_nbt['dimension']).replace('minecraft:','')
-                except:
-                    pass
-
-                try:
-                    if 'activeeffects' in new_nbt:
-                        self.active_effects = {id_dict['effect'].get(effect['id'], effect['id']).replace('minecraft:',''): {k.replace("show","show_"): bool(v) if "show" in k else v for k, v in effect.items()}for effect in new_nbt['activeeffects']}
-                    elif 'active_effects' in new_nbt:
-                        self.active_effects = {effect['id']: {(k.replace("show","show_") if "_" not in k else k): bool(v) if "show" in k else v for k, v in effect.items()} for effect in new_nbt['active_effects']}
-                except:
-                    pass
-
-                try:
-                    try:
-                        selected_item = (new_nbt['selecteditem'], int(new_nbt['selecteditemslot']))
-                    except KeyError:
-                        selected_item = None
+                    try:             selected_item = (new_nbt['selecteditem'], int(new_nbt['selecteditemslot']))
+                    except KeyError: selected_item = None
                     self.inventory = InventoryObject(self, new_nbt['inventory'], selected_item)
-                except:
-                    pass
+                except: pass
 
 
         # If pre-1.13, get updated playerdata from disk
@@ -2172,60 +2110,38 @@ class PlayerScriptObject():
                     except:
                         pass
 
-                try:
-                    self.health = int(new_nbt['Health'].value)
-                except:
-                    pass
+                try: self.health = int(new_nbt['Health'].value)
+                except: pass
 
-                try:
-                    self.hunger_level = int(new_nbt['foodLevel'].value)
-                except:
-                    pass
+                try: self.hunger_level = int(new_nbt['foodLevel'].value)
+                except: pass
 
-                try:
-                    self.gamemode = ['survival', 'creative', 'adventure', 'spectator'][int(new_nbt['playerGameType'].value)]
-                except:
-                    pass
+                try: self.gamemode = ['survival', 'creative', 'adventure', 'spectator'][int(new_nbt['playerGameType'].value)]
+                except: pass
 
-                try:
-                    self.xp = round(float(new_nbt['XpLevel'].value) + float(new_nbt['XpP'].value), 3)
-                except:
-                    pass
+                try: self.xp = round(float(new_nbt['XpLevel'].value) + float(new_nbt['XpP'].value), 3)
+                except: pass
 
-                try:
-                    self.hurt_time = int(new_nbt['HurtTime'].value)
-                except:
-                    pass
+                try: self.hurt_time = int(new_nbt['HurtTime'].value)
+                except: pass
 
-                try:
-                    self.death_time = int(new_nbt['DeathTime'].value)
-                except:
-                    pass
+                try: self.death_time = int(new_nbt['DeathTime'].value)
+                except: pass
 
-                try:
-                    self.on_fire = (int(new_nbt['Fire'].value) > 0)
-                except:
-                    pass
+                try: self.on_fire = (int(new_nbt['Fire'].value) > 0)
+                except: pass
 
-                try:
-                    self.is_flying = (int(new_nbt['abilities']['flying'].value) == 1)
-                except:
-                    pass
+                try: self.is_flying = (int(new_nbt['abilities']['flying'].value) == 1)
+                except: pass
 
-                try:
-                    self.is_sleeping = (int(new_nbt['Sleeping'].value) == 1)
-                except:
-                    pass
+                try: self.is_sleeping = (int(new_nbt['Sleeping'].value) == 1)
+                except: pass
 
-                try:
-                    self.is_drowning = (int(new_nbt['Air'].value) < 1)
-                except:
-                    pass
+                try: self.is_drowning = (int(new_nbt['Air'].value) < 1)
+                except: pass
 
-                try:
-                    self.dimension = {0: 'overworld', -1: 'the_nether', 1: 'the_end'}.get(int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:','')
-                except:
-                    pass
+                try: self.dimension = {0: 'overworld', -1: 'the_nether', 1: 'the_end'}.get(int(new_nbt['Dimension'].value), int(new_nbt['Dimension'].value)).replace('minecraft:','')
+                except: pass
 
                 try:
                     if 'active_effects' in new_nbt:
@@ -2241,21 +2157,15 @@ class PlayerScriptObject():
 
                                 self.active_effects[effect_data['id'].replace("minecraft:","")] = effect_data
 
-                    else:
-                        self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['ActiveEffects']}
+                    else: self.active_effects = {id_dict['effect'].get(item[3].value, item[3].value).replace('minecraft:', ''): {'id': item[3].value, 'amplitude': int(item[4].value), 'duration': int(item[2].value), 'show_particles': (item[1].value == 1)} for item in new_nbt['ActiveEffects']}
 
-
-                except Exception as e:
-                    self.active_effects = {}
+                except Exception as e: self.active_effects = {}
 
                 try:
-                    try:
-                        selected_item = (new_nbt['SelectedItem'], int(new_nbt['SelectedItemSlot'].value))
-                    except KeyError:
-                        selected_item = None
+                    try:             selected_item = (new_nbt['SelectedItem'], int(new_nbt['SelectedItemSlot'].value))
+                    except KeyError: selected_item = None
                     self.inventory = InventoryObject(self, new_nbt['Inventory'], selected_item)
-                except:
-                    pass
+                except: pass
 
 
         # Eventually process this to object data
