@@ -8,6 +8,7 @@ from re import findall
 from glob import glob
 import sys, os
 
+
 build_tools = os.path.abspath(os.path.join('..', 'build-tools'))
 sys.path.extend(['..', build_tools])
 from source.core.constants import app_title, app_version

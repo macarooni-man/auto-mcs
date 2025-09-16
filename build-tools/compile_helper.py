@@ -1,4 +1,4 @@
-import os, glob, shutil
+import os
 
 
 tools_path = os.path.dirname(__file__)
@@ -13,7 +13,7 @@ source_path = os.path.abspath(os.path.join(tools_path, '..', 'source'))
 # Collect all submodules in '../source'
 def collect_internal_modules() -> list:
     modules = []
-    for root, dirs, files in os.walk(source_path):
+    for root, dirs, scripts in os.walk(source_path):
         rel_root = os.path.relpath(root, source_path)
         parts = rel_root.split(os.sep)
 
@@ -21,9 +21,9 @@ def collect_internal_modules() -> list:
         if parts[0] not in ('', 'core', 'ui'):
             continue
 
-        for file in files:
-            if file.endswith('.py') and not file.startswith('__'):
-                rel_file = os.path.relpath(os.path.join(root, file), os.path.abspath(os.path.join(source_path, '..')))
+        for script in scripts:
+            if script.endswith('.py') and not script.startswith('__'):
+                rel_file = os.path.relpath(os.path.join(root, script), os.path.abspath(os.path.join(source_path, '..')))
                 module = rel_file[:-3].replace(os.sep, '.')
                 parent = module.rsplit('.', 1)[0]
 
