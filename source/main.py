@@ -480,3 +480,40 @@ if __name__ == '__main__':
 
     # Exit with return code if there's a crash
     if crash: sys.exit(20)
+
+
+
+# ----------------------------------------------------------------------------------------------
+#                             _
+#                  __ _ _   _| |_ ___                   < Module execution chain >
+#   ▄▄██████▄▄    / _` | | | | __/ _ \
+#  ████████████  | (_| | |_| | || (_) |        -- Root: main <───────────────┐
+# ████▀▀██▀▀████  \__,_|\__,_|\__\___/                ┆            ┆         │
+# ████▄▄▀▀▄▄████   _ __ ___   ___ ___            (bg thread)  (fg thread)    │
+# █████    █████  | '_ ` _ \ / __/ __|                ┆            ┆         ├── core.constants
+#  ████▄██▄████   | | | | | | (__\__ \          crash-handler  ui.launch <───┤
+#   ▀▀██████▀▀    |_| |_| |_|\___|___/                             ┆         │
+#                                                ui.headless / ui.desktop <──┘
+#
+#   < Functional Tests >
+#
+#   - Windows 10 1909, 20H2, 21H2
+#   - Windows 11 22H2
+#   - macOS Monterey (Intel, 12.7.3)
+#   - macOS Sequoia (M3, 15.4.1)
+#   - Manjaro KDE 2022 - 5.10, 5.16, 6.1, 6.3
+#   - Manjaro XFCE 2022 - 5.15.8  //No file dialog, requires installation of Zenity
+#   - Arch Linux (KDE) - 6.6.9
+#   - Kali Linux 2022 - 5.15
+#   - Ubuntu 23.10 Desktop (Wayland) - 6.5
+#   - Ubuntu 22.04 Server (XFCE, LXDE) - 5.15
+#   - Ubuntu 22.04.1 Desktop (Wayland, X11) - 5.15
+#   - Fedora 33 Workstation - 5.8
+#   - PopOS 22.04 - 5.19
+#   - Linux Mint 21 MATE - 5.15
+#   - Garuda KDE Lite - 5.19.7
+#   - Garuda Wayfire - 5.19.7  //Issues with YAD not displaying file dialog
+#   - Garuda i3 - 5.19.7       //Issues with YAD not displaying file dialog
+#   - SteamOS Holo - 5.13
+#
+# ----------------------------------------------------------------------------------------------
