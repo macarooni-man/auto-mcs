@@ -1,20 +1,25 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from source.core.constants import app_title, app_version
 from PyInstaller.utils.hooks import collect_submodules
 from kivy_deps import sdl2, glew
 from os.path import basename
 from time import sleep
 from re import findall
 from glob import glob
+import sys, os
 
+build_tools = os.path.abspath(os.path.join('..', 'build-tools'))
+sys.path.extend(['..', build_tools])
+from source.core.constants import app_title, app_version
+from compile_helper import *
 
 block_cipher = None
 hiddenimports = ['plyer.platforms.win.filechooser', 'PIL._tkinter_finder', 'dataclasses', 'nbt.world', 'pkg_resources.extern']
 hiddenimports.extend(collect_submodules('uvicorn'))
+hiddenimports.extend(collect_internal_modules())
 
 
-a = Analysis(['main.py'],
+a = Analysis(['launcher.py'],
 
     hiddenimports = hiddenimports,
     excludes = ['pandas', 'matplotlib'],

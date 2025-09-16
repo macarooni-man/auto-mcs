@@ -306,7 +306,7 @@ if __name__ == '__main__':
 
 
     # Variables
-    from source.ui.launch import ui_loop
+    from source.ui.main import ui_loop
     exitApp = False
     crash = None
 

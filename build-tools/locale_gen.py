@@ -28,7 +28,8 @@ from source.core import constants
 
 skip_basenames = {
     'desktop.py', 'logviewer.py', 'amseditor.py',
-    'backup.py', 'acl.py', 'constants.py',
+    'backup.py', 'acl.py', 'constants.py', 'main.py',
+    'launcher.py'
 }
 skip_dirs = {'.git', '__pycache__', '.venv', 'venv', 'env', 'build', 'dist'}
 root = Path(source_dir)

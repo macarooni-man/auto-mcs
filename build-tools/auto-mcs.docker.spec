@@ -1,17 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from source.core.constants import app_title, app_version
 from PyInstaller.utils.hooks import collect_submodules
 from os.path import basename
 from time import sleep
 from re import findall
 from os import environ
 from glob import glob
-import sys
+import sys, os
+
+
+build_tools = os.path.abspath(os.path.join('..', 'build-tools'))
+sys.path.extend(['..', build_tools])
+from source.core.constants import app_title, app_version
+from compile_helper import *
 
 block_cipher = None
 hiddenimports = ['dataclasses', 'nbt.world', 'pkg_resources.extern']
 hiddenimports.extend(collect_submodules('uvicorn'))
+hiddenimports.extend(collect_internal_modules())
 
 sys.modules['FixTk'] = None
 excluded_imports = [
@@ -36,7 +42,7 @@ excluded_imports = [
 ]
 
 
-a = Analysis(['main.py'],
+a = Analysis(['launcher.py'],
 
     hiddenimports = hiddenimports,
     excludes = excluded_imports,
