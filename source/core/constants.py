@@ -1,9 +1,9 @@
 from shutil import rmtree, copytree, copy, ignore_patterns, move, disk_usage
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt, date
-from colorama import Fore, Back, Style
 from random import randrange, choices
 from difflib import SequenceMatcher
+from colorama import Fore, Style
 from urllib.parse import quote
 from collections import deque
 from bs4 import BeautifulSoup
@@ -24,7 +24,6 @@ import threading
 import traceback
 import platform
 import requests
-import tempfile
 import tarfile
 import zipfile
 import hashlib

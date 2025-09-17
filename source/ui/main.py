@@ -1,4 +1,4 @@
-from source.core.server.svrmgr import ServerManager
+from source.core.server.manager import ServerManager
 from source.core import constants
 
 

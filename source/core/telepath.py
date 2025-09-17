@@ -43,8 +43,8 @@ from source.core.server.amscript import AmsFileObject, ScriptManager
 from source.core.server.addons import AddonFileObject, AddonManager
 from source.core.server.acl import AclManager, AclRule
 from source.core.server.backup import BackupManager
-from source.core.server.svrmgr import ServerObject
-from source.core.server import svrmgr
+from source.core.server.manager import ServerObject
+from source.core.server import manager
 from source.core import constants
 
 
@@ -2195,7 +2195,7 @@ async def download_file(request: Request, file: str):
  (ServerObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)]
 
 # General auto-mcs endpoints
-create_endpoint(svrmgr.create_server_list, 'main')
+create_endpoint(manager.create_server_list, 'main')
 create_endpoint(constants.make_update_list, 'main')
 create_endpoint(constants.check_free_space, 'main')
 create_endpoint(constants.get_remote_var, 'main', True)
