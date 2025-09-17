@@ -6,7 +6,6 @@ from textwrap import indent
 from copy import deepcopy
 from munch import Munch
 from glob import glob
-import json_repair
 import traceback
 import functools
 import datetime
