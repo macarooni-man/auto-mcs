@@ -10,8 +10,38 @@ import os
 import gc
 
 
+
+# ------------------------------------------------- Helper Methods -----------------------------------------------------
+
+# Logging wrapper
+def send_log(object_data, message, level=None):
+    from source.core import constants
+    return constants.send_log(f'main.{object_data}', message, level)
+
+# Exits after a delay so that the logger has time to write on its own thread
+def exit_with_log(*a, exit_code: int = 0, **kw):
+    send_log(*a, **kw)
+    time.sleep(0.1)
+    sys.exit(exit_code)
+
+# Setup garbage collector and multiprocessing settings
+def setup_multiprocessing():
+
+    # Modify garbage collector
+    gc.collect(2)
+    gc.freeze()
+
+    # Configure multiprocessing
+    import multiprocessing
+    multiprocessing.set_start_method("spawn")
+    multiprocessing.freeze_support()
+
+    # If running in a spawned process, don't initialize anything
+    if multiprocessing.parent_process():
+        sys.exit()
+
 # Show a console in '--debug' mode on Windows if compiled
-def setup_windows_debug_console(redirect_to_devnull: bool = True):
+def init_windows_console():
 
     app_title = "auto-mcs (console)"
     is_windows = (os.name == "nt")
@@ -22,16 +52,13 @@ def setup_windows_debug_console(redirect_to_devnull: bool = True):
 
 
     # Ignore on other operating systems as they have STDIO
-    if not is_windows:
-        return
+    if not is_windows: return
 
     # Ignore if running as Python, since it has STDIO
-    if not is_compiled:
-        return
+    if not is_compiled: return
 
     # Ignore if headless
-    if headless:
-        return
+    if headless: return
 
 
     # Attach a console and wire stdio to it
@@ -76,208 +103,62 @@ def setup_windows_debug_console(redirect_to_devnull: bool = True):
 
     # Silence STDIO for non-debug runs so the UI app stays quiet
     else:
-        if redirect_to_devnull:
-            sys.stdout = open(os.devnull, "w", encoding="utf-8", buffering=1)
-            sys.stderr = open(os.devnull, "w", encoding="utf-8", buffering=1)
+        sys.stdout = open(os.devnull, "w", encoding="utf-8", buffering=1)
+        sys.stderr = open(os.devnull, "w", encoding="utf-8", buffering=1)
 
+# Migrate old logs (<2.3.3) to new location
+def migrate_legacy_logs():
+    from source.core import constants
 
-if __name__ == '__main__':
+    # Move files matching 'pattern' under 'base_dir' into 'Logs/target_subdir'
+    def _migrate(pattern: str, target_subdir: str, base_dir: str, delete_source_dir: bool = False):
+        old_dir = os.path.join(base_dir)
+        files = glob.glob(os.path.join(old_dir, pattern))
+        if not files: return
 
-    # Modify garbage collector
-    gc.collect(2)
-    gc.freeze()
+        new_dir = os.path.join(constants.applicationFolder, "Logs", target_subdir)
+        try:
+            constants.send_log('migrate_legacy_logs',f"migrating {len(files)} '{pattern}' to '{new_dir}'", level='warning')
+            constants.folder_check(new_dir)
+            for src in files:
+                dst = os.path.join(new_dir, os.path.basename(src))
+                constants.move(src, dst)
 
+        except Exception as e:
+            constants.send_log(f"migrate_legacy_logs.{target_subdir}",f"error migrating '{pattern}': {constants.format_traceback(e)}", level='error')
 
-    import multiprocessing
-    multiprocessing.set_start_method("spawn")
-    multiprocessing.freeze_support()
+        else:
+            if delete_source_dir:
+                try: constants.safe_delete(old_dir)
+                except Exception as e: constants.send_log('migrate_legacy_logs',f"failed to delete source dir '{old_dir}': {constants.format_traceback(e)}", level='error')
 
-    # If running in a spawned process, don't initialize anything
-    if multiprocessing.parent_process():
-        sys.exit()
+    app_logs   = os.path.join(constants.applicationFolder, "Logs")
+    audit_logs = os.path.join(constants.telepathDir, "audit-logs")
+    _migrate("ame-error*.log", "errors", app_logs)
+    _migrate("ame-fatal*.log", "crashes", app_logs)
+    _migrate("session-audit_*.log", "telepath", audit_logs, delete_source_dir=True)
 
+# Retrieve runtime variables from the system
+def get_system_context():
+    from source.core import constants
 
-    # Open debug console for Windows windowed builds (or silence stdio otherwise)
-    setup_windows_debug_console()
-
-
-    # Import constants and set variables
-    from source.core import constants, telepath
-
-
-    # Logging wrapper
-    def send_log(object_data, message, level=None):
-        return constants.send_log(f'main.{object_data}', message, level)
-
-
-    # Exits after a delay so that the logger has time to write on its thread
-    def exit_with_log(*a, exit_code: int = 0, **kw):
-        send_log(*a, **kw)
-        time.sleep(0.1)
-        sys.exit(exit_code)
-
-
-
-    # Migrate old logs (<2.3.3) to new location
-
-    # Move old error logs
-    old_log_dir = os.path.join(constants.applicationFolder, "Logs")
-    log_dir = os.path.join(constants.applicationFolder, "Logs", "errors")
-    error_logs = glob.glob(os.path.join(old_log_dir, "ame-error*.log"))
-    if error_logs:
-        send_log('', f"migrating old error logs to '{log_dir}'", 'warning')
-        constants.folder_check(log_dir)
-        [constants.move(file, os.path.join(log_dir, os.path.basename(file))) for file in error_logs]
-
-    # Move old crash logs
-    old_log_dir = os.path.join(constants.applicationFolder, "Logs")
-    log_dir = os.path.join(constants.applicationFolder, "Logs", "crashes")
-    error_logs = glob.glob(os.path.join(old_log_dir, "ame-fatal*.log"))
-    if error_logs:
-        send_log('', f"migrating old crash logs to '{log_dir}'", 'warning')
-        constants.folder_check(log_dir)
-        [constants.move(file, os.path.join(log_dir, os.path.basename(file))) for file in error_logs]
-
-    # Move old Telepath logs
-    old_log_dir = os.path.join(constants.telepathDir, 'audit-logs')
-    log_dir = os.path.join(constants.applicationFolder, 'Logs', 'telepath')
-    audit_logs = glob.glob(os.path.join(old_log_dir, "session-audit_*.log"))
-    if audit_logs:
-        send_log('', f"migrating old Telepath audit-logs to '{log_dir}'", 'warning')
-        constants.folder_check(log_dir)
-        [constants.move(file, os.path.join(log_dir, os.path.basename(file))) for file in audit_logs]
-        constants.safe_delete(old_log_dir)
-
-
-
-    # Set launch path, username
+    # Set launch path
     constants.launch_path = sys.executable if constants.app_compiled else __file__
 
+
     # Set username
-    try: constants.username = constants.run_proc('whoami', True, log_only_in_debug=True).split('\\')[-1].strip()
-    except: pass
+    try:    constants.username = constants.run_proc('whoami', True, log_only_in_debug=True).split('\\')[-1].strip()
+    except: constants.username = 'user'
+
 
     # Set hostname
-    try:
-        if constants.is_docker: constants.hostname = constants.app_title
-        else:
-            hostname = constants.run_proc('hostname', True, log_only_in_debug=True).strip()
-            if 'hostname: command not found' in hostname: hostname = constants.app_title
-            constants.hostname = hostname
-    except:
-        constants.hostname = constants.app_title
-
-
-    # Check for update log
-    update_log  = None
-    was_updated = False
-    try:
-        update_log = os.path.join(constants.tempDir, 'update-log')
-        if os.path.exists(update_log):
-            with open(update_log, 'r') as f:
-                constants.update_data['reboot-msg'] = f.read().strip().split("@")
-                was_updated = True
-            send_log('', f"update complete: '{constants.update_data['reboot-msg']}'", 'info')
-    except: pass
-
-
-
-    # Check for additional arguments
-    reset_config = False
-    try:
-        parser = argparse.ArgumentParser(description='CLI options for auto-mcs')
-        parser.add_argument('-d', '--debug', default='', help='execute auto-mcs with verbose console logging', action='store_true')
-        parser.add_argument('-l', '--launch', type=str, default='', help='specify a server name (or list of server names) to launch automatically', metavar='"Server 1, Server 2"')
-        parser.add_argument('--reset', default='', help='reset global configuration file before launch', action='store_true')
-        parser.add_argument('--bypass-admin-warning', default='', help='allow launch as admin/root (not recommended)', action='store_true')
-
-        # For now, Windows doesn't support headless when compiled due to the GUI entrypoint from Pyinstaller
-        if constants.os_name != 'windows' or not constants.app_compiled:
-            parser.add_argument('-s', '--headless', default='', help='launch without initializing the UI and enable the Telepath API', action='store_true')
-
-
-
-        # Assign parsed arguments to global variables
-        args = constants.boot_arguments = parser.parse_args()
-        constants.debug = args.debug
-        reset_config = args.reset
-        constants.bypass_admin_warning = args.bypass_admin_warning
-        if constants.os_name != 'windows' or not constants.app_compiled:
-            constants.headless = args.headless
-
-
-        # Delete STDIO on Windows
-        if constants.os_name == 'windows' and constants.app_compiled and not constants.debug:
-            sys.stdout = open(os.devnull, 'w')
-            sys.stderr = open(os.devnull, 'w')
-
-
-        # Force headless if display is not set on Linux
-        if (constants.os_name == 'linux' and 'DISPLAY' not in os.environ) or constants.is_docker:
-            constants.headless = True
-
-        # Close splash if headless & compiled
-        if constants.app_compiled and constants.headless and constants.os_name == 'windows':
-            import pyi_splash
-            pyi_splash.close()
-
-
-        # Check for auto-start
-        if args.launch:
-            constants.generate_server_list()
-            server_list = [s.strip() for s in args.launch.split(',')]
-            for server in server_list:
-                if server.lower() in constants.server_list_lower:
-                    server = constants.server_list[constants.server_list_lower.index(server.lower())]
-                    constants.boot_launches.append(server)
-                else:
-                    exit_with_log('', f"--launch: '{server}' does not exist", 'fatal', exit_code=-1)
-
-    except AttributeError as e:
-        send_log('', f"error processing CLI arguments: {constants.format_traceback(e)}", 'error')
-
-
-    # Check if application is already open (Unless running in Docker)
     if not constants.is_docker:
-        if constants.os_name == "windows":
-            command = f'tasklist | findstr {os.path.basename(constants.launch_path)}'
-            response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if ((command not in line) and ('tasklist' not in line) and (line.endswith(' K')))]
-            if len(response) > 2:
-                user32 = ctypes.WinDLL('user32')
-                if hwnd := user32.FindWindowW(None, constants.app_title):
-                    if not user32.IsZoomed(hwnd):
-                        user32.ShowWindow(hwnd, 1)
-                    user32.SetForegroundWindow(hwnd)
-                exit_with_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal', exit_code=10)
+        try:
+            hostname = constants.run_proc('hostname', True, log_only_in_debug=True).strip()
+            if not 'hostname: command not found' in hostname: constants.hostname = hostname
+        except: pass
 
-        elif constants.os_name == "macos":
-            command = f'ps -e | grep .app/Contents/MacOS/{os.path.basename(constants.launch_path)}'
-            response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if command not in line and 'grep' not in line and line]
-            if len(response) > 2:
-                exit_with_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal', exit_code=10)
-
-        # Linux
-        else:
-            command = f'ps -e | grep {os.path.basename(constants.launch_path)}'
-            response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if command not in line and 'grep' not in line and line]
-            if len(response) > 2:
-                exit_with_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal', exit_code=10)
-
-
-
-    # Initialize Tk before Kivy due to a bug with SDL2
-    if constants.os_name == 'macos' and not constants.headless:
-        import tkinter as tk
-        init_window = tk.Tk()
-        init_window.withdraw()
-
-
-
-    # Delete configuration/cache if flag is set
-    if reset_config:
-        constants.safe_delete(constants.cacheDir)
-        constants.app_config.reset()
-
+    if not constants.hostname: constants.hostname = constants.app_title
 
 
     # Get default system language
@@ -288,8 +169,7 @@ if __name__ == '__main__':
             from locale import getdefaultlocale
             system_locale = getdefaultlocale()[0]
 
-        if '_' in system_locale:
-            system_locale = system_locale.split('_')[0]
+        if '_' in system_locale: system_locale = system_locale.split('_')[0]
 
         for v in constants.available_locales.values():
             if system_locale.startswith(v['code']):
@@ -298,61 +178,271 @@ if __name__ == '__main__':
 
     except Exception as e:
         if not constants.is_docker:
-            send_log('', f'failed to determine locale: {e}', 'error')
+            send_log('get_system_context', f'failed to determine locale: {e}', 'error')
 
-    if not constants.app_config.locale:
-        constants.app_config.locale = 'en'
+    if not constants.app_config.locale: constants.app_config.locale = 'en'
+
+# Checks to see if an update log exists from a prior update
+def check_if_updated() -> bool:
+    from source.core import constants
+
+    try:
+        update_log = os.path.join(constants.tempDir, 'update-log')
+        if os.path.exists(update_log):
+            with open(update_log, 'r') as f:
+                constants.update_data['reboot-msg'] = f.read().strip().split("@")
+                send_log('', f"update complete: '{constants.update_data['reboot-msg']}'", 'info')
+                return True
+
+    except: pass
+    return False
+
+# Parse CLI args and apply boot-time side effects to 'constants'
+def parse_boot_args():
+    from source.core import constants
+    reset_config = False
+
+    try:
+        parser = argparse.ArgumentParser(description='CLI options for auto-mcs')
+
+        # Flags
+        parser.add_argument(
+            '-d', '--debug',
+            help = 'execute auto-mcs with verbose console logging',
+            action = 'store_true'
+        )
+
+        parser.add_argument(
+            '-l', '--launch',
+            type = str,
+            default = '',
+            metavar = '"Server 1, Server 2"',
+            help = 'specify a server name (or list of server names) to launch automatically'
+        )
+
+        parser.add_argument(
+            '--reset',
+            help = 'reset global configuration file before launch',
+            action = 'store_true'
+        )
+
+        parser.add_argument(
+            '--bypass-admin-warning',
+            help = 'allow launch as admin/root (not recommended)',
+            action = 'store_true'
+        )
+
+        # Windows headless is unsupported when compiled (PyInstaller GUI entrypoint)
+        if constants.os_name != 'windows' or not constants.app_compiled:
+            parser.add_argument(
+                '-s', '--headless',
+                help = 'launch without initializing the UI and enable the Telepath API',
+                action = 'store_true'
+            )
+
+        # Parse & assign to globals/constants
+        args = parser.parse_args()
+        constants.boot_arguments = args
+
+        constants.debug = args.debug
+        reset_config    = args.reset
+        constants.bypass_admin_warning = args.bypass_admin_warning
+
+        if constants.os_name != 'windows' or not constants.app_compiled:
+            constants.headless = args.headless
+
+        # Force headless if no display (Linux) or running in Docker
+        if (constants.os_name == 'linux' and 'DISPLAY' not in os.environ) or constants.is_docker:
+            constants.headless = True
+
+        # Handle auto-start server list
+        if args.launch:
+
+            constants.generate_server_list()
+            server_list = [s.strip() for s in args.launch.split(',')]
+
+            for server in server_list:
+                if server.lower() in constants.server_list_lower:
+                    server = constants.server_list[constants.server_list_lower.index(server.lower())]
+                    constants.boot_launches.append(server)
+
+                else: exit_with_log('', f"--launch: '{server}' does not exist", 'fatal', exit_code=-1)
+
+    except AttributeError as e:
+        send_log('', f"error processing CLI arguments: {constants.format_traceback(e)}", 'error')
+
+
+    # Delete configuration & cache if flag is set
+    if reset_config:
+        constants.safe_delete(constants.cacheDir)
+        constants.app_config.reset()
+
+# Ensure only a single instance of the app is running at the same time
+def instance_check():
+    from source.core import constants
+    check_failed = False
+
+    # Check if application is already open (Unless running in Docker)
+    if not constants.is_docker:
+
+        if constants.os_name == "windows":
+            command = f'tasklist | findstr {os.path.basename(constants.launch_path)}'
+            response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if ((command not in line) and ('tasklist' not in line) and (line.endswith(' K')))]
+            if len(response) > 2:
+
+                # Bring existing Window to the front of the screen
+                user32 = ctypes.WinDLL('user32')
+                if hwnd := user32.FindWindowW(None, constants.app_title):
+                    if not user32.IsZoomed(hwnd): user32.ShowWindow(hwnd, 1)
+                    user32.SetForegroundWindow(hwnd)
+                check_failed = True
+
+
+        elif constants.os_name == "macos":
+            command = f'ps -e | grep .app/Contents/MacOS/{os.path.basename(constants.launch_path)}'
+            response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if command not in line and 'grep' not in line and line]
+            if len(response) > 2: check_failed = True
+
+
+        else:  # Linux
+            command = f'ps -e | grep {os.path.basename(constants.launch_path)}'
+            response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if command not in line and 'grep' not in line and line]
+            if len(response) > 2: check_failed = True
+
+
+        if check_failed: exit_with_log('', f"closed: {constants.app_title} is already open, only a single instance can be open at the same time:\n{response}", 'fatal', exit_code=10)
+
+# Runs OS-specific tweaks for standardizing the runtime context
+init_window: 'tkinter.Tk' = None  # Only used on macOS
+def os_context_tweaks():
+    from source.core import constants
+    global init_window
+
+
+    # Windows specific tweaks
+    # 'init_windows_console' must be initialized before 'constants' is imported
+    # so, it's not in here because this method requires 'constants'
+    if constants.os_name == 'windows':
+
+        if constants.app_compiled and constants.headless:
+            import pyi_splash
+            pyi_splash.close()
 
 
 
-    # Variables
-    from source.ui.main import ui_loop
-    exitApp = False
-    crash = None
+    # macOS specific tweaks
+    elif constants.os_name == 'macos':
+
+        # Initialize Tk before Kivy due to a bug with SDL2
+        if not constants.headless:
+            import tkinter as tk
+            init_window = tk.Tk()
+            init_window.withdraw()
 
 
-    # Functions
-    def cleanup_on_close():
 
-        # Shut down Telepath API
-        constants.api_manager.stop()
-        constants.api_manager.close_sessions()
+    # Linux specific tweaks
+    else: pass
 
-        # Cancel all token expiry timers to prevent hanging on close
-        for timer in telepath.expire_timers:
-            if timer.is_alive(): timer.cancel()
+# Initialize Telepath if enabled
+def init_telepath():
+    from source.core import constants, telepath
 
-        # Close Discord rich presence
-        try:
-            if constants.discord_presence:
-                if constants.discord_presence.presence: constants.discord_presence.presence.close()
-        except: pass
-
-        # Write logger to disk
-        constants.log_manager.dump_to_disk()
-
-        # Delete live images/temp files on close
-        for img in glob.glob(os.path.join(constants.gui_assets, 'live', '*')):
-            try: os.remove(img)
-            except OSError: pass
-
-        constants.safe_delete(constants.tempDir)
-
-    def app_crash(traceback, exception):
-        import crashmgr
-        exc_code, log_path = crashmgr.generate_log(traceback)
-        send_log('app_crash', f"{constants.app_title} has crashed with exception code:  {exc_code}\n{constants.format_traceback(exception)}\nFull crash log available in:  '{log_path}'", 'fatal')
-
-        # Normal Python behavior when testing
-        if not constants.app_compiled: raise exception
-
-        # Otherwise, launch appropriate crash hook
-        crashmgr.launch_window(exc_code, log_path)
+    # Launch API before UI, grab the global config variable "enable_api" to launch here on boot if True
+    constants.api_manager = telepath.TelepathManager()
+    config = constants.app_config
+    if ((config.telepath_settings['enable-api'] or constants.headless) and not constants.is_admin()) or constants.is_docker:
+        constants.api_manager.update_config(config.telepath_settings['api-host'], config.telepath_settings['api-port'])
+        constants.api_manager.start()
 
 
-    # Main wrapper
+
+# ------------------------------------------------ Runtime Methods -----------------------------------------------------
+
+# Flushes memory based data to disk, gracefully shuts down background threads, and cleans up temp files
+def cleanup_on_close():
+    from source.core import constants, telepath
+
+    # Shut down Telepath API
+    constants.api_manager.stop()
+    constants.api_manager.close_sessions()
+
+    # Cancel all token expiry timers to prevent hanging on close
+    for timer in telepath.expire_timers:
+        if timer.is_alive(): timer.cancel()
+
+    # Close Discord rich presence
+    try:
+        if constants.discord_presence:
+            if constants.discord_presence.presence: constants.discord_presence.presence.close()
+    except: pass
+
+    # Write logger to disk
+    constants.log_manager.dump_to_disk()
+
+    # Delete live images/temp files on close
+    constants.safe_delete(os.path.join(constants.gui_assets, 'live'))
+    constants.safe_delete(constants.tempDir)
+
+# Handles switching execution context to a crash window that allows the app to be restarted
+def app_crash(traceback, exception):
+    from source.core import constants
+    from source.ui import crashmgr
+
+    exc_code, log_path = crashmgr.generate_log(traceback)
+    send_log('app_crash', f"{constants.app_title} has crashed with exception code:  {exc_code}\n{constants.format_traceback(exception)}\nFull crash log available in:  '{log_path}'", 'fatal')
+
+    # Normal Python behavior when testing
+    if not constants.app_compiled: raise exception
+
+    # Otherwise, launch appropriate crash hook
+    crashmgr.launch_window(exc_code, log_path)
+
+
+
+
+if __name__ == '__main__':
+
+    # ----------------------------------------------- Boot Pipeline ----------------------------------------------------
+
+    # Setup proper multiprocessing context
+    setup_multiprocessing()
+
+    # Open debug console for Windows windowed builds (or silence stdio otherwise)
+    init_windows_console()
+
+    # Initialize user variables and launch path
+    get_system_context()
+
+    # Ensure only one instance of the app is running at a time
+    instance_check()
+
+    # Migrate old logs to >=2.3.3 format
+    migrate_legacy_logs()
+
+    # Check for update log
+    was_updated = check_if_updated()
+
+    # Initialize boot options from arguments
+    parse_boot_args()
+
+    # Run OS-specific context tweaks/fixes
+    os_context_tweaks()
+
+    # Initialize Telepath
+    init_telepath()
+
+
+
+    # ---------------------------------------------- Launch Pipeline ---------------------------------------------------
+
+    exit_app = False
+    crash    = None
+
+    # Background thread
     def background():
-        global exitApp, crash, was_updated
+        from source.core import constants
+        global exit_app, crash, was_updated
         send_log('background', 'initializing the background thread')
 
         # Check for updates
@@ -369,9 +459,9 @@ if __name__ == '__main__':
                 constants.server_manager.check_telepath_servers()
 
         def background_launch(func, *a):
-            global exitApp, crash
+            global exit_app, crash
 
-            if exitApp or crash:
+            if exit_app or crash:
                 return
 
             try: func()
@@ -398,7 +488,7 @@ if __name__ == '__main__':
         while True:
 
             # Exit this thread if the main thread closes, or crashes
-            if exitApp or crash: break
+            if exit_app or crash: break
             else:
 
                 # Check for network changes in the background
@@ -417,25 +507,28 @@ if __name__ == '__main__':
                     log_counter = 0
 
 
-                if not (exitApp or crash): time.sleep(1)
+                if not (exit_app or crash): time.sleep(1)
 
         send_log('background', 'closed the background thread', 'debug')
 
+    # Foreground/UI thread
     def foreground():
-        global exitApp, crash
+        from source.ui.main import ui_loop
+        from source.core import constants
+        global exit_app, crash, init_window
 
         # Main thread
         try:
             ui_loop()
-            exitApp = True
+            exit_app = True
 
         except SystemExit:
-            exitApp = True
+            exit_app = True
 
         # On crash
         except Exception as e:
             crash = format_exc()
-            exitApp = True
+            exit_app = True
             send_log('foreground', 'UI has exited unexpectedly', 'error')
 
             # Use crash handler when app is compiled
@@ -461,22 +554,13 @@ if __name__ == '__main__':
             raise SystemExit()
 
 
-    # Launch API before UI
-    # Move this to the top, and grab the global config variable "enable_api" to launch here on boot if True
-    constants.api_manager = telepath.TelepathManager()
-    config = constants.app_config
-    if ((config.telepath_settings['enable-api'] or constants.headless) and not constants.is_admin()) or constants.is_docker:
-        constants.api_manager.update_config(config.telepath_settings['api-host'], config.telepath_settings['api-port'])
-        constants.api_manager.start()
+    # Launch & threading logic
+    background_thread = threading.Thread(name='background', target=background)
+    background_thread.setDaemon(True)
 
-
-    # Launch/threading logic
-    b = threading.Thread(name='background', target=background)
-    b.setDaemon(True)
-
-    b.start()
+    background_thread.start()
     foreground()
-    b.join()
+    background_thread.join()
 
     # Exit with return code if there's a crash
     if crash: sys.exit(20)

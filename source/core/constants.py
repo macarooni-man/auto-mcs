@@ -6781,6 +6781,7 @@ class LoggingManager():
     def __init__(self):
         self._line_header = '   >  '
         self._max_run_logs = 3
+        self._object_width = 40
         self.path = os.path.join(applicationFolder, "Logs", "application")
 
         # Identify this launch (timestamp + pid -> short hash)
@@ -6953,7 +6954,7 @@ class LoggingManager():
             for x, line in enumerate(message.splitlines(), 0):
 
                 if not _raw:
-                    object_width = 37 - len(level)
+                    object_width = self._object_width - len(level)
                     timestamp = time_obj.strftime('%I:%M:%S %p')
                     tc = text_color.get(level, Fore.CYAN)
                     content = f'{tc}{line.strip()}' if x == 0 else f'{Fore.LIGHTBLACK_EX}{self._line_header}{tc}{line.rstrip()}'
@@ -7038,7 +7039,7 @@ class LoggingManager():
 
 
                 # Format lines like print method
-                object_width = 37 - len(level)
+                object_width = self._object_width - len(level)
                 timestamp = time_obj.strftime("%I:%M:%S %p")
                 block = f"{stack}: {object_data}".ljust(object_width)
 
