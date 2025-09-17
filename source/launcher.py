@@ -400,7 +400,7 @@ def app_crash(traceback, exception):
 
 
 
-
+# This is the app entrypoint
 if __name__ == '__main__':
 
     # ----------------------------------------------- Boot Pipeline ----------------------------------------------------
