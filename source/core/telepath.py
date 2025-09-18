@@ -21,6 +21,7 @@ from collections import deque
 from copy import deepcopy
 from munch import Munch
 from glob import glob
+import traceback
 import threading
 import requests
 import inspect
@@ -64,6 +65,8 @@ class UvicornToLoggerHandler(logging.Handler):
     def emit(self, record: logging.LogRecord):
         try:
             msg = record.getMessage()
+            if record.exc_info: msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
+            elif record.stack_info: msg += "\n" + str(record.stack_info)
             level = (record.levelname or "INFO").lower()
             tag = getattr(record, "tag", None) or getattr(record, "ctx", None)
             obj = tag or (f"{record.module}.{record.funcName}" if record.funcName and record.module else record.name)
@@ -1618,7 +1621,8 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     def _send_log(self, message: str, level: str = None):
         return send_log(self.__class__.__name__, message, level)
 
-    def __init__(self, telepath_data: dict):
+    def __init__(self, _manager: ServerManager, telepath_data: dict):
+        self._manager = _manager
         self._telepath_data = telepath_data
         self._disconnected = False
 
@@ -1639,7 +1643,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
         self._clear_all_cache()
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
-        constants.server_manager._send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
+        self._manager._send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
 
     def _is_favorite(self):
         try:
