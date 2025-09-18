@@ -375,7 +375,7 @@ def sync_attr(self, name):
     if name != '__all__':
         return getattr(self, name)
     else:
-        blacklist = ['addon', 'backup', 'acl', 'script_manager', 'script_object', 'run_data', 'taskbar']
+        blacklist = ['addon', 'backup', 'acl', 'script_manager', 'script_object', 'run_data', 'taskbar', '_manager']
         def allow(x):
             return ((not callable(getattr(self, x))) and (str(x) not in blacklist) and (not str(x).endswith('__')))
         return {a: getattr(self, a) for a in dir(self) if allow(a)}
@@ -1485,9 +1485,20 @@ def get_remote_var(var: str, telepath_data: dict = {}) -> any:
         )
 
     else:
-        try: var = getattr(sys.modules[__name__], var)
-        except: var = None
-        return var
+
+        # If it's a sub-attribute
+        if '.' in var: root, attr = [i.strip() for i in var.split('.', 1)]
+        else: root = var; attr = None
+
+        # Get root value
+        try: value = getattr(sys.modules[__name__], root)
+        except Exception as e: value = None; print(format_traceback(e))
+
+        if attr:
+            try: value = getattr(value, attr)
+            except: value = None
+
+        return value
 
 
 # Removes invalid characters from a filename

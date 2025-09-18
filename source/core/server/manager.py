@@ -2138,6 +2138,21 @@ class ViewObject():
         self.server_path = constants.server_path(server_name)
         self.last_modified = os.path.getmtime(self.server_path)
 
+    def __getattribute__(self, name):
+
+        # Remove illegal references when sending via the API
+        if name == "__dict__":
+            not_allowed = ['_manager']
+            data = object.__getattribute__(self, "__dict__").copy()
+            for attr in not_allowed: data.pop(attr, None)
+            return data
+
+        return object.__getattribute__(self, name)
+
+    # Make dict(self) work too
+    def __iter__(self):
+        return iter(self.__dict__.items())
+
     def __repr__(self):
         return f"<{__name__}.{self.__class__.__name__} '{self.name}' at '{self.server_path}'>"
 
@@ -2431,7 +2446,7 @@ class ServerManager():
                 config.optionxform = str
                 config.read(config_path)
 
-                updateAuto    = str(config.get("general", "updateAuto"))
+                updateAuto    = str(config.get("general", "updateAuto")) == 'true'
                 serverVersion = str(config.get("general", "serverVersion"))
                 serverType    = str(config.get("general", "serverType"))
 
