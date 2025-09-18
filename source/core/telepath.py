@@ -904,27 +904,24 @@ class SecretHandler():
         try: return self.fernet.decrypt(data)
         except:
             self._send_log(f"failed to load telepath-secrets, resetting...", 'error')
-            return []
+            if os.path.exists(self.file): os.remove(self.file)
+            return {}
 
     def read(self):
         if os.path.exists(self.file):
             with open(self.file, 'rb') as f:
                 content = f.read()
                 decrypted = self._decrypt(content)
-                try:
-                    return json.loads(decrypted)
-                except:
-                    pass
-        return []
+                try:    return json.loads(decrypted)
+                except: pass
+        return {}
 
     def write(self, data: list):
         if not os.path.exists(self.file):
             constants.folder_check(constants.telepathDir)
 
-        if data:
-            encrypted = self._encrypt(json.dumps(data))
-        else:
-            encrypted = self._encrypt('{}')
+        if data: encrypted = self._encrypt(json.dumps(data))
+        else:    encrypted = self._encrypt('{}')
 
         with open(self.file, 'wb') as f:
             f.write(encrypted)
@@ -1621,8 +1618,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
     def _send_log(self, message: str, level: str = None):
         return send_log(self.__class__.__name__, message, level)
 
-    def __init__(self, _manager: ServerManager, telepath_data: dict):
-        self._manager = _manager
+    def __init__(self, telepath_data: dict):
         self._telepath_data = telepath_data
         self._disconnected = False
 
@@ -1643,7 +1639,7 @@ class RemoteServerObject(create_remote_obj(ServerObject)):
 
         self._clear_all_cache()
         host = self._telepath_data['nickname'] if self._telepath_data['nickname'] else self._telepath_data['host']
-        self._manager._send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
+        constants.server_manager._send_log(f"Server Manager (Telepath): loaded '{host}/{self.name}'", 'info')
 
     def _is_favorite(self):
         try:

@@ -2210,7 +2210,7 @@ class ServerManager():
             old = f"{self.current_server._telepath_data['host']}/{self.current_server._telepath_data['name']}"
             if new == old: return self.current_server
 
-        self.current_server = telepath.RemoteServerObject(self, telepath_data)
+        self.current_server = telepath.RemoteServerObject(telepath_data)
         return self.current_server
 
     # Refreshes self.server_list with current info
