@@ -4,6 +4,7 @@ from datetime import datetime as dt
 from threading import Timer
 from copy import deepcopy
 from glob import glob
+import configparser
 import functools
 import threading
 import requests
@@ -37,7 +38,8 @@ class ServerObject():
     def _send_log(self, message: str, level: str = None):
         return send_log(self.__class__.__name__, f"'{self.name}': {message}", level)
 
-    def __init__(self, server_name: str):
+    def __init__(self, _manager: 'ServerManager', server_name: str):
+        self._manager = _manager
         self._telepath_data = None
         self._view_name = server_name
         self._loop_clock = 0
@@ -155,8 +157,8 @@ class ServerObject():
         # Check update properties for UI stuff
         self.update_string = ''
         if self.is_modpack:
-            if constants.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
-                self.update_string = constants.update_list[self.name]['updateString']
+            if self.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                self.update_string = self.update_list[self.name]['updateString']
         else:
             self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
             if not self.update_string and self.build:
@@ -227,7 +229,7 @@ class ServerObject():
             self.reload_config_paths()
         Timer(0, load_config_paths).start()
 
-        constants.server_manager._send_log(f"Server Manager: Loaded '{server_name}'", 'info')
+        self._manager._send_log(f"Server Manager: Loaded '{server_name}'", 'info')
 
     def __repr__(self):
         return f"<{__name__}.{self.__class__.__name__} '{self.name}' at '{self.server_path}'>"
@@ -264,12 +266,9 @@ class ServerObject():
 
     # Checks if server was initialized remotely
     def _is_telepath_session(self):
-        try:
-            return self in constants.server_manager.remote_servers.values()
-        except AttributeError:
-            pass
-        except RecursionError:
-            pass
+        try: return self in self._manager.remote_servers.values()
+        except AttributeError: pass
+        except RecursionError: pass
         return False
 
     # Returns last log and crash info
@@ -390,8 +389,8 @@ class ServerObject():
         # Check update properties for UI stuff
         self.update_string = ''
         if self.is_modpack:
-            if constants.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
-                self.update_string = constants.update_list[self.name]['updateString']
+            if self.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                self.update_string = self.update_list[self.name]['updateString']
         else:
             self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
             if not self.update_string and self.build:
@@ -1350,7 +1349,7 @@ class ServerObject():
             self.run_data['thread'].start()
             self.run_data['launch-time'] = dt.now()
 
-            constants.server_manager.running_servers[self.name] = self
+            self._manager.running_servers[self.name] = self
             self._start_performance_clock()
 
 
@@ -1465,9 +1464,8 @@ class ServerObject():
 
             self.run_data.clear()
             self.running = False
-            del constants.server_manager.running_servers[self.name]
+            del self._manager.running_servers[self.name]
             self._send_log('successfully stopped the server process', 'info')
-            # print(constants.server_manager.running_servers)
 
         # Reboot server if required
         else:
@@ -1726,7 +1724,7 @@ class ServerObject():
 
             # Reset constants properties
             constants.generate_server_list()
-            constants.make_update_list()
+            self._manager.check_for_updates()
 
             # Reload properties
             if self.name == new_name: self._send_log(f"successfully renamed myself to '{new_name}'", 'info')
@@ -2088,17 +2086,16 @@ class ServerObject():
 
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():
-
-    def __init__(self, server_name: str):
-
+    def __init__(self, _manager: 'ServerManager', server_name: str):
+        self._manager = _manager
         self._telepath_data = None
         self.name = server_name
         self._view_name = server_name
-        self.running = self.name in constants.server_manager.running_servers.keys()
+        self.running = self.name in self._manager.running_servers.keys()
         self.server_icon = constants.server_path(self.name, 'server-icon.png')
 
         if self.running:
-            server_obj = constants.server_manager.running_servers[self.name]
+            server_obj = self._manager.running_servers[self.name]
             self.run_data = {'network': server_obj.run_data['network']}
             self.run_data['playit-tunnel'] = bool(server_obj.run_data['playit-tunnel'])
         else:
@@ -2130,8 +2127,8 @@ class ViewObject():
         # Check update properties for UI stuff
         self.update_string = ''
         if self.is_modpack:
-            if constants.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
-                self.update_string = constants.update_list[self.name]['updateString']
+            if self.update_list[self.name]['updateString'] and self.is_modpack == 'mrpack':
+                self.update_string = self.update_list[self.name]['updateString']
         else:
             self.update_string = str(constants.latestMC[self.type]) if constants.version_check(constants.latestMC[self.type], '>', self.version) else ''
             if not self.update_string and self.build:
@@ -2144,22 +2141,13 @@ class ViewObject():
     def __repr__(self):
         return f"<{__name__}.{self.__class__.__name__} '{self.name}' at '{self.server_path}'>"
 
+
 # Loads remote server data locally for a ViewClass in the Server Manager screen
 class RemoteViewObject():
-    def _is_favorite(self):
-        try:
-            if self.name in self._telepath_data['added-servers']:
-                return self._telepath_data['added-servers'][self.name]['favorite']
-        except KeyError: pass
-        return False
 
-    def toggle_favorite(self):
-        if self.name not in self._telepath_data['added-servers']: self._telepath_data['added-servers'][self.name] = {}
-        self._telepath_data['added-servers'][self.name]['favorite'] = not self.favorite
-        self.favorite = not self.favorite
-        constants.server_manager.write_telepath_servers(self._telepath_data)
+    def __init__(self, _manager: 'ServerManager', instance_data: dict, server_data: dict):
+        self._manager = _manager
 
-    def __init__(self, instance_data: dict, server_data: dict):
         for k, v in server_data.items(): setattr(self, k, v)
 
         self._telepath_data = instance_data
@@ -2171,8 +2159,22 @@ class RemoteViewObject():
 
         self.favorite = self._is_favorite()
 
+    def _is_favorite(self):
+        try:
+            if self.name in self._telepath_data['added-servers']:
+                return self._telepath_data['added-servers'][self.name]['favorite']
+        except KeyError: pass
+        return False
+
+    def toggle_favorite(self):
+        if self.name not in self._telepath_data['added-servers']: self._telepath_data['added-servers'][self.name] = {}
+        self._telepath_data['added-servers'][self.name]['favorite'] = not self.favorite
+        self.favorite = not self.favorite
+        self._manager.write_telepath_servers(self._telepath_data)
+
     def __repr__(self):
         return f"<{__name__}.{self.__class__.__name__} '{self._view_name}' at '{self._telepath_data['host']}'>"
+
 
 # Houses all server information
 class ServerManager():
@@ -2182,14 +2184,18 @@ class ServerManager():
         send_log(self.__class__.__name__, message, level)
 
     def __init__(self):
-        self.telepath_servers = {}
-        self.telepath_updates = {}
-        self.online_telepath_servers = []
 
-        self.server_list: list = create_server_list()
-        self.current_server:  ServerObject = None
-        self.remote_servers:  dict[str, ServerObject] = {}
+        # Local server data
+        self.server_list:     list = create_server_list()
+        self.update_list:     dict[str, dict] = {}
+        self.current_server:  ServerObject    = None
         self.running_servers: dict[str, ServerObject] = {}
+        self.remote_servers:  dict[str, ServerObject] = {}
+
+        # Telepath client data
+        self.telepath_servers        = {}
+        self.online_telepath_servers = []
+        self.remote_update_list: dict[str, dict[str, dict]] = {}
 
         # Load telepath servers
         self.load_telepath_servers()
@@ -2204,7 +2210,7 @@ class ServerManager():
             old = f"{self.current_server._telepath_data['host']}/{self.current_server._telepath_data['name']}"
             if new == old: return self.current_server
 
-        self.current_server = telepath.RemoteServerObject(telepath_data)
+        self.current_server = telepath.RemoteServerObject(self, telepath_data)
         return self.current_server
 
     # Refreshes self.server_list with current info
@@ -2214,8 +2220,8 @@ class ServerManager():
     # Sets self.current_server to selected ServerObject
     def open_server(self, name):
         try:
-            if self.remote_server.name == name:
-                self.current_server = self.remote_server
+            if name in self.remote_servers:
+                self.current_server = self.remote_servers[name]
                 self._send_log(f"opened '{name}' with properties:\n{vars(self.current_server)}")
                 return self.current_server
         except AttributeError:
@@ -2234,7 +2240,7 @@ class ServerManager():
         if name in self.running_servers.keys():
             self.current_server = self.running_servers[name]
         else:
-            self.current_server = ServerObject(name)
+            self.current_server = ServerObject(self, name)
             if crash_info[0] == name:
                 self.current_server.crash_log = crash_info[1]
 
@@ -2272,7 +2278,7 @@ class ServerManager():
 
             # Initialize a new server object
             else:
-                self.remote_servers[host] = ServerObject(name)
+                self.remote_servers[host] = ServerObject(self, name)
                 if crash_info[0] == name:
                     self.remote_servers[host].crash_log = crash_info[1]
 
@@ -2381,21 +2387,92 @@ class ServerManager():
     def reload_telepath_updates(self, host_data=None):
         # Load remote update list
         if host_data:
-            self.telepath_updates[host_data['host']] = constants.get_remote_var('update_list', host_data)
+            self.remote_update_list[host_data['host']] = constants.get_remote_var('server_manager.update_list', host_data)
 
         else:
             for host, instance in self.telepath_servers.items():
                 host_data = {'host': host, 'port': instance['port']}
-                self.telepath_updates[host] = constants.get_remote_var('update_list', host_data)
+                self.remote_update_list[host] = constants.get_remote_var('server_manager.update_list', host_data)
 
     # Returns and updates remote update list
     def get_telepath_update(self, host_data: dict, server_name: str):
         self.reload_telepath_updates(host_data)
-        if host_data['host'] not in self.telepath_updates:
-            self.telepath_updates[host_data['host']] = {}
-        if server_name in self.telepath_updates[host_data['host']]:
-            return self.telepath_updates[host_data['host']][server_name]
+        if host_data['host'] not in self.remote_update_list:
+            self.remote_update_list[host_data['host']] = {}
+        if server_name in self.remote_update_list[host_data['host']]:
+            return self.remote_update_list[host_data['host']][server_name]
         return {}
+
+
+
+    # General methods
+
+    # Return list of every valid server update property in 'applicationFolder'
+    def check_for_updates(self):
+        self.update_list = {}
+        self._send_log("globally checking for server updates...", 'info')
+
+        for name in glob(os.path.join(constants.applicationFolder, "Servers", "*")):
+            name = os.path.basename(name)
+
+            server_data = {
+                name: {
+                    "updateAuto":   False,
+                    "needsUpdate":  False,
+                    "updateString": None,
+                    "updateUrl":    None
+                }
+            }
+
+            config_path = os.path.abspath(os.path.join(constants.applicationFolder, 'Servers', name, constants.server_ini))
+            if os.path.isfile(config_path) is True:
+
+                config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
+                config.optionxform = str
+                config.read(config_path)
+
+                updateAuto    = str(config.get("general", "updateAuto"))
+                serverVersion = str(config.get("general", "serverVersion"))
+                serverType    = str(config.get("general", "serverType"))
+
+                try: serverBuild = str(config.get("general", "serverBuild"))
+                except configparser.NoOptionError: serverBuild = ""
+
+                try: isModpack = str(config.get("general", "isModpack"))
+                except configparser.NoOptionError: isModpack = ""
+
+                # Check if modpack needs an update if detected (show only if auto-updates are enabled)
+                if isModpack:
+                    if isModpack == 'mrpack':
+                        modpack_data = constants.get_modrinth_data(name)
+                        if (modpack_data['version'] != modpack_data['latest']) and not modpack_data['latest'].startswith("0.0.0"):
+                            server_data[name]["needsUpdate"]  = True
+                            server_data[name]["updateString"] = modpack_data['latest']
+                            server_data[name]["updateUrl"]    = modpack_data['download_url']
+
+
+                # Check if normal server needs an update (show only if auto-updates are enabled)
+                else:
+                    new_version     = constants.latestMC[serverType.lower()]
+                    current_version = serverVersion
+
+                    if ((serverType.lower() in ["forge", "paper", "purpur"]) and (serverBuild != "")) and (new_version == current_version):
+                        new_version += " b-" + str(constants.latestMC["builds"][serverType.lower()])
+                        current_version += " b-" + str(serverBuild)
+
+                    if (new_version != current_version) and not current_version.startswith("0.0.0"):
+                        server_data[name]["needsUpdate"] = True
+
+                server_data[name]["updateAuto"] = updateAuto
+
+            self.update_list.update(server_data)
+
+        # Log update list
+        if self.update_list: self._send_log(f"updates are available for:\n{str(list(self.update_list.keys()))}", 'info')
+        else:                self._send_log('all servers are up to date', 'info')
+
+        return self.update_list
+
 
 
 # --------------------------------------------- General Functions ------------------------------------------------------
@@ -2408,7 +2485,7 @@ def create_server_list(remote_data=None):
     favorite_list = []
 
     def grab_terse_props(server_name, *args):
-        server_object = ViewObject(server_name)
+        server_object = ViewObject(constants.server_manager, server_name)
 
         if server_object.favorite:
             favorite_list.append(server_object)
@@ -2425,32 +2502,26 @@ def create_server_list(remote_data=None):
             instance['host'] = host
             try:
                 remote_servers = constants.api_manager.request(
-                    endpoint='/main/create_server_list',
-                    host=instance['host'],
-                    port=instance['port'],
-                    timeout=0.5
+                    endpoint = '/main/create_server_list',
+                    host = instance['host'],
+                    port = instance['port'],
+                    timeout = 0.5
                 )
 
                 def process_remote_props(server_data):
-                    remote_object = RemoteViewObject(instance, server_data)
-                    if remote_object.favorite:
-                        favorite_list.append(remote_object)
-                    else:
-                        normal_list.append(remote_object)
+                    remote_object = RemoteViewObject(constants.server_manager, instance, server_data)
+                    if remote_object.favorite: favorite_list.append(remote_object)
+                    else:                      normal_list.append(remote_object)
 
                 try:
-                    # for s in remote_servers:
-                    #     process_remote_props(s)
                     with ThreadPoolExecutor(max_workers=10) as pool:
                         pool.map(process_remote_props, remote_servers)
                 except TypeError:
                     continue
 
-            # Don't load server if it can't be found
-            except requests.exceptions.ConnectionError:
-                pass
-            except requests.exceptions.ReadTimeout:
-                pass
+            # Don't load server if the Telepath instance can't be found
+            except requests.exceptions.ConnectionError: pass
+            except requests.exceptions.ReadTimeout:     pass
 
 
     normal_list = sorted(normal_list, key=lambda x: x.last_modified, reverse=True)

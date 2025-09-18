@@ -48,7 +48,7 @@ from source.core.server import addons, backup, amscript
 
 app_version = "2.3.4"
 ams_version = "1.5"
-telepath_version = "1.1.3"
+telepath_version = "1.2"
 app_title = "auto-mcs"
 
 dev_version  = False
@@ -88,7 +88,6 @@ public_ip   = ""
 footer_path = ""
 last_widget = None
 
-update_list = {}
 addon_cache = {}
 
 latestMC = {
@@ -414,7 +413,8 @@ elif os_name == 'macos' and app_compiled:
 
 
 # Bigboi server manager
-server_manager: 'svrmgr.ServerManager' = None
+import core
+server_manager: 'core.server.manager.ServerManager' = None
 search_manager: 'SearchManager' = None
 import_data    = {'name': None, 'path': None}
 backup_lock    = {}
@@ -3813,7 +3813,7 @@ max-world-size=29999984"""
             if os.path.exists(os.path.join(new_path, command_tmp)):
                 run_proc(f"attrib +H \"{os.path.join(new_path, command_tmp)}\"")
 
-        make_update_list()
+        server_manager.check_for_updates()
         send_log('generate_server_files', "successfully generated all pre-launch files", 'info')
         return True
 
@@ -4095,7 +4095,7 @@ def post_server_update(telepath=False, host=None):
             return response
 
     send_log('post_server_update', f"cleaning up environment after a server update...", 'info')
-    make_update_list()
+    server_manager.check_for_updates()
     server_obj._view_notif('add-ons', False)
     server_obj._view_notif('settings', viewed=new_server_info['version'])
 
@@ -4734,7 +4734,7 @@ def finalize_import(progress_func=None, *args):
             os.chdir(get_cwd())
             safe_delete(tempDir)
             safe_delete(downDir)
-            make_update_list()
+            server_manager.check_for_updates()
             if progress_func:
                 progress_func(100)
 
@@ -5358,7 +5358,7 @@ def finalize_modpack(update=False, progress_func=None, *args):
             os.chdir(get_cwd())
             safe_delete(tempDir)
             safe_delete(downDir)
-            make_update_list()
+            server_manager.check_for_updates()
 
             if progress_func:
                 progress_func(100)
@@ -6227,67 +6227,6 @@ def get_modrinth_data(name: str):
 
 
     return index_data
-
-
-# Return list of every valid server update property in 'applicationFolder'
-def make_update_list():
-    global update_list
-    update_list = {}
-    send_log('make_update_list', f"globally checking for server updates...", 'info')
-
-    for name in glob(os.path.join(applicationFolder, "Servers", "*")):
-
-        name = os.path.basename(name)
-        serverObject = {name: {"updateAuto": "false", "needsUpdate": "false", "updateString": None, "updateUrl": None}}
-        configFile = os.path.abspath(os.path.join(applicationFolder, 'Servers', name, server_ini))
-
-        if os.path.isfile(configFile) is True:
-            config = configparser.ConfigParser(allow_no_value=True, comment_prefixes=';')
-            config.optionxform = str
-            config.read(configFile)
-
-            updateAuto = str(config.get("general", "updateAuto"))
-            jarVer = str(config.get("general", "serverVersion"))
-            jarType = str(config.get("general", "serverType"))
-
-            try: jarBuild = str(config.get("general", "serverBuild"))
-            except configparser.NoOptionError: jarBuild = ""
-
-            try: isModpack = str(config.get("general", "isModpack"))
-            except configparser.NoOptionError: isModpack = ""
-
-
-            # Check if modpack needs an update if detected (show only if auto-updates are enabled)
-            if isModpack:
-                if isModpack == 'mrpack':
-                    modpack_data = get_modrinth_data(name)
-                    if (modpack_data['version'] != modpack_data['latest']) and not modpack_data['latest'].startswith("0.0.0"):
-                        serverObject[name]["needsUpdate"] = "true"
-                        serverObject[name]["updateString"] = modpack_data['latest']
-                        serverObject[name]["updateUrl"] = modpack_data['download_url']
-
-
-            # Check if normal server needs an update (show only if auto-updates are enabled)
-            else:
-                new_version = latestMC[jarType.lower()]
-                current_version = jarVer
-
-                if ((jarType.lower() in ["forge", "paper", "purpur"]) and (jarBuild != "")) and (new_version == current_version):
-                    new_version += " b-" + str(latestMC["builds"][jarType.lower()])
-                    current_version += " b-" + str(jarBuild)
-
-                if (new_version != current_version) and not current_version.startswith("0.0.0"):
-                    serverObject[name]["needsUpdate"] = "true"
-
-            serverObject[name]["updateAuto"] = updateAuto
-
-        update_list.update(serverObject)
-
-    # Log update list
-    if update_list: send_log('make_update_list', f"updates are available for:\n{str(list(update_list.keys()))}", 'info')
-    else:           send_log('make_update_list', 'all servers are up to date', 'info')
-
-    return update_list
 
 
 # Check if port is open on host

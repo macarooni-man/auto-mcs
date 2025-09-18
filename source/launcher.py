@@ -452,11 +452,12 @@ if __name__ == '__main__':
         # If app was just updated, re-install playit if it's installed
         if was_updated: constants.playit.update_agent()
 
+        # Wait until ServerManager is initialized
+        while not constants.server_manager: time.sleep(0.1)
+
         # Try to log into telepath servers automatically
         if os.path.exists(constants.telepathFile):
-            while not constants.server_manager: time.sleep(0.1)
-            if constants.server_list_lower:
-                constants.server_manager.check_telepath_servers()
+            if constants.server_list_lower: constants.server_manager.check_telepath_servers()
 
         def background_launch(func, *a):
             global exit_app, crash
@@ -473,7 +474,7 @@ if __name__ == '__main__':
             constants.public_ip = requests.get('https://api.ipify.org').content.decode('utf-8')
         def get_versions(*a):
             constants.find_latest_mc()
-            constants.make_update_list()
+            constants.server_manager.check_for_updates()
             constants.get_repo_templates()
         background_launch(get_public_ip)
         background_launch(get_versions)

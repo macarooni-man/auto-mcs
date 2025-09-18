@@ -464,7 +464,7 @@ def restore_server(name: str, backup_name: str, backup_stats=None):
                 set_lock(name, False)
 
                 # Reload update_list
-                constants.make_update_list()
+                constants.server_manager.check_for_updates()
 
                 send_log('restore_server', f"successfully restored '{name}' to '{backup_name}'", 'info')
                 return [os.path.basename(backup_name), convert_size(os.stat(file_path).st_size), convert_date(os.stat(file_path).st_mtime)]
