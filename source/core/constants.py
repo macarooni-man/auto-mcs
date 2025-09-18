@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt, date
 from random import randrange, choices
 from difflib import SequenceMatcher
+from typing import TYPE_CHECKING
 from colorama import Fore, Style
 from urllib.parse import quote
 from collections import deque
@@ -413,7 +414,7 @@ elif os_name == 'macos' and app_compiled:
 
 
 # Bigboi server manager
-import core
+if TYPE_CHECKING: import core
 server_manager: 'core.server.manager.ServerManager' = None
 search_manager: 'SearchManager' = None
 import_data    = {'name': None, 'path': None}
