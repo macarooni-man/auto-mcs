@@ -2204,7 +2204,7 @@ def initialize_endpoints():
     (ServerObject, AmsFileObject, ScriptManager, AddonFileObject, AddonManager, BackupManager, AclManager)]
 
     # General auto-mcs endpoints
-    create_endpoint(manager.create_server_list, 'main')
+    create_endpoint(constants.server_manager.create_view_list, 'main')
     create_endpoint(constants.server_manager.check_for_updates, 'main')
     create_endpoint(constants.check_free_space, 'main')
     create_endpoint(constants.get_remote_var, 'main', True)

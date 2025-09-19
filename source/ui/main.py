@@ -33,7 +33,7 @@ def ui_loop():
     constants.server_manager = ServerManager()
 
     # If no local servers and Telepath connections, attempt to check those first
-    if not constants.server_list_lower and constants.server_manager.telepath_servers:
+    if not constants.server_manager.server_list_lower and constants.server_manager.telepath_servers:
         constants.server_manager.check_telepath_servers()
 
     # Initialize boot log

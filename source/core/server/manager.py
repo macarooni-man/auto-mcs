@@ -3,6 +3,7 @@ from subprocess import Popen, PIPE, run
 from datetime import datetime as dt
 from threading import Timer
 from copy import deepcopy
+from typing import Union
 from glob import glob
 import configparser
 import functools
@@ -1723,7 +1724,7 @@ class ServerObject():
             backup.rename_backups(original_name, new_name)
 
             # Reset constants properties
-            constants.generate_server_list()
+            constants.server_manager.create_server_list()
             self._manager.check_for_updates()
 
             # Reload properties
@@ -2201,18 +2202,23 @@ class ServerManager():
     def __init__(self):
 
         # Local server data
-        self.server_list:     list = create_server_list()
-        self.update_list:     dict[str, dict] = {}
-        self.current_server:  ServerObject    = None
-        self.running_servers: dict[str, ServerObject] = {}
-        self.remote_servers:  dict[str, ServerObject] = {}
+        self.server_list:       list[str] = []
+        self.server_list_lower: list[str] = []
+        self.update_list:       dict[str, dict] = {}
+        self.current_server:    ServerObject    = None
+        self.running_servers:   dict[str, ServerObject] = {}
+        self.remote_servers:    dict[str, ServerObject] = {}
+        self.menu_view_list:    list[Union[ViewObject, RemoteViewObject]] = []
+
+        # Load client server info
+        self.create_server_list()
 
         # Telepath client data
         self.telepath_servers        = {}
         self.online_telepath_servers = []
         self.remote_update_list: dict[str, dict[str, dict]] = {}
 
-        # Load telepath servers
+        # Load Telepath servers
         self.load_telepath_servers()
 
         self._send_log('initialized Server Manager', 'info')
@@ -2228,9 +2234,9 @@ class ServerManager():
         self.current_server = telepath.RemoteServerObject(self, telepath_data)
         return self.current_server
 
-    # Refreshes self.server_list with current info
+    # Refreshes self.menu_view_list with current info
     def refresh_list(self):
-        self.server_list = create_server_list(self.online_telepath_servers)
+        self.menu_view_list = self.create_view_list(self.online_telepath_servers)
 
     # Sets self.current_server to selected ServerObject
     def open_server(self, name):
@@ -2422,8 +2428,85 @@ class ServerManager():
 
     # General methods
 
+    # Return a list of every valid server in 'applicationFolder'
+    def create_server_list(self) -> list[str]:
+        server_list       = []
+        server_list_lower = []
+        og_list           = self.server_list.copy()
+        og_list_lower     = self.server_list_lower.copy()
+
+        try:
+            for file in glob(os.path.join(constants.serverDir, "*")):
+                if os.path.isfile(os.path.join(file, constants.server_ini)):
+                    server_list.append(os.path.basename(file))
+                    server_list_lower.append(os.path.basename(file).lower())
+
+            self.server_list       = server_list
+            self.server_list_lower = server_list_lower
+
+        except Exception as e:
+            self.server_list       = og_list
+            self.server_list_lower = og_list_lower
+            self._send_log(f'error generating server list: {constants.format_traceback(e)}', 'error')
+
+        self._send_log(f"generated server list from valid servers in '{constants.serverDir}':\n{server_list}")
+        return server_list
+
+    # Generates sorted list of ViewObject information for menu (includes all connected Telepath servers)
+    def create_view_list(self, remote_data=None) -> list[Union[ViewObject, RemoteViewObject]]:
+        final_list = []
+        normal_list = []
+        favorite_list = []
+
+        # Create a ViewObject from a server name
+        def grab_terse_props(server_name, *args):
+            server_object = ViewObject(self, server_name)
+            if server_object.favorite: favorite_list.append(server_object)
+            else: normal_list.append(server_object)
+
+        try:
+            with ThreadPoolExecutor(max_workers=10) as pool:
+                pool.map(grab_terse_props, self.create_server_list())
+
+            # If remote servers are specified, grab them all with an API request
+            if remote_data:
+                for host, instance in remote_data.items():
+                    instance['host'] = host
+                    try:
+                        remote_servers = constants.api_manager.request(
+                            endpoint = '/main/create_view_list',
+                            host = instance['host'],
+                            port = instance['port'],
+                            timeout = 0.5
+                        )
+
+                        def process_remote_props(server_data):
+                            remote_object = RemoteViewObject(self, instance, server_data)
+                            if remote_object.favorite: favorite_list.append(remote_object)
+                            else: normal_list.append(remote_object)
+
+                        try:
+                            with ThreadPoolExecutor(max_workers=10) as pool:
+                                pool.map(process_remote_props, remote_servers)
+                        except TypeError: continue
+
+                    # Don't load server if the Telepath instance can't be found
+                    except requests.exceptions.ConnectionError: pass
+                    except requests.exceptions.ReadTimeout:     pass
+
+        except Exception as e:
+            self._send_log(f'error generating menu view list: {constants.format_traceback(e)}', 'error')
+
+
+        normal_list = sorted(normal_list, key=lambda x: x.last_modified, reverse=True)
+        favorite_list = sorted(favorite_list, key=lambda x: x.last_modified, reverse=True)
+        final_list.extend(favorite_list)
+        final_list.extend(normal_list)
+
+        return final_list
+
     # Return list of every valid server update property in 'applicationFolder'
-    def check_for_updates(self):
+    def check_for_updates(self) -> dict[str: dict]:
         self.update_list = {}
         self._send_log("globally checking for server updates...", 'info')
 
@@ -2491,60 +2574,6 @@ class ServerManager():
 
 
 # --------------------------------------------- General Functions ------------------------------------------------------
-
-# Generates sorted dict of server information for menu
-def create_server_list(remote_data=None):
-
-    final_list = []
-    normal_list = []
-    favorite_list = []
-
-    def grab_terse_props(server_name, *args):
-        server_object = ViewObject(constants.server_manager, server_name)
-
-        if server_object.favorite:
-            favorite_list.append(server_object)
-        else:
-            normal_list.append(server_object)
-
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        pool.map(grab_terse_props, constants.generate_server_list())
-
-
-    # If remote servers are specified, grab them all with an API request
-    if remote_data:
-        for host, instance in remote_data.items():
-            instance['host'] = host
-            try:
-                remote_servers = constants.api_manager.request(
-                    endpoint = '/main/create_server_list',
-                    host = instance['host'],
-                    port = instance['port'],
-                    timeout = 0.5
-                )
-
-                def process_remote_props(server_data):
-                    remote_object = RemoteViewObject(constants.server_manager, instance, server_data)
-                    if remote_object.favorite: favorite_list.append(remote_object)
-                    else:                      normal_list.append(remote_object)
-
-                try:
-                    with ThreadPoolExecutor(max_workers=10) as pool:
-                        pool.map(process_remote_props, remote_servers)
-                except TypeError:
-                    continue
-
-            # Don't load server if the Telepath instance can't be found
-            except requests.exceptions.ConnectionError: pass
-            except requests.exceptions.ReadTimeout:     pass
-
-
-    normal_list = sorted(normal_list, key=lambda x: x.last_modified, reverse=True)
-    favorite_list = sorted(favorite_list, key=lambda x: x.last_modified, reverse=True)
-    final_list.extend(favorite_list)
-    final_list.extend(normal_list)
-
-    return final_list
 
 # From kivy.utils
 def escape_markup(text):

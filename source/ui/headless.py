@@ -150,7 +150,7 @@ def manage_server(name: str, action: str):
         else:
             return [("parameter", name), ("info", " is too long, shorten it and try again (25 max)")], 'fail'
 
-        if name.lower() in constants.server_list_lower:
+        if name.lower() in constants.server_manager.server_list_lower:
             return [("parameter", name), ("info", " already exists")], 'fail'
 
 
@@ -206,7 +206,7 @@ def manage_server(name: str, action: str):
             update_console(f"({x}/{len(action_list)}) {text}")
             func()
 
-        constants.generate_server_list()
+        constants.server_manager.create_server_list()
 
         return [
             ("normal", "Successfully created "),
@@ -248,7 +248,7 @@ def manage_server(name: str, action: str):
             update_console(f"(4/4) Creating initial back-up")
             constants.create_backup(True)
 
-            constants.generate_server_list()
+            constants.server_manager.create_server_list()
         except:
             return f"Failed to import '{name}'", 'fail'
 
@@ -268,7 +268,7 @@ def manage_server(name: str, action: str):
 
 
     # Manage existing servers
-    elif name.lower() in constants.server_list_lower:
+    elif name.lower() in constants.server_manager.server_list_lower:
         server_obj = constants.server_manager.open_server(name)
 
         if action == 'info':
@@ -322,7 +322,7 @@ def manage_server(name: str, action: str):
 
         elif action == 'delete':
             if not server_obj.running:
-                func_wrapper([server_obj.delete, constants.generate_server_list])
+                func_wrapper([server_obj.delete, constants.server_manager.create_server_list])
                 return [("normal", "Deleted "), ("parameter", name), ("normal", " and saved a back-up")]
 
             else:
@@ -442,7 +442,7 @@ def init_import_server(path):
             return 'Invalid server', 'fail'
 
         # Don't allow import of already imported servers
-        elif os.path.join(constants.applicationFolder, 'Servers') in selected_server and os.path.basename(selected_server).lower() in constants.server_list_lower:
+        elif os.path.join(constants.applicationFolder, 'Servers') in selected_server and os.path.basename(selected_server).lower() in constants.server_manager.server_list_lower:
             return 'This server already exists', 'fail'
 
         # If server is valid, do this
@@ -492,7 +492,7 @@ def init_import_server(path):
 
 
         # Don't allow import of already imported servers
-        elif server_name.lower() in constants.server_list_lower:
+        elif server_name.lower() in constants.server_manager.server_list_lower:
             return 'This server already exists', 'fail'
 
         # If server is valid, do this
@@ -509,11 +509,11 @@ def init_import_server(path):
     return manage_server(constants.import_data['name'], 'import')
 
 def list_servers():
-    constants.generate_server_list()
-    if constants.server_list:
-        return_text = [('normal', f'Installed Servers'),  ('success', ' * - active'), ('info', f' ({len(constants.server_list)} total):\n\n')]
+    constants.server_manager.create_server_list()
+    if constants.server_manager.server_list:
+        return_text = [('normal', f'Installed Servers'),  ('success', ' * - active'), ('info', f' ({len(constants.server_manager.server_list)} total):\n\n')]
         line = ''
-        for server in constants.server_list:
+        for server in constants.server_manager.server_list:
             running = server in constants.server_manager.running_servers
             text = f'{"*" if running else ""}{server}    '
             line += text
@@ -526,7 +526,7 @@ def list_servers():
         return [('info', 'No servers were found')], 'fail'
 
 def enable_playit(name: str, enabled=True):
-    if name.lower() in constants.server_list_lower:
+    if name.lower() in constants.server_manager.server_list_lower:
         server_obj = constants.server_manager.open_server(name)
         update_console('Retrieving server configuration...')
         while not all(list(server_obj._check_object_init().values())):
@@ -1216,7 +1216,7 @@ class CommandInput(urwid.Edit):
                         # Override "server name" parameter to display server names
                         elif command.name in input_text and list(command.params.items())[0][0] == 'server name':
                             partial_name = input_text.split(' ', 1)[-1].strip()
-                            for server in constants.server_list:
+                            for server in constants.server_manager.server_list:
                                 if server.lower().startswith(partial_name.lower()):
                                     self.hint_text = f'{command.name} {server}'
                                     break
@@ -1264,7 +1264,7 @@ class CommandInput(urwid.Edit):
                                     command_start = ' '.join(input_text.split(' ', 2)[:2])
                                     partial_name = input_text.split(' ', 2)[-1].strip()
                                     if command_start != 'server create':
-                                        for server in constants.server_list:
+                                        for server in constants.server_manager.server_list:
                                             if server.lower().startswith(partial_name.lower()):
                                                 self.hint_text = f'{command_start} {server}'
                                                 break
@@ -2207,7 +2207,7 @@ editor = None
 def edit_properties(server_name: str):
     global loop, editor
 
-    if server_name.lower() in constants.server_list_lower:
+    if server_name.lower() in constants.server_manager.server_list_lower:
         editor = PropertiesEditor(server_name)
         editor.loop = loop
         editor.connect_signals()
@@ -2745,7 +2745,7 @@ def open_console(server_name: str, force_start=False):
     if not force_start:
 
         # First, check if the server exists
-        if server_name.lower() not in constants.server_list_lower:
+        if server_name.lower() not in constants.server_manager.server_list_lower:
             return [('parameter', server_name), ('info', ' does not exist')], 'fail'
 
         # Check if the server is running

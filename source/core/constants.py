@@ -156,8 +156,6 @@ color_table = {
 }
 
 background_color  = (0.115, 0.115, 0.182, 1)
-server_list       = []
-server_list_lower = []
 new_server_info   = {}
 sub_processes     = []
 
@@ -618,7 +616,7 @@ def apply_template(template: dict):
 
     # Get telepath data
     telepath_data = None
-    name_list = server_list_lower
+    name_list = server_manager.server_list_lower
     if new_server_info:
         telepath_data = new_server_info['_telepath_data']
 
@@ -626,7 +624,7 @@ def apply_template(template: dict):
 
     if telepath_data:
         new_server_info['_telepath_data'] = telepath_data
-        name_list = get_remote_var('server_list_lower', telepath_data)
+        name_list = get_remote_var('server_manager.server_list_lower', telepath_data)
 
     t = template['server']
     s = t['settings']
@@ -2961,7 +2959,7 @@ def new_server_init():
 
 # Override remote new server configuration
 def push_new_server(server_info: dict, import_info={}):
-    global new_server_info, import_data, server_list_lower
+    global new_server_info, import_data
     new_server_init()
     if import_info:
         import_data = import_info
@@ -2991,8 +2989,8 @@ def push_new_server(server_info: dict, import_info={}):
 def new_server_name(existing_server=None, s_list=None):
     pattern = r'\s\(\d+\)$'
     if s_list is None:
-        generate_server_list()
-        s_list = server_list_lower
+        server_manager.create_server_list()
+        s_list = server_manager.server_list_lower
     def iter_name(new_name):
         x = 1
         while new_name.lower() in s_list:
@@ -3887,10 +3885,10 @@ def pre_server_create(telepath=False):
 
     # Input validate name to prevent overwriting
     if import_data['name']:
-        if import_data['name'].lower() in server_list_lower:
+        if import_data['name'].lower() in server_manager.server_list_lower:
             import_data['name'] = new_server_name(import_data['name'])
     elif new_server_info['name']:
-        if new_server_info['name'].lower() in server_list_lower:
+        if new_server_info['name'].lower() in server_manager.server_list_lower:
             new_server_info['name'] = new_server_name(new_server_info['name'])
 
     server_manager.current_server = None
@@ -6186,26 +6184,6 @@ def generate_run_script(properties, temp_server=False, custom_flags=None, no_fla
     return script_path
 
 
-# Return list of every valid server in 'applicationFolder'
-def generate_server_list():
-    global server_list
-    global server_list_lower
-    server_list = []
-    server_list_lower = []
-
-    try:
-        for file in glob(os.path.join(serverDir, "*")):
-            if os.path.isfile(os.path.join(file, server_ini)):
-                server_list.append(os.path.basename(file))
-                server_list_lower.append(os.path.basename(file).lower())
-
-    except Exception as e:
-        send_log('generate_server_list', f'error generating server list: {format_traceback(e)}', 'error')
-
-    send_log('generate_server_list', f"generated server list from valid servers in '{serverDir}':\n{server_list}")
-    return server_list
-
-
 # Check if port is open on host
 def check_port(ip: str, port: int, timeout=120):
 
@@ -7771,10 +7749,10 @@ class SearchManager():
         return send_log(self.__class__.__name__, message, level)
 
     def get_server_list(self):
-        if server_manager.server_list:
-            return {s._view_name: s._telepath_data for s in server_manager.server_list}
+        if server_manager.menu_view_list:
+            return {s._view_name: s._telepath_data for s in server_manager.menu_view_list}
         else:
-            return {s: None for s in generate_server_list()}
+            return {s: None for s in server_manager.create_server_list()}
 
     def __init__(self):
 
