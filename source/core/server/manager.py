@@ -2201,21 +2201,41 @@ class ServerManager():
 
     def __init__(self):
 
-        # Local server data
+        # --------------------------- Local server data ----------------------------
+
+        # Stores all local server names as strings
         self.server_list:       list[str] = []
         self.server_list_lower: list[str] = []
+
+        # Stores a sorted dict of update information per server
         self.update_list:       dict[str, dict] = {}
+
+        # The currently active server in the menu
         self.current_server:    ServerObject    = None
+
+        # 'self.current_server' gets moved here when launched
         self.running_servers:   dict[str, ServerObject] = {}
+
+        # Currently active servers from a remote Telepath client, mapped by host
         self.remote_servers:    dict[str, ServerObject] = {}
+
+        # A sorted list of all ViewObjects (by date modified) for the menu
         self.menu_view_list:    list[Union[ViewObject, RemoteViewObject]] = []
 
-        # Load client server info
+        # Load local server info
         self.create_server_list()
 
-        # Telepath client data
+
+
+        # -------------------------- Telepath client data --------------------------
+
+        # An in-memory mirror of 'telepath-servers.json'
         self.telepath_servers        = {}
+
+        # All currently connected remote Telepath servers
         self.online_telepath_servers = []
+
+        # A map of 'self.update_list' for each remote Telepath server
         self.remote_update_list: dict[str, dict[str, dict]] = {}
 
         # Load Telepath servers
@@ -2223,210 +2243,9 @@ class ServerManager():
 
         self._send_log('initialized Server Manager', 'info')
 
-    def _init_telepathy(self, telepath_data: dict):
-
-        # Make sure the server isn't already open
-        if self.current_server and self.current_server._telepath_data:
-            new = f"{telepath_data['host']}/{telepath_data['name']}"
-            old = f"{self.current_server._telepath_data['host']}/{self.current_server._telepath_data['name']}"
-            if new == old: return self.current_server
-
-        self.current_server = telepath.RemoteServerObject(self, telepath_data)
-        return self.current_server
-
-    # Refreshes self.menu_view_list with current info
-    def refresh_list(self):
-        self.menu_view_list = self.create_view_list(self.online_telepath_servers)
-
-    # Sets self.current_server to selected ServerObject
-    def open_server(self, name):
-        try:
-            if name in self.remote_servers:
-                self.current_server = self.remote_servers[name]
-                self._send_log(f"opened '{name}' with properties:\n{vars(self.current_server)}")
-                return self.current_server
-        except AttributeError:
-            pass
 
 
-        if self.current_server:
-            crash_info = (self.current_server.name, self.current_server.crash_log)
-        else:
-            crash_info = (None, None)
-
-        del self.current_server
-        self.current_server = None
-
-        # Check if server is running
-        if name in self.running_servers.keys():
-            self.current_server = self.running_servers[name]
-        else:
-            self.current_server = ServerObject(self, name)
-            if crash_info[0] == name:
-                self.current_server.crash_log = crash_info[1]
-
-        self._send_log(f"opened '{name}' with properties:\n{vars(self.current_server)}")
-        return self.current_server
-
-    # Sets self.remote_server to selected ServerObject
-    def open_remote_server(self, host: str, name: str):
-        try:
-            if self.current_server.name == name:
-                self.remote_servers[host] = self.current_server
-
-                self._send_log(f"remote '{host}' opened '{name}' with properties:\n{vars(self.remote_servers[host])}")
-                return host in self.remote_servers
-
-        except AttributeError:
-            pass
-
-        if host in self.remote_servers:
-            crash_info = (self.remote_servers[host].name, self.remote_servers[host].crash_log)
-            del self.remote_servers[host]
-        else:
-            crash_info = (None, None)
-
-        # Check if server is running
-        if name in self.running_servers.keys():
-            self.remote_servers[host] = self.running_servers[name]
-
-        else:
-            # Check if server is already open on another host
-            for server_obj in self.remote_servers.values():
-                if name == server_obj.name:
-                    self.remote_servers[host] = server_obj
-                    break
-
-            # Initialize a new server object
-            else:
-                self.remote_servers[host] = ServerObject(self, name)
-                if crash_info[0] == name:
-                    self.remote_servers[host].crash_log = crash_info[1]
-
-        self._send_log(f"remote '{host}' opened '{name}' with properties:\n{vars(self.remote_servers[host])}")
-        return host in self.remote_servers
-
-    # Reloads self.current_server
-    def reload_server(self):
-        if self.current_server:
-            return self.open_server(self.current_server.name)
-
-    # Loads servers from "telepath.json" in Servers directory
-    def load_telepath_servers(self):
-        # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
-        if os.path.exists(constants.telepathFile):
-            with open(constants.telepathFile, 'r') as f:
-                try: self.telepath_servers = json.loads(f.read())
-                except json.decoder.JSONDecodeError: pass
-
-        return self.telepath_servers
-
-    # Checks which servers are alive
-    def check_telepath_servers(self):
-        if not self.telepath_servers:
-            return
-
-        new_server_list = {}
-        self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
-
-        def check_server(host, data):
-            url = f'http://{host}:{data["port"]}/telepath/check_status'
-            try:
-                # Check if remote server is online
-                if requests.get(url, timeout=0.5).json():
-                    # Attempt to log in
-                    login_data = constants.api_manager.login(host, data["port"])
-                    if login_data:
-                        # Update values if host exists
-                        if host in self.telepath_servers:
-                            for k, v in login_data.items():
-                                if v:
-                                    self.telepath_servers[host][k] = v
-                        else:
-                            self.telepath_servers[host] = login_data
-
-                        return host, constants.deepcopy(data)
-            except Exception:
-                pass
-            return None
-
-        # Use ThreadPoolExecutor to check multiple servers concurrently
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_host = {executor.submit(check_server, host, data): host for host, data in self.telepath_servers.items()}
-
-            for future in as_completed(future_to_host):
-                result = future.result()
-                if result:
-                    host, data = result
-                    new_server_list[host] = data
-
-        # Update the online servers list
-        self.online_telepath_servers = new_server_list
-        self.write_telepath_servers(overwrite=True)
-        self._send_log(f"successfully connected to {len(self.online_telepath_servers)} Telepath server(s)", 'info')
-        return new_server_list
-
-    def write_telepath_servers(self, instance=None, overwrite=False):
-        if not overwrite:
-            self.telepath_servers = self.load_telepath_servers()
-
-        if instance:
-            self.telepath_servers[instance['host']] = instance
-            del instance['host']
-
-        constants.folder_check(constants.telepathDir)
-        with open(constants.telepathFile, 'w+') as f:
-            f.write(json.dumps(self.telepath_servers))
-        return self.telepath_servers
-
-    def add_telepath_server(self, instance: dict):
-        if not instance['nickname']:
-            instance['nickname'] = constants.format_nickname(instance['hostname'])
-
-        self._send_log(f'added a new Telepath server:\n{instance}')
-        self.write_telepath_servers(instance)
-        self.check_telepath_servers()
-
-    def remove_telepath_server(self, instance: dict):
-        if instance['host'] in self.telepath_servers:
-            del self.telepath_servers[instance['host']]
-
-        self._send_log(f'removed a Telepath server:\n{instance}')
-        self.write_telepath_servers(overwrite=True)
-        self.check_telepath_servers()
-
-    def rename_telepath_server(self, instance: dict, new_name: str):
-        new_name = constants.format_nickname(new_name)
-        instance['nickname'] = new_name
-        self.telepath_servers[instance['host']]['nickname'] = new_name
-        self.telepath_servers[instance['host']]['display-name'] = new_name
-
-        self._send_log(f"renamed a Telepath server to '{new_name}':\n{instance}")
-        self.write_telepath_servers(overwrite=True)
-
-    # Retrieves remote update list
-    def reload_telepath_updates(self, host_data=None):
-        # Load remote update list
-        if host_data:
-            self.remote_update_list[host_data['host']] = constants.get_remote_var('server_manager.update_list', host_data)
-
-        else:
-            for host, instance in self.telepath_servers.items():
-                host_data = {'host': host, 'port': instance['port']}
-                self.remote_update_list[host] = constants.get_remote_var('server_manager.update_list', host_data)
-
-    # Returns and updates remote update list
-    def get_telepath_update(self, host_data: dict, server_name: str):
-        self.reload_telepath_updates(host_data)
-        if host_data['host'] not in self.remote_update_list:
-            self.remote_update_list[host_data['host']] = {}
-        if server_name in self.remote_update_list[host_data['host']]:
-            return self.remote_update_list[host_data['host']][server_name]
-        return {}
-
-
-
-    # General methods
+    #  -------------------------------------------- General Methods ----------------------------------------------------
 
     # Return a list of every valid server in 'applicationFolder'
     def create_server_list(self) -> list[str]:
@@ -2570,6 +2389,212 @@ class ServerManager():
         else:                self._send_log('all servers are up to date', 'info')
 
         return self.update_list
+
+    # Refreshes self.menu_view_list with current info
+    def refresh_list(self):
+        self.menu_view_list = self.create_view_list(self.online_telepath_servers)
+
+    # This method is local only to open a server in the Servers directory
+    # Sets self.current_server to selected ServerObject
+    def open_server(self, name):
+        try:
+            if name in self.remote_servers:
+                self.current_server = self.remote_servers[name]
+                self._send_log(f"opened '{name}' with properties:\n{vars(self.current_server)}")
+                return self.current_server
+        except AttributeError:
+            pass
+
+
+        if self.current_server:
+            crash_info = (self.current_server.name, self.current_server.crash_log)
+        else:
+            crash_info = (None, None)
+
+        del self.current_server
+        self.current_server = None
+
+        # Check if server is running
+        if name in self.running_servers.keys():
+            self.current_server = self.running_servers[name]
+        else:
+            self.current_server = ServerObject(self, name)
+            if crash_info[0] == name:
+                self.current_server.crash_log = crash_info[1]
+
+        self._send_log(f"opened '{name}' with properties:\n{vars(self.current_server)}")
+        return self.current_server
+
+    # This method is server-side for when a client opens a local server remotely
+    # Sets self.remote_server to selected ServerObject
+    def open_remote_server(self, host: str, name: str):
+        try:
+            if self.current_server.name == name:
+                self.remote_servers[host] = self.current_server
+
+                self._send_log(f"remote '{host}' opened '{name}' with properties:\n{vars(self.remote_servers[host])}")
+                return host in self.remote_servers
+
+        except AttributeError:
+            pass
+
+        if host in self.remote_servers:
+            crash_info = (self.remote_servers[host].name, self.remote_servers[host].crash_log)
+            del self.remote_servers[host]
+        else:
+            crash_info = (None, None)
+
+        # Check if server is running
+        if name in self.running_servers.keys():
+            self.remote_servers[host] = self.running_servers[name]
+
+        else:
+            # Check if server is already open on another host
+            for server_obj in self.remote_servers.values():
+                if name == server_obj.name:
+                    self.remote_servers[host] = server_obj
+                    break
+
+            # Initialize a new server object
+            else:
+                self.remote_servers[host] = ServerObject(self, name)
+                if crash_info[0] == name:
+                    self.remote_servers[host].crash_log = crash_info[1]
+
+        self._send_log(f"remote '{host}' opened '{name}' with properties:\n{vars(self.remote_servers[host])}")
+        return host in self.remote_servers
+
+    # Reloads self.current_server
+    def reload_server(self):
+        if self.current_server:
+            return self.open_server(self.current_server.name)
+
+
+
+    #  ----------------------------------------- Telepath Management ---------------------------------------------------
+
+    # From the perspective of a client, this opens a server on a remote Telepath host in 'self.remote_servers'
+    def _init_telepathy(self, telepath_data: dict):
+
+        # Make sure the server isn't already open
+        if self.current_server and self.current_server._telepath_data:
+            new = f"{telepath_data['host']}/{telepath_data['name']}"
+            old = f"{self.current_server._telepath_data['host']}/{self.current_server._telepath_data['name']}"
+            if new == old: return self.current_server
+
+        self.current_server = telepath.RemoteServerObject(self, telepath_data)
+        return self.current_server
+
+    # Checks which remote servers are alive (if this instance is a Telepath client)
+    def check_telepath_servers(self):
+        if not self.telepath_servers:
+            return
+
+        new_server_list = {}
+        self._send_log(f"attempting to connect to {len(self.telepath_servers)} Telepath server(s)...", 'info')
+
+        def check_server(host, data):
+            url = f'http://{host}:{data["port"]}/telepath/check_status'
+            try:
+                # Check if remote server is online
+                if requests.get(url, timeout=0.5).json():
+                    # Attempt to log in
+                    login_data = constants.api_manager.login(host, data["port"])
+                    if login_data:
+                        # Update values if host exists
+                        if host in self.telepath_servers:
+                            for k, v in login_data.items():
+                                if v:
+                                    self.telepath_servers[host][k] = v
+                        else:
+                            self.telepath_servers[host] = login_data
+
+                        return host, constants.deepcopy(data)
+            except Exception:
+                pass
+            return None
+
+        # Use ThreadPoolExecutor to check multiple servers concurrently
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_host = {executor.submit(check_server, host, data): host for host, data in self.telepath_servers.items()}
+
+            for future in as_completed(future_to_host):
+                result = future.result()
+                if result:
+                    host, data = result
+                    new_server_list[host] = data
+
+        # Update the online servers list
+        self.online_telepath_servers = new_server_list
+        self.write_telepath_servers(overwrite=True)
+        self._send_log(f"successfully connected to {len(self.online_telepath_servers)} Telepath server(s)", 'info')
+        return new_server_list
+
+    # Retrieves remote update list
+    def reload_telepath_updates(self, host_data=None):
+        # Load remote update list
+        if host_data:
+            self.remote_update_list[host_data['host']] = constants.get_remote_var('server_manager.update_list', host_data)
+
+        else:
+            for host, instance in self.telepath_servers.items():
+                host_data = {'host': host, 'port': instance['port']}
+                self.remote_update_list[host] = constants.get_remote_var('server_manager.update_list', host_data)
+
+    # Returns and updates remote update list
+    def get_telepath_update(self, host_data: dict, server_name: str):
+        self.reload_telepath_updates(host_data)
+        if host_data['host'] not in self.remote_update_list:
+            self.remote_update_list[host_data['host']] = {}
+        if server_name in self.remote_update_list[host_data['host']]:
+            return self.remote_update_list[host_data['host']][server_name]
+        return {}
+
+    # The below methods modify servers from 'telepath-servers.json'
+    def load_telepath_servers(self):
+        # Possibly run this function before auto-mcs boots, and wait for it to finish loading before showing the UI
+        if os.path.exists(constants.telepathFile):
+            with open(constants.telepathFile, 'r') as f:
+                try:
+                    self.telepath_servers = json.loads(f.read())
+                except json.decoder.JSONDecodeError:
+                    pass
+
+        return self.telepath_servers
+    def write_telepath_servers(self, instance=None, overwrite=False):
+        if not overwrite:
+            self.telepath_servers = self.load_telepath_servers()
+
+        if instance:
+            self.telepath_servers[instance['host']] = instance
+            del instance['host']
+
+        constants.folder_check(constants.telepathDir)
+        with open(constants.telepathFile, 'w+') as f:
+            f.write(json.dumps(self.telepath_servers))
+        return self.telepath_servers
+    def add_telepath_server(self, instance: dict):
+        if not instance['nickname']:
+            instance['nickname'] = constants.format_nickname(instance['hostname'])
+
+        self._send_log(f'added a new Telepath server:\n{instance}')
+        self.write_telepath_servers(instance)
+        self.check_telepath_servers()
+    def remove_telepath_server(self, instance: dict):
+        if instance['host'] in self.telepath_servers:
+            del self.telepath_servers[instance['host']]
+
+        self._send_log(f'removed a Telepath server:\n{instance}')
+        self.write_telepath_servers(overwrite=True)
+        self.check_telepath_servers()
+    def rename_telepath_server(self, instance: dict, new_name: str):
+        new_name = constants.format_nickname(new_name)
+        instance['nickname'] = new_name
+        self.telepath_servers[instance['host']]['nickname'] = new_name
+        self.telepath_servers[instance['host']]['display-name'] = new_name
+
+        self._send_log(f"renamed a Telepath server to '{new_name}':\n{instance}")
+        self.write_telepath_servers(overwrite=True)
 
 
 
