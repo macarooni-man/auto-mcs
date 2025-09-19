@@ -1,4 +1,5 @@
 from traceback import format_exc
+from os import path
 import threading
 import argparse
 import requests
@@ -112,16 +113,16 @@ def migrate_legacy_logs():
 
     # Move files matching 'pattern' under 'base_dir' into 'Logs/target_subdir'
     def _migrate(pattern: str, target_subdir: str, base_dir: str, delete_source_dir: bool = False):
-        old_dir = os.path.join(base_dir)
-        files = glob.glob(os.path.join(old_dir, pattern))
+        old_dir = path.join(base_dir)
+        files = glob.glob(path.join(old_dir, pattern))
         if not files: return
 
-        new_dir = os.path.join(constants.applicationFolder, "Logs", target_subdir)
+        new_dir = path.join(constants.applicationFolder, "Logs", target_subdir)
         try:
             constants.send_log('migrate_legacy_logs',f"migrating {len(files)} '{pattern}' to '{new_dir}'", level='warning')
             constants.folder_check(new_dir)
             for src in files:
-                dst = os.path.join(new_dir, os.path.basename(src))
+                dst = path.join(new_dir, path.basename(src))
                 constants.move(src, dst)
 
         except Exception as e:
@@ -132,8 +133,8 @@ def migrate_legacy_logs():
                 try: constants.safe_delete(old_dir)
                 except Exception as e: constants.send_log('migrate_legacy_logs',f"failed to delete source dir '{old_dir}': {constants.format_traceback(e)}", level='error')
 
-    app_logs   = os.path.join(constants.applicationFolder, "Logs")
-    audit_logs = os.path.join(constants.telepathDir, "audit-logs")
+    app_logs   = path.join(constants.applicationFolder, "Logs")
+    audit_logs = path.join(constants.telepathDir, "audit-logs")
     _migrate("ame-error*.log", "errors", app_logs)
     _migrate("ame-fatal*.log", "crashes", app_logs)
     _migrate("session-audit_*.log", "telepath", audit_logs, delete_source_dir=True)
@@ -187,8 +188,8 @@ def check_if_updated() -> bool:
     from source.core import constants
 
     try:
-        update_log = os.path.join(constants.tempDir, 'update-log')
-        if os.path.exists(update_log):
+        update_log = path.join(constants.tempDir, 'update-log')
+        if path.exists(update_log):
             with open(update_log, 'r') as f:
                 constants.update_data['reboot-msg'] = f.read().strip().split("@")
                 send_log('', f"update complete: '{constants.update_data['reboot-msg']}'", 'info')
@@ -232,6 +233,7 @@ def parse_boot_args():
             action = 'store_true'
         )
 
+
         # Windows headless is unsupported when compiled (PyInstaller GUI entrypoint)
         if constants.os_name != 'windows' or not constants.app_compiled:
             parser.add_argument(
@@ -239,6 +241,7 @@ def parse_boot_args():
                 help = 'launch without initializing the UI and enable the Telepath API',
                 action = 'store_true'
             )
+
 
         # Parse & assign to globals/constants
         args = parser.parse_args()
@@ -251,22 +254,29 @@ def parse_boot_args():
         if constants.os_name != 'windows' or not constants.app_compiled:
             constants.headless = args.headless
 
+
         # Force headless if no display (Linux) or running in Docker
         if (constants.os_name == 'linux' and 'DISPLAY' not in os.environ) or constants.is_docker:
             constants.headless = True
 
+
         # Handle auto-start server list
         if args.launch:
 
-            constants.generate_server_list()
-            server_list = [s.strip() for s in args.launch.split(',')]
+            arg_server_list = [s.strip() for s in args.launch.split(',')]
+            servers, servers_lower = zip(
+                *[(f, f.lower()) for f in glob.glob(path.join(constants.serverDir, "*"))
+                  if path.isfile(path.join(f, constants.server_ini))]
+            )
+            servers, servers_lower = list(servers), list(servers_lower)
 
-            for server in server_list:
-                if server.lower() in constants.server_list_lower:
-                    server = constants.server_list[constants.server_list_lower.index(server.lower())]
+            for server in arg_server_list:
+                if server.lower() in servers_lower:
+                    server = servers[servers_lower.index(server.lower())]
                     constants.boot_launches.append(server)
 
                 else: exit_with_log('', f"--launch: '{server}' does not exist", 'fatal', exit_code=-1)
+
 
     except AttributeError as e:
         send_log('', f"error processing CLI arguments: {constants.format_traceback(e)}", 'error')
@@ -286,7 +296,7 @@ def instance_check():
     if not constants.is_docker:
 
         if constants.os_name == "windows":
-            command = f'tasklist | findstr {os.path.basename(constants.launch_path)}'
+            command = f'tasklist | findstr {path.basename(constants.launch_path)}'
             response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if ((command not in line) and ('tasklist' not in line) and (line.endswith(' K')))]
             if len(response) > 2:
 
@@ -299,13 +309,13 @@ def instance_check():
 
 
         elif constants.os_name == "macos":
-            command = f'ps -e | grep .app/Contents/MacOS/{os.path.basename(constants.launch_path)}'
+            command = f'ps -e | grep .app/Contents/MacOS/{path.basename(constants.launch_path)}'
             response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2: check_failed = True
 
 
         else:  # Linux
-            command = f'ps -e | grep {os.path.basename(constants.launch_path)}'
+            command = f'ps -e | grep {path.basename(constants.launch_path)}'
             response = [line for line in constants.run_proc(command, True, log_only_in_debug=True).strip().splitlines() if command not in line and 'grep' not in line and line]
             if len(response) > 2: check_failed = True
 
@@ -381,7 +391,7 @@ def cleanup_on_close():
     constants.log_manager.dump_to_disk()
 
     # Delete live images/temp files on close
-    constants.safe_delete(os.path.join(constants.gui_assets, 'live'))
+    constants.safe_delete(path.join(constants.gui_assets, 'live'))
     constants.safe_delete(constants.tempDir)
 
 # Handles switching execution context to a crash window that allows the app to be restarted
@@ -456,7 +466,7 @@ if __name__ == '__main__':
         while not constants.server_manager: time.sleep(0.1)
 
         # Try to log into telepath servers automatically
-        if os.path.exists(constants.telepathFile):
+        if path.exists(constants.telepathFile):
             if constants.server_list_lower: constants.server_manager.check_telepath_servers()
 
         def background_launch(func, *a):
