@@ -44,11 +44,6 @@ from source.core.constants import (
     server_manager, api_manager, playit,
 )
 
-from source.core.server.foundry import (
-    latestMC, new_server_info, import_data,
-    scan_import, finalize_import, generate_eula
-)
-
 
 # Auto-MCS Server Manager API
 # ----------------------------------------------- Server Objects -------------------------------------------------------
@@ -210,6 +205,8 @@ class ServerObject():
 
     # Reloads server information from static files
     def reload_config(self, reload_objects=False, _logging=True, _from_init=False):
+        from source.core.server.foundry import latestMC
+
         if _from_init: reload_objects = True; _logging = False
         if _logging: self._send_log(f"reloading configuration from disk...", 'info')
 
@@ -1986,6 +1983,8 @@ class ServerObject():
 # Low calorie version of ServerObject for a ViewClass in the Server Manager screen
 class ViewObject():
     def __init__(self, _manager: 'ServerManager', server_name: str):
+        from source.core.server.foundry import latestMC
+
         self._manager = _manager
         self._telepath_data = None
         self.name = server_name
@@ -2224,6 +2223,8 @@ class ServerManager():
 
     # Return list of every valid server update property in 'applicationFolder'
     def check_for_updates(self) -> dict[str: dict]:
+        from source.core.server.foundry import latestMC
+
         self.update_list = {}
         self._send_log("globally checking for server updates...", 'info')
 
@@ -2906,6 +2907,8 @@ def gather_config_files(name: str, max_depth: int = 3) -> dict[str, list[str]]:
 # auto-mcs.ini config file function
 # write_object is the configparser object returned from this function
 def server_config(server_name: str, write_object: ConfigParser = None, config_path: str = None):
+    from source.core.server.foundry import latestMC
+
     config_file = os.path.abspath(config_path) if config_path else server_path(server_name, server_ini)
     builds_available = list(latestMC['builds'].keys())
 
@@ -3119,6 +3122,8 @@ def server_properties(server_name: str, write_object=None):
 
 # Fixes empty 'server.properties' file, and updates EULA date check
 def fix_empty_properties(name):
+    from source.core.server.foundry import generate_eula
+
     path = server_path(name)
     properties_file = os.path.join(path, 'server.properties')
     send_log('server_properties', f"generating new 'server.properties' for '{name}'...", 'info')
@@ -3372,6 +3377,9 @@ def update_server_icon(server_name: str, new_image: str = False) -> [bool, str]:
 
 # Clones a server with support for Telepath
 def clone_server(server_obj: object or str, progress_func=None, host=None, *args):
+    from source.core.server.foundry import (
+        new_server_info, import_data, scan_import, finalize_import
+    )
 
     if server_obj == '$remote':
         source_data = None
